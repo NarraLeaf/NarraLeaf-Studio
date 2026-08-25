@@ -1,13 +1,34 @@
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 export { isValidAssetStorageId } from "@shared/utils/assetStorageId";
+import { getProjectConfigFileName, NLPROJ_EXT } from "@shared/utils/nlproj";
 import { AssetCategory, AssetType } from "../services/assets/assetTypes";
 
 export const ProjectNameConvention = {
     // Project Root Files
-    // .nlproj is the primary format (msgpack-encoded); project.json is legacy
-    ProjectConfig: ["project.json"],
+    /**
+     * The project's own config file, msgpack-encoded.
+     *
+     * A function rather than a constant, because it is the one root file whose name the author
+     * chooses: it is called after the project, sanitized into a filename, so `My Game` is stored as
+     * `My-Game.nlproj` (see `getProjectConfigFileName`).
+     *
+     * That is what {@link ProjectConfigExtension} is for. A reader holding a path and no project
+     * name - a listing looking for the config, a comparison saying which panel a changed file
+     * belongs to - cannot reconstruct the name, and can only recognise the file by what it ends in.
+     */
+    ProjectConfig: (projectName: string) => [getProjectConfigFileName(projectName)],
+    /**
+     * What every {@link ProjectConfig} file ends in. Re-exported from `@shared/utils/nlproj` rather
+     * than spelled again here, because it is also the extension Studio registers with the operating
+     * system, and two spellings of it would be two answers to what a project is.
+     */
+    ProjectConfigExtension: NLPROJ_EXT,
+    /**
+     * The config filename projects used before `.nlproj`, still read wherever one is found. A
+     * constant, unlike {@link ProjectConfig}: it never carried the project's name.
+     */
     ProjectConfigLegacy: ["project.json"],
-    
+
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
     /**
@@ -99,6 +120,11 @@ export const ProjectNameConvention = {
     EditorServices: ["editor", "services/"],
     EditorRemoteAssetsCache: ["editor", "assets", "remote/"],
     EditorRemoteAssetShard: (id: string) => ["editor", "assets", "remote", ...splitId(id)],
+    /**
+     * Everything derived that this project can afford to lose. `@shared/vcs/workingSet` excludes
+     * this prefix from version control, which is what makes anything under it one copy per machine.
+     */
+    EditorCache: ["editor", "cache/"],
     EditorThumbnailCache: ["editor", "cache", "thumbnail/"],
     EditorThumbnailCacheShard: (id: string) => {
         const safeId = encodePathSegmentId(id);
@@ -135,6 +161,17 @@ export const ProjectNameConvention = {
      */
     EditorMediaSupportCache: ["editor", "cache", "media/"],
     EditorMediaSupportCacheFile: ["editor", "cache", "media", "support.json"],
+    /**
+     * The values the author last ran each test with, keyed by test id.
+     *
+     * A cache by the only criterion there is: deleting it costs the author one dropdown pick and
+     * loses no work, since nothing in the project refers to it and every run states its own
+     * parameters on its record. That is also why it sits under `editor/cache/` rather than beside
+     * the project's own editor documents - `@shared/vcs/workingSet` excludes that prefix, so this
+     * is never committed, never in a change list, and one copy per machine. Two people on one
+     * project each keep their own last ending without ever colliding over it.
+     */
+    EditorTestParameterCacheFile: ["editor", "cache", "test-parameters.json"],
     EditorUI: ["editor", "ui/"],
     EditorUIDocument: ["editor", "ui", "uidoc.json"],
     EditorUIGraphs: ["editor", "ui", "uigraphs.json"],
@@ -150,6 +187,9 @@ export const ProjectNameConvention = {
     // The build variants the project can be shipped as, and what each one says differently from the
     // project itself. Cross-cutting like the three above, so it sits at editor root too.
     EditorAppTags: ["editor", "app-tags.json"],
+    // The DLC the project ships beside its builds. A sibling of the variants rather than a kind
+    // of one: a player has exactly one variant and any number of DLC at once.
+    EditorDlc: ["editor", "dlc.json"],
     // The asset sets the project declares - the library entries that stand for a family of files
     // indexed by axes. Cross-cutting like the four above, so it sits at editor root too.
     EditorAssetSets: ["editor", "asset-sets.json"],

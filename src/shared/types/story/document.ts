@@ -1,7 +1,15 @@
 import type { StoryExpression } from "./expression";
+import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
-export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
+// v2 gives a library entry an optional `dlcId`: the DLC the story belongs to, absent on a story
+// the game itself carries. Additive, and a v1 index cannot contain one, so the migration is the
+// stamp and nothing else.
+// The bump is still not optional, and the reason is what an older Studio would BUILD. It has no
+// reading for the field, so it would compile a DLC's story into the base package and ship the
+// content the author had sold separately - silently, in the one direction nobody checks. Refusing
+// the document is the point.
+export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
 // load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
@@ -152,7 +160,43 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // The bump is not optional in either direction. A v18 Studio meeting `operation: "transform"` on the
 // camera arm has no branch for it and drops the row; a v19 Studio meeting `operation: "pan"` has
 // none for that. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 19 as const;
+// v20 adds the `empty` block kind: a row that holds nothing, compiles to nothing, and is not text.
+// It is the blank line a script has always had and a story document never did - what Backspace on a
+// row leaves standing in its place, waiting to be typed into. Until now that job fell to an empty
+// narration row, which is a line of prose with nothing in it and behaves like one: it drew
+// narration's placeholder ("double-click to type narration"), so the editor named the line before
+// the author had; `text/empty` reported every one of them, so ordinary editing accrued lint; and
+// turning it back into an action meant clearing the prose first. An `empty` row has no payload, no
+// text segment and no references, so there is nothing downstream to read out of it - the compiler
+// skips it, the text and localization rules never see it, and the script formats print it as the
+// blank line it is.
+// No migration. A v19 document cannot contain one - there was no way to write one - so the ladder
+// gets no new step, only the unconditional stamp it already ends with. The bump is still not
+// optional: nearly every switch over `StoryBlockKind` is exhaustive, so a v19 Studio meeting an
+// `empty` row would crash in one and silently drop the row in the next, depending which it reached
+// first. Refusing the document is the point.
+// v21 adds the `ending` control payload: the row that says the story has reached one of its endings,
+// records it, and hands the player back to a page. Endings were derived until now - a scene nothing
+// leaves was read as one - which meant a story could not tell a finished ending from a branch its
+// author had not written yet, and nothing could name one: no id to record, so no gallery could ask
+// whether it had been reached, and no test could ask whether every path arrives at one.
+// No migration. A v20 document cannot contain one, so the ladder gets no new step. The bump is not
+// optional, and unlike `cut` the reason is what a v20 Studio would *play*: it reads an unknown
+// control payload as an ordinary group and compiles it to nothing, so the story would run straight
+// past the ending into whatever follows it, recording nothing. Refusing the document is the point.
+// v22 gives a transition its hold as a length of time: `StoryTransitionRef.holdMs`, beside the
+// duration and in the same unit, replacing the `props.hold` percentage `throughColor` and `exposure`
+// carried. A percentage could not say how long the colour is actually held - it was a share of the
+// run, so the seconds it bought moved whenever the duration did - and worse, the engine spent it as a
+// share of *eased* progress, which crosses the middle at its fastest: a nominal 30% hold played as
+// 17.8% of the wall clock. The step converts each stored percentage against that row's own duration,
+// so a row keeps the hold it was actually getting rather than the one it claimed.
+// The same step retires `maskWipe` into `softWipe` with `feather: 0`. The two compile to the identical
+// engine call, but no `t=` word ever named `maskWipe`, so a row carrying it printed `t=maskWipe` and
+// re-parsed as a soft wipe with the default feather of 12 - a hard edge lost to editing the row.
+// The bump is not optional: a v21 Studio meeting `holdMs` ignores it and plays a hold it was not asked
+// for, then writes the document back without it. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 22 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -182,6 +226,18 @@ export type StoryLibraryEntry = {
     updatedAt: string;
     importSource?: StoryImportSource;
     exportMeta?: StoryExportMeta;
+    /**
+     * The DLC this story belongs to (schema v2), absent on a story the game itself carries.
+     *
+     * On the library entry rather than inside the document because it is a fact about how the story
+     * is shipped, not about what it says: a build reads it to decide whether the document goes in
+     * the package at all, and reading it from inside would mean loading what it may not ship.
+     *
+     * An id naming no DLC is reported rather than refused, the way a cut point naming no variant is.
+     * The failure direction is the same - the story rejoins the base build - and refusing here would
+     * make deleting a DLC lock the project.
+     */
+    dlcId?: string;
 };
 
 export type StoryImportSource = {
@@ -402,7 +458,7 @@ export type StoryPersistentDefinitionLegacy = {
     meta?: StoryMeta;
 };
 
-export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration";
+export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration" | "empty";
 
 export type StoryBlock =
     | StoryNodeActionBlock
@@ -411,7 +467,8 @@ export type StoryBlock =
     | StoryJumpBlock
     | StoryNoteBlock
     | StoryInvalidBlock
-    | StoryDeclarationBlock;
+    | StoryDeclarationBlock
+    | StoryEmptyBlock;
 
 export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
     id: StoryBlockId;
@@ -449,17 +506,19 @@ export type StoryBlockBase<TKind extends StoryBlockKind, TPayload> = {
  *
  * Total over the project's locales by construction - see `materializeStoryAssetSets` - so reading it
  * is a lookup and not a search.
+ *
+ * The shape moved to `@shared/types/assetSet` when the interface began carrying one too; the name
+ * stays here because the story documents are where it is written and read most.
  */
-export type StoryAssetVariants = Record<string, Record<string, string>>;
+export type StoryAssetVariants = AssetVariantMap;
 
 /**
  * The asset a row's set reference resolves to for `locale`, or null when the row does not name a
  * set at all.
  *
- * The one function every consumer goes through: the compiler on its way to a URL, and the shipped
- * content check on its way to the bytes. Falling back to the source locale is defence rather than
- * policy - materialization already filled every locale, so reaching that line means the pack and the
- * project it was built from disagree, and one language's stage is a better answer than none.
+ * A thin name over {@link resolveAssetVariantMember}, kept so the story call sites read in story
+ * terms; the rule (locale, then the source locale, then nothing) is one implementation for every
+ * kind of record that carries an answer.
  */
 export function resolveStoryAssetVariant(
     variants: StoryAssetVariants | undefined,
@@ -467,16 +526,7 @@ export function resolveStoryAssetVariant(
     locale: string | undefined,
     sourceLocale?: string,
 ): string | null {
-    const map = variants?.[assetId];
-    if (!map) {
-        return null;
-    }
-    const direct = locale ? map[locale] : undefined;
-    if (direct) {
-        return direct;
-    }
-    const source = sourceLocale ? map[sourceLocale] : undefined;
-    return source ?? null;
+    return resolveAssetVariantMember(variants, assetId, locale, sourceLocale);
 }
 
 export type StoryNodeActionBlock = StoryBlockBase<"nodeAction", StoryNodeActionPayload>;
@@ -486,6 +536,32 @@ export type StoryJumpBlock = StoryBlockBase<"jump", StoryJumpPayload>;
 export type StoryNoteBlock = StoryBlockBase<"note", StoryNotePayload>;
 export type StoryInvalidBlock = StoryBlockBase<"invalid", StoryInvalidPayload>;
 export type StoryDeclarationBlock = StoryBlockBase<"declaration", StoryDeclarationPayload>;
+
+/**
+ * A blank line (schema v20).
+ *
+ * The row a script has and a scene did not: it holds nothing, says nothing and compiles to nothing.
+ * Backspace on a row leaves one where the row stood, so the line keeps its place in the scene while
+ * the author decides what goes there - and it survives Escape and the focus leaving, because it is a
+ * row and not an open editor.
+ *
+ * It is deliberately not an empty narration row, which is what stood in for it before v20: prose
+ * with nothing in it is still prose, so it drew narration's own placeholder, `text/empty` reported
+ * it, and typing an action into it meant clearing the prose first. An `empty` row has no payload for
+ * anything to read, so every rule that walks text, assets, references or translations passes it by.
+ */
+export type StoryEmptyBlock = StoryBlockBase<"empty", StoryEmptyPayload>;
+
+/**
+ * An empty row's payload: nothing, and nothing may be put in it.
+ *
+ * `Record<never, never>` rather than `Record<string, never>`, and the difference is the whole point:
+ * the latter carries an index signature, so `payload.text` on a union that includes it typechecks
+ * (as `never`) and every place that reads a payload without asking the kind first goes on compiling.
+ * With no index signature the compiler reports each one, which is how the arms that had to learn
+ * about this kind were found at all.
+ */
+export type StoryEmptyPayload = Record<never, never>;
 
 /**
  * A variable declaration, as a row (schema v6).
@@ -710,6 +786,23 @@ export type StoryActionPayload =
           durationMs?: number;
       }
     | {
+          /**
+           * An image on stage.
+           *
+           * **`create` DECLARES; it does not show.** The row names the object, gives it a source and
+           * settles its pose, and nothing appears until a `show` row reveals it — the rule every
+           * stage object follows (`text`, `video`, `vfx`) with one exception, `layer`, because a
+           * layer is a container and one that mounted invisible would take its contents with it.
+           *
+           * The engine mounts every element a scene mentions at scene start, at opacity zero, so a
+           * declaration is not merely bookkeeping: the picture is fetched and decoded by the time
+           * something shows it, which is the other half of why the two are separate rows.
+           *
+           * ⚠ This changed. Documents written before it have `create` rows that were expected to
+           * reveal, and they are NOT migrated: such a row now declares and the object stays
+           * invisible until a `show` row is added. `story/declared-never-shown` reports the ones
+           * that never are.
+           */
           action: "image";
           operation: "create" | "setSource" | "show" | "hide";
           objectName: string;
@@ -758,8 +851,18 @@ export type StoryActionPayload =
            *
            * Additive: no document written before it carries the value, so no schema bump - the same
            * rule `camera` and `vfx` came in under.
+           *
+           * `loop` and `stopLoop` are the fifth and sixth, and they are the one pair here that is not
+           * a pose the story waits for. A loop repeats until something ends it, so the row states it
+           * and the scene carries straight on; `stopLoop` ends it and eases the element back to the
+           * pose it kept underneath. Anything else addressed at the same element - a `transform`, a
+           * `show`, a `reset` - ends the loop too, because an element carries one transform at a time.
+           *
+           * Additive (narraleaf-react 0.32.0's `Displayable.loop` / `stopLoop`): no document written
+           * before this carries either value, so no schema bump - the same rule `bringToFront` came
+           * in under.
            */
-          operation: "show" | "hide" | "transform" | "bringToFront";
+          operation: "show" | "hide" | "transform" | "bringToFront" | "loop" | "stopLoop";
           target: StoryDisplayableTargetRef;
           transform?: StoryTransformRef;
       }
@@ -791,6 +894,9 @@ export type StoryActionPayload =
           /**
            * A `Video` — an Actionable, not a Displayable, which is why it has its own verb set rather
            * than sharing `displayable`'s. `play` waits for the clip to finish; `resume` does not.
+           *
+           * `create` declares, like the `image` arm's: it compiles to `Video.preload()`, which puts a
+           * hidden element on stage so the clip starts buffering, and `show` is what reveals it.
            *
            * Additive: the four transport operations and `timeMs` are new in A3, and no document
            * written before them carries either, so no schema bump.
@@ -832,8 +938,12 @@ export type StoryActionPayload =
            * filter in a zero-duration sequence and eases only the pose. Writing neutral values into a
            * ref instead would put the filter back in the same transform as the pose and walk the picture
            * blue → cyan → green → olive again, which is the defect that fix exists for.
+           *
+           * `loop` and `stopLoop` are the camera's half of narraleaf-react 0.32.0's looping
+           * transform - a handheld sway, a slow drift - and carry the same {@link transform} a
+           * `transform` row does. Additive on the same terms as the `displayable` arm's pair.
            */
-          operation: "transform" | "reset";
+          operation: "transform" | "reset" | "loop" | "stopLoop";
           /**
            * `transform` — where the camera ends up, in the same shape `/transform` hands a sprite.
            *
@@ -857,8 +967,12 @@ export type StoryActionPayload =
            * pipeline, which is why `StoryDisplayableTargetKind` excludes it and `/transform` `/fx`
            * never offer it as a target.
            *
-           * `create` is what puts it on stage AND registers the name the later verbs address, the
-           * same shape `video` uses. Additive: no document before A3 carries it, so no schema bump.
+           * `create` DECLARES the overlay: it registers the name every later verb addresses, settles
+           * how the clip composites, and preloads it - `Vfx.preload()` - without showing anything.
+           * `show` is the only row that puts it on screen. The two are separate because an overlay
+           * is one thing across the whole story: rain declared once is shown, hidden and shown again
+           * from anywhere, and every one of those rows points back at the row that declared it.
+           * Additive: no document before A3 carries it, so no schema bump.
            */
           action: "vfx";
           operation: "create" | "show" | "hide" | "pause" | "resume" | "setRate";
@@ -896,14 +1010,27 @@ export type StoryActionPayload =
            * a Safari-engine target until the row is changed.
            */
           blendMode?: StoryVfxBlendMode;
+          /**
+           * How strongly the overlay reads.
+           *
+           * On a `create` row it is the overlay's own - a property of the material, how heavy that
+           * rain IS - and it is what every plain showing goes back to. On a `show` row it is that
+           * showing's alone: the same rain faint behind a memory and full strength in the storm.
+           * Nothing else reads it, which is why `hide` does not offer it (a fade out ends at zero).
+           */
           opacity?: number;
           loop?: boolean;
           fit?: "cover" | "contain" | "fill";
           zIndex?: number;
           /**
            * Playback speed; 0.5 drifts slowly, 2 falls twice as fast. On `setRate` it is the change;
-           * on `create` it is the loop's resting speed — and only the latter survives a save, since
-           * the engine does not persist a runtime rate change.
+           * on `show` it is that showing's own, restated every time so it cannot leak into the next;
+           * on `create` it is the loop's resting speed — and only the last of the three survives a
+           * save, since the engine does not persist a runtime rate change.
+           *
+           * For a weather seed this is a playback trim on top of the baked `fallSpeed`, not the way
+           * to make it rain harder: playing the clip faster shortens the loop and speeds the sway
+           * with it, while the baked speed leaves both alone. See `@shared/weather/model`.
            */
           rate?: number;
           /** `show` / `hide` — the fade the action waits out. */
@@ -1055,7 +1182,56 @@ export type StoryControlPayload =
            */
           control: "cut";
           appTagId: string;
+      }
+    | {
+          /**
+           * One of the story's endings: the row records that the player reached it and hands them
+           * back to a page (schema v21).
+           *
+           * Control flow, and single-instruction like the three rows above it: playback stops here.
+           * Rows written after it never run, which is what makes it an ending rather than a marker -
+           * a row that merely noted the ending and let the scene continue would be a `/set` with
+           * extra steps.
+           *
+           * **The ending IS the row.** Its identity is `StoryBlock.id`, the same convention a
+           * declaration row and a `choiceOption` row already follow, so {@link name} is display text
+           * an author may rewrite at any time without breaking a single reference - not least the
+           * unlock record, which a rename must never invalidate. There is deliberately no registry
+           * of endings anywhere in the project: the list is a scan (`listStoryEndings`), so an
+           * ending exists exactly as long as its row does and deleting the row deletes the ending.
+           */
+          control: "ending";
+          /**
+           * What this ending is called, for the author and for the player.
+           *
+           * Blank is legal while a line is being typed and is what the row's overview reports as
+           * unnamed; nothing resolves through it, so nothing breaks.
+           */
+          name: string;
+          /**
+           * Where the player lands afterwards, or absent to use the build's own ending page
+           * (`AppTagDocument.endingSurfaceId`).
+           *
+           * Three states rather than an optional id, because "the project's page" and "no page at
+           * all" are both real answers and an empty string cannot say which one an author meant. A
+           * `none` here overrides a project-level page - the last frame stays on screen, which is
+           * what a bad end that just stops wants.
+           */
+          page?: StoryEndingPage;
       };
+
+/**
+ * What an `ending` row shows once it has recorded itself.
+ *
+ * Shaped like {@link StoryLayerRef} rather than as a nullable id: the two non-inheriting answers are
+ * distinct decisions, and a reader that has to tell them apart should not have to know which falsy
+ * value means which.
+ */
+export type StoryEndingPage =
+    /** Show nothing. The last frame stays, overriding whatever page the build declares. */
+    | { kind: "none" }
+    /** A surface of this project's UI document. */
+    | { kind: "surface"; surfaceId: string };
 
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
@@ -1079,13 +1255,33 @@ export type StoryTextSegment = {
     rich?: StoryRichRun[];
 };
 
+/**
+ * Emphasis marks set beside every character of a run — how East Asian typography stresses a phrase.
+ * The four values name the conventions rather than the CSS behind them; see
+ * `STORY_TEXT_EMPHASIS_VALUES` in `@shared/utils/storyTextMarks`.
+ */
+export type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
+
 export type StoryTextMarks = {
     bold?: boolean;
     italic?: boolean;
     color?: string;
     ruby?: string;
     cps?: number;
+    /**
+     * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
+     * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
+     * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
+     * box; `fontSizeStep` is what the size control writes.
+     */
     fontSize?: number;
+    /**
+     * The run's size as a number of steps away from the line's, positive for larger. A step is
+     * `STORY_FONT_SIZE_STEP_RATIO`. Relative rather than absolute, so the run keeps its weight
+     * against the rest of the line at whatever size the line is set.
+     */
+    fontSizeStep?: number;
+    emphasis?: StoryTextEmphasis;
 };
 
 /**
@@ -1502,6 +1698,17 @@ export type StoryClipReveal = {
  * `CommonTransformProps.delay` and `TransformConfig.repeat/repeatDelay` have always been there and
  * Studio simply never passed them.
  */
+/**
+ * How a repeat plays each time round - the engine's `TransformDefinitions.RepeatType`.
+ *
+ * A value tuple as well as a type for the same reason {@link STORY_TRANSITION_KINDS} is one: the
+ * command layer needs the closed set at runtime to offer it as an enum, and a second hand-written
+ * list would drift.
+ */
+export const STORY_TRANSFORM_REPEAT_TYPES = ["loop", "reverse", "mirror"] as const;
+
+export type StoryTransformRepeatType = (typeof STORY_TRANSFORM_REPEAT_TYPES)[number];
+
 export type StoryTransformRef = {
     /** Absent means `"props"`. Only a Story Motion has to say which it is. */
     mode?: "props" | "animation";
@@ -1518,6 +1725,13 @@ export type StoryTransformRef = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    /**
+     * Which way each repeat runs - see {@link StoryTransformRepeatType}. Read by a finite `repeat`
+     * and by a `loop` row alike; absent is the engine's default, which restarts from the first pose.
+     *
+     * Additive (narraleaf-react 0.32.0): no document written before it carries one.
+     */
+    repeatType?: StoryTransformRepeatType;
     /** A clip-path generator - see {@link StoryClipReveal}. Runs on this ref's own timing. */
     clipReveal?: StoryClipReveal;
     animationId?: StoryAnimationAssetId;
@@ -1599,6 +1813,23 @@ export type StoryTransitionRef = {
      * picture their scene changes depend on.
      */
     ruleAssetId?: string;
+    /**
+     * How long the transition sits at its extreme before finishing, in milliseconds.
+     *
+     * Read by the three transitions that have an extreme to sit at: `throughColor` holds the colour,
+     * `exposure` holds the blown-out frame, `darkness` holds at its starting darkness. It is taken
+     * out of {@link durationMs} rather than added to it, split evenly off the two moving halves, so
+     * `{durationMs: 4000, holdMs: 2000}` is one second in, two of colour, one out.
+     *
+     * A first-class field and not a `props` entry, for the reason `ruleAssetId` is one: `props` is the
+     * per-kind bag, and everything that reads a transition generically - the script export, the
+     * command line - reads the named fields and reports the bag as something it cannot spell. A hold
+     * is a timing, it belongs beside the duration, and a script has to be able to carry it.
+     *
+     * Absent means the transition's own default: 30% of the duration for `throughColor`, nothing for
+     * the other two.
+     */
+    holdMs?: number;
     props?: Record<string, StoryLiteralValue>;
 };
 

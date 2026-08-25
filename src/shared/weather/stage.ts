@@ -14,14 +14,32 @@
 
 import type { StoryBlock, StoryDocument } from "@shared/types/story";
 import type { UIDocument } from "@shared/types/ui-editor/document";
+import { vfxFrameRateOf, type VfxConfiguration } from "@shared/types/vfx";
 import { weatherBakeKey } from "./bakeKey";
 import {
-    WEATHER_FPS,
-    WEATHER_LOOP_SECONDS,
     weatherBakeSize,
+    weatherFrameCountOf,
     type WeatherBakeSpec,
     type WeatherSeedRef,
 } from "./model";
+
+/**
+ * The stage a weather clip covers, in the coordinates the author authored it in.
+ *
+ * Separate from {@link weatherSpecForStage} because the inspector's live preview needs the same
+ * answer and does not want a spec: a preview shows the picture at panel size, so it needs the stage
+ * to scale AGAINST, not the frame count or the id. Two callers deriving "which surface is the
+ * stage?" for themselves is how a preview comes to be a picture of a different composition than the
+ * clip - which is exactly what happened, and what the preview is now scaled from this to avoid.
+ *
+ * The fallbacks are the clip's own: the first surface when nothing is marked as the stage, and
+ * 1080p when there is no document at all. The clip is `cover`-fitted either way, so a size that is
+ * merely close costs nothing an eye can find.
+ */
+export function weatherStageSize(uidoc: UIDocument | undefined): { width: number; height: number } {
+    const stage = uidoc?.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc?.surfaces[0];
+    return stage?.designSize ?? { width: 1920, height: 1080 };
+}
 
 /**
  * The synthetic asset id a baked clip is addressed by.
@@ -52,18 +70,33 @@ export type PackedWeatherClip = {
 };
 
 /**
- * The clip a seed describes, at the size this project's stage is.
+ * The clip a seed describes, at the size this project's stage is and the rate this project asked for.
  *
  * The size is the host's question rather than the compiler's: an overlay covers the stage, and the
  * compiler has no business knowing how big that is. A document with no stage surface falls back to
  * the first surface it has, and a document with none at all falls back to 1080p - the clip is
  * `cover`-fitted either way, so a size that is merely close costs nothing an eye can find.
+ *
+ * `vfx` is stated rather than optional for the reason `uidoc` is: both decide what file a row
+ * addresses, so a caller that could omit one would silently address a different clip than the
+ * caller beside it. Passing `undefined` is a real answer (the project's default rate), and the
+ * hosts that genuinely hold no configuration - a bundle written before the setting existed - are
+ * the ones that pass it.
  */
-export function weatherSpecForStage(ref: WeatherSeedRef, uidoc: UIDocument | undefined): WeatherBakeSpec {
-    const stage = uidoc?.surfaces.find(surface => surface.kind === "stageSurface") ?? uidoc?.surfaces[0];
-    const design = stage?.designSize ?? { width: 1920, height: 1080 };
+export function weatherSpecForStage(
+    ref: WeatherSeedRef,
+    uidoc: UIDocument | undefined,
+    vfx: VfxConfiguration | undefined,
+): WeatherBakeSpec {
+    const design = weatherStageSize(uidoc);
     const { width, height } = weatherBakeSize(design.width, design.height);
-    return { ref, width, height, fps: WEATHER_FPS, frames: WEATHER_LOOP_SECONDS * WEATHER_FPS };
+    const fps = vfxFrameRateOf(vfx);
+    // Neither the loop length nor the rate is fixed, so the frame count is derived here rather than
+    // stored: the seam guarantee is that the renderer is asked for phases `i / frames`, and a frames
+    // value that did not match the rate the encoder is handed would put a stutter in every loop.
+    // The length is the effect's own (`loopSeconds`), which is why this reads the ref and not a
+    // constant - a caller holding the old constant would address a clip nothing ever bakes.
+    return { ref, width, height, fps, frames: weatherFrameCountOf(ref, fps) };
 }
 
 /**
@@ -84,6 +117,7 @@ export function weatherSpecForStage(ref: WeatherSeedRef, uidoc: UIDocument | und
 export function collectWeatherSpecs(
     documents: readonly StoryDocument[],
     uidoc: UIDocument | undefined,
+    vfx: VfxConfiguration | undefined,
 ): WeatherBakeSpec[] {
     const specs: WeatherBakeSpec[] = [];
     const seen = new Set<string>();
@@ -94,7 +128,7 @@ export function collectWeatherSpecs(
                 if (!ref) {
                     continue;
                 }
-                const spec = weatherSpecForStage(ref, uidoc);
+                const spec = weatherSpecForStage(ref, uidoc, vfx);
                 const key = weatherBakeKey(spec);
                 if (seen.has(key)) {
                     continue;

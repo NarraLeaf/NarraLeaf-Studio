@@ -25,6 +25,10 @@ export const wizard = {
         source: "Address",
         clone: "Clone",
         import: "Import",
+        // The first page's label for a project being made for a server. The origin is
+        // settled by what opened the window, so the column that page is otherwise named
+        // after is not on it, and what is left is what the project is made from.
+        template: "Template",
     },
     nav: {
         createProject: "Create Project",
@@ -61,7 +65,7 @@ export const wizard = {
         },
         clone: {
             label: "Clone from a server",
-            description: "Copy a project on a version-control server",
+            description: "Copy a project held on a NarraLeaf Team server",
             next: "The next page asks for the project address and where to keep the local copy.",
         },
     },
@@ -82,7 +86,7 @@ export const wizard = {
         browseLocation: "Choose folder",
         validatingDirectory: "Checking the folder…",
         directoryWillBeCreated: "This folder is created together with the project",
-        versionControlLoreHint: "A version history is created inside the project folder, recording the project as its first version.",
+        versionControlLoreHint: "A version history is created inside the project folder, recording the project as its first version. The project can be sent to a Team server afterwards.",
         versionControlUnavailablePlatform: "Version control is not available on this machine. The project is created without it.",
         versionControlUnavailableInstallation: "Version control is not available in this Studio build. The project is created without it.",
         moreDetails: "More details",
@@ -128,7 +132,7 @@ export const wizard = {
         // Choosing beats typing: the address is on the server already, and an author who
         // types one is an author who can mistype one.
         onServerLabel: "Projects on connected servers",
-        onServerHint: "Choose one, or type an address below for a server that has not been added.",
+        onServerHint: "Choose one, or type a project address below.",
         onServerEmpty: "This server holds no projects yet.",
         onServerLoading: "Asking the server...",
         onServerNoToken: "Studio cannot ask this server what it holds. Add it again with its token.",
@@ -150,9 +154,8 @@ export const wizard = {
         error: {
             failedTitle: "Clone failed",
             generic: "The project could not be fetched from the server.",
-            // A Lore server holds repositories, and a repository is not necessarily a Studio
-            // project. The files are named because they are real, and they are why this folder
-            // cannot be reused.
+            // A repository on a Team server is not necessarily a Studio project. The files are
+            // named because they are real, and they are why this folder cannot be reused.
             notAProjectTitle: "This is not a NarraLeaf Studio project",
             notAProject: "The copy finished, but it holds no Studio project file. The copied contents are in {path}",
         },
@@ -160,6 +163,9 @@ export const wizard = {
     review: {
         template: "Template",
         notSpecified: "Not specified",
+        // Replaces the version-control row for a project being made for a server: sending a
+        // project is what puts it under version control, so both rows would be one answer.
+        server: "Server",
     },
     // User-facing errors surfaced by the wizard validation/creation services.
     validation: {

@@ -8,6 +8,11 @@ export const story = {
         emptyStories: "No stories in this project.",
         storyActions: "Story actions",
         setDefault: "Set Default",
+            dlc: {
+                title: "Belongs to",
+                // The answer for a story the game itself carries, which is most of them.
+                base: "The game itself",
+            },
         outline: "Outline",
         newChapter: "New Chapter",
         newSceneInChapter: "New Scene in Chapter",
@@ -101,6 +106,50 @@ export const story = {
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
     },
+    // What a control shows while a live session is the reason it cannot act. A session carries a
+    // closed set of story operations, and an edit outside that set would be written on this machine
+    // and on no other - so the same thing is taken away wherever it is offered, and one string says
+    // so everywhere rather than a different excuse per surface.
+    live: {
+        editUnavailable: "Unavailable in a live session. Leave the session to make this change.",
+        // On the mark a row wears while somebody else is writing it. A person is named:
+        // there is no width for a name beside the glyph, and a truncated one names nobody.
+        rowClaimed: "{name} is writing this line",
+        // What the session's host would not take. The words the author typed stay exactly
+        // where they are - a refused row is the case where what is on screen is the only
+        // copy of them - so each of these says what happened and nothing else.
+        refusedRowClaimed: "{name} is writing that line. The change was not applied.",
+        refusedRowGone: "That line is gone. The change was not applied.",
+        refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
+        refusedSceneGone: "That scene is gone. The change was not applied.",
+        refusedNotInSession: "This machine is no longer in the session.",
+        // The cast's answer to a line that has gone. Says the character is gone and nothing about
+        // the panel: what the author typed into it is theirs and stays where it is.
+        refusedCharacterGone: "That character is gone. The change was not applied.",
+        // A record too big for one message. Named rather than silent, because the alternative is a
+        // change that appears to have been made and reached nobody.
+        refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
+        // The session does not carry that document at all - a story other than the one the room is
+        // about, or a kind of document a session cannot pass between machines yet.
+        refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
+        refusedUnknownOp: "The session did not take that change.",
+        // Why the last undo or redo sent nothing. Each names the state that leaves the step
+        // with no operation to take it back with.
+        undoNotMine: "That step was somebody else's.",
+        undoNoRecord: "That step can no longer be taken back.",
+        undoSceneGone: "That scene is gone.",
+        undoRowGone: "That line is gone.",
+        undoRowRestored: "That line is in the scene again.",
+        undoContainerGone: "The block that line was in is gone.",
+        undoAnchorGone: "Where that line moved from is gone.",
+        undoContainerFilled: "That block has lines in it now.",
+        undoSubtreeLost: "The lines that were inside it cannot be put back.",
+        undoChaptersChanged: "The chapters are not the ones that step recorded.",
+        undoCharacterGone: "That character is gone.",
+        // Making a character can be taken back only outside a session: deleting one rewrites the
+        // dialogue rows that speak it, across every story in the project, and a session carries one.
+        undoCharacterRestored: "That character is in the cast again.",
+    },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
     // is keyed by the printer's own codes (see `narralangPrinter`), so a new code fails the parity
@@ -139,6 +188,7 @@ export const story = {
             customTransition: "This transition carries properties the script does not name.",
             effectProps: "This effect carries properties the script does not name.",
             unresolvedRef: "This row points at something that no longer exists.",
+            endingPage: "This ending names its own page, and the script does not carry it.",
             unknownPayload: "This row is of a kind the script does not cover.",
         },
         // Why a line of a script could not be read back into the scene. Keyed by the parser's own
@@ -233,6 +283,42 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Rows from another project, pasted while a live session is open. Shown once per session.
+        sessionRowsOnly: "During a live session, rows from another project arrive on their own. Leave the session and paste again to bring their translations, takes and assets across.",
+        // Translations that travelled with copied rows. Part of the cross-project line; on their
+        // own, and only the second of them, after a paste back into the same project.
+        translationsCarried: {
+            one: "{count} translation carried",
+            other: "{count} translations carried",
+        },
+        translationsDropped: {
+            one: "{count} translation skipped",
+            other: "{count} translations skipped",
+        },
+    },
+    // Rows pasted into a project other than the one they were copied from. One line of counts,
+    // reported once, after the rows land.
+    crossProject: {
+        pasted: {
+            one: "{count} row pasted",
+            other: "{count} rows pasted",
+        },
+        pastedFrom: {
+            one: "{count} row pasted from {project}",
+            other: "{count} rows pasted from {project}",
+        },
+        speakerNames: {
+            one: "{count} line without a character",
+            other: "{count} lines without a character",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
     },
     flow: {
         tabTitle: "Scene Flow",
@@ -271,8 +357,8 @@ export const story = {
             expand: "Show branches",
             collapse: "Hide branches",
         },
-        // The route rail: endings derived from the graph (a scene the story cannot leave) and
-        // every decision path that reaches one.
+        // The route rail: the story's endings - the `/ending` rows, or, in a story that marks none,
+        // the scenes it cannot leave - and every decision path that reaches one.
         route: {
             title: "Routes",
             show: "Show routes",
@@ -289,9 +375,12 @@ export const story = {
             noEntryScene: "No entry scene, so no routes.",
             noRoutes: "No routes.",
             noDecisions: "No decisions",
-            // A path can stop in a scene that is not an ending, and calling that an ending is a lie.
+            // An ending row with no name yet. The row is real and its routes are real, so the list
+            // still has to have something to call it.
+            endingUnnamed: "Unnamed ending",
+            // A path can stop somewhere that is not an ending, and calling that an ending is a lie.
             stopsHere: "stops here",
-            stopsHereTitle: "A path stops here without being an ending. It returned to a visited scene, or an option has nothing written after it",
+            stopsHereTitle: "A path stops here without reaching an ending. It returned to a visited scene, an option has nothing written after it, or the scene has no way out and no /ending row",
             diagnostics: {
                 unreachableEndings: {
                     one: "{count} ending no route reaches",
@@ -404,6 +493,27 @@ export const story = {
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
+    /**
+     * The three run marks a value has to be chosen for: the emphasis set beside the characters, the
+     * size the run is set at, and the speed it is typed out at.
+     */
+    textType: {
+        emphasis: "Emphasis",
+        emphasisNone: "None",
+        emphasisDot: "Dot above",
+        emphasisCircle: "Circle above",
+        emphasisSesame: "Sesame above",
+        emphasisUnderDot: "Dot below",
+        /** The character the emphasis buttons draw their mark on. */
+        emphasisSample: "Ab",
+        size: "Size",
+        sizeSmaller: "Smaller",
+        sizeLarger: "Larger",
+        sizeUnit: "steps",
+        speed: "Typing speed",
+        speedUnit: "cps",
+        speedPlaceholder: "Line",
+    },
     ruby: {
         title: "Ruby text",
         placeholder: "Reading",
@@ -419,6 +529,14 @@ export const story = {
         checking: "Looking for suggestions…",
         noSuggestions: "No suggestions",
         addToDictionary: "Add to project dictionary",
+    },
+    /**
+     * The popover a right click on a dictionary mark opens: one action, and the entry behind it.
+     */
+    dictionary: {
+        replaceWith: "Replace with {term}",
+        applyReading: "Add ruby {reading}",
+        openEntry: "Edit in dictionary",
     },
     interpolation: {
         title: "Insert value",
@@ -440,6 +558,8 @@ export const story = {
         insertExpression: "Insert expression change",
         ruby: "Ruby text",
         rubyHint: "Ruby text (select the words to annotate)",
+        type: "Type",
+        typeHint: "Type (select the words to set)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",
@@ -506,6 +626,7 @@ export const story = {
         target: "Target",
         lineText: "Text",
         labelName: "Label",
+        endingName: "Ending",
         scene: "Scene",
         track: "Audio Track",
         appTag: "Build Variant",
@@ -573,6 +694,8 @@ export const story = {
         delay: "Delay Seconds",
         repeat: "Repeat Times",
         repeatDelay: "Repeat Gap",
+        repeatType: "Repeat Direction",
+        stopLoop: "Stop Loop",
         fromProps: "Start Props",
         // Direction, which is what `/show` and `/hide` each say instead of the old "transition".
         conceal: "Conceal",
@@ -589,6 +712,10 @@ export const story = {
      * that merely echoes a canonical value, so these entries change nothing on their own.
      */
     enumValue: {
+        // How each repeat runs (`repeatType=`).
+        loop: "loop",
+        reverse: "reverse",
+        mirror: "mirror",
         // Weather seeds - reserved words in the `/vfx` source slot.
         snow: "snow",
         rain: "rain",
@@ -597,6 +724,7 @@ export const story = {
         fade: "fade",
         // The crossfade named outright, for the contexts where `fade` means something else.
         dissolve: "dissolve",
+        "fade-in": "fade-in",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",
@@ -726,6 +854,7 @@ export const story = {
                 data: "Variables",
                 utils: "Other",
                 invalid: "Invalid rows",
+                empty: "Blank lines",
             },
         },
     },
@@ -866,6 +995,11 @@ export const story = {
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
+        // On the rung above while it is greyed, and on the paste wizard's "New character" target,
+        // which is the same offer made from the other surface. A live session carries story
+        // operations and nothing else, so the cast is the one thing a speaker cannot become while
+        // one is open.
+        createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",
@@ -1035,10 +1169,10 @@ export const story = {
         skin: { label: "Skin", detail: "Set the skin a runtime-drawn character wears" },
         rename: { label: "Rename", detail: "Change the name a character speaks under" },
         say: { label: "Say", detail: "A line of dialogue" },
-        image: { label: "Image", detail: "Put an image on stage" },
-        text: { label: "Text", detail: "Put text on stage" },
-        video: { label: "Video", detail: "Put a video on stage" },
-        vfx: { label: "Ambience", detail: "A looping full-screen overlay: petals, rain, dust, light" },
+        image: { label: "Image", detail: "Declare an image on stage; /show reveals it" },
+        text: { label: "Text", detail: "Declare text on stage; /show reveals it" },
+        video: { label: "Video", detail: "Declare a video on stage; /show reveals it" },
+        vfx: { label: "Ambience", detail: "Declare a looping full-screen overlay: petals, rain, dust, light" },
         layer: { label: "Layer", detail: "Create a render layer" },
         swap: { label: "Swap", detail: "Replace an object's image or text" },
         play: { label: "Play", detail: "Play a video" },
@@ -1078,6 +1212,10 @@ export const story = {
         // in an editor that has one. The detail carries the half the name cannot, which is that the
         // line belongs to one build and to no other.
         cut: { label: "Cut point", detail: "End one build variant's story at this line. Other builds do not have this line" },
+        // Named for the row it makes. The detail states both halves of what the row does, because
+        // the second one is the reason to write it rather than simply stopping: the ending is recorded,
+        // which is what a gallery screen and a walkthrough test read.
+        ending: { label: "Ending", detail: "End the story at this line and record which ending the player reached" },
         blueprint: { label: "Blueprint", detail: "Run a Story Action Blueprint" },
         // The detail line is where "kept across scenes" belongs — every command has one, and it is the
         // first thing an author reads about the camera in the slash menu and the command reference.
@@ -1132,9 +1270,11 @@ export const story = {
         goto: "Go to",
         break: "Break",
         cut: "Cut point",
+        ending: "Ending",
         jump: "Jump",
         note: "Note",
         invalid: "Invalid",
+        empty: "Blank line",
     },
     emptyPlaceholder: {
         narration: "Double-click to enter narration",
@@ -1142,6 +1282,8 @@ export const story = {
         choice: "Double-click to enter choice prompt",
         note: "Double-click to enter a note",
         text: "Double-click to enter text",
+        /** A blank row. Shown on hover only, so the line reads blank until it is pointed at. */
+        blank: "Click to type",
     },
     characterName: {
         unassigned: "Unassigned character",
@@ -1204,9 +1346,11 @@ export const story = {
         // list to ask. Says only what is true in both cases; the row's own mark, which does have the
         // list, is where a deleted variant is named as deleted.
         cutUnknown: "Cut point",
+        ending: "Ending {name}",
         jump: "Jump {scene}",
         note: "Note",
         invalid: "Invalid command",
+        empty: "Blank line",
         sceneUnassigned: "unassigned",
         sceneUnknown: "unknown scene",
         variableFallback: "variable",
@@ -1227,6 +1371,15 @@ export const story = {
         duplicate: "Duplicate",
         disable: "Disable",
         enable: "Enable",
+        /**
+         * Bind the speaker on the selected rows to a character that already exists. Only offered when
+         * the selection holds rows whose speaker resolves to nothing, so the count is always the
+         * number of lines the character chosen from the submenu is about to take over.
+         */
+        bindSpeaker: {
+            one: "Link speaker on {count} line",
+            other: "Link speaker on {count} lines",
+        },
         playFromHere: "Play from here",
         openInspector: "Open inspector",
         delete: "Delete",

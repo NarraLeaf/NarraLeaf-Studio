@@ -8,8 +8,15 @@ import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
+import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
 import type {
@@ -36,6 +43,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PluginRegistryFetchResult } from "./pluginRegistry";
 import type { PuppetRuntimeInstallResult } from "./puppetRuntime";
 import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThemePreview } from "./uiTemplateRegistry";
@@ -48,6 +56,8 @@ import type {
     SpellcheckStatus,
 } from "./spellcheck";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type { LocaleContribution } from "@shared/i18n";
 import type {
     PrivilegedBashExecutePayload,
@@ -88,7 +98,13 @@ import type {
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsPushResult,
+    VcsLocalRepository,
+    VcsServerDescription,
     VcsServerProbe,
+    VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
+    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
@@ -101,6 +117,12 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "./vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "./team";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -199,6 +221,7 @@ export enum IPCEventType {
     psdOpen = "psd.open",
     psdBake = "psd.bake",
     mediaProbe = "media.probe",
+    fontProbeCoverage = "font.probeCoverage",
     mediaConvertStart = "media.convert.start",
     mediaConvertCancel = "media.convert.cancel",
     mediaConvertGetStatus = "media.convert.getStatus",
@@ -252,6 +275,8 @@ export enum IPCEventType {
 
     gameTestLaunch = "gameTest.launch",
     gameTestStop = "gameTest.stop",
+    /** Studio driving a test's game: start the story, advance, pick an option. */
+    gameTestSendCommand = "gameTest.sendCommand",
     /** Pushed, unlike preview's polled status: event ordering is evidence a test reasons about. */
     workspaceGameTestEvent = "workspace.gameTest.event",
 
@@ -263,6 +288,9 @@ export enum IPCEventType {
     gameBuildExportPatch = "gameBuild.exportPatch",
     gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
     gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
+    gameBuildReadPatchBaseline = "gameBuild.readPatchBaseline",
+    gameBuildReadLastRun = "gameBuild.readLastRun",
+    gameBuildRevealOutput = "gameBuild.revealOutput",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -288,6 +316,7 @@ export enum IPCEventType {
     blueprintProgressRead = "blueprintProgress.read",
 
     serverTrustPrompt = "serverTrust.prompt",
+
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -315,6 +344,11 @@ export enum IPCEventType {
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
+    assetTransferOffer = "asset.transfer.offer",
+    assetTransferRedeem = "asset.transfer.redeem",
+
+    clipboardWriteEditorSelection = "clipboard.editorSelection.write",
+    clipboardReadEditorSelection = "clipboard.editorSelection.read",
 
     puppetRuntimeInstallSdk = "puppetRuntime.installSdk",
 
@@ -326,6 +360,7 @@ export enum IPCEventType {
     menuAction = "app.menu.action",
     workspaceMenuSync = "workspace.menu.sync",
     workspaceReportLoadResult = "workspace.reportLoadResult",
+    workspaceCommandLineBuild = "workspace.commandLineBuild",
     workspaceOpenView = "workspace.openView",
     settingsHighlight = "settings.highlight",
 
@@ -362,13 +397,50 @@ export enum IPCEventType {
     vcsProbeServer = "vcs.probeServer",
     vcsListServers = "vcs.listServers",
     vcsAddServer = "vcs.addServer",
+    vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
     vcsListServerProjects = "vcs.listServerProjects",
-    vcsCreateServerProject = "vcs.createServerProject",
+    vcsGetServerProject = "vcs.getServerProject",
+    vcsDeleteServerProject = "vcs.deleteServerProject",
+    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
+    vcsListServerMembers = "vcs.listServerMembers",
+    vcsSignInWithPassword = "vcs.signInWithPassword",
+    vcsPublishProject = "vcs.publishProject",
+    vcsListLocalRepositories = "vcs.listLocalRepositories",
     vcsTrustAuthority = "vcs.trustAuthority",
     vcsPush = "vcs.push",
     vcsSync = "vcs.sync",
     vcsClone = "vcs.clone",
+
+    /**
+     * The whole of the Team protocol's surface, and it is meant to stay this size.
+     *
+     * Everything the version-control side of a server needed arrived here as its own
+     * event: a list of projects, one project, its history, the members, deleting one.
+     * Five features, five events, and each of them an enum entry, a shape below, a
+     * handler, a line of preload and a renderer type - roughly eight places for one
+     * question. A protocol that is going to grow real features cannot be paid for at
+     * that rate.
+     *
+     * So these five carry all of them. `teamCall` names a method the server declared and
+     * hands back what it answered; `teamSubscribe` asks to be told about a topic and
+     * `teamEvent` is how being told arrives. Adding a feature is a method on the server
+     * and a hook in the renderer, and nothing in this file changes.
+     *
+     * What is deliberately given up: the shapes are not checked here. A call's parameters
+     * and its answer are typed where the protocol is - see `@shared/types/team` - and
+     * that is the trade. The alternative is this list growing a member per verb, which is
+     * the thing being replaced.
+     */
+    teamOpen = "team.open",
+    teamConnections = "team.connections",
+    teamCall = "team.call",
+    teamSubscribe = "team.subscribe",
+    teamUnsubscribe = "team.unsubscribe",
+    /** Pushed: something happened on a topic this window asked about. */
+    teamEvent = "team.event",
+    /** Pushed: a session opened, dropped, or was refused. */
+    teamConnectionChanged = "team.connectionChanged",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -411,8 +483,11 @@ export type BlueprintPersistenceProjectRef = {
  * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
+ *
+ * `live-session` is the one kind main does **not** refuse operations for; the reasoning and the
+ * predicate that says so are in `main/.../utils/workspaceFreeze.ts`.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -425,8 +500,12 @@ export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
  * checkpoint is one call into the backend that answers when it answers. Naming what is happening
  * is the honest amount of detail, and it is also the part that answers "why is this taking so
  * long" - "recording a version" is a reason, "43%" is not.
+ *
+ * "switching" comes before the close rather than during it: when a project is opened in this
+ * window, the replacement loads out of sight first, and this window is the only one on screen for
+ * that wait. Everything after it is the close itself.
  */
-export type WorkspaceCloseStage = "saving" | "checkpoint" | "launcher";
+export type WorkspaceCloseStage = "switching" | "saving" | "checkpoint" | "launcher";
 
 /**
  * Which part of a renderer noticed a failure, so the log line says where to look.
@@ -989,7 +1068,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCServerTrustEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1360,17 +1439,92 @@ export type IPCVcsEvents = {
         response: VcsServerProjectsOutcome;
     };
     /**
-     * Ask a server to make a project, and get back the one it made.
+     * What one server knows about one of its projects.
      *
-     * The server records it and creates the repository together. Studio never asks
-     * `loreserver` for a repository itself — one made that way is one the server has
-     * no row for, and nobody can open it.
+     * **Goes to the network**, and only to a server that advertised `project-detail`.
+     * A `file` that is not readable is a complete answer rather than a failure, and the
+     * server's own explanation for it is deliberately not carried across: it is an
+     * English sentence about the server's internals, and Studio has its own line for
+     * this in every language it speaks.
      */
-    [IPCEventType.vcsCreateServerProject]: {
+    [IPCEventType.vcsGetServerProject]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { remoteOrigin: string; name: string; description?: string },
-        response: VcsServerProjectOutcome;
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDetailOutcome;
+    };
+    /**
+     * Take one project off a server.
+     *
+     * **Goes to the network**, and it is the one call here that changes what a server
+     * holds rather than reading it. What it changes is the list: the server stops
+     * carrying the project, and the repository keeps its store and every revision in it.
+     * Nothing here destroys an author's work, and no argument to it would.
+     */
+    [IPCEventType.vcsDeleteServerProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string },
+        response: VcsServerProjectDeleteOutcome;
+    };
+    /**
+     * The latest revisions on one of a server's projects, newest first.
+     *
+     * **Goes to the network**, and only to a server that advertised `project-history`.
+     * An answer with no `revisions` field at all is the ordinary one for a project the
+     * server has not read, and it is not an empty history.
+     */
+    [IPCEventType.vcsListServerProjectHistory]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
+        response: VcsServerProjectHistoryOutcome;
+    };
+    /**
+     * Who has an account on one server.
+     *
+     * **Goes to the network**, and only to a server that advertised `members`. Takes no
+     * project, like the calls above it: a roster belongs to the server.
+     */
+    [IPCEventType.vcsListServerMembers]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: VcsServerMembersOutcome;
+    };
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **Goes to the network**, and it is the one call here that carries no token — this
+     * is where a token comes from. Takes the endpoint rather than a `remoteOrigin`,
+     * because it is asked before this installation has any record of that server.
+     *
+     * The password is used by the call and kept by nothing.
+     */
+    [IPCEventType.vcsSignInWithPassword]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { authUrl: string; username: string; password: string },
+        response: VcsPasswordSignInOutcome;
+    };
+    /**
+     * Put the project that is open on to a server: register it, connect it, send it.
+     *
+     * **Goes to the network three times and writes on both ends.** The opposite act to
+     * the one above: that makes a new, empty repository on the server, and this puts the
+     * repository the author already has where everybody else can reach it.
+     *
+     * `name` is what the project is called on the server, which is the last segment of
+     * the address a collaborator clones by.
+     *
+     * The outcome answers for the first step alone; the other two refuse by throwing,
+     * with the same sentences `vcs.setRemote` and `vcs.push` already refuse with.
+     */
+    [IPCEventType.vcsPublishProject]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { projectPath: string; remoteOrigin: string; name: string },
+        response: VcsPublishOutcome;
     };
     /**
      * Sign in to a server named by the token rather than by a project.
@@ -1378,12 +1532,48 @@ export type IPCVcsEvents = {
      * The token carries the address of the endpoint that issued it and of the server it is
      * good for, so pasting one is the whole of adding a server. `authUrl` and `remoteUrl`
      * are the corrections for a token that names neither, and are empty otherwise.
+     *
+     * `description` is what the probe a moment ago answered, passed on so that adding a
+     * server does not reach the same address twice for the same sentence.
      */
     [IPCEventType.vcsAddServer]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: { authUrl: string; remoteUrl: string; token: string },
+        data: { authUrl: string; remoteUrl: string; token: string; description?: VcsServerDescription },
         response: VcsAddServerOutcome;
+    };
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network.** A session records what its server said the day it was
+     * added, and a session added before Studio kept any of that has nothing to show but an
+     * address; this is what fills it in. Nothing about the sign-in changes, and a server
+     * that does not answer leaves its record as it was.
+     */
+    [IPCEventType.vcsRefreshServer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: { servers: VcsServerSession[] };
+    };
+    /**
+     * Which repositories this machine already holds, by id.
+     *
+     * A server lists its projects by repository id, and the only useful question about one
+     * is whether the author already has it. Names cannot answer that - two projects share a
+     * name, and a folder gets renamed - so this reports the id of every remembered project
+     * together with the server it is configured against.
+     *
+     * **Reads `.lore/id` and `.lore/config.toml` as plain files and opens no repository.**
+     * Lore's lock is exclusive and blocking, so a sweep that opened stores would hang on the
+     * first project the author has open and take every later call with it. A project with
+     * nothing readable is reported without an id rather than dropped.
+     */
+    [IPCEventType.vcsListLocalRepositories]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { repositories: VcsLocalRepository[] };
     };
     /**
      * Take a server off this machine: the stored token and Studio's record of it.
@@ -1416,6 +1606,58 @@ export type IPCVcsEvents = {
         consumer: IPCType.Host,
         data: { url: string; destination: string },
         response: { root: string; branch: string; fileCount: number };
+    };
+};
+
+/**
+ * The Team protocol, as it crosses to a window.
+ *
+ * One pair of shapes for asking and one for being told, whatever the question is. See the
+ * note on {@link IPCEventType.teamCall} for why this is five members rather than one per
+ * feature, and `@shared/types/team` for what a method takes and answers.
+ */
+export type IPCTeamEvents = {
+    [IPCEventType.teamOpen]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string },
+        response: TeamConnection;
+    };
+    [IPCEventType.teamConnections]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: { connections: TeamConnection[] };
+    };
+    [IPCEventType.teamCall]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; method: string; params?: unknown },
+        response: TeamCallOutcome;
+    };
+    [IPCEventType.teamSubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: TeamSubscribeOutcome;
+    };
+    [IPCEventType.teamUnsubscribe]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { remoteOrigin: string; topic: string },
+        response: void;
+    };
+    [IPCEventType.teamEvent]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: TeamEventMessage,
+        response: never;
+    };
+    [IPCEventType.teamConnectionChanged]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { connection: TeamConnection },
+        response: never;
     };
 };
 
@@ -1668,10 +1910,18 @@ export type IPCEditorEvents = {
 };
 
 export type IPCProjectWizardEvents = {
+    /**
+     * Raise the project wizard and wait for what comes out of it.
+     *
+     * The props are the window's, and they are what lets a caller open the wizard on a
+     * question already answered - a package chosen in the file manager, a repository picked
+     * off a server's list. Passing none opens it on its first page, which is what every
+     * plain "New project" does.
+     */
     [IPCEventType.projectWizardLaunch]: {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
-        data: {},
+        data: WindowProps[WindowAppType.ProjectWizard],
         response: {
             created: boolean;
             projectPath: string;
@@ -1782,6 +2032,27 @@ export type IPCWorkspaceEvents = {
         };
     };
     /**
+     * What a font file can draw, read out of its own `cmap`.
+     *
+     * In the main process rather than the renderer for one reason that decides it: WOFF2 wraps the
+     * whole font in a Brotli stream and a renderer has no Brotli decompressor, so a font in that
+     * container simply cannot be read there. Doing it here also keeps a twenty-megabyte typeface out
+     * of the renderer's heap - what crosses back is a list of code point ranges.
+     *
+     * Read-only, and every failure is an arm of the result rather than a rejection: the callers are
+     * a lint rule that must finish its sweep and a panel that must draw its row.
+     */
+    [IPCEventType.fontProbeCoverage]: {
+        type: IPCMessageType.request;
+        consumer: IPCType.Host;
+        data: {
+            path: string;
+        };
+        response: {
+            result: FontCoverageResult;
+        };
+    };
+    /**
      * Convert one media file, in the shape `gameBuild` uses for a long task: `start` returns a job
      * id straight away, `getStatus` is polled while it runs, `cancel` stops it.
      *
@@ -1827,6 +2098,15 @@ export type IPCWorkspaceEvents = {
         consumer: IPCType.Host;
         data: {
             spec: WeatherBakeSpec;
+            /**
+             * Which compile is asking, so the one before it can be dropped.
+             *
+             * A reload is a new compile, and the game that wanted the previous clip no longer exists
+             * - which is exactly the case an author makes three of by typing three digits into a
+             * parameter. Carried from the renderer rather than read off the session in main, because
+             * only the renderer knows which bundle the rows being compiled came from.
+             */
+            attempt: string;
         };
         response: {
             url: string;
@@ -2376,6 +2656,20 @@ export type IPCGameTestEvents = {
         };
         response: Record<string, never>;
     };
+    [IPCEventType.gameTestSendCommand]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+            sessionId: string;
+            command: GameTestCommand;
+        };
+        /**
+         * Whether the frame reached the game's control socket - not whether the game acted on it.
+         * What it did is told by the events it pushes back, in order, alongside everything else.
+         */
+        response: { delivered: boolean };
+    };
     [IPCEventType.workspaceGameTestEvent]: {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
@@ -2461,6 +2755,65 @@ export type IPCGameBuildEvents = {
         };
         response: {
             path: string | null;
+        };
+    };
+    /**
+     * What a build folder says about itself, so the patch dialog can state which edition a patch
+     * made against it installs into rather than asking the author to remember.
+     *
+     * Fails, with the reason, on a path that is not a build of a game: the export would fail on the
+     * same path later, and hearing it while the folder is being chosen is the point.
+     */
+    [IPCEventType.gameBuildReadPatchBaseline]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        };
+        response: {
+            /**
+             * The variant this build was compiled as, or null on a build made before builds stated
+             * it. Null is not the release variant - it is "this build does not say", which is why
+             * the dialog asks rather than assuming.
+             */
+            appTagId: string | null;
+            /** The application name and version the build carries, for confirming it is the right one. */
+            productName: string | null;
+            version: string | null;
+            /** When the build was compiled, ISO-8601. */
+            builtAt: string | null;
+        };
+    };
+    /**
+     * What this project's last run of the build pipeline came to, read off disk.
+     *
+     * Answers null for a project that has never been built, and for one whose record cannot be
+     * read - a report has nothing useful to say about either, and neither is an error.
+     */
+    [IPCEventType.gameBuildReadLastRun]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            run: LastGameBuildRun | null;
+        };
+    };
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The caller names the project, never a folder: the path opened is the one the pipeline
+     * recorded for itself. `revealed` is false where there is no run or it wrote nowhere.
+     */
+    [IPCEventType.gameBuildRevealOutput]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            revealed: boolean;
         };
     };
     /** Where to write a patch. Answers null when the author closes the dialog. */
@@ -3046,11 +3399,19 @@ export type IPCUITemplateEvents = {
         data: {
             templateId: string;
             projectPath: string;
+            /**
+             * The language the author said the story is written in.
+             *
+             * A template that writes its content in that language hands over that copy instead of
+             * the base one, so what opens is a project authored in it rather than a translated one.
+             */
+            locale?: string;
         },
-        // `locales` are the language codes the template shipped a translation file for; the
-        // creator registers them, because the registry lives in the `.nlproj` it is about to write
-        // and a template never carries one.
-        response: { filesCopied: number; locales: string[] };
+        // `locales` are the language codes the scaffolded project ends up with a translation file
+        // for; the creator registers them, because the registry lives in the `.nlproj` it is about
+        // to write and a template never carries one. `contentLocale` is the language the content
+        // itself turned out to be written in, when a variant was used.
+        response: { filesCopied: number; locales: string[]; contentLocale?: string };
     };
 };
 
@@ -3092,6 +3453,68 @@ export type IPCAssetEvents = {
             entries: AssetExportEntry[];
         },
         response: AssetExportResult;
+    };
+    /**
+     * Offer the files behind a copy to whichever window pastes it, and take back the token that
+     * stands for them.
+     *
+     * Main checks the whole manifest against the calling window's own read access before minting
+     * anything, so nothing becomes reachable that the copying project could not already read. The
+     * token goes on the clipboard; the paths stay here.
+     */
+    [IPCEventType.assetTransferOffer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entries: AssetTransferEntry[];
+        },
+        response: AssetTransferOfferResult;
+    };
+    /**
+     * Trade a token from a paste for read access to the files it stands for.
+     *
+     * A token this process did not mint - the offering window has closed, or the copy came from
+     * another running Studio - answers `available: false`, which is an ordinary outcome and not a
+     * failure. See `@shared/types/assetTransfer`.
+     */
+    [IPCEventType.assetTransferRedeem]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            token: string;
+        },
+        response: AssetTransferRedeemResult;
+    };
+    /**
+     * Put an editor selection on the platform clipboard under Studio's own private format.
+     *
+     * `stored: false` answers a payload main declined to write - an unknown kind, or one over the
+     * size ceiling. The copy still holds its in-window clipboard, so the gesture is not lost; only
+     * its reach into other windows is. See `@shared/types/studioClipboard`.
+     */
+    [IPCEventType.clipboardWriteEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+            payload: string;
+        },
+        response: { stored: boolean };
+    };
+    /**
+     * Read back whatever an editor selection format currently holds.
+     *
+     * `payload: null` is the ordinary answer whenever the clipboard holds something else - text from
+     * another application, or nothing at all - and callers read it as "no editor selection here"
+     * rather than as a failure.
+     */
+    [IPCEventType.clipboardReadEditorSelection]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: StudioClipboardKind;
+        },
+        response: { payload: string | null };
     };
 };
 
@@ -3144,6 +3567,21 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Host,
         data: { ok: boolean },
+        response: never;
+    };
+    /**
+     * A workspace opened by `--build` reporting on the build it was opened to run.
+     *
+     * One event for the whole run rather than one per kind of news: the log lines and the outcome
+     * are one ordered stream that ends up in one report, and a second event would be a second thing
+     * to keep in step. A message rather than a request, because the main process is listening to a
+     * build rather than asking a question - a build takes minutes, and no reply timeout is the right
+     * one for that.
+     */
+    [IPCEventType.workspaceCommandLineBuild]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Host,
+        data: CommandLineBuildEvent,
         response: never;
     };
     /**

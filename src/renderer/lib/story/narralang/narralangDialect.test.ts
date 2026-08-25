@@ -91,8 +91,10 @@ const SHOUTED: NarralangDialect = {
             { mark: "italic", tag: "EM" },
             { mark: "color", tag: "COLOUR", arg: "raw" },
             { mark: "fontSize", tag: "SIZE", arg: "number" },
+            { mark: "fontSizeStep", tag: "STEP", arg: "number" },
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
+            { mark: "emphasis", tag: "MARK", arg: "raw" },
         ],
     },
     verbs: {
@@ -149,7 +151,6 @@ describe("a swapped dialect", () => {
         expect(result.text).toBe(
             [
                 "SCENE '走廊 · 傍晚' {",
-                "",
                 "    BG corridor_dusk WITH FADE 0.5",
                 "    PLAY bgm evening_theme VOLUME 0.7 FADEIN 1.5 loop",
                 "    夕阳把走廊染成橘色。",
@@ -183,7 +184,6 @@ describe("a swapped dialect", () => {
         expect(result.text).toBe(
             [
                 "scene '走廊 · 傍晚':",
-                "",
                 "  bg corridor_dusk with fade 0.5",
                 "  play bgm evening_theme volume 0.7 fadein 1.5 loop",
                 "  夕阳把走廊染成橘色。",

@@ -1,44 +1,68 @@
-import { useEffect, useRef } from "react";
-import { buildWeatherField, createWeatherRenderer } from "@shared/weather/field";
+import { useEffect, useMemo, useRef } from "react";
+import { buildWeatherField, createWeatherRenderer, scaleWeatherParams } from "@shared/weather/field";
 import {
     resolveWeatherParams,
-    WEATHER_FPS,
-    WEATHER_LOOP_SECONDS,
+    weatherLoopSeconds,
+    type ResolvedWeatherParams,
     type WeatherParamKey,
     type WeatherSeedId,
 } from "@shared/weather/model";
+import { useProjectVfxFrameRate } from "@/lib/workspace/hooks/useProjectVfxFrameRate";
+import { useProjectStageSize } from "@/lib/workspace/hooks/useProjectStageSize";
 
 /**
- * The size of the window this preview is, in the finished picture's own pixels.
+ * How wide the preview's own picture is, in its own pixels.
  *
- * It is a **window onto the stage at 1:1**, not the stage shrunk to fit the panel. That is what
- * makes it readable: the sizes are pixel lengths, so a stage-sized field scaled into 264 points of
- * panel would put a far flake at half a pixel - true to what ships and impossible to judge. At 1:1
- * every flake is the size it will be, the sway is the distance it will travel, and the count is
- * honest too, because density is stated per megapixel and this window gets its share of it.
- *
- * What it cannot show is the whole frame's composition, which is the one thing an author can already
- * picture from the stage they are looking at.
+ * The height is not stated: it comes from the stage's aspect, because this is the whole stage
+ * reduced rather than a window cut out of it.
  */
 const PREVIEW_WIDTH = 320;
-const PREVIEW_HEIGHT = 180;
 
 /**
- * What the numbers above it currently mean, moving.
+ * The finished frame, reduced to panel size.
+ *
+ * ## Why the whole frame and not a window onto it
+ *
+ * It used to be a 320x180 window onto the stage at 1:1, on the argument that pixel lengths are only
+ * honest at their own scale. Every length in it was indeed correct and the picture was still wrong,
+ * because composition is not a length. The stage carries around two hundred and forty petals of
+ * which each is 5% of the frame's height; the window carried fourteen of which each was 29% of it.
+ * One is weather and the other is a macro shot, and an author tuning the first while looking at the
+ * second gets a clip that surprises them - which is exactly the report this was rewritten from.
+ *
+ * It was also unusable as a control surface: at fourteen particles, moving `density` by a step
+ * changed the count by one, so half the panel's sliders read as doing nothing at all.
+ *
+ * So the field is built at the stage's own composition and drawn at a fraction of its size. Every
+ * pixel length is scaled by the same factor and `density`, being areal, by its square - which leaves
+ * the particle COUNT, the crossing time, the flutter rate and the depth spread identical to the
+ * clip's. What it gives up is fine detail on the smallest particles, and that is the right thing to
+ * give up: a far petal is a couple of pixels on the stage too.
  *
  * ## Why it animates rather than showing a frame
  *
- * Half of what these parameters control is motion: wind tilt, fall speed, the length of a rain
- * streak, the wobble of a petal. A still frame answers only the density question, which is the one
- * an author can already guess. Anything less than motion would send them to a run to find out, and
- * removing that round trip is the whole point.
+ * Most of what these parameters control is motion: wind tilt, fall speed, flutter rate, the length
+ * of a rain streak. A still frame answers only the density question, which is the one an author can
+ * already guess. Anything less than motion would send them to a run to find out, and removing that
+ * round trip is the whole point.
  *
- * ## Why it is not the baked clip
+ * ## Why it now integrates the shutter the bake integrates
  *
- * It renders the same field through the same renderer at one sub-step instead of eight, so the
- * motion, the tint and the density are the clip's; only the per-frame shutter blur is not. That is
- * the right thing to leave out: the blur is what makes the encoded file smaller and smoother, and it
- * is not a parameter anybody is here to tune.
+ * It used to render at one sub-step where the bake uses eight, on the argument that the shutter blur
+ * is not a parameter anyone is here to tune. True, and it still misled: the blur is a function of
+ * SPEED, and at the top of the speed range it costs a petal a quarter of its edge energy and nearly
+ * half its peak brightness. A preview that stayed crisp there was advertising a picture the bake
+ * cannot produce, precisely as an author raised the one slider that provokes it. Measured at panel
+ * size the honest version costs 0.6 to 4.5 ms a frame depending on seed and stage, against a budget
+ * of 33, so there is nothing to buy by lying about it.
+ *
+ * ## Why it steps rather than sweeps
+ *
+ * The frame rate is the project's (Project -> App), and it is the one screen-effect value with
+ * nothing on the panel to read it off. So the loop advances on the clip's own frame grid instead of
+ * on the display's: at 30 the preview holds each picture for a thirtieth of a second exactly as the
+ * file will, and raising the rate is visible here rather than only after a run. Sweeping smoothly
+ * would show a motion the clip cannot produce, which is the one way this preview could mislead.
  *
  * ## Why it draws on black rather than over the scene
  *
@@ -56,6 +80,16 @@ export function WeatherSeedPreview(props: {
     // on every keystroke, and restarting the loop for each one would drop the animation to a stutter.
     const resolved = resolveWeatherParams({ seed: props.seed, ...(props.params ? { params: props.params } : {}) });
     const paramsKey = JSON.stringify(resolved);
+    // The project's, and both subscribed: an author can have this panel, Project -> App and the UI
+    // editor open together, so either can move while the preview is running.
+    const fps = useProjectVfxFrameRate();
+    const stage = useProjectStageSize();
+
+    // The stage reduced to panel width, rounded to whole pixels because a canvas has no others. The
+    // scale is recovered from the rounded height rather than kept from the division, so the field is
+    // built for the picture that will actually be drawn.
+    const height = Math.max(1, Math.round((PREVIEW_WIDTH * stage.height) / stage.width));
+    const scale = useMemo(() => PREVIEW_WIDTH / Math.max(1, stage.width), [stage.width]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -64,18 +98,30 @@ export function WeatherSeedPreview(props: {
             return;
         }
 
-        const field = buildWeatherField(props.seed, JSON.parse(paramsKey), PREVIEW_WIDTH, PREVIEW_HEIGHT);
-        const frames = WEATHER_LOOP_SECONDS * WEATHER_FPS;
-        const renderer = createWeatherRenderer(field, PREVIEW_WIDTH, PREVIEW_HEIGHT, { frames, subSteps: 1 });
+        const full = JSON.parse(paramsKey) as ResolvedWeatherParams;
+        // Lengths by the scale and density by its square, so this is the stage's own composition
+        // photographed smaller rather than a sparser weather that happens to fit. Shared with
+        // nothing else drawing it, which is the point - see `scaleWeatherParams`.
+        const scaled = scaleWeatherParams(full, scale);
+
+        const field = buildWeatherField(props.seed, scaled, PREVIEW_WIDTH, height);
+        // Derived from the same parameters the bake derives it from. A preview that assumed a
+        // length would run the field at a different phase rate than the clip does, which is the one
+        // thing this panel exists not to do.
+        const frames = Math.max(1, Math.round(weatherLoopSeconds(full) * fps));
+        // No `subSteps`: the renderer's own default is the bake's, which is the point.
+        const renderer = createWeatherRenderer(field, PREVIEW_WIDTH, height, { frames });
         // The canvas's own buffer, filled from the renderer's each frame. Wrapping the renderer's
         // array directly would be one copy cheaper and is not worth the cast it needs: the renderer
         // owns that buffer and overwrites it in place, which is exactly the aliasing the bake had to
         // be fixed for once already.
-        const image = context.createImageData(PREVIEW_WIDTH, PREVIEW_HEIGHT);
+        const image = context.createImageData(PREVIEW_WIDTH, height);
 
         let handle = 0;
         let running = false;
         let start = 0;
+        /** Which of the clip's frames the canvas is currently showing; -1 is "nothing drawn yet". */
+        let shown = -1;
 
         const draw = (now: number) => {
             if (!running) {
@@ -84,17 +130,26 @@ export function WeatherSeedPreview(props: {
             if (start === 0) {
                 start = now;
             }
-            // The clip's own loop, so the speed on screen is the speed on stage.
-            const phase = ((now - start) / (WEATHER_LOOP_SECONDS * 1000)) % 1;
-            renderer.render(phase);
-            image.data.set(renderer.frame);
-            context.putImageData(image, 0, 0);
+            // The clip's own loop and the clip's own frames, so both the speed and the smoothness on
+            // screen are what will be on stage. The display is polled at its own rate and the field
+            // is integrated only when the clip would have a new picture - a 30fps effect on a 165Hz
+            // panel is then a fifth of the work, not five renders of the same frame.
+            const index = Math.floor(((now - start) / 1000) * fps) % frames;
+            if (index !== shown) {
+                shown = index;
+                renderer.render(index / frames);
+                image.data.set(renderer.frame);
+                context.putImageData(image, 0, 0);
+            }
             handle = requestAnimationFrame(draw);
         };
 
         const stop = () => {
             running = false;
             start = 0;
+            // The loop restarts from the top, so frame 0 has to be drawn again rather than skipped
+            // as "already showing".
+            shown = -1;
             if (handle !== 0) {
                 cancelAnimationFrame(handle);
                 handle = 0;
@@ -135,14 +190,19 @@ export function WeatherSeedPreview(props: {
             document.removeEventListener("visibilitychange", onVisibility);
             stop();
         };
-    }, [props.seed, paramsKey]);
+        // `fps`, `height` and `scale` restart the loop, unlike the parameters above: they are the
+        // renderer's frame count and the field's own size, so a change to one is a different
+        // renderer. All three move once per deliberate act, never per keystroke.
+    }, [props.seed, paramsKey, fps, height, scale]);
 
     return (
         <canvas
             ref={canvasRef}
             width={PREVIEW_WIDTH}
-            height={PREVIEW_HEIGHT}
-            className="mb-2 aspect-video w-full rounded-md border border-edge bg-black"
+            height={height}
+            // `h-auto` rather than a fixed aspect: the picture's ratio is the stage's, and a 4:3
+            // project must not have its weather previewed stretched into widescreen.
+            className="mb-2 h-auto w-full rounded-md border border-edge bg-black"
         />
     );
 }

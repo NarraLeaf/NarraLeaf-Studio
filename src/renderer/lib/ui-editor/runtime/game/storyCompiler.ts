@@ -41,6 +41,7 @@ import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
@@ -62,6 +63,7 @@ import type {
     StoryControlPayload,
     StoryDisplayableTargetRef,
     StoryDocument,
+    StoryEndingPage,
     StoryExpr,
     StoryExpression,
     StoryInlineEvent,
@@ -124,7 +126,7 @@ import {
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
-import { parseTranslatedText } from "@shared/utils/localizationText";
+import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
@@ -192,6 +194,22 @@ import {
 export type StoryPersistenceBridge = {
     get: (storageKey: string) => unknown;
     set: (storageKey: string, value: unknown) => void | Promise<void>;
+};
+
+/**
+ * What an `/ending` row hands the host when it runs.
+ *
+ * Carries the row's own values and nothing derived: the id is the identity everything records
+ * against, the name is what a screen shows, and the page is the row's override of the build's own
+ * ending page. Resolving the page against the build is the host's job, because the build is what the
+ * host knows and the compiler deliberately does not.
+ */
+export type StoryEndingReach = {
+    /** The `ending` row's block id. */
+    endingId: string;
+    /** Trimmed display name. Empty when the author has not named the ending. */
+    name: string;
+    page?: StoryEndingPage;
 };
 
 /** Single NLR Storable namespace holding all Story "saved" variables. */
@@ -740,6 +758,8 @@ type SceneCompileContext = {
     persistentVariables: PersistentVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); absent outside Dev Mode host. */
     persistence?: StoryPersistenceBridge;
+    /** Host hook for an `/ending` row; see {@link CompileInput.onEndingReached}. */
+    onEndingReached?: (ending: StoryEndingReach) => void;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -836,6 +856,19 @@ type CompileInput = {
     savedVariables?: SavedVariableRuntimeTable;
     /** App-level persistent bridge (shared with UI blueprints); from the Dev Mode scope-store bridge. */
     persistence?: StoryPersistenceBridge;
+    /**
+     * Called when an `/ending` row runs.
+     *
+     * The row itself does nothing else: recording the ending, telling the plugins and putting the
+     * player on a page are all host acts, and the host is the only thing that can do them in one
+     * order. So the compiler's whole contribution is a statement that says which ending was reached.
+     *
+     * Absent is a normal state, not a degraded one. The build sweeps compile the same document to
+     * read what it references, and the scene preview compiles one scene to a settled stage; neither
+     * is playing a story, so neither may be told that one ended. Their ending rows compile to
+     * nothing.
+     */
+    onEndingReached?: (ending: StoryEndingReach) => void;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -1047,6 +1080,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentKeys,
             persistentVariables,
             persistence: input.persistence,
+            onEndingReached: input.onEndingReached,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1275,6 +1309,7 @@ async function buildLaunchEntryScene(params: {
         persistentKeys: params.persistentKeys,
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
+        onEndingReached: input.onEndingReached,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1395,6 +1430,31 @@ async function buildLaunchEntryScene(params: {
     // Camera darkness settles through the same `darken(d, 0)` channel `/camera darken` uses.
     if (snapshot.camera) {
         statements.push(...await compileSnapshotEffects(ctx, nlrStory.camera, snapshot.camera.effects));
+    }
+
+    // A loop is state at the target row, not a pose, so it is replayed as its own call rather than
+    // pre-posed. Without this a launch from a row after `/transform hero loop` would open on a
+    // character who has stopped breathing - while a SAVE taken at the same row restores the motion,
+    // which is the disagreement this closes.
+    for (const record of snapshot.displayables) {
+        if (!record.loop) {
+            continue;
+        }
+        const element = record.kind === "image"
+            ? ctx.images.get(normalizeObjectName(record.objectName))
+            : record.kind === "text"
+                ? ctx.texts.get(normalizeObjectName(record.objectName))
+                : ctx.layers.get(normalizeObjectName(record.objectName));
+        const statement = element && compileSnapshotLoop(ctx, element, record.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
+    }
+    if (snapshot.camera?.loop) {
+        const statement = compileSnapshotLoop(ctx, nlrStory.camera, snapshot.camera.loop, params.launch.targetBlockId ?? "");
+        if (statement) {
+            statements.push(statement);
+        }
     }
 
     // Play the real story forward from the target row, following jumps into the other scenes.
@@ -2102,8 +2162,20 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         statements.push(...await compileBlock(ctx, blockId));
+        // An `/ending` row is where this list stops. Not an optimisation: the engine has no primitive
+        // that halts a running story, so a row written after an ending would otherwise play after it
+        // - with the stage already hidden, on its way to a page. Rows nested further out are beyond
+        // what this can reach and are reported by `story/ending-not-last` instead.
+        if (endsPlayback(ctx.scene.blocks[blockId])) {
+            break;
+        }
     }
     return statements;
+}
+
+/** Whether this row is an `/ending` that is actually in the build (a disabled row is not). */
+function endsPlayback(block: StoryBlock | undefined): boolean {
+    return Boolean(block && !block.disabled && block.kind === "control" && block.payload.control === "ending");
 }
 
 /** A runtime flag whose predicate the compiler reads back internally to build a guard. */
@@ -2368,6 +2440,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             // fall into the group arm below and compile as an empty container.
             return [];
         }
+        if (block.payload.control === "ending") {
+            return compileEnding(ctx, block, block.payload);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -2401,6 +2476,12 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
         // have on screen while writing. `error` (not `warning`) is what stops it there - a production
         // build refuses on error diagnostics, so an unfinished line cannot ship quietly.
         diagnostic(ctx, "error", block.id, `Invalid command, skipped: ${block.payload.source}`);
+        return [];
+    }
+
+    if (block.kind === "empty") {
+        // A blank line: nothing to emit and nothing to say about it. Not a diagnostic of any level -
+        // an author leaves these behind by clearing a line, which is editing, not a mistake.
         return [];
     }
 
@@ -2450,6 +2531,11 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         }
         if (block.payload.control === "cut") {
             // A marker, not an action: no statement here and none in the walk above.
+            return [];
+        }
+        if (block.payload.control === "ending") {
+            // The preview settles one scene's stage. Ending the story is not a stage state, and this
+            // path has no host to end it for - `onEndingReached` is absent here by construction.
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -2564,10 +2650,21 @@ function buildSentenceParts(
 /**
  * Localization-aware variant of {@link buildSentencePrompt}. When the segment has
  * at least one translation, the whole line compiles to a single dynamic Word that
- * re-resolves per render: the current locale's translation (with `{n}` placeholders
- * mapped back to the source line's interpolation Words), or the original
+ * re-resolves per render: the current locale's translation, or the original
  * source-language prompt when no translation applies. Untranslated segments keep
  * their plain compiled form - zero overhead.
+ *
+ * A translation is rebuilt into the same three kinds of token the source line compiles to:
+ *
+ *  - `{n}` resolves to the source line's nth interpolation Word, which already carries whatever
+ *    styling the author put on the value itself.
+ *  - `‹i›…‹/i›` puts run i's marks on the characters the translator wrapped, so emphasis, colour,
+ *    ruby and a size step survive into every language.
+ *  - `‹i›` alone drops run i in where the translation asks for it, which is how an inline pause or a
+ *    reveal-time event keeps its beat when the word order changes.
+ *
+ * A translation that names none of them renders exactly as it did before run tags existed: plain
+ * text with its values in it.
  */
 function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
     const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId, eventMap);
@@ -2576,19 +2673,50 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
         return prompt;
     }
     const textId = segment.textId;
-    // KNOWN LIMITATION (Pause family): a translated line is rebuilt from the translation string, which
-    // carries only text and `{n}` interpolation placeholders. Zero-width reveal-time tokens - inline
-    // `Pause`s and inline events (`TextEvent`) - have no placeholder in the translation, so they are
-    // dropped from the translated rendering and survive only in the source-language prompt above. Not
-    // fixed here: recovering them needs a token-preserving translation format. See the migration report.
+    const sourceRuns = segment.rich ?? [];
+    /**
+     * The zero-width tokens a run tag can name, compiled once and re-used at every render.
+     *
+     * `Pause` is a value object and `TextEvent` carries its own fired-once guard keyed on the token
+     * identity, so handing back the same instance is what makes a translated line replay the way the
+     * source line does rather than re-firing on every re-render.
+     */
+    const tokensByRun = new Map<number, unknown>();
+    for (let index = 0; index < sourceRuns.length; index += 1) {
+        const run = sourceRuns[index];
+        if ("pause" in run) {
+            tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+        } else if ("event" in run) {
+            const event = eventMap?.get(run);
+            if (event) {
+                tokensByRun.set(index, event);
+            }
+        }
+    }
     const resolveDynamic = () => {
         const target = localization.resolve(textId);
         if (target === null) {
             return prompt as never;
         }
-        return parseTranslatedText(target).map(part =>
-            part.kind === "text" ? part.text : (interpolationWords[part.index] ?? ""),
-        ) as never;
+        const out: unknown[] = [];
+        for (const part of parseTranslatedRuns(target, sourceRuns)) {
+            if (part.kind === "placeholder") {
+                out.push(interpolationWords[part.index] ?? "");
+                continue;
+            }
+            if (part.kind === "run") {
+                const token = tokensByRun.get(part.runIndex);
+                if (token) {
+                    out.push(token);
+                }
+                continue;
+            }
+            const marks = part.runIndex === undefined
+                ? undefined
+                : (sourceRuns[part.runIndex] as { marks?: StoryTextMarks } | undefined)?.marks;
+            out.push(buildWord(part.text, marks));
+        }
+        return out as never;
     };
     return [new Word((resolveDynamic as unknown) as any)];
 }
@@ -2803,13 +2931,7 @@ function buildWord(text: string, marks: StoryTextMarks | undefined): string | Wo
     if (!marks) {
         return text;
     }
-    const config: Record<string, unknown> = {};
-    if (marks.bold) config.bold = true;
-    if (marks.italic) config.italic = true;
-    if (marks.color) config.color = marks.color;
-    if (marks.ruby) config.ruby = marks.ruby;
-    if (typeof marks.cps === "number") config.cps = marks.cps;
-    if (typeof marks.fontSize === "number") config.fontSize = marks.fontSize;
+    const config = storyMarksToWordConfig(marks);
     return Object.keys(config).length > 0 ? new Word(text, config as any) : text;
 }
 
@@ -2907,6 +3029,27 @@ async function compileStoryAction(ctx: SceneCompileContext, block: Extract<Story
     return [];
 }
 
+/**
+ * Restart one looping transform on a pre-posed element - the launch scene's half of
+ * {@link StageSnapshotDisplayable.loop}.
+ *
+ * The same two calls a `loop` row compiles to, so a launch and a normal play reach the same stage.
+ * An engine without the feature reports it once per element rather than throwing, exactly as the row
+ * itself does.
+ */
+function compileSnapshotLoop(
+    ctx: SceneCompileContext,
+    element: any,
+    ref: StoryTransformRef,
+    blockId: string,
+): NlrStatement | null {
+    if (!supportsLoop(element, ctx, blockId)) {
+        return null;
+    }
+    const loop = buildLoopTransform(ref, ctx, blockId);
+    return loop ? element.loop(loop, loopOptions(ref)) : null;
+}
+
 /** Lower bound on camera zoom: 0 or a negative scale is not a shot, it is a broken transform. */
 const MIN_CAMERA_ZOOM = 0.05;
 
@@ -2944,6 +3087,18 @@ async function compileCameraAction(
         // call, and a bag of neutral values would put the filter and the pose in one transform again.
         const duration = Math.max(0, finiteOr(payload.durationMs, 0));
         return [recordStatement(ctx, camera.resetCamera(duration, parseStoryEasing(payload.easing) as any), block)];
+    }
+    if (payload.operation === "loop" || payload.operation === "stopLoop") {
+        // The camera is a Displayable like any other subject, so its half of the loop is the same
+        // two calls - see the displayable arm for why one is awaited and the other is not.
+        if (!supportsLoop(camera, ctx, block.id)) {
+            return [];
+        }
+        if (payload.operation === "stopLoop") {
+            return [recordStatement(ctx, camera.stopLoop(transformOptions(timingOf(payload.transform))), block)];
+        }
+        const loop = buildLoopTransform(clampCameraTransform(payload.transform) ?? {}, ctx, block.id);
+        return loop ? [recordStatement(ctx, camera.loop(loop, loopOptions(payload.transform)), block)] : [];
     }
     const transform = payload.transform;
     if (!transform) {
@@ -3564,13 +3719,23 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
+        // A transition only on the swap. A create DECLARES - the object is mounted at opacity zero
+        // and nothing is looking at it until a `/show` reveals it - so a transition here plays out
+        // in full on an invisible element and changes nothing that reaches the player. The property
+        // editor offers it on the swap alone for the same reason.
+        const transition = payload.operation === "setSource"
+            ? await createTransition(payload.transition, ctx, block.id)
+            : undefined;
+        statements.push(recordStatement(ctx, image.char(src as any, transition as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
 
+    // A create row DECLARES: it names the object, gives it a source and puts it where it starts, and
+    // nothing appears. `/show` is what reveals it. The pose still lands, so the object is already in
+    // position when something shows it - a declaration says where a thing IS, not that it is seen.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const operation = payload.operation === "hide" ? "hide" : "show";
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
         const chain = await compileDisplayableOperation(image, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
@@ -3607,8 +3772,11 @@ async function compileTextAction(
     if (payload.operation === "setFontColor" || (payload.operation === "create" && payload.fontColor)) {
         statements.push(recordStatement(ctx, text.setFontColor((payload.fontColor ?? "#ffffff") as any, payload.transform?.durationMs ?? 0, parseStoryEasing(payload.transform?.easing) as any), block));
     }
+    // Declares, like `/image` create: the words, the size, the colour and the pose, all without
+    // showing anything. See there.
     if (payload.operation === "show" || payload.operation === "hide" || payload.operation === "create") {
-        const chain = await compileDisplayableOperation(text, payload.operation === "hide" ? "hide" : "show", payload.transform, ctx, block.id);
+        const operation = payload.operation === "create" ? "transform" : payload.operation;
+        const chain = await compileDisplayableOperation(text, operation, payload.transform, ctx, block.id);
         if (chain) statements.push(recordStatement(ctx, chain, block));
     }
 
@@ -3653,7 +3821,13 @@ async function compileVideoAction(
     if (!video) {
         return [];
     }
-    if (payload.operation === "show" || payload.operation === "create") {
+    if (payload.operation === "create") {
+        // Declares rather than shows, like `/image`. `preload` is what makes that worth writing on
+        // its own row: the element mounts hidden and starts buffering, so the `/show` or `/play`
+        // that follows is not the first moment anything has been fetched.
+        return [recordStatement(ctx, video.preload(), block)];
+    }
+    if (payload.operation === "show") {
         return [recordStatement(ctx, video.show(), block)];
     }
     if (payload.operation === "hide") {
@@ -3681,8 +3855,14 @@ async function compileVideoAction(
 
 /**
  * `vfx` - the full-screen ambience overlay. Shaped like `compileVideoAction`, not like the displayable
- * ops, because a `Vfx` is an `Actionable`: it has `show`/`hide`/`pause`/`resume`/`setPlaybackRate` and
- * nothing else. `create` both constructs it and registers the name the later rows address.
+ * ops, because a `Vfx` is an `Actionable`: it has `preload`/`show`/`hide`/`pause`/`resume`/
+ * `setPlaybackRate` and nothing else.
+ *
+ * `create` DECLARES the overlay: it builds it, registers the name every later row addresses, and
+ * preloads the clip without showing anything. That is the whole shape of the feature - an overlay is
+ * defined once and then shown, hidden and shown again from anywhere in the story, and the definition
+ * is a place rather than a moment. `show` is the only row that puts it on screen, and it may carry an
+ * opacity and a rate for that showing alone.
  */
 async function compileVfxAction(
     ctx: SceneCompileContext,
@@ -3695,13 +3875,20 @@ async function compileVfxAction(
     if (!vfx) {
         return [];
     }
-    // A create shows the overlay: the row an author writes to "put petals on screen" must put them on
-    // screen, exactly as `/image` and `/video` do.
     const fade = { duration: Math.max(0, finiteOr(payload.durationMs, 0)), ease: parseStoryEasing(payload.easing) as any };
     switch (payload.operation) {
         case "create":
+            return [recordStatement(ctx, vfx.preload(), block)];
         case "show":
-            return [recordStatement(ctx, vfx.show(fade as any), block)];
+            // Opacity and rate on a SHOW row are that showing's own - the same rain reading faintly
+            // behind a memory and at full strength in the storm - so they are passed as options and
+            // never written into the overlay. On a create row the very same two fields ARE the
+            // overlay's configuration, which is why only this arm reads them as overrides.
+            return [recordStatement(ctx, vfx.show({
+                ...fade,
+                ...(payload.opacity !== undefined ? { opacity: Math.min(1, Math.max(0, finiteOr(payload.opacity, 1))) } : {}),
+                ...(payload.rate !== undefined ? { rate: Math.max(0, finiteOr(payload.rate, 1)) } : {}),
+            } as any), block)];
         case "hide":
             return [recordStatement(ctx, vfx.hide(fade as any), block)];
         case "pause":
@@ -3944,6 +4131,44 @@ function compileLabelControl(
         return [];
     }
     return [recordStatement(ctx, Control.jump(target), block)];
+}
+
+/**
+ * `/ending <name>` - the story reached one of its endings.
+ *
+ * One statement, and it only tells the host. What follows from an ending - recording it so a gallery
+ * can ask, telling the plugins, and putting the player on a page - has to happen in one order and in
+ * one place, and that place is the host: it owns the persistence that outlives the save, the plugin
+ * event hub, and the session it is about to tear down.
+ *
+ * **Nothing here stops the engine, because the engine has no way to be stopped.** Its own ending is
+ * the action stack running dry, and `Control.sleep` cannot stand in for one: a player who is
+ * fast-forwarding skips straight through it (`ControlAction`'s sleep resolves immediately while
+ * `isFastForwarding`). Three things cover the gap instead, in the order they apply: the rows written
+ * after an ending in the SAME list are dropped at compile time (see {@link compileBlockList}), so
+ * the ordinary shape - an ending as the last row of a branch - has nothing left to play; a host with
+ * a page to show tears the session down; and rows further out, which neither of those reaches, are
+ * reported by `story/ending-not-last` as the authoring mistake they are.
+ */
+function compileEnding(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "ending" }>,
+): NlrStatement[] {
+    const notify = ctx.onEndingReached;
+    if (!notify) {
+        return [];
+    }
+    // Built once, at compile time, and frozen into the closure: the row cannot change under a
+    // running game, and reading it out here keeps the statement free of the document.
+    const reached: StoryEndingReach = {
+        endingId: block.id,
+        name: payload.name.trim(),
+        ...(payload.page ? { page: payload.page } : {}),
+    };
+    return [recordStatement(ctx, Script.execute(() => {
+        notify(reached);
+    }), block)];
 }
 
 /**
@@ -4618,6 +4843,7 @@ type TransformTiming = {
     delayMs?: number;
     repeat?: number;
     repeatDelayMs?: number;
+    repeatType?: StoryTransformRef["repeatType"];
 };
 
 function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
@@ -4627,6 +4853,7 @@ function timingOf(ref: StoryTransformRef | undefined): TransformTiming {
         delayMs: ref?.delayMs,
         repeat: ref?.repeat,
         repeatDelayMs: ref?.repeatDelayMs,
+        repeatType: ref?.repeatType,
     };
 }
 
@@ -4645,13 +4872,98 @@ function transformOptions(timing: TransformTiming | undefined): Record<string, u
 /** A Transform over one prop bag, carrying repeat only when a row asked for it. */
 function buildTransform(props: Record<string, unknown>, timing: TransformTiming | undefined): Transform {
     const options = transformOptions(timing);
-    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined) {
+    if (timing?.repeat === undefined && timing?.repeatDelayMs === undefined && timing?.repeatType === undefined) {
         return new Transform(props as any, options as any);
     }
     return new Transform([{ props, options }] as any, {
         repeat: timing.repeat,
         repeatDelay: timing.repeatDelayMs,
+        repeatType: timing.repeatType,
     } as any);
+}
+
+/**
+ * A looping transform: one Transform, and it must be ONE, because `Displayable.loop` takes a single
+ * one rather than a chain.
+ *
+ * That is the whole difference from {@link emitTransformProps}, and it is what decides the loop's
+ * vocabulary. The settled emitter may produce two statements - a discrete half that snaps and an
+ * eased half that moves - plus separate calls for a mask (which registers a preload) and for the clip
+ * generators. None of those can ride inside one Transform, so a loop carries the eased half and this
+ * reports the rest rather than storing a channel that would never move.
+ *
+ * `from` becomes a zero-duration first step, which is exactly what a two-ended loop is: snap to the
+ * trough, ease to the peak, repeat. With `repeatType: "mirror"` that is a breath.
+ */
+function buildLoopTransform(
+    ref: StoryTransformRef,
+    ctx: SceneCompileContext,
+    blockId: string,
+): Transform | null {
+    if (ref.mode === "animation") {
+        // A Story Motion is already a whole keyframed shot; looping one is the shot repeating, and
+        // the engine takes any Transform. Its own timing lives in its keyframes.
+        return createAnimationTransform(ref, ctx, blockId, "none");
+    }
+    if (ref.clipReveal) {
+        diagnostic(ctx, "warning", blockId, "A looping transform cannot carry a clip reveal; the reveal is ignored.");
+    }
+    const to = foldStoryTransformLook(ref.to, resolveStoryCameraLook, preset =>
+        diagnostic(ctx, "warning", blockId, `Camera look "${preset}" is not a known grade.`));
+    const { cut, tween } = splitStoryTransformChange(ref.from, to);
+    if (!isEmptyStoryTransformProps(cut)) {
+        // Named, not swallowed: these are the channels that cannot be interpolated (a mask, a blend
+        // mode, a raw filter chain), so inside a loop they would sit at one value for ever while the
+        // author watched for a change that could never come.
+        diagnostic(ctx, "warning", blockId, "A looping transform can only animate channels that interpolate; the rest of this row will not change.");
+    }
+    if (isEmptyStoryTransformProps(tween)) {
+        diagnostic(ctx, "warning", blockId, "A looping transform states nothing to animate.");
+        return null;
+    }
+    // No repeat config on the Transform itself: `Displayable.loop` forces `repeat: Infinity` and reads
+    // the direction and the gap from its own options, so stating them twice would only give the two
+    // somewhere to disagree.
+    const options = transformOptions(timingOf(ref));
+    const steps: { props: Record<string, unknown>; options: Record<string, unknown> }[] = [];
+    if (ref.from && !isEmptyStoryTransformProps(ref.from)) {
+        steps.push({ props: storyTransformPropsToNlr(ref.from), options: { duration: 0 } });
+    }
+    steps.push({ props: storyTransformPropsToNlr(tween), options });
+    return new Transform(steps as any);
+}
+
+/**
+ * Whether the engine behind this build can play a looping transform at all.
+ *
+ * A feature detect rather than a version compare, for the reason the element-id one is: the engine is
+ * a normal dependency an author's machine may have pinned older, and a missing method would surface
+ * as `target.loop is not a function` from inside a compile - a stack trace about Studio, for a row
+ * the author wrote. Asking the object is both simpler and exactly the question.
+ */
+/**
+ * The engine's `LoopOptions` - how each round runs, not how many there are.
+ *
+ * The count is not here and cannot be: a loop repeats until something stops it, which is the whole
+ * difference between this and `transform.repeat(n)`. The spec refuses a row that states both.
+ */
+function loopOptions(ref: StoryTransformRef | undefined): Record<string, unknown> {
+    const options: Record<string, unknown> = {};
+    if (ref?.repeatType) {
+        options.repeatType = ref.repeatType;
+    }
+    if (ref?.repeatDelayMs !== undefined) {
+        options.repeatDelay = Math.max(0, ref.repeatDelayMs);
+    }
+    return options;
+}
+
+function supportsLoop(target: any, ctx: SceneCompileContext, blockId: string): boolean {
+    if (typeof target?.loop === "function" && typeof target?.stopLoop === "function") {
+        return true;
+    }
+    diagnostic(ctx, "error", blockId, "This engine cannot play looping transforms. Update narraleaf-react to 0.32.0 or newer.");
+    return false;
 }
 
 /**
@@ -4884,11 +5196,23 @@ function emitClipReveal(
 
 async function compileDisplayableOperation(
     target: any,
-    operation: "show" | "hide" | "transform",
+    operation: "show" | "hide" | "transform" | "loop" | "stopLoop",
     transform: StoryTransformRef | undefined,
     ctx: SceneCompileContext,
     blockId: string,
 ): Promise<NlrStatement | null> {
+    if (operation === "loop" || operation === "stopLoop") {
+        if (!supportsLoop(target, ctx, blockId)) {
+            return null;
+        }
+        if (operation === "stopLoop") {
+            // The way back is finite even when it is instant, so this one IS awaited - unlike the
+            // loop it ends.
+            return target.stopLoop(transformOptions(timingOf(transform)));
+        }
+        const loop = buildLoopTransform(transform ?? {}, ctx, blockId);
+        return loop ? target.loop(loop, loopOptions(transform)) : null;
+    }
     if (transform?.mode === "animation") {
         const animationTransform = createAnimationTransform(transform, ctx, blockId, operation === "transform" ? "none" : operation);
         if (operation === "show") {
@@ -5037,8 +5361,11 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 duration,
                 easing,
                 color: stringProp(props, "color", "#000"),
-                hold: numberProp(props, "hold", 30) / 100,
+                // Absent leaves the engine's own 30%-of-the-run default in place, which is what a row
+                // that has never been given a hold has always played.
+                ...(transition.holdMs === undefined ? {} : { holdMs: Math.max(0, transition.holdMs) }),
                 ...throughColorPattern(props),
+                ...throughColorUncover(props),
             });
         case "exposure":
             // Stops, not a multiplier: the gain is `2 ** ev`, so a linear-looking slider stays
@@ -5053,7 +5380,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 ev: Math.min(12, Math.max(0, numberProp(props, "ev", 4.6))),
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
-                hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "ruleReveal": {
             // The only transition that reads an asset, which is why this factory is async. A rule
@@ -5088,6 +5415,9 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
+                // Held at `from`, where the image swap happens - the window the swap hides in, which
+                // is the same thing the other two transitions call a hold.
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "custom":
             // The union's escape hatch: a transition that is nothing but its `props`, with no engine
@@ -5133,20 +5463,56 @@ function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, k
     return undefined;
 }
 
-/** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
+/**
+ * Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair.
+ *
+ * The geometries are the {@link Mask} catalogue, the same one `Reveal` draws its kinds from - the
+ * colour covers through a shape, and there is no shape it can cover through that a direct cut cannot
+ * reveal through. Offering four of the seven made "cover the frame with a clock" unreachable while
+ * "cut to the new frame with a clock" was one menu item away.
+ *
+ * `inverted` defaults to `true` for the iris and `false` for the rest, which is the orientation each
+ * is asked for: an iris that closes rim-in is the classic iris-to-black, while a wipe or a clock
+ * covering in reverse is the exception. A row that states `inverted` gets what it states.
+ */
 function throughColorPattern(props: Record<string, StoryLiteralValue>): { pattern?: MaskPattern; inverted?: boolean } {
-    switch (stringProp(props, "pattern", "plain")) {
+    const kind = stringProp(props, "pattern", "plain");
+    const center = () => stringProp(props, "center", "50% 50%");
+    const inverted = (fallback: boolean) => ({ inverted: props.inverted === undefined ? fallback : props.inverted === true });
+    switch (kind) {
         case "linear":
-            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) };
+            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
         case "blinds":
-            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) };
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }), ...inverted(false) };
         case "iris":
-            // The old iris pattern covered rim-in - the pattern's inverted orientation.
-            return { pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12) }), inverted: true };
+            // Rim-in by default: the colour closes over the frame, which is the iris-to-black every
+            // document written before this option existed was getting.
+            return { pattern: Mask.iris({ center: center(), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }), ...inverted(true) };
+        case "barnDoor":
+            return { pattern: Mask.barnDoor({ axis: stringProp(props, "axis", "horizontal") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
+        case "clock":
+            return { pattern: Mask.clock({ center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 24), direction: stringProp(props, "direction", "clockwise") as any }), ...inverted(false) };
+        case "fan":
+            return { pattern: Mask.fan({ blades: numberProp(props, "blades", 4), center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 10) }), ...inverted(false) };
+        case "dots":
+            return { pattern: Mask.dots({ rows: numberProp(props, "rows", 6), cols: numberProp(props, "cols", 10), feather: numberProp(props, "feather", 20), stagger: numberProp(props, "stagger", 0) }), ...inverted(false) };
         default:
-            // "plain" → no pattern: the colour simply fades in and out (flash with hold 0).
+            // "plain" → no pattern: the colour simply fades in and out (flash with no hold).
             return {};
     }
+}
+
+/**
+ * How the colour comes back off the frame: `retreat` backs the pattern out the way it came,
+ * `continue` keeps the edge travelling so the geometry passes through - a wipe exits out the far
+ * side, a clock hand completes a second lap.
+ *
+ * Ignored by the engine without a pattern, and left unstated when the row says nothing, so a plain
+ * fade's compiled options are unchanged.
+ */
+function throughColorUncover(props: Record<string, StoryLiteralValue>): { uncover?: "retreat" | "continue" } {
+    const uncover = stringProp(props, "uncover", "retreat");
+    return uncover === "continue" ? { uncover: "continue" } : {};
 }
 
 /**

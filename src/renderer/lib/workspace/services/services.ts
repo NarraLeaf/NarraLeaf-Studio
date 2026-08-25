@@ -1,4 +1,5 @@
 import { FsRequestResult } from "@shared/types/os";
+import type { FsWriteBatchEntry, FsWriteBatchOutcome } from "./core/FileSystem";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/utils/fs";
 import { Porject, ProjectConfig, ProjectMetadata } from "../project/project";
@@ -8,12 +9,14 @@ import type {
     MobileConfiguration,
     NetworkConfiguration,
     SecurityConfiguration,
-    WebOptimizationConfiguration,
+    AssetOptimizationConfiguration,
 } from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
 import type { LintRunOptions } from "@/lib/lint/engine";
-import type { RegisteredTest, TestAvailability, TestId, TestRunRecord } from "@/lib/testing/types";
+import type { RegisteredTest, TestAvailability, TestId, TestParameterValues, TestRunRecord } from "@/lib/testing/types";
+import type { TestParameterMemory } from "@/lib/testing/parameterCache";
+import type { ResolvedTestParameter } from "@/lib/testing/parameters";
 import type {
     LocalizationConfiguration,
     LocalizationDocument,
@@ -56,6 +59,7 @@ import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type { PuppetDescription } from "narraleaf-react";
 import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
+import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
 import type {
     UIDocument,
@@ -93,9 +97,15 @@ import type {
     ProjectAppTag,
     ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { ProjectDlc, ProjectDlcDocument } from "@shared/types/dlc";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
-import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type {
+    DictionaryEntryPatch,
+    ProjectDictionaryDocument,
+    ProjectDictionaryEntry,
+    ProjectDictionaryOptions,
+} from "@shared/types/dictionary";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
 import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
@@ -158,6 +168,8 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
+import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
+import type { TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -227,6 +239,8 @@ enum Services {
     AudioTracks = "audioTracks",
     /** The build variants the project ships as, and what each one says differently from the project */
     AppTags = "appTags",
+    /** The DLC the project ships beside its builds: extra content a player installs into one */
+    Dlc = "dlc",
     /** The asset sets the project declares: library entries standing for a family of files, by axis */
     AssetSets = "assetSets",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
@@ -250,6 +264,8 @@ enum Services {
     VersionControl = "versionControl",
     /** Whether project data may be written at all, and why not - the write-boundary freeze */
     WorkspaceFreeze = "workspaceFreeze",
+    /** The live session this window is in: which half of it this is, and the story it is about */
+    Live = "live",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */
@@ -268,8 +284,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
-    getWebOptimizationConfiguration(): WebOptimizationConfiguration;
-    updateWebOptimizationConfiguration(patch: Partial<WebOptimizationConfiguration>): Promise<ProjectConfig>;
+    getAssetOptimizationConfiguration(): AssetOptimizationConfiguration;
+    updateAssetOptimizationConfiguration(patch: Partial<AssetOptimizationConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
@@ -297,8 +313,12 @@ interface IFileSystemService extends IService {
     readRaw(path: string): Promise<FsRequestResult<Uint8Array>>;
     write(path: string, data: string, encoding: FsTextEncoding): Promise<FsRequestResult<void>>;
     writeRaw(path: string, data: Uint8Array): Promise<FsRequestResult<void>>;
+    /** N files, one grant, one result each. See `BaseFileSystemService.writeBatch`. */
+    writeBatch(entries: readonly FsWriteBatchEntry[]): Promise<FsWriteBatchOutcome[]>;
     ensureRegularFile(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     writeFileNoFollow(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
+    /** Write or create, without the write grant. See `BaseFileSystemService.writeFileNoFollowOrCreate`. */
+    writeFileNoFollowOrCreate(path: string, data: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     recoverCorruptedJsonFile(path: string, replacement: string, encoding: BufferEncoding): Promise<FsRequestResult<void>>;
     createDir(path: string): Promise<FsRequestResult<void>>;
     deleteFile(path: string): Promise<FsRequestResult<void>>;
@@ -348,7 +368,11 @@ interface ILoggerService extends IService { }
 interface IUIService extends IService {
     showConfirm(message: string, detail?: string): Promise<boolean>;
     showAlert(message: string, detail?: string): Promise<void>;
-    showNotification(message: string, type?: "info" | "success" | "warning" | "error"): void;
+    showNotification(
+        message: string,
+        type?: "info" | "success" | "warning" | "error",
+        options?: { detail?: string; actions?: NotificationAction[]; sticky?: boolean },
+    ): string;
     showError(error: Error | string): void;
 }
 
@@ -549,6 +573,45 @@ interface IAudioTrackService extends IService {
 }
 
 /**
+ * The project's DLC - the content it ships beside a build rather than inside one. See
+ * `@shared/types/dlc` for the model.
+ *
+ * A sibling of the variants, not a kind of one: a build is exactly one variant, and has any number
+ * of DLC installed beside it. Nothing is prepended and nothing resolves by fallback - a project
+ * ships no DLC until an author says it does.
+ */
+interface IDlcService extends IService {
+    load(): Promise<ProjectDlc[]>;
+    save(document: ProjectDlcDocument): Promise<void>;
+    getDocument(): ProjectDlcDocument;
+    /** In author order. */
+    list(): ProjectDlc[];
+    /** Only the ones that load into builds of this variant. */
+    listForAppTag(appTagId: string | null | undefined): ProjectDlc[];
+    /** Null for an unknown id: there is no DLC to fall back to. */
+    resolve(id: string | null | undefined): ProjectDlc | null;
+    has(id: string | null | undefined): boolean;
+    onDlcChanged(handler: (dlcs: ProjectDlc[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    applyMutation(mutator: (dlcs: ProjectDlc[]) => ProjectDlc[], label?: HistoryLabel): void;
+    create(input?: { id?: string; name?: string; attachTo?: string }): ProjectDlc;
+    /** Refuses a blank name. Stored references hold the id, so they follow. */
+    rename(id: string, name: string): boolean;
+    /**
+     * Change the filename this DLC ships as. Answers the id in force, which may be numbered.
+     *
+     * Not a rename: copies already in players' hands keep the old name, and a story marked for the
+     * old id stops naming anything.
+     */
+    changeId(id: string, nextId: string): string;
+    setAttachTo(id: string, appTagId: string): boolean;
+    delete(id: string): boolean;
+    flushPendingChanges(): Promise<void>;
+}
+
+/**
  * The project's build variants - what the same project can be shipped as, and what each variant says
  * differently from the project itself. See `@shared/types/appTag` for the model.
  *
@@ -639,28 +702,37 @@ interface IBrandService extends IService {
 }
 
 /**
- * The words the project spells on purpose - character names, place names, invented terms. See
- * `@shared/types/dictionary` for the model.
+ * The terms the project writes on purpose - character names, place names, invented vocabulary - and
+ * how it writes them. See `@shared/types/dictionary` for the model.
  *
- * Besides owning the document it *publishes*: every change pushes the list into Chromium's session
- * dictionary, which is machine-scoped and therefore has to be handed back when the project closes.
+ * Besides owning the document it *publishes*: every change pushes the accepted spellings into the
+ * main process, which holds them per window and therefore has to be handed them back when the
+ * project closes.
  */
 interface IDictionaryService extends IService {
-    load(): Promise<string[]>;
+    load(): Promise<void>;
     save(document: ProjectDictionaryDocument): Promise<void>;
     getDocument(): ProjectDictionaryDocument;
-    listWords(): string[];
+    listEntries(): ProjectDictionaryEntry[];
+    listTerms(): string[];
+    getEntry(term: string): ProjectDictionaryEntry | null;
+    hasTerm(term: string): boolean;
+    /** Whether the spellchecker should leave this word alone: a term, or a variant of one. */
     hasWord(word: string): boolean;
-    /** `false` when there was nothing to add: a blank, or a word the project already spells. */
-    addWord(word: string): boolean;
+    getOptions(): ProjectDictionaryOptions;
+    /** `false` when there was nothing to add: a blank, or a spelling the project already holds. */
+    addTerm(term: string, patch?: Omit<DictionaryEntryPatch, "term">): boolean;
+    /** `false` when there is no such term, or a rename would collide with one. */
+    updateEntry(term: string, patch: DictionaryEntryPatch): boolean;
     /** `false` when the project never held it. */
-    removeWord(word: string): boolean;
+    removeTerm(term: string): boolean;
+    setOptions(patch: Partial<ProjectDictionaryOptions>): void;
     replaceDocument(document: ProjectDictionaryDocument): void;
     /** What the spellchecker settled on at the last push; `null` before the first one. */
     getSpellcheckStatus(): SpellcheckStatus | null;
     /** The language settled on, whenever it changes - so an open story row can re-check. */
     onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
-    onWordsChanged(handler: (words: string[]) => void): () => void;
+    onEntriesChanged(handler: (entries: ProjectDictionaryEntry[]) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
@@ -1182,7 +1254,11 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
+    createCharacter(
+        name: string,
+        kind?: CharacterAppearanceKind,
+        initial?: { color?: string; groupId?: string },
+    ): Character;
     renameCharacter(id: string, name: string): boolean;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;
@@ -1314,8 +1390,16 @@ interface ILintService extends IService {
 interface ITestRunService extends IService {
     listTests(): RegisteredTest[];
     getAvailability(id: TestId): TestAvailability;
+    /** What a test asks the author for, with every `select`'s option list already evaluated. */
+    listParameters(id: TestId): ResolvedTestParameter[];
+    /** Load what those lists read, before asking for them. Never rejects. */
+    prepareParameterSources(): Promise<void>;
+    /** The values each test was last run with, off the project cache. Never rejects. */
+    readRememberedParameters(): Promise<TestParameterMemory>;
+    /** Keep what a test was just started with. Silently does nothing on a frozen workspace. */
+    rememberParameters(testId: TestId, values: TestParameterValues): Promise<void>;
     /** Resolves the run id once the run is accepted - not when it finishes. */
-    start(testId: TestId): Promise<string>;
+    start(testId: TestId, parameters?: TestParameterValues): Promise<string>;
     cancel(runId: string): void;
     getActiveRun(): TestRunRecord | null;
     getRun(runId: string): TestRunRecord | null;
@@ -1446,6 +1530,58 @@ interface IWorkspaceFreezeService extends IService {
 }
 
 /**
+ * The live session this window is in, if it is in one.
+ *
+ * One per window: the freeze a session arms is a module-level latch carrying one writable path set,
+ * so a second session would take the first one's away. Everything it answers is a value the
+ * interface renders - see `live/liveSessionView` - because a service that produced sentences would
+ * produce them in one language at a moment when nobody knows which surface is going to show them.
+ */
+interface ILiveSessionService extends IService {
+    /** What the session is, right now. Read whole; a session's state changes as one thing. */
+    getView(): LiveSessionView;
+    onChanged(handler: (view: LiveSessionView) => void): () => void;
+    /** Whether a session owns this story document - the one question the story editor asks. */
+    ownsStory(storyId: StoryId): boolean;
+    /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
+    open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
+    /**
+     * Join one somebody else opened, checkpointing and syncing on the way in.
+     *
+     * No story to name: which document the room is about is the room's own answer, and a caller
+     * that supplied one could only ever supply a document this machine already has.
+     */
+    join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null>;
+    /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
+    leave(): Promise<void>;
+    /**
+     * Say that this window is writing a row, or that it has stopped.
+     *
+     * One method for taking and for giving back, because the two must be impossible to wire up
+     * separately: a claim that is never given back is a row nobody can edit for the rest of the
+     * session. Silent outside a session and for any other story's rows.
+     */
+    claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void;
+    /**
+     * Say that this window is editing one character record, or that it has stopped.
+     *
+     * The cast's half of the same seam. Held while the record is open in the properties panel - the
+     * box being open, not the keyboard - because an author who has stopped to think about a
+     * description still has one half typed, and a claim that lapsed on their pause is a claim that
+     * lets somebody else take it.
+     */
+    claimCharacter(characterId: string, holding: boolean): void;
+    /**
+     * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
+     *
+     * False when there is nothing to send, and the view says why - never a snapshot as a fallback,
+     * and never a silent nothing.
+     */
+    undo(): boolean;
+    redo(): boolean;
+}
+
+/**
  * "The working tree is no longer what the editors are showing." Drops every in-memory document and
  * re-reads it, with project writes held off for the whole pass. Thaw is the first caller, restore
  * (`vcs:working-tree-changed`) the second - see WorkspaceReloadService, whose participant table is
@@ -1494,11 +1630,12 @@ export {
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
+    IDlcService,
     IBrandService,
     IDictionaryService,
     ISaveSchemaService,

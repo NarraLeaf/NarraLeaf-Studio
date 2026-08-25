@@ -34,6 +34,17 @@ export type TextWidgetProps = {
     fontAssetId: string | null;
     textWrapMode: TextWrapMode;
 
+    /**
+     * Shrink the rendered text until it fits the element's box.
+     *
+     * The authored `fontSize` becomes a ceiling rather than a fixed value: the text is never set
+     * larger than it, and never smaller than {@link TextWidgetProps.textAutoFitMinFontSize}. A line
+     * that still does not fit at the floor is clipped, which is what every line does today.
+     */
+    textAutoFit: boolean;
+    /** Smallest size auto fit may set, in px. */
+    textAutoFitMinFontSize: number;
+
     /** Block flow. `horizontal-tb` leaves every other vertical setting inert. */
     writingMode: TextWritingMode;
     textOrientation: TextOrientation;
@@ -69,6 +80,8 @@ export const defaultTextWidgetProps: TextWidgetProps = {
     lineHeight: 1.4,
     fontAssetId: null,
     textWrapMode: "word",
+    textAutoFit: false,
+    textAutoFitMinFontSize: 12,
     writingMode: "horizontal-tb",
     textOrientation: "mixed",
     // On by default so flipping one dropdown to vertical already reads like a Japanese novel; it is

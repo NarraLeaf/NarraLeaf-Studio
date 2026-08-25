@@ -15,13 +15,20 @@ import type {
     VcsMergeResolveResult,
     VcsMergeSideChoice,
     VcsMergeState,
+    VcsPasswordSignInOutcome,
+    VcsPublishOutcome,
     VcsRepositoryInfo,
     VcsPushResult,
     VcsRestoreOptions,
     VcsRestoreResult,
     VcsRevisionDiffResult,
     VcsRevisionKind,
+    VcsServerDescription,
+    VcsServerMembersOutcome,
     VcsServerProbe,
+    VcsServerProjectDeleteOutcome,
+    VcsServerProjectDetailOutcome,
+    VcsServerProjectHistoryOutcome,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -67,9 +74,18 @@ import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from ".
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
-import { probeVcsServer } from "./serverDiscovery";
+import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
+// Two plain file reads and nothing of Lore's, which is the whole reason it exists: the
+// repository id of a project that has not been opened has to be readable without taking
+// the exclusive lock on it.
+import { readRepositoryId } from "./localRepositories";
+import { listServerMembers } from "./serverMembers";
+import { signInWithPassword } from "./serverPassword";
 import {
     createServerProject,
+    deleteServerProject,
+    getServerProject,
+    listServerProjectHistory,
     listServerProjects,
     type ServerProjectResult,
     type ServerProjectsResult,
@@ -226,6 +242,25 @@ function isNothingToCommit(error: unknown): boolean {
 }
 
 /**
+ * The backend saying it holds no session for the server a call was aimed at.
+ *
+ * Told apart from every other failure because it is the one this end can do something
+ * about: Studio kept the token, so the answer is to present it again. A server that
+ * refused the account, a branch that has diverged, a machine that is off - none of those
+ * are helped by signing in, and all of them have to pass straight through.
+ *
+ * Matched on the sentence because that is all there is: the backend reports it as a plain
+ * `Error` from Lore, with no code and no class of its own. Both spellings appear - one
+ * from resolving the repository, one from the call that follows it - and the phrase is
+ * stable in each. A future spelling that is missed here reads as it does today rather
+ * than as anything worse.
+ */
+function isMissingBackendSession(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /no token stored|no stored token|not signed in/i.test(message);
+}
+
+/**
  * A project path this layer cannot work in, said so before anything acts on it.
  *
  * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
@@ -344,6 +379,27 @@ const SLOW_STORE_OPEN_MS = 5_000;
  * page of history, which is the pattern the cache exists for.
  */
 const MAX_CACHED_REVISION_DIFFS = 24;
+
+/**
+ * A session with what the server said about itself written onto it.
+ *
+ * The three fields are the server's own account of itself and nothing the session depends
+ * on, so a session that has none is left as it is rather than filled with blanks: the
+ * difference between "this server calls itself nothing" and "nobody has asked it yet" is
+ * the difference between a name to show and an address to fall back to.
+ */
+function describeServerSession(
+    session: VcsServerSession,
+    description: VcsServerDescription | undefined,
+): VcsServerSession {
+    if (!description) return session;
+    return {
+        ...session,
+        name: description.name,
+        version: description.version,
+        capabilities: [...description.capabilities],
+    };
+}
 
 export class VcsManager extends Manager {
     private readonly sessions = new Map<string, VcsSession>();
@@ -605,8 +661,8 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * Put a project under version control, creating the repository and its first
-     * commit. Fails if the directory already has one.
+     * Put a project under version control, recording its first version. Fails if the
+     * directory already holds a repository that has one.
      *
      * Never called on Studio's behalf. Creating a repository writes `.lore/` into the
      * author's project and takes an exclusive lock on it, so it is theirs to decide.
@@ -614,7 +670,10 @@ export class VcsManager extends Manager {
      * Ordering matters and runs against the grain of the rest of this class: every
      * other entry point starts from {@link sessionFor}, which cannot exist yet - it
      * reads the repository id off the revision history, and there is no history until
-     * this method makes one. So init works on bare globals and takes no session.
+     * this method makes one. So init works on bare globals and takes no session. That
+     * is also true of a repository this finds rather than creates: a clone with no
+     * revisions in it has no session either, which is why the release below has to run
+     * for that case as much as for a fresh one.
      */
     public async initRepository(
         projectPath: string,
@@ -624,11 +683,18 @@ export class VcsManager extends Manager {
             const backend = await this.requireBackend();
             const root = projectRoot(projectPath);
             const globals = this.globalsFor(root);
-            // Decided before the attempt, because the cleanup below must not run when
-            // the answer is "it was already one": that path can have a LIVE SESSION on
-            // the same directory, and releasing the repository out from under it would
-            // leave an open store handle pointing at nothing.
-            const preexisting = backend.isRepositoryDirectory(root);
+            /**
+             * Whether this call is the only thing holding the repository.
+             *
+             * Cleared for one refusal and one only: a directory that was already a
+             * repository WITH revisions can have a LIVE SESSION on it - `isRepository`
+             * opens one on every project the workspace shows - and releasing the
+             * repository out from under that would leave an open store handle pointing
+             * at nothing. Every other way out of this block, including the empty
+             * repository that gets adopted and committed into, is a repository nothing
+             * else can have opened.
+             */
+            let held = true;
             try {
                 // Through the same resolver as every other write: the first commit's
                 // author must not be the one revision in the repository attributed
@@ -655,13 +721,16 @@ export class VcsManager extends Manager {
                         .then((identity) => identity.branch)
                         .catch(() => ""),
                 };
+            } catch (error) {
+                if (error instanceof backend.RepositoryExistsError) held = false;
+                throw error;
             } finally {
                 // No session was opened here, so nothing else in this class will ever
                 // let go of the repository - and Lore holds it open after the last
                 // call. Left held, the project directory cannot be moved or deleted
                 // and the author's own `lore` CLI blocks on the lock without an error.
                 // In the `finally` because a half-created repository holds it too.
-                if (!preexisting) {
+                if (held) {
                     await backend.releaseRepository(globals).catch((error) => {
                         this.app.logger.warn("[Vcs] Failed to release the repository after init", root, error);
                     });
@@ -711,6 +780,70 @@ export class VcsManager extends Manager {
      */
     private resolveOnlineIdentity(remoteOrigin: string | null): string {
         return this.storedServerSession(remoteOrigin)?.account.userId ?? this.resolveIdentity();
+    }
+
+    /**
+     * Run one call that reaches a server, presenting the stored token again if the backend
+     * turns out not to have one.
+     *
+     * **The two stores can hold different things, and only one of them is Studio's.** A
+     * session recorded here says an author signed in; the token the backend presents is in
+     * a store belonging to the machine, outside this profile and outside every repository.
+     * Anything that empties that store while this one is intact - a reinstall, settings
+     * carried to another machine, another tool clearing it - leaves Studio listing a server
+     * it can read over its API and refusing every clone, push and sync against it with a
+     * backend sentence about a token nobody here was ever asked for.
+     *
+     * Studio holds the token, sealed, so that is a state it can leave on its own: present
+     * it again and run the call a second time. Once, and only for the failure that says the
+     * backend has no session - a refusal from the server itself is an answer, and repeating
+     * it would be a second refusal a moment later.
+     */
+    private async withServerSession<T>(remoteOrigin: string | null, run: () => Promise<T>): Promise<T> {
+        try {
+            return await run();
+        } catch (error) {
+            if (remoteOrigin === null || !isMissingBackendSession(error)) throw error;
+            if (!(await this.presentStoredToken(remoteOrigin))) throw error;
+            return run();
+        }
+    }
+
+    /**
+     * Hand the backend the token this installation kept for one server.
+     *
+     * The same call {@link addServer} makes, with the same token, which is why it needs
+     * nothing from the author. False for every way it cannot happen - no session, no token
+     * this process can unseal, no Lore build, a server that refused it - and the caller
+     * then reports the failure it already had rather than one from here.
+     */
+    private async presentStoredToken(remoteOrigin: string): Promise<boolean> {
+        const session = this.storedServerSession(remoteOrigin);
+        if (session === null) return false;
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return false;
+        const backend = await requireVcsBackend().catch(() => null);
+        if (backend === null) return false;
+
+        try {
+            await backend.signInToServer(
+                { repositoryPath: "", offline: false, cache: false },
+                {
+                    remoteUrl: remoteOrigin,
+                    authUrl: session.authUrl,
+                    token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
+            );
+            this.app.logger.info("[Vcs] Presented the stored token to", remoteOrigin, "again");
+            return true;
+        } catch (error) {
+            this.app.logger.warn(
+                "[Vcs] The stored token for", remoteOrigin, "was not accepted:",
+                error instanceof Error ? error.message : String(error),
+            );
+            return false;
+        }
     }
 
     /** The session recorded for this server, if this installation has signed in to it. */
@@ -1667,7 +1800,19 @@ export class VcsManager extends Manager {
      * that the token says nothing.
      */
     public async addServer(
-        options: { authUrl: string; remoteUrl: string; token: string },
+        options: {
+            authUrl: string;
+            remoteUrl: string;
+            token: string;
+            /**
+             * What the server said it is, from the answer the wizard already has.
+             *
+             * Not read again here: the address has just been reached and what answered is
+             * on screen in front of the author. Absent for a path that never probed, and
+             * then the session records the address alone, exactly as it did before.
+             */
+            description?: VcsServerDescription;
+        },
     ): Promise<{ session: VcsServerSession; servers: VcsServerSession[] }> {
         const backend = await requireVcsBackend();
         // Reading the token is also how a paste that is not a token is refused before
@@ -1684,14 +1829,17 @@ export class VcsManager extends Manager {
         // No repository: the store this writes is per-user and outside any of them. The
         // backend wants the field, and an empty one is what the calls that have no project
         // pass - the same shape `clone` signs in under.
-        const signedIn = await backend.signInToServer(
-            { repositoryPath: "", offline: false, cache: false },
-            {
-                remoteUrl,
-                authUrl: options.authUrl,
-                token: options.token,
-                userDataDir: this.app.getUserDataDir(),
-            },
+        const signedIn = describeServerSession(
+            await backend.signInToServer(
+                { repositoryPath: "", offline: false, cache: false },
+                {
+                    remoteUrl,
+                    authUrl: options.authUrl,
+                    token: options.token,
+                    userDataDir: this.app.getUserDataDir(),
+                },
+            ),
+            options.description,
         );
 
         const servers = [
@@ -1713,6 +1861,44 @@ export class VcsManager extends Manager {
             "as", signedIn.account.username || signedIn.account.displayName,
         );
         return { session: signedIn, servers };
+    }
+
+    /**
+     * Ask one server what it is now, and record the answer.
+     *
+     * **Goes to the network**, which is why it is asked for rather than done while a list
+     * is drawn: a session records what the server said the day it was added, and reading
+     * that afresh is one request per server against a machine that may not be on.
+     *
+     * The one call that changes a stored session without a token: nothing here touches the
+     * account, the addresses or the sign-in, so a server that answers under a new name is
+     * still the same server signed in to by the same person. A server that does not answer
+     * leaves the record exactly as it was - the last thing it said about itself is better
+     * than nothing at all, and a machine that is off is not a server that was renamed.
+     */
+    public async refreshServer(remoteOrigin: string): Promise<VcsServerSession[]> {
+        const stored = this.storedServerSession(remoteOrigin);
+        if (!stored) return this.storedServerSessions();
+
+        const address = serverAddressForAuthUrl(stored.authUrl);
+        if (!address) return this.storedServerSessions();
+
+        const probe = await probeVcsServer(address, { userDataDir: this.app.getUserDataDir() });
+        if (probe.kind !== "ready") {
+            this.app.logger.info("[Vcs] Asked", remoteOrigin, "what it is -", probe.kind);
+            return this.storedServerSessions();
+        }
+
+        const servers = this.storedServerSessions().map((session) => (
+            session.remoteOrigin === stored.remoteOrigin
+                ? describeServerSession(session, probe.discovery)
+                : session
+        ));
+        this.writeStoredServerSessions(servers);
+        this.app.logger.info(
+            "[Vcs] Refreshed", remoteOrigin, "-", probe.discovery.name, probe.discovery.version,
+        );
+        return servers;
     }
 
     /**
@@ -1758,45 +1944,217 @@ export class VcsManager extends Manager {
      * one small request over a connection that is already trusted.
      */
     public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjects({
-            authUrl: session.authUrl,
-            token,
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjects(credentials);
+    }
+
+    /**
+     * Who has an account on one server.
+     *
+     * **Only asked of a server that advertised `members`.** The gate is in the renderer,
+     * where the decision whether to draw a roster at all is made; a deployment that offers
+     * no such thing is one with no such section, rather than one that answers a question
+     * with a 404 for somebody to put a sentence to.
+     */
+    public async listServerMembers(remoteOrigin: string): Promise<VcsServerMembersOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerMembers(credentials);
+    }
+
+    /**
+     * Exchange a username and password for a token, on a server that offers it.
+     *
+     * **The one server call here that takes an address rather than a `remoteOrigin`**, and
+     * it has to: it is asked before this installation has signed in to anything, so there
+     * is no session to look the address up in. What comes back is the same token an
+     * operator would have minted, and the caller adds the server with it exactly as if it
+     * had been pasted.
+     *
+     * The password is handed to one request and kept by nothing - not by this class, not
+     * in the log, and not in whatever is passed back.
+     */
+    public async signInWithPassword(
+        authUrl: string,
+        username: string,
+        password: string,
+    ): Promise<VcsPasswordSignInOutcome> {
+        const outcome = await signInWithPassword({
+            authUrl,
+            username,
+            password,
             userDataDir: this.app.getUserDataDir(),
+        });
+        this.app.logger.info(
+            "[Vcs] Password sign-in",
+            authUrl,
+            outcome.ok ? "accepted" : outcome.reason,
+        );
+        return outcome;
+    }
+
+    /**
+     * What one server knows about one of its projects.
+     *
+     * The server's own explanation for not having read a project ends here, in the log:
+     * it is an English sentence naming the internals it was written about, and the whole
+     * point of the coded refusals either side of this line is that nothing like it reaches
+     * a reader.
+     */
+    public async getServerProject(
+        remoteOrigin: string,
+        projectId: string,
+    ): Promise<VcsServerProjectDetailOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        const read = await getServerProject({ ...credentials, projectId });
+        if (!read.ok) return read;
+        if (!read.detail.file.readable && read.reason !== "") {
+            this.app.logger.info(
+                "[Vcs]", remoteOrigin, "has not read", projectId, "-", read.reason,
+            );
+        }
+        return { ok: true, detail: read.detail };
+    }
+
+    /**
+     * Take one project off a server.
+     *
+     * **The project stops being on the server; the repository keeps everything in it.**
+     * Nothing an author wrote is destroyed here, and there is no argument to this that
+     * would destroy any of it: the server drops the project from its list, and the store
+     * behind it is untouched. A project removed by mistake is published again under the
+     * same repository id and comes back with its history.
+     *
+     * Nothing local is touched either. A copy of the project on this machine goes on
+     * opening, and its remote goes on pointing where it pointed - the project is no
+     * longer on the server's list, which is a different thing from being disconnected
+     * from it.
+     */
+    public async deleteServerProject(
+        remoteOrigin: string,
+        projectId: string,
+    ): Promise<VcsServerProjectDeleteOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        const removed = await deleteServerProject({ ...credentials, projectId });
+        this.app.logger.info(
+            "[Vcs]", remoteOrigin, "delete", projectId,
+            removed.ok ? "removed" : removed.problem.kind,
+        );
+        return removed;
+    }
+
+    /** The latest revisions on one of a server's projects, newest first. */
+    public async listServerProjectHistory(
+        remoteOrigin: string,
+        projectId: string,
+        options?: { limit?: number; before?: string },
+    ): Promise<VcsServerProjectHistoryOutcome> {
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        return listServerProjectHistory({
+            ...credentials,
+            projectId,
+            ...(options?.limit === undefined ? {} : { limit: options.limit }),
+            ...(options?.before === undefined ? {} : { before: options.before }),
         });
     }
 
     /**
-     * Ask a server to make a project.
+     * What it takes to ask a server anything: where it is, and the token for it.
      *
-     * The server both records it and creates the repository, in that order and
-     * within one call. Studio deliberately does not ask `loreserver` for a
-     * repository itself: one made that way is one the server has no row for, and
-     * a repository with no row is reachable by nobody at all.
+     * Null covers both halves of `no-token`, which are one answer to a reader: a server
+     * this installation has no record of, and one whose token cannot be produced on this
+     * machine. Neither is a signed-out session - the repositories still open and still
+     * push - so the sentence for it says to add the server again rather than to sign in.
      */
-    public async createServerProject(
+    private serverCredentials(
+        remoteOrigin: string,
+    ): { authUrl: string; token: string; userDataDir: string } | null {
+        const session = this.storedServerSession(remoteOrigin);
+        if (!session) return null;
+        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
+        if (token === null) return null;
+        return { authUrl: session.authUrl, token, userDataDir: this.app.getUserDataDir() };
+    }
+
+    /**
+     * Put a project that already exists on to a server: register it, connect it, send it.
+     *
+     * **This is the act, and doing any two thirds of it is a state an author cannot read
+     * their way out of.** Registering alone leaves a row on the server with nothing behind
+     * it. Connecting alone leaves a project that pushes and cannot be cloned, which is what
+     * {@link setRemote} exists to prevent. Sending without either is refused by the server,
+     * because nothing on it reaches a repository that is not one of its projects.
+     *
+     * The order is forced and each step is the precondition of the next:
+     *
+     *  1. **Register**, carrying THIS repository's id. The server records the row under
+     *     that id and asks `loreserver` for nothing - the repository exists here, and the
+     *     copy that fills it is the one step 3 pushes. Nothing local has changed yet, so a
+     *     refusal here leaves the project exactly as it was.
+     *  2. **Connect**, which is {@link setRemote} unchanged: it writes the address and
+     *     registers the repository with `loreserver`, and rolls the address back itself if
+     *     that fails. The registration in step 1 is what makes it succeed - `loreserver`
+     *     announces the repository to the server, and a server with no row for it answers
+     *     that it is not a project of its own.
+     *  3. **Send**, which is {@link push} unchanged.
+     *
+     * **A failure in step 3 keeps the address.** By then the project IS on the server and
+     * IS registered, and neither can be undone from here; taking the address away would
+     * unpublish nothing, hide Send and Get, and be put straight back by the next attempt.
+     * What the author needs at that point is the backend's own sentence about why the send
+     * did not go, which is what they get.
+     *
+     * **The repository id is read off `.lore/id` and never out of the store.** Lore's lock
+     * is exclusive and blocking, so opening a repository another process holds does not
+     * fail - it never returns, and takes every later call with it. See `localRepositories.ts`.
+     *
+     * A project the server already holds is connected and not registered again, which is
+     * the second machine joining a project that is already published.
+     */
+    public async publishProject(
+        projectPath: string,
         remoteOrigin: string,
         name: string,
-        description?: string,
-    ): Promise<ServerProjectResult> {
-        const session = this.storedServerSession(remoteOrigin);
-        if (!session) return { ok: false, problem: { kind: "no-token" } };
-        const token = recallServerToken(this.app.getGlobalState(), remoteOrigin);
-        if (token === null) return { ok: false, problem: { kind: "no-token" } };
-        const made = await createServerProject({
-            authUrl: session.authUrl,
-            token,
-            userDataDir: this.app.getUserDataDir(),
-            name,
-            ...(description === undefined ? {} : { description }),
-        });
-        if (made.ok) {
-            this.app.logger.info("[Vcs] Created", made.project.name, "on", remoteOrigin);
+    ): Promise<VcsPublishOutcome> {
+        const root = projectRoot(projectPath);
+        const repositoryId = readRepositoryId(root);
+        if (repositoryId === undefined) {
+            throw new Error(`${root} is not under version control, so there is nothing to publish`);
         }
-        return made;
+
+        const credentials = this.serverCredentials(remoteOrigin);
+        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+
+        // Asked rather than assumed, and it is the same question the launcher's list
+        // answers: a project already on this server is one somebody has published, and
+        // registering it a second time is refused by the server anyway.
+        const held = await listServerProjects(credentials);
+        if (!held.ok) return held;
+        const already = held.projects.some((project) => project.id.toLowerCase() === repositoryId);
+
+        if (!already) {
+            const registered = await createServerProject({ ...credentials, name, repositoryId });
+            if (!registered.ok) return registered;
+            this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
+        }
+
+        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
+        if (already) {
+            // Today's behaviour for a project the server already holds: the address, and
+            // nothing sent. Whether this machine's versions belong on top of what is
+            // already there is a question the Send button asks with the state in front
+            // of the author, rather than one a connection answers for them.
+            return { ok: true };
+        }
+        await this.push(projectPath);
+        this.app.logger.info("[Vcs] Published", root, "to", remoteOrigin, "as", name);
+        return { ok: true };
     }
 
     /** Every session this installation has recorded, in the order they were written. */
@@ -1875,11 +2233,11 @@ export class VcsManager extends Manager {
     public async getSyncState(projectPath: string): Promise<VcsSyncState> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            return backend.readSyncState({
+            return this.withServerSession(session.remoteOrigin, () => backend.readSyncState({
                 ...session.globals,
                 offline: false,
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            });
+            }));
         });
     }
 
@@ -1895,12 +2253,12 @@ export class VcsManager extends Manager {
     public async push(projectPath: string): Promise<VcsPushResult> {
         return this.serialize(projectPath, async () => {
             const { session, backend } = await this.sessionFor(projectPath);
-            const result = await backend.pushToRemote({
+            const result = await this.withServerSession(session.remoteOrigin, () => backend.pushToRemote({
                 ...session.globals,
                 offline: false,
                 // The account id, not the author's name - see `resolveOnlineIdentity`.
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            });
+            }));
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
                 result.alreadyPushed ? "(already up to date)" : "",
@@ -1953,7 +2311,10 @@ export class VcsManager extends Manager {
                 );
             }
 
-            const result = await backend.syncFromRemote({ ...globals, offline: false });
+            const result = await this.withServerSession(
+                session.remoteOrigin,
+                () => backend.syncFromRemote({ ...globals, offline: false }),
+            );
             this.app.logger.info(
                 "[Vcs] Synced", session.root,
                 `${result.filesChanged} file(s), ${result.revisionsReceived} revision(s)`,
@@ -2112,19 +2473,21 @@ export class VcsManager extends Manager {
             // auto-save; writing them after the settle would write into a path the backend has
             // already recorded.
             const perChange = decisions.filter(isPerChangeDecision);
+            // **The paths that were settled, not the paths that were asked about.** One document
+            // can be stored as several files (`@shared/documents/documentSet.ts`), and settling it
+            // change by change writes to every one of them - so the resolve below has to name them
+            // all. Settling only the path the author clicked would leave the rest in conflict, the
+            // commit would be refused naming one of them (§4.23-§4.32), and the ones that DID
+            // settle would already have lost their sidecars to the failed commit's stage.
+            const settled: string[] = [];
             for (const decision of perChange) {
-                await backend.resolveDocumentChanges(session.root, decision.path, decision.changes);
+                settled.push(...await backend.resolveDocumentChanges(session.root, decision.path, decision.changes));
             }
-            if (perChange.length > 0) {
+            if (settled.length > 0) {
                 // One call for all of them, for the reason the two side groups are grouped: each
                 // resolve flushes the repository and a flush waits out the keep-alive window
                 // (§4.22).
-                await backend.resolveConflicts(
-                    globals,
-                    session.root,
-                    perChange.map((decision) => decision.path),
-                    "working-tree",
-                );
+                await backend.resolveConflicts(globals, session.root, [...new Set(settled)], "working-tree");
             }
 
             for (const choice of MERGE_SIDES) {
@@ -2219,21 +2582,32 @@ export class VcsManager extends Manager {
         options: { onProgress?: (transferred: number, total: number) => void } = {},
     ): Promise<{ root: string; branch: string; fileCount: number }> {
         const root = projectRoot(destination);
+        const remoteOrigin = parseVcsRemoteUrl(repositoryUrl)?.origin ?? null;
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
             try {
-                const cloned = await backend.cloneInto(
+                const cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
                     {
                         ...globals,
                         // Online, so the account id if this installation has signed in to the
                         // server the copy is coming from.
-                        identity: this.resolveOnlineIdentity(parseVcsRemoteUrl(repositoryUrl)?.origin ?? null),
+                        identity: this.resolveOnlineIdentity(remoteOrigin),
                     },
                     { repositoryUrl, onProgress: options.onProgress },
-                );
+                ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
                 return { root, ...cloned };
+            } catch (error) {
+                // Logged here because nothing else does: the handler turns this into a
+                // refusal the wizard prints, and a clone that failed used to leave the log
+                // with no line at all - the one place somebody looks when the sentence on
+                // screen is the backend's rather than Studio's.
+                this.app.logger.warn(
+                    "[Vcs] Could not clone", repositoryUrl, "->", root + ":",
+                    error instanceof Error ? error.message : String(error),
+                );
+                throw error;
             } finally {
                 // No session was opened here, so nothing else will let go of the
                 // repository - and a half-finished clone holds it too, which is why this

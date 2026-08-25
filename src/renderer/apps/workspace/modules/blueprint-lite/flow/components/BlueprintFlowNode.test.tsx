@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_ANIMATE_PROPERTY,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
 } from "@shared/types/blueprint/graph";
 import { resolveBlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
@@ -31,6 +32,25 @@ function renderSaveGameCapturePin(screenshot: unknown): string {
     );
 }
 
+function renderComment(params: Record<string, unknown>): string {
+    registerCoreBlueprintNodes();
+    const catalog = resolveBlueprintNodeEditorCatalogEntry(BLUEPRINT_NODE_TYPE_FLOW_COMMENT);
+    return renderToStaticMarkup(
+        <BlueprintFlowNode
+            {...({
+                selected: false,
+                data: {
+                    catalog,
+                    nodeId: "note",
+                    params,
+                    onPatchNodeParam: vi.fn(),
+                    onFitGroupFrame: vi.fn(),
+                },
+            } as any)}
+        />,
+    );
+}
+
 vi.mock("@xyflow/react", () => ({
     Handle: () => null,
     Position: {
@@ -49,6 +69,9 @@ vi.mock("@xyflow/react", () => ({
 let frozen = false;
 vi.mock("@/apps/workspace/hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFrozen: () => frozen,
+    // The guard reads the whole reason now, so it can ask whether a partial freeze spares the
+    // document a surface names. A node card names none, so any kind will do.
+    useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
 }));
 
 beforeEach(() => {
@@ -112,5 +135,24 @@ describe("BlueprintFlowNode", () => {
 
     it("leaves the card alone when the workspace is writable", () => {
         expect(renderSaveGameCapturePin(true)).not.toContain("<fieldset");
+    });
+
+    /**
+     * The layer switch is a note's affordance. On a frame it is the one control that can put the
+     * rectangle in front of the cards it was drawn around, which is why the frame is not offered it
+     * - the toggle is the only element on the card carrying `aria-pressed`.
+     */
+    it("offers the layer switch on a note and not on a group frame", () => {
+        expect(renderComment({ text: "note" })).toContain("aria-pressed");
+        expect(renderComment({ text: "group", frame: true, background: false })).not.toContain("aria-pressed");
+    });
+
+    /**
+     * Fit is the way back from a frame that only ever grows, so it belongs on the frame and only
+     * there - a note encloses nothing to be fitted to.
+     */
+    it("offers Fit on a group frame and not on a note", () => {
+        expect(renderComment({ text: "group", frame: true, background: false })).toContain("lucide-shrink");
+        expect(renderComment({ text: "note" })).not.toContain("lucide-shrink");
     });
 });

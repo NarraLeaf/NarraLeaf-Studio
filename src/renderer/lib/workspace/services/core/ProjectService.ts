@@ -14,13 +14,16 @@ import {
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
+    PatchConfiguration,
     PlayerPreferences,
     ProjectAppConfiguration,
+    VfxConfiguration,
     SaveCompatibilityConfiguration,
+    SaveLocationConfiguration,
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
-    WebOptimizationConfiguration,
+    AssetOptimizationConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
@@ -30,18 +33,24 @@ import {
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
+    normalizePatchConfiguration,
     normalizePlayerPreferences,
     normalizeSaveCompatibilityConfiguration,
+    normalizeSaveLocationConfiguration,
     normalizeSecurityConfiguration,
     normalizeSigningConfiguration,
+    normalizeVfxConfiguration,
     normalizeVoiceConfiguration,
-    normalizeWebOptimizationConfiguration,
+    normalizeWindowConfiguration,
+    type WindowConfiguration,
+    readAssetOptimizationConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
 } from "../../project/configuration";
 import { ProjectNameConvention } from "../../project/nameConvention";
 import { Service } from "../Service";
 import { IProjectService, Services, WorkspaceContext } from "../services";
+import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { getInterface } from "@/lib/app/bridge";
@@ -85,10 +94,15 @@ export class BaseProjectService {
     }
 }
 
+type ProjectServiceEvents = {
+    configChanged: ProjectConfig;
+};
+
 export class ProjectService extends Service<ProjectService> implements IProjectService {
     private projectConfig: ProjectConfig | null = null;
     private projectConfigPath: string | null = null;
     private projectConfigFormat: "nlproj" | "json" | null = null;
+    private readonly events = new EventEmitter<ProjectServiceEvents>();
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -130,7 +144,27 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     public async reloadProjectConfig(): Promise<ProjectConfig> {
         const config = await this.readProjectConfigFile();
         this.projectConfig = config;
+        // A re-read is a change as far as anything watching is concerned: the values it was showing
+        // came from the copy this just replaced.
+        this.events.emit("configChanged", config);
         return config;
+    }
+
+    /**
+     * Watch for a write to the manifest, whichever setting made it.
+     *
+     * The project panel already re-broadcasts its own writes to its sections, so this is not for
+     * them: it is for the surfaces *outside* the panel that render a project setting and are on
+     * screen at the same time as it. The story inspector's screen-effect preview is one, and the
+     * weather pre-bake is another - both are showing or preparing something whose identity a
+     * setting decides, so a change they do not hear about leaves them showing or making the
+     * previous project's answer until something unrelated remounts them.
+     *
+     * The whole config rather than a per-section event, because a subscriber reads the slice it
+     * cares about and a second event per setting would be a list nobody keeps in step.
+     */
+    public onConfigChanged(handler: (config: ProjectConfig) => void): () => void {
+        return this.events.on("configChanged", handler);
     }
 
     public async updateProjectConfig(updater: (config: ProjectConfig) => ProjectConfig): Promise<ProjectConfig> {
@@ -139,6 +173,9 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         this.assertValidProjectConfig(next);
         await this.writeProjectConfig(next);
         this.projectConfig = next;
+        // After the write, so a subscriber that reads back through this service sees what is on disk
+        // rather than a value a failed write would have rolled back.
+        this.events.emit("configChanged", next);
         return next;
     }
 
@@ -265,31 +302,35 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
-     * Read the effective web export optimization policy, falling back to the
-     * defaults (lossless steps on, lossy off) for projects that predate
-     * `app.webOptimization`.
+     * Read the effective asset optimization policy, falling back to the default
+     * (lossy off) for projects that predate `app.assetOptimization`.
      */
-    public getWebOptimizationConfiguration(): WebOptimizationConfiguration {
-        return normalizeWebOptimizationConfiguration(this.getProjectConfig().app?.webOptimization);
+    public getAssetOptimizationConfiguration(): AssetOptimizationConfiguration {
+        return readAssetOptimizationConfiguration(this.getProjectConfig().app);
     }
 
     /**
-     * Merge a partial patch into the web export optimization policy. Written by
-     * the project settings UI and read by the build, which applies it to the
-     * compiled static site.
+     * Merge a partial patch into the asset optimization policy. Written by the
+     * project settings UI and read by the build, which applies it to every
+     * package it produces.
+     *
+     * Writing lands on `app.assetOptimization`, and the key this used to live
+     * under is left where it is rather than deleted: a project opened by an
+     * older Studio then still finds the settings it knows about, and the read
+     * above prefers the new key whenever both are present.
      */
-    public async updateWebOptimizationConfiguration(
-        patch: Partial<WebOptimizationConfiguration>,
+    public async updateAssetOptimizationConfiguration(
+        patch: Partial<AssetOptimizationConfiguration>,
     ): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const webOptimization: WebOptimizationConfiguration = {
-                ...normalizeWebOptimizationConfiguration(config.app?.webOptimization),
+            const assetOptimization: AssetOptimizationConfiguration = {
+                ...readAssetOptimizationConfiguration(config.app),
                 ...patch,
             };
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
-                webOptimization,
+                assetOptimization,
             };
             return {
                 ...config,
@@ -487,6 +528,36 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         });
     }
 
+    /** Where a shipped desktop game writes the player's files; the default for projects without one. */
+    public getSaveLocationConfiguration(): SaveLocationConfiguration {
+        return normalizeSaveLocationConfiguration(this.getProjectConfig().app?.saveLocation);
+    }
+
+    /**
+     * Merge a partial patch into the save-location setting. Written by the project App page and
+     * baked into the app manifest, which is where the runtime reads it: the answer is needed before
+     * Chromium starts, long before anything can open the pack.
+     */
+    public async updateSaveLocationConfiguration(
+        patch: Partial<SaveLocationConfiguration>,
+    ): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const saveLocation = normalizeSaveLocationConfiguration({
+                ...normalizeSaveLocationConfiguration(config.app?.saveLocation),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                saveLocation,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
     /** What a language change does to a running playthrough; the default for projects without one. */
     public getLanguageChangeConfiguration(): LanguageChangeConfiguration {
         return normalizeLanguageChangeConfiguration(this.getProjectConfig().app?.languageChange);
@@ -579,6 +650,70 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Read what the shipped game's window may do, falling back to the defaults for projects that
+     * predate `app.window` - which is a resizable window that remembers where it was.
+     */
+    public getWindowConfiguration(): WindowConfiguration {
+        return normalizeWindowConfiguration(this.getProjectConfig().app?.window);
+    }
+
+    /**
+     * Merge a partial patch into the window settings.
+     *
+     * Written by the project App page and baked into the bundle, where the shell reads it to open
+     * its window and the game's own configuration screen reads it to know what sizes to offer.
+     */
+    public async updateWindowConfiguration(patch: Partial<WindowConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const window = normalizeWindowConfiguration({
+                ...normalizeWindowConfiguration(config.app?.window),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                window,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the frame rate this project's screen effects are baked at, falling back to 30 for
+     * projects that predate `app.vfx` - which is the rate their clips are already on disk at.
+     */
+    public getVfxConfiguration(): VfxConfiguration {
+        return normalizeVfxConfiguration(this.getProjectConfig().app?.vfx);
+    }
+
+    /**
+     * Merge a partial patch into the screen-effect settings.
+     *
+     * Written by the project App page, baked into the bundle, and read by the baker - all three from
+     * this one field, because the rate is part of the identity of the clip a story row addresses.
+     */
+    public async updateVfxConfiguration(patch: Partial<VfxConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const vfx = normalizeVfxConfiguration({
+                ...normalizeVfxConfiguration(config.app?.vfx),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                vfx,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
      * Read the remembered production-build selection, or null when the project
      * has never been built (the build dialog then uses a host-appropriate
      * default).
@@ -597,6 +732,32 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 build,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the remembered patch-export selection, or null when the project has
+     * never had a patch exported from it.
+     */
+    public getPatchConfiguration(): PatchConfiguration | null {
+        return normalizePatchConfiguration(this.getProjectConfig().app?.patch);
+    }
+
+    /**
+     * Persist the patch dialog's selection so the next export reopens with the
+     * same editions, build folder and file.
+     */
+    public async updatePatchConfiguration(patch: PatchConfiguration): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                patch,
             };
             return {
                 ...config,

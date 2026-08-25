@@ -30,6 +30,7 @@ import {
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
+import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
@@ -37,6 +38,8 @@ import type { AutoSaveConfiguration } from "@shared/types/saves";
 import { normalizeAutoSaveConfiguration } from "@shared/types/saves";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import { normalizeSaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { VfxConfiguration } from "@shared/types/vfx";
+import { normalizeVfxConfiguration } from "@shared/types/vfx";
 import { computeStoryContentHash } from "@shared/utils/storyContentHash";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
@@ -44,6 +47,7 @@ import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import type { BrandColor } from "@shared/types/brand";
 import { migrateProjectBrandDocument, normalizeProjectBrandColors } from "@shared/types/brand";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import { BRAND_DOCUMENT_PATH } from "@shared/documents/specs";
 import {
     APP_TAG_ID_RELEASE,
@@ -66,6 +70,8 @@ import {
     attachCharacterAssetSetVariants,
     type AssetSetRecordProblem,
 } from "@shared/build/characterAssetSets";
+import { attachUiAssetSetVariants } from "@shared/build/uiAssetSets";
+import { attachBlueprintAssetSetVariants, blueprintGraphs } from "@shared/build/blueprintAssetSets";
 import { normalizeProjectAssetSets, type AssetSet, type AssetSetCandidate } from "@shared/types/assetSet";
 import { applyAppTagToStoryDocument, type SceneReachability } from "@shared/story/appTagFold";
 import { blueprintGraphCarriers, scanStoryEntryPoints } from "@shared/story/storyReachability";
@@ -126,7 +132,10 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ...Object.values(localBlueprints.blueprints ?? {}),
         ...sharedBlueprints.map(asset => asset.blueprint),
     ]);
-    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
+    // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
+    // project has. See `DevModeBundleLoadContext.includedDlc`.
+    const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
+    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop, carriedDlc);
     // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
     // leaves both behind: the prose is gone from the story document and still legible, in full, in
     // every translation table the package carries. They are narrowed against the documents as this
@@ -147,20 +156,38 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     // the story pass so both are resolved against the same library and the same edition, and against
     // the story library this build actually ships - a character dropped with its chapter names no set.
     await resolveCharacterAssetSets(context, resolvedStoryLibrary?.characters, localization, variant.name);
+    // And the third: the interface names sets from its widgets and its Surfaces, which have no rows
+    // and are not characters. Same library, same edition, same refusal.
+    await resolveUiAssetSets(context, uidoc, localization, variant.name);
+    // And the fourth: a blueprint's asset pins. After the fold above on purpose - a branch this
+    // edition cannot take has already been deleted, so a set named only from there is not this
+    // package's problem and must not be able to refuse its build.
+    await resolveBlueprintAssetSets(
+        context,
+        [...Object.values(localBlueprints.blueprints ?? {}), ...sharedBlueprints.map(asset => asset.blueprint)],
+        localization,
+        variant.name,
+    );
     const voice = restrictVoice(await loadGameVoice(context.projectPath), shippedTextIds, context.onNotice);
     const audio = await loadGameAudio(context.projectPath);
     const autoSave = await loadAutoSaveConfiguration(context.projectPath);
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const window = await loadWindowConfiguration(context.projectPath);
+    const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
     const brand = await loadProjectBrand(context.projectPath);
+    const fonts = await loadProjectFonts(context.projectPath);
     const saveSchema = await loadSaveSchemaTable(context.projectPath);
     return {
         bundleId: context.bundleId,
         revision: context.revision,
         timestamp: new Date().toISOString(),
+        // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
+        // empty list would be a different claim.
+        ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
         ui: {
             uidoc,
             uigraphs,
@@ -178,12 +205,15 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        window,
+        vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
         // drop, so two editions that carry different chapters do not claim the same story.
         storyHash: computeStoryContentHash(resolvedStoryLibrary?.documents),
         preferences,
         brand,
+        fonts,
         compiled: context.compiled,
         blueprintCompiledScripts: context.blueprintCompiledScripts,
         blueprintScriptsCompileOk: context.blueprintScriptsCompileOk ?? true,
@@ -533,10 +563,14 @@ export function planSceneDrop(
  * absent from the package rather than merely unreachable in it, and what makes the story after a cut
  * point absent rather than merely unplayed.
  */
+/**
+ * @param carriedDlc the DLC ids this package holds, or null to carry every story the project has.
+ */
 async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
     sceneDrop: SceneDropPlan,
+    carriedDlc: ReadonlySet<string> | null,
 ): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
@@ -551,6 +585,12 @@ async function loadStoryLibrary(
             continue;
         }
         seen.add(entry.id);
+        // Before the document is read, not after: a story this package does not carry must not be
+        // loaded at all, so that no later pass can find its prose and copy it somewhere - a
+        // translation table, a voice index, an asset sweep - that does ship.
+        if (entry.dlcId && carriedDlc && !carriedDlc.has(entry.dlcId)) {
+            continue;
+        }
         const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
         if (!documentPath) {
             continue;
@@ -668,6 +708,80 @@ async function resolveCharacterAssetSets(
     // own copies live in another process.
     const result = attachCharacterAssetSetVariants({
         characters,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets the interface names, and refuse to package one that cannot be.
+ *
+ * The same rule as the two passes above in every respect that matters, and different in the one the
+ * content forces: a widget has no row to write the answer into, so the answer goes on the element -
+ * or, for a Surface's own background, on that Surface's settings. See `@shared/build/uiAssetSets`
+ * for why the reference point rather than a document-wide table.
+ */
+async function resolveUiAssetSets(
+    context: DevModeBundleLoadContext,
+    document: UIDocument | undefined,
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachUiAssetSetVariants({
+        document,
+        sets,
+        candidates: await loadAssetSetCandidates(context.projectPath),
+        localization,
+        assetAxes: context.assetAxes,
+    });
+    for (const problem of result.problems) {
+        const sentence = describeShippedAssetSetProblem(problem, variantName);
+        if (context.packaging) {
+            throw new Error(sentence);
+        }
+        context.onNotice?.(sentence);
+    }
+    if (result.collapsedBuildAxis) {
+        context.onAssetSetCollapse?.();
+    }
+}
+
+/**
+ * Resolve the sets a blueprint's asset pins name, and refuse to package one that cannot be.
+ *
+ * The answer goes on the node that STORES the id, which is not always the node that consumes it:
+ * an asset pin can be fed by an edge from a literal. See `@shared/build/blueprintAssetSlots` for
+ * why this walk knows fewer pins than the reference index does, and why that asymmetry is what
+ * keeps a plugin's own pin refused rather than half-supported.
+ */
+async function resolveBlueprintAssetSets(
+    context: DevModeBundleLoadContext,
+    blueprints: readonly Blueprint[],
+    localization: GameLocalizationBundle | undefined,
+    variantName: string,
+): Promise<void> {
+    const sets = await loadAssetSets(context.projectPath);
+    if (sets.length === 0) {
+        return;
+    }
+    const result = attachBlueprintAssetSetVariants({
+        graphs: blueprintGraphs(blueprints),
         sets,
         candidates: await loadAssetSetCandidates(context.projectPath),
         localization,
@@ -1111,6 +1225,28 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
 }
 
 /**
+ * Load the window settings from `.nlproj` `app.window`. Dense like the ones above: the shell opens
+ * a window on every launch whether or not the author ever opened the page, and the game's own
+ * configuration screen reads the offered sizes out of the same field. Exported for tests.
+ */
+export async function loadWindowConfiguration(projectPath: string): Promise<WindowConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeWindowConfiguration(app?.window);
+}
+
+/**
+ * Load the frame rate screen effects are baked at from `.nlproj` `app.vfx`. Dense like the ones
+ * above, and load-bearing rather than informational: this is what the running game computes a clip
+ * id from, and the packer computed the ids it shipped from the same file. Exported for tests.
+ */
+export async function loadVfxConfiguration(projectPath: string): Promise<VfxConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeVfxConfiguration(app?.vfx);
+}
+
+/**
  * The author's own version for this build, from `.nlproj` `metadata.version`.
  *
  * Read verbatim - never parsed, never defaulted to something like `0.0.0`. A project with no
@@ -1163,6 +1299,25 @@ export async function loadProjectBrand(projectPath: string): Promise<BrandColor[
         return migrateProjectBrandDocument(raw ?? {}).colors;
     } catch {
         return normalizeProjectBrandColors([]);
+    }
+}
+
+/**
+ * The project's default font stack, out of the same document and through the same migration.
+ *
+ * Every failure path lands on the empty stack for the reason {@link loadProjectBrand} lands on the
+ * seeds: a hand-corrupted design file must not be why a preview will not start. The difference is
+ * that an empty stack is not a fallback here, it is the ordinary state - most projects have never
+ * chosen a default font, and text renders in the host's own family exactly as it did before this
+ * existed. Exported for tests.
+ */
+export async function loadProjectFonts(projectPath: string): Promise<ProjectFontEntry[]> {
+    const brandPath = path.join(projectPath, BRAND_DOCUMENT_PATH);
+    try {
+        const raw = await readOptionalJsonFile<unknown>(brandPath);
+        return migrateProjectBrandDocument(raw ?? {}).fonts;
+    } catch {
+        return [];
     }
 }
 

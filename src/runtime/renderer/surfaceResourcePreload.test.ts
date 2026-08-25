@@ -243,6 +243,40 @@ describe("runtime surface asset preload", () => {
         ]);
     });
 
+    /**
+     * A widget that names an asset set keeps the set id in its props and carries the build's answer
+     * beside it. The set id names no bytes, so preloading it is a guaranteed miss - and in a
+     * protected build, where there is no manifest to filter against, a miss that reaches the failure
+     * log. What has to be warmed is the members.
+     *
+     * Every member, not the one the current language names: the title screen's language button
+     * changes languages without restarting, so a preload keyed to the language at load would leave
+     * the picture the player just switched to arriving late.
+     */
+    it("warms an asset set's members rather than the set id the props still name", () => {
+        const pack = makePack();
+        const document = pack.bundle.ui.uidoc;
+        const root = document.elements["credits-root"]!;
+        root.props = { ...(root.props ?? {}), imageFill: { assetId: "title-set" } };
+        root.assetVariants = { "title-set": { en: "title-en", ja: "title-ja" } };
+        for (const id of ["title-en", "title-ja"]) {
+            pack.assets.items[id] = {
+                id,
+                type: "image",
+                name: id,
+                source: "local",
+                relativePath: `assets/${id}.png`,
+                ext: ".png",
+            } as (typeof pack.assets.items)[string];
+        }
+
+        const credits = document.surfaces.find(surface => surface.id === "credits")!;
+        const collected = collectRuntimeSurfaceAssetIds(pack, credits);
+
+        expect(collected.sort()).toEqual(["credits-bg", "title-en", "title-ja"]);
+        expect(collected).not.toContain("title-set");
+    });
+
     it("prioritizes first screen assets before the rest of the pack", () => {
         const pack = makePack();
         const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
@@ -344,5 +378,46 @@ describe("runtime surface asset preload", () => {
         expect(result.timedOut).toBe(false);
         expect(result.loaded).toBe(3);
         expect(decoded).toEqual([]);
+    });
+});
+
+/**
+ * The project's default fonts are named in the bundle rather than in any widget, so the walk that
+ * collects everything else cannot see them - and they are the one typeface the whole game is set in.
+ */
+describe("the project's default fonts", () => {
+    function packWithDefaultFonts(): GameRuntimePackV1 {
+        const pack = makePack();
+        pack.assets.items["default-font"] = {
+            id: "default-font",
+            type: "font",
+            name: "default",
+            source: "local",
+            relativePath: "assets/default-font.woff2",
+            ext: ".woff2",
+        };
+        (pack.bundle as { fonts?: unknown }).fonts = [
+            { assetId: "default-font" },
+            // A built-in stack is a CSS literal with no bytes to fetch; it is not in the manifest
+            // and must not be warmed.
+            { assetId: "builtin:font:serif" },
+        ];
+        return pack;
+    }
+
+    it("warms with the first surface, ahead of what that surface names", () => {
+        const pack = packWithDefaultFonts();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+
+        expect(collectRuntimeSurfaceAssetIds(pack, home)[0]).toBe("default-font");
+    });
+
+    it("is carried by the whole-pack sweep too", () => {
+        const pack = packWithDefaultFonts();
+        const home = pack.bundle.ui.uidoc.surfaces.find(surface => surface.id === "home")!;
+
+        const { assetIds } = collectRuntimePackAssetIds(pack, home);
+        expect(assetIds).toContain("default-font");
+        expect(assetIds).not.toContain("builtin:font:serif");
     });
 });

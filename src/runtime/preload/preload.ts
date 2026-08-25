@@ -6,33 +6,27 @@ import {
     GAME_RUNTIME_FULLSCREEN_CHANGED_CHANNEL,
     GAME_RUNTIME_PROTOCOL,
     GAME_RUNTIME_SIDECAR_MESSAGE_CHANNEL,
-    normalizeGameCrashPolicy,
     type GameRuntimePackV1,
     type GameRuntimePreloadBridge,
     type GameRuntimeSidecarBridge,
     type GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
+import { readGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
 import {
-    readGameRuntimeAssetVersionArg,
-    readGameRuntimeCrashPolicyArg,
-    readGameRuntimeLogPathArg,
-} from "@shared/utils/gameRuntimeAssetUrl";
-import {
+    GAME_RUNTIME_TEST_COMMAND_CHANNEL,
+    GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL,
     GAME_RUNTIME_TEST_SIGNAL_CHANNEL,
+    type GameRuntimeTestCommandBridge,
     type GameRuntimeTestSignal,
     type GameRuntimeTestSignalBridge,
 } from "../gameTestSignal";
+import type { GameTestCommand } from "@shared/types/gameTest";
 
 // Version tag for asset URLs, injected by the main process at window creation
 // so immutable HTTP cache entries are keyed per pack. The fallback is
 // session-unique: a missing marker can only under-cache, never serve bytes
 // from an older pack.
 const assetVersion = readGameRuntimeAssetVersionArg(process.argv) ?? String(Date.now());
-
-// Same channel, same reason: the renderer has to know what to do about a crash before it has read
-// anything. Passed through unvalidated - the renderer normalizes, and a marker this process did
-// not write cannot reach here anyway.
-const crashPolicy = normalizeGameCrashPolicy(readGameRuntimeCrashPolicyArg(process.argv));
 
 // The main process asks before honouring a user-initiated window close so blueprints can intercept
 // it. Registered once here; until the game installs a handler (still loading), the close is allowed
@@ -155,14 +149,14 @@ const sidecar: GameRuntimeSidecarBridge = {
 };
 
 /**
- * The desktop bridge is the shared contract plus the test-observation channel.
+ * The desktop bridge is the shared contract plus the two halves of the test channel.
  *
- * Intersected rather than added to `GameRuntimePreloadBridge`, because this half genuinely does not
- * exist everywhere: the web export has no main process to report to. Callers read it through
- * `readRuntimeTestSignalReporter`, which turns that absence into "no hooks" instead of a method
- * that exists and does nothing.
+ * Intersected rather than added to `GameRuntimePreloadBridge`, because they genuinely do not exist
+ * everywhere: the web export has no main process to report to or hear from. Callers read them
+ * through `readRuntimeTestSignalReporter` / `readRuntimeTestCommandSource`, which turn that absence
+ * into "no hooks" instead of methods that exist and do nothing.
  */
-const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
+const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRuntimeTestCommandBridge = {
     readPack: () => ipcRenderer.invoke("runtime:read-pack") as Promise<GameRuntimePackV1>,
     // Encoded per segment, not as a whole: a model bundle addresses its files by the manifest key
     // `{assetId}/{pathInsideBundle}`, and escaping the separators would collapse that into one
@@ -180,8 +174,36 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
     reportTestSignal: (signal: GameRuntimeTestSignal) => {
         ipcRenderer.send(GAME_RUNTIME_TEST_SIGNAL_CHANNEL, signal);
     },
+    // The other direction, shaped like `onFullscreenChanged` below: subscribe, and the returned
+    // function is the only way off. The main process validated the command before it sent it, so
+    // nothing is re-decided here - this side only fans it out.
+    onTestCommand: (listener: (command: GameTestCommand) => void) => {
+        const handler = (_event: unknown, command: GameTestCommand) => {
+            listener(command);
+        };
+        ipcRenderer.on(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
+        // Announced from here rather than by the renderer, because here is where the listener
+        // actually exists: the main process holds the first command until it hears this, and a
+        // caller that had to remember to say it would eventually forget.
+        ipcRenderer.send(GAME_RUNTIME_TEST_COMMAND_READY_CHANNEL);
+        return () => {
+            ipcRenderer.off(GAME_RUNTIME_TEST_COMMAND_CHANNEL, handler);
+        };
+    },
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
+    getWindowScale: () => ipcRenderer.invoke("runtime:window:getScale") as Promise<number>,
+    getWindowScaleOptions: () =>
+        ipcRenderer.invoke("runtime:window:getScaleOptions") as Promise<number[]>,
+    setWindowScale: (scale: number) =>
+        ipcRenderer.invoke("runtime:window:setScale", scale) as Promise<void>,
+    getWindowSize: () =>
+        ipcRenderer.invoke("runtime:window:getSize") as Promise<{ width: number; height: number }>,
+    setWindowSize: (width: number, height: number) =>
+        ipcRenderer.invoke("runtime:window:setSize", { width, height }) as Promise<void>,
+    setDisplayAwake: (awake: boolean) => {
+        ipcRenderer.send("runtime:displayAwake:set", awake);
+    },
     getFullscreen: () => ipcRenderer.invoke("runtime:fullscreen:get") as Promise<boolean>,
     setFullscreen: (fullscreen: boolean) =>
         ipcRenderer.invoke("runtime:fullscreen:set", fullscreen) as Promise<void>,
@@ -200,9 +222,14 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge = {
             closeRequestedListeners.delete(listener);
         };
     },
-    capabilities: { closeRequested: true },
-    crashPolicy,
-    logPath: readGameRuntimeLogPathArg(process.argv),
+    capabilities: { closeRequested: true, windowScale: true },
+    /*
+     * Saves here are files in this game's user-data directory. Nothing reclaims them: no quota, no
+     * eviction, no seven-day rule - which is the difference the web export has to report and this
+     * one does not. `claimSession` is deliberately absent for the neighbouring reason: the main
+     * process has already refused to start a second copy by the time this preload runs.
+     */
+    storageDurability: () => Promise.resolve("durable" as const),
     save: {
         write: (id, savedGame, capture, metadata, compatibility, playtimeSeconds) =>
             ipcRenderer.invoke("runtime:save:write", {

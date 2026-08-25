@@ -37,6 +37,9 @@ export const widgets = {
         wrapWords: "単語単位",
         wrapCharacters: "文字単位",
         wrapNone: "折り返さない",
+        autoFit: "自動縮小",
+        autoFitMinFontSize: "最小の文字サイズ",
+        autoFitTip: "テキストがウィジェットのサイズを超えると文字サイズを縮小する。下限は最小の文字サイズ。それでも超える部分は切り取られる",
         alignment: "揃え",
         verticalAlignment: "縦の揃え",
         alignLeft: "左揃え",
@@ -55,7 +58,7 @@ export const widgets = {
         orientationUpright: "すべて正立",
         orientationSideways: "すべて横倒し",
         tateChuYoko: "短い文字列を縦中横にする",
-        tateChuYokoHint: "数字や短い欧文を一文字分の枠に横並びで組みます。",
+        tateChuYokoHint: "数字や短い欧文を一文字分の枠に横並びで組む",
         tateChuYokoMaxLength: "縦中横にする最大文字数",
         italic: "イタリック",
         enableItalic: "イタリックにする",
@@ -78,7 +81,7 @@ export const widgets = {
     },
     list: {
         title: "リスト",
-        sectionPreview: "プレビュー",
+        sectionContent: "内容",
         runtimeItems: "実行時の項目",
         runtimePreviewOnly: "プレビューのみ",
         runtimePageState: "ページ状態の配列",
@@ -88,7 +91,14 @@ export const widgets = {
         stateKeyPlaceholder: "choices",
         propName: "プロパティ名",
         propNamePlaceholder: "choices",
-        previewCount: "プレビューの件数",
+        placeholderCount: "プレースホルダー行数",
+        contentTitle: "リストの内容",
+        fields: "項目",
+        rows: "データ",
+        editContent: "内容を編集",
+        keyField: "行キー",
+        keyFieldByIndex: "位置で識別",
+        sectionItemAnimation: "行のアニメーション",
         sectionLayout: "レイアウト",
         sectionTemplate: "項目のテンプレート",
         sectionScrollbar: "スクロールバー",
@@ -264,7 +274,7 @@ export const widgets = {
     },
     /**
      * ウィジェットに保存される型は `nl.puppet` で、どの描画側の名前でもない。作者が読む文字列は
-     * すべて「Spine2D / Live2D モデル」と言う。「パペット」では何のためのものか誰にも伝わらない。
+     * すべて「Spine / Live2D モデル」と言う。「パペット」では何のためのものか誰にも伝わらない。
      */
     puppet: {
         title: "モデル",
@@ -367,7 +377,7 @@ export const widgets = {
         video: { name: "動画" },
         // 保存される型はどちらの名前でもないが、ここでは意図して 2 つの描画側を名指しする
         // （2026-07-29 の裁定）。Spine や Live2D を探している作者が、パレットでこれを見つけられる必要がある。
-        puppet: { name: "Spine2D / Live2D モデル" },
+        puppet: { name: "Spine / Live2D モデル" },
     },
     unsupportedType: "対応していない種類：{type}",
 } satisfies LocaleNamespace<"widgets">;

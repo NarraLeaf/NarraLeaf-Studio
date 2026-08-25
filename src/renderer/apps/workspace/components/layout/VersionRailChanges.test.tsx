@@ -28,7 +28,12 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const workspace = vi.hoisted(() => ({ context: {} as never }));
-vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => workspace }));
+// Both spellings: the rail names its rows through the comparison's naming layer, which reads the
+// workspace optionally so it can also be mounted where there is not a whole one.
+vi.mock("@/apps/workspace/context", () => ({
+    useWorkspace: () => workspace,
+    useOptionalWorkspace: () => workspace,
+}));
 
 const openTab = vi.hoisted(() => vi.fn());
 vi.mock("@/apps/workspace/modules/vcs-changes/openVcsChangesTab", () => ({
@@ -92,10 +97,14 @@ describe("the rail's change section", () => {
         ]);
 
         expect(rows(container)).toHaveLength(3);
-        // Every string a change list draws is under `documentDiff.`, so one of them appearing as
-        // text is the whole of the regression this section was rebuilt to prevent. The comparison
-        // entry names itself with the same namespace and does it in an attribute, not in text.
-        expect(container.textContent).not.toContain("documentDiff.");
+        // The rail names each change the way the author does, which is the one thing it shares with
+        // the comparison: `documentDiff.name.*`. Nothing else from that namespace belongs in this
+        // text - a change's own labels, tiers and captions are the comparison's to draw, and one of
+        // them appearing here is the regression this section was rebuilt to prevent.
+        const drawn = container.textContent ?? "";
+        expect(drawn.replace(/documentDiff\.name\.[A-Za-z]+/g, "")).not.toContain("documentDiff.");
+        // And a name really is drawn, so the assertion above cannot pass by drawing nothing.
+        expect(drawn).toContain("documentDiff.name.");
     });
 
     it("draws no row that can be opened, because nothing in the rail opens", () => {
@@ -118,14 +127,14 @@ describe("the rail's change section", () => {
         )!;
         expect(entry).not.toBeNull();
         fireEvent.click(entry);
-        // The label travels with it: the tab's heading has to name the head the same way this panel
-        // does, and left to itself it named it by hash.
-        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree", headLabel: "#36" });
+        // The head's NUMBER travels with it, not a rendered name and never a hash: the tab's
+        // heading has to open on the same `#36` this panel is drawing.
+        expect(openTab).toHaveBeenCalledWith(workspace.context, { mode: "working-tree", headNumber: 36 });
     });
 
-    it("passes no label when the head has no number yet, rather than inventing one", () => {
-        // `getInfo` has not answered. The tab then names the version by its hash, which is honest -
-        // a number made up here would be a version that does not exist.
+    it("passes no number when the head has none yet, rather than inventing one", () => {
+        // `getInfo` has not answered here. The tab asks for the number itself, so passing nothing
+        // costs a frame; passing a number made up here would name a version that does not exist.
         const { container } = section([change("editor/brand.json")], {
             kind: "current",
             head: "a91f3c8d2e4b6",
@@ -137,7 +146,7 @@ describe("the rail's change section", () => {
         )!);
         expect(openTab).toHaveBeenCalledWith(workspace.context, {
             mode: "working-tree",
-            headLabel: undefined,
+            headNumber: undefined,
         });
     });
 

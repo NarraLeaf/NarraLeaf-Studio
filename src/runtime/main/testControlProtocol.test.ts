@@ -22,6 +22,31 @@ describe("dispatchControlFrame", () => {
         });
     });
 
+    it("hands a drive command over, validated, once the token checks out", () => {
+        expect(dispatchControlFrame(
+            frame({ type: "test:command", token: TOKEN, command: { kind: "choose", index: 2 } }),
+            TOKEN,
+        )).toEqual({
+            reply: { ok: true },
+            effect: "command",
+            command: { kind: "choose", index: 2 },
+        });
+    });
+
+    it("refuses a command it cannot read rather than forwarding half of one", () => {
+        for (const command of [
+            { kind: "start", storyId: "story-1" },
+            { kind: "choose", index: -1 },
+            { kind: "teleport" },
+            undefined,
+        ]) {
+            expect(dispatchControlFrame(frame({ type: "test:command", token: TOKEN, command }), TOKEN)).toEqual({
+                reply: { ok: false, error: "Unknown command" },
+                effect: "none",
+            });
+        }
+    });
+
     it("answers an unknown command instead of dropping it, so an older game degrades", () => {
         expect(dispatchControlFrame(frame({ type: "test:teleport", token: TOKEN }), TOKEN)).toEqual({
             reply: { ok: false, error: "Unknown command" },
@@ -37,8 +62,11 @@ describe("dispatchControlFrame", () => {
     });
 
     it("checks the token before the type, so a bad caller learns no vocabulary", () => {
-        for (const type of ["shutdown", "test:subscribe", "test:teleport"]) {
-            expect(dispatchControlFrame(frame({ type, token: "wrong" }), TOKEN)).toEqual({
+        for (const type of ["shutdown", "test:subscribe", "test:command", "test:teleport"]) {
+            expect(dispatchControlFrame(
+                frame({ type, token: "wrong", command: { kind: "advance" } }),
+                TOKEN,
+            )).toEqual({
                 reply: { ok: false, error: "Invalid token" },
                 effect: "none",
             });

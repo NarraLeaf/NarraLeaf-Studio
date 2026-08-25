@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../../registry/types";
 import { Separator } from "../../registry/types";
 import { getVisibleActionMenuItems, isActionMenuAction } from "./actionMenuModel";
@@ -20,6 +21,15 @@ import {
 const FILE_GROUP = "narraleaf-studio:file";
 const HELP_GROUP = "narraleaf-studio:help";
 const BUILD_ACTION = "narraleaf-studio:build";
+
+/**
+ * A representative freeze that refuses everything, and the one that does not refuse operations.
+ *
+ * The four total kinds behave identically here, so most cases pass {@link FROZEN} and the cases that
+ * turn on the difference name it explicitly.
+ */
+const FROZEN: WorkspaceFreezeKind = "manual";
+const TOTAL_FREEZES: readonly WorkspaceFreezeKind[] = ["revision", "manual", "merge", "recovery"];
 
 function action(id: string, extra: Partial<ActionDefinition> = {}): ActionDefinition {
     return { id, label: id, onClick: () => {}, ...extra };
@@ -57,54 +67,92 @@ describe("freeze exemption table", () => {
         // The only lever a registrant has is `group`, and claiming a core group id is the one thing
         // that would work - which is why the table is keyed on ids Studio itself owns.
         const impostor = action("some-plugin:publish", { group: "some-plugin:file" });
-        expect(resolveFrozenActionDisabled(impostor, true)).toBe(true);
+        expect(resolveFrozenActionDisabled(impostor, FROZEN)).toBe(true);
 
         // Nothing on ActionDefinition marks an action as exempt; a plugin passing extra fields is
         // ignored because the policy never reads the definition for permission.
         const withExtras = { ...action("some-plugin:deploy"), exemptWhileFrozen: true } as ActionDefinition;
-        expect(resolveFrozenActionDisabled(withExtras, true)).toBe(true);
+        expect(resolveFrozenActionDisabled(withExtras, FROZEN)).toBe(true);
     });
 });
 
 describe("resolveFrozenActionDisabled", () => {
     it("disables a registered standalone action while frozen", () => {
         const build = action(BUILD_ACTION);
-        expect(resolveFrozenActionDisabled(build, false)).toBe(false);
-        expect(resolveFrozenActionDisabled(build, true)).toBe(true);
-        expect(isActionFrozenOut(build, true)).toBe(true);
+        expect(resolveFrozenActionDisabled(build, null)).toBe(false);
+        expect(resolveFrozenActionDisabled(build, FROZEN)).toBe(true);
+        expect(isActionFrozenOut(build, FROZEN)).toBe(true);
     });
 
     it("leaves an exempt group's action enabled while frozen", () => {
         const close = action("narraleaf-studio:file-close-workspace", { group: FILE_GROUP });
-        expect(resolveFrozenActionDisabled(close, true)).toBe(false);
-        expect(isActionFrozenOut(close, true)).toBe(false);
+        expect(resolveFrozenActionDisabled(close, FROZEN)).toBe(false);
+        expect(isActionFrozenOut(close, FROZEN)).toBe(false);
     });
 
     it("restores on thaw, because the registration was never touched", () => {
         const plugin = action("some-plugin:tool");
-        expect(resolveFrozenActionDisabled(plugin, true)).toBe(true);
-        expect(resolveFrozenActionDisabled(plugin, false)).toBe(false);
+        expect(resolveFrozenActionDisabled(plugin, FROZEN)).toBe(true);
+        expect(resolveFrozenActionDisabled(plugin, null)).toBe(false);
         expect(plugin.disabled).toBeUndefined();
     });
 
     it("keeps an already-disabled registration disabled, and does not blame the freeze for it", () => {
         const busy = action("some-plugin:tool", { disabled: true });
-        expect(resolveFrozenActionDisabled(busy, false)).toBe(true);
-        expect(resolveFrozenActionDisabled(busy, true)).toBe(true);
+        expect(resolveFrozenActionDisabled(busy, null)).toBe(true);
+        expect(resolveFrozenActionDisabled(busy, FROZEN)).toBe(true);
         // Thawing must not enable it: it is off for its own reason.
-        expect(resolveFrozenActionDisabled(busy, false)).toBe(true);
+        expect(resolveFrozenActionDisabled(busy, null)).toBe(true);
 
         // An exempt group's already-disabled item stays disabled too.
         const emptyRecent = action("narraleaf-studio:file-open-recent:empty", { disabled: true, group: FILE_GROUP });
-        expect(resolveFrozenActionDisabled(emptyRecent, true)).toBe(true);
-        expect(isActionFrozenOut(emptyRecent, true)).toBe(false);
+        expect(resolveFrozenActionDisabled(emptyRecent, FROZEN)).toBe(true);
+        expect(isActionFrozenOut(emptyRecent, FROZEN)).toBe(false);
+    });
+});
+
+describe("a freeze that does not refuse the operations main starts", () => {
+    it("leaves Production Build live, because main would have run it", () => {
+        // The two sides have to agree. Main lets a live session build - the working tree IS what
+        // everybody in the session is looking at - so a Build button greyed out here would be a
+        // dead control with nothing on screen to explain it.
+        const build = action(BUILD_ACTION);
+        expect(isActionFrozenOut(build, "live-session")).toBe(false);
+        expect(resolveFrozenActionDisabled(build, "live-session")).toBe(false);
+    });
+
+    it("switches Production Build off under every freeze that does refuse one", () => {
+        const build = action(BUILD_ACTION);
+        for (const kind of TOTAL_FREEZES) {
+            expect(isActionFrozenOut(build, kind), kind).toBe(true);
+            expect(resolveFrozenActionDisabled(build, kind), kind).toBe(true);
+        }
+    });
+
+    it("still switches off everything that writes project data", () => {
+        // The exemption is about starting something, not about writing: a session leaves one story
+        // document writable and an action says nothing about which document it writes.
+        const plugin = action("some-plugin:tool");
+        expect(isActionFrozenOut(plugin, "live-session")).toBe(true);
+        expect(resolveFrozenActionDisabled(plugin, "live-session")).toBe(true);
+    });
+
+    it("keeps a build row inside a menu live too, so both doors agree", () => {
+        // The macOS Dev menu resolves the same registration; a row greyed in one door and live in
+        // the other is how a frozen project ends up meaning two different things.
+        const items = [action(BUILD_ACTION), action("some-plugin:tool")];
+        const live = applyFreezeToActionMenuItems(items, true, "live-session");
+        expect(actionsOf(live).map(item => item.disabled)).toEqual([undefined, true]);
+
+        const frozen = applyFreezeToActionMenuItems(items, true, FROZEN);
+        expect(actionsOf(frozen).map(item => item.disabled)).toEqual([true, true]);
     });
 });
 
 describe("applyFreezeToActionMenuItems", () => {
     it("disables every item of a non-exempt group without mutating what was registered", () => {
         const items = [action("some-plugin:one"), Separator, action("some-plugin:two")];
-        const frozen = applyFreezeToActionMenuItems(items, true);
+        const frozen = applyFreezeToActionMenuItems(items, true, FROZEN);
 
         expect(actionsOf(frozen).map(item => item.disabled)).toEqual([true, true]);
         expect(actionsOf(items).map(item => item.disabled)).toEqual([undefined, undefined]);
@@ -114,13 +162,13 @@ describe("applyFreezeToActionMenuItems", () => {
     it("returns the registered items untouched when not frozen out", () => {
         const items = fileMenuItems();
         // Identity, not just equality: the File group's menu must not even be rebuilt.
-        expect(applyFreezeToActionMenuItems(items, false)).toBe(items);
+        expect(applyFreezeToActionMenuItems(items, false, null)).toBe(items);
         expect(actionsOf(items).every(item => item.disabled === undefined)).toBe(true);
     });
 
     it("leaves a submenu row expandable while disabling what is inside it", () => {
         const items = fileMenuItems();
-        const frozen = applyFreezeToActionMenuItems(items, true);
+        const frozen = applyFreezeToActionMenuItems(items, true, FROZEN);
 
         // The group still has visible items, so ActionBar keeps rendering it and the dropdown
         // still opens - a menu that could not be opened would hide what the freeze is doing.
@@ -142,7 +190,7 @@ describe("applyFreezeToActionMenuItems", () => {
         const inner: ActionSubmenu = { id: "some-plugin:inner", label: "Inner", items: [leaf] };
         const outer: ActionSubmenu = { id: "some-plugin:outer", label: "Outer", items: [inner] };
 
-        const frozen = applyFreezeToActionMenuItems([outer], true) as ActionSubmenu[];
+        const frozen = applyFreezeToActionMenuItems([outer], true, FROZEN) as ActionSubmenu[];
         const frozenInner = frozen[0].items[0] as ActionSubmenu;
         expect(actionsOf(frozenInner.items).map(item => item.disabled)).toEqual([true]);
         expect(leaf.disabled).toBeUndefined();

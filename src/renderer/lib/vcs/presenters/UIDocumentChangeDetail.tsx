@@ -24,6 +24,7 @@ import {
 import { CHANGE_MASK_CLASS } from "./changeMask";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
 import { useSideDocument } from "./sideDocument";
+import { RefusedAssetsNote, useVersionedAssets, VersionedAssetsProvider } from "./useVersionedAssets";
 import {
     buildSurfaceDiffPlan,
     sharedSurfaceScale,
@@ -54,6 +55,13 @@ import {
  * placement of one definition shares the ids inside it). Those changes are counted in the line under
  * the canvas rather than dropped, because a canvas that silently marks nine of twelve changes is
  * worse than one that marks nine and says so.
+ *
+ * **Each column's pictures come from that column's version.** Every image, video and font inside a
+ * drawn page reaches its bytes through `useAssetObjectUrl`, which resolves against the project as it
+ * is right now - so a background replaced since the older version was recorded used to appear,
+ * identical, in both columns, with nothing on screen saying the older one was a substitution. Each
+ * column mounts an asset source of its own instead (`useVersionedAssets`), and a file that cannot be
+ * read from that version is drawn as a mark rather than as today's file.
  */
 
 /** How tall the pair of pages may get before the scale is pulled in. */
@@ -64,6 +72,10 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
     const requested = useMemo(() => sidesOfEntry(entry, sides), [entry, sides]);
     const base = useSideDocument<UIDocument>(requested.before, entry.path, uiDocumentSpec);
     const head = useSideDocument<UIDocument>(requested.after, entry.path, uiDocumentSpec);
+    // One per column, and never shared: two columns behind one source would draw one version's
+    // pictures under both versions' layouts.
+    const baseAssets = useVersionedAssets(requested.before);
+    const headAssets = useVersionedAssets(requested.after);
 
     const changes = entry.diff.changes;
     const plan = useMemo(
@@ -164,6 +176,7 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
                         offCanvas={plan.offCanvas.length}
                         unplaced={unplaced.size}
                     />
+                    <RefusedAssetsNote sides={[baseAssets.refusals, headAssets.refusals]} />
                 </>
             }
         >
@@ -171,30 +184,34 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
                 {frame > 0 && drawn && surface && (
                     <>
                         {surface.inBase && (
-                            <SurfaceColumn
-                                caption="documentDiff.canvas.before"
-                                document={base.document}
-                                surfaceId={surface.id}
-                                size={surface.baseSize}
-                                scale={scale}
-                                masks={baseMasks}
-                                selected={selected}
-                                onSelect={setSelected}
-                                onUnplaced={setUnplacedBase}
-                            />
+                            <VersionedAssetsProvider source={baseAssets.source}>
+                                <SurfaceColumn
+                                    caption="documentDiff.canvas.before"
+                                    document={base.document}
+                                    surfaceId={surface.id}
+                                    size={surface.baseSize}
+                                    scale={scale}
+                                    masks={baseMasks}
+                                    selected={selected}
+                                    onSelect={setSelected}
+                                    onUnplaced={setUnplacedBase}
+                                />
+                            </VersionedAssetsProvider>
                         )}
                         {surface.inHead && (
-                            <SurfaceColumn
-                                caption="documentDiff.canvas.after"
-                                document={head.document}
-                                surfaceId={surface.id}
-                                size={surface.headSize}
-                                scale={scale}
-                                masks={headMasks}
-                                selected={selected}
-                                onSelect={setSelected}
-                                onUnplaced={setUnplacedHead}
-                            />
+                            <VersionedAssetsProvider source={headAssets.source}>
+                                <SurfaceColumn
+                                    caption="documentDiff.canvas.after"
+                                    document={head.document}
+                                    surfaceId={surface.id}
+                                    size={surface.headSize}
+                                    scale={scale}
+                                    masks={headMasks}
+                                    selected={selected}
+                                    onSelect={setSelected}
+                                    onUnplaced={setUnplacedHead}
+                                />
+                            </VersionedAssetsProvider>
                         )}
                     </>
                 )}

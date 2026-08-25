@@ -60,6 +60,7 @@ const filesystemService = {
     read: (p: string, encoding: BufferEncoding) => Fs.read(p, encoding),
     write: (p: string, data: string, encoding: BufferEncoding) => Fs.write(p, data, encoding),
     writeFileNoFollow: (p: string, data: string, encoding: BufferEncoding) => Fs.writeFileNoFollow(p, data, encoding),
+    writeFileNoFollowOrCreate: (p: string, data: string, encoding: BufferEncoding) => Fs.writeFileNoFollowOrCreate(p, data, encoding),
     ensureRegularFile: (p: string, data: string, encoding: BufferEncoding) => Fs.ensureRegularFile(p, data, encoding),
     recoverCorruptedJsonFile: (p: string, replacement: string, encoding: BufferEncoding) => Fs.recoverCorruptedJsonFile(p, replacement, encoding),
     isFileExists: (p: string) => Fs.isFileExists(p),

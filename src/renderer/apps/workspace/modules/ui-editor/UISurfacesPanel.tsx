@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
@@ -26,7 +26,7 @@ import { getSurfaceDisplayLabel, getSurfaceRenameNoun } from "@/lib/ui-editor/su
 import { DEFAULT_APP_SURFACE_NAME, DEFAULT_UI_SURFACE_SIZE, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import { SurfaceActions } from "./panel/SurfaceActions";
-import { useFreezeGuard } from "../../components/ui/freezeGuard";
+import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/freezeGuard";
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
@@ -35,6 +35,7 @@ import {
     type BlueprintOpenOptions,
 } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
+import { InputActionLibraryPanel } from "./input/InputActionLibraryPanel";
 import { getComponentEditorSurfaceId, getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import type { BlueprintEntryTabPayload } from "../blueprint-lite/blueprintEntryTabId";
@@ -56,6 +57,8 @@ import { getStageSlotLabel } from "@/lib/ui-editor/stageSlotLabel";
 import type { EditorLayout, EditorTabDefinition } from "../../registry/types";
 import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
+import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
+import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -150,9 +153,24 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         return context.services.get<BlueprintNodeCatalogService>(Services.BlueprintNodeCatalog);
     }, [context]);
     const inputDialog = useMemo(() => (uiService ? createInputDialog(uiService) : null), [uiService]);
+    // Absent, not greyed, while the machine's clipboard holds no interface - see `SurfaceActions`.
+    const canPasteSurface = useUiSurfaceClipboardPresence(Boolean(documentService));
     // Renaming, duplicating and deleting a surface write the interface document. Opening one - and the
     // filter, the search and the previews - do not.
     const freeze = useFreezeGuard();
+    /**
+     * The freeze as it stands NOW, for the three flows that put a dialog between the author's click
+     * and the write.
+     *
+     * The rows are greyed when the menu opens, which settles whether the flow may start; it cannot
+     * settle whether it may finish. A freeze arrives while the workspace is running - a collaborator
+     * opens a session, the author steps back to a past revision - and the handler that resumes after
+     * `await` is the one rendered at click time, holding the answer from before it landed. Without
+     * this the author names a new page, presses Create, and gets a tab for a page that was never
+     * written: the failure `FreezeGuard.run` exists for, in the one shape `run` cannot cover.
+     */
+    const frozenRef = useRef(freeze.frozen);
+    frozenRef.current = freeze.frozen;
 
     useEffect(() => {
         if (!documentService) return;
@@ -280,6 +298,13 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         [documentService],
     );
 
+    // A project with no page at all gets one the moment this panel opens - a write no author asked
+    // for, and the third shape `isDeferredWriteAllowed` exists for: there is no control to grey out
+    // and no gesture to leave unattached. Frozen, it is DEFERRED rather than attempted, because
+    // attempting it raises "Nothing is being saved right now" about the panel's own bookkeeping and
+    // then opens a tab for a page that was never written. `frozen` is an input of the effect, so the
+    // page is created as soon as the workspace is writable again; the project that had none still
+    // has none.
     useEffect(() => {
         if (!documentService || hasEnsuredAppSurface) {
             return;
@@ -288,6 +313,9 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         const hasAppSurface = document.surfaces.some(surface => surface.kind === "appSurface");
         if (hasAppSurface) {
             setHasEnsuredAppSurface(true);
+            return;
+        }
+        if (!isDeferredWriteAllowed(freeze.frozen)) {
             return;
         }
         if (documentService.getRevision() !== 0) {
@@ -300,7 +328,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         });
         setHasEnsuredAppSurface(true);
         handleOpenSurface(defaultSurface);
-    }, [documentService, handleOpenSurface, hasEnsuredAppSurface]);
+    }, [documentService, freeze.frozen, handleOpenSurface, hasEnsuredAppSurface]);
 
     const handleDeleteSurface = useCallback(async (surface: UISurface) => {
         if (!documentService || !uiService) {
@@ -314,7 +342,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             t("uiEditor.panel.deleteConfirm", { label }),
             hasChildren ? t("uiEditor.panel.deleteDetail", { label }) : undefined
         );
-        if (!confirmed) {
+        // `frozenRef`, not `freeze`: the freeze may have landed while the confirmation was open.
+        if (!confirmed || frozenRef.current) {
             return;
         }
         const tabsToClose = collectSurfaceOwnedEditorTabs(editorLayout, surface.id);
@@ -333,7 +362,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             return;
         }
         const name = await inputDialog.showRenameDialog(surface.name, getSurfaceRenameNoun(surface));
-        if (!name) {
+        // `frozenRef`, not `freeze`: the freeze may have landed while the author was typing.
+        if (!name || frozenRef.current) {
             return;
         }
         documentService.renameSurface(surface.id, name);
@@ -348,6 +378,29 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             uiService.getStore().openEditorTabInGroup(createSurfaceEditorTab(updatedSurface), groupId, false);
         }
     }, [documentService, editorLayout, inputDialog, uiService]);
+
+    // A copy reads the document and the blueprint store; nothing about it writes, so it stays
+    // available while the workspace is frozen.
+    const handleCopySurface = useCallback((surface: UISurface) => {
+        if (!documentService) {
+            return;
+        }
+        copyUiSurface(documentService, localBlueprintService, surface.id);
+    }, [documentService, localBlueprintService]);
+
+    const handlePasteSurface = useCallback(async () => {
+        if (!documentService) {
+            return;
+        }
+        const pasted = await pasteUiSurface(documentService);
+        if (!pasted) {
+            return;
+        }
+        // The list is filtered by kind and a copied Game UI keeps its kind, so an interface pasted
+        // while the other tab is showing would arrive out of sight.
+        setKind(pasted.kind);
+        handleOpenSurface(pasted);
+    }, [documentService, handleOpenSurface]);
 
     const handleDuplicateSurface = useCallback((surface: UISurface) => {
         if (!documentService || surface.kind !== "appSurface") {
@@ -394,8 +447,17 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                     },
                 });
             }
+            // The main page is left out of both: a project has exactly one, so it can be neither
+            // duplicated nor imported, and a copy of it would paste as nothing.
             if (surface.id !== MAIN_APP_SURFACE_ID) {
                 items.push(
+                    {
+                        id: "copy-surface",
+                        label: t("uiEditor.panel.copySurface", { label }),
+                        onClick: () => {
+                            handleCopySurface(surface);
+                        },
+                    },
                     {
                         id: "surface-separator",
                         separator: true,
@@ -417,7 +479,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
             ));
             showMenu(event);
         },
-        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleDuplicateSurface, handleDeleteSurface, t],
+        [freeze, showMenu, hideMenu, uiService, handleOpenSurface, handleRenameSurface, handleCopySurface, handleDuplicateSurface, handleDeleteSurface, t],
     );
 
     const promptCreateSurface = useCallback(
@@ -519,7 +581,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 ? t("uiEditor.naming.page", { index: filteredSurfaces.length + 1 })
                 : t("uiEditor.naming.gameUi", { slot: getStageSlotLabel(defaultStageSlotId, t) });
         const selection = await promptCreateSurface(suggestedName);
-        if (!selection) {
+        // `frozenRef`, not `freeze`: the freeze may have landed while the dialog was open.
+        if (!selection || frozenRef.current) {
             return;
         }
         let stageMount: UIStageSurfaceMount | undefined;
@@ -581,6 +644,8 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 onOpenTemplateStore={() => setTemplateStoreOpen(true)}
                 templateLabel={t("uiEditor.templateStore.open")}
                 templateDisabled={!documentService}
+                onPaste={canPasteSurface ? () => void handlePasteSurface() : undefined}
+                pasteLabel={t("uiEditor.panel.pasteSurface")}
             />
             <SurfaceList
                 surfaces={filteredSurfaces}
@@ -596,6 +661,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 uiService={uiService}
                 onOpenComponent={handleOpenComponent}
             />
+            <InputActionLibraryPanel documentService={documentService} uiService={uiService} />
             <ContextMenu
                 items={menuItems}
                 position={menuState.position}

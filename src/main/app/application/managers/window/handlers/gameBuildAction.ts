@@ -2,6 +2,7 @@ import { LAYER_FILE_EXTENSION } from "@narraleaf/encryption";
 import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { openPayload } from "../../build/patchPayload";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -155,5 +156,69 @@ export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType
             }
             return { path: result.filePaths[0] };
         });
+    }
+}
+/**
+ * What a build folder says about itself, read through the same reader the export reads it with.
+ *
+ * The same reader on purpose: a folder this answers for is a folder the export can measure against,
+ * and a folder it refuses is one the export would refuse later with the author already committed.
+ */
+export class GameBuildReadPatchBaselineHandler extends IPCHandler<IPCEventType.gameBuildReadPatchBaseline> {
+    readonly name = IPCEventType.gameBuildReadPatchBaseline;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        _window: AppWindow,
+        { path }: IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadPatchBaseline]["response"]>> {
+        return this.tryUse(async () => {
+            const payload = await openPayload(path);
+            try {
+                const pack = payload.pack;
+                return {
+                    appTagId: pack.addOns?.appTagId?.trim() || null,
+                    productName: pack.project?.name?.trim() || null,
+                    version: pack.project?.version?.trim() || null,
+                    builtAt: pack.generatedAt || null,
+                };
+            } finally {
+                await payload.close().catch(() => undefined);
+            }
+        });
+    }
+}
+
+/**
+ * What this project's last run came to, and the folder it wrote into.
+ *
+ * Both answered by the pipeline rather than by whichever window is asking: the record outlives the
+ * session that made it, and the folder the reveal opens is one a build of this project chose.
+ */
+export class GameBuildReadLastRunHandler extends IPCHandler<IPCEventType.gameBuildReadLastRun> {
+    readonly name = IPCEventType.gameBuildReadLastRun;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.gameBuildReadLastRun]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildReadLastRun]["response"]>> {
+        return this.tryUse(async () => ({
+            run: await window.getApp().getGameBuildManager().readLastRun(projectPath),
+        }));
+    }
+}
+
+export class GameBuildRevealOutputHandler extends IPCHandler<IPCEventType.gameBuildRevealOutput> {
+    readonly name = IPCEventType.gameBuildRevealOutput;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { projectPath }: IPCEvents[IPCEventType.gameBuildRevealOutput]["data"],
+    ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildRevealOutput]["response"]>> {
+        return this.tryUse(async () => ({
+            revealed: await window.getApp().getGameBuildManager().revealLastOutput(projectPath),
+        }));
     }
 }

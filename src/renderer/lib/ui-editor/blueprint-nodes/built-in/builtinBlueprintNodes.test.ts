@@ -49,8 +49,6 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
-    BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
@@ -226,6 +224,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
@@ -268,6 +267,7 @@ import {
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { resolveSliderRuntimeValue, type UISliderRuntimeValue } from "@shared/types/ui-editor/slider";
 import { executeGraph } from "../../behavior-graph/GraphExecutor";
+import { setRuntimeLocaleSource } from "@/lib/ui-editor/runtime/localization/runtimeLocale";
 import { listBlueprintNodePaletteEntries } from "../../behavior-graph/nodeEditorCatalog";
 import { booleanCompareBlueprintNodes } from "./booleanCompareNodes";
 import { broadcastBlueprintNodes } from "./broadcastNodes";
@@ -339,6 +339,11 @@ const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
     moveToElementCenter: async () => ({ outcome: "unsupported", error: "no window" }),
 };
 
+/** Nor can any of them say what becomes of what a shell writes, which is what `unknown` is for. */
+const NO_STORAGE_HOST: BlueprintHostApiRuntime["storage"] = {
+    durability: async () => "unknown",
+};
+
 /** No host in these tests owns a filesystem, so neither progress node can do anything here. */
 const NO_PROGRESS_HOST: BlueprintHostApiRuntime["progress"] = {
     export: async () => ({ outcome: "failed", error: "no progress store" }),
@@ -368,6 +373,11 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    getWindowScaleOptions: async () => [],
+                    getWindowScale: async () => 1,
+                    setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
@@ -439,6 +449,11 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     isSceneVisited: () => false,
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
+                    isEndingReached: () => false,
+                    isDlcInstalled: () => false,
+                    listEndings: () => [],
+                    clearEndingState: async () => undefined,
+                    clearEndings: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -453,6 +468,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -499,6 +515,11 @@ function createPageNavigationHostAdapter(
                     quitApplication: async () => {
                         quitApplicationCalls.push(true);
                     },
+                    getWindowScaleOptions: async () => [],
+                    getWindowScale: async () => 1,
+                    setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     getFullscreen: async () => fullscreen?.current === true,
                     setFullscreen: async (next: boolean) => {
                         if (fullscreen) {
@@ -597,6 +618,11 @@ function createPageNavigationHostAdapter(
                     isSceneVisited: () => false,
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
+                    isEndingReached: () => false,
+                    isDlcInstalled: () => false,
+                    listEndings: () => [],
+                    clearEndingState: async () => undefined,
+                    clearEndings: async () => undefined,
                     choose: async () => undefined,
                     next: async () => undefined,
                     skip: async () => undefined,
@@ -611,6 +637,7 @@ function createPageNavigationHostAdapter(
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -684,6 +711,11 @@ function createGameSaveHostAdapter(options: {
                     quitApplication: async () => undefined,
                     getFullscreen: async () => false,
                     setFullscreen: async () => undefined,
+                    getWindowScaleOptions: async () => [],
+                    getWindowScale: async () => 1,
+                    setWindowScale: async () => undefined,
+                    getWindowSize: async () => ({ width: 0, height: 0 }),
+                    setWindowSize: async () => undefined,
                     openExternal: NO_DECLARED_LINKS,
                 },
                 layers: SILENT_LAYER_HOST,
@@ -770,6 +802,11 @@ function createGameSaveHostAdapter(options: {
                     isSceneVisited: () => false,
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
+                    isEndingReached: () => false,
+                    isDlcInstalled: () => false,
+                    listEndings: () => [],
+                    clearEndingState: async () => undefined,
+                    clearEndings: async () => undefined,
                     choose: async (index: number) => {
                         options.chosenIndexes?.push(index);
                     },
@@ -800,6 +837,7 @@ function createGameSaveHostAdapter(options: {
                 network: OFFLINE_NETWORK_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
+                storage: NO_STORAGE_HOST,
                 devtools: {
                     log: () => undefined,
                 },
@@ -949,8 +987,6 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(true);
         expect([...types].some(type => type.startsWith("blueprint.persistence."))).toBe(false);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
@@ -1710,6 +1746,102 @@ describe("built-in blueprint nodes", () => {
         const refused: Record<string, unknown> = {};
         await runOpenLink(createPersistenceHostAdapter({}), refused);
         expect(refused).toMatchObject({ failed: "not declared" });
+    });
+
+    describe("Keep Window Open", () => {
+        /**
+         * The shared flag the shell reads after the close dispatch. `stopPropagation` on it is what
+         * turns "close the window" into "leave it alone", which is the whole of what this node does.
+         */
+        function createEventControl() {
+            let stopped = false;
+            return {
+                stopPropagation: () => {
+                    stopped = true;
+                },
+                isPropagationStopped: () => stopped,
+            };
+        }
+
+        // The node touches no host API at all - it writes one flag on the dispatch it is standing in.
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        function runKeepWindowOpen(options: {
+            eventName?: string;
+            eventControl?: { stopPropagation(): void; isPropagationStopped(): boolean };
+            locals?: Record<string, unknown>;
+        }) {
+            registerCoreBlueprintNodes();
+            return executeGraph({
+                graph: {
+                    id: "keepWindowOpen",
+                    entries: { main: { start: { nodeId: "keep", port: "in" } } },
+                    nodes: {
+                        keep: { id: "keep", type: BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN, params: {} },
+                        after: {
+                            id: "after",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "after" },
+                        },
+                        literal: {
+                            id: "literal",
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                            params: { value: "continued" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "keep", port: "next" }, to: { nodeId: "after", port: "in" } },
+                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "keep", port: "in" } },
+                hostAdapter,
+                eventName: options.eventName,
+                eventControl: options.eventControl,
+                blueprintLocals: options.locals,
+            });
+        }
+
+        it("cancels the close request it is dispatched under, and carries on", async () => {
+            const eventControl = createEventControl();
+            const locals: Record<string, unknown> = {};
+
+            await runKeepWindowOpen({ eventName: "windowCloseRequested", eventControl, locals });
+
+            expect(eventControl.isPropagationStopped()).toBe(true);
+            // Cancelling the close is not the end of the graph: a confirmation dialog goes after it.
+            expect(locals).toMatchObject({ after: "continued" });
+        });
+
+        it("refuses when nothing is asking to close the window", async () => {
+            // No dispatch at all - a macro run by hand, or a graph under the wrong head.
+            await expect(runKeepWindowOpen({})).rejects.toThrow(
+                /Keep Window Open: there is no close request to cancel/,
+            );
+        });
+
+        it("refuses on another dispatch's event control rather than silencing it", async () => {
+            // Every dispatch carries one of these, so the presence of a control proves nothing. A
+            // key press stopped here would stop reaching the game, and the window would still close.
+            const eventControl = createEventControl();
+
+            await expect(runKeepWindowOpen({ eventName: "keyDown", eventControl })).rejects.toThrow(
+                /Keep Window Open: there is no close request to cancel/,
+            );
+            expect(eventControl.isPropagationStopped()).toBe(false);
+        });
+
+        it("is an App node offered only where the close request is dispatched", () => {
+            const def = frameBlueprintNodes.find(node => node.type === BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN);
+
+            expect(def).toBeDefined();
+            expect(def?.displayName).toBe("Keep Window Open");
+            expect(def?.category).toBe("App");
+            expect(def?.isPure).toBe(false);
+            expect(def?.graphKinds).toEqual(["event", "macro"]);
+            expect(def?.scope?.ownerKinds).toEqual(["globalMain", "surfaceMain"]);
+            expect(def?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        });
     });
 
     it("executes Start Game as a terminal host API node", async () => {
@@ -3195,156 +3327,8 @@ describe("built-in blueprint nodes", () => {
             },
         ]);
         expect(elementButtonSetPointer?.inspectorParams).toEqual(buttonSetPointer?.inspectorParams);
-        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
-            "in",
-            "next",
-        ]);
-        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
-            "in",
-            "next",
-        ]);
         expect(elementBlueprintNodes.some(def => def.category === "Element")).toBe(true);
         expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
-    });
-
-    it("continues the active Element event bubble through the runtime", async () => {
-        registerCoreBlueprintNodes();
-
-        const bubbleCalls: Array<{
-            elementId: string;
-            eventName: string;
-            payload?: Record<string, unknown>;
-            options?: Record<string, unknown>;
-        }> = [];
-        const blueprintLocals: Record<string, unknown> = {};
-        const eventPayload = { x: 12, y: 34, button: 0 };
-
-        await executeGraph({
-            graph: {
-                id: "continueEventBubble",
-                entries: { main: { start: { nodeId: "bubble", port: "in" } } },
-                nodes: {
-                    bubble: {
-                        id: "bubble",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    after: {
-                        id: "after",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "afterBubble" },
-                    },
-                    literal: {
-                        id: "literal",
-                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                        params: { value: "continued" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
-                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "bubble", port: "in" } },
-            hostAdapter: {
-                host: "player",
-                blueprintRuntime: {
-                    continueElementEventBubble: async (
-                        elementId: string,
-                        eventName: string,
-                        payload?: Record<string, unknown>,
-                        options?: Record<string, unknown>,
-                    ) => {
-                        bubbleCalls.push({ elementId, eventName, payload, options });
-                        return true;
-                    },
-                },
-            } as unknown as UIHostAdapter,
-            eventName: "mouseClick",
-            eventPayload,
-            executionOwner: { surfaceId: "surface", elementId: "button" },
-            blueprintLocals,
-        });
-
-        expect(bubbleCalls).toEqual([
-            {
-                elementId: "button",
-                eventName: "mouseClick",
-                payload: eventPayload,
-                options: {
-                    listItemScope: undefined,
-                    instanceKey: undefined,
-                    componentId: undefined,
-                },
-            },
-        ]);
-        expect(blueprintLocals.afterBubble).toBe("continued");
-    });
-
-    it("stops the active Element event bubble before a later continue request", async () => {
-        registerCoreBlueprintNodes();
-
-        const bubbleCalls: string[] = [];
-        let stopped = false;
-        const blueprintLocals: Record<string, unknown> = {};
-
-        await executeGraph({
-            graph: {
-                id: "stopEventBubble",
-                entries: { main: { start: { nodeId: "stop", port: "in" } } },
-                nodes: {
-                    stop: {
-                        id: "stop",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    bubble: {
-                        id: "bubble",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    after: {
-                        id: "after",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "afterStop" },
-                    },
-                    literal: {
-                        id: "literal",
-                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                        params: { value: "continued" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "stop", port: "next" }, to: { nodeId: "bubble", port: "in" } },
-                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
-                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "stop", port: "in" } },
-            hostAdapter: {
-                host: "player",
-                blueprintRuntime: {
-                    continueElementEventBubble: async (elementId: string) => {
-                        bubbleCalls.push(elementId);
-                        return true;
-                    },
-                },
-            } as unknown as UIHostAdapter,
-            eventName: "mouseClick",
-            eventPayload: { x: 12, y: 34 },
-            eventControl: {
-                stopPropagation: () => {
-                    stopped = true;
-                },
-                isPropagationStopped: () => stopped,
-            },
-            executionOwner: { surfaceId: "surface", elementId: "button" },
-            blueprintLocals,
-        });
-
-        expect(stopped).toBe(true);
-        expect(bubbleCalls).toEqual([]);
-        expect(blueprintLocals.afterStop).toBe("continued");
     });
 
     it("adds Displayable variant and generic property nodes", () => {
@@ -5307,7 +5291,6 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
@@ -5459,8 +5442,6 @@ describe("built-in blueprint nodes", () => {
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.category).toBe("Game");
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.category).toBe("Game");
         expect(byType.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
-        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
@@ -5537,8 +5518,6 @@ describe("built-in blueprint nodes", () => {
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(false);
-        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
@@ -5565,8 +5544,6 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
@@ -5595,8 +5572,6 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -5617,8 +5592,6 @@ describe("built-in blueprint nodes", () => {
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
-        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)).toBe(true);
@@ -5637,8 +5610,6 @@ describe("built-in blueprint nodes", () => {
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
-        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
@@ -5658,8 +5629,6 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({
@@ -7647,6 +7616,68 @@ describe("sound node transport", () => {
             { op: "setVolume", handle, volume: 0.25, fadeMs: 800 },
             { op: "seek", handle, timeMs: 30000 },
         ]);
+    });
+
+    /**
+     * A clip an asset set answers for.
+     *
+     * The set id is what the author picked and what the document stores. The build writes what it
+     * resolves to onto the node that stores it, and the member is chosen here, when the clip is
+     * asked for - a picture gets the same answer one layer down, in the data-pin resolver, but this
+     * node's clip is an inspector param whose name is no pin's, so it has to ask for itself.
+     */
+    describe("a clip that names an asset set", () => {
+        const SET_ID = "set-jingle";
+        const EN = "clip-en";
+        const JA = "clip-ja";
+
+        async function playedAssetId(locale: string | null): Promise<unknown> {
+            const log = { play: [] as unknown[], ops: [] as unknown[] };
+            const uninstall = locale === null
+                ? () => undefined
+                : setRuntimeLocaleSource({ getLocale: () => locale, sourceLocale: "en" });
+            try {
+                await executeGraph({
+                    graph: {
+                        id: "sound",
+                        entries: { main: { start: { nodeId: "play", port: "in" } } },
+                        nodes: {
+                            play: {
+                                id: "play",
+                                type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+                                params: { soundAssetId: SET_ID },
+                                assetVariants: { [SET_ID]: { en: EN, ja: JA } },
+                            },
+                        },
+                        edges: [],
+                    },
+                    entry: { start: { nodeId: "play", port: "in" } },
+                    hostAdapter: soundHostAdapter(log),
+                    blueprintLocals: {},
+                });
+            } finally {
+                uninstall();
+            }
+            return (log.play[0] as { assetId?: unknown } | undefined)?.assetId;
+        }
+
+        it("plays the member the player's language names", async () => {
+            expect(await playedAssetId("ja")).toBe(JA);
+        });
+
+        /** Defence, not policy: a filled map covers every locale the package ships. */
+        it("falls back to the language the project is written in", async () => {
+            expect(await playedAssetId("fr")).toBe(EN);
+        });
+
+        /**
+         * The editor canvas, where nothing installs a language. An authored document carries no
+         * answers either, so this only happens to a package played outside a running game - and
+         * handing the host the id unchanged is what every other unresolvable value does.
+         */
+        it("hands the stored id over unchanged when no game is running", async () => {
+            expect(await playedAssetId(null)).toBe(SET_ID);
+        });
     });
 });
 

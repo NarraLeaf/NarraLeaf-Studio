@@ -14,6 +14,7 @@ import type { MediaConvertRequest, MediaConvertStateSnapshot } from "./mediaConv
 import type { StudioTaskOverview } from "./studioTask";
 import type { WeatherBakeSpec } from "../weather/model";
 import type { MediaProbeOutcome } from "./mediaProbe";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
 import type { PsdBakeRequest, PsdBakedLayer, PsdDocument } from "./psdImport";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "./menu";
 import { FsRequestResult, PlatformInfo } from "./os";
@@ -24,8 +25,15 @@ import { GlobalStateKeys } from "./state/globalState";
 import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
+import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type {
     MacSigningIdentity,
     SigningCredential,
@@ -58,6 +66,8 @@ import type { UITemplateBundle, UITemplateFetchResult, UITemplatePreview, UIThem
 import type { ProjectTemplateDescriptor } from "./projectTemplate";
 import type { RemoteAssetFetchResult, RemoteAssetValidators } from "./remoteAsset";
 import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
+import type { StudioClipboardKind } from "./studioClipboard";
 import type {
     AvailableSpellcheckDictionary,
     InstalledSpellcheckDictionary,
@@ -67,11 +77,18 @@ import type {
 import type {
     PrivilegedActor,
     PrivilegedBashExecuteResult,
+    PrivilegedWriteBatchEntry,
 } from "./privileged";
 import { AppEventToken } from "./app";
 import type { LocaleContribution } from "@shared/i18n";
 import type { VcsServerProbe } from "./vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "./team";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -86,8 +103,12 @@ export interface RendererPrivilegedInterface {
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        /** One grant for N files; see `PrivilegedFileSystemCall`'s `requestWriteBatch`. */
+        requestWriteBatch(actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         writeFileNoFollow(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
+        /** See `PrivilegedFileSystemCall`'s `writeFileNoFollowOrCreate`. */
+        writeFileNoFollowOrCreate(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         recoverCorruptedJsonFile(actor: PrivilegedActor, path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
         createDir(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
         deleteFile(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -226,6 +247,13 @@ export interface RendererPreloadedInterface {
      */
     probeMedia(path: string): Promise<RequestStatus<{ outcome: MediaProbeOutcome }>>;
     /**
+     * What a font file can draw, read out of its own `cmap` in the main process.
+     *
+     * There rather than here because WOFF2 needs a Brotli decompressor, which a renderer has
+     * not got, and because what comes back is a range list rather than a thirty-megabyte face.
+     */
+    probeFontCoverage(path: string): Promise<RequestStatus<{ result: FontCoverageResult }>>;
+    /**
      * Converting a media file, polled the way a production build is.
      *
      * `start` answers with a job id as soon as the process is up; `getStatus` carries progress while
@@ -323,6 +351,12 @@ export interface RendererPreloadedInterface {
          */
         reportLoadResult(ok: boolean): void;
         /**
+         * Report on the build this workspace was opened by `--build` to run: each console line as
+         * it is written, then the outcome. Sent by nothing else - a workspace somebody opened has
+         * no command-line build to report on.
+         */
+        reportCommandLineBuild(event: CommandLineBuildEvent): void;
+        /**
          * Tell main whether this workspace's project data is frozen; null means it is writable.
          *
          * Main refuses the production build and Preview while it is - it starts both itself, so the
@@ -398,7 +432,7 @@ export interface RendererPreloadedInterface {
         pickBackgroundImage(): Promise<RequestStatus<{ file: string | null }>>;
         /** Read a stored background image's bytes (basename lookup only). */
         readBackgroundImage(file: string): Promise<RequestStatus<{ data: Uint8Array | null }>>;
-        launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<{ created: boolean; projectPath: string } | null>>;
+        launchProjectWizard(props: WindowProps[WindowAppType.ProjectWizard]): Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>;
         /**
          * Ask the author whether a server is trusted, and answer with what the machine
          * believes afterwards.
@@ -514,8 +548,14 @@ export interface RendererPreloadedInterface {
         /** Workspace side of {@link openStoryRowInWorkspace}. */
         onStoryRowOpen(handler: (payload: DevModeStoryRowOpenRequest) => void): AppEventToken;
         resolveAssetUrl(assetId: string, assetType?: string): Promise<RequestStatus<{ url: string }>>;
-        /** Produce the clip a weather seed describes, and grant this window a URL for it. */
-        resolveWeatherClip(spec: WeatherBakeSpec): Promise<RequestStatus<{ url: string }>>;
+        /**
+         * Produce the clip a weather seed describes, and grant this window a URL for it.
+         *
+         * `attempt` names the compile asking. Clips wanted by an earlier one and not by this are
+         * dropped rather than left to finish, which is what stops an edited parameter from queueing
+         * a bake per keystroke.
+         */
+        resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
@@ -557,6 +597,16 @@ export interface RendererPreloadedInterface {
     gameTest: {
         launch(request: GameTestLaunchRequest): Promise<RequestStatus<GameTestLaunchResult>>;
         stop(projectPath: string, sessionId: string): Promise<RequestStatus<void>>;
+        /**
+         * Drive the session's game. `delivered` says the frame reached its control socket, never
+         * that the game acted on it - what it did comes back through `onEvent`, in order with
+         * everything else the game says.
+         */
+        sendCommand(
+            projectPath: string,
+            sessionId: string,
+            command: GameTestCommand,
+        ): Promise<RequestStatus<{ delivered: boolean }>>;
         onEvent(handler: (payload: GameTestEventPayload) => void): AppEventToken;
     };
 
@@ -821,8 +871,25 @@ export interface RendererPreloadedInterface {
          *
          * **Goes to the network.** Pass empty strings for the two addresses: a token
          * carries both, and they are asked for only after this answers that it does not.
+         *
+         * `description` is what `probeServer` just answered. Passing it is how the server
+         * keeps its own name without this reaching the same address a second time.
          */
-        addServer(authUrl: string, remoteUrl: string, token: string): Promise<RequestStatus<VcsAddServerOutcome>>;
+        addServer(
+            authUrl: string,
+            remoteUrl: string,
+            token: string,
+            description?: VcsServerDescription,
+        ): Promise<RequestStatus<VcsAddServerOutcome>>;
+        /**
+         * Ask one server what it is now. **Goes to the network.**
+         *
+         * Records the name, version and capabilities it answers with, and nothing else:
+         * the account and the addresses are untouched, so this is not a sign-in. A server
+         * added before Studio kept any of that is what this exists for. One that does not
+         * answer leaves its record as it was.
+         */
+        refreshServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
@@ -832,12 +899,103 @@ export interface RendererPreloadedInterface {
          * right when it was stored is wrong the moment somebody else pushes.
          */
         listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
-        /** Ask a server to make a project. **Goes to the network, and writes there.** */
-        createServerProject(
+        /**
+         * What one server knows about one of its projects. **Goes to the network.**
+         *
+         * **Ask only a server whose session advertises `project-detail`.** A deployment
+         * that offers none has no such surface in front of it - the absence of a
+         * capability is a fact about the server, not something to put a sentence to.
+         *
+         * A `file` that is not readable is a complete answer: the server records a project
+         * when it is created and opens the file afterwards. The server's own explanation
+         * for that does not cross this boundary, so there is nothing here to print.
+         */
+        getServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
+        /**
+         * Take one project off a server. **Goes to the network**, and it is the one call
+         * in this group that changes what a server holds rather than reading it.
+         *
+         * **What it removes is the project, not the work.** The server stops listing it
+         * and stops answering for it; the repository keeps its store and every revision
+         * in it, and a project removed by mistake is published again under the same
+         * repository id and comes back with its history. Nothing here destroys anything
+         * an author wrote, so a surface offering this must not say that it does.
+         *
+         * Nothing on this machine changes either: a local copy goes on opening, and its
+         * remote goes on pointing where it pointed.
+         */
+        deleteServerProject(
+            remoteOrigin: string,
+            projectId: string,
+        ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>>;
+        /**
+         * The latest revisions on one of a server's projects, newest first.
+         * **Goes to the network**, and only where `project-history` is advertised.
+         *
+         * **An answer with no `revisions` is not an empty history.** The field is left out
+         * for a project the server has not read, which is the ordinary answer for one made
+         * a moment ago, and a surface that reads it as zero says so about work that has
+         * plenty.
+         */
+        listServerProjectHistory(
+            remoteOrigin: string,
+            projectId: string,
+            limit?: number,
+            before?: string,
+        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
+        /**
+         * Who has an account on one server. **Goes to the network**, and only where
+         * `members` is advertised.
+         *
+         * Every account carries the address recorded on its revisions. Within a server
+         * that is not a secret, but a list that prints all of them at once is a different
+         * thing from an address on one revision - so a surface showing this shows the
+         * address for the one member a reader opens, and not for the list.
+         */
+        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
+        /**
+         * Exchange a username and password for a token, where a server offers it.
+         *
+         * **Goes to the network, and carries no token** - this is where one comes from,
+         * so it names the endpoint rather than a server this installation already knows.
+         * Hand the token straight to {@link addServer}; it is the same kind an operator
+         * would have minted, so nothing after this point differs by how it arrived.
+         *
+         * A server says one thing about credentials however they were wrong, so the
+         * outcome says `refused` and nothing more precise. Do not keep the password.
+         */
+        signInWithPassword(
+            authUrl: string,
+            username: string,
+            password: string,
+        ): Promise<RequestStatus<VcsPasswordSignInOutcome>>;
+        /**
+         * Put this project on a server: register it, connect it, send it.
+         *
+         * **Goes to the network, and writes on both ends.** It is the only way a project
+         * reaches a server: a repository made there and never filled is one that cannot be
+         * fetched, so Studio writes the project first and registers what it wrote.
+         */
+        publishProject(
+            projectPath: string,
             remoteOrigin: string,
             name: string,
-            description?: string,
-        ): Promise<RequestStatus<VcsServerProjectOutcome>>;
+        ): Promise<RequestStatus<VcsPublishOutcome>>;
+        /**
+         * Which repositories this machine already holds, by id. Local.
+         *
+         * The answer to "do I already have this one" for a project a server lists. Keyed on
+         * the repository id and never on the name, because two projects share a name and a
+         * folder gets renamed.
+         *
+         * **Reads `.lore/id` and `.lore/config.toml` as files; opens no repository.** Lore's
+         * lock is exclusive and blocking, so a sweep that opened stores would never return
+         * on the first project the author already has open.
+         */
+        listLocalRepositories(): Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>;
         /**
          * Send this branch's revisions to the server. Writes nothing locally, so a
          * failure leaves the project exactly as it was.
@@ -867,6 +1025,44 @@ export interface RendererPreloadedInterface {
         clone(url: string, destination: string): Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>;
     };
 
+    /**
+     * The Team protocol: everything a server can be asked, and how it says something changed.
+     *
+     * Deliberately five members however many things a server can do. `call` names a method
+     * the server declared it serves, and what that method takes and answers is typed in
+     * `@shared/types/team` rather than here. Nothing in a renderer should reach this
+     * directly - `lib/team` wraps each call so the parameters and the answer are typed
+     * together in one place.
+     */
+    team: {
+        /**
+         * Open a session with one server, and say where it stands.
+         *
+         * Answers at once, usually with `connecting`. What tells a screen it is ready is
+         * {@link onConnectionChanged}; waiting here would be a screen that hangs on a
+         * server that is switched off.
+         */
+        open(remoteOrigin: string): Promise<RequestStatus<TeamConnection>>;
+        /** Where every server Studio knows about stands. Local; opens nothing. */
+        connections(): Promise<RequestStatus<{ connections: TeamConnection[] }>>;
+        /** Ask a server something, over its session. Opens one if there is none. */
+        call(remoteOrigin: string, method: string, params?: unknown): Promise<RequestStatus<TeamCallOutcome>>;
+        /**
+         * Ask to be told about a topic.
+         *
+         * Held for this window and dropped when it closes, so a screen that forgets to
+         * unsubscribe costs nothing beyond its own lifetime. The sequence that comes back
+         * says where the topic stood; anything other than the number last seen means read
+         * the collection again.
+         */
+        subscribe(remoteOrigin: string, topic: string): Promise<RequestStatus<TeamSubscribeOutcome>>;
+        unsubscribe(remoteOrigin: string, topic: string): Promise<RequestStatus<void>>;
+        /** Something happened on a topic this window asked about. */
+        onEvent(handler: (message: TeamEventMessage) => void): AppEventToken;
+        /** A session opened, dropped, or was refused. Sent to every window. */
+        onConnectionChanged(handler: (payload: { connection: TeamConnection }) => void): AppEventToken;
+    };
+
     gameBuild: {
         start(projectPath: string, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
         cancel(projectPath: string): Promise<RequestStatus<{ state: GameBuildStateSnapshot }>>;
@@ -888,6 +1084,27 @@ export interface RendererPreloadedInterface {
         selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** The build a patch is measured against - a package file, not a folder. */
         selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /**
+         * What this project's last run of the build pipeline came to. Null for a project that has
+         * never been built.
+         */
+        readLastRun(projectPath: string): Promise<RequestStatus<{ run: LastGameBuildRun | null }>>;
+        /**
+         * Show the last run's output folder in the desktop's file manager. The folder is the one
+         * the pipeline recorded; this names only the project.
+         */
+        revealOutput(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
+        /**
+         * What a build folder says about itself: the variant it was compiled as, the application
+         * name and version it carries, and when it was built. Fails, with the reason, on a path
+         * that holds no game.
+         */
+        readPatchBaseline(path: string): Promise<RequestStatus<{
+            appTagId: string | null;
+            productName: string | null;
+            version: string | null;
+            builtAt: string | null;
+        }>>;
     };
 
     /**
@@ -1072,7 +1289,8 @@ export interface RendererPreloadedInterface {
     /** Project templates bundled with this build (resources/templates). */
     projectTemplates: {
         list(): Promise<RequestStatus<ProjectTemplateDescriptor[]>>;
-        scaffold(templateId: string, projectPath: string): Promise<RequestStatus<{ filesCopied: number; locales: string[] }>>;
+        /** `locale` picks the template's own copy of its content written in that language, if it has one. */
+        scaffold(templateId: string, projectPath: string, locale?: string): Promise<RequestStatus<{ filesCopied: number; locales: string[]; contentLocale?: string }>>;
     };
 
     assets: {
@@ -1094,6 +1312,35 @@ export interface RendererPreloadedInterface {
          * the dialog is a success carrying `canceled: true`, not a failure.
          */
         exportToFolder(entries: AssetExportEntry[]): Promise<RequestStatus<AssetExportResult>>;
+
+        /**
+         * Moving an asset's bytes between two workspace windows of one Studio process.
+         *
+         * A window may read only its own project, so a paste into another project cannot open the
+         * files the copied rows reference. `offer` asks main to vouch for a manifest the copying
+         * window can read and hands back a token to put on the clipboard; `redeem` trades that token
+         * for read access to exactly those files. Bytes and paths never cross on the clipboard, and
+         * a token main did not mint answers `available: false` rather than failing - see
+         * `@shared/types/assetTransfer`.
+         */
+        transfer: {
+            offer(entries: AssetTransferEntry[]): Promise<RequestStatus<AssetTransferOfferResult>>;
+            redeem(token: string): Promise<RequestStatus<AssetTransferRedeemResult>>;
+        };
+    };
+
+    /**
+     * The platform clipboard, for the editor selections that move between project windows.
+     *
+     * One project per window means one renderer process per window, so an editor's own clipboard
+     * cannot leave the window that filled it. These two put the selection where every window can
+     * reach it, under a private format name. `stored: false` and `payload: null` are ordinary
+     * answers - a payload main declined, or a clipboard holding something else - and neither is a
+     * failure. See `@shared/types/studioClipboard`.
+     */
+    clipboard: {
+        writeEditorSelection(kind: StudioClipboardKind, payload: string): Promise<RequestStatus<{ stored: boolean }>>;
+        readEditorSelection(kind: StudioClipboardKind): Promise<RequestStatus<{ payload: string | null }>>;
     };
 
     /**

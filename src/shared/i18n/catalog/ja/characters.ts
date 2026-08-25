@@ -26,9 +26,9 @@ export const characters = {
         groupNamePlaceholder: "グループ名を入力",
         deleteCharacterConfirm: "キャラクター「{name}」を削除するか",
         // 削除を取り消せるようになるまでは「元に戻せない」と書いてあった。いま量るべきは
-        // 取り返しのつかなさではなく結果のほう。このキャラクターを指す行は参照を保ったまま、
-        // 解決できなくなる。
-        deleteCharacterDetail: "このキャラクターを指す行は、復元するまで解決できなくなる",
+        // 取り返しのつかなさではなく結果のほう。しかもその結果は行ごとに違う。セリフは名前だけを
+        // 残して話者になるが、キャラクターを舞台に出す行にはその形がなく、解決できない参照が残る。
+        deleteCharacterDetail: "セリフは名前のまま残る。舞台に出す行は解決できなくなる",
         deleteGroupConfirm: "グループ「{name}」を削除するか",
         deleteGroupDetail: "このグループのキャラクターは未分類になる",
     },
@@ -116,8 +116,8 @@ export const characters = {
             docsLink: "{product} のガイドを読む",
             customDocsLink: "ランタイムの書き方を読む",
             neverDownloads: "Studio はダウンロードしない。提供元から入手する。ライセンスに同意するのもその場",
-            live2dTerms: "Live2D Cubism のライセンスは Live2D Inc. が出しており、NarraLeaf ではない。Cubism SDK のライセンスにはダウンロード時に同意することになり、ビルドしたゲームでそれを配布するのは作者自身。Live2D が定める年間売上の基準を超える商用リリースには、Live2D との別途の出版ライセンスが要る",
-            spineTerms: "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。NarraLeaf は Spine のライセンスを持たないため、Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもできない",
+            live2dTerms: "Live2D Cubism のライセンスは Live2D Inc. が出しており、NarraLeaf ではない。Cubism SDK のライセンスにはダウンロード時に同意することになり、ビルドしたゲームでそれを配布するのは作者自身。Live2D が定める年間売上の基準を超える商用リリースには、Live2D との別途の出版ライセンスが要る。単一のタイトルに複数の独立した作品を収める場合、またはビルド時に含まれていないモデルを読み込む場合は、無償リリースであってもリリース前に Live2D の承認が要る",
+            spineTerms: "Spine Runtimes のライセンスは Esoteric Software が出している。Spine を扱う人はそれぞれ自分の Spine Editor ライセンスが必要で、配布するゲームには Spine Runtimes License を同梱しなければならない。Spine Essential と Professional は、売上と資金調達が 50 万米ドル未満の場合にのみ有効で、それを超える場合は Spine Enterprise が要る。Studio は Spine のコードを同梱せず、アダプタを代わりにビルドすることもない",
             sdkStep: "ダウンロードした {product} SDK のアーカイブを選ぶ。展開しないこと",
             sdkPick: "SDK のアーカイブを選ぶ…",
             prebuiltStep: "ビルド済みのアダプタを選ぶ。フォルダはそのまま複製され、単一のファイルはランタイムの index.js になる",
@@ -297,5 +297,8 @@ export const characters = {
         // なのは、どちらの種類にもそれがあるから。プリセットならポーズ、レイヤー式ならタグの
         // 組み合わせで、切り抜きはそのどちらかに紐づく。
         portraitScoped: "この見た目にだけ適用",
+    },
+    live: {
+        recordClaimed: "{name} がこのキャラクターを編集している",
     },
 } satisfies LocaleNamespace<"characters">;

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { MotionConfig } from "motion/react";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useOpenBlueprintTarget } from "../hooks/useOpenBlueprintTarget";
@@ -28,6 +29,8 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -36,11 +39,21 @@ import { isEditableKeyboardTarget } from "@/lib/workspace/services/ui/keyboardEd
 import type { BlueprintEntryTabPayload } from "../blueprintEntryTabId";
 import type { Blueprint, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import type { StoryDocument } from "@shared/types/story";
-import { listSceneIdsInDocumentOrder } from "@shared/types/story";
+import { listSceneIdsInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentParams } from "@shared/types/ui-editor/document";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
-import { getUIListChildSlot, isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { findOwningListItemTemplate, isListItemContextElement } from "@shared/types/ui-editor/listItemContext";
+import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
+import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
+    listBlueprintInputActionOptions,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/inputActionNodes";
+import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
+import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     applyBlueprintIrConnection,
     createGraphNodeForPalette,
@@ -50,6 +63,10 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
+import {
+    normalizeBlueprintMinimapPreference,
+    type BlueprintMinimapPreference,
+} from "../flow/blueprintMinimapPreference";
 import { useBlueprintDiagnostics } from "../hooks/useBlueprintDiagnostics";
 import { useBlueprintDragConnectSettings } from "../hooks/useBlueprintDragConnectSettings";
 import { useBlueprintEditorState, type BlueprintEditorGraphView } from "../state/useBlueprintEditorState";
@@ -83,6 +100,7 @@ import type {
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
@@ -90,6 +108,7 @@ import {
     BLUEPRINT_NODE_TYPE_ELEMENT_REF,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_FLUSH,
+    BLUEPRINT_NODE_TYPE_FLOW_COMMENT,
     BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
@@ -97,10 +116,9 @@ import {
 } from "@shared/types/blueprint/graph";
 import {
     buildBlueprintFnSignatureSnapshot,
-    findBlueprintFnByRef,
     isBlueprintFnSnapshotStale,
-    isBlueprintFnVisibleToOwner,
     listCallableBlueprintFnOptions,
+    resolveBlueprintFnCallTarget,
 } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
@@ -127,10 +145,19 @@ import {
 import { resolveWidgetEventLayerSlotsForPalette } from "./blueprintPaletteContext";
 import {
     buildBlueprintGraphClipboardPayload,
-    getBlueprintGraphClipboard,
     pasteBlueprintGraphClipboardPayload,
     setBlueprintGraphClipboard,
+    type BlueprintGraphClipboardPayload,
 } from "@/lib/workspace/services/ui-editor/blueprint/graphClipboard";
+import {
+    graphClipboardSourceStamp,
+    importForeignGraphAssets,
+    publishGraphClipboard,
+    readGraphClipboardEnvironment,
+    reportForeignGraphPaste,
+    resolveGraphPasteSource,
+    type ForeignGraphPasteReport,
+} from "@/lib/workspace/services/ui-editor/blueprint/graphClipboardBridge";
 import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
@@ -162,22 +189,6 @@ function isTypingInField(): boolean {
     return isEditableKeyboardTarget(document.activeElement);
 }
 
-function isListItemContextElement(document: UIDocument, element: UIElement | undefined): boolean {
-    let child = element;
-    while (child?.parentId) {
-        const parent = document.elements[child.parentId];
-        if (!parent) {
-            return false;
-        }
-        if (isListLikeWidgetType(parent.type)) {
-            const slot = getUIListChildSlot(child.extra);
-            return slot == null || slot === "itemTemplate";
-        }
-        child = parent;
-    }
-    return false;
-}
-
 type BlueprintEditorMemberPanelState = {
     memberPanelCollapsed: boolean;
     variableGroupOpen: Partial<Record<BlueprintVariableGroupKey, boolean>>;
@@ -188,6 +199,14 @@ type BlueprintEditorViewportPanelState = {
 };
 
 const BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID = "blueprintEditor.memberPanel";
+/**
+ * The graph overview's size and whether it is up.
+ *
+ * One record for every blueprint rather than one per graph: it is a preference about the editor,
+ * not about a particular layer, and an overview that came and went as the author moved between
+ * layers would read as a bug rather than a setting.
+ */
+const BLUEPRINT_EDITOR_MINIMAP_STATE_ID = "blueprintEditor.minimap";
 const BLUEPRINT_EDITOR_FLOW_VIEWPORT_STATE_PREFIX = "blueprintEditor.flowViewport";
 const BLUEPRINT_VARIABLE_GROUP_KEYS: BlueprintVariableGroupKey[] = ["page", "global", "persistent"];
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
@@ -410,11 +429,16 @@ function ElementLiteralSurfacePreview({
             },
         };
     }, [document, element, height, previewSurfaceId, surface, width]);
+    // `nl-motion-keep` for the same reason the UI editor's canvas carries it (see the exemption note
+    // in styles.css): what is drawn here is the game's own widget, and `ui.reduceMotion` is a
+    // promise about Studio's chrome rather than about the thing being authored. It costs no calm —
+    // this preview is inert (`editorChrome: false`, `pointer-events-none`, nothing changes state on
+    // it), so the tag holds the rule rather than restarting any motion.
     const rendered = runtimeBridge.renderDocumentSurface({
         document: previewDocument,
         surfaceId: previewSurfaceId,
         hostAdapter: { host: surface.host },
-        className: "pointer-events-none select-none",
+        className: "nl-motion-keep pointer-events-none select-none",
         style: { backgroundColor: "transparent" },
         editorChrome: false,
     });
@@ -452,7 +476,9 @@ function ElementLiteralSurfacePreview({
                         pointerEvents: "none",
                     }}
                 >
-                    {rendered}
+                    {/* The other half of the exemption: the widget renderers animate from
+                        framer-motion, which no CSS rule reaches. Renders no node of its own. */}
+                    <MotionConfig reducedMotion="never">{rendered}</MotionConfig>
                 </div>
             </div>
         </div>
@@ -529,6 +555,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
     const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
     const appTagService = context.services.get<AppTagService>(Services.AppTags);
+    const dlcService = context.services.get<DlcService>(Services.Dlc);
+    // DLC live in a project document of their own, so adding or renaming one has to reach the
+    // `Is DLC Installed` picker without anything touching the blueprint.
+    const [dlcRevision, setDlcRevision] = useState(0);
+    useEffect(
+        () => dlcService.onDlcChanged(() => setDlcRevision(r => r + 1)),
+        [dlcService],
+    );
     // The declared addresses live in the variants document, so adding one has to reach the
     // `Open Link` picker without anything touching the blueprint.
     const [appTagRevision, setAppTagRevision] = useState(0);
@@ -564,6 +598,23 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 BLUEPRINT_EDITOR_MEMBER_PANEL_STATE_ID,
             ),
         ),
+    );
+    const [minimapPreference, setMinimapPreference] = useState<BlueprintMinimapPreference>(() =>
+        normalizeBlueprintMinimapPreference(
+            panelStateService.getPanelState<Partial<BlueprintMinimapPreference>>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+            ),
+        ),
+    );
+    const onMinimapChange = useCallback(
+        (next: BlueprintMinimapPreference) => {
+            setMinimapPreference(next);
+            panelStateService.replacePanelState<BlueprintMinimapPreference>(
+                BLUEPRINT_EDITOR_MINIMAP_STATE_ID,
+                next,
+            );
+        },
+        [panelStateService],
     );
     useEffect(() => uidoc.onDocumentChanged(() => setUiDocumentRevision(uidoc.getRevision())), [uidoc]);
     useEffect(
@@ -746,20 +797,48 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         [editor.graphView, localBp, payload],
     );
 
+    // The project behind a copy and a paste: what stamps a payload with where it came from, and
+    // what a foreign one is compared against. Read at each gesture rather than once, because a
+    // service that was still coming up when this tab mounted is available by the time the author
+    // presses anything - and a null cached then would cost the editor its cross-project reach for
+    // as long as the tab stayed open.
+    const readGraphClipboard = useCallback(() => readGraphClipboardEnvironment(context), [context]);
+
+    /**
+     * Fill both clipboards from the current selection, or answer null when it holds nothing.
+     *
+     * The in-window payload is written first and synchronously, so the copy has happened by the time
+     * the gesture returns; the platform clipboard is filled behind it, which is what carries the
+     * fragment to another project's window.
+     */
+    const fillGraphClipboard = useCallback(
+        (activeIr: BlueprintGraphIr): BlueprintGraphClipboardPayload | null => {
+            const environment = readGraphClipboard();
+            const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds, {
+                copyId: uuid.generate(),
+                ...(environment ? { source: graphClipboardSourceStamp(environment) } : {}),
+            });
+            if (!clipboard) {
+                return null;
+            }
+            setBlueprintGraphClipboard(clipboard);
+            if (environment) {
+                publishGraphClipboard(environment, clipboard);
+            }
+            return clipboard;
+        },
+        [editor.selectedNodeIds, readGraphClipboard, uuid],
+    );
+
     const copySelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
         }
         const activeIr = activeIrRef.current;
-        if (!activeIr) {
-            return;
+        if (activeIr) {
+            fillGraphClipboard(activeIr);
         }
-        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
-        if (!clipboard) {
-            return;
-        }
-        setBlueprintGraphClipboard(clipboard);
-    }, [editor.selectedNodeIds]);
+    }, [fillGraphClipboard]);
 
     const cutSelectedGraphNodes = useCallback(() => {
         if (isTypingInField()) {
@@ -769,39 +848,63 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         if (!activeIr) {
             return;
         }
-        const clipboard = buildBlueprintGraphClipboardPayload(activeIr, editor.selectedNodeIds);
+        const clipboard = fillGraphClipboard(activeIr);
         if (!clipboard) {
             return;
         }
-        setBlueprintGraphClipboard(clipboard);
         const next = cloneBlueprintIr(activeIr);
         for (const nodeId of clipboard.nodeIds) {
             removeBlueprintNodeFromIr(next, nodeId);
         }
         commitIr(next);
         editor.setSelectedNodeIds([]);
-    }, [commitIr, editor]);
+    }, [commitIr, editor, fillGraphClipboard]);
 
+    /**
+     * Paste whatever the author last copied, from this window or from another project's.
+     *
+     * Asynchronous because the platform clipboard and the file transfer both are, and the freeze is
+     * re-read after each await: nodes written into a frozen workspace reach the in-memory blueprint,
+     * are refused at the file-system boundary, and are gone again at the thaw. The graph is read
+     * from the ref rather than captured, so the paste lands on what the editor holds now.
+     */
     const pasteGraphNodes = useCallback(() => {
         if (isTypingInField()) {
             return;
         }
-        const activeIr = activeIrRef.current;
-        if (!activeIr) {
-            return;
-        }
-        const pasted = pasteBlueprintGraphClipboardPayload({
-            ir: activeIr,
-            payload: getBlueprintGraphClipboard(),
-            generateId: () => uuid.generate(),
-            targetBlueprintId: payload.blueprintId,
-        });
-        if (!pasted) {
-            return;
-        }
-        commitIr(pasted.ir);
-        editor.setSelectedNodeIds(pasted.newNodeIds);
-    }, [commitIr, editor, uuid, payload.blueprintId]);
+        void (async () => {
+            const environment = readGraphClipboard();
+            const source = await resolveGraphPasteSource(environment);
+            if (!source || environment?.isFrozen()) {
+                return;
+            }
+            let imported: ForeignGraphPasteReport = { imported: 0, frozen: false };
+            if (source.foreign) {
+                imported = await importForeignGraphAssets(source);
+                if (imported.frozen || environment?.isFrozen()) {
+                    return;
+                }
+            }
+            const activeIr = activeIrRef.current;
+            if (!activeIr) {
+                return;
+            }
+            const pasted = pasteBlueprintGraphClipboardPayload({
+                ir: activeIr,
+                payload: source.payload,
+                generateId: () => uuid.generate(),
+                targetBlueprintId: payload.blueprintId,
+            });
+            if (!pasted) {
+                return;
+            }
+            commitIr(pasted.ir);
+            editor.setSelectedNodeIds(pasted.newNodeIds);
+            if (source.foreign) {
+                reportForeignGraphPaste(source, imported);
+            }
+        })();
+    }, [commitIr, editor, readGraphClipboard, uuid, payload.blueprintId]);
 
     // A keystroke has no button to grey out, so `freeze.run` is how these are refused: undo, redo,
     // cut and paste all rewrite the graph, and on a frozen project they moved nodes about on screen
@@ -978,6 +1081,52 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         targetHandle: entry.magicElementRef.targetPortId,
                     });
                 }
+            };
+            if (editor.graphView.kind === "event") {
+                localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            } else {
+                localBp.updateFunctionGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
+            }
+            return id;
+        },
+        [editor.graphView, localBp, payload.blueprintId, uuid],
+    );
+
+    /**
+     * The node behind a group: a comment card in frame mode, at the rectangle the canvas measured
+     * around the selection.
+     *
+     * `background: false` is what puts it behind its members - a frame drawn on the node layer
+     * would tint every card it encloses. There is no group record anywhere; a frame and the cards
+     * that happen to sit inside it are all a group ever is, which is why creating one is a single
+     * ordinary node write and undoes like one.
+     */
+    const onCreateGroupFrame = useCallback(
+        (frame: {
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+            color: string;
+            name: string;
+        }): string | undefined => {
+            if (!editor.graphView) {
+                return undefined;
+            }
+            const id = uuid.generate();
+            const node = createGraphNodeForPalette(BLUEPRINT_NODE_TYPE_FLOW_COMMENT, id);
+            node.params = {
+                ...(node.params ?? {}),
+                text: frame.name,
+                color: frame.color,
+                background: false,
+                frame: true,
+                width: frame.width,
+                height: frame.height,
+            };
+            writeNodeEditorLayout(node, { x: frame.x, y: frame.y });
+            const mut = (draft: BlueprintGraphIr) => {
+                draft.nodes = { ...(draft.nodes ?? {}), [node.id]: node };
             };
             if (editor.graphView.kind === "event") {
                 localBp.updateEventGraphIr(payload.blueprintId, editor.graphView.graphId, mut);
@@ -1441,10 +1590,56 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         }
         const currentDocument = blueprintDocumentService.getDocument();
         const out: Record<string, Record<string, BlueprintInspectorParamSelectOption[]>> = {};
+
+        /**
+         * Which list one field picker is asking about.
+         *
+         * Three shapes, in the order a node can carry them: a node wired to an Element follows that
+         * wire, a node on a list's own blueprint is asking about that list, and a node inside an
+         * item template is asking about the list drawing it. An unwired Element pin resolves to
+         * nothing, which leaves the picker empty rather than offering another list's fields.
+         */
+        const resolveFieldPickerList = (node: { id: string; type: string }): UIElement | undefined => {
+            const edge = activeIr.edges?.find(item => item.to.nodeId === node.id && item.to.port === "list");
+            if (edge) {
+                const sourceNode = activeIr.nodes?.[edge.from.nodeId];
+                const ref = sourceNode ? readBlueprintElementRefParams(sourceNode.params) : null;
+                return ref ? currentDocument.elements[ref.elementId] : undefined;
+            }
+            if (widgetElement && isListLikeWidgetType(widgetElement.type)) {
+                return widgetElement;
+            }
+            const context = findOwningListItemTemplate(currentDocument, widgetElement);
+            return context ? currentDocument.elements[context.listElementId] : undefined;
+        };
         // Built lazily: most graphs have no Get Character node, and listing the cast per projection
         // would be pure cost for them.
         let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
+            const def = blueprintNodeRegistry.get(node.type);
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE)) {
+                out[node.id] = {
+                    [BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE]: listBlueprintInputActionOptions({
+                        document: currentDocument,
+                        pickedId: String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? ""),
+                        unnamedLabel: t("blueprint.options.unnamedInputAction"),
+                        missingLabel: id => t("blueprint.options.missingInputAction", { id }),
+                    }),
+                };
+                continue;
+            }
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE)) {
+                const listElement = resolveFieldPickerList(node);
+                const structId = (listElement?.props as Record<string, unknown> | undefined)?.itemStructId;
+                const struct = resolveUIStruct(currentDocument, typeof structId === "string" ? structId : null);
+                out[node.id] = {
+                    [BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE]: (struct?.fields ?? []).map(field => ({
+                        value: field.id,
+                        label: uiStructFieldLabel(field),
+                    })),
+                };
+                continue;
+            }
             if (node.type === BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER) {
                 const pickedId = String(node.params?.characterId ?? "").trim();
                 if (!pickedId) {
@@ -1495,6 +1690,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         revision,
         t,
         uiDocumentRevision,
+        widgetElement,
     ]);
 
     const contextTitle = useMemo(
@@ -1589,6 +1785,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         // VALUE is the option row's block id - a rewrite of the text must not invalidate a graph
         // that already points at it, which is the same reason the scene picker stores scene ids.
         const storyChoiceOptions: BlueprintInspectorParamSelectOption[] = [];
+        // The ending picker, for `Is Ending Reached` / `Get Endings` / `Clear Ending State`.
+        //
+        // Built from `listStoryEndings` - the one scan the compiler emits from - rather than a
+        // second walk of the blocks, so the picker can never offer an ending that is not in the
+        // build. It skips disabled rows for the same reason.
+        //
+        // Labelled "<scene> / <ending>" like the option picker above: an ending's own name is rarely
+        // unique across a story ("Bad End" appears more than once by design), so the scene it sits
+        // in is what makes the row identifiable. The value is the ending row's block id, so
+        // renaming an ending leaves every graph and every unlock pointing at it.
+        const storyEndings: BlueprintInspectorParamSelectOption[] = [];
         for (const story of storyEntries) {
             const storyDocument = storyDocumentsById[story.id];
             if (!storyDocument) {
@@ -1623,6 +1830,16 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                     });
                 }
             }
+            // Document order too, but from the scan rather than this walk: an ending is a fact about
+            // the whole story, and the scan is what decides which rows the build actually emits.
+            for (const ending of listStoryEndings(storyDocument)) {
+                const endingSceneLabel = ending.sceneName || t("blueprint.options.untitledScene");
+                storyEndings.push({
+                    value: ending.endingId,
+                    label: `${endingSceneLabel} / ${ending.name || t("blueprint.options.untitledEnding")}`,
+                    meta: { storyId: story.id },
+                });
+            }
         }
         // Named localization keys: pick by source text, key name as context.
         let localizationKeyOptions: BlueprintInspectorParamSelectOption[] = [];
@@ -1650,6 +1867,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             stories: storyOptions,
             storyScenes: storySceneOptions,
             storyChoiceOptions,
+            storyEndings,
+            // The `Is DLC Installed` picker. Author order, and the label is the DLC's name while the
+            // stored value is its id - the id is the filename a player already has, so renaming a
+            // DLC must not unpoint a graph.
+            [DLC_OPTIONS_SOURCE]: dlcService.list().map(dlc => ({ value: dlc.id, label: dlc.name })),
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the
@@ -1709,6 +1931,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         characterLibraryRevision,
         audioTrackService,
         audioTrackRevision,
+        dlcRevision,
+        dlcService,
         appTagService,
         appTagRevision,
         nodeCatalog,
@@ -1721,11 +1945,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const resolveCallableFnSignature = useCallback(
         (fnRef: string) => {
             const currentDoc = localBp.getBlueprintDocument();
-            const decl = findBlueprintFnByRef(currentDoc, fnRef);
-            if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, bp.owner)) {
-                return null;
-            }
-            return buildBlueprintFnSignatureSnapshot(decl);
+            const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, bp.owner);
+            return decl ? buildBlueprintFnSignatureSnapshot(decl) : null;
         },
         [localBp, bp.owner],
     );
@@ -1757,9 +1978,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 if (typeof fnRef !== "string" || fnRef.length === 0) {
                     continue;
                 }
-                const decl = findBlueprintFnByRef(currentDoc, fnRef);
-                if (!decl || !isBlueprintFnVisibleToOwner(decl.owner, currentBp.owner)) {
-                    // Missing/out-of-scope targets stay untouched — validation reports the error.
+                const decl = resolveBlueprintFnCallTarget(currentDoc, fnRef, currentBp.owner);
+                if (!decl) {
+                    // A target that does not resolve is left exactly as it is: the graph editor and
+                    // `blueprint/fn-target-missing` both report it, and the stored snapshot is the
+                    // only remaining record of what it used to name.
                     continue;
                 }
                 if (isBlueprintFnSnapshotStale(readBlueprintFnSignatureSnapshot(node.params), decl)) {
@@ -1911,7 +2134,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 <div className="min-h-0 flex-1">
                     <BlueprintFlowCanvas
                         nodeCatalog={nodeCatalog}
-                        memberPanelCollapsed={memberPanelState.memberPanelCollapsed}
                         graphKey={graphKey}
                         ir={ir}
                         revision={revision}
@@ -1937,8 +2159,11 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                         onBindElementLiteral={onBindElementLiteral}
                         initialViewport={initialFlowViewport}
                         onViewportChange={onFlowViewportChange}
+                        minimap={minimapPreference}
+                        onMinimapChange={onMinimapChange}
                         currentBlueprintId={payload.blueprintId}
                         resolveCallableFnSignature={resolveCallableFnSignature}
+                        onCreateGroupFrame={onCreateGroupFrame}
                     />
                 </div>
             </div>

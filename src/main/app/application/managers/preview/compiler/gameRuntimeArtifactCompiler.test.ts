@@ -19,6 +19,7 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
+import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -41,6 +42,8 @@ import {
 } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
+/** A second library asset the fixture project never mentions anywhere. */
+const UNUSED_ASSET_ID = "00000000-0000-4000-8000-000000000124";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
 const SIDECAR_PLUGIN_ID = "acme.sidecar-plugin";
 const SIDECAR_ID = `${SIDECAR_PLUGIN_ID}.bridge`;
@@ -792,7 +795,14 @@ describe("game runtime artifact compiler", () => {
             // The shipped game reads userDataDir before it can open the pack, and
             // names the player's directory after it rather than after productName,
             // which a rename would move. See shared/utils/userDataLocation.ts.
-            narraleaf: { mode: "production", userDataDir: "fixture.project" },
+            // Where those files go travels beside the name, and is complete even for a project
+            // that has never been asked: the runtime settles both before Chromium starts and has
+            // nowhere to go back to for the other half.
+            narraleaf: {
+                mode: "production",
+                userDataDir: "fixture.project",
+                saveLocation: { windowsLinux: "app-root", macos: "user-data" },
+            },
         });
         // Absent, not false: every build an author can make refuses a debugging switch, and the
         // runtime reads the marker's presence.
@@ -1145,6 +1155,10 @@ describe("game runtime artifact compiler", () => {
 
         expect(result.pack.addOns?.verificationKey)
             .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+        // What a later patch export reads to decide whether this build can be sent the difference
+        // rather than a whole pack. Dropped, every patch made for this build silently goes back to
+        // replacing the content of every other patch installed beside it.
+        expect(result.pack.addOns?.packDeltaVersion).toBe(PACK_DELTA_VERSION);
         // Loose payload, and still a binary beside it.
         await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
         const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);
@@ -1385,6 +1399,20 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     );
 }
 
+/**
+ * Put an asset id where a page stores one, so the sweep that decides what ships can see it.
+ *
+ * `assetId` rather than an arbitrary key: the property names a document stores a library id under
+ * are one list (`UI_ASSET_ID_PROPERTY_NAMES`), and a fixture that referenced an asset by a name no
+ * reader knows would pass for a reason the product does not have.
+ */
+async function referenceAssetFromRootSurface(projectPath: string, assetId: string): Promise<void> {
+    const uidocPath = path.join(projectPath, "editor", "ui", "uidoc.json");
+    const uidoc = JSON.parse(await fs.readFile(uidocPath, "utf-8"));
+    uidoc.elements.root.props = { ...uidoc.elements.root.props, assetId };
+    await fs.writeFile(uidocPath, JSON.stringify(uidoc), "utf-8");
+}
+
 async function createMinimalProject(
     projectPath: string,
     options: {
@@ -1606,6 +1634,7 @@ describe("weather clips in the pack", () => {
         const expectedId = weatherClipAssetId(weatherSpecForStage(
             { seed: "snow" },
             { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+            undefined,
         ));
 
         const result = await compileGameRuntimeArtifact({
@@ -1630,7 +1659,7 @@ describe("weather clips in the pack", () => {
 
         const clipPath = path.join(tempDir, "rain.webm");
         await fs.writeFile(clipPath, "webm bytes", "utf-8");
-        const unreachedId = weatherClipAssetId(weatherSpecForStage({ seed: "rain" }, undefined));
+        const unreachedId = weatherClipAssetId(weatherSpecForStage({ seed: "rain" }, undefined, undefined));
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47321),
@@ -1641,6 +1670,105 @@ describe("weather clips in the pack", () => {
         expect(pack.assets.items[unreachedId]).toBeUndefined();
         await expect(fs.readdir(path.join(result.appDir, "assets"))).resolves.not.toContain("rain.webm");
     });
+    it("addresses the clip at the rate the project states, not at the default", async () => {
+        // The rate is half of a clip's identity. If the packer narrowed by ids computed at 30
+        // while the game asked at 60, every build of a project that raised the rate would ship
+        // a file nothing opens and play the scene with no weather and no error.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, { app: { vfx: { frameRate: 60 } } });
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await writeWeatherStory(projectPath, [{ seed: "snow" }]);
+
+        const clipPath = path.join(tempDir, "snow-60.webm");
+        await fs.writeFile(clipPath, "webm bytes", "utf-8");
+        const stage = { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never;
+        const atSixty = weatherClipAssetId(weatherSpecForStage({ seed: "snow" }, stage, { frameRate: 60 }));
+        const atThirty = weatherClipAssetId(weatherSpecForStage({ seed: "snow" }, stage, undefined));
+        expect(atSixty).not.toBe(atThirty);
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47321),
+            weatherClips: [{ id: atSixty, path: clipPath }, { id: atThirty, path: clipPath }],
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[atSixty]).toMatchObject({ id: atSixty, type: "video" });
+        expect(pack.assets.items[atThirty]).toBeUndefined();
+    });
+
+
+    it("leaves an asset nothing references out of a package, whatever edition it is", async () => {
+        // The release edition included. A build that removes no scene still carries a library sized
+        // for everything the author ever imported, and a package is public the moment someone opens
+        // it - so what ships is what the bytes name, in every edition.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await referenceAssetFromRootSurface(projectPath, ASSET_ID);
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[ASSET_ID]).toBeDefined();
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeUndefined();
+        // The bytes, not just the manifest: an entry can be dropped from the listing while the file
+        // is still sitting in the package, which is the failure this whole pass exists to prevent.
+        await expect(
+            fs.readFile(path.join(result.appDir, "assets", `${UNUSED_ASSET_ID}.png`), "utf-8"),
+        ).rejects.toThrow();
+
+        const report = result.assetReport;
+        expect(report?.included.map(entry => entry.id)).toEqual([ASSET_ID]);
+        expect(report?.excluded.map(entry => entry.name)).toEqual(["spare.png"]);
+        expect(report?.excluded[0].bytes).toBe("unreferenced bytes".length);
+        expect(report?.excludedBytes).toBe("unreferenced bytes".length);
+    });
+
+    it("carries the library whole for a preview, and reports nothing about it", async () => {
+        // The audit that proves a narrowed package still reaches every asset it needs runs exactly
+        // where a report is present, so a compile that narrows nothing must produce none.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(
+            previewCompileInput(projectPath, runtimeDistDir, 47331),
+        );
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeDefined();
+        expect(result.assetReport).toBeUndefined();
+    });
+
     it("keeps the clip's manifest entry through a production build, where most fields are dropped", async () => {
         // A shipped pack is compiled down to what the runtime needs. `relativePath` is how it finds
         // the file at all, so a stripping pass that took the entry with it would leave a game that
@@ -1658,6 +1786,7 @@ describe("weather clips in the pack", () => {
         const expectedId = weatherClipAssetId(weatherSpecForStage(
             { seed: "snow" },
             { surfaces: [{ kind: "appSurface", designSize: { width: 1280, height: 720 } }] } as never,
+            undefined,
         ));
 
         const result = await compileGameRuntimeArtifact({

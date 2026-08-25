@@ -96,6 +96,11 @@ describe("PluginManager", () => {
         await expect(manager.resolvePluginEntryFile(new URL(descriptor.entryUrl))).resolves.toBe(
             path.join(tempDir, "plugins", "acme.sample-plugin", "main.js"),
         );
+        // The renderer appends a per-load query so re-importing a rebuilt entry is not answered
+        // from its module registry. Resolution has to look straight through it.
+        await expect(manager.resolvePluginEntryFile(new URL(`${descriptor.entryUrl}?nlsLoad=2`))).resolves.toBe(
+            path.join(tempDir, "plugins", "acme.sample-plugin", "main.js"),
+        );
         await expect(manager.resolvePluginEntryFile(new URL("app://plugins/acme.sample-plugin/1.0.0/manifest.json"))).resolves.toBeNull();
     });
 

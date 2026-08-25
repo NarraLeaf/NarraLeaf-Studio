@@ -99,7 +99,10 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
             },
         };
         const data = JSON.stringify(updated, null, 2);
-        const result = await fs.write(documentPath, data, "utf-8");
+        // Not `fs.write`: see the note on `UIDocumentService.writeDocumentFile`. `uigraphs.json` has
+        // the same shape - created on the first open of a project that predates it, replaced on
+        // every auto-save after - and the same stricter rejection contract now applies to it.
+        const result = await fs.writeFileNoFollowOrCreate(documentPath, data, "utf-8");
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }

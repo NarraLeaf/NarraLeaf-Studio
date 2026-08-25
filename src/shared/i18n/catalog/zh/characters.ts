@@ -24,7 +24,7 @@ export const characters = {
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
         deleteCharacterConfirm: "删除角色“{name}”？",
-        deleteCharacterDetail: "提到该角色的台词会失去指向，直到它被恢复",
+        deleteCharacterDetail: "台词保留名字，将其放上舞台的行会失去指向",
         deleteGroupConfirm: "删除分组“{name}”？",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },
@@ -99,8 +99,8 @@ export const characters = {
             docsLink: "阅读 {product} 指南",
             customDocsLink: "阅读如何编写运行时",
             neverDownloads: "Studio 不会代为下载；请自行从厂商处获取，其许可协议也在厂商处接受",
-            live2dTerms: "Live2D Cubism 的授权方是 Live2D Inc.，不是 NarraLeaf；你在下载时接受 Cubism SDK 许可协议，并且在你构建的游戏中，分发方是你自己；商业发行若超过 Live2D 的年营收阈值，需另行向 Live2D 申请发布授权",
-            spineTerms: "Spine Runtimes 的授权方是 Esoteric Software；每个使用 Spine 的人都需要自己的 Spine Editor 授权，且 Spine Runtimes License 必须随你发行的游戏一并提供；NarraLeaf 未持有 Spine 授权，因此 Studio 不含任何 Spine 代码，也无法代你构建适配器",
+            live2dTerms: "Live2D Cubism 的授权方是 Live2D Inc.，不是 NarraLeaf；你在下载时接受 Cubism SDK 许可协议，并且在你构建的游戏中，分发方是你自己；商业发行若超过 Live2D 的年营收阈值，需另行向 Live2D 申请发布授权；单一标题收录多个独立作品、或读取构建时未包含的模型，即使免费发行，也须在发行前获得 Live2D 批准",
+            spineTerms: "Spine Runtimes 的授权方是 Esoteric Software；每个使用 Spine 的人都需要自己的 Spine Editor 授权，且 Spine Runtimes License 必须随你发行的游戏一并提供；Spine Essential 与 Professional 仅在营收与融资低于 50 万美元时有效，超过则需 Spine Enterprise；Studio 不含任何 Spine 代码，也不代你构建适配器",
             sdkStep: "选择下载好的 {product} SDK 压缩包，不要解压",
             sdkPick: "选择 SDK 压缩包…",
             prebuiltStep: "选择构建好的适配器；选择目录则整体复制；选择单个文件则作为该运行时的 index.js",
@@ -266,5 +266,8 @@ export const characters = {
         resetPortrait: "自动取景",
         portraitTitle: "头像取景",
         portraitScoped: "仅为当前差分取景",
+    },
+    live: {
+        recordClaimed: "{name} 正在编辑该角色",
     },
 } satisfies LocaleNamespace<"characters">;

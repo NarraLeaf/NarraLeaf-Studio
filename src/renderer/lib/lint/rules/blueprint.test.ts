@@ -1,7 +1,21 @@
+import fs from "node:fs";
+import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import type { BlueprintDocument, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import type { BlueprintDocument, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import {
+    BLUEPRINT_NODE_PARAM_FN_NAME,
+    BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
+    BLUEPRINT_NODE_TYPE_FN_HEAD,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+    BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT,
@@ -9,11 +23,23 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { SaveSchemaField } from "@shared/types/saveSchema";
+import type { StoryDocument } from "@shared/types/story";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import { saveSchemaPinId } from "../../ui-editor/blueprint-nodes/effectivePins";
+import {
+    ELEMENT_REF_PARAM_ELEMENT_ID,
+    ELEMENT_REF_PARAM_ELEMENT_TYPE,
+    ELEMENT_REF_PARAM_SURFACE_ID,
+} from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
+import {
+    createBlueprintFnRef,
+    listBlueprintFnCallSites,
+} from "../../workspace/services/ui-editor/blueprint/fnCatalog";
+import { ownerRefToIndexKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
+import { listBlueprintGraphSites } from "../blueprintSites";
 import { createTestLintContext } from "../testContext";
 import type { LintContext } from "../context";
 import type { LintRule, LintRuleId } from "../types";
@@ -56,6 +82,9 @@ function documentWithGraphs(input: {
             bp1: {
                 id: "bp1",
                 name: "Title Screen",
+                // The owner the record above files it under. Spelled out because what a graph may
+                // reach is decided by it - fn visibility is the case with teeth.
+                owner: { kind: "surfaceMain", surfaceId: "s1" },
                 program: {
                     kind: "graph",
                     graphs: {
@@ -74,6 +103,38 @@ function uiDocumentWithSurfaces(...surfaceIds: string[]): UIDocument {
         surfaces: surfaceIds.map(id => ({ id, kind: "appSurface" })),
         elements: {},
     } as unknown as UIDocument;
+}
+
+/** A UI document declaring exactly the input actions named, keyed as the vocabulary is. */
+function uiDocumentWithActions(...actionIds: string[]): UIDocument {
+    return {
+        surfaces: [],
+        elements: {},
+        actions: Object.fromEntries(actionIds.map(id => [id, { id, name: id, bindings: [] }])),
+    } as unknown as UIDocument;
+}
+
+/** A story document whose one scene declares one `/ending` row, under the id passed. */
+function storyWithEnding(endingId: string) {
+    return {
+        id: "story-1",
+        scenes: {
+            "scene-1": {
+                id: "scene-1",
+                name: "Final Hours",
+                rootBlockIds: [endingId],
+                blocks: {
+                    [endingId]: {
+                        id: endingId,
+                        kind: "control",
+                        payload: { control: "ending", name: "Sunrise" },
+                        childrenIds: [],
+                    },
+                },
+            },
+        },
+        unassignedSceneIds: ["scene-1"],
+    } as unknown as StoryDocument;
 }
 
 /** `On App Boot -> Go Page`, where the page is whatever id is passed. */
@@ -168,14 +229,14 @@ describe("blueprint/reference-missing", () => {
         };
         const base = {
             blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
-            localizationKeyNames: new Set(["farewell"]),
+            localizationKeys: new Map([["farewell", "See you."]]),
         };
         expect(await run("blueprint/reference-missing", createTestLintContext(base))).toHaveLength(1);
         // The key registry not having loaded is the localization equivalent, and is also silent.
         expect(
             await run(
                 "blueprint/reference-missing",
-                createTestLintContext({ ...base, localizationKeyNames: null }),
+                createTestLintContext({ ...base, localizationKeys: null }),
             ),
         ).toEqual([]);
     });
@@ -198,10 +259,134 @@ describe("blueprint/reference-missing", () => {
             "blueprint/reference-missing",
             createTestLintContext({
                 blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
-                localizationKeyNames: new Set(["farewell"]),
+                localizationKeys: new Map([["farewell", "See you."]]),
             }),
         );
         expect(findings).toEqual([]);
+    });
+
+    it("reports an ending the story no longer declares, and says nothing about one it does", async () => {
+        // The `ending` row IS the declaration, so a deleted row leaves a node asking a question no
+        // playthrough can answer yes to - it reads `false` forever with nothing on screen to say why.
+        const graph = (endingId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                reached: {
+                    id: "reached",
+                    type: BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
+                    params: { storyId: "story-1", endingId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                { from: { nodeId: "reached", port: "isReached" }, to: { nodeId: "log", port: "message" } },
+            ],
+        });
+        const stories = [{ id: "story-1", name: "Chapter One", document: storyWithEnding("ending-good") }];
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("ending-deleted") } }),
+                stories,
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageEnding",
+            location: { kind: "blueprint", nodeId: "reached" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("ending-good") } }),
+                stories,
+            }),
+        );
+        expect(present).toEqual([]);
+    });
+
+    it("reports a DLC the project no longer has, and says nothing about one it does", async () => {
+        // Deleting a DLC leaves every node that named it answering false forever, so the entrance
+        // behind it is never drawn again and nothing on screen says why.
+        const graph = (dlcId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                installed: {
+                    id: "installed",
+                    type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                    params: { dlcId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } },
+                { from: { nodeId: "installed", port: "isInstalled" }, to: { nodeId: "log", port: "message" } },
+            ],
+        });
+        const dlcs = [{ id: "summer", name: "Summer Route", attachTo: APP_TAG_ID_RELEASE }];
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("winter") } }),
+                dlcs,
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageDlc",
+            location: { kind: "blueprint", nodeId: "installed" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph("summer") } }),
+                dlcs,
+            }),
+        );
+        expect(present).toEqual([]);
+    });
+
+    it("reports an input action the project no longer declares, and says nothing about one it does", async () => {
+        // An `On Action` head naming a deleted action is silent twice over: nothing raises that name
+        // any more, and on the canvas it looks exactly like a head waiting for its gesture.
+        const graph = (actionId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: {
+                    id: "head",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+                    params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: actionId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } }],
+        });
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onAction: graph("dismiss") } }),
+                uiDocument: uiDocumentWithActions("advance"),
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageInputAction",
+            location: { kind: "blueprint", nodeId: "head" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onAction: graph("advance") } }),
+                uiDocument: uiDocumentWithActions("advance"),
+            }),
+        );
+        expect(present).toEqual([]);
     });
 
     it("accounts for every project-entity option source the node catalogue declares", () => {
@@ -231,6 +416,469 @@ describe("blueprint/reference-missing", () => {
                 "neither resolves nor waives. Add a resolver in REFERENCE_KIND_BY_OPTIONS_SOURCE, or list the\n" +
                 "source in UNCHECKED_OPTIONS_SOURCES with the reason it cannot be checked.\n",
         ).toEqual([]);
+    });
+});
+
+/**
+ * The one fault in the DLC seam an author cannot see from the inside: Dev Mode carries every story
+ * the project has, so the entrance they are testing always works there. The base build does not
+ * carry the DLC's story, and the button fails for the player who has not bought it.
+ */
+describe("blueprint/dlc-entrance-unguarded", () => {
+    const entrance = (extra?: BlueprintGraphIr["nodes"]): BlueprintGraphIr => ({
+        nodes: {
+            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+            start: {
+                id: "start",
+                type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                params: { storyId: "story-dlc", sceneId: "scene-1" },
+            },
+            ...extra,
+        },
+        edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "in" } }],
+    });
+
+    const stories = [
+        { id: "story-dlc", name: "Summer", document: storyWithEnding("e1"), dlcId: "summer" },
+        { id: "story-base", name: "Main", document: storyWithEnding("e2") },
+    ];
+
+    it("is a warning by default", () => {
+        expect(rule("blueprint/dlc-entrance-unguarded").defaultSeverity).toBe("warning");
+    });
+
+    it("reports a Start Story into a DLC's story that nothing in the graph guards", async () => {
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance() } }),
+                stories,
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintDlcEntranceUnguarded.message",
+            location: { kind: "blueprint", nodeId: "start" },
+        });
+    });
+
+    it("says nothing when the graph asks about that DLC", async () => {
+        const guard: BlueprintGraphIr["nodes"] = {
+            guard: {
+                id: "guard",
+                type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                params: { dlcId: "summer" },
+            },
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance(guard) } }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("is not satisfied by a guard on a different DLC", async () => {
+        const guard: BlueprintGraphIr["nodes"] = {
+            guard: {
+                id: "guard",
+                type: BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
+                params: { dlcId: "winter" },
+            },
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: entrance(guard) } }),
+                stories,
+            }),
+        );
+        expect(findings).toHaveLength(1);
+    });
+
+    it("says nothing about a story the game itself carries", async () => {
+        const graph: BlueprintGraphIr = {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                start: {
+                    id: "start",
+                    type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                    params: { storyId: "story-base", sceneId: "scene-1" },
+                },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "in" } }],
+        };
+        const findings = await run(
+            "blueprint/dlc-entrance-unguarded",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+describe("blueprint/element-ref-missing", () => {
+    /** `On Element Click`, bound to whatever `(surface, element)` is passed. */
+    function elementClickGraph(surfaceId: string, elementId: string): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: {
+                    id: "head",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
+                    params: {
+                        [ELEMENT_REF_PARAM_SURFACE_ID]: surfaceId,
+                        [ELEMENT_REF_PARAM_ELEMENT_ID]: elementId,
+                        [ELEMENT_REF_PARAM_ELEMENT_TYPE]: "nl.button",
+                    },
+                },
+            },
+            edges: [],
+        };
+    }
+
+    /** A page holding `pageElementIds`, plus one component definition holding `componentElementId`. */
+    function uiDocumentWithElements(pageElementIds: string[], componentElementId?: string): UIDocument {
+        return {
+            surfaces: [{ id: "s1", kind: "appSurface", rootElementId: "root" }],
+            elements: Object.fromEntries(pageElementIds.map(id => [id, { id, type: "nl.button", childrenIds: [] }])),
+            ...(componentElementId
+                ? {
+                    components: [{
+                        id: "c1",
+                        name: "Card",
+                        rootElementId: componentElementId,
+                        elements: {
+                            [componentElementId]: { id: componentElementId, type: "nl.button", childrenIds: [] },
+                        },
+                    }],
+                }
+                : {}),
+        } as unknown as UIDocument;
+    }
+
+    it("is an error by default", () => {
+        expect(rule("blueprint/element-ref-missing").defaultSeverity).toBe("error");
+    });
+
+    it("reports a head bound to a widget the project does not have", async () => {
+        // The shape a graph fragment pasted from another project arrives in: the element id is a
+        // UUID that project minted, and nothing here answers to it.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("surface-elsewhere", "element-elsewhere") },
+                }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/element-ref-missing",
+            messageKey: "lint.rule.blueprintElementRefMissing.message",
+            location: { kind: "blueprint", blueprintId: "bp1", graphId: "onClick", nodeId: "head" },
+            target: { kind: "blueprint", ownerKey: "surfaceMain:s1", focusEventId: "onClick", focusNodeId: "head" },
+        });
+    });
+
+    it("says nothing about a widget that is on a page", async () => {
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onClick: elementClickGraph("s1", "button-here") } }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a widget that lives inside a component definition", async () => {
+        // The one shape that makes a narrower universe wrong: a component keeps its elements in its
+        // own table, so a set built from `document.elements` alone would report every binding inside
+        // a component's blueprint - a rule firing on correct graphs.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("component-editor:c1", "button-in-component") },
+                }),
+                uiDocument: uiDocumentWithElements(["button-here"], "button-in-component"),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a node with no widget chosen", async () => {
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onClick: elementClickGraph("s1", "") } }),
+                uiDocument: uiDocumentWithElements(["button-here"]),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports nothing when the interface document could not be read", async () => {
+        // A null document is not an empty one: treating it as one would report every binding in the
+        // project off a single failed read.
+        const findings = await run(
+            "blueprint/element-ref-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onClick: elementClickGraph("surface-elsewhere", "element-elsewhere") },
+                }),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+describe("blueprint/fn-target-missing", () => {
+    /** One blueprint's contribution: the fns it declares, and the calls it makes. */
+    type FnBlueprintSpec = {
+        id: string;
+        owner: BlueprintOwnerRef;
+        /** Fn heads, by node id, each with the name its card prints. */
+        heads?: Record<string, string>;
+        /** `Call Fn` nodes, by node id: the ref stored, and the name the snapshot carries. */
+        calls?: Record<string, { fnRef: string; snapshotName?: string }>;
+    };
+
+    /**
+     * A document whose blueprints are each the active one for their own owner.
+     *
+     * Every blueprint gets an owner record, because a blueprint no record points at is skipped by
+     * the corpus these rules sweep - a fixture without one would test nothing.
+     */
+    function fnDocument(...specs: FnBlueprintSpec[]): BlueprintDocument {
+        const headNode = (nodeId: string, name: string) => ({
+            id: nodeId,
+            type: BLUEPRINT_NODE_TYPE_FN_HEAD,
+            params: { [BLUEPRINT_NODE_PARAM_FN_NAME]: name },
+        });
+        const callNode = (nodeId: string, call: { fnRef: string; snapshotName?: string }) => ({
+            id: nodeId,
+            type: BLUEPRINT_NODE_TYPE_FN_CALL,
+            params: {
+                [BLUEPRINT_NODE_PARAM_FN_REF]: call.fnRef,
+                ...(call.snapshotName
+                    ? {
+                        [BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT]: {
+                            name: call.snapshotName,
+                            params: [],
+                            returns: [],
+                        },
+                    }
+                    : {}),
+            },
+        });
+        return {
+            ownerRecords: Object.fromEntries(
+                specs.map(spec => [
+                    ownerRefToIndexKey(spec.owner),
+                    { activeBlueprintId: spec.id, privateBlueprintIds: [spec.id] },
+                ]),
+            ),
+            blueprints: Object.fromEntries(
+                specs.map(spec => [
+                    spec.id,
+                    {
+                        id: spec.id,
+                        name: spec.id,
+                        owner: spec.owner,
+                        program: {
+                            kind: "graph",
+                            graphs: {
+                                events: {
+                                    main: {
+                                        id: "main",
+                                        graph: {
+                                            nodes: {
+                                                ...Object.fromEntries(
+                                                    Object.entries(spec.heads ?? {}).map(([nodeId, name]) => [
+                                                        nodeId,
+                                                        headNode(nodeId, name),
+                                                    ]),
+                                                ),
+                                                ...Object.fromEntries(
+                                                    Object.entries(spec.calls ?? {}).map(([nodeId, call]) => [
+                                                        nodeId,
+                                                        callNode(nodeId, call),
+                                                    ]),
+                                                ),
+                                            },
+                                            edges: [],
+                                        },
+                                    },
+                                },
+                                functions: {},
+                            },
+                        },
+                    },
+                ]),
+            ),
+        } as unknown as BlueprintDocument;
+    }
+
+    const globalOwner: BlueprintOwnerRef = { kind: "globalMain" };
+    const surfaceOwner: BlueprintOwnerRef = { kind: "surfaceMain", surfaceId: "s1" };
+    const otherSurfaceOwner: BlueprintOwnerRef = { kind: "surfaceMain", surfaceId: "s2" };
+
+    it("is an error by default", () => {
+        // The same standing the graph editor already gives it on the canvas. Anything lower and the
+        // report and the editor would say two different things about one node.
+        expect(rule("blueprint/fn-target-missing").defaultSeverity).toBe("error");
+    });
+
+    it("reports a call whose blueprint is not in this project", async () => {
+        // The shape a fragment pasted from another project arrives in: both halves of the ref are
+        // ids that project minted, and nothing here answers to either.
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument({
+                    id: "bp-caller",
+                    owner: surfaceOwner,
+                    calls: { call: { fnRef: createBlueprintFnRef("bp-elsewhere", "head-elsewhere"), snapshotName: "Refresh" } },
+                }),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/fn-target-missing",
+            messageKey: "lint.rule.blueprintFnTargetMissing.messageNamed",
+            messageParams: { name: "Refresh" },
+            location: { kind: "blueprint", blueprintId: "bp-caller", graphId: "main", nodeId: "call" },
+            target: { kind: "blueprint", ownerKey: "surfaceMain:s1", focusEventId: "main", focusNodeId: "call" },
+        });
+    });
+
+    it("reports a call whose blueprint is here but whose function has been deleted", async () => {
+        // The other half of the fault, and the one a project reaches on its own: the blueprint is
+        // the right one, the head node inside it is gone.
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument(
+                    {
+                        id: "bp-caller",
+                        owner: surfaceOwner,
+                        calls: { call: { fnRef: createBlueprintFnRef("bp-global", "head-deleted"), snapshotName: "Refresh" } },
+                    },
+                    { id: "bp-global", owner: globalOwner, heads: { "head-kept": "Kept" } },
+                ),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "blueprint/fn-target-missing",
+            location: { kind: "blueprint", blueprintId: "bp-caller", nodeId: "call" },
+        });
+    });
+
+    it("reports a call whose function exists but is out of reach from this graph", async () => {
+        // What makes a set of ids the wrong answer here: a surface's fns are visible only on that
+        // surface, so this ref is good where it was written and dead where it now sits. The rule
+        // gets this right because it asks the resolver the editor asks, owner and all.
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument(
+                    {
+                        id: "bp-caller",
+                        owner: surfaceOwner,
+                        calls: { call: { fnRef: createBlueprintFnRef("bp-other-surface", "head"), snapshotName: "Refresh" } },
+                    },
+                    { id: "bp-other-surface", owner: otherSurfaceOwner, heads: { head: "Refresh" } },
+                ),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({ ruleId: "blueprint/fn-target-missing", location: { nodeId: "call" } });
+    });
+
+    it("falls back to a sentence with no name when the call carries no signature", async () => {
+        // A ref is a pair of ids. Printing one would put a UUID in the report, which is a word
+        // nobody can search a project for.
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument({
+                    id: "bp-caller",
+                    owner: surfaceOwner,
+                    calls: { call: { fnRef: createBlueprintFnRef("bp-elsewhere", "head-elsewhere") } },
+                }),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.blueprintFnTargetMissing.message");
+        expect(findings[0].messageParams).toBeUndefined();
+    });
+
+    it("says nothing about a call that resolves", async () => {
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument(
+                    {
+                        id: "bp-caller",
+                        owner: surfaceOwner,
+                        calls: { call: { fnRef: createBlueprintFnRef("bp-global", "head"), snapshotName: "Refresh" } },
+                    },
+                    { id: "bp-global", owner: globalOwner, heads: { head: "Refresh" } },
+                ),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a call with no function chosen", async () => {
+        // An unfinished node, not a broken one - an empty select the author can see, and the graph
+        // editor's own `fn.call_unset`.
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({
+                blueprintDocument: fnDocument({
+                    id: "bp-caller",
+                    owner: surfaceOwner,
+                    calls: { call: { fnRef: "" } },
+                }),
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a project with no blueprints", async () => {
+        expect(await run("blueprint/fn-target-missing", createTestLintContext())).toEqual([]);
+        expect(
+            await run("blueprint/fn-target-missing", createTestLintContext({ blueprintDocument: fnDocument() })),
+        ).toEqual([]);
+    });
+
+    it("says nothing about the starter template every new project begins as", async () => {
+        // An error rule that fired on the shipped skeleton would make every new project fail its
+        // first build. The template really does call fns - a dozen of them - so this is not a sweep
+        // over nothing, which is what the first assertion is here to prove.
+        const template = JSON.parse(
+            fs.readFileSync(
+                path.join(process.cwd(), "resources/templates/skeleton/content/editor/ui/uigraphs.json"),
+                "utf-8",
+            ),
+        ) as { blueprintDocument: BlueprintDocument };
+        const calls = listBlueprintGraphSites(template.blueprintDocument).flatMap(site =>
+            listBlueprintFnCallSites(site.ir),
+        );
+        expect(calls.length).toBeGreaterThan(0);
+        const findings = await run(
+            "blueprint/fn-target-missing",
+            createTestLintContext({ blueprintDocument: template.blueprintDocument }),
+        );
+        expect(findings).toEqual([]);
     });
 });
 

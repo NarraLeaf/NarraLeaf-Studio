@@ -1,5 +1,5 @@
 /**
- * Project -> Brand: the project's palette, one row per colour.
+ * Project -> Design: the project's palette, one row per colour, and its default font stack.
  *
  * Two parts, and the split is the model's. The colours with a plain id are the project's own and
  * are what an author decides; the ids carrying a dot are the slots each control paints with, and
@@ -32,12 +32,16 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Languages, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
-import { Button, IconButton, Input } from "@/lib/components/elements";
+import { Button, Checkbox, IconButton, Input, Select, useEscapeToClose } from "@/lib/components/elements";
+import { FieldLabel } from "@/lib/components/elements/FieldLabel";
+import { AnchoredPanel } from "@/lib/components/elements/HintPopover";
+import { useDismissWhenHidden } from "@/lib/components/layout/hostVisibility";
+import { cn } from "@/lib/utils/cn";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { useBrandColorLabel } from "@/apps/workspace/modules/properties/framework/fields/brandPalette";
 import {
@@ -46,14 +50,28 @@ import {
     serializeColorValue,
 } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
+import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { EDITOR_BUILTIN_FONT_VIRTUAL_GROUP, getBuiltinEditorFontDisplayName } from "@/lib/ui-editor/fonts/builtinVirtualEditorFonts";
+import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import type { Asset } from "@/lib/workspace/services/assets/types";
+import { useEditorFontFamily } from "@/lib/workspace/hooks/useEditorFontFamily";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import type { BrandService } from "@/lib/workspace/services/brand/BrandService";
+import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
 import { collectBrandLinkReferences, countBrandLinkReferences } from "@shared/brand/brandReferences";
 import type { TranslationKey } from "@shared/i18n";
 import { BRAND_CONTROL_GROUPS, type BrandColor } from "@shared/types/brand";
+import { entryServesLocale, PROJECT_FONT_STACK_MAX, type ProjectFontEntry } from "@shared/types/typography";
+import {
+    localeAutonym,
+    type LocalizationConfiguration,
+    type LocalizationLocaleEntry,
+} from "@shared/types/localization";
+import { suggestLocalesForCoverage } from "@shared/typography/localeScripts";
 import { useWorkspace } from "../../../context";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
@@ -75,6 +93,24 @@ const UNREADABLE_COLOR_FALLBACK: ColorValue = { hex: "#FFFFFF", alpha: 1 };
  */
 const SWATCH_BOX_CLASS = "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
     + " ring-1 ring-inset ring-edge-strong";
+
+/**
+ * The specimen's own box, beside the name of the font it is set in.
+ *
+ * Wider than the palette's swatch and squared off rather than round, because what it holds is two
+ * letters rather than a dot - and `rounded-md` is what a box of that size is, per the §3 rule that a
+ * nested box never rounds further than the control scale around it.
+ */
+const SPECIMEN_BOX_CLASS = "inline-flex h-6 w-9 shrink-0 items-center justify-center rounded-md"
+    + " ring-1 ring-inset ring-edge-strong text-xs text-fg";
+
+/**
+ * What the font picker offers besides the library: the system stacks, which need no font file.
+ *
+ * Deliberately not the project-default row `FontAssetField` shows - this is the surface the project
+ * default is built on, and offering it here would be a stack pointing at itself.
+ */
+const FONT_PICKER_VIRTUAL_GROUPS = [EDITOR_BUILTIN_FONT_VIRTUAL_GROUP];
 
 /**
  * Clamps that keep this subtree from widening the panel.
@@ -273,7 +309,435 @@ export function ProjectDesignSection({ uiService }: ProjectSectionProps) {
                     </Accordion>
                 </div>
             </SettingsGroup>
+
+            <FontStackGroup service={brandService} />
         </div>
+    );
+}
+
+/**
+ * Project -> Design: the fonts text is set in, in priority order.
+ *
+ * The list *is* the feature. A widget that has chosen no font of its own is set in this stack, and a
+ * widget that has chosen one falls through to it for the characters its own typeface has no glyph
+ * for - so the order of these rows is what the rest of the project inherits, and moving a row is the
+ * edit an author comes here to make. See `@shared/types/typography` for why nothing is written into
+ * a widget to make that happen.
+ *
+ * Not an accordion, unlike the control slots above: a stack is two or three rows and all of them are
+ * what the author came for. Not confirmed on delete either - a removed font is one press of Add away,
+ * and the palette's confirmation exists because a deleted colour leaves broken links behind, which a
+ * removed font cannot do.
+ *
+ * ## The language half appears only when there is a language
+ *
+ * A rung may be restricted to some of the project's languages, which is how a project sets Japanese
+ * in one face and Simplified Chinese in another without anybody maintaining a table. But a project
+ * with fewer than two languages has no axis to restrict along, so **every language control here is
+ * absent** in one: the rows are exactly what they were before the feature existed. Adding a second
+ * language is what makes the controls appear, and it never asks the author to fill anything in - an
+ * unrestricted rung already serves the new language.
+ *
+ * The preview picker does not filter the list. It dims the rows the chosen language does not use, so
+ * what that language resolves to is the undimmed rows read top to bottom - and a restriction that is
+ * wrong is still on screen, one press from being fixed. Hiding those rows would mean an author had
+ * to guess which language to preview before they could edit the row they came for.
+ */
+function FontStackGroup({ service }: { service: BrandService | null }) {
+    const { t } = useTranslation();
+    const { context } = useWorkspace();
+    const freeze = useFreezeGuard();
+    const [fonts, setFonts] = useState<ProjectFontEntry[]>([]);
+    const [pickerOpen, setPickerOpen] = useState(false);
+    const addRef = useRef<HTMLDivElement | null>(null);
+    const { locales, sourceLocale } = useProjectLocales(context);
+    const [previewLocale, setPreviewLocale] = useState("");
+
+    useEffect(() => {
+        if (!service) {
+            setFonts([]);
+            return;
+        }
+        setFonts(service.listFonts());
+        return service.onFontsChanged(setFonts);
+    }, [service]);
+
+    /**
+     * The preview follows the project's source language until the author picks another.
+     *
+     * That is what the editor resolves fonts in everywhere else (see `BrandService`'s locale watch),
+     * so opening this group shows the stack the canvas beside it is already using rather than an
+     * arbitrary first entry. A language that has been removed falls back the same way.
+     */
+    useEffect(() => {
+        setPreviewLocale(current => (
+            locales.some(locale => locale.code === current) ? current : sourceLocale
+        ));
+    }, [locales, sourceLocale]);
+
+    const assetsService = useMemo(() => {
+        try {
+            return context?.services.get<AssetsService>(Services.Assets) ?? null;
+        } catch {
+            return null;
+        }
+    }, [context]);
+
+    /**
+     * What a row is called: the built-in stack's name, or the library's name for the asset.
+     *
+     * A font the library no longer has is named as missing rather than falling back to the generic
+     * word for a typeface. The stack keeps the id - an asset can come back, and dropping the row
+     * would lose an ordering the author set - so the row has to be able to say what it is holding.
+     */
+    const fontLabel = useCallback((assetId: string): string => {
+        const builtin = getBuiltinEditorFontDisplayName(assetId);
+        if (builtin) {
+            return builtin;
+        }
+        const asset = assetsService?.getAssets()[AssetType.Font]?.[assetId];
+        return asset?.name ?? t("brand.fonts.missing");
+    }, [assetsService, t]);
+
+    /**
+     * Add the fonts the picker handed back, restricted to whatever they turn out to be for.
+     *
+     * The suggestion is the point of the whole language half: the author is not asked to compose a
+     * table, they are shown an answer the font itself gave and left to correct it. It is refused far
+     * more often than it is made - see `suggestLocalesForCoverage` - and a refusal adds the rung
+     * unrestricted, which is the state every rung had before this existed.
+     *
+     * Resolved before the rung is added rather than added and then amended: a row that appears
+     * unrestricted and acquires a language a moment later is an edit nobody made.
+     */
+    const handleConfirm = useCallback((assets: Asset[]) => {
+        setPickerOpen(false);
+        void (async () => {
+            for (const asset of assets) {
+                service?.addFont(asset.id, await suggestRestriction(assetsService, asset, locales));
+            }
+        })();
+    }, [assetsService, locales, service]);
+
+    const full = fonts.length >= PROJECT_FONT_STACK_MAX;
+    const selectedIds = useMemo(() => fonts.map(entry => entry.assetId), [fonts]);
+    // Fewer than two and there is nothing to choose between; see the note on this component.
+    const multilingual = locales.length >= 2;
+    const previewName = locales.find(locale => locale.code === previewLocale)?.displayName ?? previewLocale;
+
+    return (
+        <SettingsGroup
+            title={t("project.group.typography")}
+            description={t("brand.fonts.description")}
+            trailing={multilingual ? (
+                <Select
+                    size="sm"
+                    value={previewLocale}
+                    ariaLabel={t("brand.fonts.preview")}
+                    options={locales.map(locale => ({ value: locale.code, label: locale.displayName }))}
+                    onChange={next => setPreviewLocale(String(next))}
+                />
+            ) : undefined}
+        >
+            {fonts.length > 0 ? (
+                <div className="min-w-0 border-t border-edge">
+                    {fonts.map((entry, index) => (
+                        <FontRow
+                            key={entry.assetId}
+                            entry={entry}
+                            label={fontLabel(entry.assetId)}
+                            service={service}
+                            first={index === 0}
+                            last={index === fonts.length - 1}
+                            locales={multilingual ? locales : []}
+                            excludedFrom={
+                                multilingual && previewLocale && !entryServesLocale(entry, previewLocale)
+                                    ? previewName
+                                    : null
+                            }
+                        />
+                    ))}
+                </div>
+            ) : null}
+            <div className="flex min-w-0" ref={addRef}>
+                <Button size="sm" onClick={() => setPickerOpen(true)} {...freeze.writes(!service || full)}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("brand.fonts.add")}
+                </Button>
+            </div>
+
+            <AssetSelector
+                visible={pickerOpen}
+                assetType={AssetType.Font}
+                virtualGroups={FONT_PICKER_VIRTUAL_GROUPS}
+                virtualGroupsPlacement="before"
+                anchorRef={addRef}
+                title={t("brand.fonts.add")}
+                multiple={false}
+                // The stack's own ids, so a font already on it reads as taken rather than as a fresh
+                // pick that silently does nothing - `addFont` refuses a duplicate.
+                selectedIds={selectedIds}
+                onClose={() => setPickerOpen(false)}
+                onConfirm={handleConfirm}
+            />
+        </SettingsGroup>
+    );
+}
+
+/**
+ * The project's languages, and which of them it is written in.
+ *
+ * Subscribed rather than read once: adding the project's second language is exactly what makes the
+ * controls in this group appear, and an author who has just added one should not have to reopen the
+ * panel to see them.
+ *
+ * A window without the service - and there are several that carry only part of the service set -
+ * reads no languages, which is the state a project that never configured localization is in and
+ * draws the same rows.
+ */
+function useProjectLocales(context: WorkspaceContext | null): {
+    locales: LocalizationLocaleEntry[];
+    sourceLocale: string;
+} {
+    const [config, setConfig] = useState<{ locales: LocalizationLocaleEntry[]; sourceLocale: string }>({
+        locales: [],
+        sourceLocale: "",
+    });
+
+    useEffect(() => {
+        let service: LocalizationService | null = null;
+        try {
+            service = context?.services.get<LocalizationService>(Services.Localization) ?? null;
+        } catch {
+            service = null;
+        }
+        if (!service) {
+            return;
+        }
+        const publish = (next: LocalizationConfiguration): void => setConfig({
+            locales: next.locales,
+            sourceLocale: next.sourceLocale,
+        });
+        publish(service.getConfiguration());
+        return service.onConfigChanged(publish);
+    }, [context]);
+
+    return config;
+}
+
+/**
+ * The languages a font should be restricted to when it is added, or nothing.
+ *
+ * Nothing is the usual answer and the safe one: an unrestricted rung serves every language, so a
+ * refusal costs the author one edit while a wrong guess silently removes a font from the language it
+ * was bought for. A font that cannot be read at all - a WOFF2 on a host with no Brotli decompressor,
+ * a file that is not a font - is a refusal too, for the same reason.
+ */
+async function suggestRestriction(
+    assetsService: AssetsService | null,
+    asset: Asset,
+    locales: readonly LocalizationLocaleEntry[],
+): Promise<string[] | undefined> {
+    const fontService = assetsService?.fontService;
+    if (!fontService || locales.length < 2 || asset.type !== AssetType.Font) {
+        return undefined;
+    }
+    const coverage = await fontService.readCoverage(asset as Asset<AssetType.Font>);
+    if (!coverage.ok) {
+        return undefined;
+    }
+    const suggested = suggestLocalesForCoverage(coverage.coverage, locales.map(locale => locale.code));
+    return suggested.length > 0 ? suggested : undefined;
+}
+
+/**
+ * One rung: a specimen set in that font alone, its name, the languages it is for, and its place in
+ * the order.
+ *
+ * `followProjectDefault: false` on the specimen is load-bearing. The default resolution appends the
+ * whole project stack to whatever it is asked for, which is right everywhere else and wrong here:
+ * every row would preview through the same fallbacks and a row whose own font failed to load would
+ * look exactly like one that worked.
+ *
+ * The second line and the language button are drawn only when there is something to say - a rung
+ * nobody restricted is one line, exactly as it was before languages existed, and `locales` is empty
+ * for a project that has fewer than two of them.
+ */
+function FontRow({
+    entry,
+    label,
+    service,
+    first,
+    last,
+    locales,
+    excludedFrom,
+}: {
+    entry: ProjectFontEntry;
+    label: string;
+    service: BrandService | null;
+    first: boolean;
+    last: boolean;
+    /** The project's languages, or empty when it has too few for the question to mean anything. */
+    locales: readonly LocalizationLocaleEntry[];
+    /** The previewed language's name, when this rung is not part of that language's stack. */
+    excludedFrom: string | null;
+}) {
+    const { t } = useTranslation();
+    const freeze = useFreezeGuard();
+    const { cssFamily } = useEditorFontFamily(entry.assetId, { followProjectDefault: false });
+    const [localesOpen, setLocalesOpen] = useState(false);
+    const localesRef = useRef<HTMLButtonElement | null>(null);
+
+    const restriction = useMemo(() => entry.locales ?? [], [entry.locales]);
+    const restrictionLabel = restriction
+        .map(code => locales.find(locale => locale.code === code)?.displayName ?? localeAutonym(code))
+        .join(" · ");
+
+    return (
+        <div
+            className={cn(
+                "flex min-w-0 items-center gap-2 border-b border-edge py-1.5",
+                excludedFrom ? "opacity-50" : undefined,
+            )}
+            data-tip={excludedFrom ? t("brand.fonts.excluded", { language: excludedFrom }) : undefined}
+        >
+            <span className={SPECIMEN_BOX_CLASS} style={cssFamily ? { fontFamily: cssFamily } : undefined}>
+                Aa
+            </span>
+            <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs text-fg">{label}</span>
+                {restrictionLabel ? (
+                    <span className="block truncate text-2xs text-fg-subtle">{restrictionLabel}</span>
+                ) : null}
+            </span>
+            {locales.length > 0 ? (
+                <IconButton
+                    ref={localesRef}
+                    size="sm"
+                    aria-label={t("brand.fonts.locales.edit", { name: label })}
+                    className="shrink-0"
+                    onClick={() => setLocalesOpen(open => !open)}
+                    {...freeze.writes(!service)}
+                >
+                    <Languages className="h-3.5 w-3.5" />
+                </IconButton>
+            ) : null}
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.moveUp", { name: label })}
+                className="shrink-0"
+                onClick={() => service?.moveFont(entry.assetId, -1)}
+                {...freeze.writes(!service || first)}
+            >
+                <ChevronUp className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.moveDown", { name: label })}
+                className="shrink-0"
+                onClick={() => service?.moveFont(entry.assetId, 1)}
+                {...freeze.writes(!service || last)}
+            >
+                <ChevronDown className="h-3.5 w-3.5" />
+            </IconButton>
+            <IconButton
+                size="sm"
+                aria-label={t("brand.fonts.remove", { name: label })}
+                className="shrink-0 hover:text-danger"
+                onClick={() => service?.removeFont(entry.assetId)}
+                {...freeze.writes(!service)}
+            >
+                <Trash2 className="h-3.5 w-3.5" />
+            </IconButton>
+            {localesOpen ? (
+                <FontLocalesPopover
+                    anchorRef={localesRef}
+                    locales={locales}
+                    selected={restriction}
+                    onToggle={(code, member) => service?.setFontLocales(
+                        entry.assetId,
+                        member ? [...restriction, code] : restriction.filter(existing => existing !== code),
+                    )}
+                    onClose={() => setLocalesOpen(false)}
+                />
+            ) : null}
+        </div>
+    );
+}
+
+/** How wide the language popover is. Two words and a tick, in the widest language a project lists. */
+const LOCALE_POPOVER_WIDTH_PX = 176;
+
+/**
+ * Which languages a rung is for: one tick per language of the project.
+ *
+ * A checkbox rather than a switch because the question is membership of a set, not a preference -
+ * the distinction `Checkbox` documents and the rest of Studio keeps. Nothing ticked means every
+ * language, and that is named at the foot of the panel rather than left as a blank list: an author
+ * who has just unticked the last language has to be able to see what they now have.
+ *
+ * Portalled through `AnchoredPanel` for the reason every floating panel in this app is - the sidebar
+ * it opens from is `overflow-hidden` and would clip it - and dismissed three ways, because a body
+ * portal outlives things its host does not: a click elsewhere, Escape, and the host panel being
+ * switched away from, which would otherwise leave this on screen over whatever replaced it.
+ */
+function FontLocalesPopover({
+    anchorRef,
+    locales,
+    selected,
+    onToggle,
+    onClose,
+}: {
+    anchorRef: React.MutableRefObject<HTMLButtonElement | null>;
+    locales: readonly LocalizationLocaleEntry[];
+    selected: readonly string[];
+    onToggle: (code: string, member: boolean) => void;
+    onClose: () => void;
+}) {
+    const { t } = useTranslation();
+    const panelRef = useRef<HTMLDivElement | null>(null);
+
+    useEscapeToClose(true, onClose);
+    useDismissWhenHidden(onClose);
+
+    useEffect(() => {
+        const onPointerDown = (event: MouseEvent): void => {
+            const target = event.target as Node | null;
+            if (panelRef.current?.contains(target as Node) || anchorRef.current?.contains(target as Node)) {
+                return;
+            }
+            onClose();
+        };
+        // Capture, so a click landing on a control that stops propagation still closes this.
+        document.addEventListener("mousedown", onPointerDown, true);
+        return () => document.removeEventListener("mousedown", onPointerDown, true);
+    }, [anchorRef, onClose]);
+
+    const anchor = useCallback(() => anchorRef.current?.getBoundingClientRect() ?? null, [anchorRef]);
+
+    return (
+        <AnchoredPanel
+            anchor={anchor}
+            width={LOCALE_POPOVER_WIDTH_PX}
+            role="dialog"
+            panelRef={panelRef}
+            className="z-[110] grid gap-1 rounded-lg border border-edge bg-surface-overlay p-2 shadow-2xl"
+        >
+            <FieldLabel as="div">{t("brand.fonts.locales.title")}</FieldLabel>
+            {locales.map(locale => (
+                <Checkbox
+                    key={locale.code}
+                    className="text-xs text-fg"
+                    checked={selected.includes(locale.code)}
+                    onCheckedChange={member => onToggle(locale.code, member)}
+                >
+                    {locale.displayName}
+                </Checkbox>
+            ))}
+            {selected.length === 0 ? (
+                <span className="text-2xs text-fg-subtle">{t("brand.fonts.locales.all")}</span>
+            ) : null}
+        </AnchoredPanel>
     );
 }
 

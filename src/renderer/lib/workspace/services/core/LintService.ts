@@ -14,6 +14,8 @@ import type {
     LintStoryEntry,
 } from "@/lib/lint/context";
 import type { LintReport, LintReportEntry } from "@/lib/lint/types";
+import type { FontCoverageResult } from "@shared/typography/fontCoverage";
+import { isUnrenderableFontFormat } from "@shared/typography/fontFormats";
 import { AssetType } from "../assets/assetTypes";
 import type { Asset } from "../assets/types";
 import { savedVariableDefs, storyPersistentDefs } from "@shared/types/story/declarations";
@@ -25,6 +27,7 @@ import { Service } from "../Service";
 import { Services, type ILintService, type WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { AppTagService } from "../appTag/AppTagService";
+import { DlcService } from "../dlc/DlcService";
 import { AssetSetService } from "../assets/AssetSetService";
 import { AssetsService } from "./AssetsService";
 import { CharacterService } from "./CharacterService";
@@ -205,6 +208,7 @@ export class LintService extends Service<LintService> implements ILintService {
             // `listTags()`, which synthesizes the release variant, so the list is never empty and
             // `AppTag == "main"` resolves in a project that has authored no variants at all.
             appTags: services.get<AppTagService>(Services.AppTags).listTags(),
+            dlcs: services.get<DlcService>(Services.Dlc).list(),
             // The union across the project and its variants: which of them opens which address is
             // decided when a build is compiled, and a graph belongs to all of them.
             variableRegistry,
@@ -214,9 +218,11 @@ export class LintService extends Service<LintService> implements ILintService {
             // Loaded in the background from the service's own init, so it can genuinely be absent
             // here on a sweep run seconds after a project opens - which is why the field is
             // nullable rather than an empty set.
-            localizationKeyNames: safely(() => {
+            localizationKeys: safely(() => {
                 const keys = localizationService.getKeysIfLoaded()?.keys;
-                return keys ? new Set(Object.keys(keys)) : null;
+                return keys
+                    ? new Map(Object.entries(keys).map(([name, entry]) => [name, entry.sourceText]))
+                    : null;
             }, null),
             voice,
             buildPlatforms: normalizeBuildConfiguration(projectService.getProjectConfig().app?.build)?.platforms ?? [],
@@ -315,7 +321,12 @@ export class LintService extends Service<LintService> implements ILintService {
         let complete = true;
         for (const entry of index.stories) {
             try {
-                stories.push({ id: entry.id, name: entry.name, document: await storyService.loadStory(entry.id) });
+                stories.push({
+                    id: entry.id,
+                    name: entry.name,
+                    document: await storyService.loadStory(entry.id),
+                    ...(entry.dlcId ? { dlcId: entry.dlcId } : {}),
+                });
             } catch (error) {
                 complete = false;
                 console.warn(`[LintService] story ${entry.id} failed to load`, error);
@@ -542,6 +553,33 @@ export class LintService extends Service<LintService> implements ILintService {
                     // must not take the other forty-two rules' findings down with it.
                     return { ok: false, reason: error instanceof Error ? error.message : "probe threw" };
                 }
+            }),
+            probeFontCoverage: (assetId: string) => probeQueue(async (): Promise<FontCoverageResult> => {
+                const asset = assetsService.getAssets()[AssetType.Font]?.[assetId] as
+                    | Asset<AssetType.Font>
+                    | undefined;
+                if (!asset) {
+                    // A built-in system stack (`builtin:font:*`) lands here, and so does a rung whose
+                    // asset was deleted. Neither has bytes to read, and neither is this probe's
+                    // finding to make - `assets/missing` reports the second one, with the row that
+                    // named it attached.
+                    return { ok: false, reason: "not-a-font" };
+                }
+                if (isUnrenderableFontFormat(asset.ext)) {
+                    // Decided from the extension, without reading a byte: an SVG font and an EOT are
+                    // perfectly parseable files that no engine will draw with, and the coverage
+                    // parser would answer `not-a-font` for them - which is the arm this rule reads
+                    // as "a built-in stack" and passes over in silence. See
+                    // `@shared/typography/fontFormats`.
+                    return { ok: false, reason: "unrenderable" };
+                }
+                // Through `FontService` rather than straight to the bridge, for the memo: the rule
+                // asks once per language of the project, and re-reading a CJK face for each is a
+                // cost nothing about the answer requires.
+                const fontService = assetsService.fontService;
+                return fontService
+                    ? fontService.readCoverage(asset)
+                    : { ok: false as const, reason: "malformed" as const };
             }),
             probeImage: (assetId: string) => probeQueue(async (): Promise<LintImageProbe> => {
                 const asset = assetsService.getAssets()[AssetType.Image]?.[assetId] as

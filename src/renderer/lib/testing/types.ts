@@ -1,5 +1,12 @@
 import type { TranslationKey } from "@shared/i18n/catalog";
-import type { GameTestEvent, GameTestExit, GameTestExitReason, GameTestLogLevel } from "@shared/types/gameTest";
+import type {
+    GameTestChoiceOption,
+    GameTestCommand,
+    GameTestEvent,
+    GameTestExit,
+    GameTestExitReason,
+    GameTestLogLevel,
+} from "@shared/types/gameTest";
 import type { SearchJumpTarget } from "../workspace/services/search/searchIndexModel";
 
 /**
@@ -21,7 +28,9 @@ import type { SearchJumpTarget } from "../workspace/services/search/searchIndexM
  *  - **Undeclared capabilities are absent, not throwing.** `requires` is the whole truth about what
  *    a test can reach: `ctx.game` is `undefined` unless `game.launch` was declared, exactly as
  *    `app.game`'s domains work for runtime plugins. What the picker lists and what the test can do
- *    are the same set by construction.
+ *    are the same set by construction. `parameters` obeys the same rule from the other direction:
+ *    `ctx.parameters` carries a value for every id the test *declared* and for no other, so it is a
+ *    resolved set rather than a free-form bag the picker could put anything into.
  *  - **Tests never build prose.** Every author-visible string is a `TestText` - an i18n key for
  *    Studio's own tests, a literal for a plugin's (a plugin has no `TranslationKey`s, and its own
  *    translator produces plain strings). The console channel and the report tab each render it.
@@ -38,8 +47,13 @@ import type { SearchJumpTarget } from "../workspace/services/search/searchIndexM
  *
  * Recorded on every run record so a report kept across an upgrade still says which contract produced
  * it, and surfaced to plugins so a definition can refuse a host older than it needs.
+ *
+ * **2** added parameters: a test may declare values the author supplies before pressing Start
+ * (`TestDefinition.parameters`), and every run context now carries `parameters` - a required member,
+ * which is what makes this a break rather than an addition. A definition compiled against 1 keeps
+ * working unchanged, since declaring none resolves to `{}`.
  */
-export const TEST_PROTOCOL_VERSION = 1;
+export const TEST_PROTOCOL_VERSION = 2;
 
 /**
  * Stable identifier. Studio's own tests are `narraleaf-studio:<slug>`; a plugin's must be prefixed
@@ -192,6 +206,15 @@ export type TestProjectHandle = {
 export type TestGameExitReason = GameTestExitReason;
 export type TestGameExit = GameTestExit;
 export type TestGameEvent = GameTestEvent;
+export type TestGameChoiceOption = GameTestChoiceOption;
+/**
+ * What a test may ask a running game to do.
+ *
+ * Deliberately short, and every member is something a player does with a pointer: the game is driven
+ * along a path a player could take, never moved by hand. A command that reached past the game would
+ * make the run evidence about the harness rather than about the game.
+ */
+export type TestGameCommand = GameTestCommand;
 
 export type TestGameLaunchOptions = {
     /**
@@ -205,6 +228,16 @@ export type TestGameSession = {
     readonly id: string;
     /** Returns an unsubscribe. Events emitted before the first listener are replayed to it. */
     onEvent(listener: (event: TestGameEvent) => void): () => void;
+    /**
+     * Ask the game to do something: start a story, advance a line, pick an option.
+     *
+     * Resolves `true` when the command reached the game and `false` when it could not - a session
+     * that has already exited, or one whose game never opened its control channel. It never says the
+     * game *did* it: the game is a separate process, and what happened comes back through
+     * {@link onEvent} like everything else it says. A test that needs to know waits for the
+     * observation, and treats one that never arrives as the answer it is.
+     */
+    sendCommand(command: TestGameCommand): Promise<boolean>;
     /** Resolves once the process is gone, whatever the reason. Safe to call more than once. */
     waitForExit(): Promise<TestGameExit>;
     /** Graceful shutdown, then force. Resolves when the process is gone. */
@@ -234,6 +267,15 @@ export type TestRunContext = {
      * settles, but its findings are kept - a cancelled run is still evidence.
      */
     readonly signal: AbortSignal;
+    /**
+     * What the author chose, keyed by parameter id.
+     *
+     * Resolved by the host from the declarations, never passed through from the picker: an id the
+     * test did not declare is dropped, and a value the declaration cannot account for (an option
+     * that has since disappeared) falls back to the default. So a test reads its own vocabulary and
+     * nothing else, and `{}` for a test that declares none.
+     */
+    readonly parameters: TestParameterValues;
     log(level: TestLogLevel, message: TestText): void;
     progress(progress: TestProgress | null): void;
     report(finding: TestFinding): void;
@@ -246,7 +288,14 @@ export type TestRunContext = {
 /** Everything `checkAvailability` is allowed to look at - deliberately cheap, it runs on every picker open. */
 export type TestAvailabilityContext = {
     readonly projectPath: string;
-    /** A frozen workspace (VCS revision view or a manual freeze) forbids launching a game. */
+    /**
+     * Whether a freeze that forbids launching a game is in force - a revision view, a manual
+     * freeze, an open merge, recovery mode.
+     *
+     * False during a live session even though the workspace IS frozen: what a session shows every
+     * participant is the working tree, so a game launched from it runs what everybody is looking at
+     * and there is nothing for the refusal to protect.
+     */
     readonly frozen: boolean;
 };
 
@@ -254,6 +303,69 @@ export type TestAvailability =
     | { available: true }
     /** Greys the row out and says why. Not an error: an unavailable test is a normal state. */
     | { available: false; reason: TestText };
+
+// ---------------------------------------------------------------------------
+// Parameters
+// ---------------------------------------------------------------------------
+
+/**
+ * One row of a `select` parameter's list.
+ *
+ * `value` is what the test reads and what is remembered on disk; `label` is what the author picks
+ * from. They are separate because the label is a display string that follows the editor language
+ * while the value has to survive a language switch and a Studio upgrade unchanged.
+ */
+export type TestParameterOption = { value: string; label: TestText };
+
+/** A parameter the author answers by picking from a list. */
+export type TestSelectParameterDefinition = {
+    id: string;
+    kind: "select";
+    label: TestText;
+    /** One clause about what the value selects, if it needs one. Not a sentence explaining the UI. */
+    description?: TestText;
+    /**
+     * The list to offer, evaluated when the picker opens.
+     *
+     * Same contract as `checkAvailability`, and for the same reason: it runs on every open, so keep
+     * it synchronous, cheap and free of side effects. It is handed the same context, so a list can
+     * depend on the project without the definition holding a workspace of its own.
+     *
+     * **An empty list is a real answer**, not a failure - a project with no endings yet has nothing
+     * to walk to. The host treats it as one: the whole test is greyed out naming this parameter,
+     * rather than offering a dropdown with nothing in it and a Start that cannot work.
+     */
+    options(ctx: TestAvailabilityContext): TestParameterOption[];
+    /**
+     * Which option to start on. Falls back to the first option when absent, and also when it names
+     * an option that is not in the list any more.
+     */
+    defaultValue?: string;
+};
+
+/** A parameter the author answers with a switch. */
+export type TestBooleanParameterDefinition = {
+    id: string;
+    kind: "boolean";
+    label: TestText;
+    /** One clause about what the value selects, if it needs one. Not a sentence explaining the UI. */
+    description?: TestText;
+    /** Absent means off. */
+    defaultValue?: boolean;
+};
+
+export type TestParameterDefinition = TestSelectParameterDefinition | TestBooleanParameterDefinition;
+
+/** What one parameter resolves to. A `select` resolves to the chosen option's `value`. */
+export type TestParameterValue = string | boolean;
+
+/**
+ * Resolved parameter values, keyed by parameter id.
+ *
+ * Only ids the test declared are present - see the header. A test that declares none is handed an
+ * empty object, never `undefined`, so reading `ctx.parameters` needs no guard.
+ */
+export type TestParameterValues = Readonly<Record<string, TestParameterValue>>;
 
 // ---------------------------------------------------------------------------
 // Definition
@@ -267,6 +379,16 @@ export type TestDefinition = {
     presentation: TestPresentation;
     /** Omitted means "nothing" - a pure computation over what it was given. */
     requires?: readonly TestCapability[];
+    /**
+     * Values the author supplies before pressing Start, drawn as a row of controls in the picker and
+     * handed to `run` as `ctx.parameters`.
+     *
+     * Omitted means the test needs none, which is every test that existed before this: select it,
+     * press Start. Two parameters with the same id are one parameter - the first declaration wins,
+     * because the resolved values are keyed by id and two rows writing one key could not both be
+     * shown honestly.
+     */
+    parameters?: readonly TestParameterDefinition[];
     /**
      * Evaluated when the picker opens, so keep it synchronous and cheap. Absent means always
      * available; the host still applies its own gates (a `windowed` test is unavailable while the
@@ -298,6 +420,14 @@ export type TestRunRecord = {
     title: TestText;
     ownerPluginId?: string;
     protocolVersion: number;
+    /**
+     * What the run was told, snapshotted at start like `title`.
+     *
+     * A verdict is only readable against the input that produced it: "reached the ending" means
+     * nothing a week later unless the report still says which ending. Empty for a test that declares
+     * no parameters.
+     */
+    parameters: TestParameterValues;
     status: TestRunStatus;
     startedAt: number;
     finishedAt?: number;

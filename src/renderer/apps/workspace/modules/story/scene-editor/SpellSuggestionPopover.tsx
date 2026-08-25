@@ -49,6 +49,14 @@ export function SpellSuggestionPopover(props: {
     useDismissWhenHidden(props.onClose);
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
+    // Deliberately UNSCOPED, unlike the sibling {@link DictionaryMarkPopover}: the only control this
+    // panel guards is `Add to dictionary`, and that writes the project's dictionary document. No
+    // partial freeze covers it, so naming the story this panel is open over would offer a write the
+    // boundary then refuses.
+    //
+    // The suggestion rows above it are not guarded at all, and that is right: applying one goes
+    // through the field's edit path, so it writes the row's text - and the row is only editable when
+    // a freeze allows this story document in the first place.
     const freeze = useFreezeGuard();
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [suggestions, setSuggestions] = useState<string[] | null>(null);
@@ -112,7 +120,7 @@ export function SpellSuggestionPopover(props: {
 
     const addWord = useCallback(() => {
         try {
-            dictionaryService?.addWord(word);
+            dictionaryService?.addTerm(word);
         } catch {
             // A recovery-mode workspace never loaded the document. It also freezes project writes,
             // so this row is already disabled - the catch only makes an unanticipated state cost a

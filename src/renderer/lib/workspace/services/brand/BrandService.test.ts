@@ -3,6 +3,8 @@ import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
 import { formatBrandLink, parseBrandLink } from "@shared/brand/brandLink";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { getActiveProjectFontIds } from "@shared/typography/projectFonts";
+import { PROJECT_FONT_STACK_MAX } from "@shared/types/typography";
 import {
     BRAND_SCHEMA_VERSION,
     BUILTIN_BRAND_COLORS,
@@ -33,6 +35,8 @@ type HarnessOptions = {
     reuse?: BrandService;
     /** Stand in for `UuidService.generate`. Hex, so a slice of it is a legal id body. */
     uuid?: () => string;
+    /** The project's source language, which is what the font stack is published as resolved in. */
+    sourceLocale?: string;
 };
 
 async function createHarness(seed?: string, options?: HarnessOptions): Promise<Harness> {
@@ -52,7 +56,7 @@ async function createHarness(seed?: string, options?: HarnessOptions): Promise<H
                     ? { ok: false, error: { code: FsRejectErrorCode.NOT_FOUND, message: "missing" } }
                     : ok(value);
             },
-            write: async (path: string, data: string) => {
+            writeFileNoFollowOrCreate: async (path: string, data: string) => {
                 files.set(path, data);
                 return ok(undefined);
             },
@@ -67,6 +71,13 @@ async function createHarness(seed?: string, options?: HarnessOptions): Promise<H
             generate: options?.uuid ?? (() => `${(++nextId).toString(16).padStart(7, "a")}0f0f0f0f`),
         },
         [Services.SaveStatus]: { register: () => undefined, reportUnreadableDocument: unreadable },
+        // The service publishes the language the font stack resolves in, so it depends on this one.
+        // A project with no localization set up reads the empty source language, which filters no
+        // rung out of the stack - which is what every case here expects.
+        [Services.Localization]: {
+            getConfiguration: () => ({ sourceLocale: options?.sourceLocale ?? "", locales: [] }),
+            onConfigChanged: () => () => undefined,
+        },
     };
 
     const ctx = {
@@ -262,6 +273,7 @@ describe("BrandService mutations", () => {
         service.replaceDocument({
             schemaVersion: BRAND_SCHEMA_VERSION,
             colors: [{ id: "primary", value: "#ABCDEF" }],
+            fonts: [],
         });
 
         expect(service.getColor("primary")).toMatchObject({ value: "#ABCDEF" });
@@ -365,5 +377,176 @@ describe("BrandService when the file on disk cannot be read", () => {
         expect(unreadable).not.toHaveBeenCalled();
         expect(getActiveBrandPalette().resolveCss("primary")).toBeNull();
         expect(getActiveBrandPalette().resolveCss("text.muted")).toBe("#9AA3AE");
+    });
+});
+
+
+/**
+ * The project's default font stack, stored beside the palette in the same document.
+ *
+ * What is being pinned here is the pair of things a font stack has that a palette does not: it is
+ * ordered, and its order is the priority every piece of text in the project inherits - so a move
+ * that wrapped, or a duplicate that appeared twice, is a change to how the whole game renders.
+ */
+describe("BrandService default font stack", () => {
+    it("is empty for a project that has never chosen one, and for a v1 document", async () => {
+        const fresh = await createHarness();
+        expect(fresh.service.listFonts()).toEqual([]);
+
+        const v1 = await createHarness(JSON.stringify({
+            schemaVersion: 1,
+            colors: [{ id: "primary", value: "#ABCDEF" }],
+        }));
+        expect(v1.service.listFonts()).toEqual([]);
+        expect(getActiveProjectFontIds()).toEqual([]);
+    });
+
+    it("appends, publishes and persists", async () => {
+        const { service, files } = await createHarness();
+
+        expect(service.addFont("font-a")).toBe(true);
+        expect(service.addFont("font-b")).toBe(true);
+
+        expect(service.listFonts()).toEqual([{ assetId: "font-a" }, { assetId: "font-b" }]);
+        expect(getActiveProjectFontIds()).toEqual(["font-a", "font-b"]);
+
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).fonts).toEqual([{ assetId: "font-a" }, { assetId: "font-b" }]);
+    });
+
+    // The caller is a picker the author has just pressed a font in: a silent no-op there is
+    // indistinguishable from a control that does not work.
+    it("refuses a font already on the stack, and says so", async () => {
+        const { service } = await createHarness();
+        service.addFont("font-a");
+
+        expect(service.addFont("font-a")).toBe(false);
+        expect(service.listFonts()).toHaveLength(1);
+    });
+
+    it("refuses to grow past the cap", async () => {
+        const { service } = await createHarness();
+        for (let index = 0; index < PROJECT_FONT_STACK_MAX; index += 1) {
+            expect(service.addFont(`font-${index}`)).toBe(true);
+        }
+
+        expect(service.addFont("one-too-many")).toBe(false);
+        expect(service.listFonts()).toHaveLength(PROJECT_FONT_STACK_MAX);
+    });
+
+    it("moves one rung at a time", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+        service.addFont("b");
+        service.addFont("c");
+
+        expect(service.moveFont("c", -1)).toBe(true);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["a", "c", "b"]);
+        expect(service.moveFont("a", 1)).toBe(true);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["c", "a", "b"]);
+    });
+
+    /** The end of the list is a no-op, never a wrap - a wrap is the one outcome nobody meant. */
+    it("does not wrap at either end", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+        service.addFont("b");
+
+        expect(service.moveFont("a", -1)).toBe(false);
+        expect(service.moveFont("b", 1)).toBe(false);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["a", "b"]);
+    });
+
+    it("removes, and reports a font that was not there", async () => {
+        const { service } = await createHarness();
+        service.addFont("a");
+
+        expect(service.removeFont("b")).toBe(false);
+        expect(service.removeFont("a")).toBe(true);
+        expect(service.listFonts()).toEqual([]);
+        expect(getActiveProjectFontIds()).toEqual([]);
+    });
+
+    it("notifies subscribers", async () => {
+        const { service } = await createHarness();
+        const seen: number[] = [];
+        const unsubscribe = service.onFontsChanged(fonts => seen.push(fonts.length));
+
+        service.addFont("a");
+        service.addFont("b");
+        service.removeFont("a");
+        unsubscribe();
+        service.addFont("c");
+
+        expect(seen).toEqual([1, 2, 1]);
+    });
+});
+
+/**
+ * The language half of the stack: a rung may name the languages it is for, and the window resolves
+ * the stack in the project's source language.
+ */
+describe("BrandService font languages", () => {
+    it("adds a rung with the restriction it was given, and one without when it was not", async () => {
+        const { service, files } = await createHarness();
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("serif");
+        service.addFont("empty", []);
+
+        expect(service.listFonts()).toEqual([
+            { assetId: "jp", locales: ["ja"] },
+            { assetId: "serif" },
+            { assetId: "empty" },
+        ]);
+        await service.flushPendingChanges();
+        expect(JSON.parse(files.get(DOCUMENT)!).fonts[0]).toEqual({ assetId: "jp", locales: ["ja"] });
+    });
+
+    // Whole-list, because the control is a set of checkboxes and what it has to be able to say is
+    // "this is the set now".
+    it("replaces a rung's restriction, and clearing it means every language again", async () => {
+        const { service } = await createHarness();
+        service.addFont("jp");
+
+        expect(service.setFontLocales("jp", ["ja", "zh-Hans"])).toBe(true);
+        expect(service.listFonts()).toEqual([{ assetId: "jp", locales: ["ja", "zh-Hans"] }]);
+
+        expect(service.setFontLocales("jp", [])).toBe(true);
+        expect(service.listFonts()).toEqual([{ assetId: "jp" }]);
+    });
+
+    it("reports a rung that is not on the stack, and a write that changes nothing", async () => {
+        const { service } = await createHarness();
+        service.addFont("jp", ["ja"]);
+
+        expect(service.setFontLocales("gone", ["ja"])).toBe(false);
+        // Already exactly this: a write here would mark the document dirty and repaint every text
+        // widget in the project for no change at all.
+        expect(service.setFontLocales("jp", ["ja"])).toBe(false);
+    });
+
+    /**
+     * What makes one list serve every language. The published ids are the source language's stack;
+     * the whole list is still what the Design surface reads.
+     */
+    it("publishes the stack resolved in the project's source language", async () => {
+        const { service } = await createHarness(undefined, { sourceLocale: "ja" });
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("sc", ["zh-Hans"]);
+        service.addFont("serif");
+
+        expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
+        expect(service.listFonts().map(entry => entry.assetId)).toEqual(["jp", "sc", "serif"]);
+    });
+
+    it("leaves the whole stack published when the project has no source language", async () => {
+        const { service } = await createHarness();
+
+        service.addFont("jp", ["ja"]);
+        service.addFont("serif");
+
+        expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
     });
 });

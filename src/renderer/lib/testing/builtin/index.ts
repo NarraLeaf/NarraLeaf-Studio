@@ -1,6 +1,8 @@
 import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
 import type { TestDefinition } from "../types";
 import { createProjectDiagnosticsTest } from "./projectDiagnostics";
+import { createReachableEndingsTest } from "./reachableEndings";
+import { createWalkthroughTest } from "./walkthrough";
 
 /**
  * What a built-in test is handed instead of a `TestRunContext` capability.
@@ -18,9 +20,24 @@ export type BuiltInTestHost = {
     services(): ServiceRegistry;
 };
 
-/** Every test Studio ships. Phase 1 has one (ruling R11). */
+/**
+ * Every test Studio ships.
+ *
+ * Three. Two are `integrity` and headless - one runs the project's own lint rules, the other asks
+ * whether every way through the story reaches an ending - so both are runnable while the workspace
+ * is frozen. The third plays the game to an ending the author names, and therefore opens a window.
+ */
 export function createBuiltInTests(host: BuiltInTestHost): TestDefinition[] {
-    return [createProjectDiagnosticsTest(host)];
+    return [createProjectDiagnosticsTest(host), createReachableEndingsTest(host), createWalkthroughTest(host)];
 }
 
 export { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, createProjectDiagnosticsTest } from "./projectDiagnostics";
+export { REACHABLE_ENDINGS_SLUG, REACHABLE_ENDINGS_TEST_ID, createReachableEndingsTest } from "./reachableEndings";
+export {
+    WALKTHROUGH_ENDING_PARAMETER,
+    WALKTHROUGH_SLUG,
+    WALKTHROUGH_TEST_ID,
+    createWalkthroughTest,
+    decodeWalkthroughEnding,
+    encodeWalkthroughEnding,
+} from "./walkthrough";

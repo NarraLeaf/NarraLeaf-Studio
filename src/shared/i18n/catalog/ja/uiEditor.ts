@@ -34,6 +34,8 @@ export const uiEditor = {
         openSurface: "{label} を開く",
         renameSurface: "{label} の名前を変更",
         duplicateSurface: "{label} を複製",
+        copySurface: "{label} をコピー",
+        pasteSurface: "インターフェースを貼り付け",
         deleteSurface: "{label} を削除",
         surfaceActions: "{label} の操作",
         deleteConfirm: "{label} を削除するか",
@@ -47,6 +49,37 @@ export const uiEditor = {
         page: "ページ {index}",
         gameUi: "{slot} UI",
         component: "コンポーネント {index}",
+        inputAction: "アクション {index}",
+    },
+    inputActions: {
+        title: "入力アクション",
+        create: "アクションを作成",
+        createTitle: "入力アクションを作成",
+        rename: "名前を変更…",
+        delete: "アクションを削除",
+        deleteConfirm: "{name} を削除するか",
+        deleteDetail: {
+            other: "{count} 個のインターフェースがこのアクションに応答している。削除すると応答しなくなる",
+        },
+        actionOptions: "アクションの操作",
+        empty: "ここでジェスチャーに名前を付けて、各インターフェースに応答させる",
+        noMatches: "一致するものがない",
+        answered: {
+            other: "{count} 個のインターフェース",
+        },
+        noBindings: "割り当てなし",
+        addBinding: "割り当てを追加",
+        addKey: "キー…",
+        removeBinding: "{binding} を外す",
+        gesture: {
+            click: "クリック",
+            doubleClick: "ダブルクリック",
+            rightClick: "右クリック",
+            wheelUp: "ホイール上",
+            wheelDown: "ホイール下",
+            wheelLeft: "ホイール左",
+            wheelRight: "ホイール右",
+        },
     },
     createDialog: {
         slotIntro: "このゲーム UI がプレイ中のどこに属するかを選ぶ",
@@ -161,6 +194,34 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    crossProject: {
+        pasted: {
+            one: "{count} 個の要素を貼り付けた",
+            other: "{count} 個の要素を貼り付けた",
+        },
+        pastedFrom: {
+            one: "{project} から {count} 個の要素を貼り付けた",
+            other: "{project} から {count} 個の要素を貼り付けた",
+        },
+        imported: {
+            one: "{count} 個のアセットを取り込んだ",
+            other: "{count} 個のアセットを取り込んだ",
+        },
+        unresolved: {
+            one: "{count} 件の参照が未解決",
+            other: "{count} 件の参照が未解決",
+        },
+        surfacePasted: {
+            one: "{count} 個のインターフェースを貼り付けた",
+            other: "{count} 個のインターフェースを貼り付けた",
+        },
+        surfacePastedFrom: {
+            one: "{project} から {count} 個のインターフェースを貼り付けた",
+            other: "{project} から {count} 個のインターフェースを貼り付けた",
+        },
+        slotTaken: "{slot} スロットにはすでにゲーム UI がある",
+        surfaceNotAdded: "このインターフェースを貼り付けられなかった",
     },
     templateStore: {
         open: "テンプレートから始める",

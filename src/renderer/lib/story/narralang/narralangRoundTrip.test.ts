@@ -149,8 +149,10 @@ const SHOUTED: NarralangDialect = {
             { mark: "italic", tag: "EM" },
             { mark: "color", tag: "COLOUR", arg: "raw" },
             { mark: "fontSize", tag: "SIZE", arg: "number" },
+            { mark: "fontSizeStep", tag: "STEP", arg: "number" },
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
+            { mark: "emphasis", tag: "MARK", arg: "raw" },
         ],
     },
     verbs: {
@@ -301,6 +303,18 @@ const corpus: Record<string, StoryScene> = {
         },
         { id: "b10", kind: "note", payload: { text: text("这里以后要补一段回忆闪回", "note") } },
         { id: "b11", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { to: { opacity: 0 }, durationMs: 300 } } },
+    ] as never),
+
+    // A change that stands still in the middle of itself, and the two soft looks spelled apart.
+    // The hold is a slot of its own on the transition tail, not part of the timed word: the word
+    // says how long the whole change takes and this says how much of that is spent sitting still.
+    // Before it existed the script carried the change back at the right length holding for the
+    // wrong time, which is the one way a round trip can lie and still typecheck.
+    "a change that holds in a colour": scene([
+        { id: "h1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "throughColor", durationMs: 4000, holdMs: 2000 } } },
+        //  on a whole-screen change is the crossfade, so the fade-in needs the absolute word.
+        { id: "h2", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "fadeIn", durationMs: 600 } } },
+        { id: "h3", kind: "action", payload: { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-smile", transition: { kind: "exposure", durationMs: 900, holdMs: 300, easing: "easeOut" } } },
     ] as never),
 
     "characters, every channel": scene([
@@ -465,6 +479,21 @@ const corpus: Record<string, StoryScene> = {
         { id: "h5", kind: "nodeAction", payload: { action: "narration", text: text("大括号 {1} 与反斜杠 \\ 都在", "narration") } },
         { id: "h6", kind: "nodeAction", payload: { action: "narration", text: text(" 缩进过的一行 ", "narration") } },
         { id: "h7", kind: "note", payload: { text: text("注释里也有: 冒号", "note") } },
+        {
+            id: "h12",
+            kind: "nodeAction",
+            payload: {
+                action: "narration",
+                // The two marks the type panel writes. The step carries a sign, which the number
+                // argument has to print and read back as one.
+                text: text("それはわたしが決めた", "narration", [
+                    { text: "それは" },
+                    { text: "わたし", marks: { emphasis: "dot" } },
+                    { text: "が" },
+                    { text: "決めた", marks: { emphasis: "under-dot", fontSizeStep: -2 } },
+                ]),
+            },
+        },
         {
             id: "h10",
             kind: "nodeAction",

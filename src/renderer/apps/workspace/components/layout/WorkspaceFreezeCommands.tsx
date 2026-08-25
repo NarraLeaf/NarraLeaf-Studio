@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import {
+    Cloud,
     GitBranch,
     GitCommitHorizontal,
     GitCompare,
@@ -24,6 +25,7 @@ import {
     openVersionRail,
     openVersionRailForCommit,
 } from "./versionRailController";
+import { isTeamPresenceReachable, openTeamPresence } from "../../modules/team/teamPresenceController";
 
 /**
  * The way into and out of the frozen workspace - and into and out of a past revision - until the
@@ -179,6 +181,20 @@ export function WorkspaceFreezeCommands() {
                 run: () => openVersionRail(),
             },
             {
+                // Beside the rail's own entry, because the two are the feature's two panels: one
+                // moves versions, the other says where they go and as whom. It is here at all
+                // because the cell that owns it is 24px of icon in a corner - findable once
+                // somebody knows, and searchable from the moment they do not.
+                id: "vcs:open-team",
+                titleKey: "workspace.shell.team.command.open",
+                categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
+                icon: <Cloud className="w-4 h-4" />,
+                // The cell registers its bridge exactly while it is drawn, which is the
+                // synchronous form of "this project has a repository to point somewhere".
+                when: () => isTeamPresenceReachable(),
+                run: () => openTeamPresence(),
+            },
+            {
                 id: "vcs:commit",
                 titleKey: "workspace.shell.versionControl.command.commit",
                 categoryKey: "workspace.shell.commandPalette.categoryVersionControl",
@@ -210,16 +226,11 @@ export function WorkspaceFreezeCommands() {
                 // The same glyph the tab this opens wears (`openVcsChangesTab`).
                 icon: <GitCompare className="w-4 h-4" />,
                 when: () => isVersionRailReachable(),
-                run: async () => {
-                    // `getInfo` is a pure read (`repositoryStatus(scan:false, revisionOnly:true)`),
-                    // so asking for the head's number here costs nothing and is what lets the tab
-                    // call it `#36` rather than by hash - the way every other surface names it.
-                    const info = await versionControl.getInfo();
-                    openVcsChangesTab(context, {
-                        mode: "working-tree",
-                        headLabel: info && info.headNumber > 0 ? `#${info.headNumber}` : undefined,
-                    });
-                },
+                // Opens with no head number, and asks for none: the tab makes that read itself, so
+                // one made here would be a second round trip whose answer is stale the moment the
+                // author commits with the tab still open. The palette has nothing to add - unlike
+                // the rail, which already holds the number it is drawing.
+                run: () => openVcsChangesTab(context, { mode: "working-tree" }),
             },
             {
                 id: "vcs:show-working-tree",

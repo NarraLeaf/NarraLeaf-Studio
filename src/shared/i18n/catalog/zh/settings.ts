@@ -46,6 +46,10 @@ export const settings = {
             label: "工作区",
             description: "启动行为、工作区历史与自动保存",
         },
+        performance: {
+            label: "性能",
+            description: "Studio 占用本机多少资源，以及你要等多久",
+        },
         shortcuts: {
             label: "快捷键",
             description: "Studio 中各条命令绑定的按键",
@@ -55,8 +59,11 @@ export const settings = {
             description: "提交版本的记录频率，以及记在上面的身份",
         },
         servers: {
-            label: "服务器",
-            description: "本安装已登录的服务器，以及登录所用的账号",
+            // 产品名，且写全：单写 Team 会被读成没翻译的英文单词。
+            // 作者在新建项目和工作区角落里遇到的是同一个名字；
+            // 面板内部仍然把每一台机器称作服务器。
+            label: "NarraLeaf Team",
+            description: "本安装已登录的 NarraLeaf Team 服务器，以及登录所用的账号",
         },
         network: {
             label: "网络",
@@ -76,10 +83,24 @@ export const settings = {
             label: "开发者选项",
             description: "右键菜单中增加一组操作，用于复制所选对象的 ID",
         },
+        screenEffectThreads: {
+            label: "屏幕效果的线程数",
+            description: "编码器运行时用多少个线程画帧。自动会读取本机情况",
+            options: {
+                auto: "自动",
+            },
+        },
+        screenEffectQuality: {
+            label: "开发模式中的屏幕效果",
+            description: "预览与构建只认最终画质，所以选草稿的工程每条特效会烘两次：现在一次，第一次运行时再一次",
+            options: {
+                draft: "草稿",
+                final: "最终画质",
+            },
+        },
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
             description: "连按两次 ⌘Q 才会退出，按一次不退出",
-            unsupportedPlatform: "此选项不适用于此操作系统",
         },
         themeMode: {
             label: "主题",
@@ -109,6 +130,10 @@ export const settings = {
                 rose: "玫瑰",
                 slate: "石板",
             },
+        },
+        uiFontFamily: {
+            label: "界面字体",
+            description: "Studio 界面使用的字体，可从本机已安装的字体中选择",
         },
         tooltipDelay: {
             label: "提示延迟",
@@ -236,14 +261,21 @@ export const settings = {
             label: "关闭工作区时记录检查点",
             description: "关窗时记录一次，与上面的间隔各自独立",
         },
+        quitCheckpointTimeout: {
+            label: "退出时记录检查点的时限",
+            description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；填 0 则退出时不记录",
+        },
+        projectDefaultAuthor: {
+            label: "新建工程的默认作者",
+            description: "创建工程时预填作者一栏，已有工程保持原样",
+        },
         versionControlAuthor: {
             label: "作者名",
-            description: "记录为提交与检查点的作者，留空则记为 NarraLeaf Studio",
-            fromServer: "来自本安装已登录的服务器。退出登录后可重新记录此处填写的名字。",
+            description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
-            description: "与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
+            description: "在未连接服务器的项目上与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
@@ -267,6 +299,11 @@ export const settings = {
             label: "显示状态栏",
             description: "工作区底部的状态栏",
         },
+        menuBarMode: {
+            label: "主菜单",
+            description: "标题栏中「文件」「帮助」以及各面板菜单的位置",
+            unsupportedPlatform: "在 macOS 上，这些菜单位于系统菜单栏",
+        },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
             description: "标题栏中间的搜索框",
@@ -282,6 +319,10 @@ export const settings = {
         },
         servers: {
             label: "服务器",
+        },
+        teamMachineLabel: {
+            label: "本机名称",
+            description: "会与你的账号一同显示给协作者。留空则使用主机名",
         },
         cacheInventory: {
             label: "缓存文件",
@@ -309,6 +350,7 @@ export const settings = {
         refresh: "重新获取",
         browsing: "正在加载…",
         download: "下载",
+        update: "更新",
         downloading: "正在下载…",
         failed: "无法获取词典列表。请检查设置中的网络策略。",
         installed: {
@@ -332,13 +374,27 @@ export const settings = {
         checking: "正在检查…",
         done: "完成",
         signOut: "退出登录",
+        signIn: "登录",
+        signingIn: "正在登录…",
         addressLabel: "服务器地址",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{address} 响应的服务器为 {name}",
+        reached: "{address} 上的服务器是 {name}",
         tokenLabel: "访问令牌",
         tokenPlaceholder: "粘贴访问令牌",
         hint: "访问令牌由服务器管理员签发",
-        noAccount: "{name} 不要求身份验证，无需添加",
+        usernameLabel: "用户名",
+        passwordLabel: "密码",
+        useToken: "改用访问令牌",
+        usePassword: "改用用户名和密码",
+        signInRefused: "服务器未接受该用户名和密码",
+        signInUnavailable: "本机无法使用密码登录",
+        noAccount: "{name} 不签发账号，无法添加。请向其管理员索取账号",
+        joined: {
+            signedInAs: "已以 {name} 的身份登录",
+            projects: {
+                other: "{count} 个项目",
+            },
+        },
         probe: {
             unreachable: "该地址没有响应",
             notAServer: "该地址有响应，但它不是 NarraLeaf Team 服务器",
@@ -388,6 +444,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "拼写词典",
                     description: "为拼写检查下载的词表。工程自己的词条不在这里",
+                },
+                optimizedImages: {
+                    label: "构建优化图像",
+                    description: "构建时重新编码的图像。下次构建会重新生成",
                 },
                 psdImports: {
                     label: "PSD 导入残留",

@@ -16,15 +16,22 @@ import { listSceneIdsInDocumentOrder } from "@shared/types/story";
 import { translate } from "@/lib/i18n";
 import { useWorkspace } from "../../../context";
 import { useHistoryScope } from "@/apps/workspace/hooks/useHistoryScope";
-import { useWorkspaceFrozen } from "@/apps/workspace/hooks/useWorkspaceFrozen";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { storySceneHistoryScope } from "@/lib/workspace/services/history/historyScopes";
-import { isRowTextEditable } from "./storySceneReadOnly";
+import { isRowTextEditable, storyDocumentFreezeScope } from "./storySceneReadOnly";
+import { rowClaimHolder } from "./storyRowClaims";
+import { useStoryRowClaimHold } from "./storyRowClaimHold";
 import { Services } from "@/lib/workspace/services/services";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
+import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
+import type { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
+import type { VoiceService } from "@/lib/workspace/services/voice/VoiceService";
 import type { PanelStateService } from "@/lib/workspace/services/core/PanelStateService";
+import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { FocusArea } from "@/lib/workspace/services/ui/types";
 import type { StorySceneEditorDraftJump, StorySceneEditorTabPayload } from "./storySceneEditorTabId";
 import { writeStoryJumpLine } from "./storyJumpLine";
@@ -32,6 +39,7 @@ import { createBlockForCommand, type ActionCommandId } from "./storyActionComman
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import { buildStoryCommandContext } from "./storyCommandContext";
+import { useContentStable, useDocumentStableForRows } from "./storyRowIdentity";
 import { canCommit, parseCommandLine } from "./storyCommandParser";
 import { resolveCommandLine, type StoryCommandResolvedArgs } from "./storyCommandResolution";
 import { getCommandSpec } from "./commands/registry";
@@ -40,7 +48,7 @@ import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalB
 import type { PuppetDescriptionService } from "@/lib/workspace/services/puppet/PuppetDescriptionService";
 import type { StoryPuppetVocabulary } from "./storyCommandValues";
 
-import { collectTempSpeakers, promoteTempSpeaker } from "@/lib/workspace/services/story/storyModel";
+import { collectTempSpeakers, collectUnresolvedSpeakerRows, narrowToOneUnresolvedSpeaker, promoteTempSpeaker, rebindSpeakersInBlocks } from "@/lib/workspace/services/story/storyModel";
 import { CHARACTERS_PANEL_ID } from "../../characters";
 import { PROPERTIES_PANEL_ID } from "../../properties/propertiesPanelId";
 import {
@@ -63,7 +71,8 @@ import {
     updateTextPayload,
 } from "./storySceneBlockUtils";
 import { isInteractiveTarget, isTextInputActive } from "./storySceneDom";
-import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow } from "./storyRowSelectionGesture";
+import { clickSelectsRow, isPlainRowPress, nextRowSelection, pressSelectsRow, rowDragEngaged } from "./storyRowSelectionGesture";
+import type { StoryRevealIntent, StoryRevealTarget, StoryRowRevealRequest } from "./storyRowReveal";
 import { getStoryEditorViewPrefs, getStoryEditorViewState, patchStoryEditorViewPrefs, patchStoryEditorViewState, type StoryEditorDensity } from "./storyEditorSessionStore";
 import {
     EMPTY_STORY_ROW_FILTER,
@@ -73,7 +82,10 @@ import {
     tallyStoryRows,
     type StoryRowFilter,
 } from "./storyRowFilter";
-import { cloneSerializedBlock, insertSerializedClone, serializeBlockSubtree } from "./storySceneClipboard";
+import { cloneSerializedBlock, flattenSerializedClone, listBlockTextIds, serializeBlockSubtree } from "./storySceneClipboard";
+import { collectSubtreeBlocks } from "./storyForeignPaste";
+import { carryTranslationsWithinProject } from "./storyTranslationTransfer";
+import { carryVoiceWithinProject } from "./storyVoiceTransfer";
 import { getSelectionUnitRange, richRunsToPlain } from "./richText";
 import type { RichTextInputHandle } from "./RichTextInput";
 import type { EditorMode, InsertSlot, StoryBlockTarget, StoryCaretTarget, StoryStagePlacement } from "./storySceneEditorTypes";
@@ -121,6 +133,43 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // Per-project persistent store for the editor's view state (focus/selection/scroll). Available on
     // the first render - the workspace only mounts editors once services (incl. this one) are ready.
     const panelStateService = useMemo(() => (context && isInitialized ? context.services.get<PanelStateService>(Services.PanelState) : null), [context, isInitialized]);
+    /** Reads the bytes of a file a pasted asset manifest granted this window access to. */
+    const fileSystemService = useMemo(() => (context && isInitialized ? context.services.get<FileSystemService>(Services.FileSystem) : null), [context, isInitialized]);
+    /** Holds the translations a copy carries with its rows, and takes them back on a paste. */
+    const localizationService = useMemo(() => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null), [context, isInitialized]);
+    /** Holds the recordings, so a line that is duplicated or pasted elsewhere keeps its take. */
+    const voiceService = useMemo(() => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null), [context, isInitialized]);
+    /**
+     * The live session this window is in, which changes what undo means for this document.
+     *
+     * Two things hang off it, and both are the same statement: while a session owns this story,
+     * nothing here may record a scene snapshot ({@link captureHistoryState}) and Ctrl+Z sends the
+     * inverse of this window's last operation instead of restoring one ({@link undoEdit}). A
+     * snapshot taken during a session describes a scene as only this author had it, so restoring
+     * one would delete everything the others wrote since, with nothing on any screen saying so.
+     */
+    const liveSessionService = useMemo(() => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null), [context, isInitialized]);
+    /**
+     * This window's own project, as the clipboard describes it.
+     *
+     * The path is the identity a pasted payload is compared against - rows carrying another
+     * project's UUIDs are treated differently from rows coming home - and the name and identifier
+     * travel with a copy so the window it lands in can say where its rows came from.
+     */
+    const projectPath = useMemo(() => (context ? context.project.getConfig().projectPath : ""), [context]);
+    const projectIdentity = useMemo(() => {
+        if (!context || !isInitialized) {
+            return { name: "", identifier: "" };
+        }
+        try {
+            const config = context.services.get<ProjectService>(Services.Project).getProjectConfig();
+            return { name: config.name ?? "", identifier: config.identifier ?? "" };
+        } catch {
+            // Only the display half of a copy. A scene that cannot be edited because the manifest
+            // has not loaded would be a far worse trade than a clipboard payload with no name on it.
+            return { name: "", identifier: "" };
+        }
+    }, [context, isInitialized]);
     /** Owner of the persistent-variable declarations the story's `persistent` scope points at. */
     const blueprintService = useMemo(() => (context && isInitialized ? context.services.get<LocalBlueprintService>(Services.LocalBlueprint) : null), [context, isInitialized]);
     /** What a puppet character's model says it contains - the source of every motion / expression / skin the editor offers. */
@@ -130,14 +179,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // a Simplified-Chinese device; the user can override it in Settings (Editor).
     const slashAtAlias = useSlashAtAlias();
     /**
-     * Whether this window's project data is frozen. Read here as well as in the tab because two of the
-     * controller's entry points are simultaneously the way to READ a row and the way to start editing
-     * it, and only the controller can tell those branches apart - see the two uses below.
+     * Whether this scene's own document may not be written. Read here as well as in the tab because
+     * two of the controller's entry points are simultaneously the way to READ a row and the way to
+     * start editing it, and only the controller can tell those branches apart - see the two uses
+     * below.
+     *
+     * Scoped to the story this tab is on, so a live session - the one freeze that leaves a single
+     * document writable - leaves the rows of that document editable instead of greying out the very
+     * thing the session exists to work on. Every other kind of freeze covers it as before.
      */
-    const frozen = useWorkspaceFrozen();
+    const frozen = useFreezeGuard(storyDocumentFreezeScope(payload?.storyId)).frozen;
+    /**
+     * The same question with no scope: true whenever ANY freeze is armed.
+     *
+     * Kept apart from `frozen` because a handful of paths below write more than this story document
+     * - turning a typed speaker into a cast member, and a paste, which can do the same as well as
+     * carrying translations and importing assets - and those files are exactly what a partial freeze
+     * still refuses. Letting them run on the scoped answer would offer an edit that half lands: the
+     * rows arrive, and the character they name never does.
+     */
+    const frozenBeyondThisStory = useFreezeGuard().frozen;
 
     const storyId = payload?.storyId;
     const sceneId = payload?.sceneId;
+    /**
+     * Whether somebody else in a live session is writing this row.
+     *
+     * Read from the session rather than from the rows' own context, because this hook runs outside
+     * the provider the rows read - both go through `rowClaimHolder`, so a row cannot be marked as
+     * taken on screen and still open for typing. False for every row outside a session, which is
+     * the whole document most of the time.
+     */
+    const rowHeldByOther = useCallback((blockId: StoryBlockId): boolean => (
+        liveSessionService !== null
+        && rowClaimHolder(liveSessionService.getView(), storyId, blockId) !== null
+    ), [liveSessionService, storyId]);
     const rootRef = useRef<HTMLDivElement | null>(null);
     const scrollContainerRef = useRef<HTMLDivElement | null>(null);
     const insertInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -147,6 +223,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     // native text selection, and the mouseup (or the drag leaving this row) settles what it meant.
     const textSelectRef = useRef<{ blockId: StoryBlockId; textEl: HTMLElement } | null>(null);
     const dragSelectPointerRef = useRef<{ x: number; y: number } | null>(null);
+    /**
+     * Where a row press landed, held only for as long as the gesture might still be a click.
+     *
+     * A press is not a drag, and the difference is what the edge auto-scroll below turns on. Armed on
+     * the way down and dropped by the first move past the deadzone: while it is set, the gesture has
+     * not moved and nothing may scroll on its behalf.
+     */
+    const dragSelectOriginRef = useRef<{ x: number; y: number } | null>(null);
     const dragSelectAutoScrollRef = useRef<number | null>(null);
     /**
      * The rows a drag in progress is carrying, settled at pick-up rather than at drop: a drag can be
@@ -191,6 +275,98 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const [collapsedBlockIds, setCollapsedBlockIds] = useState<Set<StoryBlockId>>(() => new Set());
     /** Counts explicit select gestures — see {@link selectRow}. Read by the tab to re-claim the right rail. */
     const [selectionRevision, setSelectionRevision] = useState(0);
+
+    /**
+     * The channel that moves the page, and the reason it is a channel rather than a piece of state.
+     *
+     * A reveal has to reach the tab *after* the commit that caused it, which is what an effect gives
+     * you — but publishing it as state would mean a second render pass for every arrow key and every
+     * Enter, on the one surface where render passes are the whole cost of typing (see
+     * `storyRowIdentity`). Listeners are called directly instead: the request is delivered from the
+     * effect below, so the DOM is already the new one, and nothing re-renders to deliver it.
+     */
+    const revealListenersRef = useRef(new Set<(request: StoryRowRevealRequest) => void>());
+    const revealTokenRef = useRef(0);
+    /**
+     * The intent attached to the active-row change now in flight, waiting for that change to land.
+     *
+     * A gesture knows what it means at the moment it fires, and that is before the state it sets has
+     * been committed — so it leaves the answer here and the effect below posts it once the row it
+     * describes is actually the active one. Unset means the change said nothing, which is read as
+     * {@link revealWith}'s gentlest answer rather than as no answer at all.
+     */
+    const pendingRevealRef = useRef<{ target: StoryRevealTarget; intent: StoryRevealIntent } | null>(null);
+    const lastRevealedActiveRef = useRef<StoryBlockId | null | undefined>(undefined);
+    // The committed active row, for gestures that have to know whether they are about to change it.
+    const activeBlockIdRef = useRef<StoryBlockId | null>(activeBlockId);
+    activeBlockIdRef.current = activeBlockId;
+
+    /**
+     * Post a reveal now. Only for requests that ride no active-row change of their own — a filter that
+     * redrew the page under a cursor that never moved, a slot opened past the last row. Everything
+     * else goes through {@link revealWith}, which waits for the cursor to arrive first.
+     */
+    const revealRow = useCallback((target: StoryRevealTarget, intent: StoryRevealIntent) => {
+        revealTokenRef.current += 1;
+        const request: StoryRowRevealRequest = { target, intent, token: revealTokenRef.current };
+        for (const listener of revealListenersRef.current) {
+            listener(request);
+        }
+    }, []);
+
+    /**
+     * Say what the page should do about the active-row change this gesture is making.
+     *
+     * `nextActiveId` is the row the gesture is about to focus, and it is asked for rather than
+     * inferred for one reason: when the cursor is already on that row there is no change coming, so
+     * there is nothing for the effect below to hang the request on and it has to go out now. Getting
+     * that wrong is not a missed scroll, it is a *stored* one — the intent would sit here until some
+     * later, unrelated keystroke moved the cursor and spent it.
+     */
+    const revealWith = useCallback((nextActiveId: StoryBlockId | null, target: StoryRevealTarget, intent: StoryRevealIntent) => {
+        if (nextActiveId === activeBlockIdRef.current) {
+            pendingRevealRef.current = null;
+            revealRow(target, intent);
+            return;
+        }
+        pendingRevealRef.current = { target, intent };
+    }, [revealRow]);
+
+    const subscribeRowReveal = useCallback((listener: (request: StoryRowRevealRequest) => void) => {
+        const listeners = revealListenersRef.current;
+        listeners.add(listener);
+        return () => {
+            listeners.delete(listener);
+        };
+    }, []);
+
+    /**
+     * The one place an active-row change becomes a request to move the page.
+     *
+     * Unannotated changes are a step — the smallest move that keeps the cursor reachable. That is the
+     * safety net (under a windowed list a selection walked off screen is a row Enter would open with
+     * no element behind it) and it is deliberately the *gentlest* answer, so a path nobody annotated
+     * degrades to a nudge rather than to the old "throw it at the middle of the screen".
+     *
+     * The first observation is the tab opening, not a move: the author's saved viewport is restored by
+     * the tab and outranks whichever row happened to be selected when they left.
+     */
+    useEffect(() => {
+        const pending = pendingRevealRef.current;
+        pendingRevealRef.current = null;
+        const previous = lastRevealedActiveRef.current;
+        lastRevealedActiveRef.current = activeBlockId;
+        if (previous === undefined || previous === activeBlockId) {
+            return;
+        }
+        const target = pending?.target ?? (activeBlockId ? { kind: "row", blockId: activeBlockId } as const : null);
+        if (!target) {
+            // The cursor left the rows without landing anywhere (the last row deleted, the selection
+            // cleared). Nothing to show, and the page stays where the author left it.
+            return;
+        }
+        revealRow(target, pending?.intent ?? "step");
+    }, [activeBlockId, revealRow]);
     // Editor-wide view preferences. PanelStateService loads from disk before the editor renders,
     // so the synchronous read below sees the persisted value; the setters write it back.
     const [rowFilter, setRowFilterState] = useState<StoryRowFilter>(() => {
@@ -307,6 +483,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, []);
 
     /**
+     * The row this window is writing, taken from whoever else might want it and given back the
+     * moment the box closes — by a commit, a blur, an Escape, a click on another line, a freeze, or
+     * the tab going away. See {@link useStoryRowClaimHold}: every one of those is the open row
+     * changing, so there is no list of endings here that a later one could fall off.
+     */
+    useStoryRowClaimHold({
+        service: liveSessionService,
+        storyId,
+        blockId: editorMode.kind === "text" ? editorMode.blockId : null,
+    });
+
+    /**
      * A character landed in the open row. Deliberately not a state write — see {@link textDraftRef}.
      */
     const updateTextDraft = useCallback((blockId: StoryBlockId, value: string, rich: StoryRichRun[]) => {
@@ -316,6 +504,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         draft.value = value;
         draft.rich = rich;
+        // Nothing about a live session happens here. A row is held for as long as its box is open
+        // rather than for as long as somebody is typing into it, so keystrokes have nothing to say
+        // about the claim — see `useStoryRowClaimHold` for why that distinction is load-bearing.
     }, []);
 
     /**
@@ -344,14 +535,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /**
      * The same answer, readable from inside an `await`.
      *
-     * A callback that closed over `frozen` would report whatever was true when it was created, and the
-     * one place that asks is on the far side of a modal confirm - precisely the window in which the
-     * author can freeze the workspace. See the bulk paste in `useStorySceneClipboardHandlers`.
+     * A callback that closed over the flag would report whatever was true when it was created, and
+     * the one place that asks is on the far side of a modal confirm - precisely the window in which
+     * the author can freeze the workspace. See the bulk paste in `useStorySceneClipboardHandlers`.
+     *
+     * Tracks the UNSCOPED answer, because the clipboard is what asks: a paste is the one gesture
+     * here that reaches past the story document into characters, translations, voice takes and
+     * imported assets, and every one of those is refused by a freeze this scene is otherwise exempt
+     * from. The scoped answer here would let a paste report success having written half of itself.
      */
-    const frozenRef = useRef(frozen);
+    const frozenRef = useRef(frozenBeyondThisStory);
     useEffect(() => {
-        frozenRef.current = frozen;
-    }, [frozen]);
+        frozenRef.current = frozenBeyondThisStory;
+    }, [frozenBeyondThisStory]);
     const isFrozenNow = useCallback(() => frozenRef.current, []);
 
     // Persist the focused row + selection so they survive the tab unmounting when the author switches
@@ -438,8 +634,18 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * document rather than stored, so one goes away exactly when its last line does - and so a name
      * used earlier in the story is findable later without anyone maintaining a registry.
      */
-    const tempSpeakers = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
+    const tempSpeakersProjection = useMemo(() => (document ? collectTempSpeakers(document) : []), [document]);
+    // Rebuilt per document change, changed far more rarely than that - and a prop on every row.
+    const tempSpeakers = useContentStable(tempSpeakersProjection);
     const characters = useMemo(() => characterService?.listCharacter() ?? [], [characterRevision, characterService]);
+    /**
+     * The cast as a membership test, which is what tells a working `characterId` from one that names
+     * nothing in this project - the state rows carried in from another project arrive in.
+     */
+    const knownCharacterIds = useMemo(
+        () => new Set(characters.map(character => character.profile.getId())),
+        [characters],
+    );
 
     /**
      * The puppet characters, and whichever of their models have already described themselves.
@@ -506,6 +712,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }),
         [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
     );
+    /**
+     * The same context, at the identity it had while it still names the same things.
+     *
+     * It is rebuilt on every document change because it is derived from the document, and it is a prop
+     * on every row — so without this, writing a line of prose re-rendered the whole visible window to
+     * hand each row a table that had not changed. See `storyRowIdentity`.
+     */
+    const stableCommandContext = useContentStable(commandContext);
+    /**
+     * The document wrapper the ROWS get: the live one, held at one identity for as long as everything
+     * a row reads out of it still says the same. The command context is that list — scene names,
+     * variables, choice options, stage objects — so it doubles as the signature.
+     */
+    const documentForRows = useDocumentStableForRows(document, stableCommandContext);
     // Each dialogue speaker's accumulated appearance, so a dialogue row's avatar can follow the
     // most recent enter/expression. Keyed on the scene's content, not on collapse.
     const dialogueAppearances = useMemo(() => (scene ? buildDialogueAppearances(scene) : null), [document, scene]);
@@ -633,10 +853,13 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             ?.closest<HTMLElement>("[data-story-row-block-id]");
         const blockId = target?.dataset.storyRowBlockId;
         if (blockId && scene?.blocks[blockId]) {
+            // The head of a drag is by definition the row under the pointer, and the drag has its own
+            // auto-scroll for reaching past the edges. Nothing else may move the page while it runs.
+            revealWith(blockId, { kind: "row", blockId }, "none");
             setSelectedBlockIds(selectRange(visibleRows, startBlockId, blockId));
             setActiveBlockId(blockId);
         }
-    }, [scene, visibleRows]);
+    }, [revealWith, scene, visibleRows]);
 
     const stopDragSelection = useCallback(() => {
         if (dragSelectAutoScrollRef.current !== null) {
@@ -644,6 +867,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             dragSelectAutoScrollRef.current = null;
         }
         dragSelectPointerRef.current = null;
+        dragSelectOriginRef.current = null;
         setDragSelectActive(false);
         dragSelectionStartRef.current = null;
     }, []);
@@ -676,23 +900,119 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * only ever open at its end - jsdom implements neither `user-select` nor native selection, so
      * nothing but driving the real app can catch a regression here.
      */
+    /**
+     * Re-open a row as an editable line, seeded with its source - or with `seed`, when the caller
+     * brings its own text for the line. `""` is the Backspace demote's blank line, which is the same
+     * slot standing in the same place, only empty (see {@link replaceRowWithBlankLine}).
+     *
+     * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
+     * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
+     * An invalid row is what the unseeded call is for: it is the one kind whose whole content is raw
+     * text the author still needs to fix.
+     *
+     * `caret` is where the click landed, in characters from the start of the line - a blank row and a
+     * draft row open from a single click like any other line of text, and a caret that ignored the
+     * click point would be the one place in the editor where pointing at a word does not put the
+     * caret in it. Omitted, the caret sits where focus leaves it (offset 0).
+     *
+     * Declared up here, above the gesture that needs it: the mouseup handler is registered in an
+     * effect further down, and an effect's dependency list is read during render.
+     */
+    const startLineEdit = useCallback((block: StoryBlock, seed?: string, caret?: number) => {
+        if (!scene) {
+            return;
+        }
+        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
+        const index = siblings.indexOf(block.id);
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = seed ?? (block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "");
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: index > 0 ? siblings[index - 1] : null,
+                focusToken: Date.now(),
+                target: { parentId: block.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: insertDraftRef.current,
+            // Reopening a draft row lands with its completion menu open: the author is here
+            // to fix the line, so the candidates it needs are what should greet them - not the suppressed
+            // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
+        });
+        setActiveBlockId(block.id);
+        window.requestAnimationFrame(() => {
+            const input = insertInputRef.current;
+            if (!input) {
+                return;
+            }
+            input.focus();
+            if (caret === undefined) {
+                return;
+            }
+            // Clamped, because the offset is measured over the whole rendered row: a draft row prints
+            // the reason for its refusal beside the line, and a click on that lands past the text.
+            const at = Math.max(0, Math.min(caret, input.value.length));
+            input.setSelectionRange(at, at);
+        });
+    }, [scene]);
+
+    /**
+     * Land on a row with the caret in it, the way a text editor lands on the line you arrive at.
+     *
+     * The three rows that hold a LINE all take the caret: a text row opens its rich-text editor at
+     * `caret`, and a blank row or a draft row opens the line editor. Anything else has no line to put a
+     * caret in and is left selected, with the keyboard on the row list. Returns whether one opened.
+     *
+     * This is what every arrival shares - backspacing the line below away, arrowing out of the row
+     * above, backing out of a slot - so a blank row behaves like the empty line it is at all of them,
+     * instead of stopping the caret dead the way an action row does.
+     */
+    const openRowForEditing = useCallback((block: StoryBlock, caret: StoryCaretTarget = "end"): boolean => {
+        if (isTextEditableBlock(block)) {
+            const segment = getTextSegment(block);
+            setEditorMode({ kind: "text", blockId: block.id, value: segment?.value ?? "", rich: segment?.rich, caret });
+            return true;
+        }
+        if (block.kind !== "empty" && block.kind !== "invalid") {
+            return false;
+        }
+        // The line editor is a plain field, so the two caret shapes that carry a column collapse to the
+        // edge they arrived from: coming down lands at the start of the line, coming up at its end.
+        const fromAbove = caret === "start" || (typeof caret === "object" && "line" in caret && caret.line === "first");
+        startLineEdit(block, block.kind === "empty" ? "" : undefined, fromAbove ? 0 : Number.MAX_SAFE_INTEGER);
+        return true;
+    }, [startLineEdit]);
+
     const finishTextSelectGesture = useCallback((pending: { blockId: StoryBlockId; textEl: HTMLElement }) => {
         const block = scene?.blocks[pending.blockId];
-        if (!block || !isTextEditableBlock(block)) {
+        if (!block) {
             return;
         }
         // Frozen: the row stays selected (the mousedown already did that) and the native text selection
         // stays where the author dragged it, so the line is still readable and copyable - it just does
         // not become a caret. This gesture never goes through `StoryRowActions.startTextEdit`, so the
-        // no-op there did not cover it; see `isRowTextEditable`.
-        if (!isRowTextEditable(frozen)) {
+        // no-op there did not cover it; see `isRowTextEditable`. A row somebody else in the room is
+        // writing behaves exactly the same way, and for the same reason: what the click would open is
+        // a box for typing an edit the host is certain to refuse.
+        if (!isRowTextEditable(frozen, rowHeldByOther(pending.blockId))) {
             return;
         }
         const range = getSelectionUnitRange(pending.textEl);
+        // The two rows whose content is a LINE rather than a payload open the same way a line of prose
+        // does - one click, caret where the pointer was - but into the line editor rather than into the
+        // rich-text one, because what they hold is a line to be written, not text to be marked up. A
+        // blank row opens empty whatever else it might carry; a draft row opens on its own source.
+        if (block.kind === "empty" || block.kind === "invalid") {
+            startLineEdit(block, block.kind === "empty" ? "" : undefined, range?.start);
+            return;
+        }
+        if (!isTextEditableBlock(block)) {
+            return;
+        }
         const segment = getTextSegment(block);
         const caret: StoryCaretTarget = range ? { start: range.start, end: range.end } : "end";
         setEditorMode({ kind: "text", blockId: pending.blockId, value: segment?.value ?? "", rich: segment?.rich, caret });
-    }, [frozen, scene]);
+    }, [frozen, rowHeldByOther, scene, startLineEdit]);
 
     const runDragSelectAutoScroll = useCallback(() => {
         const container = scrollContainerRef.current;
@@ -756,6 +1076,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
             if (!dragSelectionStartRef.current) {
                 return;
+            }
+            // Still inside the deadzone: this is a press that has not decided to be a drag, so it
+            // neither extends the selection nor lets the edge auto-scroll run. Once it is out, it is
+            // out for the rest of the gesture — a drag that came back over its origin is still a drag.
+            const origin = dragSelectOriginRef.current;
+            if (origin) {
+                if (!rowDragEngaged(origin, event.clientX, event.clientY)) {
+                    return;
+                }
+                dragSelectOriginRef.current = null;
             }
             dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
             extendDragSelectionAtPoint(event.clientX, event.clientY);
@@ -822,25 +1152,57 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         rootRef.current?.focus();
     }, [focusWorkspace, uiService]);
 
-    // Make a block the active/selected row (used by deep-link navigation). Scrolling the row into
-    // view and moving DOM focus is handled by the tab, which owns the rendered row elements.
+    // Make a block the active/selected row (used by deep-link navigation). Moving DOM focus is the
+    // tab's, which owns the rendered row elements; the move of the page is declared here, as a jump —
+    // whoever asked for this row was not reading it a moment ago (see `storyRowReveal`).
     const revealBlock = useCallback((blockId: StoryBlockId): boolean => {
         const block = scene?.blocks[blockId];
         if (!block) {
             return false;
         }
+        revealWith(blockId, { kind: "row", blockId }, "jump");
         // Jump wins over the filter: navigating (reveal / search) to a row the filter would hide
         // switches the ticks holding it back on, so the target is actually visible and selected rather
         // than an invisible selection on a hidden row.
         revealRowInFilter(block);
+        // And over a fold, which hides a row just as completely. A choice the author collapsed is the
+        // likeliest thing standing between a navigation and its target, and leaving it shut made this
+        // function claim a reveal it had not performed.
+        setCollapsedBlockIds(previous => {
+            if (previous.size === 0) {
+                return previous;
+            }
+            let next: Set<StoryBlockId> | null = null;
+            const walked = new Set<StoryBlockId>();
+            let parentId = block.parentId;
+            // Guarded rather than trusted: a corrupted `parentId` cycle would otherwise hang the tab.
+            while (parentId && !walked.has(parentId)) {
+                walked.add(parentId);
+                if (previous.has(parentId)) {
+                    next ??= new Set(previous);
+                    next.delete(parentId);
+                }
+                parentId = scene?.blocks[parentId]?.parentId ?? null;
+            }
+            return next ?? previous;
+        });
         setActiveBlockId(blockId);
         setSelectedBlockIds(new Set([blockId]));
         selectionAnchorRef.current = blockId;
         return true;
-    }, [revealRowInFilter, scene]);
+    }, [revealRowInFilter, revealWith, scene]);
 
     const captureHistoryState = useCallback((): StorySceneHistoryState | null => {
         if (!scene) {
+            return null;
+        }
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            // Nothing to snapshot: this scene is shared, and a snapshot of it is a statement about
+            // a document only this window ever had. Answered here rather than at the eleven places
+            // that ask for one, because this is what a scene snapshot MEANS - `HistoryService`
+            // records nothing when a scope says its state cannot be read, so every checkpoint
+            // against this scene stops recording at once, including the ones taken outside this
+            // editor (a script import, the flow tab, a NarraLang commit).
             return null;
         }
         return {
@@ -849,7 +1211,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             selectedBlockIds: [...selectedBlockIds],
             collapsedBlockIds: [...collapsedBlockIds],
         };
-    }, [activeBlockId, collapsedBlockIds, scene, selectedBlockIds]);
+    }, [activeBlockId, collapsedBlockIds, liveSessionService, scene, selectedBlockIds, storyId]);
 
     const restoreHistoryState = useCallback((state: StorySceneHistoryState) => {
         if (!storyService || !storyId || !sceneId) {
@@ -857,11 +1219,17 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         storyService.replaceScene(storyId, sceneId, state.scene);
         syncEditorTabTitle(uiService, tabId, state.scene.name);
+        // An undo is an arrival, not a step: the edit being taken back may be twenty screens from
+        // where the author has since scrolled to, and landing on it with no context around it is how
+        // Ctrl+Z becomes "something changed, somewhere".
+        if (state.activeBlockId) {
+            revealWith(state.activeBlockId, { kind: "row", blockId: state.activeBlockId }, "jump");
+        }
         setActiveBlockId(state.activeBlockId);
         setSelectedBlockIds(new Set(state.selectedBlockIds));
         setCollapsedBlockIds(new Set(state.collapsedBlockIds));
         setEditorMode({ kind: "idle" });
-    }, [sceneId, storyId, storyService, tabId, uiService]);
+    }, [revealWith, sceneId, storyId, storyService, tabId, uiService]);
 
     /**
      * This scene's undo stack, held by `HistoryService` rather than by this hook.
@@ -886,11 +1254,22 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         [sceneHistory],
     );
     const undoEdit = useCallback(() => {
+        // Inside a session, undo is sending the inverse of this window's own last operation - the
+        // stack above holds nothing to restore, and restoring a scene over a shared document would
+        // wipe out whatever the others wrote since. The session says why when there is no inverse.
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            liveSessionService.undo();
+            return;
+        }
         sceneHistory.undo();
-    }, [sceneHistory]);
+    }, [liveSessionService, sceneHistory, storyId]);
     const redoEdit = useCallback(() => {
+        if (storyId && liveSessionService?.ownsStory(storyId)) {
+            liveSessionService.redo();
+            return;
+        }
         sceneHistory.redo();
-    }, [sceneHistory]);
+    }, [liveSessionService, sceneHistory, storyId]);
 
     const updateBlockPayloadFor = useCallback((blockId: StoryBlockId, payload: StoryBlock["payload"]) => {
         if (storyService && storyId && sceneId) {
@@ -929,6 +1308,20 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!storyService || !storyId || !sceneId || !scene) {
             return false;
         }
+        // A session owns this story, so the scene record is not this window's to patch.
+        //
+        // `updateScene` is not one of the operations a session hands to its sink, and the fields it
+        // writes - the name, the description, the default backdrop, the BGM - are all part of what
+        // every machine in the room fingerprints. Writing one here would leave this copy holding a
+        // scene the room has never seen, and the next effect about it would eject this window.
+        //
+        // Refused here as well as on the overview card, which greys its fields and says why. The
+        // property rail edits the same scene through this function and is already inert - its
+        // fields ask the unscoped freeze - so this is what makes the two agree, and it is the one
+        // function both of them commit through.
+        if (liveSessionService?.ownsStory(storyId)) {
+            return false;
+        }
 
         const nextName = patch.name !== undefined ? patch.name.trim() || scene.name || translate("story.sceneEditor.defaultSceneName") : scene.name;
         const nextDescription = patch.description !== undefined ? patch.description.trim() : scene.description ?? "";
@@ -960,7 +1353,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             }
         }
         return changed;
-    }, [recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
+    }, [liveSessionService, recordHistory, scene, sceneId, storyId, storyService, tabId, uiService]);
 
     const commitTextEdit = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
@@ -1050,6 +1443,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     const startInsertAfter = useCallback((afterBlockId: StoryBlockId | null, focus = true, confirmation?: string) => {
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        // The slot, not the row it hangs off: the caret is going into the slot, and the row above it is
+        // already where the author was looking. This is also why a line committed at the bottom of the
+        // page nudges rather than recentring — the anchor being revealed is one row tall, not the whole
+        // screen's worth the old "put the new row in the middle" answer moved.
+        //
+        // A null anchor is the trailing slot the "add a row" line opens, and it moves no cursor — so
+        // the row it leaves active is the one already active, which is what makes the request go out
+        // now rather than waiting for a change that is not coming.
+        revealWith(afterBlockId ?? activeBlockIdRef.current, { kind: "slot" }, "step");
         setEditorMode({ kind: "insert", slot: { afterBlockId, focusToken: Date.now() }, initialValue: "", confirmation });
         if (afterBlockId) {
             setActiveBlockId(afterBlockId);
@@ -1057,7 +1459,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, []);
+    }, [revealWith]);
 
     /**
      * Open an insert slot directly *above* a row, at that row's own depth. Modelled on `startLineEdit`'s
@@ -1072,6 +1474,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        revealWith(blockId, { kind: "slot" }, "step");
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: null, focusToken: Date.now(), target: { parentId: block.parentId, beforeBlockId: blockId } },
@@ -1081,40 +1484,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (focus) {
             window.requestAnimationFrame(() => insertInputRef.current?.focus());
         }
-    }, [scene]);
-
-    /**
-     * Re-open a row as an editable line, seeded with its source.
-     *
-     * The slot lands *where the row is* (after its previous sibling, inside its parent) and carries
-     * `replaceBlockId`, so committing swaps the row in place and Escape leaves it exactly as it was.
-     * Only invalid rows use this today: they are the one kind whose whole content is raw text the
-     * author still needs to fix.
-     */
-    const startLineEdit = useCallback((block: StoryBlock) => {
-        if (!scene) {
-            return;
-        }
-        const siblings = block.parentId ? scene.blocks[block.parentId]?.childrenIds ?? [] : scene.rootBlockIds;
-        const index = siblings.indexOf(block.id);
-        slotDiscardedRef.current = false;
-        insertDraftRef.current = block.kind === "invalid" ? block.payload.source : getTextSegment(block)?.value ?? "";
-        setEditorMode({
-            kind: "insert",
-            slot: {
-                afterBlockId: index > 0 ? siblings[index - 1] : null,
-                focusToken: Date.now(),
-                target: { parentId: block.parentId, beforeBlockId: block.id },
-                replaceBlockId: block.id,
-            },
-            initialValue: insertDraftRef.current,
-            // Reopening a draft row lands with its completion menu open: the author is here
-            // to fix the line, so the candidates it needs are what should greet them - not the suppressed
-            // slot the old `chooserDismissed: true` left, which gave a returned-to line no menu at all.
-        });
-        setActiveBlockId(block.id);
-        window.requestAnimationFrame(() => insertInputRef.current?.focus());
-    }, [scene]);
+    }, [revealWith, scene]);
 
     /**
      * The action trigger typed into an empty dialogue row - the author asking for this speaker's own
@@ -1239,6 +1609,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // silently swallowing this slot's blur-commit.
         slotDiscardedRef.current = false;
         insertDraftRef.current = "";
+        revealWith(parentId, { kind: "slot" }, "step");
         setEditorMode({
             kind: "insert",
             slot: { afterBlockId: lastChildId ?? parentId, focusToken: Date.now(), target: { parentId, beforeBlockId: null } },
@@ -1246,7 +1617,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         });
         setActiveBlockId(parentId);
         window.requestAnimationFrame(() => insertInputRef.current?.focus());
-    }, [ensureExpanded, scene]);
+    }, [ensureExpanded, revealWith, scene]);
 
     /**
      * Open a slot with a `/jump` already typed into it — the scene flow map's connect gesture landing
@@ -1305,6 +1676,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         slotDiscardedRef.current = false;
         insertDraftRef.current = line;
+        // A jump, not a step: the author is not here, they are on the flow map, and the slot this
+        // opens is at the end of an arm or the end of the chapter. A caret they cannot see is
+        // indistinguishable from the map having done nothing — which is exactly what this looked like
+        // while the reveal was a single frame's `querySelector` for a slot the windowed list had not
+        // rendered yet. See `useStoryRowReveal`, which now waits for it and mounts its host row.
+        revealWith(container ? container.id : activeBlockIdRef.current, { kind: "slot" }, "jump");
         setEditorMode({ kind: "insert", slot, initialValue: line, chooserDismissed: true });
         if (container) {
             setActiveBlockId(container.id);
@@ -1320,7 +1697,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             input.setSelectionRange(line.length, line.length);
         });
         return true;
-    }, [document, ensureExpanded, frozen, revealRowInFilter, scene, slashAtAlias]);
+    }, [document, ensureExpanded, frozen, revealRowInFilter, revealWith, scene, slashAtAlias]);
 
     // Append a menu option to a choice container and open it for text entry.
     const addMenuOption = useCallback((choiceId: StoryBlockId) => {
@@ -1403,8 +1780,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     // Backspace on an empty line. An empty dialogue drops a rung to a blank insert slot in the same spot -
     // a completely empty line that can become anything (type narration, "/" for an action, "#" for another
-    // speaker) rather than a committed narration row. Any other empty text row is deleted and focus steps
-    // back to the line above.
+    // speaker) rather than a committed narration row - unless the line above is already a blank one, in
+    // which case the caret joins that. Any other empty text row is deleted and focus steps back to the
+    // line above, into it when that line can hold a caret (see {@link openRowForEditing}).
     const handleBackspaceAtEmptyStart = useCallback(() => {
         if (editorMode.kind !== "text" || !storyService || !storyId || !sceneId || !scene) {
             return;
@@ -1425,6 +1803,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             if (previousSibling && rowIndexById.has(previousSibling.id)) {
                 recordHistory();
                 storyService.deleteBlock(storyId, sceneId, id);
+                // A blank line above is already the undecided line this rung would open, so the caret
+                // goes INTO it rather than stacking a second empty line under it. That is what deleting
+                // a line does in a text editor: what is left of it joins the line above, caret and all.
+                if (previousSibling.kind === "empty") {
+                    setActiveBlockId(previousSibling.id);
+                    setSelectedBlockIds(new Set([previousSibling.id]));
+                    selectionAnchorRef.current = previousSibling.id;
+                    openRowForEditing(previousSibling, "end");
+                    return;
+                }
                 startInsertAfter(previousSibling.id, true);
                 return;
             }
@@ -1441,10 +1829,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setActiveBlockId(previous.block.id);
             setSelectedBlockIds(new Set([previous.block.id]));
             selectionAnchorRef.current = previous.block.id;
-            if (isTextEditableBlock(previous.block)) {
-                const segment = getTextSegment(previous.block);
-                setEditorMode({ kind: "text", blockId: previous.block.id, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
-            } else {
+            if (!openRowForEditing(previous.block, "end")) {
                 setEditorMode({ kind: "idle" });
                 focusRoot();
             }
@@ -1454,7 +1839,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [editorMode, focusRoot, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
+    }, [editorMode, focusRoot, openRowForEditing, recordHistory, rowIndexById, scene, sceneId, startInsertAfter, storyId, storyService, visibleRows]);
 
     // Enter while editing a text row: commit and open a new row that continues the same kind - narration
     // begets narration, a dialogue keeps its speaker, a menu option adds a sibling option. Kinds without a
@@ -1542,17 +1927,14 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         setActiveBlockId(targetBlock.id);
         setSelectedBlockIds(new Set([targetBlock.id]));
         selectionAnchorRef.current = targetBlock.id;
-        if (isTextEditableBlock(targetBlock)) {
-            const segment = getTextSegment(targetBlock);
-            const caret: StoryCaretTarget = goalX === null
-                ? (goingBack ? "end" : "start")
-                : { goalX, line: goingBack ? "last" : "first" };
-            setEditorMode({ kind: "text", blockId: targetBlock.id, value: segment?.value ?? "", rich: segment?.rich, caret });
-        } else {
+        const caret: StoryCaretTarget = goalX === null
+            ? (goingBack ? "end" : "start")
+            : { goalX, line: goingBack ? "last" : "first" };
+        if (!openRowForEditing(targetBlock, caret)) {
             setEditorMode({ kind: "idle" });
             focusRoot();
         }
-    }, [commitTextEdit, editorMode, focusRoot, rowIndexById, startInsertAfter, visibleRows]);
+    }, [commitTextEdit, editorMode, focusRoot, openRowForEditing, rowIndexById, startInsertAfter, visibleRows]);
 
     /**
      * A selected non-text row was activated (Enter, double-click). A block with a real inspector opens
@@ -1575,6 +1957,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             // rather than opening a line editor whose text would be discarded on thaw.
             if (!frozen) {
                 startLineEdit(block);
+            }
+            return;
+        }
+        if (block.kind === "empty") {
+            // The whole content of a blank line is the line the author has not written yet, so opening
+            // it means opening the editor for that line - in place, and empty. Committing replaces the
+            // blank row; Escape leaves it exactly where it was. Same slot the Backspace demote opens,
+            // reached by Enter or a double-click instead.
+            if (!frozen) {
+                startLineEdit(block, "");
             }
             return;
         }
@@ -1763,8 +2155,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [editorMode, insertBlock, slashAtAlias, startInsertAfter, uuidService]);
 
 
-    // Backspace on an empty insert slot: dismiss the blank line and step back onto the row above it -
-    // re-entering it for editing when it holds text - so the demote ladder keeps walking upward.
+    // Backspace on an empty insert slot: dismiss the blank line - taking the row it stands in for, when
+    // it stands in for one - and step back onto the row above it, re-entering it for editing when it
+    // holds text, so the demote ladder keeps walking upward.
     const handleInsertBackspaceEmpty = useCallback(() => {
         if (editorMode.kind !== "insert") {
             return;
@@ -1775,24 +2168,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (returnFromCharacterActionSlot()) {
             return;
         }
+        // A slot standing *in place of* a row - the Backspace demote's blank line, or a draft row whose
+        // text the author has just cleared - still has that row underneath it, uncommitted and intact.
+        // This press is what finally removes it: the ladder's last rung. Without it the slot would only
+        // close, handing back the row the previous press emptied, and Backspace would loop instead of
+        // finishing. One `recordHistory` here, so the row comes back whole on `Mod+Z`.
+        const replacedId = editorMode.slot.replaceBlockId;
+        if (replacedId && storyService && storyId && sceneId && scene?.blocks[replacedId]) {
+            recordHistory();
+            storyService.deleteBlock(storyId, sceneId, replacedId);
+        }
         const afterId = editorMode.slot.afterBlockId;
         const afterBlock = afterId ? scene?.blocks[afterId] : null;
-        if (afterId && afterBlock && isTextEditableBlock(afterBlock)) {
-            const segment = getTextSegment(afterBlock);
-            setActiveBlockId(afterId);
-            setSelectedBlockIds(new Set([afterId]));
-            selectionAnchorRef.current = afterId;
-            setEditorMode({ kind: "text", blockId: afterId, value: segment?.value ?? "", rich: segment?.rich, caret: "end" });
-            return;
-        }
         if (afterId) {
             setActiveBlockId(afterId);
             setSelectedBlockIds(new Set([afterId]));
             selectionAnchorRef.current = afterId;
         }
+        if (afterBlock && openRowForEditing(afterBlock, "end")) {
+            return;
+        }
         setEditorMode({ kind: "idle" });
         focusRoot();
-    }, [editorMode, focusRoot, returnFromCharacterActionSlot, scene]);
+    }, [editorMode, focusRoot, openRowForEditing, recordHistory, returnFromCharacterActionSlot, scene, sceneId, storyId, storyService]);
 
     /**
      * Build a block from a plugin-registered story action. The registration's
@@ -1960,9 +2358,55 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [commitCommandFromInsert, createPluginActionBlock, editorMode, insertBlock, slashAtAlias]);
 
     /**
+     * Enter on a line with nothing on it: a blank row is written **where that line is**, and the line
+     * the caret is on moves down to make room for it.
+     *
+     * This is what Enter does to an empty line in any text editor - the blank line is pushed up and
+     * the caret stays on its own, still-empty line - and it is one rule for every empty line in the
+     * editor, whether the caret got there by clearing a row (a slot standing on a blank row), by
+     * Shift+Enter, or by the row's own `+`. Two earlier readings of it were wrong in opposite
+     * directions: writing the new row BELOW the caret put the line the author was on above the line
+     * they were typing on, and refusing to write one at all for a slot with no row under it made
+     * Enter mean "never mind" on a line that was plainly a line.
+     *
+     * Escape remains the way out of a slot nobody typed in, and blur is deliberately not this path
+     * (see {@link commitNarrationFromInsert}, which still writes nothing for an empty draft).
+     */
+    const commitBlankRowFromInsert = useCallback((): boolean => {
+        if (editorMode.kind !== "insert" || !uuidService) {
+            return false;
+        }
+        const slot = editorMode.slot;
+        const covered = (slot.replaceBlockId ? scene?.blocks[slot.replaceBlockId] : null) ?? null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
+        if (covered) {
+            // The caret's line is a row of its own, so the new one goes in FRONT of it and the slot
+            // stays exactly where it was - on the same row, one position further down the scene. The
+            // step-back anchor becomes the row just written, which is now the line above.
+            insertBlock(block, null, false, { target: { parentId: covered.parentId, beforeBlockId: covered.id } });
+            slotDiscardedRef.current = false;
+            insertDraftRef.current = "";
+            setActiveBlockId(covered.id);
+            setEditorMode({
+                kind: "insert",
+                slot: { ...slot, afterBlockId: block.id, focusToken: Date.now() },
+                initialValue: "",
+            });
+            window.requestAnimationFrame(() => insertInputRef.current?.focus());
+            return true;
+        }
+        // A slot with no row beneath it: the blank line lands where the slot is drawn, and the slot
+        // re-opens under it - which puts the new row above the caret, exactly as the branch above does.
+        insertBlock(block, slot.afterBlockId, false, { target: slot.target });
+        startInsertAfter(block.id, true);
+        return true;
+    }, [editorMode, insertBlock, scene, startInsertAfter, uuidService]);
+
+    /**
      * Enter / Shift+Enter with no candidate to take - the chooser was dismissed, or never opened.
-     * The line has to stand on its own now: prose commits, a resolvable command commits, and anything
-     * still wearing a `/` or `#` becomes an invalid row rather than silently becoming prose.
+     * The line has to stand on its own now: prose commits, a resolvable command commits, an empty line
+     * commits as a blank row, and anything still wearing a `/` or `#` becomes an invalid row rather
+     * than silently becoming prose.
      */
     const resolveInsertLine = useCallback(() => {
         if (editorMode.kind !== "insert") {
@@ -1970,7 +2414,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         const value = insertDraftRef.current;
         if (!value.trim()) {
-            setEditorMode({ kind: "idle" });
+            // An empty line writes a blank row where it stands and carries the caret down with it.
+            if (!commitBlankRowFromInsert()) {
+                setEditorMode({ kind: "idle" });
+            }
             return;
         }
         if (isActionCommandLine(value, slashAtAlias)) {
@@ -1986,7 +2433,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         commitNarrationFromInsert(true);
-    }, [commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
+    }, [commitBlankRowFromInsert, commitCommandFromInsert, commitInvalidFromInsert, commitNarrationFromInsert, editorMode, slashAtAlias]);
 
     /**
      * Pick a speaker that no Studio character backs. Valid, not a fallback: NLR's dialogue box only
@@ -2103,33 +2550,116 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!characterService || !trimmed || block.kind !== "nodeAction" || block.payload.action !== "dialogue") {
             return;
         }
+        // The unscoped answer, because the first thing this does is mint a character document, and a
+        // freeze that spares this story does not spare the cast. The picker's rung is greyed for the
+        // same reason (`useCreateCharacterFreeze`), so what reaches here is a freeze that landed
+        // after the menu was already open - and half of this landing is worse than none of it: the
+        // row would point at a character the write boundary refused to write.
+        if (frozenBeyondThisStory) {
+            return;
+        }
         const created = characterService.createCharacter(trimmed);
         const characterId = created.profile.getId();
         if (document) {
             // Every other line already speaking as this name comes along; leaving them behind would
             // fork one speaker into two that merely look alike.
-            promoteTempSpeaker(document, trimmed, characterId);
+            //
+            // This reaches the live blocks - the document held here is a shallow copy - so it is the
+            // one edit in the editor that does not go through StoryService. It rewrites dialogue
+            // payloads in any scene, so the story's asset locks are re-derived after it rather than
+            // left to a scoped sync that only knows about the scene on screen.
+            if (promoteTempSpeaker(document, trimmed, characterId) > 0 && storyId) {
+                storyService?.resyncAssetLocks(storyId);
+            }
         }
         setDialogueSpeaker(block, { characterId });
         uiService?.panels.show(CHARACTERS_PANEL_ID);
         setEditorMode({ kind: "text", blockId: block.id, value: getTextSegment(block)?.value ?? "", caret: "end" });
-    }, [characterService, document, setDialogueSpeaker, uiService]);
+    }, [characterService, document, frozenBeyondThisStory, setDialogueSpeaker, storyId, storyService, uiService]);
 
-    const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent) => {
+    /**
+     * The rows among `blockIds` that speak as ONE unresolved speaker, and which speaker that is.
+     *
+     * Narrowing to a single speaker is what keeps the repair from merging people. A selection may
+     * hold lines by several speakers none of whom resolve - a chapter pasted in from another
+     * project usually does - and binding all of them to one character would silently make them the
+     * same person. `anchorBlockId` is the row the menu was opened on: if it is itself broken its
+     * speaker decides, which is what makes the gesture read as "this speaker". Otherwise the rows
+     * have to agree among themselves, and a selection spanning two broken speakers offers nothing
+     * rather than guessing which one was meant.
+     */
+    const unresolvedSpeakerRowIds = useCallback((
+        blockIds: readonly StoryBlockId[],
+        anchorBlockId?: StoryBlockId | null,
+    ): StoryBlockId[] => {
+        if (!document || blockIds.length === 0) {
+            return [];
+        }
+        const rows = collectUnresolvedSpeakerRows(document, blockIds, knownCharacterIds);
+        return narrowToOneUnresolvedSpeaker(rows, anchorBlockId).map(row => row.blockId);
+    }, [document, knownCharacterIds]);
+
+    /**
+     * Bind the unresolved speakers on an explicit set of rows to a character that already exists.
+     *
+     * The counterpart to {@link createCharacterFromSpeaker}, and the scope is where they differ:
+     * creating a character is the author naming someone new, so every line already speaking as that
+     * name follows it. A repair is not - it reaches lines the author is looking at and no others,
+     * which after pasting a chapter in from another project is the difference between fixing that
+     * chapter and rewriting the ones around it.
+     */
+    const bindSpeakerForRows = useCallback((blockIds: readonly StoryBlockId[], characterId: string) => {
+        if (!document || !sceneId) {
+            return;
+        }
+        const edits = rebindSpeakersInBlocks(document, blockIds, characterId, knownCharacterIds)
+            .filter(edit => edit.sceneId === sceneId)
+            .map(edit => ({ blockId: edit.blockId, payload: edit.payload }));
+        updateBlockPayloads(edits);
+    }, [document, knownCharacterIds, sceneId, updateBlockPayloads]);
+
+    /**
+     * Where a Shift range starts, for this render.
+     *
+     * The anchor is the last row picked *without* Shift, which is not the same row as `activeBlockId`:
+     * the active row is the head of the range and every press moves it, Shift presses included. A run
+     * of Shift+clicks has to range from one fixed place — that is what lets the second one shrink the
+     * range the first one made instead of growing a new one from wherever the first one ended.
+     *
+     * Falls back to the active row when the anchor has left the screen (its row was deleted, or the
+     * row filter hid it), because a range reaching back to a row the author cannot see is not the
+     * range they asked for. The active row is kept visible by the filter, so it is always a real one.
+     */
+    const resolveSelectionAnchor = useCallback((): StoryBlockId | null => {
+        const anchorId = selectionAnchorRef.current;
+        return anchorId && rowIndexById.has(anchorId) ? anchorId : activeBlockId;
+    }, [activeBlockId, rowIndexById]);
+
+    /**
+     * `intent` says what the page should do about landing here; its default is the whole of why a
+     * click no longer scrolls. A press carries an event, and a press is the author pointing at a row
+     * they can already see — moving the page for it takes the row out from under a gesture that is
+     * still in flight, which is how clicking the last visible line used to end in a range selection
+     * across whatever slid up to meet the cursor. Without an event this is the editor moving its own
+     * cursor (the play head following the running game), which is a step like any other.
+     */
+    const selectRow = useCallback((blockId: StoryBlockId, event?: MouseEvent, intent?: StoryRevealIntent) => {
+        revealWith(blockId, { kind: "row", blockId }, intent ?? (event ? "none" : "step"));
         // Bumped on every select gesture, including one that lands on the row already active. The right
         // rail follows the selection, and something else in the app (clicking an asset) may have taken
         // the rail since the last time this row was picked — without a revision, re-clicking it would
         // change no state at all and the rail would stay on the asset.
         setSelectionRevision(revision => revision + 1);
-        // `activeBlockId` is this render's — the row that was active BEFORE this press, which is where
-        // a Shift range starts. Shift leaves the anchor where it is; every other press re-anchors on
-        // the row it landed on.
-        if (!(event?.shiftKey && activeBlockId)) {
+        // Shift extends from the anchor and leaves it where it is; every other press re-anchors on the
+        // row it landed on. See {@link resolveSelectionAnchor} for why the anchor is not the row that
+        // happened to be active before this press.
+        const anchorBlockId = resolveSelectionAnchor();
+        if (!(event?.shiftKey && anchorBlockId)) {
             selectionAnchorRef.current = blockId;
         }
         setActiveBlockId(blockId);
-        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, activeBlockId, blockId, event }));
-    }, [activeBlockId, visibleRows]);
+        setSelectedBlockIds(previous => nextRowSelection({ previous, rows: visibleRows, anchorBlockId, blockId, event }));
+    }, [resolveSelectionAnchor, revealWith, visibleRows]);
 
     /**
      * The `mousedown` half of a row's press. See {@link pressSelectsRow} for why the row needs two
@@ -2159,10 +2689,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             return;
         }
         dragSelectPointerRef.current = { x: event.clientX, y: event.clientY };
+        dragSelectOriginRef.current = { x: event.clientX, y: event.clientY };
         dragSelectionStartRef.current = blockId;
         setDragSelectActive(true);
-        startDragSelectAutoScroll();
-    }, [selectRow, startDragSelectAutoScroll]);
+        // Deliberately NOT starting the edge auto-scroll here. It used to start on the press, which
+        // made the bottom-most visible row very nearly unclickable: a press within 64px of the bottom
+        // edge began scrolling at up to 18px a frame before the pointer had moved at all, and the rows
+        // sliding up past a stationary cursor were taken as a drag across them. Measured: pressing one
+        // line and releasing it ~100ms later moved the page 106px and left four rows selected — which
+        // is what "clicking the last visible line scrolls and selects something else" was.
+        //
+        // The auto-scroll belongs to the drag, and there is no drag until the pointer has left
+        // `dragSelectOriginRef` by the deadzone. The mousemove handler starts it then.
+    }, [selectRow]);
 
     /**
      * The `click` half of the same press, and the only one that runs when {@link beginDragSelection}
@@ -2185,10 +2724,12 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
 
     const extendDragSelection = useCallback((blockId: StoryBlockId) => {
         if (dragSelectActive && dragSelectionStartRef.current) {
+            // Under the pointer, and the drag owns the page while it lasts. See `extendDragSelectionAtPoint`.
+            revealWith(blockId, { kind: "row", blockId }, "none");
             setSelectedBlockIds(selectRange(visibleRows, dragSelectionStartRef.current, blockId));
             setActiveBlockId(blockId);
         }
-    }, [dragSelectActive, visibleRows]);
+    }, [dragSelectActive, revealWith, visibleRows]);
 
     const toggleCollapsed = useCallback((blockId: StoryBlockId) => {
         setCollapsedBlockIds(previous => {
@@ -2230,11 +2771,19 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         storyService,
         uuidService,
         uiService,
+        assetsService,
+        fileSystemService,
+        localizationService,
+        voiceService,
         storyId,
         sceneId,
         scene,
         scenes: document?.scenes,
         characters,
+        knownCharacterIds,
+        projectPath,
+        projectName: projectIdentity.name,
+        projectIdentifier: projectIdentity.identifier,
         selectedBlockIds,
         activeBlockId,
         visibleRows,
@@ -2276,7 +2825,16 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Closed rather than left standing: a confirm that cannot run (the workspace froze under the
         // open dialog, a service went away on a project switch) must not leave the author pressing a
         // button that does nothing.
-        if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId || frozen) {
+        //
+        // Two freeze questions, because a paste is two writes and only one of them is this story.
+        // The rows go into the document the scoped answer is about, so a live session on it may
+        // paste; the characters the plan names go into the cast, which no partial freeze covers, so
+        // that half is asked with no scope and only when the plan actually asks for one. The wizard
+        // greys the target for the same reason, so a plan that still carries one is a dialog that
+        // was open when the workspace changed underneath it.
+        if (!request || !uuidService || !characterService || !storyService || !storyId || !sceneId
+            || frozen
+            || (plan.charactersToCreate.length > 0 && frozenBeyondThisStory)) {
             cancelPasteWizard();
             return;
         }
@@ -2303,7 +2861,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             setPasteWizard(null);
             resumeInsertSlotCommit();
         }
-    }, [cancelPasteWizard, characterService, frozen, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
+    }, [cancelPasteWizard, characterService, frozen, frozenBeyondThisStory, insertPastedBlocks, panelStateService, pasteWizard, recordHistory, resumeInsertSlotCommit, sceneId, storyId, storyService, uuidService]);
 
     const savePasteSeparator = useCallback((name: string, choice: PasteSeparatorChoice) => {
         saveStoryPasteSeparator(panelStateService, name, choice);
@@ -2369,7 +2927,10 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         // Which row to land on, computed against the tree *before* it changes.
         const focusTargetId = nextSelectionAfterDelete(scene, visibleRows, roots);
         recordHistory();
-        roots.forEach(id => storyService.deleteBlock(storyId, sceneId, id));
+        // One operation for the whole selection. A run of single deletes draws every intermediate
+        // document on everybody else's screen, and leaves the author walking back through the rows
+        // one press at a time.
+        storyService.deleteBlocks(storyId, sceneId, roots);
         setEditorMode({ kind: "idle" });
         if (focusTargetId) {
             // Select it (not edit it): a delete is a row operation, so staying in row-selection keeps
@@ -2390,21 +2951,27 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     }, [activeBlockId, deleteRows, selectedBlockIds]);
 
     /**
-     * `Backspace` on a selected row that is not being edited: the row is replaced by a blank narration
-     * line with the caret in it, rather than deleted. Pressing Backspace again is then the *existing*
-     * empty-line rung ({@link handleBackspaceAtEmptyStart}), so an action row degrades to "blank line
-     * → gone" over two presses - the closure a text editor trained the author to expect. `Delete` is
-     * untouched and still removes the row outright: the two keys stay two paths.
+     * `Backspace` on a selected row that is not being edited: the row becomes a blank line, rather
+     * than being deleted. Pressing Backspace again on that blank line removes it for good, so a row
+     * degrades to "blank line → gone" over two presses - the closure a text editor trained the author
+     * to expect. `Delete` is untouched and still removes the row outright: the two keys stay two paths.
+     *
+     * **The blank line is committed, in place, immediately** (schema v20's `empty` row). That is the
+     * whole point of it being a row rather than an open editor: the author gets a caret in it for free,
+     * but Escape, a click elsewhere, closing the tab and reopening the project all leave the line
+     * standing where the row was. A slot alone would have vanished on the first of those, and an empty
+     * narration row - what stood here before - answered "clear this line" by naming it narration.
      *
      * The insert and the delete run under one `recordHistory` (`insertBlock`'s own), so a single
-     * `Mod+Z` brings the original row back with its payload - the point of the whole closure, since
-     * two-step undo would hand the author a blank line and call it a restore.
+     * `Mod+Z` brings the original row back with its payload; the caret then sits in a slot that stands
+     * in place of the blank row, so typing replaces it under one more entry rather than adding a
+     * second line below it.
      *
      * Returns false when the rule does not apply (see {@link planRowBackspaceReplacement}), leaving
      * the caller to run the plain delete.
      */
     const replaceRowWithBlankLine = useCallback((): boolean => {
-        if (!scene || editorMode.kind === "text" || editorMode.kind === "insert") {
+        if (!scene || !uuidService || editorMode.kind === "text" || editorMode.kind === "insert") {
             return false;
         }
         const ids = selectedBlockIds.size > 0 ? [...selectedBlockIds] : activeBlockId ? [activeBlockId] : [];
@@ -2412,18 +2979,31 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (!plan) {
             return false;
         }
-        const block = createBlock("narration");
-        if (!block) {
-            return false;
-        }
+        // Read before the document moves: the row that will sit above the blank line is the one the
+        // ladder's next Backspace steps back onto.
+        const previousSiblingId = findPreviousSibling(scene, plan.replaceBlockId)?.id ?? null;
+        const block: StoryBlock = { id: uuidService.generate(), kind: "empty", parentId: null, childrenIds: [], payload: {} };
         insertBlock(block, null, false, { target: plan.target, replaceBlockId: plan.replaceBlockId });
         selectionAnchorRef.current = block.id;
-        // Overrides the idle mode `insertBlock` leaves behind: the row is a text row now and the author
-        // is inside it. It also drops any inspector that was open on the row being replaced, so the
-        // panel cannot go on showing a block that no longer exists.
-        setEditorMode({ kind: "text", blockId: block.id, value: "", caret: "end" });
+        // A slot standing in place of the row that was just written, so the author can type straight
+        // into the line they cleared. Escape closes the slot and leaves the row: `replaceBlockId` only
+        // deletes on commit, which is what makes "type something" replace the blank line instead of
+        // stacking a second one under it.
+        slotDiscardedRef.current = false;
+        insertDraftRef.current = "";
+        setEditorMode({
+            kind: "insert",
+            slot: {
+                afterBlockId: previousSiblingId,
+                focusToken: Date.now(),
+                target: { parentId: plan.target.parentId, beforeBlockId: block.id },
+                replaceBlockId: block.id,
+            },
+            initialValue: "",
+        });
+        window.requestAnimationFrame(() => insertInputRef.current?.focus());
         return true;
-    }, [activeBlockId, createBlock, editorMode, insertBlock, scene, selectedBlockIds]);
+    }, [activeBlockId, editorMode, insertBlock, scene, selectedBlockIds, uuidService]);
 
     const indentSelection = useCallback((direction: "in" | "out") => {
         if (!storyService || !storyId || !sceneId || !scene) {
@@ -2492,12 +3072,15 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
      * matching a click on the affordance.
      */
     const focusAddRow = useCallback(() => {
+        // The one cursor position that is not a row, so it names itself as the thing to show: with no
+        // active row to hang a request on, an unannotated move here would reveal nothing at all.
+        revealWith(null, { kind: "addRow" }, "step");
         setActiveBlockId(null);
         setSelectedBlockIds(new Set());
         selectionAnchorRef.current = null;
         goalColumnRef.current = null;
         setAddRowFocused(true);
-    }, []);
+    }, [revealWith]);
 
     const moveActiveRowSelection = useCallback((direction: "up" | "down") => {
         // The add-row line sits one step past the last row in the keyboard order: Down off the bottom
@@ -2537,7 +3120,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         if (visibleRows.length === 0) {
             return;
         }
-        const anchorId = selectionAnchorRef.current ?? activeBlockId;
+        const anchorId = resolveSelectionAnchor();
         const headIndex = activeBlockId ? rowIndexById.get(activeBlockId) ?? -1 : -1;
         if (!anchorId || headIndex === -1) {
             moveActiveRowSelection(direction);
@@ -2553,7 +3136,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         }
         setSelectedBlockIds(selectRange(visibleRows, anchorId, head.block.id));
         setActiveBlockId(head.block.id);
-    }, [activeBlockId, moveActiveRowSelection, rowIndexById, visibleRows]);
+    }, [activeBlockId, moveActiveRowSelection, resolveSelectionAnchor, rowIndexById, visibleRows]);
 
     const jumpRowSelection = useCallback((edge: "first" | "last") => {
         const row = edge === "first" ? visibleRows[0] : visibleRows[visibleRows.length - 1];
@@ -2622,19 +3205,41 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         const anchorId = orderedRoots[orderedRoots.length - 1] ?? roots[roots.length - 1];
         recordHistory();
         const target = getInsertionTargetAfter(scene, anchorId);
-        const insertedIds: StoryBlockId[] = [];
-        for (const rootId of orderedRoots) {
-            const cloned = cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate());
-            insertSerializedClone(storyService, storyId, sceneId, cloned, target);
-            insertedIds.push(cloned.block.id);
-        }
+        // Duplicating mints fresh textIds exactly as a paste does, so the copies would arrive
+        // untranslated and unvoiced unless the units follow them. Collected before the clone, because
+        // the source ids are what the project's languages and voice libraries are keyed by.
+        const sourceTextIds = listBlockTextIds(collectSubtreeBlocks(scene, orderedRoots));
+        const textIdMap = new Map<string, string>();
+        const clones = orderedRoots.map(rootId =>
+            cloneSerializedBlock(serializeBlockSubtree(scene, rootId), () => uuidService.generate(), textIdMap));
+        // One operation for the whole gesture, as the paste is: duplicating five rows is one act and
+        // takes one press to undo.
+        storyService.insertBlocks(storyId, sceneId, clones.flatMap(cloned => flattenSerializedClone(cloned, target)));
+        const insertedIds: StoryBlockId[] = clones.map(cloned => cloned.block.id);
         if (insertedIds[0]) {
             setActiveBlockId(insertedIds[0]);
             setSelectedBlockIds(new Set(insertedIds));
             selectionAnchorRef.current = insertedIds[0];
         }
         setEditorMode({ kind: "idle" });
-    }, [activeBlockId, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows]);
+        // After the rows are in, and not awaited: the duplicate is complete without it, and the
+        // translations and takes land in documents of their own. Nothing here reports success - a
+        // duplicate that carried its languages and its recordings is what the author already expected.
+        //
+        // Translations before takes, in one chain rather than two: a take is a recording of the line
+        // as the actor for that language reads it, which is the translation where there is one, so a
+        // take that landed first would read as stale until its translation caught up.
+        void (async () => {
+            if (localizationService) {
+                await carryTranslationsWithinProject(localizationService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry translations for the duplicated rows", error));
+            }
+            if (voiceService) {
+                await carryVoiceWithinProject(voiceService, isFrozenNow, sourceTextIds, textIdMap)
+                    .catch(error => console.warn("[storyEditor] could not carry takes for the duplicated rows", error));
+            }
+        })();
+    }, [activeBlockId, isFrozenNow, localizationService, recordHistory, scene, sceneId, selectedBlockIds, storyId, storyService, uuidService, visibleRows, voiceService]);
 
     /**
      * The block ids a row operation acts on: the selection (deduped to roots so a container carries its
@@ -2717,22 +3322,29 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         try {
             recordHistory();
             storyService.moveBlocks(storyId, sceneId, [plan]);
+            // The author dropped it here; they are looking at where they dropped it. dnd-kit has its
+            // own auto-scroll for a drag that reaches an edge, and that one is the author's too.
+            revealWith(draggedBlockId, { kind: "row", blockId: draggedBlockId }, "none");
             setActiveBlockId(draggedBlockId);
             setSelectedBlockIds(new Set(plan.blockIds));
         } catch {
             /* move failed; nothing to surface */
         }
-    }, [recordHistory, scene, sceneId, storyId, storyService]);
+    }, [recordHistory, revealWith, scene, sceneId, storyId, storyService]);
 
     return {
-        context, isInitialized, document, scene, loading,
+        context, isInitialized, document, documentForRows, scene, loading,
         activeBlockId, selectedBlockIds, collapsedBlockIds, editorMode, addRowFocused, selectionRevision,
-        characters, commandContext, visibleRows, shouldRenderActiveInsertSlot,
+        characters, commandContext: stableCommandContext, visibleRows, shouldRenderActiveInsertSlot,
         density, setDensity, rowFilter, setRowFilter, rowFilterTallies,
         // How many rows the page would hold with the filter off. The one thing that tells an empty
         // editor apart from an entirely filtered-out one, which read identically before.
         unfilteredRowCount: unfilteredRows.length,
         rootRef, scrollContainerRef, insertInputRef, textInputRef, uuidService,
+        // The viewport channel. `revealRow` is for the tab's own reasons to move the page (a filter
+        // that redrew it, a find result); everything driven by the cursor declares its intent at the
+        // gesture and arrives here on its own. See `storyRowReveal`.
+        revealRow, subscribeRowReveal,
         focusRoot, focusWorkspace, revealBlock, handleKeyDown, copySelectionToClipboard: handleCopy, handlePaste: handlePasteInEditor,
         handleRowTextPaste,
         pasteWizard, pasteMemory, cancelPasteWizard, confirmPasteWizard, savePasteSeparator, forgetPasteSeparator,
@@ -2740,6 +3352,7 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
         selectionRootIds, toggleDisableSelection,
         extendDragSelection, toggleCollapsed, setEditorMode, updateBlockPayloadFor, updateBlockPayloads, updateSceneMetadata,
         setDialogueSpeaker, setDialogueGroupPosition, createCharacterFromSpeaker, commitTextEdit, handleInsertValueChange, updateTextDraft,
+        unresolvedSpeakerRowIds, bindSpeakerForRows,
         // Exposed for the writes that arrive from OUTSIDE this tab (a script import, driven from the
         // story panel or the palette) and must still land as one undo step here.
         recordHistory, undoEdit, redoEdit,

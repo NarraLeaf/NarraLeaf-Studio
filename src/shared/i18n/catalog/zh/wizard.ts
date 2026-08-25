@@ -10,6 +10,9 @@ export const wizard = {
         source: "地址",
         clone: "克隆",
         import: "导入",
+        // 为服务器新建项目时第一页的名字。来源已由打开这个窗口的动作决定，那一栏不在页面上，
+        // 留下的是这个工程用什么做出来。
+        template: "模板",
     },
     nav: {
         createProject: "创建项目",
@@ -44,7 +47,7 @@ export const wizard = {
         },
         clone: {
             label: "从服务器克隆",
-            description: "复制版本控制服务器上的项目",
+            description: "复制 NarraLeaf Team 服务器上的项目",
             next: "下一页填写项目地址与本机存放位置",
         },
     },
@@ -65,7 +68,7 @@ export const wizard = {
         browseLocation: "选择文件夹",
         validatingDirectory: "正在检查该文件夹…",
         directoryWillBeCreated: "创建项目时一并创建该文件夹",
-        versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本",
+        versionControlLoreHint: "在项目文件夹内建立版本历史，创建时的状态记为第一个版本。之后可以发送到 Team 服务器",
         versionControlUnavailablePlatform: "本机不支持版本控制，项目不带版本控制创建",
         versionControlUnavailableInstallation: "当前安装的 Studio 不含版本控制，项目不带版本控制创建",
         moreDetails: "更多信息",
@@ -103,7 +106,7 @@ export const wizard = {
         addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
         parsedServer: "服务器",
         onServerLabel: "服务器上的项目",
-        onServerHint: "选一个；尚未添加的服务器可在下方填地址。",
+        onServerHint: "选一个，或在下方填写项目地址",
         onServerEmpty: "这台服务器上还没有项目。",
         onServerLoading: "正在询问服务器……",
         onServerNoToken: "Studio 无法向这台服务器提问。请用令牌重新添加它。",
@@ -127,6 +130,9 @@ export const wizard = {
     review: {
         template: "模板",
         notSpecified: "未指定",
+        // 为服务器新建项目时取代版本控制那一行：发送到服务器本身就把工程纳入了版本控制，
+        // 两行说的是同一件事。
+        server: "服务器",
     },
     validation: {
         templateFailed: "无法将模板内容复制到工程中",

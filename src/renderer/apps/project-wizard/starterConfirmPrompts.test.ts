@@ -29,6 +29,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
@@ -77,14 +78,21 @@ const blueprints = Object.values(
 );
 const confirmSurfaceId = document.surfaces.find(surface => surface.name === "Confirm")!.id;
 
-/** The one event graph on the blueprint that answers for an element, with lookups over it. */
-function graphFor(elementId: string) {
+/**
+ * The event graph on the blueprint that answers for an element, with lookups over it - or, when the
+ * blueprint carries more than one layer, the one holding `headType`. Layers are how an author keeps
+ * two unrelated things a widget answers apart, so insisting on a single layer would fail the moment
+ * one gained a second without anything about the wiring under test having changed.
+ */
+function graphFor(elementId: string, headType?: string) {
     const blueprint = blueprints.find(
         candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
-    const graphs = Object.values(blueprint!.program.graphs.events);
-    expect(graphs).toHaveLength(1);
+    const graphs = Object.values(blueprint!.program.graphs.events).filter(
+        candidate => !headType || Object.values(candidate.graph.nodes).some(node => node.type === headType),
+    );
+    expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
     const { nodes, edges } = graphs[0]!.graph;
 
     /**
@@ -239,11 +247,21 @@ describe("the questions the starter template asks before it takes something away
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
             assertPrompt(source, confirm, "Return to the title screen? Unsaved progress is lost.", "Return to title");
 
-            // Both ways out reach the same Go Page: opened from the title, nothing is lost, so the
-            // false branch is the old wiring untouched rather than a second copy of it.
+            // The two ways out are genuinely different acts, and each has to be the right one.
+            //
+            // Answering yes ends the playthrough: `Quit Game` tears the session down and lands on
+            // the title. `Go Page` here would leave the story running underneath - music still
+            // playing, the title screen drawn as one more overlay over it - and the next New Game
+            // would start a second run alongside the first.
+            const quit = step(confirm.id, "button_1_pressed", BLUEPRINT_NODE_TYPE_GAME_QUIT);
+            expect(quit.params?.surfaceId).toBe("narraleaf-studio:main-surface");
+
+            // Opened from the title with no game running, there is nothing to quit: the way back is
+            // to empty the page stack, whose root IS the title. `Go Page` naming the title would
+            // push a second copy of it on top of the page the player is standing on.
             const go = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_GO);
-            expect(go.params?.surfaceId).toBe("narraleaf-studio:main-surface");
-            expect(leadsTo(confirm.id, "button_1_pressed", go.id)).toBe(true);
+            expect(go.params?.surfaceId ?? "").toBe("");
+            expect(leadsTo(confirm.id, "button_1_pressed", go.id)).toBe(false);
         },
     );
 
@@ -328,14 +346,19 @@ describe("the questions the starter template asks before it takes something away
     );
 
     it("asks before going back to a line in the log, because everything after it is undone", () => {
-        const { step, source, leadsTo, only } = graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032");
+        const { step, source, leadsTo, only } = graphFor(
+            "5aab5352-98e9-4d9e-af03-1938fa5b5032",
+            BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
+        );
         const itemClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
         const confirm = step(itemClick.id, "then", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
         assertPrompt(source, confirm, "Go back to this line? Everything after it is undone.", "Go back");
 
         // Unconditional on purpose: every row in the log is behind the play head, so there is always
         // something after it to lose.
-        const restore = Object.values(graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032").nodes).filter(
+        const restore = Object.values(
+            graphFor("5aab5352-98e9-4d9e-af03-1938fa5b5032", BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK).nodes,
+        ).filter(
             node => node.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
         );
         expect(restore).toHaveLength(1);

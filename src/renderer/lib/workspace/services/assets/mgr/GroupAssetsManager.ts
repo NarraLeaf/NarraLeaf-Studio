@@ -414,7 +414,9 @@ export class GroupAssetsManager {
         // this shard byte-for-byte as it always has.
         this.assetsService.markOrderDirty(category);
 
-        return await filesystemService.write(
+        // Off the write-grant route with its sibling order shard - see `AssetOrderManager.write` for
+        // why both could only take it until `writeFileNoFollowOrCreate` existed.
+        return await filesystemService.writeFileNoFollowOrCreate(
             this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category)),
             data,
             "utf-8"
@@ -437,8 +439,8 @@ export class GroupAssetsManager {
      * read, never written and never deleted.
      *
      * **Reading is what this depends on; writing is only an optimisation.** The shape is
-     * `AssetOrderManager.init`'s, and for the same reason: `FileSystemService.write` answers a
-     * refused write - a frozen workspace, a working tree being re-read after a version restore - as
+     * `AssetOrderManager.init`'s, and for the same reason: every writer on `FileSystemService`
+     * answers a refused write - a frozen workspace, a working tree being re-read after a restore - as
      * a no-op success, so creating the shard first and then reading it back is a load path that
      * fails on every project the freeze latch is closed over. The merged records are resolved in
      * memory here; the file is written afterwards, and its failure costs the next open the same
@@ -490,7 +492,7 @@ export class GroupAssetsManager {
 
         await Promise.all(categories.map(async category => {
             const path = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
-            const result = await filesystemService.write(path, JSON.stringify(data[category]), "utf-8");
+            const result = await filesystemService.writeFileNoFollowOrCreate(path, JSON.stringify(data[category]), "utf-8");
             if (!result.ok) {
                 console.warn(
                     `[assets] could not create the assets groups shard (${category}): ${path}: ${result.error.code} ${result.error.message}`

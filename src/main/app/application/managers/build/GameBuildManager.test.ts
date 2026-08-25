@@ -11,7 +11,6 @@ import {
     hasSigningIdentityForPlatform,
     isDesktopTarget,
     isMobileTarget,
-    packShipsNodeSidecar,
     resolveElectronDistDirForApp,
     signingSecretsResolved,
     toWorkerAndroidSigning,
@@ -192,6 +191,21 @@ describe("GameBuildManager.start while the workspace is frozen", () => {
             expect(manager.getStatus(projectPath).error).toContain("banana");
         });
     });
+
+    it("builds during a live session, which is the one freeze that guards nothing here", async () => {
+        // The refusal is about the author reading something other than their working tree. In a
+        // session the working tree is exactly what everybody is looking at, so there is nothing to
+        // be inconsistent with - and taking the build away for the length of a session would cost a
+        // collaborator the ability to run the game at all.
+        reportWorkspaceFreeze(projectPath, "live-session");
+        const manager = makeManager();
+        const snapshot = manager.start(projectPath, entry, request);
+
+        expect(snapshot.status).toBe("preparing");
+        await vi.waitFor(() => {
+            expect(manager.getStatus(projectPath).error).toContain("banana");
+        });
+    });
 });
 
 describe("gameFusesForPlatform", () => {
@@ -230,13 +244,13 @@ describe("gameFusesForPlatform", () => {
      * cannot carry - and it is the one fuse the condition is allowed to move.
      */
     it("drops asar integrity for a debuggable build, signed or not", () => {
-        expect(gameFusesForPlatform("windows", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
-        expect(gameFusesForPlatform("macos", true, false, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+        expect(gameFusesForPlatform("windows", true, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+        expect(gameFusesForPlatform("macos", true, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
     });
 
     it("keeps every other fuse where it was for a debuggable build", () => {
         for (const platform of ["windows", "macos", "linux"] as const) {
-            const debuggable = gameFusesForPlatform(platform, true, false, true);
+            const debuggable = gameFusesForPlatform(platform, true, true);
             expect(debuggable.runAsNode).toBe(false);
             expect(debuggable.enableNodeOptionsEnvironmentVariable).toBe(false);
             expect(debuggable.enableNodeCliInspectArguments).toBe(false);
@@ -256,38 +270,25 @@ describe("gameFusesForPlatform", () => {
      * the runAsNode fuse can refuse. Without this the feature is dead in every packaged build while
      * working perfectly in preview, so the failure never appears until after shipping.
      */
-    it("allows runAsNode only for a build that ships a node sidecar", () => {
-        for (const platform of ["windows", "macos", "linux"] as const) {
-            expect(gameFusesForPlatform(platform, false, true).runAsNode).toBe(true);
-            expect(gameFusesForPlatform(platform, false, false).runAsNode).toBe(false);
-            // Relaxing that one fuse must not quietly relax its neighbours.
-            const relaxed = gameFusesForPlatform(platform, false, true);
-            expect(relaxed.enableNodeOptionsEnvironmentVariable).toBe(false);
-            expect(relaxed.enableNodeCliInspectArguments).toBe(false);
-            expect(relaxed.onlyLoadAppFromAsar).toBe(true);
-        }
-    });
 });
 
-describe("packShipsNodeSidecar", () => {
-    const pack = (plugins: unknown[]) => ({ plugins } as unknown as Parameters<typeof packShipsNodeSidecar>[0]);
-
-    it("answers no for the shapes that mean this build has none", () => {
-        expect(packShipsNodeSidecar(null)).toBe(false);
-        expect(packShipsNodeSidecar(pack([]))).toBe(false);
-        // A plugin whose sidecars did not survive the platform filter, and one that declares none.
-        expect(packShipsNodeSidecar(pack([{ id: "a" }, { id: "b", sidecars: [] }]))).toBe(false);
-    });
-
-    it("answers no for executable sidecars, which do not need the fuse", () => {
-        expect(packShipsNodeSidecar(pack([{ id: "a", sidecars: [{ id: "s", kind: "executable" }] }]))).toBe(false);
-    });
-
-    it("answers yes when any plugin ships one", () => {
-        expect(packShipsNodeSidecar(pack([
-            { id: "a", sidecars: [{ id: "s", kind: "executable" }] },
-            { id: "b", sidecars: [{ id: "t", kind: "node" }] },
-        ]))).toBe(true);
+/*
+ * The fuse that used to follow the build.
+ *
+ * `ELECTRON_RUN_AS_NODE` turns the game's executable into a general Node interpreter for any script
+ * named on its command line - past the main script's guards, and past asar integrity, because
+ * nothing loads the app at all. It was open on builds shipping a `kind: "node"` plugin sidecar,
+ * which is how those started. They are utility processes now, so no build needs it.
+ */
+describe("the run-as-node fuse", () => {
+    it("is off on every platform, signed or not, debuggable or not", () => {
+        for (const platform of ["windows", "macos", "linux"] as const) {
+            for (const signed of [true, false]) {
+                for (const debuggable of [true, false]) {
+                    expect(gameFusesForPlatform(platform, signed, debuggable).runAsNode).toBe(false);
+                }
+            }
+        }
     });
 });
 

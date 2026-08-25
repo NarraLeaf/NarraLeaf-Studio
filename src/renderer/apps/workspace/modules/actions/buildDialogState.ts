@@ -5,14 +5,13 @@ import {
     normalizeGameBuildArch,
     type BuildPreflightSection,
     type GameBuildArch,
-    type GameBuildCompression,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
     type GameBuildRequest,
 } from "@shared/types/gameBuild";
 import { isBuiltinAppTagId } from "@shared/types/appTag";
-import { DEFAULT_BUILD_COMPRESSION, type BuildConfiguration } from "@/lib/workspace/project/configuration";
+import type { BuildConfiguration } from "@/lib/workspace/project/configuration";
 
 /**
  * The build dialog's selection, and the pure rules that seed it and turn it
@@ -142,7 +141,14 @@ export type BuildDialogState = {
     archs: Record<GameBuildDesktopPlatform, GameBuildArch>;
     /** Absolute output directory, or "" to use the default (`<project>/dist`). */
     outputDir: string;
-    compression: GameBuildCompression;
+    /**
+     * Also produce this variant's DLC, each into its own folder beside the installers.
+     *
+     * Off by default: most projects have no DLC, and for the ones that do it is a compile per DLC on
+     * top of the build. The row that offers it is hidden entirely when the project has none, so the
+     * setting only exists where it means something.
+     */
+    includeDlc: boolean;
     openWhenDone: boolean;
 };
 
@@ -198,7 +204,7 @@ export function initialDialogState(
         formats,
         archs,
         outputDir: config?.outputDir ?? "",
-        compression: config?.compression ?? DEFAULT_BUILD_COMPRESSION,
+        includeDlc: config?.includeDlc ?? false,
         openWhenDone: config?.openWhenDone ?? true,
     };
 }
@@ -224,7 +230,9 @@ export function stateToRequest(state: BuildDialogState): GameBuildRequest {
         // absent for the same reason it is the empty string here - one choice, one spelling.
         ...(appTagSelection(state.appTagId) ? { appTagId: appTagSelection(state.appTagId) } : {}),
         outputDir: state.outputDir.trim(),
-        compression: state.compression,
+        // Omitted when off, so a request from a project with no DLC is byte-identical to one made
+        // before this existed.
+        ...(state.includeDlc ? { includeDlc: true } : {}),
         openWhenDone: state.openWhenDone,
     };
 }
@@ -247,7 +255,7 @@ export function requestToBuildConfiguration(request: GameBuildRequest): BuildCon
         formats,
         archs,
         outputDir: request.outputDir ?? "",
-        compression: request.compression ?? DEFAULT_BUILD_COMPRESSION,
+        includeDlc: request.includeDlc ?? false,
         openWhenDone: request.openWhenDone ?? true,
     };
 }
@@ -277,7 +285,7 @@ export function stateFromRequest(
         formats,
         archs,
         outputDir: request.outputDir ?? "",
-        compression: request.compression ?? DEFAULT_BUILD_COMPRESSION,
+        includeDlc: request.includeDlc ?? false,
         openWhenDone: request.openWhenDone ?? true,
     };
 }

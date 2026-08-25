@@ -92,6 +92,12 @@ export const workspace = {
             reviewAllClear: "没有待校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
             placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
+            tagsLabel: "标记",
+            applyStyle: "把这个样式给选中的文字",
+            placeToken: "把它放在这里",
+            clearStyle: "去掉选中文字的样式",
+            clearStyleShort: "纯文本",
+            runTagHint: "把 ‹n› 标记抄到对应的词上，它们带着样式、停顿与立绘切换",
             emptyStory: "该故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
             noStories: "请先创建故事；故事中的台词会显示在这里供翻译",
@@ -100,6 +106,9 @@ export const workspace = {
             statusTranslated: "已翻译",
             statusReviewed: "已校对",
             statusStale: "待复查",
+        },
+        live: {
+            entryClaimed: "{name} 正在翻译该行",
         },
     },
     voice: {
@@ -288,6 +297,119 @@ export const workspace = {
         },
     },
     shell: {
+    /**
+     * 窗口角落里的 NarraLeaf Team。
+     *
+     * 单元格背后的面板承担版本轨道原来带着的两个问题：这个项目的版本发往哪台服务器，
+     * 以及这台机器在那台服务器上是谁。凡是关于服务器的措辞都与版本轨道共用同一批键，
+     * 这里只放这个面板独有的。
+     */
+    team: {
+        // 产品名，写全称：作者是在这里认识它的。面板里其余各行仍称服务器为服务器。
+        title: "NarraLeaf Team",
+        command: {
+            open: "打开 NarraLeaf Team",
+        },
+        destination: "服务器",
+        projectOnServer: "项目名：{name}",
+        noAccountHere: "本机在这台服务器上没有账号",
+        // 打开设置。添加服务器与退出登录都在那里。
+        manage: "管理服务器…",
+        // 向服务器问到的结果，只在有事可做时才画出来。一切正常的工程什么都不写：
+        // 每天都在的一行「一切正常」没有人会读。
+        notThere: "该服务器上没有这个项目",
+        // 有响应、并且确实持有这个项目的服务器。在同步状态还无话可说时显示：
+        // 地址旁边那个词会被读成是在说服务器，而工作区开始自己检查之后，
+        //「未检查」就不再是事实了。
+        connected: "已连接",
+        unreachable: "该服务器没有响应",
+        // 谁在场、开着什么的小标题。
+        presence: "协作",
+        hereAlone: "只有本机",
+        hereMany: "{count} 台设备",
+        // 这个面板里唯一一个需要主动去做的动作，其余都是打开窗口的附带结果。
+        liveOpen: "开始实时会话",
+        liveUntitled: "实时会话",
+        liveMembers: "{count} 人",
+        liveJoin: "加入",
+        liveLeave: "离开",
+        liveEnd: "结束",
+        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
+        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
+        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
+        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
+        liveBlockedRecovery: "恢复模式下无法使用实时会话",
+        liveBlockedSession: "该工作区已在一场实时会话中",
+        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
+        liveHost: "主持",
+        liveGuest: "参与",
+        liveEntering: "正在进入",
+        liveLeaving: "正在离开",
+        // 已加入，正在把加入之前会话里发生的事全部应用完。
+        liveCatchingUp: "正在跟上会话进度",
+        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
+        liveNoStory: "先添加一个故事才能开始实时会话",
+        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
+        liveNoInstance: "该服务器还没有回应本机",
+        liveNoRepository: "此项目没有版本历史",
+        liveNoRevision: "先记录一个版本才能开始实时会话",
+        liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
+        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
+        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
+        // 与分叉那条一样写成第二行，而不是把第一行拉长。
+        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
+        liveRoomGone: "该会话已经关闭",
+        liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
+        liveStoryNotHere: "该会话所改的故事不在此项目中",
+        liveRefused: "服务器拒绝了这场会话",
+        liveFailed: "无法开始实时会话",
+        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
+        liveEndedHostLeft: "主持方已离开，会话结束",
+        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
+        // 已经不是其他人正在看的那一份。
+        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
+        liveEndedDivergedNext: "重新加入前先从服务器获取",
+        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的工程都画这个控件，
+        // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
+        // 所以它改为置灰并说明自己在等哪一个答复。
+        livePresence: "实时会话",
+        liveConnecting: "正在连接该服务器",
+        liveUnsupported: "该服务器不提供实时会话",
+        liveNobody: "此项目没有进行中的实时会话",
+        liveRoomOpen: "{name} 开着一场实时会话",
+        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除该故事与角色以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除该故事与角色以外的一切",
+        // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
+        liveStory: "故事",
+        liveHostedBy: "主持方 {name}",
+        // 房间里有谁，按账号。主持方要标出来：那扇窗口离开的含义不同，它会替所有人结束房间。
+        liveMembersLabel: "会话成员",
+        liveThisMachine: "本机",
+        // 进入会话时未提交的内容去了哪里。一个说不出名字的检查点等于回不去，
+        // 所以这里直接陈述，而不是留给作者去版本面板里找。
+        liveCheckpoint: "检查点",
+        liveCheckpointAt: "进入会话前未提交的内容已记录在 {version}",
+        liveCheckpointNone: "进入会话时没有未提交的内容",
+        // 参与方自己的往返。只在不为零时画出来：主持方答复之前文档不会在参与方手下变化，
+        // 不写出来的话，这与编辑器停止工作在屏幕上是同一件事。
+        livePendingOne: "1 项修改正在等待主持方",
+        livePendingMany: "{count} 项修改正在等待主持方",
+        // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
+        liveFrozenWhat: "会话期间只保存该会话的故事与角色，此项目中其余内容是当前的，且为只读",
+        liveUnavailableHere: "实时会话期间不可用",
+        // 别人正在写的行，集中在一处读，不必逐行去找标记。
+        liveClaimsLabel: "正在被编辑的行",
+        liveClaimOne: "{name} 正在写 1 行",
+        liveClaimMany: "{name} 正在写 {count} 行",
+        // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
+        liveFrozenTitle: "实时会话进行中",
+        liveLeaveSession: "离开实时会话",
+        liveEndSession: "结束实时会话",
+        // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
+        attached: "附加数据 {count} 条",
+        attachedOutdated: "{count} 条已过时",
+    },
         errorTitle: "工作区初始化失败",
         showStackTrace: "显示堆栈跟踪",
         retry: "重试",
@@ -326,6 +448,13 @@ export const workspace = {
         toggleLeftSidebar: "切换左侧边栏",
         toggleRightSidebar: "切换右侧边栏",
         toggleBottomPanel: "切换底部面板",
+        mainMenu: {
+            label: "主菜单",
+            modes: {
+                hamburger: "收进汉堡按钮",
+                toolbar: "在标题栏中分别显示",
+            },
+        },
         panelMenu: {
             removeItem: "移除此项目",
             collapseItem: "折叠到折叠项",
@@ -453,6 +582,9 @@ export const workspace = {
             openCurrentScene: "打开当前场景",
             // 已注册状态栏项目的名称，仅在状态栏右键开关菜单中显示。
             entries: {
+                // The brand, not a description of the cell: it is where an author learns the
+                // name of the thing their project is shared through.
+                team: "NarraLeaf Team",
                 runStatus: "运行状态",
         studioTasks: "后台工作",
                 unsavedChanges: "未保存的更改",
@@ -489,6 +621,10 @@ export const workspace = {
             frozenTitle: "当前不保存任何改动",
             frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存",
             frozenDetailManual: "工作区已冻结，解除冻结后恢复保存",
+            // 实时会话只保存自己的那份故事，其余一律拒绝，所以上面那个标题
+            // 对作者正在打字的那份文件是假的。
+            frozenTitleSession: "该文件不会被保存",
+            frozenDetailSession: "实时会话进行中，只有会话的故事与角色会保存；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -502,6 +638,7 @@ export const workspace = {
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
                 appTags: "变体",
+                dlc: "DLC",
                 assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "工程词典",
@@ -702,23 +839,38 @@ export const workspace = {
             // 版本轨道里的服务器区。用「服务器」不用「远端」：没用过版本控制的作者知道服务器是什么，
             // 而「远端」这个词要先懂模型才有意义。
             server: {
-                title: "服务器",
-                // 没连服务器——在有人明确说要连之前，每个工程都是这个状态。
+                // 没连服务器：在有人明确说要连之前，每个项目都是这个状态。
                 none: "没有连接服务器",
                 connect: "连接服务器",
+                // 把已经有服务器的项目改指到另一台。说「更换」不说「连接」：有服务器的项目
+                // 不需要再被问一次要不要连。省略号是本目录里「打开别处」的既有写法。
+                change: "更换服务器…",
+                // 服务器那一行的溢出控件。它后面的事一个项目一辈子只决定几次，
+                // 它前面的两个按钮每天都按。
+                more: "更多操作",
                 picker: {
                     title: "连接服务器",
+                    // 选定服务器后立即向它询问：这个工程在它上面会变成什么，取决于它已经有什么。
+                    reading: "正在读取这台服务器上的项目",
+                    // 服务器上已经有这个工程——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
+                    // 此时没有什么可决定的，所以名称是陈述，不是提问。
+                    already: "这台服务器上已经有这个工程，名为 {name}。",
                     nameLabel: "在服务器上的名称",
                     namePlaceholder: "my-game",
+                    nameHint: "可用字母、数字、点、连字符与下划线。",
+                    // 两条都是服务器的拒绝，只是提前说：一条只会回一个状态码，
+                    // 另一条要等对话框关闭、发布已经做了一半才出现。
+                    nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
+                    nameTaken: "这台服务器上已有同名项目。",
+                    // 服务器从未见过这个工程时按钮做的事：登记、连接，并把本机的全部版本发上去。
+                    createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
                     // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
                     add: "添加服务器…",
-                    manual: "其他地址",
+                    unknownServer: "该项目使用 {host}，这台服务器还没有添加到本机",
                 },
                 // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
                 // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
-                addressLabel: "服务器地址",
-                addressPlaceholder: "lore://studio.example.lan:41337",
                 save: "连接",
                 cancel: "取消",
                 disconnect: "断开连接",
@@ -738,6 +890,19 @@ export const workspace = {
                 // 服务器答应了但不接受我们。**只有这个状态**才显示凭据字段——
                 // 在没有人被拒绝之前就问令牌，是在问一个多数作者永远不需要回答的问题。
                 unauthorized: "该服务器拒绝了访问",
+                // 同样这七个状态，短到能挨着服务器名字放。上面那几句说的是状态的含义，
+                // 悬停时仍然显示它们；这几个是一眼读到的写法：320px 的一列要在同一行里
+                // 放下名字、状态和菜单。用的是正下方两个按钮的同一套词。
+                state: {
+                    notChecked: "未检查",
+                    upToDate: "已是最新",
+                    localAhead: "未上传",
+                    remoteAhead: "服务器有新版本",
+                    diverged: "两边都有新版本",
+                    // 说发生了什么，而不是说哪里出了错：断网的笔记本和宕掉的服务器一样是这个。
+                    unreachable: "没有响应",
+                    unauthorized: "被拒绝",
+                },
                 push: "上传到服务器",
                 pushing: "正在上传到服务器…",
                 // 「已经有了」是成功。按两次是很正常的事。
@@ -745,49 +910,19 @@ export const workspace = {
                 sync: "从服务器获取",
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
+                publish: {
+                    publishing: "正在把此项目放到服务器上…",
+                    noToken: "本机无法请求这台服务器登记该项目，请用令牌重新添加它。",
+                    refused: "这台服务器拒绝了此处登录的账号，项目未被登记。",
+                    unreachable: "这台服务器没有响应，项目未被登记。",
+                    wrongRepository: "这台服务器登记的是另一个项目，因此没有上传任何内容。",
+                    unknown: "这台服务器没有登记该项目。",
+                },
                 signIn: {
-                    required: "连接项目前需要先登录该服务器。",
-                    open: "登录此服务器",
+                    // 项目指向的服务器在本机没有账号时出现。
+                    required: "连接项目到这台服务器需要先在本机添加账号。",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
-                    addressLabel: "登录地址",
-                    addressPlaceholder: "https://studio.example.lan:41402",
-                    tokenLabel: "访问令牌",
-                    tokenPlaceholder: "粘贴令牌",
-                    hint: "令牌由服务器的管理者签发。",
-                    trust: {
-                        open: "在这台电脑上信任该服务器",
-                        title: "信任该服务器？",
-                        vouched: "粘贴的令牌指向该证书颁发机构，在该地址上应答的正是它。",
-                        compare: "请通过该连接以外的途径，与服务器管理员提供的指纹核对。",
-                        authorityLabel: "颁发者",
-                        fingerprintLabel: "指纹",
-                        meaning: "持有该机构密钥的任何一方，都能为任意地址签发证书，而本账户会接受它。受影响的只有本机上的该账户。",
-                        manual: "该系统没有按账户的信任库。请运行以下命令，然后重新登录：",
-                        copy: "复制命令",
-                        confirm: "信任",
-                        cancel: "取消",
-                    },
-                    submit: "登录",
-                    cancel: "取消",
-                    reach: {
-                        ready: "此服务器与这份 Studio 可以协同工作。",
-                        notPermitted: "已登录，但该账号尚未获得此项目的访问权。请向服务器管理员申请。",
-                        dataPortSilent: "已登录，但服务器本身没有响应。",
-                    },
-                    problem: {
-                        scheme: "登录地址必须以 https:// 或 ucs-auth:// 开头。",
-                        token: "该令牌不是此服务器签发的。请粘贴完整的令牌。",
-                        address: "该令牌未写明登录地址，因此仍需填写地址。",
-                        certificate:
-                            "这台电脑不信任此服务器所用的证书颁发机构。它的指纹是 {fingerprint}。",
-                        mismatch:
-                            "该地址上的服务器不是此令牌对应的服务器。令牌指向 {expected}，"
-                            + "应答的是 {found}。请勿信任，并向服务器管理员核实。",
-                        unreachable: "该地址没有任何响应（{detail}）。",
-                        refused: "服务器不接受该令牌（{detail}）。",
-                        unknown: "登录未能完成（{detail}）。",
-                    },
                 },
             },
             // 同步时合不拢的文件。用常驻通知而不是行内错误：同步在收尾时会离开版本视图，
@@ -964,6 +1099,10 @@ export const workspace = {
         // 真正花时间的是检查点那一步，也正是需要点名说清楚的那一步。
         closing: {
             title: "正在关闭工作区",
+            // 「在当前窗口打开」另一个项目时：新项目在看不见的地方加载，这个窗口一直留到它就绪，
+            // 所以这里说的是这段等待，而不是关闭。
+            switchingTitle: "正在切换项目",
+            switching: "正在打开另一个项目…",
             saving: "正在保存更改…",
             checkpoint: "正在记录项目的检查点…",
             launcher: "正在返回启动器…",

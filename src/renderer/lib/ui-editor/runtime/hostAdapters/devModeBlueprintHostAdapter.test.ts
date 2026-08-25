@@ -1,13 +1,14 @@
 import { describe, expect, it } from "vitest";
+import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
-    BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
-import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UISurface } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { createDevModeBlueprintHostApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -20,369 +21,281 @@ import {
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { createDevModeBlueprintHostAdapter } from "./devModeBlueprintHostAdapter";
 
-describe("createDevModeBlueprintHostAdapter", () => {
-    it("continues a widget event bubble from child to parent", async () => {
-        const childBlueprintId = "bp-child";
-        const parentBlueprintId = "bp-parent";
-        releaseBlueprintWidgetLocals("surface", "child", childBlueprintId);
-        releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
+/** One element of a nesting chain, root first. */
+type ChainNode = {
+    id: string;
+    type: string;
+    /** The event this element's private blueprint declares a head for, if any. */
+    listensTo?: "mouseClick" | "mouseEnter";
+};
 
-        const blueprintDocument: BlueprintDocument = {
-            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            blueprints: {
-                [childBlueprintId]: {
-                    id: childBlueprintId,
-                    name: "Child Logic",
-                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "child" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    members: { variables: {}, fields: {}, functions: {} },
-                    bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            bubble: {
-                                                id: "bubble",
-                                                type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-                                            },
-                                        },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "bubble", port: "in" } },
-                                        ],
-                                    },
-                                },
-                            },
-                            functions: {},
-                        },
-                    },
-                },
-                [parentBlueprintId]: {
-                    id: parentBlueprintId,
-                    name: "Parent Logic",
-                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "parent" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    members: {
-                        variables: {
-                            bubbled: { id: "bubbled", name: "bubbled", valueType: "string", defaultValue: "no" },
-                        },
-                        fields: {},
-                        functions: {},
-                    },
-                    bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            literal: {
-                                                id: "literal",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "yes" },
-                                            },
-                                            set: {
-                                                id: "set",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "bubbled" },
-                                            },
-                                        },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
-                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
-                                        ],
-                                    },
-                                },
-                            },
-                            functions: {},
-                        },
-                    },
-                },
-            },
-            ownerRecords: {
-                "widgetMain:surface:child": {
-                    activeBlueprintId: childBlueprintId,
-                    privateBlueprintIds: [childBlueprintId],
-                    initializedFrontend: "visual",
-                },
-                "widgetMain:surface:parent": {
-                    activeBlueprintId: parentBlueprintId,
-                    privateBlueprintIds: [parentBlueprintId],
-                    initializedFrontend: "visual",
-                },
-            },
-        };
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "nl.root",
-                    parentId: null,
-                    childrenIds: ["parent"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                parent: {
-                    id: "parent",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: ["child"],
-                    layout: { x: 0, y: 0, width: 120, height: 80 },
-                },
-                child: {
-                    id: "child",
-                    type: "nl.button",
-                    parentId: "parent",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 80, height: 32 },
-                },
-            },
-        };
-        const bundle: DevModeBundle = {
-            bundleId: "bundle",
-            revision: 1,
-            timestamp: "2026-07-02T00:00:00.000Z",
-            ui: {
-                uidoc: document,
-                uigraphs: {
-                    schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-                    graphs: {},
-                    blueprintDocument,
-                },
-                localBlueprints: blueprintDocument,
-                sharedBlueprints: [],
-                persistentVariables: {},
-                savedVariables: {},
+const HEAD_TYPE_BY_EVENT = {
+    mouseClick: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    mouseEnter: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
+} as const;
 
-                saveSchema: [],
-            },
-        };
-        const debug = new DebugBridge();
-        const scope = new ScopeStoreBridge();
-        const hostApi = createDevModeBlueprintHostApi({
-            document,
-            scope,
-            activeSurfaceId: "surface",
-            emit: event => debug.emit(event),
-            onOpenSurface: () => undefined,
-            onPageBack: () => undefined,
-            onWidgetPatch: () => undefined,
-            widgetRuntimeStore: new WidgetRuntimeStateStore(),
-        });
-        const adapter = createDevModeBlueprintHostAdapter({
-            bundle,
-            surface: document.surfaces[0] as UISurface,
-            scopeBridge: scope,
-            debug,
-            hostApi,
-        });
-
-        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseClick", { x: 4, y: 5, button: 0 });
-
-        const parentLocals = acquireBlueprintWidgetLocals(
-            "surface",
-            "parent",
-            parentBlueprintId,
-            blueprintDocument.blueprints[parentBlueprintId]!,
-        );
-        expect(parentLocals.bubbled).toBe("yes");
-
-        releaseBlueprintWidgetLocals("surface", "child", childBlueprintId);
-        releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
-    });
-
-    /**
-     * A child with no listener at all - no blueprint, no owner record - which is the shape of every
-     * decorative element an author drops onto a clickable panel.
-     */
-    function createUnlistenedChildFixture(childType: string) {
-        const parentBlueprintId = "bp-parent-auto";
-        releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId);
-
-        const blueprintDocument: BlueprintDocument = {
-            schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
-            blueprints: {
-                [parentBlueprintId]: {
-                    id: parentBlueprintId,
-                    name: "Parent Logic",
-                    owner: { kind: "widgetMain", surfaceId: "surface", elementId: "parent" },
-                    frontend: "visual",
-                    programKind: "graph",
-                    members: {
-                        variables: {
-                            bubbled: { id: "bubbled", name: "bubbled", valueType: "string", defaultValue: "no" },
-                        },
-                        fields: {},
-                        functions: {},
-                    },
-                    bindings: {},
-                    program: {
-                        kind: "graph",
-                        graphs: {
-                            events: {
-                                mouseClick: {
-                                    id: "mouseClick",
-                                    graph: {
-                                        nodes: {
-                                            head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK },
-                                            literal: {
-                                                id: "literal",
-                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                                                params: { value: "yes" },
-                                            },
-                                            set: {
-                                                id: "set",
-                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                                                params: { variableId: "bubbled" },
-                                            },
-                                        },
-                                        edges: [
-                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
-                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
-                                        ],
-                                    },
-                                },
-                            },
-                            functions: {},
-                        },
-                    },
-                },
-            },
-            ownerRecords: {
-                "widgetMain:surface:parent": {
-                    activeBlueprintId: parentBlueprintId,
-                    privateBlueprintIds: [parentBlueprintId],
-                    initializedFrontend: "visual",
-                },
-            },
-        };
-        const document: UIDocument = {
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            id: "doc",
-            name: "Doc",
-            surfaces: [
-                {
-                    id: "surface",
-                    name: "Surface",
-                    host: "player",
-                    kind: "stageSurface",
-                    designSize: { width: 320, height: 180 },
-                    rootElementId: "root",
-                    mount: { kind: "slot", slotId: "onStage" },
-                },
-            ],
-            elements: {
-                root: {
-                    id: "root",
-                    type: "nl.root",
-                    parentId: null,
-                    childrenIds: ["parent"],
-                    layout: { x: 0, y: 0, width: 320, height: 180 },
-                },
-                parent: {
-                    id: "parent",
-                    type: "nl.container",
-                    parentId: "root",
-                    childrenIds: ["child"],
-                    layout: { x: 0, y: 0, width: 120, height: 80 },
-                },
-                child: {
-                    id: "child",
-                    type: childType,
-                    parentId: "parent",
-                    childrenIds: [],
-                    layout: { x: 8, y: 8, width: 80, height: 32 },
-                },
-            },
-        };
-        const bundle: DevModeBundle = {
-            bundleId: "bundle",
-            revision: 1,
-            timestamp: "2026-07-02T00:00:00.000Z",
-            ui: {
-                uidoc: document,
-                uigraphs: {
-                    schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-                    graphs: {},
-                    blueprintDocument,
-                },
-                localBlueprints: blueprintDocument,
-                sharedBlueprints: [],
-                persistentVariables: {},
-                savedVariables: {},
-
-                saveSchema: [],
-            },
-        };
-        const debug = new DebugBridge();
-        const scope = new ScopeStoreBridge();
-        const hostApi = createDevModeBlueprintHostApi({
-            document,
-            scope,
-            activeSurfaceId: "surface",
-            emit: event => debug.emit(event),
-            onOpenSurface: () => undefined,
-            onPageBack: () => undefined,
-            onWidgetPatch: () => undefined,
-            widgetRuntimeStore: new WidgetRuntimeStateStore(),
-        });
-        const adapter = createDevModeBlueprintHostAdapter({
-            bundle,
-            surface: document.surfaces[0] as UISurface,
-            scopeBridge: scope,
-            debug,
-            hostApi,
-        });
-        const readParentLocal = () =>
-            acquireBlueprintWidgetLocals(
-                "surface",
-                "parent",
-                parentBlueprintId,
-                blueprintDocument.blueprints[parentBlueprintId]!,
-            ).bubbled;
-
-        return { adapter, readParentLocal, cleanup: () => releaseBlueprintWidgetLocals("surface", "parent", parentBlueprintId) };
+/**
+ * A chain of nested elements, each optionally listening for one pointer event.
+ *
+ * Every listener writes the same local (`fired`), so "did this element hear it" is one read; the
+ * order they ran in comes off the debug bus rather than out of the graphs, because a graph that
+ * could observe its own position in the walk would be an author-facing promise about that order -
+ * and there deliberately is not one.
+ */
+function createChainFixture(chain: readonly ChainNode[]) {
+    const blueprintIdOf = (elementId: string) => `bp-${elementId}`;
+    const listeners = chain.filter(node => node.listensTo);
+    for (const node of listeners) {
+        releaseBlueprintWidgetLocals("surface", node.id, blueprintIdOf(node.id));
     }
 
-    it("hands a click nothing listened to up to the parent", async () => {
-        const { adapter, readParentLocal, cleanup } = createUnlistenedChildFixture("nl.text");
+    const blueprintDocument: BlueprintDocument = {
+        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        blueprints: Object.fromEntries(
+            listeners.map(node => [
+                blueprintIdOf(node.id),
+                {
+                    id: blueprintIdOf(node.id),
+                    name: `${node.id} logic`,
+                    owner: { kind: "widgetMain" as const, surfaceId: "surface", elementId: node.id },
+                    frontend: "visual" as const,
+                    programKind: "graph" as const,
+                    members: {
+                        variables: {
+                            fired: { id: "fired", name: "fired", valueType: "string" as const, defaultValue: "no" },
+                        },
+                        fields: {},
+                        functions: {},
+                    },
+                    bindings: {},
+                    program: {
+                        kind: "graph" as const,
+                        graphs: {
+                            events: {
+                                [node.listensTo!]: {
+                                    id: node.listensTo!,
+                                    graph: {
+                                        nodes: {
+                                            head: { id: "head", type: HEAD_TYPE_BY_EVENT[node.listensTo!] },
+                                            literal: {
+                                                id: "literal",
+                                                type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                                                params: { value: "yes" },
+                                            },
+                                            set: {
+                                                id: "set",
+                                                type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                                                params: { variableId: "fired" },
+                                            },
+                                        },
+                                        edges: [
+                                            { from: { nodeId: "head", port: "then" }, to: { nodeId: "set", port: "in" } },
+                                            { from: { nodeId: "literal", port: "value" }, to: { nodeId: "set", port: "value" } },
+                                        ],
+                                    },
+                                },
+                            },
+                            functions: {},
+                        },
+                    },
+                },
+            ]),
+        ),
+        ownerRecords: Object.fromEntries(
+            listeners.map(node => [
+                `widgetMain:surface:${node.id}`,
+                {
+                    activeBlueprintId: blueprintIdOf(node.id),
+                    privateBlueprintIds: [blueprintIdOf(node.id)],
+                    initializedFrontend: "visual" as const,
+                },
+            ]),
+        ),
+    };
 
-        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseClick", { x: 4, y: 5, button: 0 });
+    const elements: Record<string, UIElement> = {
+        root: {
+            id: "root",
+            type: "nl.root",
+            parentId: null,
+            childrenIds: [chain[0]!.id],
+            layout: { x: 0, y: 0, width: 320, height: 180 },
+        },
+    };
+    chain.forEach((node, index) => {
+        elements[node.id] = {
+            id: node.id,
+            type: node.type,
+            parentId: index === 0 ? "root" : chain[index - 1]!.id,
+            childrenIds: index === chain.length - 1 ? [] : [chain[index + 1]!.id],
+            layout: { x: 0, y: 0, width: 120, height: 80 },
+        };
+    });
 
-        expect(readParentLocal()).toBe("yes");
-        cleanup();
+    const document: UIDocument = {
+        schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        id: "doc",
+        name: "Doc",
+        surfaces: [
+            {
+                id: "surface",
+                name: "Surface",
+                host: "player",
+                kind: "stageSurface",
+                designSize: { width: 320, height: 180 },
+                rootElementId: "root",
+                mount: { kind: "slot", slotId: "onStage" },
+            },
+        ],
+        elements,
+    };
+    const bundle: DevModeBundle = {
+        bundleId: "bundle",
+        revision: 1,
+        timestamp: "2026-07-02T00:00:00.000Z",
+        ui: {
+            uidoc: document,
+            uigraphs: {
+                schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
+                graphs: {},
+                blueprintDocument,
+            },
+            localBlueprints: blueprintDocument,
+            sharedBlueprints: [],
+            persistentVariables: {},
+            savedVariables: {},
+            saveSchema: [],
+        },
+    };
+    const debug = new DebugBridge();
+    // `execution.started` is a tracing event, and the bus drops those unless somebody has asked for
+    // them. Asking is what makes the order observable here without a graph that can see it.
+    debug.setVerboseCaptureEnabled(true);
+    const startedBlueprintIds: string[] = [];
+    debug.subscribeEvents(event => {
+        if (event.type === "execution.started" && event.blueprintId) {
+            startedBlueprintIds.push(event.blueprintId);
+        }
+    });
+    const scope = new ScopeStoreBridge();
+    const hostApi = createDevModeBlueprintHostApi({
+        document,
+        scope,
+        activeSurfaceId: "surface",
+        emit: event => debug.emit(event),
+        onOpenSurface: () => undefined,
+        onPageBack: () => undefined,
+        onWidgetPatch: () => undefined,
+        widgetRuntimeStore: new WidgetRuntimeStateStore(),
+    });
+    const adapter = createDevModeBlueprintHostAdapter({
+        bundle,
+        surface: document.surfaces[0] as UISurface,
+        scopeBridge: scope,
+        debug,
+        hostApi,
+    });
+
+    return {
+        adapter,
+        /** Whether this element's own blueprint ran. */
+        heard: (elementId: string) =>
+            acquireBlueprintWidgetLocals(
+                "surface",
+                elementId,
+                blueprintIdOf(elementId),
+                blueprintDocument.blueprints[blueprintIdOf(elementId)]!,
+            ).fired === "yes",
+        /** The elements whose blueprints ran, in the order they started. */
+        firedOrder: () => startedBlueprintIds.map(id => id.replace(/^bp-/, "")),
+        cleanup: () => {
+            for (const node of listeners) {
+                releaseBlueprintWidgetLocals("surface", node.id, blueprintIdOf(node.id));
+            }
+        },
+    };
+}
+
+describe("createDevModeBlueprintHostAdapter", () => {
+    /**
+     * The rule this whole walk exists for. A head says the element wants the event, not that it owns
+     * it, so a panel that listens no longer takes every click away from the page it sits in - which
+     * is what the old "first listener keeps it" rule did, silently, with no way to see the cause.
+     */
+    it("fires every head from the hit element up to the root", async () => {
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "panel", type: "nl.container", listensTo: "mouseClick" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 });
+
+        expect(fixture.heard("panel")).toBe(true);
+        expect(fixture.heard("page")).toBe(true);
+        fixture.cleanup();
+    });
+
+    it("fires them innermost first", async () => {
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "panel", type: "nl.container", listensTo: "mouseClick" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 });
+
+        expect(fixture.firedOrder()).toEqual(["panel", "page"]);
+        fixture.cleanup();
+    });
+
+    it("steps over an element with no head", async () => {
+        // The decorative element every author drops onto a clickable panel. It has no blueprint and
+        // no owner record at all, so there is nothing to run and nothing to report - the walk simply
+        // continues past it.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "decoration", type: "nl.image" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 });
+
+        expect(fixture.firedOrder()).toEqual(["page"]);
+        fixture.cleanup();
     });
 
     it("keeps hover to the element it happened on", async () => {
-        // Forwarding this one would report the whole ancestry as hovered at once, so the bubble is
+        // Forwarding this one would report the whole ancestry as hovered at once, so the walk is
         // deliberately narrower than "any interaction event".
-        const { adapter, readParentLocal, cleanup } = createUnlistenedChildFixture("nl.text");
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseEnter" },
+            { id: "label", type: "nl.text" },
+        ]);
 
-        await adapter.blueprintRuntime?.dispatchElementBlueprintEvent("child", "mouseEnter", {});
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseEnter", {});
 
-        expect(readParentLocal()).toBe("no");
-        cleanup();
+        expect(fixture.heard("page")).toBe(false);
+        fixture.cleanup();
+    });
+
+    it("sheds the row context when the event leaves the list that made it", async () => {
+        // A wheel or a click inside a row carries that row's instance key, and the blueprint
+        // variable record is keyed by it. Carrying the key past the list would hand the container
+        // around it a private, freshly defaulted copy of its own variables for as long as the
+        // pointer sat over a row - so the parent would run, and remember nothing.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "rows", type: "nl.list" },
+            { id: "label", type: "nl.text" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("label", "mouseClick", { x: 4, y: 5, button: 0 }, {
+            instanceKey: buildUIListItemInstanceKey("rows", "row-1"),
+            listItemScope: { item: {}, index: 0, count: 1, key: "row-1" },
+        });
+
+        expect(fixture.heard("page")).toBe(true);
+        fixture.cleanup();
     });
 });

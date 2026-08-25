@@ -2,6 +2,9 @@
 
 本文汇总 UI Editor 蓝图系统建议提供的节点。列表包含当前已实现、已规划和建议新增的节点；节点按面向视觉小说 UI 制作的使用场景分类。
 
+> 这份表是**路线图**，手工维护，只说「有没有」，不说引脚和字段。要查一个节点真正长什么样，问注册表本身：
+> `node project/app/blueprint.js node <类型 id>`、`node project/app/blueprint.js nodes <搜索词>`。完整用法见 `project/app/blueprint.md`。
+
 ## Events
 
 | 节点 | 类型 ID 建议 | 说明 |
@@ -41,6 +44,7 @@
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Preference Changed | `blueprint.event.head.preferenceChanged` | **已实现**。监听当前 `LiveGame` 指定 Game Preference（如 BGM Volume）变化；Inspector `Preference` 选择偏好键；输出 `then` / `value` / `previousValue`；订阅 NarraLeaf React `game.preference.onPreferenceChange`；Global 与 Surface 蓝图可用。 |
 | On Any Preference Changed | `blueprint.event.head.anyPreferenceChanged` | **已实现**。监听当前 `LiveGame` 任意 Game Preference 变化；输出 `then` / `key` / `value` / `previousValue`；Global 与 Surface 蓝图可用。 |
+| On Action | `blueprint.event.head.action` | **已实现**。工程声明的输入操作被触发时执行；Inspector `Action` 从工程的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
@@ -193,17 +197,38 @@
 | Array Remove | `blueprint.collection.arrayRemove` | **已实现**。移除指定值。 |
 | Array Remove At | `blueprint.collection.arrayRemoveAt` | **已实现**。移除指定下标的项。 |
 | Array Contains | `blueprint.collection.arrayContains` | **已实现**。判断数组是否包含指定值。 |
-| Array Find | `blueprint.collection.arrayFind` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Filter | `blueprint.collection.arrayFilter` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，回调/谓词图模型后续设计，不注册 palette/runtime。 |
-| Array Sort | `blueprint.collection.arraySort` | **planned/disabled**。保留稳定 ID，比较器图模型后续设计，不注册 palette/runtime。 |
+| Array Index Of | `blueprint.collection.arrayIndexOf` | **已实现**。返回指定值第一次出现的下标，没有则为 -1。 |
+| Array First | `blueprint.collection.arrayFirst` | **已实现**。取首项，空数组返回 null。 |
+| Array Last | `blueprint.collection.arrayLast` | **已实现**。取末项，空数组返回 null。 |
+| Array Is Empty | `blueprint.collection.arrayIsEmpty` | **已实现**。判断数组是否为空。 |
+| Array Reverse | `blueprint.collection.arrayReverse` | **已实现**。输出反序副本。 |
+| Array Concat | `blueprint.collection.arrayConcat` | **已实现**。首尾拼接两个数组。 |
+| Array Unique | `blueprint.collection.arrayUnique` | **已实现**。按值去重，保留首次出现的顺序。 |
+| Array Range | `blueprint.collection.arrayRange` | **已实现**。由起点、个数、步长生成整数序列；步长 0 读作 1。 |
+| Array Sort By Key | `blueprint.collection.arraySort` | **已实现**。按记录的某个属性排序；数字按数字比，其余按文本比，缺值排在最后，同键保持原顺序。 |
+| Array Filter By Key | `blueprint.collection.arrayFilter` | **已实现**。保留某属性等于给定值的记录。 |
+| Array Find By Key | `blueprint.collection.arrayFind` | **已实现**。按属性查第一条记录，输出条目与下标。 |
+| Array Map | `blueprint.collection.arrayMap` | **planned/disabled**。保留稳定 ID，映射表达式模型后续设计，不注册 palette/runtime。 |
 | Array Slice | `blueprint.collection.arraySlice` | **已实现**。截取数组片段。 |
 | Array Join | `blueprint.collection.arrayJoin` | **已实现**。将数组连接为字符串。 |
 | Object Keys | `blueprint.collection.objectKeys` | **已实现**。获取对象字段名数组。 |
 | Object Values | `blueprint.collection.objectValues` | **已实现**。获取对象值数组。 |
 | Object Merge | `blueprint.collection.objectMerge` | **已实现**。合并对象。 |
-| Object Set Field | `blueprint.collection.objectSetField` | **已实现**。写入对象字段并输出新对象。 |
-| Object Remove Field | `blueprint.collection.objectRemoveField` | **已实现**。移除对象字段并输出新对象。 |
+| Object Set Field | `blueprint.collection.objectSetField` | **已实现，不再进 palette**。被 `Set JSON Field` 取代（后者接受点路径）。 |
+| Object Remove Field | `blueprint.collection.objectRemoveField` | **已实现，不再进 palette**。被 `Remove JSON Field` 取代。 |
+
+排序/筛选/查找不采用回调图：谓词写成一张函数图，正是「必须先理解图即是值」的那层抽象。
+按属性排序、按属性筛选、按属性查找覆盖了 VN 界面里绝大多数用法，且不需要作者再学一个概念。
+列表控件上还有一组同样按字段（而不是按属性名字符串）操作的节点，见 List 一节——
+那些能给出真正的字段下拉，因为列表声明了自己的条目结构。
+
+## Input
+
+工程给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
+
+| 节点 | 类型 ID 建议 | 说明 |
+| --- | --- | --- |
+| Is Action Held | `blueprint.input.isActionHeld` | **已实现**。指定输入操作当前是否按住，用于长按类手势；纯节点，输出 `held`；事件图、函数图、宏都可用。 |
 
 ## Displayable / Widget
 
@@ -406,6 +431,23 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get List Item Index | `blueprint.list.getItemIndex` | **已实现**。读取当前 List item 下标。 |
 | Get List Item Count | `blueprint.list.getItemCount` | **已实现**。读取当前 List item 总数。 |
 | Get List Item Key | `blueprint.list.getItemKey` | **已实现**。读取当前 List item key。 |
+| Get Item Field | `blueprint.list.getItemField` | **已实现**。读取当前 List item 的某个已声明字段；字段从下拉里选，存的是字段 id。取代 `Get List Item Props` + `Get JSON Field` 那条两级组合。 |
+| Get List Length | `blueprint.list.getLength` / `blueprint.element.list.getLength` | **已实现**。当前运行时内容的条数。 |
+| Get Item At | `blueprint.list.getItemAt` / `blueprint.element.list.getItemAt` | **已实现**。取指定下标的条目，越界返回 null。 |
+| Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |
+| Set Item Field At | `blueprint.list.setItemFieldAt` / `blueprint.element.list.setItemFieldAt` | **已实现**。改写指定下标条目的某个字段；下标不存在或字段未声明时静默跳过。 |
+| Sort List By Field | `blueprint.list.sortByField` / `blueprint.element.list.sortByField` | **已实现**。按字段升/降序重排运行时内容。 |
+| Get Scroll Progress | `blueprint.list.getScrollProgress` / `blueprint.element.list.getScrollProgress` | **已实现**。列表沿滚动轴走到了哪，0 到 1。内容装得下时读 1（既在开头也在末尾）。 |
+| Get Scroll Offset | `blueprint.list.getScrollOffset` / `blueprint.element.list.getScrollOffset` | **已实现**。当前偏移与最大偏移，单位像素。 |
+| Is Scrolled To End | `blueprint.list.isScrolledToEnd` / `blueprint.element.list.isScrolledToEnd` | **已实现**。是否已经滚到末尾，带 1px 容差——小数偏移配上取整的尺寸，滚到头也可能差那么一点。 |
+| Is Scrolled To Start | `blueprint.list.isScrolledToStart` / `blueprint.element.list.isScrolledToStart` | **已实现**。是否还在开头。 |
+
+**Scroll 事件头说的是「列表动了」，这四个读节点说的是「列表现在在哪」。**
+区别对不是由列表本身触发的图很重要：页面上的滚轮处理没人会通知它，它只能自己问。
+把事件头给的答案抄进一个变量，是那种会悄悄过期的写法。
+
+字段下拉的选项来自节点所指列表声明的条目结构：接了 Element 引脚就跟着那根线走，
+挂在列表自己的私有蓝图上就是那个列表，放在条目模板里就是画它的那个列表。
 
 ## Page
 
@@ -419,6 +461,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get Current Page | `blueprint.page.getCurrent` | 获取当前 Page ID。 |
 | Is Surface Exiting | `blueprint.page.isSurfaceExiting` | **已实现**。读取当前 Surface 是否处于退出动画状态。 |
 | Is Surface Entering | `blueprint.page.isSurfaceEntering` | **已实现**。读取当前 Surface 是否处于进入动画状态。 |
+| Keep Window Open | `blueprint.app.keepWindowOpen` | **已实现**。取消玩家发出的窗口关闭请求，把窗口留在原地；只在 `On Window Close Requested` 事件图里有意义，其他派发中执行会抛出蓝图执行错误。 |
 | Is Page Open | `blueprint.page.isOpen` | 判断指定 Page 是否处于打开状态。 |
 | Preload Page | `blueprint.page.preload` | 预加载指定 Page。 |
 | Unload Page | `blueprint.page.unload` | 卸载指定 Page 资源。 |

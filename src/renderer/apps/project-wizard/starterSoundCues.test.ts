@@ -19,6 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
@@ -87,13 +88,21 @@ function oneOn(surfaceName: string, elementName: string, elementType = "nl.butto
     return found[0]!;
 }
 
-function graphFor(elementId: string): Graph {
+/**
+ * The one graph on the blueprint that answers for an element, or - when the blueprint carries more
+ * than one layer - the one holding `headType`. Layers are how an author separates two unrelated
+ * things a widget answers, so a helper that insisted on a single layer would fail the moment one
+ * gained a second, without anything about the wiring under test having changed.
+ */
+function graphFor(elementId: string, headType?: string): Graph {
     const blueprint = blueprints.find(
         candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
-    const graphs = Object.values(blueprint!.program.graphs.events);
-    expect(graphs).toHaveLength(1);
+    const graphs = Object.values(blueprint!.program.graphs.events).filter(
+        candidate => !headType || Object.values(candidate.graph.nodes).some(node => node.type === headType),
+    );
+    expect(graphs, `${elementId} has ${graphs.length} graphs answering ${headType ?? "anything"}`).toHaveLength(1);
     return graphs[0]!.graph;
 }
 
@@ -103,11 +112,18 @@ function only(graph: Graph, type: string): GraphNode {
     return found[0]!;
 }
 
-/** The single node an exec output runs. */
+/**
+ * The single node an exec output runs, stepping over a Memo.
+ *
+ * A Memo does nothing a player can hear; it is there because a value is read twice and a pure pin
+ * may only feed one consumer. Stopping at one would make these assertions about where a graph holds
+ * its values rather than about which sound answers which press.
+ */
 function next(graph: Graph, fromId: string, port: string): GraphNode {
     const out = graph.edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
     expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
-    return graph.nodes[out[0]!.to.nodeId]!;
+    const node = graph.nodes[out[0]!.to.nodeId]!;
+    return node.type === BLUEPRINT_NODE_TYPE_DATA_MEMO ? next(graph, node.id, "next") : node;
 }
 
 function assertCue(cue: GraphNode, clipName: string): void {
@@ -199,7 +215,8 @@ describe("the sounds the starter template makes", () => {
         { page: "Log", list: "Entries" },
         { page: "Load", list: "Auto saves" },
     ])("a row of $page ▸ $list answers being picked", ({ page, list }) => {
-        assertClickCue(graphFor(oneOn(page, list, "nl.list").id), BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
+        const graph = graphFor(oneOn(page, list, "nl.list").id, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK);
+        assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK, "ui-confirm");
     });
 
     it("a scene card answers only when it has a scene to open", () => {

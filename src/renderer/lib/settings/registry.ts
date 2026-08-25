@@ -18,9 +18,14 @@ export function getAppSettingCategories(): SettingCategory[] {
 
 /**
  * Get definitions that belong to a specific category.
+ *
+ * Rows whose `visible` predicate says no are dropped here rather than at each call site, because
+ * this is what both halves of the Settings window read - the navigation tree and the list. Filtered
+ * on every call, not folded into `settingsIndex` above: that index is built when this module loads,
+ * which for a platform check is before the window bootstrap has the answer.
  */
 export function getSettingsByCategory(category: AppSettingCategoryKey): AppSettingDefinition[] {
-    return settingsIndex[category] ?? [];
+    return (settingsIndex[category] ?? []).filter(setting => setting.visible?.() !== false);
 }
 
 /**
@@ -31,7 +36,12 @@ export function getSettingByKey(key: AppSettingDefinition["key"]): AppSettingDef
 }
 
 /**
- * Iterate every registered app-wide setting.
+ * Iterate every registered app-wide setting, `visible` included.
+ *
+ * Unfiltered on purpose. The callers are the scope walker (export, import, reset) and the Settings
+ * window's value loader, and for all of them a key is a preference whether or not this machine
+ * draws a row for it - hiding ⌘Q on Windows must not make a settings file written on macOS lose
+ * the value on its way through.
  */
 export function getAllAppSettings(): AppSettingDefinition[] {
     return AppSettings;

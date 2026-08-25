@@ -5,8 +5,18 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
+import {
+    isOperableWidgetType,
+    readUISurfaceActionOverControls,
+    resolveSurfaceActionBindings,
+    type UIInputPointerGesture,
+} from "@shared/types/ui-editor/inputAction";
+import { uiTextUnitId } from "../../ui-editor/runtime/localization/GameLocalizationContext";
 import { getUIFrameWidgetProps, UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
 import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemContext";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -64,7 +74,7 @@ function surfaceDisplayName(surface: UISurface): string {
     return surface.id === MAIN_APP_SURFACE_ID ? DEFAULT_APP_SURFACE_NAME : surface.name;
 }
 
-function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
+export function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation {
     const name = element?.name?.trim();
     return {
         kind: "surface",
@@ -75,7 +85,7 @@ function surfaceLocation(surface: UISurface, element?: UIElement): LintLocation 
     };
 }
 
-function surfaceTarget(surface: UISurface): SearchJumpTarget {
+export function surfaceTarget(surface: UISurface): SearchJumpTarget {
     return { kind: "uiSurface", surfaceId: surface.id };
 }
 
@@ -136,6 +146,55 @@ const LOCALIZABLE_TEXT_SITES: Readonly<
     "nl.button": { textProp: "label", keyProp: "localizationKey", optInProp: "localizable" },
     "nl.textInput": { textProp: "placeholder", keyProp: "placeholderLocalizationKey" },
 };
+
+
+/** The literal a widget shows a player, with the unit that translates it and the face it chose. */
+export type SurfaceTextSite = {
+    surface: UISurface;
+    element: UIElement;
+    /** `ui:<elementId>.<prop>` - the implicit unit, which is the row a target locale carries. */
+    unitId: string;
+    /** The author's own words, which is what renders when nothing translated them. */
+    text: string;
+    /** The widget's own typeface, when it named one. Absent means it follows the project. */
+    fontAssetId?: string;
+};
+
+/**
+ * Every literal on every page that a player will read.
+ *
+ * Shared with `typography` lint, which asks a different question of the same three props: not
+ * whether the words can be translated but whether any font can draw them. Both have to walk the same
+ * sites or they would disagree about what counts as text a player sees, and the second one to be
+ * written would be the one that quietly missed a widget kind.
+ *
+ * The literal is reported whether or not the widget is bound to a key, because a binding decides
+ * which *words* render, not whether the widget shows any: an unresolved key falls back to exactly
+ * this text.
+ */
+export function listSurfaceTextSites(document: UIDocument): SurfaceTextSite[] {
+    const sites: SurfaceTextSite[] = [];
+    for (const { surface, element } of listSurfaceElements(document)) {
+        const site = LOCALIZABLE_TEXT_SITES[element.type];
+        if (!site) {
+            continue;
+        }
+        const props = elementProps(element);
+        const text = readStringProp(props, site.textProp);
+        if (!text.trim()) {
+            continue;
+        }
+        const fontAssetId = readStringProp(props, "fontAssetId").trim();
+        sites.push({
+            surface,
+            element,
+            unitId: uiTextUnitId(element.id, site.textProp),
+            text,
+            ...(fontAssetId ? { fontAssetId } : {}),
+        });
+    }
+    return sites;
+}
 
 /** Longest literal carried into the message; past this it is clipped, as a story excerpt is. */
 const TEXT_EXCERPT_MAX_CHARS = 48;
@@ -506,6 +565,257 @@ function runEmptyBehavior(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * An instance of a library component the project does not have.
+ *
+ * A linked instance holds nothing of its own - its whole appearance is the definition it points at,
+ * so an instance whose `componentId` resolves to nothing draws exactly nothing, in the canvas and
+ * in the game alike, with no mark on the page to say why. That is the one shape this programme
+ * refuses to let a project ship silently.
+ *
+ * It arises two ways and the report is the same for both: a component deleted from the library
+ * while instances of it were still placed, and a selection copied out of another project, where
+ * every id is a UUID that project minted (`uiEditorForeignPaste`). An error rather than a warning,
+ * because both leave a page with a hole in it, and both have a gesture that answers them - add the
+ * component, or unlink the instance.
+ *
+ * Only the stage pool is swept, for the reason at the head of this file: a component definition is
+ * not a page, and an instance nested inside one has no surface to file the finding under. A
+ * definition holding a broken instance is reported through whichever pages place it.
+ */
+function runComponentMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const known = new Set((document.components ?? []).map(component => component.id));
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        const componentId = getUIComponentLink(site.element)?.componentId;
+        if (!componentId || known.has(componentId)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/component-missing",
+            messageKey: "lint.rule.uiComponentMissing.message",
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
+/**
+ * A Page widget embedding a page the project does not have.
+ *
+ * The sibling of {@link runComponentMissing}, and there for the same reason: a frame draws the page
+ * its `targetSurfaceId` names and nothing else, so a target that resolves to nothing is a
+ * rectangle of nothing on a page that gives no sign why. It arises from deleting a page that was
+ * still embedded, and from pasting a frame copied out of another project, where the surface id is a
+ * UUID that project minted.
+ *
+ * A frame with no target at all is a frame the author has not finished placing, not a broken one -
+ * it is skipped, so a page under construction is never reported.
+ */
+function runFrameTargetMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const known = new Set((document.surfaces ?? []).map(surface => surface.id));
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        if (site.element.type !== UI_FRAME_ELEMENT_TYPE) {
+            continue;
+        }
+        const target = getUIFrameWidgetProps(site.element).targetSurfaceId;
+        if (!target || known.has(target)) {
+            continue;
+        }
+        findings.push({
+            ruleId: "ui/frame-target-missing",
+            messageKey: "lint.rule.uiFrameTargetMissing.message",
+            location: surfaceLocation(site.surface, site.element),
+            target: surfaceTarget(site.surface),
+        });
+    }
+    return findings;
+}
+
+/**
+ * A prop bound to an item field that the list drawing it no longer declares.
+ *
+ * The failure is silent and looks like authored content: the element keeps drawing whatever literal
+ * it was given, so a row that was showing a save's chapter name goes back to showing the word the
+ * template was drawn with, in every row, and nothing anywhere says the field is gone. It arises from
+ * removing a field, from renaming a widget's shape into one that no longer has it, and from pasting
+ * a row template into a list with a different shape.
+ *
+ * A binding on an element no list draws is the same finding: it also resolves to nothing.
+ */
+function runListItemFieldMissing(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        const bindings = site.element.valueBindings;
+        if (!bindings) {
+            continue;
+        }
+        const fieldIds = Object.values(bindings)
+            .filter(binding => binding.kind === "listItemField")
+            .map(binding => (binding as { fieldId: string }).fieldId);
+        if (fieldIds.length === 0) {
+            continue;
+        }
+        const context = findOwningListItemTemplate(document, site.element);
+        const struct = context ? resolveUIStruct(document, context.structId) : null;
+        for (const fieldId of fieldIds) {
+            if (findUIStructField(struct, fieldId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/list-item-field-missing",
+                messageKey: "lint.rule.uiListItemFieldMissing.message",
+                location: surfaceLocation(site.surface, site.element),
+                target: surfaceTarget(site.surface),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
+// ui/gesture-answered-twice
+// ---------------------------------------------------------------------------
+
+/**
+ * The widget event slots a pointer gesture arrives on, and which gestures each of them answers.
+ *
+ * `mouseWheel` is one slot for four gestures because that is what the head is: it is handed the
+ * deltas and works out for itself which way the player turned, so it answers a page bound to any of
+ * the four directions. Hover and movement are absent for the same reason they are absent from
+ * `UI_INPUT_POINTER_GESTURES` - no action can be bound to them, so they can never collide.
+ */
+const POINTER_EVENT_SLOT_GESTURES: Readonly<Record<string, readonly UIInputPointerGesture[]>> = {
+    mouseClick: ["click"],
+    mouseDoubleClick: ["doubleClick"],
+    rightClick: ["rightClick"],
+    mouseWheel: ["wheelUp", "wheelDown", "wheelLeft", "wheelRight"],
+};
+
+/**
+ * Whether this widget's own blueprint carries a head node for this slot.
+ *
+ * Deliberately stricter than {@link hasPrivateBlueprintHead}, and the difference is the polarity of
+ * the question. That one asks "is anything listening", where crediting a script-module blueprint
+ * nobody can read is the safe answer; this one asks "will two things run", where crediting one would
+ * put a finding on every widget with a script module on any page that declares a pointer action.
+ * When the graph cannot be read, nothing is claimed.
+ */
+function hasPointerHeadNode(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
+    const document = ctx.blueprintDocument;
+    if (!document) {
+        return false;
+    }
+    const heads = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventId, element.type));
+    if (heads.size === 0) {
+        return false;
+    }
+    const blueprintId = document.ownerRecords?.[widgetMainOwnerKey(surfaceId, element.id)]?.activeBlueprintId;
+    const blueprint = blueprintId ? document.blueprints?.[blueprintId] : undefined;
+    if (!blueprint || blueprint.program.kind !== "graph") {
+        return false;
+    }
+    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
+        Object.values(eventGraph?.graph?.nodes ?? {}).some(node => heads.has(node.type)),
+    );
+}
+
+/** Every pointer gesture this widget answers on its own, by graph head or by behavior binding. */
+function widgetAnsweredGestures(ctx: LintContext, surfaceId: string, element: UIElement): Set<UIInputPointerGesture> {
+    const answered = new Set<UIInputPointerGesture>();
+    for (const [eventId, gestures] of Object.entries(POINTER_EVENT_SLOT_GESTURES)) {
+        if (hasBehaviorBinding(element, eventId) || hasPointerHeadNode(ctx, surfaceId, element, eventId)) {
+            for (const gesture of gestures) {
+                answered.add(gesture);
+            }
+        }
+    }
+    return answered;
+}
+
+/**
+ * A widget answering a gesture its page answers too.
+ *
+ * `overControls: "skip"` is what a page-wide pointer action uses to stay out of the way of things
+ * the player operates, and it decides what a control is from the widget *type* - which is right for
+ * every type whose controlness is a property of the type, and blind to the one shape authors reach
+ * for constantly: a plain container given a click head and used as a hit target. It is not a Button
+ * to `isOperableWidgetType`, so the action fires as well, and both run. Nothing on the canvas shows
+ * it, and nothing in either graph is wrong on its own - the defect only exists in the pair.
+ *
+ * Three things are deliberately *not* reported:
+ *
+ *  - **`overControls: "fire"`.** That is the author saying "fire anyway, over controls included";
+ *    the pair running is then the thing they asked for rather than the thing they missed.
+ *  - **A widget the runtime already stands down over**, itself or anywhere up its ancestry. The
+ *    same walk `hitChainHasOperableElement` does, because a rule that judged only the widget would
+ *    report every container inside a list.
+ *  - **A head somewhere else pointed at this widget** (`On Element Click`). Those run from a graph
+ *    the locator here does not name, so the row would send an author to a widget whose own blueprint
+ *    is empty.
+ */
+function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
+    const document = ctx.uiDocument;
+    if (!document || !ctx.blueprintDocument) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const site of listSurfaceElements(document)) {
+        const enablements = site.surface.actions;
+        if (!enablements?.length || getUIComponentLink(site.element)) {
+            continue;
+        }
+        const overControl = [site.element, ...site.ancestors].some(element => isOperableWidgetType(element.type));
+        const answered = overControl
+            ? new Set<UIInputPointerGesture>()
+            : widgetAnsweredGestures(ctx, site.surface.id, site.element);
+        if (answered.size === 0) {
+            continue;
+        }
+        for (const enablement of enablements) {
+            if (readUISurfaceActionOverControls(enablement) !== "skip") {
+                continue;
+            }
+            const action = document.actions?.[enablement.actionId];
+            if (!action) {
+                // An enablement naming an action the project does not define. Inert at run time and
+                // reported where the vocabulary is; nothing here can collide with it.
+                continue;
+            }
+            const collides = resolveSurfaceActionBindings(action, enablement).some(
+                binding => binding.kind === "pointer" && answered.has(binding.gesture),
+            );
+            if (!collides) {
+                continue;
+            }
+            findings.push({
+                ruleId: "ui/gesture-answered-twice",
+                messageKey: "lint.rule.uiGestureAnsweredTwice.message",
+                // The action's own name rather than its id: it is what the vocabulary panel shows
+                // and the only spelling of it the author ever typed.
+                messageParams: { action: action.name.trim() || enablement.actionId },
+                location: surfaceLocation(site.surface, site.element),
+                target: surfaceTarget(site.surface),
+            });
+        }
+    }
+    return findings;
+}
+
 export const UI_LINT_RULES: readonly LintRule[] = [
     {
         id: "ui/unlocalized-text",
@@ -529,5 +839,45 @@ export const UI_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "uiEmptyBehavior",
         run: ctx => runEmptyBehavior(ctx),
+    },
+    {
+        id: "ui/component-missing",
+        category: "ui",
+        // An error, like every other dangling reference: the widget draws nothing and says nothing,
+        // and a build that shipped it would ship a hole in a page.
+        defaultSeverity: "error",
+        slug: "uiComponentMissing",
+        run: ctx => runComponentMissing(ctx),
+    },
+    {
+        id: "ui/frame-target-missing",
+        category: "ui",
+        defaultSeverity: "error",
+        slug: "uiFrameTargetMissing",
+        run: ctx => runFrameTargetMissing(ctx),
+    },
+    {
+        id: "ui/list-item-field-missing",
+        category: "ui",
+        // A warning rather than an error: the widget still draws, with the value it was authored
+        // with, so the page is whole - it is just showing the same thing in every row. Refusing the
+        // build over it would stop an author who is mid-way through reshaping a list.
+        defaultSeverity: "warning",
+        slug: "uiListItemFieldMissing",
+        run: ctx => runListItemFieldMissing(ctx),
+    },
+    {
+        id: "ui/gesture-answered-twice",
+        category: "ui",
+        // Info, not warning. Nothing here is broken: both handlers run, which is often exactly what
+        // was wanted - a click that plays a sound on the widget and advances the page. The rule
+        // cannot tell those apart from the document, so it can only name the pair; the fix is one of
+        // three different edits depending on what the author meant, and a warning that cannot say
+        // which is a warning an author learns to scroll past. It also shows up the moment the page
+        // is tried, unlike the references this category reports at error severity, which stay
+        // invisible until a player finds them.
+        defaultSeverity: "info",
+        slug: "uiGestureAnsweredTwice",
+        run: ctx => runGestureAnsweredTwice(ctx),
     },
 ];

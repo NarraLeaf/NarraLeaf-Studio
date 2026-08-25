@@ -173,6 +173,7 @@ export { TEST_PROTOCOL_VERSION } from "@/lib/testing/types";
 export type {
     TestAvailability,
     TestAvailabilityContext,
+    TestBooleanParameterDefinition,
     TestCapability,
     TestCategory,
     TestDefinition,
@@ -186,11 +187,16 @@ export type {
     TestGameSession,
     TestId,
     TestLogLevel,
+    TestParameterDefinition,
+    TestParameterOption,
+    TestParameterValue,
+    TestParameterValues,
     TestPresentation,
     TestProgress,
     TestProjectHandle,
     TestRunContext,
     TestSceneRef,
+    TestSelectParameterDefinition,
     TestStoryRef,
     TestText,
     TestVerdict,
@@ -292,6 +298,10 @@ export type PluginTextEditorService = {
  *    `errored` are the host's verdicts about you. Cancellation reaches you as `ctx.signal`.
  *  - **What you did not declare in `requires` is absent, not throwing.** `ctx.game` is `undefined`
  *    unless you asked for `game.launch`, so a test must read the handle rather than assume it.
+ *  - **Ask the author for input with `parameters`.** The picker draws a control per declaration and
+ *    hands the answers back as `ctx.parameters`, which carries your declared ids and nothing else.
+ *    A `select` lists its options through a function the host calls when the picker opens, so the
+ *    list can be drawn from the project; an empty list greys the test out naming the parameter.
  */
 export type PluginTestService = {
     /**
@@ -322,13 +332,19 @@ export type PluginStorageService = {
 };
 
 /**
- * Why project data is currently read-only: an older version is on screen, or the author froze it.
+ * Why project data is currently read-only: an older version is on screen, the author froze it, or a
+ * live session is running on this project.
  *
  * `recovery` is listed for completeness and is one no plugin observes in practice - a recovery shell
  * loads no plugins at all - but it is a state the workspace can be in, and leaving it out of the
  * union would make an exhaustive switch here wrong rather than complete.
+ *
+ * `live-session` is the one that is only partly a freeze: the story document the session is about
+ * stays writable, and everything else in the project - a plugin's own stored documents included -
+ * does not. Nothing a plugin can write is on the writable side of it, so for a plugin it behaves
+ * exactly like the others: `frozen` is true, and the buttons come off.
  */
-export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery";
+export type PluginFreezeReason = "revision" | "manual" | "merge" | "recovery" | "live-session";
 
 /**
  * The state of the project a plugin's data lives in.

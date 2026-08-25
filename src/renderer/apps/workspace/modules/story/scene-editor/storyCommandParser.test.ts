@@ -319,8 +319,8 @@ describe("allowsFreeValue", () => {
 
 describe("unfilledParams", () => {
     it("lists what has not been given yet", () => {
-        expect(unfilledParams(command("/bg forest")).map(param => param.name)).toEqual(["t", "rule", "d"]);
-        expect(unfilledParams(command("/bg forest t=fade d=1")).map(param => param.name)).toEqual(["rule"]);
+        expect(unfilledParams(command("/bg forest")).map(param => param.name)).toEqual(["t", "rule", "d", "hold"]);
+        expect(unfilledParams(command("/bg forest t=fade d=1")).map(param => param.name)).toEqual(["rule", "hold"]);
     });
 });
 

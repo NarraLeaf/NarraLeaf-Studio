@@ -17,9 +17,11 @@ import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
@@ -50,6 +52,13 @@ type PreviewSession = {
 type PreviewLaunchAttempt = {
     cancelled: boolean;
     compileWorker: UtilityProcess | null;
+    /**
+     * Lets go of the weather bake this compile is sitting in, if it is.
+     *
+     * Separate from the worker above because it covers the window before that worker exists: the
+     * clips are produced first, and a cancel arriving then used to reach nothing at all.
+     */
+    abandonWeatherBake: (() => void) | null;
     session: PreviewSession | null;
 };
 
@@ -144,13 +153,13 @@ export class PreviewManager {
      */
     public launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<PreviewStatus> {
         const frozen = getWorkspaceFreeze(projectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "preview");
             emitWorkspaceConsoleLog(this.app, projectPath, { level: "error", source: "Preview", message });
             return Promise.reject(new Error(message));
         }
         const key = this.projectKey(projectPath);
-        const attempt: PreviewLaunchAttempt = { cancelled: false, compileWorker: null, session: null };
+        const attempt: PreviewLaunchAttempt = { cancelled: false, compileWorker: null, abandonWeatherBake: null, session: null };
         const attempts = this.launchAttempts.get(key) ?? new Set<PreviewLaunchAttempt>();
         attempts.add(attempt);
         this.launchAttempts.set(key, attempts);
@@ -217,6 +226,10 @@ export class PreviewManager {
             if (attempt.session) {
                 attempt.session.status = "stopping";
             }
+            // Before the worker: a launch cancelled while its clips are being made has no worker
+            // to kill yet, and the bake is the long half.
+            attempt.abandonWeatherBake?.();
+            attempt.abandonWeatherBake = null;
             attempt.compileWorker?.kill();
             attempt.compileWorker = null;
         }
@@ -291,6 +304,7 @@ export class PreviewManager {
             }
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
+            const runDlc = await resolveRunDlc(this.app.getGlobalState(), normalizedProjectPath);
             // Compiled in a forked utility process, not on the main thread:
             // sealing a protected pack drives the native codec through many
             // seconds of synchronous CPU that would otherwise freeze Studio.
@@ -311,6 +325,9 @@ export class PreviewManager {
                 // the three launch surfaces keep the shapes they had. `packaging` stays off - this
                 // folds the variant without planning what a package would leave out.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
+                // Which DLC this run has installed, from the same machine setting the variant comes
+                // from. Empty until the author ticks one, so a preview is the base game by default.
+                includedDlc: runDlc,
                 encryptionKey,
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that
@@ -326,6 +343,7 @@ export class PreviewManager {
                 // Tracked so `cancelLaunches` can kill the compile mid-flight; without this a stop
                 // could only ever be honoured once the compile had run to completion.
                 onStart: worker => { attempt.compileWorker = worker; },
+                onWeatherBake: abandon => { attempt.abandonWeatherBake = abandon; },
                 cancelled: () => attempt.cancelled,
             });
             attempt.compileWorker = null;

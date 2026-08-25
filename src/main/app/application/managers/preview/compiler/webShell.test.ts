@@ -6,6 +6,7 @@ function packWith(overrides: {
     name?: string;
     surfaces?: Array<{ id: string; kind: string; settings?: { backgroundColor?: string } }>;
     entrySurfaceId?: string;
+    sourceLocale?: string;
 }): GameRuntimePackV1 {
     return {
         schemaVersion: 2,
@@ -17,6 +18,9 @@ function packWith(overrides: {
         bundle: {
             bundleId: "bundle-1",
             revision: 1,
+            ...(overrides.sourceLocale === undefined
+                ? {}
+                : { localization: { sourceLocale: overrides.sourceLocale } }),
             ui: {
                 uidoc: {
                     surfaces: (overrides.surfaces ?? [{ id: "s1", kind: "appSurface" }]),
@@ -94,6 +98,63 @@ describe("buildWebIndexHtml", () => {
             expect(web).not.toContain(WEB_SHELL_VARIANT_META);
             expect(web).not.toContain("viewport-fit=cover");
         }
+    });
+
+    it("states the language the project is written in", () => {
+        // The attribute decides which Han forms a fallback font draws, so a Japanese title served
+        // as an English page is set in the wrong face before a line of script has run.
+        expect(buildWebIndexHtml(packWith({ sourceLocale: "ja" }), { hasFavicon: false }))
+            .toContain("<html lang=\"ja\">");
+        expect(buildWebIndexHtml(packWith({ sourceLocale: "zh-CN" }), { hasFavicon: false }))
+            .toContain("<html lang=\"zh-CN\">");
+    });
+
+    it("says nothing about the language it does not know", () => {
+        // No localization at all, and a locale field holding something that is not a language tag:
+        // an attribute the browser cannot parse selects a worse font than an absent one.
+        expect(buildWebIndexHtml(packWith({}), { hasFavicon: false })).toContain("<html>");
+        expect(buildWebIndexHtml(packWith({ sourceLocale: "Japanese (Kansai)" }), { hasFavicon: false }))
+            .toContain("<html>");
+    });
+
+    it("takes the browser's own gestures off the document", () => {
+        // A game window, not a page. Each of these has a way of ending a session: a pinch leaves the
+        // stage misaligned with no chrome to undo it in, a downward drag on Chrome for Android
+        // reloads the running game, and a long press puts the iOS magnifier over the dialogue.
+        const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
+        expect(html).toContain("overscroll-behavior: none;");
+        expect(html).toContain("-webkit-touch-callout: none;");
+        expect(html).toContain("-webkit-text-size-adjust: 100%;");
+        expect(html).toContain("-webkit-tap-highlight-color: transparent;");
+        expect(html).toContain("overflow: hidden;");
+    });
+
+    it("lets an editable field keep its callout", () => {
+        // Without this a name-entry box on iOS has no Paste, which is a worse trade than the long
+        // press was.
+        const html = buildWebIndexHtml(packWith({}), { hasFavicon: false });
+        expect(html).toContain("input, textarea, select, [contenteditable] { -webkit-touch-callout: default; }");
+    });
+
+    it("keeps the pinch on the web and takes it off the shells", () => {
+        // A browser window has chrome and zoom controls of its own, and a pinch there is visual
+        // zoom - it magnifies what is drawn without re-laying anything out. A full-screen shell has
+        // neither, so a player who zooms in there has no way back out. The double tap goes on both:
+        // tapping is how the game is played.
+        const mobile = buildWebIndexHtml(packWith({}), { hasFavicon: false, variant: "mobile" });
+        expect(mobile).toContain("touch-action: pan-x pan-y;");
+
+        for (const options of [{ hasFavicon: false }, { hasFavicon: false, variant: "web" as const }]) {
+            expect(buildWebIndexHtml(packWith({}), options)).toContain("touch-action: manipulation;");
+        }
+    });
+
+    it("asks the mobile WebViews not to scale, and asks nobody else", () => {
+        // The WebViews both shells embed still honour user-scalable; Safari has ignored it since
+        // iOS 10, so on the web target it would say nothing that touch-action has not already said.
+        const mobile = buildWebIndexHtml(packWith({}), { hasFavicon: false, variant: "mobile" });
+        expect(mobile).toContain("user-scalable=no");
+        expect(buildWebIndexHtml(packWith({}), { hasFavicon: false })).not.toContain("user-scalable");
     });
 
     it("omits each icon link independently", () => {

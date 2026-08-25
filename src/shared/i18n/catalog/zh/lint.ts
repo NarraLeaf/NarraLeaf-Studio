@@ -133,6 +133,18 @@ export const lint = {
             description: "该行比较的构建变体在工程中不存在",
             message: "工程中没有名为「{name}」的构建变体，该行不会进入任何构建",
         },
+        storyRowsAfterEnding: {
+            title: "结局之后的行",
+            description: "写在同一层 /ending 行之后、永远不会播放的行",
+            // 说的是结果而不是错误：这些行已经不在构建里了，作者要先知道这一点。
+            message: "该行位于结局之后，永远不会播放。可移到结局之前，或删除",
+        },
+        storyEndingNameDuplicate: {
+            title: "同名的两个结局",
+            description: "多个结局使用了同一个显示名称",
+            // 说清楚它显示在哪里，因为剧情本身没有任何问题。
+            message: "另有一个结局同样叫「{name}」。列出结局的界面会出现两次同一个名称",
+        },
         storyCutPointOrphan: {
             title: "没有对应变体的截断点",
             description: "工程中没有构建变体时写下的截断点",
@@ -154,10 +166,22 @@ export const lint = {
             // 同一件事换个说法就是命令词汇那轮消灭掉的东西。
             messageCharacter: "场景中没有任何行让 {object} 登场，该行没有可操作的对象",
         },
+        storyDeclaredNeverShown: {
+            title: "未显示的舞台对象",
+            description: "创建行声明的对象无任何一行显示",
+            message: "{object} 在该行声明，无任何一行显示",
+        },
         storyStageObjectDuplicate: {
             title: "重复的舞台对象",
             description: "两行创建同一个舞台名称，后一行沿用前一行创建的对象",
             message: "{object} 已在上方创建，该行操作的是已创建的对象",
+        },
+        storyCharacterMissing: {
+            title: "不存在的角色",
+            description: "该行指定的角色不在本工程中",
+            // 句子里不写出对象：引用解析不到时只剩存下来的 id，而它是一个 UUID，
+            // 把 UUID 写进报告等于给作者一个在工程里搜不到的词。
+            message: "该行指定的角色不在本工程中",
         },
         storyTransitionUnavailable: {
             title: "转场不可用",
@@ -174,13 +198,34 @@ export const lint = {
             messageStory: "开始的故事已不存在",
             messageScene: "指向的场景已不存在",
             messageChoice: "指向的选项已不存在",
+            messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
+            messageDlc: "指向的 DLC 在工程中不存在",
+            messageInputAction: "指向的输入操作在工程中未声明",
+        },
+        blueprintElementRefMissing: {
+            title: "控件缺失",
+            description: "节点绑定的控件在工程中已不存在",
+            message: "绑定的控件已不存在",
+        },
+        blueprintFnTargetMissing: {
+            title: "函数缺失",
+            description: "Call Fn 节点调用的函数在当前作用域中不存在",
+            // 兜底句，用于没有签名快照的调用：那时只剩一对 id，
+            // 把 id 写进报告等于给作者一个在工程里搜不到的词。
+            message: "调用的函数在当前作用域中不存在",
+            messageNamed: "调用的 {name} 在当前作用域中不存在",
         },
         blueprintUnreachableNode: {
             title: "无法到达的节点",
             description: "图中没有任何入口可以到达该节点",
             message: "没有任何路径可以到达该节点，它不会被执行",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "没有守卫的 DLC 入口",
+            description: "开始了属于 DLC 的故事，却没有任何地方问过这个 DLC 在不在",
+            message: "这张图里没有任何节点问过这个 DLC 是否已安装",
         },
         blueprintEmptyEvent: {
             title: "空事件",
@@ -201,6 +246,26 @@ export const lint = {
             title: "未绑定行为的按钮",
             description: "可点击的控件没有任何事件监听",
             message: "点击后不会执行任何内容",
+        },
+        uiComponentMissing: {
+            title: "缺失的组件",
+            description: "引用了工程中不存在的组件的实例",
+            message: "该实例引用的组件在此工程中不存在",
+        },
+        uiFrameTargetMissing: {
+            title: "缺失的嵌入页面",
+            description: "页面控件嵌入了工程中不存在的页面",
+            message: "该页面控件嵌入的页面在此工程中不存在",
+        },
+        uiListItemFieldMissing: {
+            title: "条目字段不存在",
+            description: "控件绑定的条目字段，在画它的列表里没有声明",
+            message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
+        uiGestureAnsweredTwice: {
+            title: "被响应两次的手势",
+            description: "控件自己有指针事件，而它所在页面的动作也响应同一个手势",
+            message: "本页的 {action} 与该控件响应同一个手势，两边都会执行",
         },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",
@@ -249,6 +314,11 @@ export const lint = {
             description: "原文在翻译之后发生过修改",
             message: "{locale} 译文比原文旧",
         },
+        localizationMarkup: {
+            title: "译文未带样式",
+            description: "原文带有样式，译文按纯文本呈现",
+            message: "{locale} 译文没有带上这一行的样式",
+        },
         localizationOrphan: {
             title: "孤立的译文",
             description: "对应的原文已不存在",
@@ -278,6 +348,21 @@ export const lint = {
             messageChain: "{where} 使用的 {color} 指向 {missing}，配色方案中没有该颜色",
             messageCycle: "{where} 使用的 {color}，其链接指回自身",
         },
+        typographyGlyphCoverage: {
+            title: "缺少字形",
+            description: "文本用到了工程里任何字体都画不出的字符",
+            message: "工程字体画不出“{character}”（{count} 处）",
+            messageInLanguage: "{language}中工程字体画不出“{character}”（{count} 处）",
+            messageMore: "另有 {count} 个字符工程字体画不出",
+            messageMoreInLanguage: "{language}中另有 {count} 个字符工程字体画不出",
+            messageUnreadable: "{font} 读不出来，未检查字形覆盖",
+            messageUnloadable: "{font} 是 .{format} 字体，游戏无法用它绘制文字",
+        },
+        typographyLocaleNoFont: {
+            title: "语言没有字体",
+            description: "工程里每一款字体都被限定给了别的语言",
+            message: "{language}没有可用的工程字体",
+        },
     },
     message: {
         ruleFailed: "{rule} 未能运行",
@@ -297,6 +382,7 @@ export const lint = {
         voice: "语音",
         // 跟着面板叫，作者要改的就是那个面板，不叫链接协议的名字。
         brand: "配色方案",
+        typography: "排版",
     },
     severity: {
         error: "错误",

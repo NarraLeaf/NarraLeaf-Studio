@@ -216,6 +216,11 @@ function projectBlockLine(
             // an asset id does on a `/background` line here.
             return { text: `${indent}/cut ${block.payload.appTagId}`.trimEnd(), editable: false, prefix: "" };
         }
+        // The name alone. The page the ending lands on is inspector-only, so the line that would
+        // rebuild this row carries exactly this much - the same rule every other row here follows.
+        if (block.payload.control === "ending") {
+            return { text: `${indent}/ending ${block.payload.name}`.trimEnd(), editable: false, prefix: "" };
+        }
         // Both loop forms render back as the command that produces them. The conditional one renders
         // as `/until`, not as `/repeat until="…"`: same block, but the greedy positional needs no
         // quotes, so this is both shorter and the spelling an author would actually type.
@@ -238,6 +243,11 @@ function projectBlockLine(
         const token = block.payload.scope === "scene" ? "local" : block.payload.scope === "saved" ? "var" : "persis";
         const suffix = block.payload.defaultValue !== undefined ? ` ${formatStoryLiteral(block.payload.defaultValue)}` : "";
         return { text: `${indent}/${token} ${block.payload.name}${suffix}`, editable: false, prefix: "" };
+    }
+    if (block.kind === "empty") {
+        // A blank line, printed blank - the indent goes with it, because whitespace on an empty line
+        // is trailing whitespace wherever the line sits.
+        return { text: "", editable: false, prefix: "" };
     }
     const prefix = `${indent}// `;
     return {

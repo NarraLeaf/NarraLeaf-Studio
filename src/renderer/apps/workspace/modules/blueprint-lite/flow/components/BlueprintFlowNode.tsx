@@ -8,7 +8,7 @@ import {
     type ReactNode,
 } from "react";
 import { Handle, Position, useReactFlow, type NodeProps } from "@xyflow/react";
-import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Minus, Music, Plus, X, SlidersHorizontal } from "lucide-react";
+import { Image as ImageIcon, Keyboard as KeyboardIcon, Link2, Music, Plus, Shrink, X, SlidersHorizontal } from "lucide-react";
 import type { BlueprintNodeEditorCatalogEntry } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintBreakpointForNode } from "@/lib/ui-editor/blueprint-debug/BlueprintBreakpointsContext";
 import {
@@ -48,6 +48,9 @@ import {
 } from "@shared/types/blueprint/valueTypes";
 import { normalizeAudioClipRegion } from "@shared/types/audio";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
+import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -59,10 +62,17 @@ import { ButtonCursorSelect } from "@/lib/ui-editor/widget-modules/shared/appear
 import { useTranslation, type UseTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import {
+    BLUEPRINT_COMMENT_COLORS,
+    blueprintCommentColorLabel,
+    resolveBlueprintCommentColorKey,
+} from "@/lib/ui-editor/blueprint-comment-colors";
+import { readBlueprintCommentSize } from "../blueprintGroupFrame";
+import {
     resolveBlueprintCategoryLabel,
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
 } from "../../blueprintNodeI18n";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -77,6 +87,19 @@ export type BlueprintFlowNodeDiagnostic = {
     message: string;
     code?: string;
 };
+
+/**
+ * The border a card wears when a diagnostic names it.
+ *
+ * Two weights, because the two mean different things: an error is a graph that will not run and is
+ * worth the danger colour, a warning is a node that will be skipped and takes the warning colour
+ * rather than shouting in red alongside real breakage.
+ */
+function nodeIssueRingClass(issue: BlueprintFlowNodeDiagnostic): string {
+    return issue.severity === "error"
+        ? "border-danger/85 ring-1 ring-danger/40"
+        : "border-warning/80 ring-1 ring-warning/35";
+}
 
 /**
  * React Flow handles node selection / drag on pointer down. Stopping propagation on click alone is too late;
@@ -95,6 +118,12 @@ export type BlueprintFlowNodeData = {
     onAddDynamicInputPin?: (nodeId: string) => void;
     /** Open the project save-field editor. Present on the two save nodes; see SaveSchemaFieldsModal. */
     onEditSaveSchema?: () => void;
+    /**
+     * Size a group frame around the cards it currently holds. Only the canvas knows where those
+     * cards ended up and how big they measured, so the frame asks for the fit rather than working
+     * one out from a document that carries neither.
+     */
+    onFitGroupFrame?: (nodeId: string) => void;
     /** Remove a user-added input pin and clean edges / literals. */
     onRemoveDynamicInputPin?: (nodeId: string, pinId: string) => void;
     /** Accessible variables for variableRef inspector controls. */
@@ -155,8 +184,17 @@ const OPTIONAL_UNWIRED_PIN_LABEL_CLASS = "text-fg-subtle italic";
 
 const CARD_INPUT =
     "rounded-md border-edge bg-surface px-1.5 py-1 font-mono text-2xs";
+/**
+ * A 16px icon button inside a pin row.
+ *
+ * `!min-h-0` is the load-bearing part: every Studio control has a height floor from the shared size
+ * scale, and `sm` - the smallest there is - is 28px. Height and min-height are different properties,
+ * so `!h-4` alone left the floor standing and the button was 28px tall, which made every pin row
+ * carrying one taller than the rows beside it. A pin row is card ornament rather than a row of
+ * controls, so it sizes to its own 20px slot and the button clears the floor to fit in it.
+ */
 const CARD_ICON_BUTTON =
-    "nodrag !h-4 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
+    "nodrag !h-4 !min-h-0 !w-4 shrink-0 !gap-0 rounded-md !p-0.5 text-fg-muted hover:bg-fill-subtle hover:text-fg-muted";
 
 /** Hide native number steppers — keep same look as other card fields (WebKit + Firefox). */
 const INPUT_NUMBER_NO_SPINNER =
@@ -164,10 +202,14 @@ const INPUT_NUMBER_NO_SPINNER =
 
 /** Pin body: fixed min width, cap max — avoid equal flex-1 columns hollowing the middle on inline inputs. */
 const BLUEPRINT_CARD_PIN_BODY_CLASS = "min-w-[200px] max-w-[280px]";
-const COMMENT_DEFAULT_WIDTH = 360;
-const COMMENT_DEFAULT_HEIGHT = 180;
 
-function useImageAssetDisplayName(assetId: string | null): string | null {
+/**
+ * What to print for an asset id a pin holds - the file's name, or the set's when it names one.
+ *
+ * Shared by the picture card and the clip row: neither may print "missing" for a set the picker
+ * itself just offered, and a set has no row in the library to read a name off.
+ */
+function useAssetPinDisplayName(assetId: string | null): string | null {
     let context: ReturnType<typeof useWorkspace>["context"] | null = null;
     try {
         context = useWorkspace().context;
@@ -180,8 +222,10 @@ function useImageAssetDisplayName(assetId: string | null): string | null {
         if (!assetId || !context) {
             return null;
         }
-        const assetsService = context.services.get<AssetsService>(Services.Assets);
-        return assetsService.getAssets()[AssetType.Image]?.[assetId]?.name ?? null;
+        // Through the shared reader rather than the image pool alone: this pin may hold an asset
+        // set, and a set has no row in the library - looking only there would print "missing" for a
+        // reference the picker itself just offered.
+        return resolveAssetDisplayName(context.services, assetId);
     }, [assetId, assetLibraryRevision, context]);
 }
 
@@ -203,22 +247,39 @@ function AudioAssetPickerRow({
     const assetId = typeof value === "string" && value.trim() ? value.trim() : null;
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
-    let context: ReturnType<typeof useWorkspace>["context"] | null = null;
+    let workspace: ReturnType<typeof useWorkspace> | null = null;
     try {
-        context = useWorkspace().context;
+        workspace = useWorkspace();
     } catch {
-        context = null;
+        workspace = null;
     }
+    const context = workspace?.context ?? null;
+    const isInitialized = workspace?.isInitialized ?? false;
+    // A clip pin may be answered by a set, for the same reason a picture pin may: one sound with one
+    // job, sung or spoken in each language the game ships. The build writes the answer onto the node
+    // that stores the id - see `@shared/build/blueprintAssetSets`.
+    const { virtualGroups } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Audio,
+        enabled: true,
+    });
     const assetLibraryRevision = useAssetLibraryRevision();
     const asset = useMemo(() => {
         if (!assetId || !context) {
             return null;
         }
-        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[assetId] ?? null;
-        // `assetLibraryRevision`: this row prints the clip's name and reads its in/out marks, and
-        // both are edited elsewhere on the record this holds.
+        // A set stands for a file, and what this row reads off the record - the in/out marks below -
+        // is a property of the file. The editor previews in the project's own language, so that is
+        // the member whose marks describe what an author would hear here.
+        const fileId = resolveEditorAssetSetMember(context, assetId) ?? assetId;
+        return context.services.get<AssetsService>(Services.Assets).getAssets()[AssetType.Audio]?.[fileId] ?? null;
+        // `assetLibraryRevision`: this row reads the clip's in/out marks, which are edited elsewhere
+        // on the record this holds - and a retag can move which file a set resolves to.
     }, [assetId, assetLibraryRevision, context]);
-    const assetName = asset?.name ?? null;
+    // The name is the set's when the id names one, so a reference the picker just offered does not
+    // read back as a clip the project does not have.
+    const assetName = useAssetPinDisplayName(assetId);
     // Whether the author marked in/out points on this clip decides whether Loop loops the body or
     // the whole file - and it is decided somewhere else entirely (the asset manager's audio preview),
     // so the node has to say which it is.
@@ -243,8 +304,8 @@ function AudioAssetPickerRow({
                 <Music size={11} className="shrink-0 text-fg-subtle" />
                 <span className={`min-w-0 flex-1 truncate ${assetId ? "text-fg" : "text-fg-subtle"}`}>
                     {assetId
-                        ? assetName ?? t("blueprint.image.missing")
-                        : t("blueprint.image.select")}
+                        ? assetName ?? t("blueprint.audio.missing")
+                        : t("blueprint.audio.select")}
                 </span>
                 {marked && (
                     <span className="shrink-0 rounded-md bg-fill-subtle px-1 text-2xs text-fg-subtle">
@@ -255,7 +316,7 @@ function AudioAssetPickerRow({
                     <span
                         role="button"
                         tabIndex={-1}
-                        aria-label={t("common.clear")}
+                        aria-label={t("blueprint.audio.clear")}
                         className="shrink-0 text-fg-subtle hover:text-danger"
                         onClick={event => {
                             event.stopPropagation();
@@ -271,12 +332,14 @@ function AudioAssetPickerRow({
                 assetType={AssetType.Audio}
                 multiple={false}
                 anchorRef={anchorRef}
+                title={t("blueprint.audio.selectTitle")}
                 selectedIds={assetId ? [assetId] : []}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={assets => {
                     onChange?.(assets[0]?.id ?? null);
                     setSelectorOpen(false);
                 }}
+                {...(virtualGroups ? { virtualGroups } : {})}
             />
         </div>
     );
@@ -296,10 +359,20 @@ function ImageAssetPickerCard({
     const { t } = useTranslation();
     const normalized = normalizeBlueprintImageAssetValue(value);
     const assetId = normalized?.assetId ?? null;
-    const assetName = useImageAssetDisplayName(assetId);
+    const assetName = useAssetPinDisplayName(assetId);
     const { url, loading, error } = useAssetObjectUrl(assetId);
     const [selectorOpen, setSelectorOpen] = useState(false);
     const anchorRef = useRef<HTMLButtonElement | null>(null);
+    const { context, isInitialized } = useWorkspace();
+    // An image pin may be answered by a set: it is one picture with one job, which is the kind of
+    // thing that changes with the language it is read in. The build writes the answer onto the node
+    // that stores the id - see `@shared/build/blueprintAssetSets`.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType: AssetType.Image,
+        enabled: true,
+    });
     const label = assetId ? assetName ?? t("blueprint.image.fallback") : t("blueprint.image.select");
     // "ImageAsset" is the value-type token shown when a valid asset is bound; it stays untranslated.
     const detail = assetId ? (error ? t("blueprint.image.missing") : "ImageAsset") : t("blueprint.image.none");
@@ -388,70 +461,10 @@ function ImageAssetPickerCard({
                 multiple={false}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </div>
     );
-}
-
-const COMMENT_COLORS: Record<
-    string,
-    {
-        border: string;
-        selectedBorder: string;
-        background: string;
-        header: string;
-        text: string;
-        swatch: string;
-    }
-> = {
-    amber: {
-        border: "rgba(245, 158, 11, 0.55)",
-        selectedBorder: "rgba(251, 191, 36, 0.95)",
-        background: "rgba(120, 78, 18, 0.28)",
-        header: "rgba(245, 158, 11, 0.2)",
-        text: "#fde68a",
-        swatch: "#f59e0b",
-    },
-    cyan: {
-        border: "rgba(34, 211, 238, 0.55)",
-        selectedBorder: "rgba(103, 232, 249, 0.95)",
-        background: "rgba(8, 85, 102, 0.28)",
-        header: "rgba(34, 211, 238, 0.18)",
-        text: "#a5f3fc",
-        swatch: "#06b6d4",
-    },
-    violet: {
-        border: "rgba(167, 139, 250, 0.55)",
-        selectedBorder: "rgba(196, 181, 253, 0.95)",
-        background: "rgba(76, 29, 149, 0.26)",
-        header: "rgba(167, 139, 250, 0.18)",
-        text: "#ddd6fe",
-        swatch: "#8b5cf6",
-    },
-    slate: {
-        border: "rgba(148, 163, 184, 0.5)",
-        selectedBorder: "rgba(203, 213, 225, 0.92)",
-        background: "rgba(51, 65, 85, 0.32)",
-        header: "rgba(148, 163, 184, 0.13)",
-        text: "#e2e8f0",
-        swatch: "#64748b",
-    },
-};
-
-/** Localized swatch labels for comment colors, keyed by the same ids as {@link COMMENT_COLORS}. */
-function commentColorLabel(key: string, t: UseTranslation["t"]): string {
-    switch (key) {
-        case "amber":
-            return t("blueprint.comment.color.amber");
-        case "cyan":
-            return t("blueprint.comment.color.cyan");
-        case "violet":
-            return t("blueprint.comment.color.violet");
-        case "slate":
-            return t("blueprint.comment.color.slate");
-        default:
-            return key;
-    }
 }
 
 type CatalogPin = BlueprintNodeEditorCatalogEntry["pins"][number] & { removable?: boolean };
@@ -850,7 +863,7 @@ function InputPinRow({
                                 onRemovePin(nodeId, pin.id);
                             }}
                         >
-                            <Minus className="h-3 w-3" aria-hidden />
+                            <X className="h-3 w-3" aria-hidden />
                         </Button>
                     ) : null}
                     {labelEditor}
@@ -928,7 +941,7 @@ function InputPinRow({
                                 onRemovePin(nodeId, pin.id);
                             }}
                         >
-                            <Minus className="h-3 w-3" aria-hidden />
+                            <X className="h-3 w-3" aria-hidden />
                         </Button>
                     ) : null}
                     {labelEditor}
@@ -1004,7 +1017,7 @@ function OutputPinRow({
                             onRemovePin(nodeId, pin.id);
                         }}
                     >
-                        <Minus className="h-3 w-3" aria-hidden />
+                        <X className="h-3 w-3" aria-hidden />
                     </Button>
                 ) : null}
                 {dynamicLabelParamKey ? (
@@ -1628,6 +1641,9 @@ function CardNumberInput({
                 }}
                 onBlur={commitDraft}
                 onKeyDown={e => {
+                    if (isImeKeyEvent(e)) {
+                        return;
+                    }
                     if (e.key === "Enter") {
                         e.currentTarget.blur();
                     } else if (e.key === "Escape") {
@@ -2060,41 +2076,42 @@ function DisplayableAnimatePropertyCard({
     );
 }
 
-function readPositiveNumberParam(
-    params: Record<string, unknown>,
-    key: string,
-    fallback: number,
-): number {
-    const n = Number(params[key] ?? fallback);
-    if (!Number.isFinite(n) || n <= 0) {
-        return fallback;
-    }
-    return n;
-}
-
 function BlueprintCommentNodeCard({
     nodeId,
     displayName,
     params,
     selected,
     onPatchNodeParam,
+    onFitGroupFrame,
 }: {
     nodeId: string;
     displayName: string;
     params: Record<string, unknown>;
     selected?: boolean;
     onPatchNodeParam?: BlueprintNodeParamPatch;
+    onFitGroupFrame?: (nodeId: string) => void;
 }) {
     const { t } = useTranslation();
     // The resize corner IS the gesture affordance, so while frozen it is not drawn at all - a grab
     // handle that refuses to move is the half-gesture that reads as a broken editor.
     const freeze = useFreezeGuard();
     const { getZoom } = useReactFlow();
-    const colorKey = typeof params.color === "string" && COMMENT_COLORS[params.color] ? params.color : "amber";
-    const color = COMMENT_COLORS[colorKey] ?? COMMENT_COLORS.amber;
+    /**
+     * A group: the same card drawn as a frame around other cards rather than as a note.
+     *
+     * Two things change and nothing else. The name moves into the title row, because the body is
+     * where the author's nodes are; and the body stops taking the pointer, because a frame whose
+     * middle swallowed clicks would make every card it encloses unreachable and every marquee
+     * inside it impossible. Comments written before groups existed carry no `frame` and are
+     * untouched by either.
+     */
+    const isFrame = params.frame === true;
+    const [renaming, setRenaming] = useState(false);
+    const text = typeof params.text === "string" ? params.text : "";
+    const colorKey = resolveBlueprintCommentColorKey(params.color);
+    const color = BLUEPRINT_COMMENT_COLORS[colorKey]!;
     const backgroundEnabled = params.background !== false;
-    const width = readPositiveNumberParam(params, "width", COMMENT_DEFAULT_WIDTH);
-    const height = readPositiveNumberParam(params, "height", COMMENT_DEFAULT_HEIGHT);
+    const { width, height } = readBlueprintCommentSize(params);
     const [draftSize, setDraftSize] = useState({ width, height });
     const isResizingRef = useRef(false);
 
@@ -2153,7 +2170,12 @@ function BlueprintCommentNodeCard({
 
     return (
         <div
-            className="group relative flex flex-col overflow-hidden rounded-md border shadow-lg backdrop-blur-[1px]"
+            // A note frosts what it covers; a frame does not. A frame is stretched over a whole
+            // region of the graph, and the canvas scales that blur with the zoom - at close range a
+            // frame drawn over another one put it visibly out of focus.
+            className={`group relative flex flex-col overflow-hidden rounded-md border shadow-lg${
+                isFrame ? "" : " backdrop-blur-[1px]"
+            }`}
             style={{
                 width: draftSize.width,
                 height: draftSize.height,
@@ -2163,20 +2185,51 @@ function BlueprintCommentNodeCard({
             }}
         >
             <div
-                className="relative flex shrink-0 items-center border-b px-3 py-2"
+                className={`relative flex shrink-0 items-center border-b px-3 py-2${isFrame ? " pointer-events-auto" : ""}`}
                 style={{ borderColor: color.border, background: color.header }}
             >
-                <div
-                    className="min-w-0 flex-1 truncate text-2xs font-semibold"
-                    style={{ color: color.text }}
-                >
-                    {displayName}
-                </div>
+                {isFrame && renaming ? (
+                    <Input
+                        size="sm"
+                        fullWidth
+                        autoFocus
+                        // `nodrag` so the pointer selects text here instead of towing the frame; the
+                        // rest of the title row is still the handle the frame is dragged by.
+                        className="nodrag !min-h-0 border-0 bg-transparent px-0 py-0 text-2xs font-semibold"
+                        style={{ color: color.text }}
+                        aria-label={t("blueprint.group.rename")}
+                        value={text}
+                        // A rename opens on the whole name, the way every other rename in Studio
+                        // does - the author double-clicked to replace it, not to append to it.
+                        onFocus={e => e.currentTarget.select()}
+                        onPointerDown={stopFlowNodePointerBubble}
+                        onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === "Enter" || e.key === "Escape") {
+                                e.preventDefault();
+                                setRenaming(false);
+                            }
+                        }}
+                        onBlur={() => setRenaming(false)}
+                    />
+                ) : (
+                    <div
+                        className="min-w-0 flex-1 truncate text-2xs font-semibold"
+                        style={{ color: color.text }}
+                        // Double-click to rename, the way the frame is named everywhere else this
+                        // gesture appears. A permanently open box here would cost the frame its
+                        // drag handle, since the title row is the only part of it that takes a
+                        // pointer at all.
+                        onDoubleClick={isFrame && onPatchNodeParam ? () => setRenaming(true) : undefined}
+                    >
+                        {isFrame ? text || t("blueprint.group.untitled") : displayName}
+                    </div>
+                )}
                 <div
                     className="nodrag pointer-events-none absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100"
                     onPointerDown={stopFlowNodePointerBubble}
                 >
-                    {Object.entries(COMMENT_COLORS).map(([key, item]) => (
+                    {Object.entries(BLUEPRINT_COMMENT_COLORS).map(([key, item]) => (
                         <button
                             key={key}
                             type="button"
@@ -2184,47 +2237,75 @@ function BlueprintCommentNodeCard({
                                 key === colorKey ? "border-white/85" : "border-edge-strong"
                             }`}
                             style={{ background: item.swatch }}
-                            data-tip={commentColorLabel(key, t)}
-                            aria-label={commentColorLabel(key, t)}
+                            data-tip={blueprintCommentColorLabel(key, t)}
+                            aria-label={blueprintCommentColorLabel(key, t)}
                             onClick={e => {
                                 e.stopPropagation();
                                 onPatchNodeParam?.(nodeId, "color", key);
                             }}
                         />
                     ))}
-                    <button
-                        type="button"
-                        className={`relative h-4 w-4 rounded-full border border-dashed ${
-                            backgroundEnabled
-                                ? "border-edge-strong bg-fill-strong"
-                                : "border-edge bg-transparent"
-                        }`}
-                        data-tip={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
-                        aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
-                        aria-pressed={backgroundEnabled}
-                        onClick={e => {
-                            e.stopPropagation();
-                            onPatchNodeParam?.(nodeId, "background", !backgroundEnabled);
-                        }}
-                    >
-                        {!backgroundEnabled ? (
-                            <span className="absolute left-1/2 top-1/2 h-[1px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] bg-red-500" />
-                        ) : null}
-                    </button>
+                    {/* Fit is the way back from a frame that only ever grows: dropping a card in
+                        stretches the group around it, and nothing shrinks it again until the author
+                        asks. Next to the swatches because both are things done to the frame itself,
+                        and a frame is the only comment that encloses anything to be fitted to. */}
+                    {isFrame && onFitGroupFrame ? (
+                        <button
+                            type="button"
+                            className="flex h-4 w-4 items-center justify-center rounded-full border border-edge-strong bg-fill-subtle text-fg-muted hover:text-fg"
+                            data-tip={t("blueprint.group.fit")}
+                            aria-label={t("blueprint.group.fit")}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onFitGroupFrame(nodeId);
+                            }}
+                        >
+                            <Shrink className="h-2.5 w-2.5" aria-hidden />
+                        </button>
+                    ) : null}
+                    {/* Which layer a note sits in is the author's call; a frame has no such call
+                        to make. A frame is drawn around other cards, so the only place it can be is
+                        behind them - offered the switch, it would come forward and cover the graph
+                        it was drawn to label. */}
+                    {isFrame ? null : (
+                        <button
+                            type="button"
+                            className={`relative h-4 w-4 rounded-full border border-dashed ${
+                                backgroundEnabled
+                                    ? "border-edge-strong bg-fill-strong"
+                                    : "border-edge bg-transparent"
+                            }`}
+                            data-tip={backgroundEnabled ? t("blueprint.comment.backgroundOn") : t("blueprint.comment.backgroundOff")}
+                            aria-label={backgroundEnabled ? t("blueprint.comment.sendBehind") : t("blueprint.comment.restoreLayer")}
+                            aria-pressed={backgroundEnabled}
+                            onClick={e => {
+                                e.stopPropagation();
+                                onPatchNodeParam?.(nodeId, "background", !backgroundEnabled);
+                            }}
+                        >
+                            {!backgroundEnabled ? (
+                                <span className="absolute left-1/2 top-1/2 h-[1px] w-5 -translate-x-1/2 -translate-y-1/2 rotate-[-45deg] bg-red-500" />
+                            ) : null}
+                        </button>
+                    )}
                 </div>
             </div>
-            <TextArea
-                className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-fg-subtle focus:border-transparent"
-                value={typeof params.text === "string" ? params.text : ""}
-                rows={4}
-                placeholder={displayName}
-                onMouseDown={stopFlowNodePointerBubble}
-                onPointerDown={stopFlowNodePointerBubble}
-                onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
-            />
+            {isFrame ? null : (
+                <TextArea
+                    className="nodrag min-h-0 flex-1 resize-none border-0 bg-transparent px-3 py-2 text-sm leading-relaxed text-fg placeholder-fg-subtle focus:border-transparent"
+                    value={text}
+                    rows={4}
+                    placeholder={displayName}
+                    onMouseDown={stopFlowNodePointerBubble}
+                    onPointerDown={stopFlowNodePointerBubble}
+                    onChange={e => onPatchNodeParam?.(nodeId, "text", e.target.value)}
+                />
+            )}
             {freeze.frozen ? null : (
                 <div
-                    className="nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle"
+                    className={`nodrag absolute bottom-1 right-1 h-4 w-4 cursor-nwse-resize rounded-sm border border-edge-strong bg-fill-subtle${
+                        isFrame ? " pointer-events-auto" : ""
+                    }`}
                     data-tip={t("blueprint.comment.resize")}
                     onPointerDown={startResize}
                 >
@@ -2240,7 +2321,7 @@ function BlueprintElementLiteralNodeCard({
     nodeId,
     params,
     selected,
-    firstNodeError,
+    nodeIssue,
     elementPreview,
     onBindElementLiteral,
 }: {
@@ -2248,7 +2329,7 @@ function BlueprintElementLiteralNodeCard({
     nodeId: string;
     params: Record<string, unknown>;
     selected?: boolean;
-    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    nodeIssue?: BlueprintFlowNodeDiagnostic;
     elementPreview?: BlueprintFlowNodeData["elementPreview"];
     onBindElementLiteral?: (nodeId: string) => void;
 }) {
@@ -2261,14 +2342,14 @@ function BlueprintElementLiteralNodeCard({
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? "border-yellow-300/90 ring-1 ring-yellow-500/45 shadow-[0_0_20px_rgba(234,179,8,0.18)]"
                       : "border-edge"
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge px-2 py-1.5">
                 <div className="text-2xs text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
@@ -2315,14 +2396,14 @@ function BlueprintImageAssetLiteralNodeCard({
     nodeId,
     params,
     selected,
-    firstNodeError,
+    nodeIssue,
     onPatchNodeParam,
 }: {
     catalog: BlueprintNodeEditorCatalogEntry;
     nodeId: string;
     params: Record<string, unknown>;
     selected?: boolean;
-    firstNodeError?: BlueprintFlowNodeDiagnostic;
+    nodeIssue?: BlueprintFlowNodeDiagnostic;
     onPatchNodeParam?: BlueprintNodeParamPatch;
 }) {
     const { t } = useTranslation();
@@ -2330,14 +2411,14 @@ function BlueprintImageAssetLiteralNodeCard({
     return (
         <div
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge px-2 py-1.5">
                 <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
@@ -2434,6 +2515,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         onPatchNodeParam,
         onAddDynamicInputPin,
         onEditSaveSchema,
+        onFitGroupFrame,
         onRemoveDynamicInputPin,
         memberVariables,
         persistentVariables,
@@ -2458,7 +2540,11 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     // somewhere else, which is exactly what reading a Memo is.
     const isMemo = catalog.type === BLUEPRINT_NODE_TYPE_DATA_MEMO;
     const isTerminalNode = execIns.length > 0 && execOuts.length === 0;
-    const firstNodeError = nodeDiagnostics?.find(d => d.severity === "error");
+    // Errors first, then warnings. A warning is still something the graph is telling the author -
+    // a node with no runtime behind it will not run - and a messages list that says so while the
+    // card it names looks like every other card is state that never reached the picture.
+    const nodeIssue =
+        nodeDiagnostics?.find(d => d.severity === "error") ?? nodeDiagnostics?.find(d => d.severity === "warning");
     const showEditSaveSchema = Boolean(catalog.supportsSaveSchemaPins) && Boolean(onEditSaveSchema);
     const showAddPinRow =
         Boolean(catalog.supportsDynamicInputPins) && Boolean(onAddDynamicInputPin);
@@ -2523,6 +2609,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 params={params}
                 selected={Boolean(selected)}
                 onPatchNodeParam={onPatchNodeParam}
+                onFitGroupFrame={onFitGroupFrame}
             />
         );
     }
@@ -2534,7 +2621,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 nodeId={nodeId}
                 params={params}
                 selected={Boolean(selected)}
-                firstNodeError={firstNodeError}
+                nodeIssue={nodeIssue}
                 elementPreview={elementPreview}
                 onBindElementLiteral={onBindElementLiteral}
             />
@@ -2548,7 +2635,7 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
                 nodeId={nodeId}
                 params={params}
                 selected={Boolean(selected)}
-                firstNodeError={firstNodeError}
+                nodeIssue={nodeIssue}
                 onPatchNodeParam={onPatchNodeParam}
             />
         );
@@ -2659,20 +2746,20 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
             className={`${BLUEPRINT_CARD_PIN_BODY_CLASS} rounded-md border bg-surface-raised text-xs shadow-md ${
                 isEventHead || isVarDeclare ? "border-l-2" : ""
             } ${isTerminalNode ? "border-r-2" : ""} ${
-                firstNodeError
-                    ? "border-danger/85 ring-1 ring-danger/40"
+                nodeIssue
+                    ? nodeIssueRingClass(nodeIssue)
                     : selected
                       ? isMemo
                           ? "border-binding/80 ring-1 ring-binding/40"
                           : "border-primary/80 ring-1 ring-primary/40"
                       : "border-edge"
-            } ${!firstNodeError && isEventHead ? "border-l-primary/70" : ""} ${
-                !firstNodeError && isVarDeclare ? "border-l-amber-500/80" : ""
-            } ${!firstNodeError && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
-                !firstNodeError && isTerminalNode ? "border-r-primary/70" : ""
+            } ${!nodeIssue && isEventHead ? "border-l-primary/70" : ""} ${
+                !nodeIssue && isVarDeclare ? "border-l-amber-500/80" : ""
+            } ${!nodeIssue && isMemo ? "border-l-2 border-l-binding/70" : ""} ${
+                !nodeIssue && isTerminalNode ? "border-r-primary/70" : ""
             }`}
-            data-tip={firstNodeError?.message}
-            aria-invalid={Boolean(firstNodeError)}
+            data-tip={nodeIssue?.message}
+            aria-invalid={nodeIssue?.severity === "error"}
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
                 <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>

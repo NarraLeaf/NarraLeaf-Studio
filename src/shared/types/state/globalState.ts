@@ -1,5 +1,15 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
-import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
+import {
+    CONFIRM_QUIT_DEFAULT,
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+} from "@shared/constants/quit";
+import {
+    SCREEN_EFFECT_QUALITY_DEFAULT,
+    SCREEN_EFFECT_QUALITY_KEY,
+    SCREEN_EFFECT_THREADS_DEFAULT,
+    SCREEN_EFFECT_THREADS_KEY,
+} from "@shared/constants/screenEffects";
 import { ZOOM_PERCENT_DEFAULT } from "@shared/constants/zoom";
 import { WINDOW_ICON_DEFAULT } from "@shared/constants/windowIcon";
 import { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -63,6 +73,20 @@ export interface GlobalStateType extends Record<string, any> {
      * makes the notice show. See `@shared/constants/update`.
      */
     "app.trayResidencyNoticeShown": boolean;
+    /**
+     * How good the screen effects baked for a Dev Mode session have to be.
+     *
+     * Dev Mode only. Previews and builds are always `final` and no setting reaches them: what they
+     * produce is what a player receives. See `@shared/constants/screenEffects`.
+     */
+    [SCREEN_EFFECT_QUALITY_KEY]: "draft" | "final" | string;
+    /**
+     * How many threads draw frames while a bake's encoder runs, or `auto`.
+     *
+     * Every bake, not just Dev Mode's: this one is a statement about the machine rather than about
+     * the file, and drawing a frame on another thread cannot change it.
+     */
+    [SCREEN_EFFECT_THREADS_KEY]: "auto" | "1" | "2" | "3" | "4" | string;
     "ui.themeMode": "auto" | "light" | "dark" | string;
     /**
      * Which mode the toolbar's Run split-button launches — Dev Mode or Preview. The button runs the
@@ -85,12 +109,32 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "ui.accentColor": string;
     /**
+     * Typeface for the Studio interface: one of the preset ids in
+     * `renderer/lib/settings/uiFontOptions`, or the name of a family installed on this computer.
+     * Nothing validates it against a list — a `global.json` carried to another machine may well
+     * name a font that is not there, which CSS resolves by falling through to the base stack.
+     * Applied by the renderer (lib/appearance) by overriding `--nl-ui-font`, which only Studio
+     * chrome reads; a shipped game and the Dev Mode stage keep the base stack.
+     */
+    "ui.fontFamily": string;
+    /**
      * Calm the Studio interface: no CSS transitions or animations (styles.css) and no
      * framer-motion transform/layout animations (the MotionConfig in lib/renderApp). Independent
      * of the OS-level `prefers-reduced-motion`, which is honored on its own — this is for wanting
      * it here without wanting it everywhere. Game content is exempt in both layers.
      */
     "ui.reduceMotion": boolean;
+    /**
+     * How the workspace's menus (File, Help, and whatever a panel or a plugin registers) are
+     * presented in the title bar: `toolbar` leaves them beside the run controls as named
+     * dropdowns, `hamburger` collapses all of them into a single button whose menu lists them as
+     * submenus.
+     *
+     * Off macOS only. There the same groups are the system menu bar (`useNativeMenuSync`), the
+     * title bar never draws them, and neither value would change anything - which is why the
+     * settings row says so rather than pretending to work.
+     */
+    "ui.menuBar.mode": "toolbar" | "hamburger" | string;
     /** The slim strip along the bottom of the workspace; the dock reclaims its row when off. */
     "ui.statusBar.visible": boolean;
     /**
@@ -271,6 +315,20 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "uiTemplates.registryUrl": string;
     /**
+     * The author line a new project starts with - a person, a studio, a publisher; "" = unset.
+     *
+     * A default rather than a value: the project wizard only ever fills its **blank** author field
+     * with it (the same rule `sourceLocale` follows there), so changing it never rewrites a project
+     * that already named someone. It is stored on this installation and copied into each project's
+     * own config, which is what keeps it out of the `.nlproj` shared with a team - one machine's
+     * habit must not become every collaborator's answer.
+     *
+     * Distinct from {@link GlobalStateType["versionControl.authorName"]}, which signs revisions.
+     * That is who made this change; this is who the work belongs to, and on a studio's machine the
+     * two are routinely different words.
+     */
+    "project.defaultAuthor": string;
+    /**
      * How long between automatic checkpoints, in minutes. **0 disables them.**
      *
      * A checkpoint only happens when a versioned file has actually been written since
@@ -294,6 +352,21 @@ export interface GlobalStateType extends Record<string, any> {
      * of the `project-close` checkpoint reason.
      */
     "versionControl.checkpointOnClose": boolean;
+    /**
+     * How long a quit waits for those checkpoints, in seconds; 0 records none on the way out.
+     *
+     * Its own key rather than a constant because the wait is the author's to spend: quitting
+     * closes every project at once, and how long that is worth holding the exit for depends on
+     * how large the projects are and how much of the session is worth recording.
+     *
+     * The shutdown deadline is this plus what closing the version-control stores is allowed, so
+     * raising it buys time for the checkpoints instead of taking it from the stores. A project
+     * whose checkpoint outlasts the budget is left unrecorded rather than holding the quit.
+     *
+     * Read by the main process in `App.checkpointOpenWorkspacesForShutdown`. Ignored when
+     * `versionControl.checkpointOnClose` is off, which turns the checkpoint off for both exits.
+     */
+    [QUIT_CHECKPOINT_TIMEOUT_KEY]: number;
     /**
      * Name recorded as the author on commits and checkpoints; "" = unset.
      *
@@ -341,6 +414,33 @@ export interface GlobalStateType extends Record<string, any> {
      * **Never leaves the main process.** Nothing over IPC reads it.
      */
     "versionControl.serverTokens": Record<string, string>;
+    /**
+     * What this installation of Studio calls itself to a Team server.
+     *
+     * A random id, minted the first time a session is opened and never again, and the
+     * only thing on this machine that says "the same Studio came back". A server needs
+     * that to tell one installation from another - one person is routinely a desktop and
+     * a laptop - and nothing already stored answers it: an account is a person, and a
+     * connection is new every time.
+     *
+     * **Deliberately without a default.** A default here would be written to every
+     * profile on disk the first time the store was read (see the note on the defaults
+     * below), which would give every installation the same id. It is minted on first use
+     * instead - see `managers/team/clientInstance.ts`.
+     *
+     * Not a credential and not a name: it identifies nothing outside the servers this
+     * machine is signed in to, and it is not what a collaborator sees - that is the
+     * account, and the label beside it.
+     */
+    "team.installationId": string;
+    /**
+     * What a collaborator sees this machine called, or empty for the machine's own name.
+     *
+     * Empty is the ordinary case and reads as the host name. It is a setting rather than
+     * a fact so that somebody who would rather not publish their host name to their
+     * team's server has somewhere to say so.
+     */
+    "team.machineLabel": string;
 }
 
 export type GlobalStateKeys = string;
@@ -359,12 +459,18 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "app.developerMode": false,
     "app.updateCheckOnLaunch": true,
     "app.confirmQuit": CONFIRM_QUIT_DEFAULT,
+    [SCREEN_EFFECT_QUALITY_KEY]: SCREEN_EFFECT_QUALITY_DEFAULT,
+    [SCREEN_EFFECT_THREADS_KEY]: SCREEN_EFFECT_THREADS_DEFAULT,
     "ui.themeMode": "auto",
     "ui.runMode": "devMode",
     "ui.zoomPercent": ZOOM_PERCENT_DEFAULT,
     "ui.windowIcon": WINDOW_ICON_DEFAULT,
     "ui.accentColor": ACCENT_COLOR_DEFAULT,
+    "ui.fontFamily": "Default",
     "ui.reduceMotion": false,
+    // Collapsed into one button, which is the arrangement Studio ships in: the title bar is its only
+    // full-width strip, and the menus lose nothing by being one button - see `menuBarOptions`.
+    "ui.menuBar.mode": "hamburger",
     "ui.statusBar.visible": true,
     "ui.statusBar.hiddenItems": [],
     "ui.titleBarSearch.visible": true,
@@ -393,12 +499,18 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "network.downloadRewrites": [],
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
+    "project.defaultAuthor": "",
     "versionControl.checkpointIntervalMinutes": 15,
     "versionControl.checkpointOnClose": true,
+    [QUIT_CHECKPOINT_TIMEOUT_KEY]: QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
     "versionControl.serverTokens": {},
+    // `team.installationId` deliberately has no default; see its declaration above. A
+    // default would be written to disk on first read and every installation would then
+    // be calling itself the same thing.
+    "team.machineLabel": "",
 };
 
 /**
@@ -421,6 +533,10 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
  * Swept off disk once, at startup, by `GlobalStateManager.sweepRetiredKeys`.
  */
 export const RETIRED_GLOBAL_STATE_KEYS: readonly string[] = [
+    // Lived for one commit on develop under a `devMode.` prefix, before the setting gained a
+    // neighbour that is not Dev Mode's and both moved under `screenEffects.`. Swept rather than
+    // migrated because the value it could hold is the default anyway - nobody had time to change it.
+    "devMode.screenEffectQuality",
     "app.showHint",
     "app.notificationsEnabled",
     "app.autoCheckUpdates",

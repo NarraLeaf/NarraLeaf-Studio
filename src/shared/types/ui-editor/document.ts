@@ -1,7 +1,10 @@
+import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
+import type { UIInputActionDef, UISurfaceActionEnablement, UISurfaceInputMode } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
+import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
@@ -19,6 +22,26 @@ export type UIDocument = {
     surfaces: UISurface[];
     components?: UIComponentDefinition[];
     elements: Record<UIElementId, UIElement>;
+    /**
+     * The shapes this document's widgets describe their data with, keyed by id.
+     *
+     * No authoring surface manages this table: an author edits the fields on the widget that uses
+     * them, and a widget stores only the id. It is a document-level table rather than a copy on each
+     * widget so that a shape has one spelling for the whole project - which is what lets one list's
+     * content feed another's, and what a Break node's pins are generated from. The rules that keep
+     * an implicit library safe to edit are in `struct.ts`.
+     */
+    structs?: Record<UIStructId, UIStructDef>;
+    /**
+     * What the gestures of this project mean, keyed by id.
+     *
+     * The vocabulary half of the input model: "advance", "skip", "open the menu" - named once for
+     * the whole project, with the bindings a surface gets unless it says otherwise. A surface stores
+     * only the id, in {@link UISurface.actions}, so renaming an action here renames it everywhere
+     * and rebinding it rebinds every surface that took the default. The rules are in
+     * `inputAction.ts`.
+     */
+    actions?: Record<string, UIInputActionDef>;
     meta?: UIDocumentMeta;
 };
 
@@ -46,6 +69,17 @@ export type UIAppSurface = {
     designSize: UISurfaceDesignSize;
     rootElementId: UIElementId;
     settings?: UISurfaceSettings;
+    /**
+     * What this surface does with input that lands on it. Absent means `capture` (see
+     * `UI_SURFACE_DEFAULT_INPUT_MODE`), which is what every surface authored before the field
+     * existed already did.
+     */
+    input?: UISurfaceInputMode;
+    /**
+     * Which of the project's actions this surface answers, and how. An id here names an entry of
+     * {@link UIDocument.actions}; absent means it answers none of them.
+     */
+    actions?: UISurfaceActionEnablement[];
 };
 
 export type UIStageSurface = {
@@ -58,6 +92,10 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
+    /** @see UIAppSurface.input */
+    input?: UISurfaceInputMode;
+    /** @see UIAppSurface.actions */
+    actions?: UISurfaceActionEnablement[];
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;
@@ -75,6 +113,12 @@ export type UISurfaceSettings = {
      */
     backgroundImage?: UISurfaceBackgroundImage;
     pageAnimation?: UIPageAnimationSettings;
+    /**
+     * What the asset set this Surface's own background names resolves to, per locale. Build-written
+     * exactly as {@link UIElement.assetVariants} is, and here rather than on the Surface so the
+     * answer sits beside the only asset a Surface names by itself.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export type UISlotDefinition = {
@@ -167,6 +211,22 @@ export type UIElement = {
      */
     animation?: UIPageAnimationSettings;
     extra?: Record<string, unknown>;
+    /**
+     * What each asset set THIS element names resolves to, per locale.
+     *
+     * **Never authored and never on disk under `editor/`.** It is written while a package is being
+     * assembled (`@shared/build/uiAssetSets`) and exists only in the bundle a game runs from, which
+     * is why editing a widget cannot produce one and why version control never sees it.
+     *
+     * It sits on the element rather than in a document-wide table for the reason the story row's
+     * copy gives: a table would enumerate every localized asset the project has, which is the one
+     * thing a protected pack refuses to disclose. One element discloses the variants of the sets
+     * that element itself uses, which is what drawing the widget already discloses.
+     *
+     * Keyed by the set id the props still name - the prop keeps the set id, so a widget whose map is
+     * missing fails loudly at a resolver rather than quietly fetching one language's picture.
+     */
+    assetVariants?: AssetVariantMap;
 };
 
 export function getUIComponentLink(element: Pick<UIElement, "extra"> | null | undefined): UIComponentLink | null {
@@ -239,6 +299,23 @@ export type UIElementValueBinding =
           kind: "blueprintValue";
           blueprintId: string;
           valueType: UIElementValueBindingValueType;
+      }
+    /**
+     * Read one declared field of the list item this element is being drawn for.
+     *
+     * The whole reason the struct model exists. Reaching a row's own data used to take a private
+     * blueprint per element - Get List Item Props into Get JSON Field with the key typed into a
+     * string pin - which is three abstractions deep for "show the title". This is the same read with
+     * none of them: the field is picked from a dropdown, and an element outside an item template
+     * simply has nothing to bind to.
+     *
+     * No `valueType` of its own. The field declares one and the bound prop declares one, and the
+     * conversion between them belongs to the target, not to the binding - the same reason the
+     * slider's binding does not restate that a slider holds a number.
+     */
+    | {
+          kind: "listItemField";
+          fieldId: string;
       };
 
 export type UILayout = {

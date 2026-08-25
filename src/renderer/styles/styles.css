@@ -47,6 +47,21 @@
      */
     --nl-editor-surface-opacity: 1;
 
+    /*
+     * The Studio interface typeface.
+     *
+     * `--nl-ui-font-base` is the stack the product ships with — Tailwind's `sans`, pulled through
+     * `theme()` rather than spelled out again, so the two can never drift. It is also what the
+     * `ui.fontFamily` preference means by "Default", and the tail a chosen family falls back to for
+     * the glyphs it has no drawing of.
+     *
+     * `--nl-ui-font` is what the interface is actually set in. Studio windows override it on the
+     * root element from the setting (src/renderer/lib/appearance); a game runtime never runs that
+     * bootstrap, so it keeps the base stack.
+     */
+    --nl-ui-font-base: theme(fontFamily.sans);
+    --nl-ui-font: var(--nl-ui-font-base);
+
     --narraleaf-accent: rgb(var(--nl-primary));
     --narraleaf-accent-strong: rgb(var(--nl-primary));
     --narraleaf-accent-weak: rgb(var(--nl-primary) / 0.6);
@@ -135,6 +150,8 @@
 
     /* Chrome details that can't borrow a Tailwind utility. */
     --nl-scrollbar-thumb: rgb(255 255 255 / 0.15);
+    --nl-scrollbar-thumb-dim: rgb(255 255 255 / 0.08);
+    --nl-scrollbar-thumb-faint: rgb(255 255 255 / 0.03);
     --nl-scrollbar-thumb-hover: rgb(255 255 255 / 0.2);
     --nl-control-border: rgb(255 255 255 / 0.3);
     --nl-control-border-hover: rgb(255 255 255 / 0.5);
@@ -206,6 +223,8 @@
         --nl-fill-strong: rgb(15 23 42 / 0.14);
 
         --nl-scrollbar-thumb: rgb(15 23 42 / 0.25);
+        --nl-scrollbar-thumb-dim: rgb(15 23 42 / 0.13);
+        --nl-scrollbar-thumb-faint: rgb(15 23 42 / 0.05);
         --nl-scrollbar-thumb-hover: rgb(15 23 42 / 0.35);
         --nl-control-border: rgb(15 23 42 / 0.35);
         --nl-control-border-hover: rgb(15 23 42 / 0.55);
@@ -235,11 +254,18 @@
  *    stylesheet is bundled into the game runtime. Dev Mode omits the class too,
  *    so the game it hosts keeps its motion.
  *  - `.nl-motion-keep` — motion that is information rather than decoration:
- *    game content embedded in a Studio window (the story preview's stage) and
- *    the indeterminate progress bars. Freezing the preview would not calm the
- *    interface, it would misrepresent the work — an author cannot tune a
- *    transition they are prevented from seeing. Freezing a busy indicator is
- *    worse than pointless: a bar that has stopped sweeping reads as a hang.
+ *    game content embedded in a Studio window (the story preview's stage, the
+ *    UI editor's canvas, a blueprint node's element preview), the box that
+ *    plays back an element's own enter and exit animation, and the
+ *    indeterminate progress bars. Freezing a preview
+ *    would not calm the interface, it would misrepresent the work — an author
+ *    cannot tune a transition they are prevented from seeing. Freezing a busy
+ *    indicator is worse than pointless: a bar that has stopped sweeping reads
+ *    as a hang.
+ *
+ *    The page thumbnails and the component library render the same widgets
+ *    through the same code and are deliberately NOT tagged: a panel of thirty
+ *    cards all moving at once is one of the reasons somebody asked for calm.
  *  - `.animate-spin` — spinners, for that same reason. Matched by Tailwind's
  *    own class because they are scattered across dozens of components and
  *    tagging each one would rot; this is the one place that has to know.
@@ -280,6 +306,38 @@
     --nl-motion: 0;
 }
 
+/*
+ * Set the interface in the author's chosen face.
+ *
+ * `.nl-studio` — the same guard the light theme and the reduced-motion blanket use, and for the
+ * same reason: this stylesheet is bundled into the game runtime, and a shipped game is set in the
+ * face its author chose for IT, not in the one whoever built it likes reading Studio in. Dev Mode
+ * omits the class as well, so the game it hosts is unaffected.
+ *
+ * On `html` because that is what Tailwind's preflight sets `font-family` on, and a rule of equal
+ * specificity would be a coin toss on source order. The class settles it.
+ */
+html.nl-studio {
+    font-family: var(--nl-ui-font);
+}
+
+/*
+ * ...but not the game's own UI, wherever it is previewed inside Studio chrome.
+ *
+ * `.ui-editor-surface` is the frame every rendered surface carries — the editing canvas, the panel
+ * thumbnails, the template cards, a `frame` widget's nested surface — so one rule covers all of
+ * them. A surface is the author's work being shown back to them, and a widget that has not been
+ * given a font asset is drawn in whatever it inherits: without this it would inherit the Studio
+ * preference and the canvas would stop agreeing with the game.
+ *
+ * Scoped to `.nl-studio` too, so this only ever *undoes* the preference. Unscoped it would also
+ * pin the surface inside a shipped game, where there is no preference to undo and where a runtime
+ * that one day sets a font above the stage should still reach it.
+ */
+:root.nl-studio .ui-editor-surface {
+    font-family: var(--nl-ui-font-base);
+}
+
 *, *::before, *::after {
     user-select: none;
     box-sizing: border-box;
@@ -296,7 +354,33 @@
     }
 }
 
-/* Custom scrollbar styles */
+/*
+ * Scrollbars.
+ *
+ * Chrome, not content. A scrollbar answers "how far along am I", and the only
+ * moment that question is live is while the surface is moving - so a scroller
+ * draws no thumb at rest, shows one while it scrolls, and puts it away shortly
+ * after it stops. What does NOT come and go is the 8px gutter: a styled
+ * scrollbar occupies layout in Chromium, and a width that arrived with the thumb
+ * would reflow the content under the pointer on every turn of the wheel.
+ *
+ * CSS has no "is scrolling" state, so `data-nl-scrollbar` is stamped on the
+ * scroller from JS (styles/scrollbarAutoHide.ts) - and the fade-out is STEPPED
+ * through that attribute's value rather than transitioned. Both halves of that
+ * are forced by Chromium, and were measured rather than assumed (Electron 38 /
+ * Chromium 140):
+ *
+ *   - `transition` on a scrollbar pseudo-element does not animate. Whatever
+ *     duration is written there, the thumb jumps straight to the new colour.
+ *   - The one thing that does animate is a registered custom property the thumb
+ *     reads through `var()` - but a custom property only reaches a pseudo by
+ *     INHERITING, so every frame of that fade restyles the scroller's whole
+ *     subtree. On a panel of a few thousand rows that is a recalc storm arriving
+ *     exactly when the reader stopped scrolling to look at something.
+ *
+ * Three attribute values ~90ms apart cost one element-local recalc each, and on
+ * something this faint they read as a fade.
+ */
 ::-webkit-scrollbar {
     width: 8px;
     height: 8px;
@@ -307,11 +391,28 @@
 }
 
 ::-webkit-scrollbar-thumb {
-    background: var(--nl-scrollbar-thumb);
+    background: transparent;
     border-radius: 4px;
-    transition: background 150ms ease;
 }
 
+[data-nl-scrollbar]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb);
+}
+
+[data-nl-scrollbar="dim"]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb-dim);
+}
+
+[data-nl-scrollbar="faint"]::-webkit-scrollbar-thumb {
+    background: var(--nl-scrollbar-thumb-faint);
+}
+
+/*
+ * The one time a thumb is wanted while nothing moves: the pointer is already on
+ * it, about to drag it. An invisible thumb still hit-tests, so this is what says
+ * it is there. Last in the group deliberately - same specificity as the rules
+ * above, so it also wins over a thumb caught mid-fade.
+ */
 ::-webkit-scrollbar-thumb:hover {
     background: var(--nl-scrollbar-thumb-hover);
 }
@@ -320,7 +421,15 @@
     background: transparent;
 }
 
-/* Opt-in: keep the element scrollable but hide the scrollbar chrome entirely. */
+/*
+ * Opt-in: keep the element scrollable but hide the scrollbar chrome entirely -
+ * the gutter included, so the content gets the full width. This is for surfaces
+ * where even a momentary thumb is wrong: menus and candidate lists, which are
+ * read at a glance and whose whole body is the scroller.
+ *
+ * `scrollbar-width` also switches Chromium off the `::-webkit-scrollbar` rules
+ * above for this element, so the two never have to be kept in agreement.
+ */
 .nl-no-scrollbar {
     scrollbar-width: none; /* Firefox */
     -ms-overflow-style: none; /* legacy Edge */
@@ -330,6 +439,36 @@
     width: 0;
     height: 0;
     display: none;
+}
+
+/*
+ * The two halves of a split comparison, and the gaps one of them holds.
+ *
+ * `scrollbar-gutter` is reserved on both halves whether or not either one is
+ * long enough to need it: the halves are kept level line for line, and a
+ * scrollbar appearing in one of them would take eight pixels of text width from
+ * that half alone, re-wrap its rows and put the two out of step.
+ */
+.nl-split-half {
+    scrollbar-gutter: stable;
+}
+
+/*
+ * A region one version does not have, where the other one has content.
+ *
+ * Hatched rather than blank, because a blank region of the same height reads as
+ * content that has not arrived yet. The stripes are the edge token at its
+ * faintest, so the gap stays the quietest thing on a surface whose whole job is
+ * to make the changes the loudest.
+ */
+.nl-diff-spacer {
+    background-image: repeating-linear-gradient(
+        135deg,
+        var(--nl-edge-strong) 0,
+        var(--nl-edge-strong) 1px,
+        transparent 1px,
+        transparent 6px
+    );
 }
 
 /* Global focus styles - remove default browser focus outlines */
@@ -1003,6 +1142,74 @@ input[type="radio"]:focus {
 }
 
 /*
+ * Emphasis marks in the story editor: the dot or circle set beside every character of a stressed
+ * phrase (傍点 / 圏点, 着重号).
+ *
+ * Drawn by `text-emphasis` rather than by the pseudo-element the ruby reading above uses. There is
+ * one mark per character and they have to follow the characters through a line break, which is
+ * exactly what a single `::before` cannot do — and unlike a reading, a mark carries no text of its
+ * own, so nothing here can add units the runs never had.
+ *
+ * `text-emphasis-position` names both axes at once: the first keyword is read in horizontal writing
+ * and the second in vertical, where both Japanese and Chinese set the marks to the right.
+ *
+ * The marks sit in the leading the row already has, the same space the ruby reading is drawn in, so
+ * a marked row is 36.2px against an unmarked row's 36 - the mark clears the leading by a fifth of a
+ * pixel. Measured, not assumed. A reading had to cost nothing at all because it is written over
+ * whole words at a time and the rows below it visibly moved; a fifth of a pixel is below the device
+ * pixel this is drawn at, and the glyphs inside the row do not move at all.
+ */
+.story-rt-emphasis {
+    text-emphasis-position: over right;
+}
+
+/*
+ * Every mark is named by its value, so the class alone draws nothing. The type panel's "none" sample
+ * wears the class with no value, and a default on the bare class would put a dot on it.
+ */
+.story-rt-emphasis[data-emphasis="dot"] {
+    text-emphasis: filled dot;
+}
+
+.story-rt-emphasis[data-emphasis="circle"] {
+    text-emphasis: open circle;
+}
+
+.story-rt-emphasis[data-emphasis="sesame"] {
+    text-emphasis: filled sesame;
+}
+
+.story-rt-emphasis[data-emphasis="under-dot"] {
+    text-emphasis: filled dot;
+    text-emphasis-position: under right;
+}
+
+/*
+ * The translation field, and the brackets that delimit a style range in it.
+ *
+ * A translator places the line's tags; they never invent one. The bracket is therefore drawn as a
+ * boundary and not as a control: no background, no hit target of its own, just enough weight to be
+ * seen at the edge of the words it holds. The words between a pair keep the styling they will have
+ * in the game, so the field shows the range and the result at once.
+ *
+ * The chip itself is `contenteditable="false"`, which is what makes the caret step over it whole and
+ * Backspace take it away in one press - the whole reason a tag is an element here rather than four
+ * characters the translator has to select by hand.
+ */
+.story-rt-tag {
+    /* Off the baseline by a hair, so a bracket reads as a mark on the text rather than a letter in it. */
+    position: relative;
+    top: -0.05em;
+    opacity: 0.85;
+}
+
+.nl-translation-field:empty::before {
+    content: attr(data-placeholder);
+    color: rgb(var(--nl-fg-subtle));
+    pointer-events: none;
+}
+
+/*
  * Misspellings in the story editor, drawn by Studio.
  *
  * Chromium used to draw this squiggle itself, off its own spellchecker. It no longer checks
@@ -1036,6 +1243,50 @@ input[type="radio"]:focus {
     mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3' viewBox='0 0 6 3'%3E%3Cpath d='M0 2.5 Q1.5 0.5 3 2.5 T6 2.5' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
     mask-repeat: repeat-x;
     mask-size: 6px 3px;
+    mask-position: 0 100%;
+}
+
+/*
+ * The project dictionary's two marks, in the same layer and over the same ranges as the squiggle
+ * above (see `storyDictionary.ts`).
+ *
+ * They are deliberately quieter than a misspelling, and quieter than each other. A misspelling is a
+ * word that is wrong; a variant is a word this project writes differently, which is worth showing
+ * but is not an error the build cares about; a reading is an offer, and an offer that shouted would
+ * be unreadable on a page where the term appears in every other line.
+ *
+ * The same mask carries the wave, so the colour stays a token and follows the theme.
+ */
+.story-rt-variant {
+    position: absolute;
+    height: 3px;
+    pointer-events: none;
+    background-color: rgb(var(--nl-warning));
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='6' height='3' viewBox='0 0 6 3'%3E%3Cpath d='M0 2.5 Q1.5 0.5 3 2.5 T6 2.5' fill='none' stroke='black' stroke-width='1'/%3E%3C/svg%3E");
+    mask-repeat: repeat-x;
+    mask-size: 6px 3px;
+    mask-position: 0 100%;
+}
+
+/*
+ * A dotted rule rather than a wave: nothing is wrong with the words under it, there is simply a
+ * reading on file for them. Drawn on the baseline the wave sits under, so a line carrying both
+ * kinds keeps one underline height.
+ *
+ * The foreground ramp rather than the accent, and at full opacity. The accent is one colour for both
+ * themes - it has no light override, because everything else that uses it sits on a fill of its own -
+ * so a rule painted with it measured 2.6:1 against the light surface and 2.5:1 against the tint a
+ * selected row lays behind it. `fg-muted` clears 3:1 in both themes over both, and grey is the more
+ * honest colour anyway: nothing here is wrong, there is only something on file.
+ */
+.story-rt-reading {
+    position: absolute;
+    height: 3px;
+    pointer-events: none;
+    background-color: rgb(var(--nl-fg-muted));
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='3' viewBox='0 0 4 3'%3E%3Crect x='0' y='2' width='2' height='1' fill='black'/%3E%3C/svg%3E");
+    mask-repeat: repeat-x;
+    mask-size: 4px 3px;
     mask-position: 0 100%;
 }
 

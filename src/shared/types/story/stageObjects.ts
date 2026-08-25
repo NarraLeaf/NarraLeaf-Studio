@@ -393,6 +393,61 @@ const REDECLARABLE_KINDS: ReadonlySet<StageObjectKind> =
     new Set<StageObjectKind>(["image", "text", "layer", "video", "vfx"]);
 
 /**
+ * The kinds whose declaration puts nothing on screen, so that some later row has to.
+ *
+ * A `layer` is absent because a layer is a container: the engine mounts one visible, and one that
+ * waited to be shown would take its contents with it. A `character` is absent because entering IS
+ * the reveal, and a sound has nothing to reveal.
+ */
+const REVEALABLE_KINDS: ReadonlySet<StageObjectKind> =
+    new Set<StageObjectKind>(["image", "text", "video", "vfx"]);
+
+/**
+ * Every row of this scene that DECLARES something a later row has to reveal.
+ *
+ * The candidates for "declared and never shown". Paired with {@link shownStageObjectKeys}, which is
+ * the other half of that question and is kept separate because the two are not always read over the
+ * same span: an ambience overlay belongs to the whole story rather than to one scene, so its reveal
+ * may be anywhere, while an image is gone when its scene ends and can only be shown inside it.
+ */
+export function revealableStageObjectDeclarations(scene: StoryScene | null | undefined): StageObjectDeclaration[] {
+    const declarations: StageObjectDeclaration[] = [];
+    for (const block of liveSceneBlocks(scene)) {
+        const declaration = declaredStageObject(block);
+        if (declaration && REVEALABLE_KINDS.has(declaration.kind)) {
+            declarations.push(declaration);
+        }
+    }
+    return declarations;
+}
+
+/**
+ * The `kind:name` keys this scene REVEALS - what a `show` row in it puts on screen.
+ *
+ * Only `show`. Playing a video does not reveal it (an element is on stage and hidden until something
+ * shows it, so a `/play` on its own is a clip the player hears and never sees), and neither does a
+ * transform or a rate change. That is the whole point of the distinction the declaration draws.
+ */
+export function shownStageObjectKeys(scene: StoryScene | null | undefined): ReadonlySet<string> {
+    const shown = new Set<string>();
+    for (const block of liveSceneBlocks(scene)) {
+        if (block.kind !== "action" || !("operation" in block.payload) || block.payload.operation !== "show") {
+            continue;
+        }
+        const reference = stageObjectReference(scene, block);
+        if (!reference) {
+            continue;
+        }
+        // Every kind the lookup may be satisfied from, because a reveal satisfies the declaration it
+        // reaches - the same widening `danglingStageObjectRefs` reads the reference through.
+        for (const kind of reference.kinds) {
+            shown.add(`${kind}:${reference.name}`);
+        }
+    }
+    return shown;
+}
+
+/**
  * Every row that declares a stage name an earlier row in the same scene already declared, excluding
  * the first - the first is the one that stands, and the later rows are the ones an author has to look
  * at.

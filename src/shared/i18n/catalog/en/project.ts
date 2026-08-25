@@ -16,7 +16,7 @@ export const project = {
         // typography and the rest of a project's look are meant to join it.
         design: {
             title: "Design",
-            description: "Colors, and the controls they paint",
+            description: "Colors, fonts, and the controls they paint",
         },
         project: {
             title: "Project",
@@ -36,8 +36,11 @@ export const project = {
     group: {
         details: "Details",
         appTags: "Build variants",
+        dlc: "DLC",
         userData: "Player files",
         icons: "Icons",
+        window: "Window",
+        screenEffects: "Screen effects",
         dependencies: "Dependencies",
         saving: "Saving",
         olderSaves: "Older saves",
@@ -50,6 +53,8 @@ export const project = {
         // whose ids they name.
         brandColors: "Colors",
         brandControls: "Controls",
+        // The third part of the Design sub-page: the fonts everything else is set in by default.
+        typography: "Typography",
         distribution: "Distribution key",
         linting: "Project check",
         security: "Security",
@@ -99,8 +104,18 @@ export const project = {
     // part is a setting, and it names no storefront, because which of them to hand this to is the
     // author's decision. The description says what the paths are, and stops there.
     userData: {
-        description: "Where a shipped game keeps the player's saves and progress. Renaming the "
-            + "application does not move it.",
+        description: "Where a shipped desktop game keeps the player's saves and progress.",
+        windowsLinux: "Windows and Linux",
+        windowsLinuxDescription: "Where a Windows or Linux build keeps the player's files.",
+        macos: "macOS",
+        macosDescription: "Where a macOS build keeps the player's files.",
+        mode: {
+            appRoot: "In the game's folder",
+            userData: "In the player's user folder",
+        },
+        // Stands in for the folder a player put their copy of the game in, which is a path only
+        // their own machine can spell.
+        gameFolder: "<game folder>",
         copy: "Copy locations",
         copied: "Locations copied.",
         copyFailed: "Could not copy the locations.",
@@ -175,6 +190,34 @@ export const project = {
         deleteDetailCuts: {
             one: "{count} cut point stays in the script and stops taking effect.",
             other: "{count} cut points stay in the script and stop taking effect.",
+        },
+    },
+    dlc: {
+        add: "Add DLC",
+        // Names for the undo steps these leave behind ("Undo delete DLC Summer Route").
+        history: {
+            add: "add DLC {name}",
+            rename: "rename DLC to {name}",
+            delete: "delete DLC {name}",
+            edit: "edit DLC",
+        },
+        newDlcName: "New DLC",
+        nameTitle: "Name",
+        // The id is the filename, so the field says what the file will be called rather than
+        // explaining what an id is. It is the one thing here a player ever sees.
+        idTitle: "Id",
+        idFile: "Ships as {file}",
+        // Changing it is allowed and is not a rename: copies already delivered keep the old name.
+        idChangeConfirm: "Change the id to \"{id}\"?",
+        idChangeDetail: "Copies already delivered keep the old filename, and a story marked for the old id stops naming this DLC.",
+        idChangeAction: "Change",
+        // Which builds this DLC loads into. A build of another variant refuses it.
+        attachTitle: "Loads into",
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        deleteDetail: {
+            one: "{count} story goes back into the base build.",
+            other: "{count} stories go back into the base build.",
         },
     },
     assets: {
@@ -409,17 +452,10 @@ export const project = {
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
-        webLosslessImagesTitle: "Convert images to WebP",
-        webLosslessImagesDescription: "Re-encode exported images as lossless WebP where that is smaller.",
-        webLosslessImagesHint: "Converted images decode identically to the originals. Android and iOS builds serve the same exported site, so this applies to them too.",
-        webPrecompressTitle: "Precompress text files",
-        webPrecompressDescription: "Write Brotli and Gzip copies of the site's scripts, styles and story data.",
-        webPrecompressHint: "Only a server set up to serve precompressed files uses them. Every other host serves the originals.",
-        webLossyImagesTitle: "Recompress images",
-        webLossyImagesDescription: "Re-encode exported images as lossy WebP. The files are much smaller, and the lost detail cannot be recovered.",
-        webLossyQualityTitle: "Image quality",
-        webLossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
-        webSharedWithMobileHint: "Android and iOS builds serve the same exported site, so this applies to them too.",
+        lossyImagesTitle: "Recompress images",
+        lossyImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        lossyQualityTitle: "Image quality",
+        lossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
         // Not "Mobile orientation": it sits under the Mobile heading, and the repeated word cost the
         // label a second line in a 318px panel.
         orientationTitle: "Orientation",
@@ -454,6 +490,24 @@ export const project = {
             center: "Center",
             right: "Right",
         },
+    },
+    // Project -> App -> Screen effects. The `/vfx` sources Studio makes for a project, and the one
+    // decision that is the same for all of them. What the rate costs is the `screenEffects` help
+    // topic, reached by the `?` on this heading.
+    window: {
+        resizableTitle: "Resizable window",
+        resizableDescription: "The player may drag the window to a size of their own. The stage keeps its shape inside it.",
+        rememberTitle: "Remember the window",
+        rememberDescription: "The game reopens at the size, position and screen mode it was last closed at.",
+        fullscreenTitle: "Start full-screen",
+        fullscreenDescription: "The game opens full-screen on a first launch.",
+    },
+    screenEffects: {
+        // Named for the sources this reaches rather than for the command they belong to. A clip the
+        // author imported plays at the rate it was made at, and nothing here changes that.
+        frameRateTitle: "Weather frame rate",
+        frameRateDescription: "Applies to snow, rain and sakura. Imported clips keep the frame rate they were made at.",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "Rescan",

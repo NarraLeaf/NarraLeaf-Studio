@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { Logger } from "@shared/utils/logger";
 import {
     EMPTY_STUDIO_TASK_OVERVIEW,
+    type StudioTaskClaim,
     type StudioTaskId,
     type StudioTaskKind,
     type StudioTaskOverview,
@@ -31,6 +32,20 @@ import {
  * Promotion is the other half. An `idle` task that someone starts waiting on becomes `blocking` and
  * moves to the front of the queue; if it is already running it simply changes its label, because
  * there is nothing better to do with work that is already half done.
+ *
+ * ## Withdrawal is the third half, and the reason a caller may name itself
+ *
+ * Joining is symmetric only while everyone still wants what they asked for. A caller that changes
+ * its mind — an author typing a third digit into a parameter, a Dev Mode session reloading onto a
+ * document that says something else — has no way to say so through a key, because the key describes
+ * the clip and the clip is exactly what changed. The queue then fills with work for numbers nobody
+ * will ever see, and the one the author is waiting on runs last.
+ *
+ * So a submission may carry a {@link StudioTaskClaim}: an owner, and which of that owner's asks this
+ * is. Submitting under a new attempt retires the owner's earlier ones, which cancels whatever is
+ * left of them that nobody ELSE wants. See {@link supersede} for the exact rule; the important half
+ * is the negative one — a claim is an interest, never ownership, so it can never stop work somebody
+ * else is waiting on.
  *
  * ## What this deliberately does not do
  *
@@ -79,6 +94,16 @@ type Entry = {
     run: (context: StudioTaskRunContext) => Promise<unknown>;
     /** Everyone waiting on this work, however many times it was submitted. */
     waiters: ((outcome: StudioTaskOutcome<unknown>) => void)[];
+    /** Which owners want this, and which of their asks each is on. */
+    claims: Map<string, string>;
+    /**
+     * Whether anyone asked for this without naming themselves.
+     *
+     * That want can never be withdrawn - there is nobody to withdraw it - so it holds the task alive
+     * however many claims come and go. Anonymous is the safe default rather than an oversight: a
+     * caller that cannot say it has moved on has not.
+     */
+    unclaimed: boolean;
     cancelled: boolean;
     stop: (() => void) | null;
 };
@@ -94,13 +119,79 @@ export class StudioTaskScheduler {
      *
      * Returns an outcome rather than throwing, for the same reason every long path in this app does:
      * the caller is usually a UI that has to render "it failed" rather than handle an exception.
+     *
+     * The caller stays anonymous, which is to say it can never take this back. One that expects to
+     * change its mind submits through {@link submitAll} with a claim instead.
      */
     public submit<T>(request: StudioTaskRequest<T>): Promise<StudioTaskOutcome<T>> {
+        const joined = this.enter<T>(request, null);
+        this.publish();
+        void this.drain();
+        return joined;
+    }
+
+    /**
+     * Submit a set of work as ONE ask, on behalf of a caller that may later want something else.
+     *
+     * The set is what makes this safe, and it is why {@link submit} takes no claim. A caller that
+     * hands in its clips one at a time is indistinguishable from one that changed its mind between
+     * them, so retirement would cut down the ask it is halfway through making. Everything submitted
+     * here is claimed before anything is retired, and retirement then only ever reaches what the
+     * owner wanted under an EARLIER attempt.
+     *
+     * An empty set with a claim is a legitimate ask rather than a no-op: it says this owner wants
+     * nothing now, which is what deleting the last weather row looks like from in here.
+     */
+    public submitAll<T>(
+        requests: readonly StudioTaskRequest<T>[],
+        claim?: StudioTaskClaim,
+    ): Promise<StudioTaskOutcome<T>[]> {
+        const joined = requests.map(request => this.enter<T>(request, claim ?? null));
+        if (claim) {
+            this.supersede(claim);
+        }
+        this.publish();
+        void this.drain();
+        return Promise.all(joined);
+    }
+
+    /**
+     * Retire an owner's earlier asks: this attempt is what it wants, and the others were.
+     *
+     * Whatever it claimed under a different attempt stops being wanted by it, and a task nobody is
+     * left wanting is cancelled where it stands - running included, because the running one is the
+     * expensive one and letting it finish only means the wanted work starts later.
+     *
+     * Two things it deliberately does not do. It does not touch a task this same attempt has
+     * claimed, so an ask made of several submissions never cuts its own throat; and it does not
+     * touch a task another owner claimed or that anyone submitted anonymously, because a caller
+     * saying it has moved on is not a caller speaking for everybody else.
+     */
+    public supersede(claim: StudioTaskClaim): void {
+        // A copy: cancelling a queued task splices the queue underneath this loop.
+        for (const entry of [this.active, ...this.queue]) {
+            if (!entry) {
+                continue;
+            }
+            const attempt = entry.claims.get(claim.owner);
+            if (attempt === undefined || attempt === claim.attempt) {
+                continue;
+            }
+            entry.claims.delete(claim.owner);
+            if (entry.claims.size === 0 && !entry.unclaimed) {
+                this.cancel(entry.key);
+            }
+        }
+    }
+
+    /** Join the work, or start it, and record who is asking. Neither publishes nor drains. */
+    private enter<T>(request: StudioTaskRequest<T>, claim: StudioTaskClaim | null): Promise<StudioTaskOutcome<T>> {
         const existing = this.find(request.key);
         if (existing) {
             // Adopted rather than queued again. If the waiting caller is more urgent than whoever
             // started it, the work is promoted where it stands - a bake already half done is half a
             // wait already served, and restarting it to honour a priority would be strictly worse.
+            this.stake(existing, claim);
             if (request.priority === "blocking" && existing.snapshot.priority === "idle") {
                 existing.snapshot = { ...existing.snapshot, priority: "blocking" };
                 this.moveToFront(existing);
@@ -119,9 +210,12 @@ export class StudioTaskScheduler {
             key: request.key,
             run: request.run as (context: StudioTaskRunContext) => Promise<unknown>,
             waiters: [],
+            claims: new Map(),
+            unclaimed: false,
             cancelled: false,
             stop: null,
         };
+        this.stake(entry, claim);
         // Blocking work goes ahead of speculation, and behind other blocking work: someone is waiting
         // on each of those too, and reordering among them would only move the wait around.
         if (request.priority === "blocking") {
@@ -130,10 +224,22 @@ export class StudioTaskScheduler {
         } else {
             this.queue.push(entry);
         }
-        const joined = this.join<T>(entry);
-        this.publish();
-        void this.drain();
-        return joined;
+        return this.join<T>(entry);
+    }
+
+    /**
+     * Record one caller's interest.
+     *
+     * Re-staking an owner is what carries a clip across attempts: an ask that names work the owner
+     * already wanted moves its claim onto the new attempt, so a bake half done is kept rather than
+     * retired and started over - the same judgement promotion makes, for the same reason.
+     */
+    private stake(entry: Entry, claim: StudioTaskClaim | null): void {
+        if (claim) {
+            entry.claims.set(claim.owner, claim.attempt);
+        } else {
+            entry.unclaimed = true;
+        }
     }
 
     /** Stop a task by its key, whether it is running or still waiting. */
@@ -252,11 +358,19 @@ export class StudioTaskScheduler {
                     const value = await entry.run(context);
                     this.settle(entry, entry.cancelled ? { status: "cancelled" } : { status: "done", value }, entry.cancelled ? "cancelled" : "done");
                 } catch (error) {
-                    const detail = error instanceof Error ? error.message : String(error);
-                    // Logged here rather than by every task: a rejection escaping a background job is
-                    // the one failure with nobody on screen to notice it.
-                    logger.warn(`${entry.snapshot.kind} task failed: ${detail}`);
-                    this.settle(entry, { status: "error", error: detail }, "error");
+                    if (entry.cancelled) {
+                        // What a stopped task throws on its way out is the stop, not a finding: an
+                        // encoder that was killed reports, correctly, that it failed. Retiring a claim
+                        // now cancels tasks routinely, so logging those as failures would bury the
+                        // real ones under the ordinary consequence of typing a third digit.
+                        this.settle(entry, { status: "cancelled" }, "cancelled");
+                    } else {
+                        const detail = error instanceof Error ? error.message : String(error);
+                        // Logged here rather than by every task: a rejection escaping a background job
+                        // is the one failure with nobody on screen to notice it.
+                        logger.warn(`${entry.snapshot.kind} task failed: ${detail}`);
+                        this.settle(entry, { status: "error", error: detail }, "error");
+                    }
                 }
                 this.active = null;
                 this.publish();

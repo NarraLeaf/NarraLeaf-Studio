@@ -7,8 +7,10 @@ import {
     useState,
     type CSSProperties,
 } from "react";
+import { MotionConfig } from "motion/react";
 import { EditorComponentProps } from "../../types";
 import { UIEditorInteractionLayer, useUIEditorKeybindings } from "@/lib/ui-editor/interaction";
+import { useUiClipboardSync } from "@/lib/ui-editor/commands/useUiClipboardSync";
 import { UIEditorDockerBar } from "@/lib/ui-editor/docker";
 import { MousePointer2, Move, Play, Magnet, PanelsTopLeft } from "lucide-react";
 import type { UITool } from "@/lib/ui-editor/editor/types";
@@ -17,7 +19,6 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
@@ -50,6 +51,7 @@ import { useSurfaceImageDrop } from "@/apps/workspace/modules/ui-editor/editors/
 import { useSurfaceDoubleClick } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceDoubleClick";
 import { useSurfaceInteractionCropDimming } from "@/apps/workspace/modules/ui-editor/editors/useSurfaceInteractionCropDimming";
 import {
+    SurfaceEditorToolbarButton,
     SurfaceEditorToolbarButtonGroup,
     SurfaceEditorToolbarSegButton,
 } from "@/apps/workspace/modules/ui-editor/editors/SurfaceEditorToolbarButtonGroup";
@@ -211,11 +213,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             return;
         }
         if (current.type === "scene") {
-            const currentSceneId = typeof current.data === "string" ? current.data : current.data?.id ?? null;
-            if (currentSceneId === surface.id) {
-                selectSurfaceForProperties(stateService, surface.id, uiService);
-                return;
-            }
             selectSurfaceForProperties(stateService, surface.id, uiService);
             return;
         }
@@ -273,7 +270,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return null;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return null;
         }
@@ -293,7 +290,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return;
         }
@@ -401,7 +398,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== surface.id || data.elementIds.length !== 1) {
             return;
         }
@@ -416,6 +413,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             }
         });
     }, [documentService, inputDialog, stateService, surface, t]);
+
+    useUiClipboardSync(Boolean(surface && documentService));
 
     useUIEditorKeybindings({
         tabId,
@@ -444,26 +443,47 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         };
     }, [documentService, readOnly, stateService, surface?.host]);
 
+    /**
+     * What is on the canvas is the game, so `ui.reduceMotion` must not reach it.
+     *
+     * The same pair the story preview's stage carries (`NlrStageLayer`), for the same reason
+     * styles.css gives for exempting it: a transition an author is prevented from seeing is one they
+     * cannot tune. `nl-motion-keep` lifts the surface out of the CSS blanket, and
+     * `reducedMotion="never"` lifts it out of the MotionConfig in `lib/renderApp` - the widget
+     * renderers animate their appearance transitions from framer-motion, where no CSS rule reaches,
+     * and that half is most of what the canvas moves.
+     *
+     * Here rather than inside `renderSurface`: the page thumbnails and the component library go
+     * through that same method, and a panel of thirty cards all moving at once is one of the reasons
+     * somebody turns the setting on in the first place.
+     */
     const surfaceContent = useMemo(() => {
         if (!surfaceId || !runtimeBridge || !documentService) {
             return null;
         }
         const style = getEditorSurfaceStyle(surface);
-        if (isComponentEdit) {
-            return runtimeBridge.renderDocumentSurface({
+        // On the surface root, not on the canvas node above it: the reference frames and the layout
+        // diagnostic markers beside it are Studio chrome, and stay calm with the rest of the window.
+        const className = "relative nl-motion-keep";
+        const rendered = isComponentEdit
+            ? runtimeBridge.renderDocumentSurface({
                 document: documentService.getDocument(),
                 surfaceId,
                 hostAdapter,
-                className: "relative",
+                className,
+                style,
+            })
+            : runtimeBridge.renderSurface({
+                surfaceId,
+                hostAdapter,
+                className,
                 style,
             });
+        if (!rendered) {
+            return null;
         }
-        return runtimeBridge.renderSurface({
-            surfaceId,
-            hostAdapter,
-            className: "relative",
-            style,
-        });
+        // Renders no node of its own, so the canvas keeps the shape the interaction layer measures.
+        return <MotionConfig reducedMotion="never">{rendered}</MotionConfig>;
     }, [documentService, isComponentEdit, runtimeBridge, surface, surfaceId, hostAdapter, documentVersion, brandRevision]);
 
     const applyTool = useCallback(
@@ -548,13 +568,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         },
         [baseDocumentService, openEditorTab],
     );
-
-    const toolButtonClass = (active: boolean) =>
-        `w-9 h-9 rounded-md border flex items-center justify-center text-xs transition-colors ${
-            active
-                ? "border-primary bg-primary/20 text-fg"
-                : "border-edge text-fg-muted hover:border-primary hover:text-fg hover:bg-fill"
-        } disabled:opacity-50 disabled:cursor-not-allowed`;
 
     useSurfaceInteractionCropDimming({
         surfaceId,
@@ -724,22 +737,20 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
 
                     {/* Top toolbar */}
                     <div className="absolute top-3 right-3 z-20 flex items-center gap-2 rounded-md border border-edge-strong bg-surface-canvas/80 px-2 py-1">
-                        <button
-                            type="button"
-                            className={toolButtonClass(tool.kind === "select")}
+                        <SurfaceEditorToolbarButton
+                            active={tool.kind === "select"}
                             onClick={handleSelectTool}
                             data-tip={t("uiEditor.editor.selectTool")} aria-label={t("uiEditor.editor.selectTool")}
                         >
                             <MousePointer2 className="w-4 h-4" />
-                        </button>
-                        <button
-                            type="button"
-                            className={toolButtonClass(tool.kind === "pan")}
+                        </SurfaceEditorToolbarButton>
+                        <SurfaceEditorToolbarButton
+                            active={tool.kind === "pan"}
                             onClick={handlePanTool}
                             data-tip={t("uiEditor.editor.panTool")} aria-label={t("uiEditor.editor.panTool")}
                         >
                             <Move className="w-4 h-4" />
-                        </button>
+                        </SurfaceEditorToolbarButton>
                         <SurfaceZoomMenu
                             scale={viewport.scale}
                             fit={zoom.fit}
@@ -773,15 +784,13 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
                             safeAreaId={previewSafeAreaId}
                         />
                         <div className="mx-1 h-6 w-px bg-fill" />
-                        <button
-                            type="button"
-                            className={toolButtonClass(false)}
+                        <SurfaceEditorToolbarButton
                             onClick={handleStartCurrentSurface}
                             data-tip={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")} aria-label={isComponentEdit ? t("uiEditor.editor.componentDefinitionHint") : t("uiEditor.editor.openInDevMode")}
                             disabled={!surfaceId || isComponentEdit}
                         >
                             <Play className="w-4 h-4" />
-                        </button>
+                        </SurfaceEditorToolbarButton>
                     </div>
 
                     {activeBindingSession ? (

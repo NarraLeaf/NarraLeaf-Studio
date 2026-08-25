@@ -9,7 +9,8 @@ import { FocusContext } from "@/lib/workspace/services/ui";
 import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from "../ui/actionMenuModel";
 import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useTranslation } from "@/lib/i18n";
 import { WorkspaceMenuAction } from "@shared/types/menu";
 import { TooltipGroup } from "@/lib/tooltip";
@@ -30,8 +31,9 @@ const ACTIONS_OWNED_BY_RUN_CONTROL: ReadonlySet<string> = new Set<string>([Works
 
 interface ActionBarProps {
     /**
-     * Drop every dropdown menu, keeping only the standalone icon buttons. Used on macOS, where
-     * the menus live on the system menu bar instead (see `useNativeMenuSync`).
+     * Drop every dropdown menu, keeping only the standalone icon buttons. Set by whoever is drawing
+     * the menus instead: the system menu bar on macOS (see `useNativeMenuSync`), or the hamburger
+     * that `ui.menuBar.mode` puts at the far left of the title bar (`MainMenuButton`).
      */
     hideAllGroups?: boolean;
 }
@@ -53,9 +55,14 @@ interface ActionBarProps {
  */
 export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     const { t } = useTranslation();
-    const { actions, actionGroups } = useRegistry();
+    const { actions } = useRegistry();
+    // Folded, so a panel that contributes to the Edit menu lands inside it rather than opening a
+    // second dropdown that reads the same word (`useTitleBarActionGroups`).
+    const actionGroups = useTitleBarActionGroups();
     const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    // The kind, not merely "frozen": one of them leaves the operations main starts alone, and the
+    // policy below is what knows which actions those are.
+    const freeze = useWorkspaceFreezeReason();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // Subscribe to focus changes
@@ -96,8 +103,8 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
             {standaloneActions.map((action) => {
                 // Computed for the render only; the registered object is left exactly as it was, so
                 // thawing restores it without anyone having to remember what it used to be.
-                const frozenOut = isActionFrozenOut(action, frozen);
-                const disabled = resolveFrozenActionDisabled(action, frozen);
+                const frozenOut = isActionFrozenOut(action, freeze);
+                const disabled = resolveFrozenActionDisabled(action, freeze);
                 const stateClasses = disabled
                     ? "text-fg-subtle cursor-not-allowed"
                     : "text-fg-muted hover:bg-fill hover:text-fg";

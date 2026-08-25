@@ -17,6 +17,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_DATA_JSON_GET,
+    BLUEPRINT_NODE_TYPE_DATA_MEMO,
     BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
@@ -34,6 +35,7 @@ type Element = {
     childrenIds?: string[];
     props?: Record<string, unknown>;
     extra?: Record<string, unknown>;
+    valueBindings?: Record<string, unknown>;
 };
 type Surface = { id: string; name: string; kind: string; rootElementId: string; settings?: Record<string, unknown> };
 type GraphNode = { id: string; type: string; params?: Record<string, unknown> };
@@ -110,7 +112,29 @@ function onlyGraph(blueprint: Blueprint) {
         }
         return false;
     };
-    return { nodes, edges, byType, wired, reaches };
+    /**
+     * Whether a value reaches a pin, allowed to pass through a Memo on the way.
+     *
+     * Narrower than {@link reaches}: only a Memo may sit in between, and only by taking the value in
+     * and handing the same one back. It is there because the pressed index is read twice - once as
+     * the answer, once to pick which sound to play - and a pure pin may feed only one consumer.
+     */
+    const carries = (from: { nodeId: string; port: string }, to: { nodeId: string; port: string }): boolean => {
+        if (wired(from, to)) {
+            return true;
+        }
+        return edges.some(edge => {
+            if (edge.from.nodeId !== from.nodeId || edge.from.port !== from.port) {
+                return false;
+            }
+            const hop = nodes[edge.to.nodeId];
+            if (hop?.type !== BLUEPRINT_NODE_TYPE_DATA_MEMO || edge.to.port !== "value") {
+                return false;
+            }
+            return carries({ nodeId: hop.id, port: "result" }, to);
+        });
+    };
+    return { nodes, edges, byType, wired, reaches, carries };
 }
 
 /** Pin ids the shipping catalogue declares for a node type. */
@@ -142,7 +166,7 @@ describe("the Confirm page in the starter template", () => {
         expect(list.props?.itemsBinding).toEqual({ kind: "pageProp", key: "buttons" });
         expect(list.props?.repeatDirection).toBe("horizontal");
         // Keyed by index, because two buttons may well read the same.
-        expect(list.props?.itemKeyPath).toBe("index");
+        expect(list.props?.itemKeyFieldId).toBe("index");
         const template = (list.childrenIds ?? []).map(id => document.elements[id]);
         expect(template.map(element => element.extra?.listSlot)).toEqual(["itemTemplate"]);
     });
@@ -152,7 +176,7 @@ describe("the Confirm page in the starter template", () => {
         const blueprint = blueprints.find(
             candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === list.id,
         )!;
-        const { byType, wired, reaches } = onlyGraph(blueprint);
+        const { byType, carries, reaches } = onlyGraph(blueprint);
         const click = byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)!;
         const close = byType(BLUEPRINT_NODE_TYPE_LAYER_CLOSE_SELF)!;
         expect(pinIds(BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK)).toEqual(expect.arrayContaining(["then", "index"]));
@@ -161,14 +185,15 @@ describe("the Confirm page in the starter template", () => {
         // answers do not sound alike, so a branch and a cue sit between the press and the close.
         // Every route still ends there - an answer that closed nothing would be a dead dialog.
         expect(reaches({ nodeId: click.id, port: "then" }, close.id)).toBe(true);
-        expect(wired({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
+        expect(carries({ nodeId: click.id, port: "index" }, { nodeId: close.id, port: "result" })).toBe(true);
     });
 
-    it.each([
-        ["message", 0, BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS, "message"],
-        ["button label", 1, BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS, "text"],
-    ])("draws its %s from a value binding rather than a literal", (_name, textIndex, sourceType, jsonPath) => {
-        const text = pageElements().filter(element => element.type === "nl.text")[textIndex]!;
+    /**
+     * The message is not a row's own data - it belongs to the whole layer - so it is still read from
+     * the page props by a graph, which is the shape a value that has to be computed always takes.
+     */
+    it("draws its message from the props the layer was shown with", () => {
+        const text = pageElements().filter(element => element.type === "nl.text")[0]!;
         // Blank on the element, so nothing is left on screen when the binding is what speaks.
         expect(text.props?.text).toBe("");
         const blueprint = blueprints.find(
@@ -176,12 +201,31 @@ describe("the Confirm page in the starter template", () => {
         )!;
         expect(blueprint.owner.propPath).toBe("text");
         const { byType, wired } = onlyGraph(blueprint);
-        const source = byType(sourceType as string)!;
+        const source = byType(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)!;
         const read = byType(BLUEPRINT_NODE_TYPE_DATA_JSON_GET)!;
         const value = byType(BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE)!;
         expect(byType(BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT)).toBeDefined();
-        expect(read.params?.path).toBe(jsonPath);
+        expect(read.params?.path).toBe("message");
         expect(wired({ nodeId: source.id, port: "props" }, { nodeId: read.id, port: "json" })).toBe(true);
         expect(wired({ nodeId: read.id, port: "result" }, { nodeId: value.id, port: "value" })).toBe(true);
+    });
+
+    /**
+     * The button label is a row's own data, so it is a field of the declared shape and nothing else -
+     * no graph, no dotted path typed into a pin. That the button rows have a declared shape at all is
+     * the other half of the claim: a list that declares none can offer nothing to bind to.
+     */
+    it("draws its button label from a field of the row", () => {
+        const list = pageElements().find(element => element.type === "nl.list")!;
+        expect(list.props?.itemStructId).toBe("nl.confirmButton");
+        const text = pageElements().filter(element => element.type === "nl.text")[1]!;
+        expect(text.props?.text).toBe("");
+        expect(text.valueBindings?.text).toEqual({ kind: "listItemField", fieldId: "text" });
+        // And no blueprint left behind saying the same thing a second time.
+        expect(
+            blueprints.some(
+                candidate => candidate.owner.kind === "widgetValue" && candidate.owner.elementId === text.id,
+            ),
+        ).toBe(false);
     });
 });

@@ -8,7 +8,13 @@ export interface SliderProps extends Omit<React.InputHTMLAttributes<HTMLInputEle
     onValueCommit?: (value: number) => void;
     min?: number;
     max?: number;
-    step?: number;
+    /**
+     * The increment the track moves on. `"any"` is the HTML keyword for a continuous track, and is
+     * how a caller shows a value that does not sit on its own grid: with a numeric step the browser
+     * rounds the thumb to the nearest allowed value, so a paired number box would read one figure
+     * while the thumb stood at another.
+     */
+    step?: number | "any";
     disabled?: boolean;
 }
 
@@ -75,6 +81,7 @@ export function useSliderDraft(value: number, onCommit: (next: number) => void):
     value: number;
     onValueChange: (next: number) => void;
     onValueCommit: (next: number) => void;
+    clear: () => void;
 } {
     const [draft, setDraft] = useState<number | null>(null);
     return {
@@ -84,5 +91,12 @@ export function useSliderDraft(value: number, onCommit: (next: number) => void):
             setDraft(null);
             onCommit(next);
         },
+        /**
+         * Drop the draft without writing anything.
+         *
+         * For the gesture that ends in no number at all - a box emptied to hand the value back to
+         * its default. Without it the control would keep showing the figure that was abandoned.
+         */
+        clear: () => setDraft(null),
     };
 }

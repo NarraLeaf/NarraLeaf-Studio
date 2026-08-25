@@ -12,6 +12,10 @@ export const story = {
         emptyStories: "このプロジェクトにストーリーがない",
         storyActions: "ストーリーの操作",
         setDefault: "既定にする",
+            dlc: {
+                title: "所属",
+                base: "ゲーム本体",
+            },
         outline: "アウトライン",
         newChapter: "新規チャプター",
         newSceneInChapter: "チャプターに新規シーン",
@@ -100,6 +104,41 @@ export const story = {
             speakerUnresolved: "この行はキャラクターと結びついていないので、元の話者名を残した。文のほうは変わっている",
         },
     },
+    // ライブセッションが理由で動けない操作が見せる文。セッションが運べるストーリー操作は決まった
+    // 一組だけで、その外の編集はこの機械にだけ書かれて他のどこにも届かない。どの画面でも取り上げ
+    // られるものは同じなので、面ごとに言い訳を書き分けず、一つの文で言う。
+    live: {
+        editUnavailable: "ライブセッション中は使えない。セッションを抜けてから変更する",
+        // 他の人が書いている行に付く印のホバー文言。名前を出す。印の横に名前を置く幅は
+        // なく、切り詰めた名前では誰か分からない。
+        rowClaimed: "{name} がこの行を書いている",
+        // セッションのホストが受け付けなかった変更。作者が打った文字は画面にそのまま
+        // 残す——拒否された行は、画面にあるものがその唯一の写しなので——ので、
+        // ここでは起きたことだけを言う。
+        refusedRowClaimed: "{name} がその行を書いている。この変更は反映されていない",
+        refusedRowGone: "その行はもうない。この変更は反映されていない",
+        refusedAnchorGone: "移動先の行はもうない。この変更は反映されていない",
+        refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
+        refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
+        refusedTooLarge: "そのキャラクターは大きすぎてリアルタイムセッションで共有できない。この変更は反映されていない",
+        refusedDocumentNotShared: "リアルタイムセッションはそのドキュメントを共有しない。この変更は反映されていない",
+        refusedNotInSession: "この端末はもうセッションにいない",
+        refusedUnknownOp: "セッションはこの変更を受け付けなかった",
+        // 直前の取り消し・やり直しが何も送らなかった理由。戻すための操作が作れない
+        // 状態を一つずつ名指しする。
+        undoNotMine: "その手順は他の人のもの",
+        undoNoRecord: "その手順はもう元に戻せない",
+        undoSceneGone: "そのシーンはもうない",
+        undoRowGone: "その行はもうない",
+        undoRowRestored: "その行はシーンに戻っている",
+        undoContainerGone: "その行が入っていたブロックはもうない",
+        undoAnchorGone: "その行が元にあった場所はもうない",
+        undoContainerFilled: "そのブロックには別の行が入っている",
+        undoSubtreeLost: "中にあった行は戻せない",
+        undoChaptersChanged: "チャプターがその手順の記録と一致しない",
+        undoCharacterGone: "そのキャラクターは存在しない",
+        undoCharacterRestored: "そのキャラクターは名簿に戻っている",
+    },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の
     // コードをキーにしているので、新しいコードは、生の識別子として作者に届く前に突き合わせの
@@ -135,6 +174,7 @@ export const story = {
             customTransition: "この切り替えは、スクリプトが名前を持たないプロパティを含む",
             effectProps: "この効果は、スクリプトが名前を持たないプロパティを含む",
             unresolvedRef: "この行が指しているものはもう無い",
+            endingPage: "このエンディングは自分のページを指定しており、スクリプトはそれを持ち運ばない",
             unknownPayload: "この種類の行はスクリプトがまだ扱わない",
         },
         parse: {
@@ -210,6 +250,32 @@ export const story = {
         },
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
+        // ライブセッション中に、別のプロジェクトから貼り付けた行。セッションごとに一度だけ出す。
+        sessionRowsOnly: "ライブセッション中は、他のプロジェクトの行だけが入る。翻訳・ボイス・アセットを持ち込むには、セッションを抜けてから貼り付け直す",
+        translationsCarried: {
+            other: "翻訳 {count} 件を引き継いだ",
+        },
+        translationsDropped: {
+            other: "見送った翻訳 {count} 件",
+        },
+    },
+    // コピー元とは別のプロジェクトに貼り付けた行。行が入ったあとに、結果だけを一度知らせる。
+    crossProject: {
+        pasted: {
+            other: "{count} 行を貼り付けた",
+        },
+        pastedFrom: {
+            other: "{project} から {count} 行を貼り付けた",
+        },
+        speakerNames: {
+            other: "キャラクター未設定 {count} 行",
+        },
+        imported: {
+            other: "アセット {count} 件を取り込んだ",
+        },
+        unresolved: {
+            other: "未解決の参照 {count} 件",
+        },
     },
     flow: {
         tabTitle: "シーンフロー",
@@ -261,9 +327,11 @@ export const story = {
             noEntryScene: "開始シーンが無いので、ルートも無い",
             noRoutes: "ルートがない",
             noDecisions: "選択なし",
-            // 道はエンディングでないシーンでも止まりうるし、それをエンディングと呼ぶのは嘘になる。
+            // まだ名前の無いエンディング行。行もそこへ至る道も実在するので、一覧に出す呼び名は要る。
+            endingUnnamed: "名前の無いエンディング",
+            // 道はエンディングでない場所でも止まりうるし、それをエンディングと呼ぶのは嘘になる。
             stopsHere: "ここで止まる",
-            stopsHereTitle: "道はここで止まるが、ここはエンディングではない。訪れたシーンへ戻ったか、選択肢の先に何も書かれていない",
+            stopsHereTitle: "道はここで止まるが、エンディングには届いていない。訪れたシーンへ戻ったか、選択肢の先に何も書かれていないか、出口も /ending 行も無いシーン",
             diagnostics: {
                 unreachableEndings: {
                     other: "どのルートも届かないエンディング {count} 件",
@@ -367,6 +435,26 @@ export const story = {
         clickHint: "プレイヤーがクリックするまで待つ",
         remove: "停止を取り除く",
     },
+    /**
+     * 値を選ぶ三つの行内マーク：文字の脇に置く傍点、その範囲の文字サイズ、そして打ち出す速度。
+     */
+    textType: {
+        emphasis: "傍点",
+        emphasisNone: "なし",
+        emphasisDot: "行の上・黒丸",
+        emphasisCircle: "行の上・白丸",
+        emphasisSesame: "行の上・ゴマ",
+        emphasisUnderDot: "行の下・黒丸",
+        /** 傍点のボタンで見本に使う文字。 */
+        emphasisSample: "文",
+        size: "文字サイズ",
+        sizeSmaller: "小さく",
+        sizeLarger: "大きく",
+        sizeUnit: "段",
+        speed: "表示速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "行と同じ",
+    },
     ruby: {
         title: "ルビ",
         placeholder: "読み",
@@ -375,12 +463,18 @@ export const story = {
     /**
      * 印の付いた語を右クリックしたときに開くパネル。
      *
-     * `addToDictionary` はプロジェクトの辞書であって、この機体のものではない：語はリポジトリと一緒に旅をするので、同じ台本を書く全員が同じ綴りになる。
+     * `addToDictionary` はプロジェクトの辞書であって、このマシンのものではない：語はリポジトリと一緒に旅をするので、同じ台本を書く全員が同じ綴りになる。
      */
     spellcheck: {
         checking: "候補を探している…",
         noSuggestions: "候補なし",
         addToDictionary: "プロジェクトの辞書に追加",
+    },
+    /** 辞書の印を右クリックしたときのパネル。操作は一つ、その背後に項目。 */
+    dictionary: {
+        replaceWith: "{term} に置換",
+        applyReading: "ルビ {reading} を振る",
+        openEntry: "辞書で編集",
     },
     interpolation: {
         title: "値を差し込む",
@@ -402,6 +496,8 @@ export const story = {
         insertExpression: "式による変更を差し込む",
         ruby: "ルビ",
         rubyHint: "ルビ（振りたい語を選んでから）",
+        type: "文字",
+        typeHint: "文字（設定する語を選んでから）",
         tools: "リッチテキストの道具",
         pauseClick: "停止（クリックを待つ）",
         pauseSeconds: "停止 {seconds} 秒",
@@ -467,6 +563,7 @@ export const story = {
         target: "対象",
         lineText: "テキスト",
         labelName: "ラベル",
+        endingName: "エンディング",
         scene: "シーン",
         track: "オーディオトラック",
         appTag: "ビルドバリアント",
@@ -527,6 +624,8 @@ export const story = {
         delay: "遅延秒数",
         repeat: "繰り返し回数",
         repeatDelay: "繰り返し間隔",
+        repeatType: "繰り返し方向",
+        stopLoop: "ループ停止",
         fromProps: "開始プロパティ",
         conceal: "退場",
     },
@@ -539,6 +638,10 @@ export const story = {
      * 綴りを落とすので、訳していない項目は必ずパーサが受け付ける語に落ちる。
      */
     enumValue: {
+        // 各回の再生方向（`repeatType=`）。
+        loop: "最初から",
+        reverse: "逆再生",
+        mirror: "往復",
         // 天候シード。`/vfx` のソース欄では予約語。
         snow: "雪",
         rain: "雨",
@@ -547,6 +650,7 @@ export const story = {
         fade: "フェード",
         // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
         dissolve: "ディゾルブ",
+        "fade-in": "フェードイン",
         slide: "スライド",
         "slide-left": "左スライド",
         "slide-right": "右スライド",
@@ -670,6 +774,7 @@ export const story = {
                 data: "変数",
                 utils: "その他",
                 invalid: "不正な行",
+                empty: "空行",
             },
         },
     },
@@ -805,6 +910,8 @@ export const story = {
         cutPointInactiveTitle: "この行が終わらせていたバリアントは削除されたので、何も終わらせていない",
         tempSpeaker: "名前だけ",
         createCharacter: "キャラクター「{name}」を作成",
+        // 上の行が灰色のときと、貼り付けウィザードの「新しいキャラクター」に出る。どちらも同じ申し出。
+        createCharacterUnavailable: "ライブセッション中は使えない。既存のキャラクターを選ぶ",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
         voiceManage: "ボイスの表を開く",
         voicePlay: "ボイスのテイクを再生",
@@ -974,10 +1081,10 @@ export const story = {
         skin: { label: "スキン", detail: "ランタイムが描くキャラクターが着るスキンを決める" },
         rename: { label: "改名", detail: "キャラクターが話すときの表示名を変える" },
         say: { label: "台詞", detail: "台詞を 1 行" },
-        image: { label: "画像", detail: "舞台に画像を置く" },
-        text: { label: "テキスト", detail: "舞台にテキストを置く" },
-        video: { label: "動画", detail: "舞台に動画を置く" },
-        vfx: { label: "環境演出", detail: "全画面でループする重ね描き。花びら、雨、埃、光" },
+        image: { label: "画像", detail: "舞台に画像を宣言する。表示は /show" },
+        text: { label: "テキスト", detail: "舞台にテキストを宣言する。表示は /show" },
+        video: { label: "動画", detail: "舞台に動画を宣言する。表示は /show" },
+        vfx: { label: "環境演出", detail: "全画面でループする重ね描きを宣言。花びら、雨、埃、光" },
         layer: { label: "レイヤー", detail: "描画のレイヤーを作る" },
         swap: { label: "差し替え", detail: "オブジェクトの画像やテキストを入れ替える" },
         play: { label: "再生", detail: "動画を再生する" },
@@ -1016,6 +1123,7 @@ export const story = {
         // 切る行為ではなく、できあがる行の名前を付ける。「カット」だけでは編集の切り取りに読める。
         // 名前が背負えない半分、すなわちこの行が 1 つのビルドだけのものだという事実は詳細に置く。
         cut: { label: "カットポイント", detail: "あるビルドバリアントのストーリーをこの行で終わらせる。他のビルドにこの行は入らない" },
+        ending: { label: "エンディング", detail: "この行でストーリーを終わらせ、到達したエンディングを記録する" },
         blueprint: { label: "ブループリント", detail: "ストーリーアクションブループリントを実行する" },
         // 「シーンをまたいで残る」は詳細の行に置く。どのコマンドにも詳細はあり、スラッシュメニューと
         // コマンドの手引きで、作者がカメラについて最初に読む場所がそこだから。
@@ -1064,15 +1172,18 @@ export const story = {
         goto: "ラベルへ",
         break: "中断",
         cut: "カットポイント",
+        ending: "エンディング",
         jump: "ジャンプ",
         note: "メモ",
         invalid: "不正",
+        empty: "空行",
     },
     emptyPlaceholder: {
         narration: "ダブルクリックで地の文を入力",
         option: "ダブルクリックで選択肢の文を入力",
         choice: "ダブルクリックで選択の問いかけを入力",
         note: "ダブルクリックでメモを入力",
+        blank: "クリックして入力",
         text: "ダブルクリックでテキストを入力",
     },
     characterName: {
@@ -1129,9 +1240,11 @@ export const story = {
         // 名指しできるバリアントが無い。行が持つ id に応えるものが無いか、読み手にバリアントの一覧が
         // 無いか。どちらでも真であることだけを言う。削除されたと名指しするのは、一覧を持つ行の印のほう。
         cutUnknown: "カットポイント",
+        ending: "エンディング {name}",
         jump: "{scene} へジャンプ",
         note: "メモ",
         invalid: "不正なコマンド",
+        empty: "空行",
         sceneUnassigned: "未指定",
         sceneUnknown: "不明なシーン",
         variableFallback: "変数",
@@ -1152,6 +1265,9 @@ export const story = {
         duplicate: "複製",
         disable: "無効にする",
         enable: "有効にする",
+        bindSpeaker: {
+            other: "{count} 行の話者を割り当て",
+        },
         playFromHere: "ここから再生",
         openInspector: "インスペクタを開く",
         delete: "削除",

@@ -69,6 +69,46 @@ Three failure modes, all of which have shipped and all of which read as machine-
 Chinese carries two extra rules: no 「这个/那个」 where 「该/本」 is meant, and no sentence-final
 particles (「了」「吧」「呢」) doing tone work.
 
+## 3b. Shape
+
+Three shapes. A string that takes the wrong one reads as the wrong tier.
+
+- **A title is a noun phrase.** Not a sentence, not a question, and it ends in nothing.
+  *"Showing one change."* → *"Showing one change"*. *"What changed here?"* → *"Changes in this
+  file"*.
+- **A pair of values is drawn as a pair**, `from → to`, never folded into prose. *"The width
+  changed from 320 to 640"* → *"Width (320 → 640)"*. One arrow, one row; a second pair belongs on
+  a second row, because two arrows on one line cannot be read at any width.
+- **No roadmap.** The interface describes the product that is installed. No "not yet", "coming
+  soon", "in a future version", "for now". A promise about the future is still a promise when it is
+  negative, and it is wrong the moment the next version ships. *"Live2D models cannot be imported
+  yet."* → *"Live2D models are not imported."*
+
+The interface also never apologises and never explains itself. A failure is a state, not an
+event that happened to the author: *"Sorry, we could not read this file - it may be corrupted,
+which means the comparison is incomplete."* → *"This file could not be read."*
+
+## 3c. Three languages, not one and two translations
+
+English, Chinese and Japanese are each written for a reader who has only that one. A string that
+reads as a translation of another has failed, however faithful it is.
+
+- **Punctuation is the language's own.** An English expectation is a sentence and ends in a full
+  stop. A Chinese or Japanese hint does not: 「只比较了总数，没有比较内容本身」,
+  「比べたのは合計だけで、中身そのものは比べていない」. Labels end in nothing, in all three.
+- **Japanese is plain form (常体), not です・ます.** The interface states facts; it does not address
+  the author politely. *「変更はありません」* → *「変更はない」*.
+- **Sentence structure does not carry across.** Translate the fact, then write the sentence in the
+  target language. A Japanese string built by walking the English clause order is the commonest way
+  this rule is broken.
+- **Terms are fixed, and the catalogue is the record of them**: 资产 / アセット for an asset,
+  版本 / バージョン for a repository version, バリアント for a build variant. Count the
+  catalogue before coining a synonym; the term is almost always already in it.
+
+**Before writing a new string, read the keys either side of it** in `catalog/en/<namespace>.ts` and
+copy their shape. Nearly every string here has a neighbour answering the same kind of question, and
+matching it is faster than deciding the shape again, and more consistent than deciding it well.
+
 ## 4. Naming a control
 
 Name a control by **the state it produces**, and check that the name cannot be read as an action on
@@ -149,7 +189,8 @@ topics; use `related` to join them.
 ## 7. Adding a topic
 
 1. Write `title` and `body` under `help.topics.<id>` in `src/shared/i18n/catalog/en/help.ts`, then
-   the same keys in `zh/help.ts`. The parity test fails if one side is missing.
+   the same keys in `zh/help.ts` and `ja/help.ts`. The parity test fails if one of them is
+   missing.
 2. Add the entry to `HELP_TOPICS` in `src/renderer/lib/help/helpTopics.ts`: its section, and
    optionally `shortcuts` (keybinding catalog ids, rendered as chords) and `related`.
 3. Tag the surface it describes with `data-help-topic="<id>"` so `F1` finds it. Panel headers can
@@ -169,3 +210,16 @@ Before committing author-facing text, read it back and ask:
   register (§3a).
 - Could a nervous author read this as "my work is about to be overwritten"? Rename.
 - Does the icon agree with the label?
+Two of those questions are mechanical, and are worth running over any file of new strings:
+
+```sh
+# An em dash or a Chinese dash inside a string value (§3). Legitimate only in a format example.
+grep -nE '"[^"]*(—|——)[^"]*"' src/shared/i18n/catalog/*/*.ts
+
+# A string describing its own implementation.
+grep -nE '"[^"]*(the engine|internally|because |which means)' src/shared/i18n/catalog/*/*.ts
+```
+
+A hit on the second is not a wording question. The string is explaining a mechanism (§3), and the
+fix is to delete that clause rather than to reword it.
+

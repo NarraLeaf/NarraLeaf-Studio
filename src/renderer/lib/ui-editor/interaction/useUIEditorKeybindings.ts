@@ -38,7 +38,7 @@ function getUiSelection(stateService: UIEditorStateService, surfaceId: string): 
     if (!isUIElementSelection(sel)) {
         return null;
     }
-    const data = sel.data as UIElementSelection;
+    const data = sel.data;
     return data.surfaceId === surfaceId ? data : null;
 }
 
@@ -121,7 +121,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
                 return;
             }
             const s = getUiSelection(stateService, surfaceId);
-            uiEditorPasteAfterSelection(documentService, localBlueprint, stateService, surfaceId, s);
+            void uiEditorPasteAfterSelection(documentService, localBlueprint, stateService, surfaceId, s);
         };
         const duplicate = () => {
             if (!documentService || !localBlueprint || !stateService || isTypingInField()) {

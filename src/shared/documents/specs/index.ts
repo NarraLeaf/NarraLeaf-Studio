@@ -7,8 +7,10 @@ import {audioTracksSpec} from "./audioTracks";
 import {brandSpec} from "./brand";
 import {charactersSpec} from "./characters";
 import {dictionarySpec} from "./dictionary";
+import {dlcSpec} from "./dlc";
 import {localizationDocumentSpec} from "./localization";
 import {localizationKeysSpec} from "./localizationKeys";
+import {projectConfigSpec} from "./project";
 import {saveSchemaSpec} from "./saveSchema";
 import {storyDocumentSpec} from "./story";
 import {uiDocumentSpec} from "./uiDocument";
@@ -27,6 +29,12 @@ export {LOCALIZATION_DOCUMENT_PATH, localizationDocumentSpec} from "./localizati
 export {LOCALIZATION_KEYS_DOCUMENT_PATH, localizationKeysSpec} from "./localizationKeys";
 export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
 export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
+export {DLC_DOCUMENT_PATH, dlcSpec} from "./dlc";
+export {
+    LEGACY_PROJECT_CONFIG_DOCUMENT_PATH,
+    PROJECT_CONFIG_DOCUMENT_PATH,
+    projectConfigSpec,
+} from "./project";
 export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
 export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
 export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
@@ -46,17 +54,19 @@ export {
  *
  * Not every spec here is adopted to the same degree, and the difference is worth knowing before
  * reaching for one. The first five are read AND written through their spec by the service that owns
- * them, and `characters` joined them (`CharacterService`). `story`, `assets-metadata`, `ui-document`
- * and `ui-graphs` are **read-side only**: they exist so version control can diff the biggest things
- * in a project, their `parse` is a shape gate rather than a migration, and their `serialize` throws
- * by design. Each says so in its own module.
+ * them, and `characters` joined them (`CharacterService`). `project`, `story`, `assets-metadata`,
+ * `ui-document` and `ui-graphs` are **read-side only**: they exist so version control can diff the
+ * biggest things in a project, their `parse` is a shape gate rather than a migration, and their
+ * `serialize` throws by design. Each says so in its own module.
  */
 export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
+    projectConfigSpec,
     appTagsSpec,
     assetSetsSpec,
     audioTracksSpec,
     brandSpec,
     dictionarySpec,
+    dlcSpec,
     saveSchemaSpec,
     variableRegistrySpec,
     voiceDocumentSpec,

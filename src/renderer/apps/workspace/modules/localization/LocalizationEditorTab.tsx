@@ -12,7 +12,8 @@
  * Comments in English per project convention.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { defaultRangeExtractor, useVirtualizer } from "@tanstack/react-virtual";
 import {
     BookOpenText,
     CheckCircle2,
@@ -45,8 +46,10 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
+import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
-import { AddKeyRow, ReviewRow, TranslateRow, type TranslationTableRow } from "./TranslationRows";
+import { TranslationClaimsProvider, useTranslationClaimHold } from "./localizationLiveSession";
+import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
 type RowFilter = "all" | "untranslated" | "stale" | "completed";
@@ -54,6 +57,17 @@ type ReviewFilter = "all" | "reviewed" | "unreviewed";
 
 /** Special source-picker value alongside story ids (UI texts + named keys). */
 const UI_SOURCE_VALUE = "__ui__";
+
+/**
+ * Height estimates for the windowed list, in the order a row is cheapest to guess at.
+ *
+ * Only the first frame and the scrollbar depend on them - every mounted row measures itself - so
+ * they are the resting height of each shape rather than a number to keep in step with the markup.
+ */
+const GROUP_ROW_HEIGHT_PX = 26;
+const TRANSLATE_ROW_HEIGHT_PX = 96;
+const REVIEW_ROW_HEIGHT_PX = 126;
+const ADD_KEY_ROW_HEIGHT_PX = 44;
 
 /** Group keys for the synthetic groups a source may carry. */
 const CHARACTERS_GROUP_KEY = "__characters__";
@@ -108,6 +122,10 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         () => (context && isInitialized ? context.services.get<UIDocumentService>(Services.UIDocument) : null),
         [context, isInitialized],
     );
+    const liveService = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
@@ -118,6 +136,32 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
     const [mode, setMode] = useState<EditorMode>("translate");
     const [filter, setFilter] = useState<RowFilter>("all");
     const [reviewFilter, setReviewFilter] = useState<ReviewFilter>("unreviewed");
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    /**
+     * The windowed item currently holding the caret, kept mounted wherever it scrolls to.
+     *
+     * A translation is typed into the row, and a row that unmounts takes the caret with it - so a
+     * translator who nudges the wheel mid-sentence would be typing into nothing. The text itself is
+     * safe either way (every keystroke is already written through to the localization document), but
+     * the focus is not, and losing it mid-line is the same defect to whoever is doing the work.
+     */
+    const [focusedItemIndex, setFocusedItemIndex] = useState<number | null>(null);
+    /**
+     * The one row whose translation is open in the inline field, and where its caret went in.
+     *
+     * One at a time, the way the story editor opens one row at a time: the field is a
+     * contentEditable with a selection listener and an undo stack, and a table of three hundred of
+     * them would pay for all of it while only one can ever hold the caret.
+     */
+    const [inlineEdit, setInlineEdit] = useState<{ unitId: string; caret: number | null } | null>(null);
+    /**
+     * The line whose plain box holds the caret, for the rows that have no inline field.
+     *
+     * Beside {@link inlineEdit} rather than folded into it: that one carries where the caret went in
+     * and drives which row is drawn as a field, and a plain box needs neither. What both feed is the
+     * claim - a session holds the line somebody is inside, whichever shape of row it is.
+     */
+    const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -250,6 +294,8 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 const storyRows: TableRow[] = localizationService.extractRows(document).map(row => ({
                     unitId: row.unitId,
                     sourceText: row.sourceText,
+                    ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
+                    ...(row.sourceRuns ? { sourceRuns: row.sourceRuns } : {}),
                     interpolationCount: row.interpolationCount,
                     groupKey: row.sceneId,
                     groupName: row.sceneName,
@@ -397,6 +443,115 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         ];
     }, [rowsByGroup, showKeysExtras, t]);
 
+    /**
+     * Groups and rows flattened into one windowed list.
+     *
+     * This table is a superset of the voice table - narration, dialogue, choices, interface keys,
+     * character names and scene names all land here, where the voice table takes only the spoken
+     * subset - so a 30k-line game put tens of thousands of rows in the DOM, each with a textarea of
+     * its own. Same shape as the voice table it mirrors: fixed estimates, absolutely positioned
+     * items, measured once mounted (a wrapped line is taller than a short one, and the autosizing
+     * textarea settles after mount). The group header gives up `position: sticky` in the trade,
+     * because a sticky child of an absolutely positioned item has nothing to stick to.
+     */
+    const flatItems = useMemo(() => {
+        const items: ({ key: string } & (
+            | { kind: "group"; name: string }
+            | { kind: "row"; row: TableRow }
+            | { kind: "addKey" }
+        ))[] = [];
+        for (const group of groupsToRender) {
+            items.push({
+                kind: "group",
+                key: `g:${group.groupKey}:${group.rows[0]?.unitId ?? ""}`,
+                name: group.groupName,
+            });
+            for (const row of group.rows) {
+                items.push({ kind: "row", key: `r:${row.unitId}`, row });
+            }
+            if (group.groupKey === KEYS_GROUP_KEY && showKeysExtras) {
+                items.push({ kind: "addKey", key: "add-key" });
+            }
+        }
+        return items;
+    }, [groupsToRender, showKeysExtras]);
+
+    const virtualizer = useVirtualizer({
+        count: flatItems.length,
+        getScrollElement: () => scrollRef.current,
+        estimateSize: index => {
+            const entry = flatItems[index];
+            if (!entry || entry.kind === "group") {
+                return GROUP_ROW_HEIGHT_PX;
+            }
+            if (entry.kind === "addKey") {
+                return ADD_KEY_ROW_HEIGHT_PX;
+            }
+            return mode === "review" ? REVIEW_ROW_HEIGHT_PX : TRANSLATE_ROW_HEIGHT_PX;
+        },
+        overscan: 12,
+        getItemKey: index => flatItems[index]?.key ?? index,
+        // The row being typed into stays in the window whatever the scroll position says. Sorted
+        // because the virtualiser lays items out in the order it is handed them.
+        rangeExtractor: range => {
+            const indexes = defaultRangeExtractor(range);
+            if (focusedItemIndex === null || focusedItemIndex >= flatItems.length || indexes.includes(focusedItemIndex)) {
+                return indexes;
+            }
+            return [...indexes, focusedItemIndex].sort((a, b) => a - b);
+        },
+    });
+
+    /**
+     * A filter change is a different page, so the scroll position from the old one does not survive it.
+     *
+     * The list shrinks under a scroller whose retained `scrollTop` can then sit entirely below the
+     * surviving rows, which shows an empty page with a working filter on it - the one thing a filter
+     * must never look like. Switching source or mode is the same event by a different name.
+     */
+    useEffect(() => {
+        if (scrollRef.current) {
+            scrollRef.current.scrollTop = 0;
+        }
+        setFocusedItemIndex(null);
+    }, [sourceValue, mode, filter, reviewFilter]);
+
+    /** Which windowed item the caret is in, read off the wrapper the virtualiser already indexes. */
+    const handleFocusCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+        const host = (event.target as HTMLElement).closest<HTMLElement>("[data-index]");
+        const index = host ? Number(host.dataset.index) : Number.NaN;
+        setFocusedItemIndex(Number.isFinite(index) ? index : null);
+    }, []);
+
+    const handleBlurCapture = useCallback((event: React.FocusEvent<HTMLDivElement>) => {
+        // Moving between rows blurs one and focuses the next; only leaving the table releases the
+        // pin, or a Tab from the last row would unmount the row it just left mid-hand-off.
+        if (event.currentTarget.contains(event.relatedTarget as Node | null)) {
+            return;
+        }
+        setFocusedItemIndex(null);
+    }, []);
+
+    const inlineEditing = useMemo<InlineEditing>(() => ({
+        unitId: inlineEdit?.unitId ?? null,
+        caret: inlineEdit?.caret ?? null,
+        onEdit: (unitId, caret) => setInlineEdit({ unitId, caret }),
+        onStopEdit: () => setInlineEdit(null),
+        onFocusUnit: setFocusedUnitId,
+    }), [inlineEdit]);
+
+    /**
+     * Hold the line this table has open, so nobody in the room writes over it.
+     *
+     * Two ways a line can be open and both count: the inline field, for a line that carries tags,
+     * and the plain box for everything else. A claim asserted for one shape and not the other is a
+     * line somebody can be written over while they are inside it - and the claim is what the write
+     * boundary's refusal is built on, so it has to be true of every row.
+     *
+     * Silent outside a session.
+     */
+    useTranslationClaimHold({ service: liveService, locale, unitId: inlineEdit?.unitId ?? focusedUnitId });
+
     const handleTargetChange = useCallback((row: TranslationTableRow, target: string) => {
         localizationService?.updateUnit(locale, row.unitId, row.sourceText, { target });
     }, [localizationService, locale]);
@@ -487,6 +642,10 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
     const reviewQueueEmpty = mode === "review" && reviewFilter === "unreviewed" && rows.length > 0 && visibleRows.length === 0;
 
     return (
+        // One subscription for the whole table rather than one per row: a session publishes on every
+        // operation anybody in the room applies, and three hundred rows reading the service would
+        // re-render on every remote keystroke.
+        <TranslationClaimsProvider locale={locale}>
         <div className="flex h-full min-h-0 flex-col bg-surface">
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
@@ -551,7 +710,12 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                     </div>
                 </div>
             </div>
-            <div className="min-h-0 flex-1 overflow-y-auto">
+            <div
+                ref={scrollRef}
+                className="min-h-0 flex-1 overflow-y-auto"
+                onFocusCapture={handleFocusCapture}
+                onBlurCapture={handleBlurCapture}
+            >
                 {stories.length === 0 && sourceValue !== UI_SOURCE_VALUE ? (
                     <EmptyMessage icon={<BookOpenText className="h-5 w-5" />} text={t("workspace.localization.table.noStories")} />
                 ) : rows.length === 0 && !showKeysExtras ? (
@@ -569,48 +733,62 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 ) : visibleRows.length === 0 && !showKeysExtras ? (
                     <EmptyMessage icon={<SplitSquareVertical className="h-5 w-5" />} text={t("workspace.localization.table.emptyFilter")} />
                 ) : (
-                    groupsToRender.map(group => (
-                        <section key={`${group.groupKey}:${group.rows[0]?.unitId ?? ""}`}>
-                            <div className="sticky top-0 z-10 border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
-                                {group.groupName}
-                            </div>
-                            <div className="flex flex-col">
-                                {group.rows.map(row => {
-                                    const state = rowStates.get(row.unitId) ?? "untranslated";
-                                    const target = locDocument?.units[row.unitId]?.target ?? "";
-                                    return mode === "review" ? (
+                    <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
+                        {virtualizer.getVirtualItems().map(item => {
+                            const entry = flatItems[item.index];
+                            if (!entry) {
+                                return null;
+                            }
+                            const row = entry.kind === "row" ? entry.row : null;
+                            const state = row ? rowStates.get(row.unitId) ?? "untranslated" : "untranslated";
+                            const target = row ? locDocument?.units[row.unitId]?.target ?? "" : "";
+                            return (
+                                <div
+                                    key={item.key}
+                                    ref={virtualizer.measureElement}
+                                    data-index={item.index}
+                                    className="absolute left-0 top-0 w-full"
+                                    style={{ transform: `translateY(${item.start}px)` }}
+                                >
+                                    {entry.kind === "group" ? (
+                                        <div className="border-b border-edge-subtle bg-surface-sunken px-4 py-1.5 text-2xs font-medium text-fg-muted">
+                                            {entry.name}
+                                        </div>
+                                    ) : entry.kind === "addKey" ? (
+                                        <AddKeyRow onSubmit={handleAddKey} />
+                                    ) : mode === "review" ? (
                                         <ReviewRow
-                                            key={row.unitId}
-                                            row={row}
-                                            speaker={row.speaker}
+                                            row={entry.row}
+                                            locale={locale}
+                                            speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
+                                            editing={inlineEditing}
                                             onTargetChange={handleTargetChange}
                                             onApprove={handleApprove}
                                             onReturn={handleReturn}
                                         />
                                     ) : (
                                         <TranslateRow
-                                            key={row.unitId}
-                                            row={row}
-                                            speaker={row.speaker}
+                                            row={entry.row}
+                                            locale={locale}
+                                            speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
+                                            editing={inlineEditing}
                                             onTargetChange={handleTargetChange}
                                             onSourceChange={handleKeySourceChange}
-                                            onRemove={row => void handleKeyRemove(row)}
+                                            onRemove={removed => void handleKeyRemove(removed)}
                                         />
-                                    );
-                                })}
-                                {group.groupKey === KEYS_GROUP_KEY && showKeysExtras ? (
-                                    <AddKeyRow onSubmit={handleAddKey} />
-                                ) : null}
-                            </div>
-                        </section>
-                    ))
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
         </div>
+        </TranslationClaimsProvider>
     );
 }
 

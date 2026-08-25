@@ -1,4 +1,4 @@
-import type { StoryAnimationAsset, StoryDocument } from "@shared/types/story";
+import type { StoryAnimationAsset, StoryBlock, StoryDocument } from "@shared/types/story";
 import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder } from "@shared/types/story";
 import type { BlueprintDocument, BlueprintGraphEdge, BlueprintGraphIr } from "@shared/types/blueprint/document";
 import {
@@ -8,6 +8,7 @@ import {
     BLUEPRINT_NODE_TYPE_LITERAL_STRING,
 } from "@shared/types/blueprint/graph";
 import type { BlueprintAssetPinKind } from "@shared/types/blueprint/valueTypes";
+import { BLUEPRINT_SOUND_ASSET_PARAM_KEY } from "@shared/build/blueprintAssetSlots";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { VoiceDocument } from "@shared/types/voice";
 import { isAppearanceModel, type AppearanceVariant } from "@shared/types/ui-editor/appearance";
@@ -75,7 +76,7 @@ import type { SearchJumpTarget } from "../search/searchIndexModel";
  */
 
 /** Which kind of document holds the reference — drives grouping and the icon in the UI. */
-export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character";
+export type ReferenceSiteKind = "story" | "blueprint" | "uiElement" | "voice" | "character" | "design";
 
 export interface AssetReference {
     /** Stable unique id (React key, and the dedupe key when slices are merged). */
@@ -98,7 +99,8 @@ export interface AssetReference {
 }
 
 /** The slices the index is assembled from; a gap names the one it came from. */
-export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character";
+export type ReferenceSliceKind = "story" | "storyAnimation" | "blueprint" | "ui" | "voice" | "character"
+    | "design";
 
 /**
  * Why one site could not be turned into a reference.
@@ -126,9 +128,10 @@ export type ReferenceGapReason =
  * The kinds of library asset a gap can cast doubt on.
  *
  * Narrower than `AssetType` on purpose: what a gap knows is what the *site* could hold, and a site
- * holds a picture or a typeface. Nothing in the project can put a sound behind an image URL.
+ * holds a picture, a clip or a typeface. Nothing in the project can put a sound behind an image URL,
+ * which is what keeps one unreadable widget from putting the whole library beyond deleting.
  */
-export type ReferenceAssetKind = "image" | "font";
+export type ReferenceAssetKind = "image" | "audio" | "font";
 
 export interface ReferenceIndexGap {
     reason: ReferenceGapReason;
@@ -222,6 +225,38 @@ export function isLibraryAssetId(value: unknown): value is string {
     );
 }
 
+/**
+ * The project's default font stack, as references.
+ *
+ * Small, and the only reason it is a slice of its own: these are the one asset use that lives
+ * outside every document the other five walk. Without it a font that the whole game is set in reads
+ * as unreferenced — the unused-asset report offers it for deletion, and the delete guard lets it go
+ * without a word, taking the typeface out of every line of text at once.
+ *
+ * `label` is a fixed word rather than something the author named, the way `BLUEPRINT_SLICE_LOCATION`
+ * is: there is one of these per project and nobody named it. The rung's place in the stack goes in
+ * `field`, because the order is what an author would need to recognise the row.
+ */
+export function extractProjectFontReferences(
+    fonts: readonly { assetId: string }[],
+    label: string,
+): AssetReference[] {
+    const references: AssetReference[] = [];
+    fonts.forEach((entry, index) => {
+        if (!isLibraryAssetId(entry.assetId)) {
+            return;
+        }
+        references.push({
+            id: `design:font:${entry.assetId.trim()}`,
+            assetId: entry.assetId.trim(),
+            kind: "design",
+            label,
+            field: `fonts[${index + 1}]`,
+        });
+    });
+    return references;
+}
+
 /** Group references by asset id — the shape the panel queries. */
 export function buildReferenceIndex(references: readonly AssetReference[]): Map<string, AssetReference[]> {
     const index = new Map<string, AssetReference[]>();
@@ -243,7 +278,7 @@ export function buildReferenceIndex(references: readonly AssetReference[]): Map<
 /**
  * Story slice: scene default backgrounds plus every block payload that carries an asset id.
  *
- * Superset of `StoryService.collectDocumentAssetLocks` — that walker omits `image.assetId` and
+ * Superset of `StoryService.collectSceneAssetLocks` — that walker omits `image.assetId` and
  * `video.assetId`, so an image or video used only from a story block currently reports as unused.
  */
 /**
@@ -289,6 +324,16 @@ function expandReferencedAsset(assetId: string, expand?: AssetSetExpander): read
 export function splitAssetSetReferences(
     references: readonly AssetReference[],
     expand?: AssetSetExpander,
+    /**
+     * Whether this particular site may name a set at all.
+     *
+     * Absent means every site in the slice may, which is true of stories and characters. The
+     * interface has one field that may not - a typeface, see `uiAssetSlotAcceptsSets` - and leaving
+     * that site unexpanded is what keeps `assets/missing` pointed at it: a set id there is a
+     * reference the build cannot resolve, and it has to stay reported as one rather than be quietly
+     * counted as a use of the set's files.
+     */
+    accepts?: (reference: AssetReference) => boolean,
 ): { references: AssetReference[]; setReferences: AssetReference[] } {
     if (!expand) {
         return { references: [...references], setReferences: [] };
@@ -296,7 +341,7 @@ export function splitAssetSetReferences(
     const out: AssetReference[] = [];
     const setReferences: AssetReference[] = [];
     for (const reference of references) {
-        const members = expand(reference.assetId);
+        const members = accepts && !accepts(reference) ? null : expand(reference.assetId);
         if (!members) {
             out.push(reference);
             continue;
@@ -326,6 +371,69 @@ export interface StoryAssetReferenceScan {
      * the set, not the file, so it goes on naming it after the file is gone.
      */
     setReferences: AssetReference[];
+}
+
+/** One field on a row that can name an asset, and whatever that field currently holds. */
+export interface StoryBlockAssetSite {
+    /** Dotted field path, rendered verbatim as the references panel's "where" column. */
+    field: string;
+    /** An asset id, a set id, or nothing - the caller decides what a value is worth. */
+    assetId: unknown;
+}
+
+/**
+ * Every field on one row that can name an asset.
+ *
+ * The single statement of which fields those are, read from two ends: the reference index asks so
+ * it can record what uses a file, and a row copied to the clipboard asks so the files it needs can
+ * be offered to whichever project it is pasted into. Stating it twice would let a new
+ * asset-carrying action be added to one and be silently invisible to the other.
+ */
+export function listBlockAssetSites(block: StoryBlock): StoryBlockAssetSite[] {
+    if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
+        return [{ field: "dialogue.voiceAssetId", assetId: block.payload.voiceAssetId }];
+    }
+    // A jump is its own block kind, not an action, so the switch below never sees it - and it
+    // carries a transition, which since 0.30.0 can name a rule image.
+    if (block.kind === "jump") {
+        return [{ field: "transition.ruleAssetId", assetId: block.payload.transition?.ruleAssetId }];
+    }
+    if (block.kind !== "action") {
+        return [];
+    }
+    const payload = block.payload;
+    const sites: StoryBlockAssetSite[] = [];
+    // Every transition-carrying payload can name a rule image, and it is the one asset a row uses
+    // without the id sitting on the payload itself. Collected before the switch so a new
+    // transition-carrying action cannot forget it.
+    // `nvl` is excluded because its `transition` is a StoryTransformRef and not a transition at all
+    // - the panel animates through its own transform, and it has no kind.
+    if ("transition" in payload && payload.action !== "nvl") {
+        sites.push({ field: "transition.ruleAssetId", assetId: payload.transition?.ruleAssetId });
+    }
+    switch (payload.action) {
+        case "setBackground":
+            sites.push({ field: "background.assetId", assetId: payload.assetId });
+            break;
+        case "character":
+            sites.push({ field: "character.assetId", assetId: payload.assetId });
+            break;
+        case "audio":
+            sites.push({ field: "audio.assetId", assetId: payload.assetId });
+            break;
+        case "image":
+            sites.push({ field: "image.assetId", assetId: payload.assetId });
+            break;
+        case "video":
+            sites.push({ field: "video.assetId", assetId: payload.assetId });
+            break;
+        case "displayable":
+            sites.push({ field: "displayable.maskAssetId", assetId: payload.transform?.to?.maskAssetId ?? undefined });
+            break;
+        default:
+            break;
+    }
+    return sites;
 }
 
 export function extractStoryAssetReferences(
@@ -454,49 +562,8 @@ export function scanStoryAssetReferences(
         // Depth first, so the "used by" list under an asset reads down the scene the way the author
         // wrote it. The record's key order would be UUID order once it has been rewritten once.
         for (const block of listSceneBlocksInDocumentOrder(scene)) {
-            if (block.kind === "nodeAction" && block.payload.action === "dialogue") {
-                pushBlockReference(block.id, "dialogue.voiceAssetId", block.payload.voiceAssetId);
-                continue;
-            }
-            // A jump is its own block kind, not an action, so the switch below never sees it -
-            // and it carries a transition, which since 0.30.0 can name a rule image.
-            if (block.kind === "jump") {
-                pushBlockReference(block.id, "transition.ruleAssetId", block.payload.transition?.ruleAssetId);
-                continue;
-            }
-            if (block.kind !== "action") {
-                continue;
-            }
-            const payload = block.payload;
-            // Every transition-carrying payload can name a rule image, and it is the one asset a
-            // row uses without the id sitting on the payload itself. Walked before the switch so a
-            // new transition-carrying action cannot forget it.
-            // `nvl` is excluded because its `transition` is a StoryTransformRef and not a
-            // transition at all - the panel animates through its own transform, and it has no kind.
-            if ("transition" in payload && payload.action !== "nvl") {
-                pushBlockReference(block.id, "transition.ruleAssetId", payload.transition?.ruleAssetId);
-            }
-            switch (payload.action) {
-                case "setBackground":
-                    pushBlockReference(block.id, "background.assetId", payload.assetId);
-                    break;
-                case "character":
-                    pushBlockReference(block.id, "character.assetId", payload.assetId);
-                    break;
-                case "audio":
-                    pushBlockReference(block.id, "audio.assetId", payload.assetId);
-                    break;
-                case "image":
-                    pushBlockReference(block.id, "image.assetId", payload.assetId);
-                    break;
-                case "video":
-                    pushBlockReference(block.id, "video.assetId", payload.assetId);
-                    break;
-                case "displayable":
-                    pushBlockReference(block.id, "displayable.maskAssetId", payload.transform?.to?.maskAssetId ?? undefined);
-                    break;
-                default:
-                    break;
+            for (const site of listBlockAssetSites(block)) {
+                pushBlockReference(block.id, site.field, site.assetId);
             }
         }
     }
@@ -580,6 +647,10 @@ export type BlueprintAssetPinResolver = (nodeType: string) => readonly Blueprint
 const DEFAULT_BLUEPRINT_ASSET_PINS: readonly BlueprintAssetPin[] = [
     { pinId: "asset", kind: "image", paramKey: "asset", input: true },
     { pinId: "fontAssetId", kind: "font", paramKey: "fontAssetId", input: true },
+    // Play Sound's clip. `input: false` because it is an inspector param and no pin carries the
+    // name, so there is no edge to follow to a source - the node's wired `assetId` pin is a string
+    // the game computes, and claiming it stored one would invent a reference on every gallery page.
+    { pinId: BLUEPRINT_SOUND_ASSET_PARAM_KEY, kind: "audio", paramKey: BLUEPRINT_SOUND_ASSET_PARAM_KEY, input: false },
 ];
 
 /**
@@ -619,7 +690,12 @@ function incomingEdgeKey(nodeId: string, pinId: string): string {
     return `${nodeId}\u0000${pinId}`;
 }
 
-/** The asset id a pin value holds, by the kind of asset the pin declares. */
+/**
+ * The asset id a pin value holds, by the kind of asset the pin declares.
+ *
+ * A clip and a typeface are both the bare id; only the picture grew an envelope, and a graph saved
+ * before it existed still stores the raw string, which `blueprintImageAssetId` also accepts.
+ */
 function readAssetPinValue(kind: BlueprintAssetPinKind, value: unknown): string | null {
     if (kind === "image") {
         const imageAssetId = blueprintImageAssetId(value);
@@ -1038,6 +1114,31 @@ function extractElementAssetReferences(
     }
 
     return references;
+}
+
+/**
+ * The library asset ids one element names, in the order they are met, each once.
+ *
+ * The same sweep the index runs, asked of a single element: what a clipboard has to carry when a
+ * selection is copied into another project is exactly what "where is this used?" would report for
+ * those elements, dormant sites included. A second opinion written next to the copy would drift
+ * from this one the first time a widget grew a prop.
+ *
+ * URL props are deliberately not followed. An `app://fs/{token}` value names a grant this session
+ * minted, and a grant does not survive the trip: importing the file behind it would leave the
+ * pasted URL naming a token the other window has never heard of, so there is nothing to be gained
+ * by bringing it. Those sites are `hashUrlUnresolved` gaps here and are simply not collected.
+ */
+export function listUIElementAssetIds(element: UIElement): string[] {
+    const ids: string[] = [];
+    const seen = new Set<string>();
+    for (const reference of extractElementAssetReferences(element, undefined, undefined, [])) {
+        if (!seen.has(reference.assetId)) {
+            seen.add(reference.assetId);
+            ids.push(reference.assetId);
+        }
+    }
+    return ids;
 }
 
 /**

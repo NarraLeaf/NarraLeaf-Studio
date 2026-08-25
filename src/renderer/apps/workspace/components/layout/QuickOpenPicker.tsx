@@ -7,7 +7,7 @@ import { SearchService } from "@/lib/workspace/services/search/SearchService";
 import { QuickSwitchOverlay, type QuickListRow } from "./QuickSwitchOverlay";
 import { clampIndex, rankFuzzyList, wrapIndex } from "./fuzzyListModel";
 import { collectQuickOpenEntries, QUICK_OPEN_KIND_LABEL_KEYS, type QuickOpenEntry } from "./quickOpenModel";
-import { isComposingText, isImeKeyEvent } from "./imeComposition";
+import { isComposingText, isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { PALETTE_CARD_WIDTH_CLASS, usePaletteAnchorLeft } from "./paletteAnchor";
 
 const MAX_ROWS = 50;

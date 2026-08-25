@@ -17,6 +17,16 @@ interface SourceStepProps {
     onLocationFocus: () => void;
     onSelectDirectory: () => Promise<void>;
     isSelectingDirectory: boolean;
+    /**
+     * Whether the address on screen is the one this window was handed.
+     *
+     * The picker turns "paste a repository address" into "choose one off a server", which
+     * is the answer for somebody who arrived here with nothing. Somebody who arrived by
+     * choosing a project off that same list has already answered it, and drawing it again
+     * puts their own answer back in front of them as a question. Editing the address is
+     * what brings it back - see `updateRemoteUrl`.
+     */
+    addressGiven?: boolean;
 }
 
 /**
@@ -49,6 +59,7 @@ export function SourceStep({
     onLocationFocus,
     onSelectDirectory,
     isSelectingDirectory,
+    addressGiven = false,
 }: SourceStepProps) {
     const { t } = useTranslation();
     // Only once they have typed something: an empty field is not a mistake, it is a field they
@@ -58,7 +69,9 @@ export function SourceStep({
     return (
         <div className="h-full overflow-y-auto p-5">
             <div className="max-w-xl space-y-4">
-                <ServerProjectPicker value={projectData.remoteUrl} onPick={updateRemoteUrl} />
+                {!addressGiven && (
+                    <ServerProjectPicker value={projectData.remoteUrl} onPick={updateRemoteUrl} />
+                )}
 
                 <InputGroup
                     label={t("wizard.source.addressLabel")}
@@ -67,7 +80,7 @@ export function SourceStep({
                     helper={remote ? undefined : t("wizard.source.addressHint")}
                 >
                     <Input
-                        autoFocus
+                        autoFocus={!addressGiven}
                         placeholder="lore://studio.example.lan:41337/my-game"
                         value={projectData.remoteUrl}
                         onChange={event => updateRemoteUrl(event.target.value)}

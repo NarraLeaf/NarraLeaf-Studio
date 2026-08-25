@@ -11,6 +11,15 @@ interface OriginStepProps {
     flow: ProjectFlow;
     onFlowChange: (flow: ProjectFlow) => void;
     templates: ProjectTemplate[];
+    /**
+     * Whether the origin was settled by whatever opened this window.
+     *
+     * True for a project being made for a server: it was started from that server, and the
+     * two origins that bring a project in from somewhere else are not answers to it. The
+     * column is then not drawn at all rather than drawn with two rows that refuse - what is
+     * left is the one question this page still asks, which is what it is made from.
+     */
+    settled?: boolean;
 }
 
 /**
@@ -31,6 +40,7 @@ export function OriginStep({
     flow,
     onFlowChange,
     templates,
+    settled = false,
 }: OriginStepProps) {
     const { t } = useTranslation();
 
@@ -45,6 +55,20 @@ export function OriginStep({
             resolution: stageSizeForTemplate(projectData.resolution, template.stageSizes),
         });
     };
+
+    if (settled) {
+        return (
+            <div className="h-full overflow-y-auto p-5">
+                <div className="max-w-xl">
+                    <TemplateList
+                        templates={templates}
+                        selectedId={projectData.template}
+                        onSelect={handleTemplateSelect}
+                    />
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-full min-h-0">

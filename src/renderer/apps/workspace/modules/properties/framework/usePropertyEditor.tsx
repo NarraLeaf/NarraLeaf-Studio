@@ -112,7 +112,7 @@ interface UsePropertyEditorResult<TData = any> {
     /** Whether there is an active selection */
     hasSelection: boolean;
     /** Set selection programmatically */
-    setSelection: (type: SelectionType, data: any) => void;
+    setSelection: (selection: SelectionState) => void;
     /** Clear the current selection */
     clearSelection: () => void;
     /** Show the properties panel */
@@ -164,10 +164,10 @@ export function usePropertyEditor<TData = any>(): UsePropertyEditorResult<TData>
     }, [selection, registryVersion]);
 
     const setSelection = useCallback(
-        (type: SelectionType, data: any) => {
+        (selection: SelectionState) => {
             if (!context || !isInitialized) return;
             const uiService = context.services.get<UIService>(Services.UI);
-            uiService.getStore().setSelection({ type, data });
+            uiService.getStore().setSelection(selection);
         },
         [context, isInitialized]
     );
@@ -209,10 +209,10 @@ export function useFocusProperty() {
     const { context, isInitialized } = useWorkspace();
 
     const focus = useCallback(
-        (type: SelectionType, data: any) => {
+        (selection: SelectionState) => {
             if (!context || !isInitialized) return;
             const uiService = context.services.get<UIService>(Services.UI);
-            uiService.getStore().setSelection({ type, data });
+            uiService.getStore().setSelection(selection);
             uiService.panels.show("narraleaf-studio:properties");
         },
         [context, isInitialized]

@@ -1,5 +1,5 @@
 import { expandLegacyTransformPreset } from "@shared/story/transformLegacy";
-import { placementWordFor } from "./commands/transitions";
+import { placementWordFor, supportedTransitionWords, transitionKindFor } from "./commands/transitions";
 import type {
     StoryActionPayload,
     StoryBlock,
@@ -9,6 +9,7 @@ import type {
     StoryDeclarationPayload,
     StoryDocument,
     StoryDisplayableTargetKind,
+    StoryEndingPage,
     StoryLiteralValue,
     StoryScene,
     StorySceneId,
@@ -41,16 +42,20 @@ import type { AudioTrackChannel, ProjectAudioTrack } from "@shared/types/audioTr
 import { resolveAudioTrack } from "@shared/types/audioTrack";
 import { isBuiltinAppTagId, RELEASE_APP_TAG } from "@shared/types/appTag";
 import {
+    onWeatherParamGrid,
     resolveWeatherParams,
+    snapWeatherParam,
     WEATHER_PARAMS,
     WEATHER_SEED_IDS,
     weatherParamsOf,
     type WeatherParamKey,
+    type WeatherParamSpec,
     type WeatherSeedId,
 } from "@shared/weather/model";
 import { audioBusStatusLine } from "@/lib/story/audioBusStatus";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { BGM_OBJECT_NAME } from "./storyCommandValues";
 import { useTranslation } from "@/lib/i18n";
 import type { Translator, TranslationKey } from "@shared/i18n";
@@ -64,7 +69,7 @@ import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { isPuppetAppearanceKind } from "@shared/utils/characterAppearanceKinds";
-import { Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
+import { FieldLabel, Select, Slider, useSliderDraft, type SelectOption } from "@/lib/components/elements";
 import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
 import { colorValueToCss, parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
@@ -88,7 +93,7 @@ import { listSceneDisplayableTargets } from "../../story-motion/storyMotionPrevi
 import { StoryLayerField } from "./StoryLayerField";
 import { MotionField } from "../../story-motion";
 import { PuppetPreview } from "@/apps/workspace/modules/characters/editors/components/PuppetPreview";
-import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { BeyondStoryDocumentClamp, StoryDocumentClamp } from "./storyInspectorFreeze";
 import {
     puppetDescribeStatusKey,
     puppetDescriptionRequestFor,
@@ -320,26 +325,44 @@ const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
         : []),
 ];
 
-const transitionOptions = (t: TFunc): SelectOption[] => [
-    { value: "none", label: t("common.none") },
-    { value: "dissolve", label: t("storyInspector.transition.dissolve") },
-    { value: "blurDissolve", label: t("storyInspector.transition.blurDissolve") },
-    { value: "fadeIn", label: t("storyInspector.transition.fadeIn") },
-    { value: "maskCircle", label: t("storyInspector.transition.maskCircle") },
-    { value: "softIris", label: t("storyInspector.transition.softIris") },
-    { value: "maskWipe", label: t("storyInspector.transition.maskWipe") },
-    { value: "softWipe", label: t("storyInspector.transition.softWipe") },
-    { value: "blinds", label: t("storyInspector.transition.blinds") },
-    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
-    { value: "clock", label: t("storyInspector.transition.clock") },
-    { value: "fan", label: t("storyInspector.transition.fan") },
-    { value: "dots", label: t("storyInspector.transition.dots") },
-    { value: "slide", label: t("storyInspector.transition.slide") },
-    { value: "throughColor", label: t("storyInspector.transition.throughColor") },
-    { value: "darkness", label: t("storyInspector.transition.darkness") },
-    { value: "exposure", label: t("storyInspector.transition.exposure") },
-    { value: "ruleReveal", label: t("storyInspector.transition.ruleReveal") },
+/**
+ * Where a transition editor sits, which decides both which kinds it offers and how they are named.
+ *
+ * `scene` is a whole-screen change (`/bg`, `/jump`); `expression` is one object's frame changing in
+ * place - a portrait swap, or an image row setting a new source. They differ by more than taste: a
+ * rule image is painted for the whole frame, so playing one through a sprite-sized window shows a
+ * corner of a picture, which is why the `t=` vocabulary refuses it on a swap.
+ */
+type TransitionEditorContext = "scene" | "expression";
+
+/** The kinds, in menu order, with the word the editor calls each one. */
+const TRANSITION_KIND_ORDER: readonly StoryTransitionRef["kind"][] = [
+    "dissolve", "fadeIn", "blurDissolve", "maskCircle", "softIris", "softWipe", "blinds",
+    "barnDoor", "clock", "fan", "dots", "slide", "throughColor", "darkness", "exposure", "ruleReveal",
 ];
+
+/**
+ * The kinds this context offers.
+ *
+ * Filtered through the `t=` vocabulary rather than listed by hand, so the menu and the command line
+ * cannot drift apart. Both halves of that drift were real: the menu offered `ruleReveal` on a
+ * portrait swap, which the vocabulary refuses outright, and it offered `maskWipe`, which no word
+ * names at all - so a row set to it printed `t=maskWipe`, and `maskwipe` is an alias of `wipe`, so
+ * reading the line back turned the hard edge into a feathered one.
+ */
+const transitionOptions = (t: TFunc, context: TransitionEditorContext): SelectOption[] => {
+    const offered = new Set(
+        supportedTransitionWords(context)
+            .map(word => transitionKindFor(context, word))
+            .filter((kind): kind is StoryTransitionRef["kind"] => Boolean(kind)),
+    );
+    return [
+        { value: "none", label: t("common.none") },
+        ...TRANSITION_KIND_ORDER
+            .filter(kind => offered.has(kind))
+            .map(kind => ({ value: kind, label: t(`storyInspector.transition.${kind}` as TranslationKey) })),
+    ];
+};
 
 const wipeDirectionOptions = (t: TFunc): SelectOption[] => [
     { value: "left", label: t("storyInspector.wipeDirection.left") },
@@ -368,6 +391,16 @@ const throughColorPatternOptions = (t: TFunc): SelectOption[] => [
     { value: "linear", label: t("storyInspector.throughColorPattern.linear") },
     { value: "blinds", label: t("storyInspector.throughColorPattern.blinds") },
     { value: "iris", label: t("storyInspector.throughColorPattern.iris") },
+    { value: "barnDoor", label: t("storyInspector.transition.barnDoor") },
+    { value: "clock", label: t("storyInspector.transition.clock") },
+    { value: "fan", label: t("storyInspector.transition.fan") },
+    { value: "dots", label: t("storyInspector.transition.dots") },
+];
+
+/** How the colour comes back off the frame once the hold is over. */
+const throughColorUncoverOptions = (t: TFunc): SelectOption[] => [
+    { value: "retreat", label: t("storyInspector.throughColorUncover.retreat") },
+    { value: "continue", label: t("storyInspector.throughColorUncover.continue") },
 ];
 
 const transitionHints = (t: TFunc): Record<string, string> => ({
@@ -376,7 +409,6 @@ const transitionHints = (t: TFunc): Record<string, string> => ({
     fadeIn: t("storyInspector.transitionHint.fadeIn"),
     maskCircle: t("storyInspector.transitionHint.maskCircle"),
     softIris: t("storyInspector.transitionHint.softIris"),
-    maskWipe: t("storyInspector.transitionHint.maskWipe"),
     softWipe: t("storyInspector.transitionHint.softWipe"),
     blinds: t("storyInspector.transitionHint.blinds"),
     barnDoor: t("storyInspector.transitionHint.barnDoor"),
@@ -414,6 +446,10 @@ const displayableOperationOptions = (t: TFunc): SelectOption[] => [
     // Listed so a `/front` row reads its own verb back here rather than showing an empty select. It
     // is the one entry with nothing to configure - see the transform editor's guard below.
     { value: "bringToFront", label: t("storyInspector.displayableOperation.bringToFront") },
+    // The pair that repeats. `loop` configures exactly like `transform` - it is the same bag, played
+    // over and over - while `stopLoop` states no bag at all, so it shares `bringToFront`'s guard.
+    { value: "loop", label: t("storyInspector.displayableOperation.loop") },
+    { value: "stopLoop", label: t("storyInspector.displayableOperation.stopLoop") },
 ];
 
 const displayableEffectHints = (t: TFunc): Record<string, string> => ({
@@ -521,23 +557,14 @@ export function ActionInspector(props: {
         resolveMotionName,
         projectVariableNameOf(variableOptions),
     );
-    const freeze = useFreezeGuard();
-
     /**
-     * The read-only clamp for a frozen workspace, and the reason it is one `<fieldset>` rather than
-     * a `freeze.writes()` on each control: this inspector is two and a half thousand lines of
-     * per-action editors - forty-odd `Select`s, the numeric grids, the expression and condition
-     * entries - written by whoever added each action kind, and it reaches the panel WITHOUT going
-     * through `FieldRenderer`, so it had inherited none of the framework's read-only work. Measured
-     * on a frozen project: every field accepted input and every change was discarded on thaw.
+     * The read-only clamp for a frozen workspace, and why it is a `<fieldset>` rather than a
+     * `freeze.writes()` per control: see `storyInspectorFreeze`, which also holds the inner clamp
+     * for the few subtrees here that write past this document.
      *
-     * `display: contents` keeps it out of the layout, and per HTML every form control beneath it is
-     * disabled without knowing this exists - including the ones in an action editor written after
-     * this line.
-     *
-     * The two things here that are NOT form controls are exactly the two that should keep working:
-     * `Disclosure` is a `<details>`/`<summary>`, so sections still open, and the blueprint entry
-     * card steps out on its own (see `StoryActionBlueprintPreviewCard`).
+     * The story id comes from the document rather than from `useStoryDocumentScope`, because this
+     * inspector is mounted by the properties panel and not by the scene editor's own tree - it is
+     * outside that provider, and the context would answer "I cannot say which document this is".
      */
     const fields = (
         <InspectorFields
@@ -576,13 +603,7 @@ export function ActionInspector(props: {
                     <div className="truncate text-xs text-fg-subtle">{subject}</div>
                 </div>
             </div>
-            {freeze.frozen ? (
-                <fieldset disabled aria-readonly style={{ display: "contents" }}>
-                    {fields}
-                </fieldset>
-            ) : (
-                fields
-            )}
+            <StoryDocumentClamp storyId={props.document.id}>{fields}</StoryDocumentClamp>
         </div>
     );
 }
@@ -736,6 +757,7 @@ function InspectorFields(props: {
                 </div>
                 <TransitionEditor
                     value={payload.transition}
+                    context="scene"
                     onChange={transition => props.onUpdatePayload({ ...payload, transition })}
                 />
             </div>
@@ -956,7 +978,17 @@ function ActionPayloadFields(props: {
                     storyName={props.document.name}
                     onChange={transform => props.onChange({ ...payload, transform })}
                 />
-                <TransitionEditor value={payload.transition} onChange={transition => props.onChange({ ...payload, transition })} />
+                {/* Only where a transition acts. `image.char(src, transition)` is what plays one, and
+                    a row that sets no source never calls it - a `show`/`hide` is a transform, and a
+                    `create` declares an object nothing is looking at yet. Offering the editor on
+                    those rows wrote a setting into the document that nothing would ever read. */}
+                {payload.operation === "setSource" ? (
+                    <TransitionEditor
+                        value={payload.transition}
+                        context="expression"
+                        onChange={transition => props.onChange({ ...payload, transition })}
+                    />
+                ) : null}
             </div>
         );
     }
@@ -983,8 +1015,10 @@ function ActionPayloadFields(props: {
                     />
                 </FieldGrid>
                 {/* A raise carries no pose and no duration, so the bag editor is not shown for it -
-                    a transform authored here would be stored and then never reach the stage. */}
-                {payload.operation === "bringToFront" ? null : (
+                    a transform authored here would be stored and then never reach the stage. Ending a
+                    loop is the same case for the same reason: it goes back to the pose the element
+                    kept underneath, and there is nothing to state about where that is. */}
+                {payload.operation === "bringToFront" || payload.operation === "stopLoop" ? null : (
                     <TransformPresetEditor
                         value={payload.transform}
                         motionTargetKind={resolvedTarget.kind ?? "image"}
@@ -1427,7 +1461,10 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
     const { t } = useTranslation();
     const payload = props.payload;
     const isCreate = payload.operation === "create";
-    const fades = payload.operation === "show" || payload.operation === "hide" || isCreate;
+    const isShow = payload.operation === "show";
+    // A create row reveals nothing, so it has no fade: the duration belongs to the rows that change
+    // the picture.
+    const fades = isShow || payload.operation === "hide";
     return (
         <Section title={t("storyInspector.section.vfx")}>
             <FieldGrid cols={2}>
@@ -1490,9 +1527,23 @@ function VfxActionEditor(props: { payload: VfxActionPayload; onChange: (payload:
                         />
                     </>
                 ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showOpacity")}
+                        value={payload.opacity}
+                        onChange={opacity => props.onChange({ ...payload, opacity: opacity === undefined ? undefined : Math.min(1, Math.max(0, opacity)) })}
+                    />
+                ) : null}
                 {isCreate || payload.operation === "setRate" ? (
                     <NumberField
                         label={t("storyInspector.vfx.rate")}
+                        value={payload.rate}
+                        onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
+                    />
+                ) : null}
+                {isShow ? (
+                    <NumberField
+                        label={t("storyInspector.vfx.showRate")}
                         value={payload.rate}
                         onChange={rate => props.onChange({ ...payload, rate: rate === undefined ? undefined : Math.max(0, rate) })}
                     />
@@ -1580,17 +1631,96 @@ function WeatherSeedFields(props: {
     return (
         <>
             <WeatherSeedPreview seed={props.seed} params={props.params} />
-            <FieldGrid cols={2}>
+            <div className="space-y-2">
                 {weatherParamsOf(props.seed).map(key => (
-                    <NumberField
+                    <WeatherParamRow
                         key={key}
                         label={t(`storyInspector.weather.${key}` as TranslationKey)}
+                        spec={WEATHER_PARAMS[key]}
                         value={resolved[key]}
                         onChange={value => set(key, value)}
                     />
                 ))}
-            </FieldGrid>
+            </div>
         </>
+    );
+}
+
+/**
+ * One tunable number of a seed: the figure, and the range it lives in.
+ *
+ * Two controls for one value because there are two questions. An author who knows the number types
+ * it; an author looking for it drags, and watches the preview above answer. Both read the same
+ * draft, so they cannot print different figures mid-gesture, and the document is written once when
+ * the drag settles ({@link useSliderDraft}) - hanging the write on every pointer move is the
+ * mistake that buried the undo stack three times before that hook existed.
+ *
+ * Typing is the same gesture and now ends the same way: the box hands its number over on blur or on
+ * Enter, not per keystroke. `120` typed into a density used to be three edits - 1, then 12, then
+ * 120 - and each was a different clip for Studio to go and encode, so the figure the author was
+ * waiting to see queued behind two they never meant to ask for. Studio drops the abandoned ones now
+ * - a bake carries the claim of whoever asked for it - but the cheapest bake is the one never
+ * submitted.
+ *
+ * The track carries the seed table's own `step`, so a drag lands on the increments every other
+ * surface offers for this parameter. A value already off that grid - rain's `sizeNear` default of
+ * 2.4 against a step of 1, or anything typed into the box - would otherwise leave the thumb
+ * standing at 2 while the box read 2.4, so the track goes continuous for exactly as long as that is
+ * true and the row snaps each move itself. Typing stays unsnapped: the box is the way to a value
+ * between two increments, and the renderer takes one for every parameter there is. `fallSpeed` used
+ * to be the exception - it was rounded before the field was laid out - and that was the bug behind
+ * "the slider does nothing until it does everything": rounding the BASE made the smallest possible
+ * change a doubling. Only each particle's own count of fall-lengths has to be whole, and it is
+ * rounded where it is derived.
+ *
+ * The snap belongs to the MOVE, not to the commit. `Slider` also commits on `keyup`, and a `Tab`
+ * that lands on the track releases its key there - so snapping at commit time would rewrite a
+ * stored 2.4 as 2 for an author who only tabbed past the control and never touched it.
+ */
+function WeatherParamRow(props: {
+    label: string;
+    spec: WeatherParamSpec;
+    value: number;
+    onChange: (value: number | undefined) => void;
+}) {
+    const spec = props.spec;
+    const onGrid = onWeatherParamGrid(props.value, spec);
+    const draft = useSliderDraft(props.value, props.onChange);
+    return (
+        <div className="flex items-center gap-2">
+            <FieldLabel as="span" className="mb-0 w-20 shrink-0 truncate">{props.label}</FieldLabel>
+            <NumericDraftEnhancedInput
+                committedDisplay={String(draft.value)}
+                commitOn="blur"
+                // The thumb follows what is being typed, so the two controls still cannot print
+                // different figures - it is only the WRITE that waits for the end of the gesture.
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => {
+                    draft.clear();
+                    props.onChange(undefined);
+                }}
+                type="text"
+                inputMode="decimal"
+                aria-label={props.label}
+                popoverWhenNarrow={false}
+                // Width only: the height, the border and the type scale are the shared input's, so
+                // the box sits at the same 36px as the fields above it in this section rather than
+                // opening a denser dialect halfway down one panel.
+                className="w-14 shrink-0"
+                inputClassName="px-1.5 text-right"
+            />
+            <Slider
+                className="min-w-0 flex-1"
+                min={spec.min}
+                max={spec.max}
+                step={onGrid ? spec.step : "any"}
+                value={draft.value}
+                aria-label={props.label}
+                onValueChange={value => draft.onValueChange(snapWeatherParam(value, spec))}
+                onValueCommit={draft.onValueCommit}
+            />
+        </div>
     );
 }
 
@@ -1711,6 +1841,9 @@ function PuppetChannelControl(props: {
  * that draft, or the box would print the committed number while the slider showed the one under the
  * pointer. The write lands once, when the drag ends - before this, every pointer move wrote the
  * document and a single drag left dozens of undo entries behind it.
+ *
+ * The box waits the same way, for blur or Enter: a number typed digit by digit is one decision, and
+ * the rig should be posed by the figure the author meant rather than by each prefix of it.
  */
 function PuppetParamValue(props: {
     spec: { min: number; max: number } | undefined;
@@ -1736,8 +1869,10 @@ function PuppetParamValue(props: {
             ) : null}
             <NumericDraftEnhancedInput
                 committedDisplay={String(draft.value)}
-                onFiniteNumber={props.onCommit}
-                onEmpty={() => props.onCommit(0)}
+                commitOn="blur"
+                onDraftNumber={draft.onValueChange}
+                onFiniteNumber={draft.onValueCommit}
+                onEmpty={() => draft.onValueCommit(0)}
                 type="text"
                 inputMode="decimal"
                 popoverWhenNarrow={false}
@@ -2081,6 +2216,7 @@ function CharacterActionEditor(props: {
             {payload.operation === "expression" ? (
                 <TransitionEditor
                     value={payload.transition}
+                    context="expression"
                     onChange={transition => onChange({ ...payload, transition })}
                 />
             ) : null}
@@ -2271,13 +2407,20 @@ function TransformPresetEditor(props: {
             }
         >
             {mode === "animation" ? (
-                <MotionField
-                    value={props.value}
-                    targetKind={props.motionTargetKind}
-                    motionLabel={props.motionLabel}
-                    actionContext={actionContext}
-                    onChange={props.onChange}
-                />
+                // Binding a motion writes this block's payload, but the picker behind the field also
+                // mints motions - its `New` and every preset in its gallery call
+                // `createAnimationAsset`, which writes a story animation of its own. That file is
+                // not this story document, so a live session refuses it, and the picker has no
+                // freeze guard of its own to say so.
+                <BeyondStoryDocumentClamp>
+                    <MotionField
+                        value={props.value}
+                        targetKind={props.motionTargetKind}
+                        motionLabel={props.motionLabel}
+                        actionContext={actionContext}
+                        onChange={props.onChange}
+                    />
+                </BeyondStoryDocumentClamp>
             ) : (
                 <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={3}>
@@ -2318,6 +2461,7 @@ function TransformPresetEditor(props: {
 
 function TransitionEditor(props: {
     value: StoryTransitionRef | undefined;
+    context: TransitionEditorContext;
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
     const value = props.value ?? { kind: "none" as const };
@@ -2332,7 +2476,7 @@ function TransitionEditor(props: {
             <FieldGrid cols={4}>
                 <SelectField
                     label={t("storyInspector.field.kind")}
-                    options={transitionOptions(t)}
+                    options={transitionOptions(t, props.context)}
                     value={kind}
                     onChange={next => next === "none"
                         ? props.onChange(undefined)
@@ -2348,6 +2492,17 @@ function TransitionEditor(props: {
                         />
                     </>
                 )}
+                {HOLDING_TRANSITION_KINDS.has(kind) ? (
+                    // Seconds, out of the duration rather than on top of it: a 4s change holding for
+                    // 2s is one second in, two of colour, one out. The number is what the player
+                    // sees, which a percentage of the run could not promise - see the v22 note in
+                    // `document.ts`.
+                    <SecondsField
+                        label={t("storyInspector.field.hold")}
+                        value={value.holdMs}
+                        onChange={holdMs => setBase({ holdMs })}
+                    />
+                ) : null}
                 {kind === "fadeIn" ? (
                     <>
                         <NumberField label={t("storyInspector.transition.startX")} value={paramNumber(value.props, "x")} onChange={x => setParam({ x })} />
@@ -2358,14 +2513,6 @@ function TransitionEditor(props: {
                     // 0.16.0: a hard iris (Mask.iris feather 0). The old partial from/to radii have no
                     // engine equivalent and are no longer offered - only the centre is adjustable.
                     <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
-                ) : null}
-                {kind === "maskWipe" ? (
-                    <SelectField
-                        label={t("storyInspector.field.direction")}
-                        options={wipeDirectionOptions(t)}
-                        value={paramString(value.props, "direction", "left")}
-                        onChange={direction => setParam({ direction: String(direction) })}
-                    />
                 ) : null}
                 {kind === "softWipe" ? (
                     <>
@@ -2387,6 +2534,9 @@ function TransitionEditor(props: {
                             onChange={orientation => setParam({ orientation: String(orientation) })}
                         />
                         <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                        {/* Hard slats by default, which is why this went unnoticed - but the compiler
+                            has always read it, and every other feathered geometry offers it. */}
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
                 {kind === "slide" ? (
@@ -2475,14 +2625,13 @@ function TransitionEditor(props: {
                         <SelectField
                             label={t("storyInspector.field.pattern")}
                             options={throughColorPatternOptions(t)}
-                            value={paramString(value.props, "pattern", "plain")}
+                            value={throughColorPatternOf(value)}
                             onChange={pattern => setParam({ pattern: String(pattern) })}
                         />
                         <ColorTextField label={t("storyInspector.field.color")} value={paramString(value.props, "color", "#000000")} onChange={color => setParam({ color })} />
-                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "linear" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "linear" ? (
                     <>
                         <SelectField
                             label={t("storyInspector.field.direction")}
@@ -2493,7 +2642,7 @@ function TransitionEditor(props: {
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "blinds" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "blinds" ? (
                     <>
                         <SelectField
                             label={t("storyInspector.field.orientation")}
@@ -2502,12 +2651,79 @@ function TransitionEditor(props: {
                             onChange={orientation => setParam({ orientation: String(orientation) })}
                         />
                         <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
                     </>
                 ) : null}
-                {kind === "throughColor" && paramString(value.props, "pattern", "plain") === "iris" ? (
+                {kind === "throughColor" && throughColorPatternOf(value) === "iris" ? (
                     <>
                         <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.shape")}
+                            options={irisShapeOptions(t)}
+                            value={paramString(value.props, "shape", "circle")}
+                            onChange={shape => setParam({ shape: String(shape) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "barnDoor" ? (
+                    <>
+                        <SelectField
+                            label={t("storyInspector.field.axis")}
+                            options={blindsOrientationOptions(t)}
+                            value={paramString(value.props, "axis", "horizontal")}
+                            onChange={axis => setParam({ axis: String(axis) })}
+                        />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "clock" ? (
+                    <>
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <SelectField
+                            label={t("storyInspector.field.direction")}
+                            options={clockDirectionOptions(t)}
+                            value={paramString(value.props, "direction", "clockwise")}
+                            onChange={direction => setParam({ direction: String(direction) })}
+                        />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "fan" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.blades")} value={paramNumber(value.props, "blades")} onChange={blades => setParam({ blades })} />
+                        <TextField label={t("storyInspector.field.center")} value={paramString(value.props, "center", "50% 50%")} onChange={center => setParam({ center: center || undefined })} />
+                        <NumberField label={t("storyInspector.field.fromAngle")} value={paramNumber(value.props, "from")} onChange={from => setParam({ from })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) === "dots" ? (
+                    <>
+                        <NumberField label={t("storyInspector.field.rows")} value={paramNumber(value.props, "rows")} onChange={rows => setParam({ rows })} />
+                        <NumberField label={t("storyInspector.field.cols")} value={paramNumber(value.props, "cols")} onChange={cols => setParam({ cols })} />
+                        <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <NumberField label={t("storyInspector.field.stagger")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
+                    </>
+                ) : null}
+                {kind === "throughColor" && throughColorPatternOf(value) !== "plain" ? (
+                    <>
+                        {/* Which way the geometry runs while it covers. The iris defaults the other
+                            way round - closing rim-in is the classic iris-to-black, and is what every
+                            iris written before this toggle existed was playing. */}
+                        <ToggleField
+                            label={t("storyInspector.field.reverse")}
+                            checked={value.props?.inverted === undefined
+                                ? throughColorPatternOf(value) === "iris"
+                                : value.props.inverted === true}
+                            onChange={inverted => setParam({ inverted })}
+                        />
+                        <SelectField
+                            label={t("storyInspector.field.uncover")}
+                            options={throughColorUncoverOptions(t)}
+                            value={paramString(value.props, "uncover", "retreat")}
+                            onChange={uncover => setParam({ uncover: String(uncover) })}
+                        />
                     </>
                 ) : null}
                 {kind === "darkness" ? (
@@ -2524,7 +2740,6 @@ function TransitionEditor(props: {
                     <>
                         <NumberField label={t("storyInspector.transition.exposureEv")} value={paramNumber(value.props, "ev")} onChange={ev => setParam({ ev })} />
                         <NumberField label={t("storyInspector.transition.exposureLift")} value={paramNumber(value.props, "lift")} onChange={lift => setParam({ lift })} />
-                        <NumberField label={t("storyInspector.transition.holdPct")} value={paramNumber(value.props, "hold")} onChange={hold => setParam({ hold })} />
                     </>
                 ) : null}
             </FieldGrid>
@@ -2533,6 +2748,17 @@ function TransitionEditor(props: {
             )}
         </Section>
     );
+}
+
+/**
+ * The three transitions with an extreme to sit at, and so the three that read
+ * {@link StoryTransitionRef.holdMs}: the colour, the blown-out frame, the starting darkness.
+ */
+const HOLDING_TRANSITION_KINDS = new Set<string>(["throughColor", "exposure", "darkness"]);
+
+/** The geometry a through-colour row covers through - `plain` being no geometry at all. */
+function throughColorPatternOf(value: StoryTransitionRef): string {
+    return paramString(value.props, "pattern", "plain");
 }
 
 function ColorTextField(props: { label: string; value: string; onChange: (value: string) => void }) {
@@ -2758,6 +2984,7 @@ function BackgroundActionEditor(props: {
 
             <TransitionEditor
                 value={props.payload.transition}
+                context="scene"
                 onChange={transition => props.onChange({ ...props.payload, transition })}
             />
 
@@ -2819,6 +3046,9 @@ function ControlPayloadFields(props: { document: StoryDocument; sceneId: StorySc
     }
     if (props.payload.control === "cut") {
         return <CutPointFields payload={props.payload} onChange={props.onChange} />;
+    }
+    if (props.payload.control === "ending") {
+        return <EndingFields payload={props.payload} onChange={props.onChange} />;
     }
     if (props.payload.control !== "conditionBranch") {
         const groupPayload = props.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
@@ -2967,6 +3197,82 @@ function CutPointFields(props: {
             <div className="text-2xs text-fg-subtle">{t("storyInspector.control.cutHint")}</div>
         </div>
     );
+}
+
+/**
+ * The two values an ending row carries: its name, and the page the player lands on.
+ *
+ * The page is three-valued and the select says so in words, because the two non-inheriting answers
+ * are real decisions an author makes for one ending and not for the others - a bad end that simply
+ * stops on its last frame is a choice, not an unset field. The stored shape is a discriminated union
+ * for exactly that reason (see `StoryEndingPage`), so nothing downstream has to guess which falsy
+ * value meant which.
+ *
+ * A page this project no longer has stays selectable rather than being silently dropped: switching
+ * rows must not rewrite a value, and an author renaming pages needs to see which ending still points
+ * at the one they deleted.
+ */
+function EndingFields(props: {
+    payload: Extract<StoryControlPayload, { control: "ending" }>;
+    onChange: (payload: StoryBlock["payload"]) => void;
+}) {
+    const { t } = useTranslation();
+    const surfaces = useProjectSurfaces();
+    const page = props.payload.page;
+    const selected = !page
+        ? ENDING_PAGE_INHERIT
+        : page.kind === "none"
+            ? ENDING_PAGE_NONE
+            : `${ENDING_PAGE_SURFACE_PREFIX}${page.surfaceId}`;
+
+    const options = useMemo<SelectOption[]>(() => {
+        const known = surfaces.map(surface => ({
+            value: `${ENDING_PAGE_SURFACE_PREFIX}${surface.id}`,
+            label: surface.name,
+        }));
+        const missing = page?.kind === "surface" && !surfaces.some(surface => surface.id === page.surfaceId)
+            ? [{ value: selected, label: page.surfaceId }]
+            : [];
+        return [
+            { value: ENDING_PAGE_INHERIT, label: t("storyInspector.control.endingPageInherit") },
+            { value: ENDING_PAGE_NONE, label: t("storyInspector.control.endingPageNone") },
+            ...known,
+            ...missing,
+        ];
+    }, [page, selected, surfaces, t]);
+
+    return (
+        <div className="flex max-w-sm flex-col gap-2">
+            <TextField
+                label={t("storyInspector.control.endingName")}
+                value={props.payload.name}
+                onChange={name => props.onChange({ ...props.payload, name })}
+            />
+            <SelectField
+                label={t("storyInspector.control.endingPage")}
+                options={options}
+                value={selected}
+                onChange={next => props.onChange({ ...props.payload, page: parseEndingPageOption(String(next)) })}
+            />
+        </div>
+    );
+}
+
+/** The select's own vocabulary. Prefixed so a page id can never collide with either sentinel. */
+const ENDING_PAGE_INHERIT = "inherit";
+const ENDING_PAGE_NONE = "none";
+const ENDING_PAGE_SURFACE_PREFIX = "surface:";
+
+function parseEndingPageOption(value: string): StoryEndingPage | undefined {
+    if (value === ENDING_PAGE_NONE) {
+        return { kind: "none" };
+    }
+    if (value.startsWith(ENDING_PAGE_SURFACE_PREFIX)) {
+        return { kind: "surface", surfaceId: value.slice(ENDING_PAGE_SURFACE_PREFIX.length) };
+    }
+    // Undefined, not a `{kind:"inherit"}` arm: absence is what "the build decides" is stored as, and
+    // a third arm would be a second spelling of it.
+    return undefined;
 }
 
 function TextSegmentEditor(props: {

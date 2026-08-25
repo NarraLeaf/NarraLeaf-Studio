@@ -36,7 +36,8 @@ export type LintCategory =
     | "text"
     | "localization"
     | "voice"
-    | "brand";
+    | "brand"
+    | "typography";
 
 /** Fixed presentation (and sort) order of categories. */
 export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
@@ -56,6 +57,10 @@ export const LINT_CATEGORY_ORDER: readonly LintCategory[] = [
     "localization",
     "voice",
     "brand",
+    // Last, beside `brand`: the two are the project's own look decided in one place, and an
+    // author who has just read what a colour link cannot paint is in the right frame of mind
+    // for what a typeface cannot draw.
+    "typography",
 ] as const;
 
 /** Error first, info last - the order findings are reported and rendered in. */
@@ -95,15 +100,26 @@ export type LintRuleId =
     | "story/app-tag-unknown"
     | "story/cut-point-orphan"
     | "story/cut-point-unreachable"
+    | "story/rows-after-ending"
+    | "story/ending-name-duplicate"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"
+    | "story/declared-never-shown"
+    | "story/character-missing"
     | "story/transition-unavailable"
     | "blueprint/reference-missing"
+    | "blueprint/element-ref-missing"
+    | "blueprint/fn-target-missing"
     | "blueprint/unreachable-node"
     | "blueprint/empty-event"
+    | "blueprint/dlc-entrance-unguarded"
     | "ui/unlocalized-text"
     | "ui/page-unreachable"
     | "ui/empty-behavior"
+    | "ui/component-missing"
+    | "ui/frame-target-missing"
+    | "ui/list-item-field-missing"
+    | "ui/gesture-answered-twice"
     | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
@@ -113,11 +129,14 @@ export type LintRuleId =
     | "text/empty"
     | "localization/missing"
     | "localization/stale"
+    | "localization/markup"
     | "localization/orphan"
     | "voice/missing"
     | "voice/stale"
     | "voice/orphan"
-    | "brand/broken-link";
+    | "brand/broken-link"
+    | "typography/glyph-coverage"
+    | "typography/locale-no-font";
 
 /**
  * Where a finding lives.

@@ -23,10 +23,11 @@ export const characters = {
         namePlaceholder: "Enter character name",
         groupNamePlaceholder: "Enter group name",
         deleteCharacterConfirm: "Delete character \"{name}\"?",
-        // Was "This action cannot be undone." until deletion became undoable. What is worth
-        // weighing now is the consequence, not the finality: lines naming this character keep the
-        // reference and stop resolving.
-        deleteCharacterDetail: "Lines that name this character stop resolving until it is restored.",
+        // Was "This action cannot be undone." until deletion became undoable. What is worth weighing
+        // now is the consequence, not the finality - and the consequence is no longer the same for
+        // every row: dialogue keeps the name as a bare speaker, while a row that places the character
+        // on stage has no such form and keeps a reference that no longer resolves.
+        deleteCharacterDetail: "Its dialogue keeps the name. Rows that place it on stage stop resolving.",
         deleteGroupConfirm: "Delete group \"{name}\"?",
         deleteGroupDetail: "Characters in this group will be unassigned.",
     },
@@ -114,8 +115,8 @@ export const characters = {
             docsLink: "Read the {product} guide",
             customDocsLink: "Read how to write a runtime",
             neverDownloads: "Studio does not download it. Obtain it from the vendor, which is also where its licence is accepted.",
-            live2dTerms: "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D.",
-            spineTerms: "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. NarraLeaf holds no Spine licence, so Studio ships no Spine code and cannot build the adapter for you.",
+            live2dTerms: "Live2D Cubism is licensed by Live2D Inc., not by NarraLeaf. You accept the Cubism SDK licence when you download it, and you are the one distributing it in the game you build. Commercial releases above Live2D's annual revenue threshold need a separate publication licence from Live2D. A title that collects several separate works, or that loads models it was not built with, needs Live2D's approval before release, including when it is free.",
+            spineTerms: "Spine Runtimes are licensed by Esoteric Software. Every person who works with Spine needs their own Spine Editor licence, and the Spine Runtimes License must travel with the game you ship. Spine Essential and Professional are valid only below USD 500,000 in revenue and financing; above that, Spine Enterprise is required. Studio ships no Spine code and does not build the adapter for you.",
             sdkStep: "Choose the downloaded {product} SDK archive. Do not extract it.",
             sdkPick: "Choose SDK archive...",
             prebuiltStep: "Choose the built adapter. A folder is copied whole; a single file becomes the runtime's index.js.",
@@ -297,5 +298,12 @@ export const characters = {
         // "pose" because both kinds have one: a pose for a preset character, a tag combination for a
         // layered one, and the crop is keyed on whichever it is.
         portraitScoped: "Frame this look only",
+    },
+    // What a live session changes about this panel. The cast is one of the documents a session
+    // carries, so it stays editable - with two exceptions the author has to be able to see.
+    live: {
+        // On the mark a character wears while somebody else has it open. A person is named: there is
+        // no width for a name beside the monogram, and a truncated one names nobody.
+        recordClaimed: "{name} is editing this character",
     },
 } as const;

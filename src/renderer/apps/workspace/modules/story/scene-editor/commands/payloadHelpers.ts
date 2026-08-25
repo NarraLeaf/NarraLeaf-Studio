@@ -31,6 +31,7 @@ export function withTransitionRef(
     t: StoryCommandValue | undefined,
     d: StoryCommandValue | undefined,
     rule?: StoryCommandValue | undefined,
+    hold?: StoryCommandValue | undefined,
 ): StoryTransitionRef | undefined {
     const word = asEnum(t);
     // Naming a picture says which engine plays it, so `t=` is not also required. `/bg forest
@@ -41,7 +42,8 @@ export function withTransitionRef(
         ? "ruleReveal" as const
         : word === undefined ? undefined : transitionKindFor(context, word);
     const durationMs = asDurationMs(d);
-    if (kind === undefined && durationMs === undefined && ruleAssetId === undefined) {
+    const holdMs = asDurationMs(hold);
+    if (kind === undefined && durationMs === undefined && ruleAssetId === undefined && holdMs === undefined) {
         return current;
     }
     return {
@@ -49,6 +51,7 @@ export function withTransitionRef(
         ...(kind !== undefined ? { kind } : {}),
         ...(durationMs !== undefined ? { durationMs } : {}),
         ...(ruleAssetId !== undefined ? { ruleAssetId } : {}),
+        ...(holdMs !== undefined ? { holdMs } : {}),
     };
 }
 

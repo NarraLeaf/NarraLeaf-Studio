@@ -12,6 +12,8 @@ import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export type VoiceTableRow = {
     unitId: string;
@@ -49,6 +51,8 @@ type VoiceRowStrings = {
 
 type VoiceRowProps = {
     row: VoiceTableRow;
+    /** The language this table is for. What the freeze scope is addressed by. */
+    locale: string;
     speaker: string;
     state: VoiceUnitState;
     /** Resolved audio asset for the linked clip, or null when the clip is missing / unlinked. */
@@ -79,9 +83,14 @@ const STATUS_DOT: Record<VoiceUnitState, string> = {
 
 export function VoiceRow(props: VoiceRowProps) {
     const { row, speaker, state, asset, mode, isPlaying, strings } = props;
-    // Assigning, removing, approving and returning write the locale voice document. Playing the clip
-    // and reading the row do not, so auditioning a frozen revision still works.
-    const freeze = useFreezeGuard();
+    // Assigning, removing, approving and returning write THIS language's voice library. Playing the
+    // clip and reading the row do not, so auditioning a frozen revision still works.
+    //
+    // Scoped rather than guarded by any freeze at all: a live session carries this document, so a
+    // guard with no scope would grey the whole table out inside a session that was carrying its
+    // edits perfectly well. There is no claim to consult here - a take is dropped and approved
+    // rather than typed, and `CLAIMED_OPS` says why that is the whole answer.
+    const freeze = useFreezeGuard(voiceDocumentFreezeScope(props.locale));
     const assignRef = useRef<HTMLButtonElement | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const hasClip = state !== "missing";
@@ -165,6 +174,9 @@ export function VoiceRow(props: VoiceRowProps) {
                                 }
                             }}
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Enter") {
                                     (event.target as HTMLInputElement).blur();
                                 }

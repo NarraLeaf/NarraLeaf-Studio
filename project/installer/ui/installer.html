@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>NarraLeaf Studio</title>
+<style>
+  /*
+   * Tokens copied from src/renderer/styles/styles.css (dark theme). Copied rather than imported:
+   * this document is loaded out of $PLUGINSDIR by the installer and shares nothing with the app's
+   * build, so the values there are the authority and this file is kept in step by hand.
+   *
+   * Dark only. Studio's light theme follows prefers-color-scheme, and an installer that changed
+   * colour with the OS setting would be the one surface where the brand is not the brand.
+   */
+  :root {
+    --primary: #40a8c4;
+    --primary-hover: #55b6cf;
+    --primary-active: #379ab5;
+    --sunken: #0b0d12;
+    --overlay: #22242a;
+    --fg: #eef1f5;
+    --fg-muted: #9aa3ae;
+    --fg-subtle: #6b7480;
+    --fill: rgb(255 255 255 / 0.1);
+    --fill-subtle: rgb(255 255 255 / 0.05);
+    --danger: #da6958;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body {
+    display: flex;
+    flex-direction: column;
+    /* Matches the DWM corner radius the host asks for, so the progress bar's ends follow the
+       window instead of being squared off under a rounded corner. */
+    border-radius: 8px;
+    background: var(--sunken);
+    color: var(--fg);
+    font-family: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+    font-size: 13px;
+    user-select: none;
+    cursor: default;
+  }
+
+  /* ---- self-drawn title bar ---------------------------------------------------------------- */
+  header { display: flex; align-items: center; height: 40px; flex: none; }
+  header .grip { flex: 1; height: 100%; display: flex; align-items: center;
+                 padding-left: 16px; font-size: 12px; color: var(--fg-subtle); }
+  header .close { width: 46px; height: 40px; display: grid; place-items: center;
+                  color: var(--fg-muted); font-size: 10px;
+                  font-family: "Segoe Fluent Icons", "Segoe MDL2 Assets"; }
+  header .close:hover { background: var(--danger); color: var(--fg); }
+  header .close:active { background: #b8564a; }
+
+  /* ---- body -------------------------------------------------------------------------------- */
+  main { flex: 1; padding: 24px 40px 0; min-height: 0; }
+  h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -.2px;
+       font-family: "Segoe UI Variable Display", "Segoe UI", sans-serif; }
+  h1 .pct { margin-left: 12px; font-size: 12px; font-weight: 400; color: var(--fg-subtle);
+            font-variant-numeric: tabular-nums; }
+
+  /* Spacing between rows and no rules: docs/design-system.md rules out per-row borders in a field
+     list, which turn a panel into a table. */
+  .facts { margin-top: 22px; display: flex; flex-direction: column; gap: 14px; }
+  .fact { display: flex; align-items: flex-end; gap: 16px; }
+  .fact .col { flex: 1; min-width: 0; }
+  .fact .k { font-size: 11px; color: var(--fg-subtle); }
+  .fact .v { margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  #note { margin-top: 22px; color: var(--fg-muted); line-height: 1.6; }
+  /* Pulled left by its own padding so the link's text starts on the same column as the line
+     above it, rather than being inset by the hover target. */
+  #after { margin-top: 10px; margin-left: -6px; }
+  body[data-state="failed"] #note { color: var(--danger); }
+
+  /* ---- controls ---------------------------------------------------------------------------- */
+  footer { flex: none; padding: 0 40px 24px; display: flex; align-items: center; gap: 8px; }
+  footer .spacer { flex: 1; }
+  /* `all: unset` also resets box-sizing, and it wins over the `*` rule above on specificity -
+     so it has to be put back, or any button given a percentage width overflows by its padding. */
+  button { all: unset; box-sizing: border-box; font-family: inherit; font-size: 13px; }
+  button:focus-visible { outline: 1px solid var(--primary); outline-offset: 2px; }
+
+  .act { height: 32px; padding: 0 22px; border-radius: 6px;
+         display: inline-flex; align-items: center; justify-content: center; }
+  .act.primary { background: var(--primary); color: #062029; font-weight: 600; }
+  .act.primary:hover { background: var(--primary-hover); }
+  .act.primary:active { background: var(--primary-active); }
+  .act.ghost { color: var(--fg-muted); }
+  .act.ghost:hover { color: var(--fg); background: var(--fill-subtle); }
+  .act.ghost:active { background: var(--fill); }
+
+  .link { color: var(--primary); font-size: 12px; padding: 4px 6px; border-radius: 4px; }
+  .link:hover { background: rgb(64 168 196 / 0.14); }
+
+  /* ---- language ---------------------------------------------------------------------------- */
+  /* The endonyms come from src/shared/i18n/locales.ts (LOCALE_META.nativeName), which says they are
+     never translated - a language picker that names languages in a language you cannot read is no
+     use to the person who needs it. */
+  .lang { position: relative; }
+  .lang > button { width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center;
+                   color: var(--fg-subtle); }
+  .lang > button:hover { color: var(--fg); background: var(--fill-subtle); }
+  .lang > button svg { width: 16px; height: 16px; }
+  .lang[data-open="1"] > button { color: var(--fg); background: var(--fill-subtle); }
+
+  .menu { position: absolute; bottom: 34px; left: 0; min-width: 132px; padding: 4px;
+          background: var(--overlay); border: 1px solid var(--fill); border-radius: 8px;
+          box-shadow: 0 8px 24px rgb(0 0 0 / 0.45); }
+  .menu button { display: block; width: 100%; height: 28px; padding: 0 10px; border-radius: 4px;
+                 line-height: 28px; color: var(--fg-muted); }
+  .menu button:hover { color: var(--fg); background: var(--fill-subtle); }
+  .menu button[aria-checked="true"] { color: var(--fg); background: rgb(64 168 196 / 0.15); }
+
+  /* ---- progress ---------------------------------------------------------------------------- */
+  /* The console panel's bar (ConsolePanel.tsx): a 2px track on fill-subtle with a primary fill
+     running left to right. It sits on the window's bottom edge and is always there, so the edge
+     does not move when the install starts. The number behind it is NSIS's own extraction progress,
+     mirrored in by the host, so it is real rather than a sweep. */
+  #progress { flex: none; height: 2px; background: var(--fill-subtle); }
+  #progress > i { display: block; height: 100%; width: 0; background: var(--primary);
+                  border-bottom-left-radius: 8px;
+                  transition: width .3s ease-out, background-color .3s ease-out; }
+  body[data-state="failed"] #progress > i { background: var(--danger); }
+
+  [hidden] { display: none !important; }
+</style>
+</head>
+
+<body data-state="install">
+  <header>
+    <div class="grip" id="grip"><span id="brand"></span></div>
+    <div class="close" id="close">&#xE8BB;</div>
+  </header>
+
+  <main>
+    <h1><span id="title"></span><span class="pct" id="pct" hidden></span></h1>
+
+    <div class="facts" id="facts">
+      <div class="fact">
+        <div class="col">
+          <div class="k" id="k-location"></div>
+          <div class="v" id="v-location"></div>
+        </div>
+        <button class="link" id="browse"></button>
+      </div>
+      <div class="fact">
+        <div class="col">
+          <div class="k" id="k-size"></div>
+          <div class="v" id="v-size"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="note" hidden></div>
+    <div id="after" hidden><button class="link" id="docs"></button></div>
+  </main>
+
+  <footer>
+    <div class="lang" id="lang" data-open="0">
+      <button id="lang-button" aria-haspopup="true" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"></path>
+          <path d="M2 12h20"></path>
+        </svg>
+      </button>
+      <div class="menu" id="lang-menu" hidden></div>
+    </div>
+    <div class="spacer"></div>
+    <button class="act ghost" id="secondary"></button>
+    <button class="act primary" id="primary"></button>
+  </footer>
+
+  <div id="progress"><i id="bar"></i></div>
+
+<script>
+"use strict";
+(function () {
+  /*
+   * All three languages live here rather than as NSIS LangStrings.
+   *
+   * LangString has to come after the language tables are loaded, and electron-builder inserts those
+   * *after* every page - including the hooks this installer's pages are declared in - so a
+   * LangString written from installer.nsh would not compile. Keeping the text here also keeps
+   * non-ASCII out of the .nsh, where makensis decides the encoding from a BOM and gets it wrong
+   * quietly when there is none. And it is what lets the picker below work at all: switching
+   * language is a re-render, with nothing to ask the host for.
+   *
+   * The three are Studio's own (src/shared/i18n/locales.ts, SUPPORTED_LOCALES).
+   */
+  var TEXT = {
+    en: {
+      name: "English",
+      install: "Install {app}",
+      installing: "Installing",
+      done: "Installed",
+      failed: "Installation did not finish",
+      installedIn: "{app} is installed in {dir}",
+      location: "Location",
+      size: "Size",
+      change: "Change",
+      cancel: "Cancel",
+      confirm: "Install",
+      launch: "Start",
+      close: "Close",
+      docs: "Documentation"
+    },
+    zh: {
+      name: "中文",
+      install: "安装 {app}",
+      installing: "正在安装",
+      done: "安装完成",
+      failed: "安装未完成",
+      installedIn: "{app} 已安装在 {dir}",
+      location: "位置",
+      size: "占用",
+      change: "更改",
+      cancel: "取消",
+      confirm: "安装",
+      launch: "启动",
+      close: "关闭",
+      docs: "文档"
+    },
+    ja: {
+      name: "日本語",
+      install: "{app} のインストール",
+      installing: "インストール中",
+      done: "インストール完了",
+      failed: "インストールは完了しませんでした",
+      installedIn: "{app} は {dir} にインストールされました",
+      location: "場所",
+      size: "サイズ",
+      change: "変更",
+      cancel: "キャンセル",
+      confirm: "インストール",
+      launch: "起動",
+      close: "閉じる",
+      docs: "ドキュメント"
+    }
+  };
+
+  var ORDER = ["en", "zh", "ja"];
+
+  var send = function (command) { window.chrome.webview.postMessage(command); };
+  var el = function (id) { return document.getElementById(id); };
+
+  var language = "en";
+  var text = TEXT.en;
+  var app = "";
+  var dir = "";
+  var state = "install";
+
+  function fill(template) {
+    return (template || "").replace("{app}", app).replace("{dir}", dir);
+  }
+
+  function apply() {
+    document.body.setAttribute("data-state", state);
+
+    var installing = state === "installing";
+    var done = state === "done";
+    var failed = state === "failed";
+
+    el("title").textContent = fill(text[state]);
+    el("pct").hidden = !installing;
+    el("browse").hidden = state !== "install";
+    el("facts").hidden = done || failed;
+
+    // The finish screen says where it went; nothing else needs saying, and the facts it replaces
+    // were the question, not the answer.
+    el("note").hidden = !done;
+    el("after").hidden = !done;
+    if (done) { el("note").textContent = fill(text.installedIn); }
+    el("docs").textContent = text.docs;
+
+    el("k-location").textContent = text.location;
+    el("k-size").textContent = text.size;
+    el("browse").textContent = text.change;
+
+    // The install screen offers the ordinary pair; during the install only cancelling is left;
+    // afterwards the primary action is starting what was just installed.
+    el("primary").hidden = installing || failed;
+    el("primary").textContent = done ? text.launch : text.confirm;
+    el("secondary").textContent = (done || failed) ? text.close : text.cancel;
+
+    buildMenu();
+  }
+
+  // ---- language picker ------------------------------------------------------------------------
+
+  function buildMenu() {
+    var menu = el("lang-menu");
+    menu.textContent = "";
+    ORDER.forEach(function (code) {
+      var item = document.createElement("button");
+      item.textContent = TEXT[code].name;
+      item.setAttribute("role", "menuitemradio");
+      item.setAttribute("aria-checked", code === language ? "true" : "false");
+      item.addEventListener("click", function () {
+        language = code;
+        text = TEXT[code];
+        closeMenu();
+        apply();
+      });
+      menu.appendChild(item);
+    });
+  }
+
+  function openMenu() {
+    el("lang").setAttribute("data-open", "1");
+    el("lang-button").setAttribute("aria-expanded", "true");
+    el("lang-menu").hidden = false;
+  }
+
+  function closeMenu() {
+    el("lang").setAttribute("data-open", "0");
+    el("lang-button").setAttribute("aria-expanded", "false");
+    el("lang-menu").hidden = true;
+  }
+
+  el("lang-button").addEventListener("click", function (event) {
+    event.stopPropagation();
+    if (el("lang-menu").hidden) { openMenu(); } else { closeMenu(); }
+  });
+  document.addEventListener("mousedown", function (event) {
+    if (!el("lang").contains(event.target)) { closeMenu(); }
+  });
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") { closeMenu(); }
+  });
+
+  // ---- host -> page ---------------------------------------------------------------------------
+
+  window.nlInit = function (initial, brand, product, directory, size) {
+    language = TEXT[initial] ? initial : "en";
+    text = TEXT[language];
+    app = product;
+    dir = directory;
+    el("brand").textContent = brand;
+    el("v-location").textContent = directory;
+    el("v-size").textContent = size;
+    apply();
+  };
+
+  window.nlState = function (next) { state = next; apply(); };
+  window.nlDir = function (directory) {
+    dir = directory;
+    el("v-location").textContent = directory;
+  };
+  window.nlMessage = function (message) { el("note").textContent = message; };
+
+  // Called by the host's progress mirror, up to ten times a second.
+  window.nlProgress = function (fraction) {
+    var percent = Math.max(0, Math.min(100, Math.round(fraction * 100)));
+    el("bar").style.width = percent + "%";
+    el("pct").textContent = percent + "%";
+  };
+
+  // ---- page -> host ---------------------------------------------------------------------------
+  //
+  // "@" commands are answered inside the host, which presses the installer's own hidden buttons.
+  // That is what lets one document drive every page: while a section is running there is no script
+  // loop to poll, but the window still answers WM_COMMAND. Anything else is queued for the page
+  // that is currently polling.
+
+  el("close").addEventListener("click", function () { send("@cancel"); });
+
+  el("secondary").addEventListener("click", function () {
+    // Once the install is over, closing is finishing - the installer's Next is what ends it.
+    send(state === "done" || state === "failed" ? "@next" : "@cancel");
+  });
+
+  el("primary").addEventListener("click", function () {
+    if (state === "done") { send("launch"); return; }
+    send("@next");
+  });
+
+  el("browse").addEventListener("click", function () { send("browse"); });
+
+  /*
+   * The docs site publishes English and Chinese only, and hides the default locale - so English is
+   * at /docs and everything else at /<locale>/docs. A language it has never heard of reads the
+   * English page, which is a working link rather than a 404. Same rule as
+   * src/shared/utils/puppetRuntimes.ts, which is where the app resolves the same thing.
+   *
+   * The URL is built here rather than in the host because the language is only known here: the
+   * picker changes it without telling anyone.
+   */
+  el("docs").addEventListener("click", function () {
+    var prefix = language === "zh" ? "/zh" : "";
+    send("open:https://www.narraleaf.com" + prefix + "/docs/studio");
+  });
+
+  // The window has no system frame, so this is the only thing that moves it. The host turns "@drag"
+  // into WM_NCLBUTTONDOWN while the button is still down.
+  el("grip").addEventListener("mousedown", function (event) {
+    if (event.button === 0) { send("@drag"); }
+  });
+
+  // Chromium's own gestures mean nothing in an installer.
+  document.addEventListener("contextmenu", function (event) { event.preventDefault(); });
+  document.addEventListener("dragstart", function (event) { event.preventDefault(); });
+})();
+</script>
+</body>
+</html>

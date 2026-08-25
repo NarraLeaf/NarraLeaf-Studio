@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+    applyBlueprintFlowNodeSelection,
     blueprintElementPreviewsSignature,
     blueprintIrToFlowNodes,
+    BLUEPRINT_FLOW_Z_NODE,
 } from "./useBlueprintFlowProjection";
 import type { BlueprintFlowNodeData } from "./components/BlueprintFlowNode";
 
@@ -71,5 +73,89 @@ describe("blueprintIrToFlowNodes", () => {
         );
 
         expect(nodes[0]?.data.dynamicSelectOptions?.pages).toEqual([{ value: "node", label: "Node" }]);
+    });
+});
+
+describe("group frame stacking", () => {
+    /** Two frames, the inner one listed first, so document order alone would draw it underneath. */
+    function nestedFrames() {
+        const frame = (id: string, x: number, y: number, size: number) => ({
+            id,
+            type: "flow.comment",
+            params: { frame: true, background: false, width: size, height: size },
+            meta: { editorLayout: { x, y } },
+        });
+        return blueprintIrToFlowNodes(
+            {
+                nodes: {
+                    inner: frame("inner", 100, 100, 200),
+                    outer: frame("outer", 0, 0, 600),
+                    card: {
+                        id: "card",
+                        type: "test.node",
+                        params: {},
+                        meta: { editorLayout: { x: 150, y: 150 } },
+                    },
+                },
+                edges: [],
+            } as any,
+            {
+                resolveCatalogEntryForNode: (type: string) => ({
+                    type,
+                    displayName: type,
+                    category: "Test",
+                    pins: [],
+                    role: type === "flow.comment" ? "comment" : undefined,
+                }),
+            } as any,
+        );
+    }
+
+    it("draws a frame inside another frame on top of it, and both under the cards", () => {
+        const byId = new Map(nestedFrames().map(n => [n.id, n]));
+
+        expect(byId.get("outer")?.zIndex).toBeLessThan(byId.get("inner")!.zIndex!);
+        expect(byId.get("inner")?.zIndex).toBeLessThan(BLUEPRINT_FLOW_Z_NODE);
+        expect(byId.get("card")?.zIndex).toBe(BLUEPRINT_FLOW_Z_NODE);
+    });
+
+    it("keeps a frame behind the cards even with the note layer switched on", () => {
+        // `background` is the note's switch and a frame can carry it from an older document or a
+        // stray click. A frame level with the cards covers whatever the document listed first.
+        const nodes = blueprintIrToFlowNodes(
+            {
+                nodes: {
+                    card: { id: "card", type: "test.node", params: {}, meta: { editorLayout: { x: 150, y: 150 } } },
+                    frame: {
+                        id: "frame",
+                        type: "flow.comment",
+                        params: { frame: true, background: true, width: 600, height: 600 },
+                        meta: { editorLayout: { x: 0, y: 0 } },
+                    },
+                },
+                edges: [],
+            } as any,
+            {
+                resolveCatalogEntryForNode: (type: string) => ({
+                    type,
+                    displayName: type,
+                    category: "Test",
+                    pins: [],
+                    role: type === "flow.comment" ? "comment" : undefined,
+                }),
+            } as any,
+        );
+        const byId = new Map(nodes.map(n => [n.id, n]));
+
+        expect(byId.get("frame")?.zIndex).toBeLessThan(BLUEPRINT_FLOW_Z_NODE);
+        expect(byId.get("card")?.zIndex).toBe(BLUEPRINT_FLOW_Z_NODE);
+    });
+
+    it("keeps a selected frame behind the cards it encloses", () => {
+        const selected = applyBlueprintFlowNodeSelection(nestedFrames(), ["outer", "inner"]);
+        const byId = new Map(selected.map(n => [n.id, n]));
+
+        expect(byId.get("outer")?.zIndex).toBeLessThan(byId.get("inner")!.zIndex!);
+        expect(byId.get("inner")?.zIndex).toBeLessThan(BLUEPRINT_FLOW_Z_NODE);
     });
 });

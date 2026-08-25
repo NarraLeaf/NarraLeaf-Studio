@@ -131,20 +131,46 @@ export const build = {
     },
         patch: {
             title: "パッチを書き出す",
-            variantLabel: "バリアント",
-            variantHint: "パッチは、書き出した対象のバリアントのビルドでのみ開く",
-            contentLabel: "内容の取得元",
+            kindLabel: "書き出す対象",
+            kindPatch: "パッチ",
+            dlcVariantHint: "プロジェクト ▸ アプリ の DLC で設定します。",
+            dlcOutputHint: "上のパスの隣にある DLC フォルダーに {file} として書き出します。",
+            baselineModeLabel: "本パッチが更新するビルド",
+            baselineModeVariant: "この書き出しの中でビルドする",
+            baselineModeArtifact: "既存のビルドフォルダー",
+            baselineModeVariantHint: "下のバリアントを先にビルドし、そのビルドと異なる内容だけをパッチに含める",
+            baselineModeArtifactHint: "そのフォルダーと異なるファイルだけをパッチに含める",
+            targetLabel: "インストール先のバリアント",
+            targetHint: "パッチは、書き出した対象のバリアントのビルドでのみ開く",
+            artifactLabel: "ビルドフォルダー",
+            artifactPlaceholder: "空のままにするとゲーム全体を含める",
+            artifactReading: "ビルドを読み取り中…",
+            artifactRead: "{product}、ビルド日時 {date}",
+            artifactReadVersioned: "{product} {version}、ビルド日時 {date}",
+            artifactVariantStated: "ビルドフォルダーから読み取った値",
+            artifactVariantUnknown: "このビルドはバリアントを記録していない。下で選択する。",
+            artifactVariantMismatch: "このビルドは {build}。この DLC の依存先は {variant}。",
+            artifactWholeGame: "パッチにゲーム全体を含める",
+            contentLabel: "内容の取得元バリアント",
             contentHint: "このバリアントのシーン、条件分岐、アートがパッチに入る",
-            baselineLabel: "本パッチが更新するビルド",
-            baselinePlaceholder: "空のままにするとゲーム全体を含める",
-            baselineHint: "以前のビルドが出力したデスクトップビルドのフォルダー。そのフォルダーと異なるファイルだけを含める",
+            sameVariant: "内容と更新対象のビルドが同じバリアント。このパッチに変更は含まれない。",
             outputLabel: "保存先",
             nameLabel: "名前",
             namePlaceholder: "ゲームのログに表示される",
+            layerLabel: "レイヤー",
+            layerHint: "同じ箇所を変更するパッチが複数ある場合、レイヤーの高い方が有効になる",
             browse: "参照…",
+            blocked: {
+                output: "書き出し先を選択する",
+                reading: "ビルドフォルダーを読み取り中",
+                artifact: "このフォルダーにこのゲームのビルドはない",
+                dlcBaseline: "この DLC を追加するビルドを選択する",
+                dlcVariant: "このビルドは、この DLC の依存先バリアントではない",
+            },
             exportAction: "書き出す",
             busy: "ビルドがすでに実行中",
-            noKey: "このプロジェクトには配布キーがない。「プロジェクト」ページで作成し、ゲームをビルドし直す。パッチを受け入れるのは、キーの作成後に生成されたビルドだけ。",
+            noKey: "このプロジェクトには配布キーがない。作成してからゲームをビルドし直す。パッチを受け入れるのは、キーの作成後に生成されたビルドだけ。",
+            noKeyAction: "「プロジェクト」ページを開く",
         },
     signing: {
         empty: "署名できる対象を選ぶ",
@@ -217,11 +243,12 @@ export const build = {
     output: {
         artifacts: "成果物",
         artifactsEmpty: "作られるファイルを見るには対象を選ぶ",
+            includeDlc: "このバリアントの DLC も書き出す",
+            includeDlcHint: {
+                one: "{count} 件の DLC を、インストーラーの隣にある専用のフォルダーへ書き出します。",
+                other: "{count} 件の DLC を、インストーラーの隣にそれぞれ専用のフォルダーで書き出します。",
+            },
         openWhenDone: "終わったら出力フォルダを開く",
-        compression: "圧縮",
-        compressionMaximum: "最大（最小サイズ）",
-        compressionNormal: "標準",
-        compressionStore: "なし（最速）",
     },
     /**
      * ビルドが終わったあと、成果物の一覧の下に出す大きさの読み。数字そのものは訳さない。
@@ -290,7 +317,7 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
-        "web-lossy-images": "書き出す画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
+        "lossy-images": "画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
         "mobile-template-missing": "モバイルのシェルテンプレートを使えない：{reason}",
         "mobile-payload-too-large": "このプロジェクトのアセット（{size}）は、モバイルのパッケージに収まる大きさを超えている",
         "version-uncodable": "バージョン {version} は Android のバージョンコードに変換できない。メジャーは 2099 まで、マイナーとパッチは 999 まで",
@@ -324,6 +351,50 @@ export const build = {
         submitted: "ビルドを開始した。進み具合はコンソールに出る",
         done: "ビルドが完了した",
         failed: "ビルドに失敗した",
+        patchDone: "パッチを書き出した",
+        patchFailed: "パッチの書き出しに失敗した",
+        // 通知の上のボタン。本文はボタンがなくても成り立つ。通知パネルは本文だけを残す。
+        openReport: "レポートを開く",
+    },
+    /**
+     * ビルドレポート。終わった実行が何を作り、アセットライブラリから何を収録したか。
+     * その実行が出す通知から開く。
+     *
+     * 二つの語を区別して使う。成果物はビルドが書いたファイル、アセットはプロジェクトの
+     * ライブラリの項目。レポートはその両方を出す。
+     */
+    report: {
+        title: "ビルドレポート",
+        empty: "報告できるビルドはない",
+        outcome: {
+            done: "成功",
+            error: "失敗",
+            cancelled: "中止",
+        },
+        kind: {
+            build: "製品ビルド",
+            patch: "パッチの書き出し",
+        },
+        summary: "概要",
+        variant: "バリアント",
+        platforms: "プラットフォーム",
+        duration: "所要時間",
+        artifacts: "成果物",
+        artifactsEmpty: "この実行に成果物はない",
+        outputDir: "出力フォルダ",
+        durationSeconds: "{seconds} 秒",
+        durationMinutes: "{minutes} 分 {seconds} 秒",
+        includedTitle: "収録したアセット",
+        includedEmpty: "この実行が収録したアセットはない",
+        excludedTitle: "収録しなかったアセット",
+        excludedEmpty: "この実行が外したアセットはない",
+        charactersTitle: "収録しなかったキャラクター",
+        // ライブラリを丸ごと収録した実行では、二つの一覧の代わりにこれを出す
+        wholeLibrary: "この実行はアセットライブラリを丸ごと収録した",
+        search: "アセットを検索",
+        noMatches: "この検索に一致するアセットはない",
+        showAll: "{count} 件すべてを表示",
+        failure: "失敗の理由",
     },
     invalidCommand: "{story} / {scene} に無効なコマンド：{source}",
     invalidCommandSummary: {
@@ -384,6 +455,11 @@ export const build = {
      * それで拒んでいたら、どのバリアントのビルドも誰も解決できない URL の後ろに置かれてしまう。
      */
     contentCoverageGap: "{location} を読めなかったので、{variant} のビルドが何を除外するかを決められない",
+    contentComputedPinGap: "{location} はアセットを計算結果から受け取るため、このビルドは必要なアセットを判別できない",
+    contentComputedPinSummary: {
+        one: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。ピンでアセットを選択する。詳細はコンソール。",
+        other: "ビルドを中止した：アセットを計算結果から受け取るピンが {count} 個ある。各ピンでアセットを選択する。詳細はコンソール。",
+    },
     /** ドキュメント 1 件ではなく索引全体が欠けているときに `{location}` に入る言葉。 */
     contentCoverageWholeProject: "プロジェクト",
     contentCoverageSummary: {

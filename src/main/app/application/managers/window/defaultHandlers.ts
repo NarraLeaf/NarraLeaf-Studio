@@ -30,11 +30,22 @@ import {
     VcsGetStatusHandler, VcsCommitHandler, VcsCheckpointHandler, VcsRestoreRevisionHandler,
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
-    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsForgetServerHandler,
-    VcsListServerProjectsHandler, VcsCreateServerProjectHandler,
+    VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsRefreshServerHandler, VcsForgetServerHandler,
+    VcsListServerProjectsHandler, VcsGetServerProjectHandler, VcsDeleteServerProjectHandler,
+    VcsListServerProjectHistoryHandler,
+    VcsListServerMembersHandler,
+    VcsSignInWithPasswordHandler, VcsPublishProjectHandler,
+    VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
     VcsRestartConflictsHandler, VcsAbortMergeHandler,
 } from "./handlers/vcsAction";
+import {
+    TeamCallHandler,
+    TeamConnectionsHandler,
+    TeamOpenHandler,
+    TeamSubscribeHandler,
+    TeamUnsubscribeHandler,
+} from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
 import {
     ProjectWizardSelectPackageHandler,
@@ -48,8 +59,9 @@ import {
     MediaConvertStartHandler,
     MediaProbeHandler,
 } from "./handlers/mediaAction";
+import { FontCoverageProbeHandler } from "./handlers/fontAction";
 import { StudioTasksGetOverviewHandler, StudioTasksPrebakeWeatherHandler } from "./handlers/studioTaskAction";
-import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
+import { WorkspaceLaunchHandler, WorkspaceOpenRecentHandler, WorkspaceIsProjectOpenHandler, WorkspaceSelectFolderHandler, WorkspaceCloseHandler, WorkspaceReturnToLauncherHandler, WorkspaceExportConsoleLogsHandler, WorkspaceMenuSyncHandler, WorkspaceReportLoadResultHandler, WorkspaceCommandLineBuildHandler, WorkspaceSetRecoveryModeHandler, WorkspaceOpenProjectFolderHandler } from "./handlers/workspaceAction";
 import { WorkspaceReportWriteFreezeHandler } from "./handlers/workspaceFreezeAction";
 import {
     DevModeFullscreenGetHandler,
@@ -81,6 +93,7 @@ import {
 } from "./handlers/previewAction";
 import {
     GameTestLaunchHandler,
+    GameTestSendCommandHandler,
     GameTestStopHandler,
 } from "./handlers/gameTestAction";
 import {
@@ -91,6 +104,9 @@ import {
     GameBuildExportPatchHandler,
     GameBuildSelectPatchFileHandler,
     GameBuildSelectPatchBaselineHandler,
+    GameBuildReadPatchBaselineHandler,
+    GameBuildReadLastRunHandler,
+    GameBuildRevealOutputHandler,
     GameBuildStartHandler,
 } from "./handlers/gameBuildAction";
 import {
@@ -132,6 +148,11 @@ import {
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
 import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
+import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./handlers/assetTransferAction";
+import {
+    ClipboardReadEditorSelectionHandler,
+    ClipboardWriteEditorSelectionHandler,
+} from "./handlers/clipboardAction";
 import { PuppetRuntimeInstallSdkHandler } from "./handlers/puppetRuntimeAction";
 import {
     BlueprintPersistenceGetAllHandler,
@@ -231,6 +252,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new PsdOpenHandler(),
         new PsdBakeHandler(),
         new MediaProbeHandler(),
+        new FontCoverageProbeHandler(),
         new MediaConvertStartHandler(),
         new MediaConvertCancelHandler(),
         new MediaConvertGetStatusHandler(),
@@ -247,6 +269,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppClaimExperimentalNoticeHandler(),
         new WorkspaceOpenProjectFolderHandler(),
         new WorkspaceReportLoadResultHandler(),
+        new WorkspaceCommandLineBuildHandler(),
         new WorkspaceReportWriteFreezeHandler(),
 
         // Dev mode handlers
@@ -276,6 +299,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
 
         // Game sessions owned by a test run (not by the Run button)
         new GameTestLaunchHandler(),
+        new GameTestSendCommandHandler(),
         new GameTestStopHandler(),
 
         // Production game build handlers
@@ -286,6 +310,9 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new GameBuildExportPatchHandler(),
         new GameBuildSelectPatchFileHandler(),
         new GameBuildSelectPatchBaselineHandler(),
+        new GameBuildReadPatchBaselineHandler(),
+        new GameBuildReadLastRunHandler(),
+        new GameBuildRevealOutputHandler(),
         new GameBuildPreflightHandler(),
 
         // Code-signing credential vault (machine-level; no handler returns a secret)
@@ -346,6 +373,10 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
         new AssetExportToFolderHandler(),
+        new AssetTransferOfferHandler(),
+        new AssetTransferRedeemHandler(),
+        new ClipboardWriteEditorSelectionHandler(),
+        new ClipboardReadEditorSelectionHandler(),
         new PuppetRuntimeInstallSdkHandler(),
 
         // Actor-aware privileged facade handlers
@@ -415,8 +446,22 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),
         new VcsListServerProjectsHandler(),
-        new VcsCreateServerProjectHandler(),
+        new VcsGetServerProjectHandler(),
+        new VcsDeleteServerProjectHandler(),
+        new VcsListServerProjectHistoryHandler(),
+        new VcsListServerMembersHandler(),
+        // The Team protocol, whole. See ./handlers/teamAction.ts for why this is five
+        // entries and stays five however many features the protocol grows.
+        new TeamOpenHandler(),
+        new TeamConnectionsHandler(),
+        new TeamCallHandler(),
+        new TeamSubscribeHandler(),
+        new TeamUnsubscribeHandler(),
+    new VcsSignInWithPasswordHandler(),
+        new VcsPublishProjectHandler(),
+        new VcsListLocalRepositoriesHandler(),
         new VcsAddServerHandler(),
+        new VcsRefreshServerHandler(),
         new VcsForgetServerHandler(),
         new VcsSignOutHandler(),
         new VcsTrustAuthorityHandler(),

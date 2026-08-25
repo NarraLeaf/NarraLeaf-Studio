@@ -10,6 +10,10 @@ import {
     type UISwitchWidgetProps,
 } from "@shared/types/ui-editor/switch";
 import {
+    UI_LIST_SCROLL_METRICS_AT_REST,
+    type UIListScrollMetrics,
+} from "@shared/types/ui-editor/list";
+import {
     resolveTextInputRuntimeValue,
     type UITextInputRuntimeValue,
     type UITextInputWidgetProps,
@@ -142,6 +146,16 @@ export class WidgetRuntimeStateStore {
     private readonly listItems = new Map<string, unknown[]>();
     private readonly listSelectedIndexes = new Map<string, number>();
     private readonly listScrollRequests = new Map<string, UIListRuntimeScrollRequest>();
+    /**
+     * Where each list has got to along its axis.
+     *
+     * Deliberately outside the snapshot. This changes every frame a list is moving, and the snapshot
+     * is a fresh copy of a dozen maps handed to every widget subscribed to it - publishing a scroll
+     * position through it would re-render a surface for the duration of a flick. Nothing draws from
+     * these numbers either: the scrollbar measures the viewport it is drawn beside. They exist so a
+     * blueprint can ask a list where it is, which happens when an author's graph runs, not per frame.
+     */
+    private readonly listScrollMetrics = new Map<string, UIListScrollMetrics>();
     private readonly displayableMotions = new Map<string, UIDisplayableMotionOverride>();
     private readonly displayableBaseTransforms = new Map<string, UIDisplayableBaseTransform>();
     private readonly listeners = new Set<() => void>();
@@ -381,9 +395,20 @@ export class WidgetRuntimeStateStore {
         const hadItems = this.listItems.delete(elementId);
         const hadSelected = this.listSelectedIndexes.delete(elementId);
         const hadScroll = this.listScrollRequests.delete(elementId);
+        this.listScrollMetrics.delete(elementId);
         if (hadItems || hadSelected || hadScroll) {
             this.emit();
         }
+    }
+
+    /** Where this list last measured itself, or at-rest for one that has not measured yet. */
+    getListScrollMetrics(elementId: string): UIListScrollMetrics {
+        return this.listScrollMetrics.get(elementId) ?? UI_LIST_SCROLL_METRICS_AT_REST;
+    }
+
+    /** Does not emit: see the field. */
+    setListScrollMetrics(elementId: string, metrics: UIListScrollMetrics): void {
+        this.listScrollMetrics.set(elementId, metrics);
     }
 
     getListSelectedIndex(elementId: string): number | undefined {
@@ -507,6 +532,10 @@ export class WidgetRuntimeStateStore {
     getSignalsForElement(elementId: string, interactionDisabled: boolean | undefined): SystemInteractionSignals {
         return {
             hovered: this.hoverTargetIds.has(elementId),
+            // The store never sets this: selection belongs to the row a list is drawing, which this
+            // store has no dimension for. `useWidgetRuntimeElementState` merges it in from the row
+            // context, so the default here is the honest answer for anything outside a list.
+            selected: false,
             active: this.activePointerId === elementId,
             focused: this.focusedId === elementId,
             disabled: Boolean(interactionDisabled),

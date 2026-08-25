@@ -19,6 +19,7 @@ export const EXPERIMENTAL_CONDITION_FLAG_PREFIX = "--x-";
 
 export const EXPERIMENTAL_CONDITION_IDS = [
     "debuggable-build",
+    "live-session-freeze",
 ] as const;
 
 export type ExperimentalConditionId = typeof EXPERIMENTAL_CONDITION_IDS[number];
@@ -41,6 +42,12 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}debuggable-build`,
         summary: "Game builds ship without asar integrity validation and accept a remote-debugging "
             + "switch at launch.",
+    },
+    {
+        id: "live-session-freeze",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}live-session-freeze`,
+        summary: "The command palette can freeze the workspace the way a live session does, leaving "
+            + "the open story and the cast writable and everything else read-only.",
     },
 ];
 

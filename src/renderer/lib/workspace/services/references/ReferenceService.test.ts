@@ -24,6 +24,9 @@ type MountOptions = {
     charactersFail?: boolean;
     /** Records what the service subscribes to, so a rescan trigger can be fired at it. */
     hooks?: { setsChanged?: () => void; storyLoads?: string[] };
+    /** The project's default font stack, which is a reference site like any other. */
+    projectFonts?: ReadonlyArray<{ assetId: string }>;
+    designFails?: boolean;
 };
 
 const noop = () => () => { };
@@ -121,6 +124,16 @@ function mount(options: MountOptions = {}): ReferenceService {
                                 return [];
                             },
                             subscribe: noop,
+                        };
+                    case Services.Brand:
+                        return {
+                            listFonts: () => {
+                                if (options.designFails) {
+                                    throw new Error("the design document is unreadable");
+                                }
+                                return options.projectFonts ?? [];
+                            },
+                            onFontsChanged: noop,
                         };
                     default:
                         throw new Error(`Unexpected service lookup: ${String(id)}`);
@@ -273,5 +286,41 @@ describe("nodes the catalogue does not know", () => {
         await service.ensureReady();
 
         expect(service.getIndexResult()).toEqual({ complete: true, gaps: [] });
+    });
+});
+
+/**
+ * The project's default fonts are the one asset use that lives outside every document the other
+ * five slices walk, so nothing else in this index can catch them going missing.
+ */
+describe("the project design slice", () => {
+    it("reports the default font stack as a reference", async () => {
+        const service = mount({ projectFonts: [{ assetId: "font-a" }, { assetId: "font-b" }] });
+        await service.ensureReady();
+
+        expect(service.isReferenced("font-a")).toBe(true);
+        // The rung's place in the stack is what an author would recognise the row by.
+        expect(service.getReferences("font-b")).toEqual([
+            { id: "design:font:font-b", assetId: "font-b", kind: "design", label: "Default fonts", field: "fonts[2]" },
+        ]);
+    });
+
+    // The built-in stacks are CSS literals with no file behind them, and `isLibraryAssetId` is what
+    // keeps them out of an index whose whole purpose is answering "may I delete this file".
+    it("ignores the built-in system stacks", async () => {
+        const service = mount({ projectFonts: [{ assetId: "builtin:font:serif" }] });
+        await service.ensureReady();
+
+        expect(service.getReferencedAssetIds().size).toBe(0);
+        expect(service.getIndexResult().complete).toBe(true);
+    });
+
+    it("reports a gap - narrowed to fonts - when the design document will not read", async () => {
+        const service = mount({ designFails: true });
+        await service.ensureReady();
+
+        expect(service.getIndexResult().gaps).toEqual([
+            { reason: "sliceFailed", slice: "design", location: "Default fonts", affects: ["font"] },
+        ]);
     });
 });

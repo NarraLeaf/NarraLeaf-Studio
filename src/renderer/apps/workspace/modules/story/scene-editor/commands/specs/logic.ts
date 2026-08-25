@@ -1,4 +1,4 @@
-import { Bookmark, CornerUpLeft, Flag, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
+import { Bookmark, CornerUpLeft, Flag, FlagTriangleRight, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
@@ -302,6 +302,43 @@ export const cut = defineStoryCommand({
     },
 });
 
+/**
+ * `/ending <name>` - the story has reached one of its endings.
+ *
+ * The row records the ending and stops playback, then shows the page the inspector names (or the
+ * one the build declares). Everything downstream keys on the ROW's id rather than on the name, so
+ * renaming an ending is free: see `StoryEndingPage` and `listStoryEndings`.
+ *
+ * The name is a core argument. An unnamed ending would record and stop perfectly well, but it is a
+ * thing an author lists on a screen and hands to a player, and a blank one has nothing to show
+ * there - so a bare `/ending` stays a draft row asking for the name rather than committing without
+ * one, exactly as `/label` does.
+ */
+export const ending = defineStoryCommand({
+    id: "ending",
+    token: "ending",
+    aliases: ["end"],
+    category: "flow",
+    icon: FlagTriangleRight,
+    examples: ["/ending True End", "/ending Bad End"],
+    params: {
+        // Greedy, like a label's: an ending is called "The one where nobody comes home", not
+        // `ending_03`.
+        name: { hint: "endingName", type: { kind: "text" }, positional: true, greedy: true, core: true },
+    },
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "control",
+            // No `page`: absent is "the build's own ending page", which is the right default for
+            // every project that has set one and harmless for every project that has not.
+            payload: { control: "ending", name: asText(args.name) ?? "" },
+        };
+    },
+});
+
 /** A Story Action Blueprint call - the blueprint itself is picked in the inspector. */
 export const blueprint = defineStoryCommand({
     id: "blueprint",
@@ -315,4 +352,4 @@ export const blueprint = defineStoryCommand({
     inspectorAfterCommit: true,
 });
 
-export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, blueprint];
+export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, blueprint];

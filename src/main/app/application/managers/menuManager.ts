@@ -449,7 +449,7 @@ export class MenuManager {
         const devModeActive = runtime?.devModeActive ?? false;
         const previewActive = runtime?.previewActive ?? false;
         const testActive = runtime?.testActive ?? false;
-        const frozen = runtime?.frozen ?? false;
+        const frozen = runtime?.operationsFrozen ?? false;
         // One thing occupies the run slot at a time, so a mode that is not the one running cannot be
         // started - and while a mode IS running its own entry has to stay live, because it is the
         // stop control. Same rule the dropdown's mode rows follow. Freezing takes Preview with it:

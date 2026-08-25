@@ -5,6 +5,11 @@ import {
     type DocumentDiff,
     type DocumentDiffTier,
 } from "@shared/documents/diff";
+import {
+    assembleDocumentSet,
+    documentSetPartsFrom,
+    type AnyDocumentSetSpec,
+} from "@shared/documents/documentSet";
 import { diffJsonStructural } from "@shared/documents/jsonStructuralDiff";
 import { resolveDocumentSpecForPath } from "@shared/documents/registry";
 // Imported for its side effect, and this line is the reason the semantic tier exists at all:
@@ -119,14 +124,49 @@ export const DIFF_TOTAL_BYTE_BUDGET = 64 * 1024 * 1024;
 export const DIFF_MOVE_CONFIRM_BYTE_CEILING = 2 * 1024 * 1024;
 
 /**
- * Paths one comparison will look inside at all.
+ * **Documents** one comparison will look inside at all.
  *
  * Past it every document is reported at tier 4 without being read. A comparison across
- * thousands of files is an import or a restore rather than an edit, and there is nothing
+ * thousands of documents is an import or a restore rather than an edit, and there is nothing
  * useful to say about it document by document - the honest answer is the list of what
  * changed.
+ *
+ * **It used to count paths, and a document set is what showed that to be the wrong unit.** The
+ * premise was that a file is a document, so two thousand files is two thousand documents and a
+ * project past it is not being edited. Once one document can be many files the premise fails in
+ * the direction that costs the most: four stories of five hundred and sixty scenes each are
+ * 2,244 files and FOUR documents, and under the old rule every document in that project - every
+ * character sheet, every translation, every asset - would come back uninspected because a story
+ * the author had not touched happened to be large. The unit is now what
+ * {@link import("@shared/documents/documentSet").foldDocumentSetPaths} answers with: a standalone
+ * file is one, and a document set is one however many files it is. A project with no set
+ * registered counts exactly what it counted before.
+ *
+ * The number is deliberately unchanged at 2,000. Raising it was the other way to absorb the same
+ * arithmetic and it would have bought a project made of sets one more doubling before the same
+ * thing happened again - the unit was wrong, not the number.
  */
-export const DIFF_PATH_LIMIT = 2000;
+export const DIFF_UNIT_LIMIT = 2000;
+
+/**
+ * Files one document set may be made of before a comparison stops assembling it.
+ *
+ * A set is read WHOLE or not at all - its `diff` is a whole-document function and there is no
+ * half of it to run - so folding a set costs every member on both sides, including the ones that
+ * did not change. That is the price of "this is one document", and this is where it stops being
+ * worth paying: past it the set comes back as one row saying it changed and was not read, which
+ * is a true sentence about a document with four thousand files in it, and the reason is reported
+ * through {@link DocumentDiffOptions.onDegrade}.
+ *
+ * **One row, not a row per member.** Falling back to per-file rows would be the flood
+ * {@link DIFF_UNIT_LIMIT} exists to prevent, arriving through the other door.
+ *
+ * A judgement on {@link DIFF_PARSE_BYTE_CEILING}'s terms rather than a measurement: the same
+ * order as the whole-comparison budget above it, on the grounds that a document with more files
+ * in it than a whole project's ordinary comparison is a restructure rather than an edit. The byte
+ * ceiling applies to a set's TOTAL as well, and is the one that will bite first on real content.
+ */
+export const DOCUMENT_SET_MEMBER_LIMIT = 2000;
 
 /** Label keys this module can produce. The `documentDiff.` namespace is D2's to translate. */
 const LABEL_ADDED = "documentDiff.document.added";
@@ -367,6 +407,195 @@ export function diffDocumentBytes(request: DocumentDiffRequest, options: Documen
     }
 
     return opaqueDiff(base, head, limit);
+}
+
+/** One side of a set comparison: the bytes of every file of the set that side holds. */
+export interface DocumentSetSide {
+    /** Keyed by repository-relative path. Absent paths are files that side does not have. */
+    readonly parts: ReadonlyMap<string, Buffer>;
+}
+
+export interface DocumentSetDiffRequest {
+    /** The manifest path - the set's one name, and where the resulting entry is reported. */
+    readonly path: string;
+    readonly spec: AnyDocumentSetSpec;
+    /** The set instance's identity, e.g. `{storyId: "a"}`. */
+    readonly key: Readonly<Record<string, string>>;
+    readonly base: DocumentSetSide | null;
+    readonly head: DocumentSetSide | null;
+}
+
+/**
+ * Compare two versions of ONE document that is stored as several files.
+ *
+ * The whole reason the set layer exists ends here: both sides are assembled into whole documents
+ * and handed to the spec's own `diff`, which has never heard of members and does not have to. So
+ * a story split into five hundred scene files is compared by `diffStoryDocument` exactly as an
+ * unsplit one is, with the same signature and the same answers.
+ *
+ * Three of the four tiers are reachable and the fourth is not, which is the one difference from
+ * {@link diffDocumentBytes} worth stating: there is no `structural` rung for a set, because
+ * "the JSON paths whose values differ" needs one JSON document per side and a set has N files.
+ * Walking them file by file would produce a list addressed in a fourth scheme that neither
+ * `diff`, `merge3` nor the resolver can act on - so a set that cannot be assembled falls
+ * straight to `opaque`, and says so through `onDegrade`.
+ */
+export function diffDocumentSet(request: DocumentSetDiffRequest, options: DocumentDiffOptions = {}): DocumentDiff {
+    const limit = options.limit ?? DOCUMENT_DIFF_CHANGE_LIMIT;
+    const { spec, key, base, head } = request;
+    const manifestPath = request.path;
+
+    // A side holding member files but no manifest is a side that does not hold this document:
+    // the manifest is the set's identity, and folding orphaned members into an invented empty
+    // manifest would report a document that is not there as one that changed.
+    const hasBase = Boolean(base?.parts.has(manifestPath));
+    const hasHead = Boolean(head?.parts.has(manifestPath));
+    if (!hasBase && !hasHead) {
+        // Member files with no manifest on either side. Nothing here is a document, so there is
+        // nothing to compare - but reporting an EMPTY list would say "nothing changed" about files
+        // that demonstrably did, which is the one answer that is worse than saying nothing.
+        const orphans = (base?.parts.size ?? 0) + (head?.parts.size ?? 0);
+        if (orphans === 0) {
+            return buildDocumentDiff([], { tier: "opaque", limit });
+        }
+        options.onDegrade?.(
+            `${manifestPath} is missing on both sides, so its ${orphans} member file(s) are not a`
+            + " document and are reported without being read",
+        );
+        return buildDocumentDiff(
+            [{ path: [], kind: "changed", label: { key: LABEL_OPAQUE_UNREAD } }],
+            { tier: "opaque", limit },
+        );
+    }
+
+    const baseBytes = totalBytes(base);
+    const headBytes = totalBytes(head);
+
+    if (!hasBase || !hasHead) {
+        const present = (hasHead ? head : base) as DocumentSetSide;
+        const parsed = tryAssemble(spec, key, manifestPath, present, options);
+        const summary = parsed.ok ? summarizeQuietly(spec, parsed.document) : undefined;
+        return buildDocumentDiff(
+            [{
+                path: [],
+                kind: hasHead ? "added" : "removed",
+                label: {
+                    key: hasHead ? LABEL_ADDED : LABEL_REMOVED,
+                    params: { bytes: hasHead ? headBytes : baseBytes },
+                },
+                ...(summary?.title ? { subject: summary.title } : {}),
+            }],
+            { tier: summary ? "summary" : "opaque", limit },
+        );
+    }
+
+    if (sameParts(base as DocumentSetSide, head as DocumentSetSide)) {
+        // Same claim, same reason, as the byte-equal short circuit for one file: an empty list is
+        // the same list at every tier, and a semantic badge on a document nothing looked inside
+        // would be a claim about a comparison that did not happen.
+        return buildDocumentDiff([], { tier: "opaque", limit });
+    }
+
+    // The ceiling is a per-DOCUMENT ceiling, so for a set it is the sum of its files. Checking it
+    // per member would let a thousand small scenes past a guard that exists to keep one enormous
+    // parse off the main process's only thread.
+    if (baseBytes > DIFF_PARSE_BYTE_CEILING || headBytes > DIFF_PARSE_BYTE_CEILING) {
+        options.onDegrade?.(
+            `${manifestPath} and its members are ${Math.max(baseBytes, headBytes)} bytes, over the `
+            + `${DIFF_PARSE_BYTE_CEILING} byte parse ceiling, so the document is reported by size only`,
+        );
+        return setSizeDiff(baseBytes, headBytes, limit);
+    }
+
+    const parsedBase = tryAssemble(spec, key, manifestPath, base as DocumentSetSide, options);
+    const parsedHead = tryAssemble(spec, key, manifestPath, head as DocumentSetSide, options);
+    if (!parsedBase.ok || !parsedHead.ok) {
+        const rejected = parsedBase.ok ? parsedHead : parsedBase;
+        options.onDegrade?.(
+            `${manifestPath} could not be assembled as a ${spec.kind} document`
+            + `${rejected.ok ? "" : ` (${rejected.reason})`}, so it is reported by size only`,
+        );
+        return setSizeDiff(baseBytes, headBytes, limit);
+    }
+
+    if (spec.diff) {
+        const semantic = trySpecDiff(spec, parsedBase.document, parsedHead.document, limit, options);
+        if (semantic) {
+            return semantic;
+        }
+    }
+    return summaryDiff(spec, parsedBase.document, parsedHead.document, limit);
+}
+
+/**
+ * A set that changed and was not opened: two byte totals, and nothing invented.
+ *
+ * Separate from {@link opaqueDiff} only because the two sides are several files each, so there is
+ * no Buffer to take a length from. The label is the same one, and it must be: an author reading
+ * "changed, 12000 -> 12400 bytes" is being told the same kind of thing either way.
+ */
+function setSizeDiff(baseBytes: number, headBytes: number, limit: number): DocumentDiff {
+    return buildDocumentDiff(
+        [{
+            path: [],
+            kind: "changed",
+            label: { key: LABEL_OPAQUE_CHANGED, params: { fromBytes: baseBytes, toBytes: headBytes } },
+        }],
+        { tier: "opaque", limit },
+    );
+}
+
+function totalBytes(side: DocumentSetSide | null): number {
+    let total = 0;
+    for (const bytes of side?.parts.values() ?? []) {
+        total += bytes.length;
+    }
+    return total;
+}
+
+function sameParts(base: DocumentSetSide, head: DocumentSetSide): boolean {
+    if (base.parts.size !== head.parts.size) {
+        return false;
+    }
+    for (const [path, bytes] of base.parts) {
+        const other = head.parts.get(path);
+        if (!other || !other.equals(bytes)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * Parse every file of one side and fold them into the whole document.
+ *
+ * Guarded end to end for {@link tryParse}'s reason and one of its own: `assemble` is a spec's code
+ * running over files that came out of a repository, and it is the one place where a member file
+ * from a future Studio meets a manifest from this one.
+ */
+function tryAssemble(
+    spec: AnyDocumentSetSpec,
+    key: Readonly<Record<string, string>>,
+    manifestPath: string,
+    side: DocumentSetSide,
+    options: DocumentDiffOptions,
+): ParseResult {
+    const raw = new Map<string, unknown>();
+    for (const [path, bytes] of side.parts) {
+        try {
+            raw.set(path, JSON.parse(bytes.toString("utf-8")));
+        } catch (error) {
+            return { ok: false, reason: `${path} is not valid JSON: ${messageOf(error)}` };
+        }
+    }
+
+    try {
+        const parts = documentSetPartsFrom(spec, key, raw);
+        return { ok: true, document: assembleDocumentSet(spec, parts, parseContextFor(spec, manifestPath, Buffer.alloc(0))) };
+    } catch (error) {
+        options.onDegrade?.(`${manifestPath} could not be assembled: ${messageOf(error)}`);
+        return { ok: false, reason: messageOf(error) };
+    }
 }
 
 /**
@@ -617,9 +846,13 @@ type ParseResult =
 function tryParse(spec: AnyDocumentSpec, path: string, bytes: Buffer): ParseResult {
     let raw: unknown;
     try {
-        raw = JSON.parse(bytes.toString("utf-8"));
+        // The spec's own decode, not `JSON.parse` here. This line used to be `JSON.parse`, which
+        // made every non-JSON format unreachable however it was registered: the project
+        // configuration is msgpack, and it fell through to the byte tier as "Changed (12488 →
+        // 12502)". A spec that declares no decode still gets JSON, so nothing else moves.
+        raw = spec.decode(bytes, path);
     } catch (error) {
-        return { ok: false, reason: `not valid JSON: ${messageOf(error)}` };
+        return { ok: false, reason: `the bytes could not be decoded: ${messageOf(error)}` };
     }
     try {
         return { ok: true, document: spec.parse(raw, parseContextFor(spec, path, bytes)) };

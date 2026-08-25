@@ -1,26 +1,30 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, Play, Square } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileDiff, FlaskConical, GitBranch, Loader2, MonitorPlay, Package, PackagePlus, Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
 import { PreviewService } from "@/lib/workspace/services/core/PreviewService";
-import { BuildService } from "@/lib/workspace/services/core/BuildService";
+import { BUILD_CONSOLE_CHANNEL, BuildService } from "@/lib/workspace/services/core/BuildService";
+import { ConsoleService } from "@/lib/workspace/services/core/ConsoleService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { CommandService } from "@/lib/workspace/services/ui/CommandService";
 import { GlobalSettingsService } from "@/lib/workspace/services/GlobalSettingsService";
 import { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import type { ProjectDlc } from "@shared/types/dlc";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { readProjectMobileOrientation, readProjectViewportConfig } from "@/apps/workspace/modules/ui-editor/editors/projectMobileOrientation";
 import { MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import { flushUIDocAndGraphIfDirty } from "./flushDevModeAssets";
 import { openBuildDialog } from "./BuildDialog";
 import { openPatchDialog } from "./PatchDialog";
+import { openBuildReportTab } from "../build-report";
 import { isDevModeRuntimeActive, isPreviewRuntimeActive } from "./runtimeActionStatus";
 import {
     getTestRunService,
@@ -62,6 +66,14 @@ const RUN_MODE_SETTINGS_KEY = "ui.runMode";
  * two sides mean the same setting: a value written here decides what the next Dev Mode run *is*.
  */
 const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
+/**
+ * Which of this project's DLC this machine runs it WITH, bucketed by project.
+ *
+ * None of them until an author ticks one: a run is the game a player bought, which is the state
+ * being shipped and the only one where a forgotten `Is DLC Installed` guard shows itself. The
+ * reasoning is on `runDlc.ts`, which reads this very key on the main process side.
+ */
+const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
@@ -69,6 +81,8 @@ const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
  * not a running app - can check that an entry for it exists.
  */
 const RUN_STOP_CATALOG_ID = "run:stop";
+/** Where a failed run's output is; the panel the failure notification sends the author to. */
+const CONSOLE_PANEL_ID = "narraleaf-studio:console";
 
 const RUN_MODE_META: Record<RunMode, {
     icon: React.ReactNode;
@@ -114,11 +128,18 @@ function normalizeRunMode(value: unknown): RunMode {
  * A frozen workspace disables Preview and Production Build but not Dev Mode. This control is a fixed
  * part of the top bar rather than a registered action, so the exemption table in
  * `components/ui/freezeActionPolicy` does not reach it and the rules are spelled out below instead.
+ * Which freezes count is not spelled out here, though: `useWorkspaceOperationsFrozen` asks the same
+ * predicate the managers that start these things ask, so the button and the process agree.
  */
 export function RunControl() {
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    // Everything this control launches is started by the main process, which refuses on its own
+    // account - so the question here is that same refusal, not "is project data frozen". They part
+    // company for the one freeze whose working tree IS what the author is looking at; greying these
+    // rows there would leave a button that does nothing while the process behind it would have said
+    // yes.
+    const frozen = useWorkspaceOperationsFrozen();
     const [mode, setMode] = useState<RunMode>("devMode");
     const [devStatus, setDevStatus] = useState<DevModeStatus>("idle");
     const [previewStatus, setPreviewStatus] = useState<PreviewStatus>("idle");
@@ -138,6 +159,10 @@ export function RunControl() {
     const [variantOpen, setVariantOpen] = useState(false);
     const [variants, setVariants] = useState<ProjectAppTag[]>([]);
     const [variantId, setVariantId] = useState<string | null>(null);
+    const [dlcOpen, setDlcOpen] = useState(false);
+    const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
+    const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -146,6 +171,7 @@ export function RunControl() {
     useEffect(() => {
         if (!menuOpen) {
             setVariantOpen(false);
+            setDlcOpen(false);
         }
     }, [menuOpen]);
 
@@ -175,6 +201,41 @@ export function RunControl() {
         const read = () => setVariants(tags.listAuthoredTags());
         read();
         return tags.onTagsChanged(read);
+    }, [context]);
+
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const dlc = context.services.get<DlcService>(Services.Dlc);
+        setDlcs(dlc.list());
+        return dlc.onDlcChanged(setDlcs);
+    }, [context]);
+
+    // Which ones are ticked on, from the same store the main process reads.
+    useEffect(() => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const read = (value: unknown) => {
+            const record = value && typeof value === "object" && !Array.isArray(value)
+                ? value as Record<string, unknown>
+                : {};
+            const stored = record[projectKey];
+            setDlcOn(
+                (Array.isArray(stored) ? stored : [])
+                    .filter((id): id is string => typeof id === "string" && Boolean(id.trim())),
+            );
+        };
+        read(settings.getSync(RUN_DLC_ON_SETTINGS_KEY));
+        const token = getInterface().app.state.onGlobalStateChanged?.(change => {
+            if (change.key === RUN_DLC_ON_SETTINGS_KEY) {
+                read(change.value);
+            }
+        });
+        return () => token?.cancel();
     }, [context]);
 
     // Which one is selected, from the same store the main process reads.
@@ -218,28 +279,79 @@ export function RunControl() {
         return preview.onStatusChanged(setPreviewStatus);
     }, [context]);
 
-    // The build's status, and the toasts that report its end. Moved here from the Build icon because
-    // this control is mounted for the whole session while an icon is mounted once per surface that
-    // draws it - and the icon was drawn in the command palette too, so a build finishing with the
-    // palette open announced itself twice.
+    /**
+     * The build's status, and the notification that reports its end.
+     *
+     * Moved here from the Build icon because this control is mounted for the whole session while an
+     * icon is mounted once per surface that draws it - and the icon was drawn in the command palette
+     * too, so a build finishing with the palette open announced itself twice.
+     *
+     * Three things the announcement has to get right:
+     *
+     *  - **A patch export announces itself too.** It runs in the same session and reports the same
+     *    states, it takes as long as a build, and it is watched no more closely; only the wording
+     *    differs, because a patch produces no installer.
+     *  - **A run the author stopped announces nothing.** The pipeline reports it as a failure, and
+     *    `cancelled` on the finished run is what tells the two apart.
+     *  - **The notification stays up.** A build runs for minutes with nobody watching, so an outcome
+     *    that cleared itself after five seconds was an outcome the author never saw - and the button
+     *    on it has to still be there when they come back.
+     */
     useEffect(() => {
         if (!context) {
             return;
         }
         const build = context.services.get<BuildService>(Services.Build);
         const uiService = context.services.get<UIService>(Services.UI);
-        let previous = build.getStatus();
-        setBuildStatus(previous);
+        // Seeded with whatever had already ended before this subscription existed, so remounting the
+        // top bar does not re-announce a run the author read about ten minutes ago.
+        let announced = build.getLastFinishedRun()?.id ?? 0;
+        setBuildStatus(build.getStatus());
         return build.onStateChanged(state => {
             setBuildStatus(state.status);
-            if (state.status !== previous) {
-                if (state.status === "done") {
-                    uiService.showNotification(translate("build.toast.done"), "success");
-                } else if (state.status === "error") {
-                    uiService.showNotification(state.error ?? translate("build.toast.failed"), "error");
-                }
+            const run = build.getLastFinishedRun();
+            if (!run || run.id === announced) {
+                return;
             }
-            previous = state.status;
+            announced = run.id;
+            if (run.cancelled) {
+                return;
+            }
+            const patch = run.kind === "patch";
+            if (run.state.status === "done") {
+                uiService.showNotification(
+                    translate(patch ? "build.toast.patchDone" : "build.toast.done"),
+                    "success",
+                    {
+                        sticky: true,
+                        actions: [{
+                            label: translate("build.toast.openReport"),
+                            primary: true,
+                            onClick: () => openBuildReportTab(context),
+                        }],
+                    },
+                );
+            } else {
+                uiService.showNotification(
+                    run.state.error ?? translate(patch ? "build.toast.patchFailed" : "build.toast.failed"),
+                    "error",
+                    {
+                        sticky: true,
+                        actions: [{
+                            label: translate("build.dialog.viewConsole"),
+                            primary: true,
+                            onClick: () => {
+                                uiService.panels.show(CONSOLE_PANEL_ID);
+                                // Showing the panel restores whichever channel was last active, so
+                                // without this the author can land on a tab the build never wrote to.
+                                context.services
+                                    .get<ConsoleService>(Services.Console)
+                                    .requestFocus(BUILD_CONSOLE_CHANNEL);
+                            },
+                        }],
+                    },
+                );
+            }
         });
     }, [context]);
 
@@ -629,12 +741,52 @@ export function RunControl() {
         setVariantOpen(false);
     }, [context]);
 
+    /**
+     * How many of this project's DLC a run has, and how many it could.
+     *
+     * Counted against the project's own list rather than against the stored set, so an id left over
+     * from a deleted DLC cannot make the row claim something is on that is not there.
+     */
+    const activeDlcCount = useMemo(
+        () => dlcs.filter(dlc => dlcOn.includes(dlc.id)).length,
+        [dlcOn, dlcs],
+    );
+
+    const toggleDlc = useCallback((id: string): void => {
+        if (!context) {
+            return;
+        }
+        const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
+        const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
+        const current = settings.getSync(RUN_DLC_ON_SETTINGS_KEY);
+        const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
+            ? { ...current as Record<string, unknown> }
+            : {};
+        const next = dlcOn.includes(id) ? dlcOn.filter(entry => entry !== id) : [...dlcOn, id];
+        if (next.length > 0) {
+            record[projectKey] = next;
+        } else {
+            // Deleted rather than stored as an empty list, so "runs with none of them" and "never
+            // chose" are one state - the same rule the variant choice follows.
+            delete record[projectKey];
+        }
+        void settings.set(RUN_DLC_ON_SETTINGS_KEY, record);
+        setDlcOn(next);
+        // The menu stays open, unlike the variant rows: ticking several on is one decision made in
+        // several clicks, and closing after each would make the author reopen it every time.
+    }, [context, dlcOn]);
+
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
     const runTitle = testActive ? t("test.action.stop") : running ? t(meta.stopKey) : t(meta.runKey);
     // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
     // can trust at any moment" only holds while it cannot quietly have become something else, and a
     // setting one click deep in a menu is quiet.
+    //
+    // The DLC selection deliberately does NOT ride here. It is a set rather than a name, so the
+    // only thing it could add is a count - and a count is not what the face is for: the face says
+    // what this run IS, and every run is the game with whatever the author asked for beside it.
+    // The menu row states the count where it can be read against the list it counts.
     const runLabel = testActive
         ? t("test.statusBar.label")
         : selectedVariant
@@ -776,6 +928,62 @@ export function RunControl() {
                                         >
                                             <span className="flex-1 text-left">{variant?.name ?? RELEASE_APP_TAG.name}</span>
                                             <span className="w-3">{selected && <Check className="h-3 w-3" />}</span>
+                                        </button>
+                                    );
+                                })}
+                            </>
+                        )}
+
+                        {/* Which DLC the run has installed. Alongside the edition above because they
+                            are the same kind of choice - what this run IS - and separate because they
+                            are not the same question: a build is one variant, and has any number of
+                            DLC beside it. Only where the project ships some.
+
+                            Multi-select, so the row states a count rather than a name: "1 of 3" is
+                            the only summary of a set that does not grow with it. None are on until an
+                            author ticks one - a run is the game a player bought. */}
+                        {dlcs.length > 0 && (
+                            <>
+                                <div className="my-1 mx-2 h-px bg-fill-strong" />
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    aria-expanded={dlcOpen}
+                                    aria-label={t("actions.run.runWithDlc")}
+                                    onClick={() => setDlcOpen(open => !open)}
+                                    className={cn(
+                                        "flex w-full cursor-default items-center gap-2 px-3 py-2 text-sm transition-colors",
+                                        "text-fg-muted hover:bg-fill hover:text-fg",
+                                    )}
+                                >
+                                    <span className="flex h-4 w-4 items-center justify-center">
+                                        <PackagePlus className="h-4 w-4" />
+                                    </span>
+                                    <span className="flex-1 whitespace-nowrap text-left">{t("actions.run.runWithDlc")}</span>
+                                    <span className="text-fg-subtle">
+                                        {t("actions.run.dlcCount", { active: activeDlcCount, total: dlcs.length })}
+                                    </span>
+                                    <span className="w-3">
+                                        <ChevronRight className={cn("h-3 w-3 transition-transform", dlcOpen && "rotate-90")} />
+                                    </span>
+                                </button>
+                                {dlcOpen && dlcs.map(dlc => {
+                                    const active = dlcOn.includes(dlc.id);
+                                    return (
+                                        <button
+                                            key={dlc.id}
+                                            type="button"
+                                            role="menuitemcheckbox"
+                                            aria-checked={active}
+                                            data-run-dlc={dlc.id}
+                                            onClick={() => toggleDlc(dlc.id)}
+                                            className={cn(
+                                                "flex w-full cursor-default items-center gap-2 py-1.5 pl-9 pr-3 text-sm transition-colors",
+                                                active ? "text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
+                                            )}
+                                        >
+                                            <span className="flex-1 truncate text-left">{dlc.name}</span>
+                                            <span className="w-3">{active && <Check className="h-3 w-3" />}</span>
                                         </button>
                                     );
                                 })}

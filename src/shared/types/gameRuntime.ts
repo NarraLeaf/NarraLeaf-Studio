@@ -120,7 +120,11 @@ export type GameRuntimePackSidecarEntry = {
      * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
      */
     entry: string;
-    /** `executable` spawns the binary directly; `node` runs it under the game's own Electron as Node. */
+    /**
+     * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
+     * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
+     * one channel a utility process has - it has no stdin.
+     */
     kind: "executable" | "node";
     /** `onGameStart` spawns with the window; `onRequest` waits for the first call. */
     autostart: "onGameStart" | "onRequest";
@@ -299,7 +303,42 @@ export type GameRuntimePackV1 = {
      */
     addOns?: {
         verificationKey: string;
+        /**
+         * The delta version this build composes patch content with, absent on builds made before
+         * patches carried one.
+         *
+         * Read by the export, not by the game: a patch made for a build that states nothing here
+         * carries a whole pack, because that is the only thing such a build knows how to read. A
+         * patch made for a build that states this carries what it changes instead, so that two
+         * patches installed together both take effect.
+         */
+        packDeltaVersion?: number;
+        /**
+         * The build variant this pack was compiled as, as an app tag id.
+         *
+         * Here rather than beside the project's name because it is not a fact about the title, it
+         * is a fact about which add-ons this build accepts: a DLC states the variant it belongs to,
+         * and a build that cannot say which variant it is could not refuse one meant for another.
+         *
+         * Absent on packs produced before this field existed, which reads as the release variant -
+         * the variant every such pack was compiled as unless its author had made a second one, and
+         * the only reading that leaves an ordinary patch unaffected.
+         */
+        appTagId?: string;
     };
+    /**
+     * The DLC installed beside this build, in the order they applied.
+     *
+     * Written by the reader that composed this pack, never by the compiler: it is a fact about the
+     * copy in front of the player, not about what was built. A build with no DLC beside it - which
+     * is every build as it leaves the author - carries nothing here, and the game reads that as
+     * "none installed".
+     *
+     * Only what is actually installed, never the project's whole list. A player who owns one DLC
+     * learns nothing from this about the ones they do not, and a base build cannot be read for what
+     * else exists to buy.
+     */
+    installedDlc?: readonly string[];
     /**
      * The one string every edition of this title shares, naming the file progress is carried in.
      *
@@ -362,6 +401,12 @@ export type GameRuntimeCropAnchorY = typeof GAME_RUNTIME_CROP_ANCHORS_Y[number];
  */
 export const WEB_SHELL_VARIANT_META = "nl-shell";
 
+/**
+ * The one content value that meta ever carries. The web target omits the meta entirely, so a
+ * reader asks "is this a phone shell", never "which shell is this".
+ */
+export const WEB_SHELL_MOBILE_VARIANT = "mobile";
+
 export const DEFAULT_GAME_RUNTIME_VIEWPORT_CONFIG: GameRuntimeViewportConfig = {
     fit: "contain",
     cropAnchorX: "center",
@@ -401,9 +446,30 @@ export function normalizeGameRuntimeViewportConfig(value: unknown): GameRuntimeV
  *
  * A query parameter because nothing else survives: there is no renderer left to send a message to,
  * and the window is about to be thrown away and rebuilt. The value is the description to show; the
- * page decides whether to show it, having learned the policy from its own process argument.
+ * page decides whether to show it.
  */
 export const GAME_RUNTIME_CRASH_QUERY_PARAM = "nlcrash";
+
+/**
+ * What this build does when it stops working, and where it writes its report - carried on the
+ * game's own address.
+ *
+ * These used to travel as process arguments the preload read and republished on the bridge. That
+ * channel dies with the preload, and a preload that never ran is one of the two failures the crash
+ * screen exists for: the page came up, nothing else did, and the screen it drew fell back to the
+ * default policy and could not name the log. A build whose author asked for the error to stay off
+ * the screen showed it, in exactly the case the process argument had been introduced to cover.
+ *
+ * The address is the only thing a page can read before it has read anything, with or without a
+ * preload, so it is now the only channel. The `nlgame://` handler resolves on the path alone and
+ * is transparent to the query.
+ *
+ * Absent on the web export, whose page is a static file nobody navigates to with a query; the
+ * renderer treats that as "not known yet" and waits for the pack, exactly as it did before.
+ */
+export const GAME_RUNTIME_CRASH_POLICY_QUERY_PARAM = "nlpolicy";
+
+export const GAME_RUNTIME_LOG_PATH_QUERY_PARAM = "nllog";
 
 export const GAME_CRASH_POLICIES = ["details", "log", "restart"] as const;
 
@@ -595,6 +661,27 @@ export type GameRuntimeProgressBridge = {
     read(): Promise<GameProgressImportResult>;
 };
 
+/**
+ * Whether this page is the one running the game.
+ *
+ * A shell that can be opened twice has to settle which copy runs, and on the web the question
+ * cannot be avoided: two tabs of one export share a single IndexedDB, so persistent variables, read
+ * text and every save become whichever tab wrote last. The desktop shells settle it in their main
+ * process - a single-instance lock raises the window that is already open - and have nothing to say
+ * here; the web export asks the browser for a lock and answers `taken` while another tab holds it.
+ */
+export type GameSessionClaim = "granted" | "taken";
+
+/**
+ * Whether what this shell writes stays written.
+ *
+ * A desktop game owns files in its user-data directory and nothing takes them away. A page is a
+ * guest: a browser under storage pressure may evict a site's data whole, saves included, unless the
+ * site has been granted persistence. `unknown` is a browser that will not answer the question,
+ * which is not the same as a refusal.
+ */
+export type GameStorageDurability = "durable" | "evictable" | "unknown";
+
 export type GameRuntimePreloadBridge = {
     readPack(): Promise<GameRuntimePackV1>;
     assetUrl(assetId: string): string;
@@ -620,8 +707,54 @@ export type GameRuntimePreloadBridge = {
      * reloads its page, which for a shell that IS a page is the same act.
      */
     restart(): Promise<void>;
+    /**
+     * Keep the display awake, or let it sleep again.
+     *
+     * Asked for while the story advances on its own: auto mode plays for an hour without a single
+     * input, and neither the animation nor the audio a page draws resets the system's idle timer,
+     * so the screen blanks mid-scene. Every shell can do this honestly - the desktop shell takes a
+     * platform display block, the web export borrows the browser's screen wake lock - which is why
+     * it sits here rather than behind {@link capabilities}.
+     *
+     * Nothing waits on it: the display is not something a game can fail at, and a shell that could
+     * not take the block plays exactly as before.
+     */
+    setDisplayAwake(awake: boolean): void;
     getFullscreen(): Promise<boolean>;
     setFullscreen(fullscreen: boolean): Promise<void>;
+    /**
+     * The stage's size, as a multiple of the size the game was drawn at.
+     *
+     * Any multiple, not only the ones `app.window` offers: that list is what a configuration screen
+     * is built from, not a limit on what a game may ask for. The screen and the window minimum are
+     * the only bounds, and neither is policy - a window larger than the desktop is one the player
+     * cannot use.
+     *
+     * Inert on a shell with no window of its own to size, which says so through
+     * {@link capabilities}.`windowScale` rather than by refusing: what an author must not build is a
+     * size row that appears and does nothing, and the list they build it from is empty there.
+     */
+    getWindowScale(): Promise<number>;
+    setWindowScale(scale: number): Promise<void>;
+    /**
+     * The sizes worth offering the player, measured against the display the window is on.
+     *
+     * The shell's answer rather than the project's: which multiples of the design size fit depends
+     * on the screen in front of the player, and only the running game can see it. Empty on a shell
+     * with no window of its own to size, which is what a configuration screen draws no size row
+     * from - see {@link capabilities}.`windowScale`.
+     */
+    getWindowScaleOptions(): Promise<number[]>;
+    /**
+     * The same size, in pixels.
+     *
+     * Beside the multiple rather than instead of it: a multiple is what keeps the stage on whole
+     * pixels of the art it was drawn at, and pixels are what an author reaches for when the size
+     * comes from somewhere else - a remembered value, a display the game measured, a number a
+     * player typed. Both land in the same place.
+     */
+    getWindowSize(): Promise<{ width: number; height: number }>;
+    setWindowSize(width: number, height: number): Promise<void>;
     /** Subscribe to window fullscreen transitions. Returns an unsubscribe function. */
     onFullscreenChanged(listener: (isFullscreen: boolean) => void): () => void;
     /**
@@ -641,25 +774,35 @@ export type GameRuntimePreloadBridge = {
     capabilities: {
         /** Whether {@link onCloseRequested} can ever fire. False on the web export. */
         closeRequested: boolean;
+        /**
+         * Whether this shell has a window whose size it can set. False on the web export, where the
+         * page is the window and no script may resize it.
+         */
+        windowScale: boolean;
     };
     /**
-     * What this build does when it stops working, if the shell knows before the pack is read.
+     * Claim this shell's one game session, before the game reads or writes anything.
      *
-     * The desktop shell does: main reads the pack and passes the policy as a process argument, so
-     * the crash screen is correct from the first frame - which matters, because the crash it is
-     * most likely to draw is one that happened while the pack was still being read. The web export
-     * has no such channel and answers `null` until {@link readPack} lands, which the renderer
-     * treats as "not known yet" rather than as a policy.
+     * Absent on the desktop shells, where the main process has already refused to start a second
+     * copy by the time a renderer exists - and an absent method is granted, which is also what a
+     * game packaged before this existed gets. The web export answers `taken` while another tab of
+     * the same export holds the session, and the renderer then draws the screen saying so instead
+     * of booting a second game onto the first one's saves.
      */
-    crashPolicy: GameCrashPolicy | null;
+    claimSession?(): Promise<GameSessionClaim>;
     /**
-     * Where this shell writes its log, so the crash screen can say where the report is.
+     * Whether saves written by this shell stay written.
      *
-     * The one thing a player can do about a crash is hand the file to whoever can read it, and
-     * they cannot do that without being told where it is. `null` on the web export, which has no
-     * log file at all - its shell prints to the browser console, and there is no path to name.
+     * The one answer the shell has and the game cannot work out for itself, and the author is who
+     * decides what to do with it - a page whose storage the browser may reclaim is still a page the
+     * player can finish a game on, so this states the fact rather than acting on it. Read by the
+     * `Check Storage Durability` node.
+     *
+     * The desktop shells answer `durable`: their saves are files in a user-data directory that
+     * nothing else reclaims. The web export answers what the browser told it when the page asked
+     * for persistent storage.
      */
-    logPath: string | null;
+    storageDurability(): Promise<GameStorageDurability>;
     save: GameRuntimeSaveBridge;
     persistence: GameRuntimePersistenceBridge;
     /**

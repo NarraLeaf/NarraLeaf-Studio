@@ -54,6 +54,10 @@ export const settings = {
             label: "Workspace",
             description: "Startup behavior, workspace history, and automatic saving.",
         },
+        performance: {
+            label: "Performance",
+            description: "How much of this machine Studio spends, and how long you wait for it.",
+        },
         shortcuts: {
             label: "Shortcuts",
             description: "Keys bound to each command throughout Studio.",
@@ -63,8 +67,11 @@ export const settings = {
             description: "Checkpoints and the identity recorded on them.",
         },
         servers: {
-            label: "Servers",
-            description: "Servers this installation is signed in to, and the accounts it uses.",
+            // The product, and under its full name: "Team" on its own reads as a word nobody
+            // translated. An author meets the same name in the project wizard and in the corner of
+            // the workspace; the panel under it still calls each machine a server.
+            label: "NarraLeaf Team",
+            description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         },
         network: {
             label: "Network",
@@ -85,10 +92,24 @@ export const settings = {
             label: "Developer options",
             description: "Right-click menus gain a section for copying the ID of the item clicked.",
         },
+        screenEffectThreads: {
+            label: "Threads for screen effects",
+            description: "How many threads draw frames while the encoder runs. Automatic reads this machine.",
+            options: {
+                auto: "Automatic",
+            },
+        },
+        screenEffectQuality: {
+            label: "Screen effects in Dev Mode",
+            description: "Previews and builds only accept the final quality, so choosing draft bakes every effect twice: once now, once the first time you run.",
+            options: {
+                draft: "Draft",
+                final: "Final quality",
+            },
+        },
         confirmQuit: {
             label: "Confirm before quitting with ⌘Q",
             description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
-            unsupportedPlatform: "Not available on this operating system.",
         },
         themeMode: {
             label: "Theme",
@@ -118,6 +139,11 @@ export const settings = {
                 rose: "Rose",
                 slate: "Slate",
             },
+        },
+        uiFontFamily: {
+            label: "Interface font",
+            description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+            // Shares the story editor font's option labels — same four preset ids, same four words.
         },
         tooltipDelay: {
             label: "Tooltip delay",
@@ -255,17 +281,22 @@ export const settings = {
             label: "Record a checkpoint when a workspace closes",
             description: "Records on closing the window, independent of the interval above.",
         },
+        quitCheckpointTimeout: {
+            label: "Checkpoint deadline when quitting",
+            description:
+                "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
+        },
+        projectDefaultAuthor: {
+            label: "Default author for new projects",
+            description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+        },
         versionControlAuthor: {
             label: "Author name",
-            description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
-            // Replaces the description above while the field is closed, so the row says why
-            // rather than merely refusing to be typed in. Shown on both author fields.
-            fromServer:
-                "Comes from the server this installation is signed in to. Sign out to record a name entered here again.",
+            description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",
         },
         versionControlAuthorEmail: {
             label: "Author email",
-            description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
+            description: "Recorded next to the author name, as \"Name <email>\", on projects that are not connected to a server. Leave empty to record no address.",
         },
         confirmBeforeClose: {
             label: "Confirm before closing a workspace",
@@ -290,6 +321,11 @@ export const settings = {
             label: "Show status bar",
             description: "The strip along the bottom of the workspace.",
         },
+        menuBarMode: {
+            label: "Main menu",
+            description: "Where the File, Help and panel menus live in the title bar.",
+            unsupportedPlatform: "On macOS these menus are on the system menu bar.",
+        },
         titleBarSearchVisible: {
             label: "Show title bar search box",
             description: "The search box in the middle of the title bar.",
@@ -308,6 +344,10 @@ export const settings = {
         },
         servers: {
             label: "Servers",
+        },
+        teamMachineLabel: {
+            label: "This machine's name",
+            description: "Shown to collaborators beside your account. Leave empty to use the host name.",
         },
         settingsTransfer: {
             label: "Move settings between machines",
@@ -347,6 +387,8 @@ export const settings = {
         refresh: "Refresh",
         browsing: "Loading…",
         download: "Download",
+        /** Same button on a language already installed under an older digest. */
+        update: "Update",
         downloading: "Downloading…",
         failed: "The dictionary list could not be retrieved. Check the network policy in Settings.",
         installed: {
@@ -370,19 +412,46 @@ export const settings = {
         checking: "Checking…",
         done: "Done",
         signOut: "Sign out",
+        signIn: "Sign in",
+        signingIn: "Signing in…",
         // The one thing an author is handed. Every other address is behind it, including
         // the `lore://` remote, which is stored and never named to anybody.
         addressLabel: "Server address",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{name} answered at {address}.",
+        // What the address turned out to be, on the step that asks who you are there. It
+        // names the server rather than narrating the request that found it: the reader is
+        // deciding whether this is the one they meant, not reading a log of the attempt.
+        reached: "The server at {address} is {name}.",
         // "Access token" rather than "password": it is not one, and it cannot be chosen,
         // remembered or reset by the person pasting it.
         tokenLabel: "Access token",
         tokenPlaceholder: "Paste the access token",
         hint: "The access token is issued by the server's administrator.",
-        // A server with nothing to sign in to. Said rather than hidden, because the
-        // absence of an entry afterwards is otherwise indistinguishable from a failure.
-        noAccount: "{name} does not require authentication, so there is nothing to add.",
+        // The other half of the identity step, on a server that accepts one. A person
+        // handed a username and a password is never asked to learn what a token is.
+        usernameLabel: "Username",
+        passwordLabel: "Password",
+        useToken: "Use an access token instead",
+        usePassword: "Use a username and password instead",
+        // ONE sentence for every refusal, because the server sends one: an unknown
+        // username, a wrong password, a disabled account and a service account are the
+        // same answer on the wire, and copy that told them apart would be telling a
+        // stranger which usernames exist.
+        signInRefused: "The server did not accept that username and password.",
+        signInUnavailable: "This installation cannot sign in with a password.",
+        // The server answered but issues no accounts, and an account is what Studio stores.
+        // Said rather than hidden: the absence of an entry afterwards is otherwise
+        // indistinguishable from a failure.
+        noAccount: "{name} issues no accounts, so it cannot be added. Ask its administrator for one.",
+        // The closing step. Facts about what was joined and nothing else: no
+        // congratulation, and no count for a server that would not give one.
+        joined: {
+            signedInAs: "Signed in as {name}",
+            projects: {
+                one: "{count} project",
+                other: "{count} projects",
+            },
+        },
         // What reaching an address came to, before anything has been added. Separate from
         // `problems`, which are refusals of a token by a server already reached.
         probe: {
@@ -436,6 +505,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
                     description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
+                },
+                optimizedImages: {
+                    label: "Optimized build images",
+                    description: "Images re-encoded for a build. Produced again the next time one runs.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",

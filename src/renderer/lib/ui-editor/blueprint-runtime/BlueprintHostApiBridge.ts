@@ -56,10 +56,13 @@ import {
     type AudioMixPreferences,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
+import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
+import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { normalizeElementEffectValues, type ElementEffectValues } from "@shared/types/ui-editor/effects";
 import type {
@@ -177,6 +180,22 @@ export type BlueprintTextInputPropertiesPatch = Partial<Pick<UITextInputWidgetPr
 export type BlueprintListProperties = {
     items: unknown[];
     selectedIndex: number;
+    /**
+     * The shape the list declares, or null when it declares none.
+     *
+     * Carried with the items rather than fetched separately, because every node that reads a field
+     * needs both and reading them apart is how the two drift: a graph that sorted by a field the
+     * list no longer declares would sort by nothing and report success.
+     */
+    struct: UIStructDef | null;
+    /**
+     * Where the list has got to along its axis, as it last measured itself.
+     *
+     * A list that has not been rendered - or has been rendered somewhere with no runtime store, like
+     * a Surface thumbnail - reports at-rest rather than nothing, so a graph asking gets the answer
+     * for a list that cannot scroll instead of an undefined it has no way to branch on.
+     */
+    scroll: UIListScrollMetrics;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -316,6 +335,12 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+        /** The sizes worth offering, ascending. Empty where the shell has no window to size. */
+        getWindowScaleOptions: () => Promise<number[]>;
+        getWindowScale: () => Promise<number>;
+        setWindowScale: (scale: number) => Promise<void>;
+        getWindowSize: () => Promise<{ width: number; height: number }>;
+        setWindowSize: (width: number, height: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -525,6 +550,41 @@ export type BlueprintHostApiRuntime = {
          * no game up there is no record, and the call is a no-op instead of an error.
          */
         clearVisited: () => void;
+        /**
+         * Has the player ever reached this ending, by the `ending` row's Studio block id.
+         *
+         * Project persistence rather than the save file, unlike the visited record above: an endings
+         * screen reports what this player has ever seen, so loading an older save must not re-lock
+         * anything. Needs no running story - a title screen asks it before the first game exists.
+         */
+        isEndingReached: (endingId: string) => boolean;
+        /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
+        /**
+         * Every ending one story declares, in document order, each row already carrying whether it
+         * was reached. Empty for an unknown or unnamed story rather than an error.
+         *
+         * The list comes from the story document this build ships, so it can never offer an ending
+         * the compiler does not emit, and it is available with no game running for the same reason
+         * the reader above is.
+         */
+        listEndings: (storyId: string) => BlueprintStoryEnding[];
+        /**
+         * Forget one ending. Awaited, unlike `clearVisited`: this writes host persistence rather
+         * than a live `Storable`, and a caller that navigates away on the next beat has to know the
+         * write landed.
+         */
+        clearEndingState: (endingId: string) => Promise<void>;
+        /** Wipe the whole endings record. The `Clear Text Read` of this family. */
+        clearEndings: () => Promise<void>;
         choose: (index: number) => Promise<void>;
         next: () => Promise<void>;
         skip: () => Promise<void>;
@@ -631,6 +691,16 @@ export type BlueprintHostApiRuntime = {
     progress: {
         export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
         import: () => Promise<GameProgressImportOutcome>;
+    };
+    /**
+     * What the shell can promise about the data it writes, for the `Check Storage Durability` node.
+     *
+     * A fact about where the game is running, not about the playthrough: a packaged desktop game
+     * keeps files nothing reclaims, a web export holds whatever grant the browser gave it. Stated,
+     * never acted on - what a player is told about it belongs to the title.
+     */
+    storage: {
+        durability: () => Promise<GameStorageDurability>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -773,6 +843,20 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsSceneVisited?: (sceneId: string) => boolean;
     onIsOptionPicked?: (optionId: string) => boolean;
     onClearVisited?: () => void;
+    /**
+     * The endings record, in project persistence. Absent only where there is no runtime store at
+     * all (a Page previewed inside the editor), where every ending reads as not reached and the two
+     * wipes are no-ops - which is what lets an endings screen lay out in the preview.
+     */
+    onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
+    onListEndings?: (storyId: string) => BlueprintStoryEnding[];
+    onClearEndingState?: (endingId: string) => Promise<void> | void;
+    onClearEndings?: () => Promise<void> | void;
     onSelectChoice?: (index: number) => Promise<void> | void;
     onNext?: () => Promise<void> | void;
     onSkip?: () => Promise<void> | void;
@@ -835,6 +919,16 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
+    /**
+     * The window sizes worth offering, measured by the shell. See
+     * `GameAppHost.getWindowScaleOptions`; the empty list is what a configuration screen draws
+     * nothing from, rather than drawing a control that cannot work.
+     */
+    onGetWindowScaleOptions?: () => number[] | Promise<number[]>;
+    onGetWindowScale?: () => number | Promise<number>;
+    onSetWindowScale?: (scale: number) => void | Promise<void>;
+    onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
+    onSetWindowSize?: (width: number, height: number) => void | Promise<void>;
     /**
      * The layer stack composited over the page lane.
      *
@@ -899,6 +993,14 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
     /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
     onImportProgress?: () => Promise<GameProgressImportOutcome>;
+    /**
+     * What the shell running this graph can promise about the data it writes.
+     *
+     * Absent in every environment that writes nowhere real - the editor preview and the story
+     * preview - where the node leaves by `Unknown`, which is what "this cannot be answered here"
+     * already means.
+     */
+    onStorageDurability?: () => Promise<GameStorageDurability>;
 };
 
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
@@ -1210,10 +1312,13 @@ function readListItemsFallback(
     if (bound) {
         return cloneJson(bound);
     }
-    if (props.previewItems.length > 0) {
-        return cloneJson(props.previewItems);
+    if (props.items.length > 0) {
+        return cloneJson(props.items);
     }
-    return Array.from({ length: props.previewCount }, (_, index) => ({ index }));
+    // Placeholder rows in the declared shape, so a graph reading a list nobody has written to sees
+    // the fields it will see once there is content instead of a bag with an `index` in it.
+    const struct = resolveUIStruct(document, props.itemStructId);
+    return Array.from({ length: props.placeholderCount }, () => makeDefaultStructItem(struct));
 }
 
 function readListProperties(
@@ -1235,6 +1340,11 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
+        struct: resolveUIStruct(
+            document,
+            getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
+        ),
     };
 }
 
@@ -1594,6 +1704,25 @@ function normalizeBlueprintGameNotifications(value: unknown): BlueprintGameNotif
     }
     return out;
 }
+
+/**
+ * One of a story's endings, as `Get Endings` hands it to a list widget.
+ *
+ * Flattened, and carrying its own unlock state, so an item template binds every cell of a row from
+ * the row itself. The alternative - a list of ids plus an `Is Ending Reached` per cell - would run a
+ * graph per row to learn something the list already knew.
+ *
+ * `name` is display text and may be empty; `endingId` is the identity, and is the id
+ * `Clear Ending State` and the record itself both key on.
+ */
+export type BlueprintStoryEnding = {
+    endingId: string;
+    name: string;
+    sceneId: string;
+    /** The scene the ending row sits in, so a row can be grouped or captioned without a lookup. */
+    sceneName: string;
+    isReached: boolean;
+};
 
 /**
  * One dialogue/menu backlog entry, mirrored from NarraLeaf's `LiveGame.getHistory()` or
@@ -2078,6 +2207,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSceneVisited,
         onIsOptionPicked,
         onClearVisited,
+        onIsEndingReached,
+        onIsDlcInstalled,
+        onListEndings,
+        onClearEndingState,
+        onClearEndings,
         onSelectChoice,
         onNext,
         onSkip,
@@ -2101,6 +2235,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenExternal,
         onExportProgress,
         onImportProgress,
+        onStorageDurability,
         audioTracks,
         onSubscribeGamePreferences,
         onLocaleChanged,
@@ -2112,6 +2247,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
+        onGetWindowScaleOptions,
+        onGetWindowScale,
+        onSetWindowScale,
+        onGetWindowSize,
+        onSetWindowSize,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2376,6 +2516,62 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setFullscreen: application window is not available");
                     }
                     await onSetFullscreen(fullscreen === true);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScaleOptions: async () => {
+                const cap = "navigation.getWindowScaleOptions";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const offered = onGetWindowScaleOptions ? await onGetWindowScaleOptions() : [];
+                    // Ascending, and a copy: a graph that sorted or spliced the array in place
+                    // would be editing what the shell handed out.
+                    return [...offered].sort((a, b) => a - b);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScale: async () => {
+                const cap = "navigation.getWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // A shell with no window to size answers with the design size rather than
+                    // throwing: nothing about the game is wrong, there is simply one size.
+                    return onGetWindowScale ? Number(await onGetWindowScale()) : 1;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowScale: async (scale: number) => {
+                const cap = "navigation.setWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowScale?.(Number(scale));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowSize: async () => {
+                const cap = "navigation.getWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero from a shell with no window of its own, which is what a stage that is
+                    // not a window in the first place honestly measures.
+                    const size = onGetWindowSize ? await onGetWindowSize() : null;
+                    return {
+                        width: Number(size?.width ?? 0),
+                        height: Number(size?.height ?? 0),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowSize: async (width: number, height: number) => {
+                const cap = "navigation.setWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowSize?.(Number(width), Number(height));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -3857,6 +4053,55 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            isEndingReached: (endingId: string) => {
+                const cap = "game.isEndingReached";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No record reachable is "not reached", not an error: an endings screen opened
+                    // in the editor preview must still lay out, and locked is the honest answer.
+                    return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            listEndings: (storyId: string) => {
+                const cap = "game.listEndings";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onListEndings ? onListEndings(storyId) : [];
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearEndingState: async (endingId: string) => {
+                const cap = "game.clearEndingState";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onClearEndingState?.(endingId);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            clearEndings: async () => {
+                const cap = "game.clearEndings";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onClearEndings?.();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             choose: async (index: number) => {
                 const cap = "game.choose";
                 emitHostCall(emit, cap, "call");
@@ -4181,6 +4426,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onImportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        storage: {
+            durability: async () => {
+                const cap = "storage.durability";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No backend = nowhere real is being written (editor preview, story preview),
+                    // and "this cannot be answered here" is exactly what `unknown` says.
+                    return await (onStorageDurability?.() ?? Promise.resolve("unknown" as const));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

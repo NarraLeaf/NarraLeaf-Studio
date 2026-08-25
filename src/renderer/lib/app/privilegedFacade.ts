@@ -3,7 +3,7 @@ import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
 import type { RequestStatus } from "@shared/types/ipcEvents";
 import type { PluginIdentity, PluginPermissionRequest, PluginPermissionPromptResult } from "@shared/types/pluginPermissions";
-import type { PrivilegedBashExecuteResult } from "@shared/types/privileged";
+import type { PrivilegedBashExecuteResult, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import { getPrivilegedInterface } from "./bridge";
 import {
     createPluginFacadeToken,
@@ -25,9 +25,14 @@ export type BoundPrivilegedFacade = ReturnType<typeof createBoundPrivilegedFacad
  * author left the historical revision - which is precisely the write this gate exists to stop. A
  * refusal has to end the write, not defer it. Visibility comes from the refusal observers
  * (`SaveStatusService` raises the notice), never from this return value.
+ *
+ * `refused` marks it all the same, for the one kind of caller the paragraph above does not cover: a
+ * writer that remembers what it still owes the disk. To that caller "succeeded" and "was dropped"
+ * are different answers, and reading them as the same one loses the author's edit rather than
+ * writing it late. Ignoring the flag keeps the historical meaning exactly.
  */
 function frozenNoOp(): Promise<RequestStatus<FsRequestResult<void>>> {
-    return Promise.resolve({ success: true, data: { ok: true, data: undefined } });
+    return Promise.resolve({ success: true, data: { ok: true, data: undefined, refused: true } });
 }
 
 /**
@@ -87,6 +92,20 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 refuseFrozenWrite(path)
                     ? frozenRejection(path)
                     : privileged().fs.requestWriteRaw(actor(), path),
+            /**
+             * One grant for N files. Refused whole when the latch objects to *any* of them: like the
+             * two verbs above there is no URL that writes nothing, and a batch that quietly dropped
+             * its frozen members would report the rest as a complete write.
+             *
+             * `BaseFileSystemService.writeBatch` sifts frozen paths out before it gets here, so the
+             * whole-batch refusal is the backstop for direct callers, plugins included.
+             */
+            requestWriteBatch: (entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>> => {
+                const frozen = entries.find(entry => refuseFrozenWrite(entry.path));
+                return frozen
+                    ? frozenRejection(frozen.path)
+                    : privileged().fs.requestWriteBatch(actor(), entries);
+            },
             ensureRegularFile: (path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
                 refuseFrozenWrite(path)
                     ? frozenNoOp()
@@ -95,6 +114,10 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 refuseFrozenWrite(path)
                     ? frozenNoOp()
                     : privileged().fs.writeFileNoFollow(actor(), path, data, encoding),
+            writeFileNoFollowOrCreate: (path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
+                refuseFrozenWrite(path)
+                    ? frozenNoOp()
+                    : privileged().fs.writeFileNoFollowOrCreate(actor(), path, data, encoding),
             recoverCorruptedJsonFile: (path: string, replacement: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>> =>
                 refuseFrozenWrite(path)
                     ? frozenNoOp()

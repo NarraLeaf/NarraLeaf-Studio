@@ -3,6 +3,7 @@ import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import type { BlueprintHostApiContractVersion } from "@shared/types/blueprint/hostApi";
 import type { UIDocument, UIComponentId, UISurfaceId, UIStageSlotId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
+import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import type { BlueprintHostApiRuntime } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import type { UIEditorStateService } from "@/lib/workspace/services/ui-editor/UIEditorStateService";
@@ -59,6 +60,17 @@ export type UIHostAdapterBlueprintRuntime = {
     ) => Promise<boolean>;
     /** Dispatch a surface-level event on the current surfaceMain blueprint. */
     dispatchSurfaceBlueprintEvent?: (eventName: string, payload?: Record<string, unknown>) => Promise<void>;
+    /**
+     * Raise one of this surface's declared input actions on its surfaceMain blueprint.
+     *
+     * The seam between routing and authoring: routing decides that this click, wheel or key means
+     * "advance" on this surface (see `runtime/input/surfaceInputActions`), and this hands that
+     * decision to the graph. Named rather than positional because the payload is what the action's
+     * head node reads its pins from.
+     *
+     * It resolves when the action's graphs have run, which is what lets a lane walk stay sequential.
+     */
+    dispatchSurfaceInputAction?: (payload: UIInputActionEventPayload) => Promise<void>;
     dispatchBroadcastEvent?: (eventName: string, data: unknown, sender?: string) => Promise<void>;
     getBroadcastListenerCount?: (eventName: string) => number;
     /** Invoke a declared blueprint fn (Call Fn node); awaits the fn body and returns its Fn Return values. */

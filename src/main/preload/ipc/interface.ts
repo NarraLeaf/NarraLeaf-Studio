@@ -17,10 +17,18 @@ import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
-import type { GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "@shared/types/gameBuild";
+import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "@shared/types/gameTest";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "@shared/types/gameBuild";
+import type { CommandLineBuildEvent } from "@shared/types/commandLineBuild";
 import type { MediaConvertRequest, MediaConvertStateSnapshot } from "@shared/types/mediaConvert";
 import type { StudioTaskOverview } from "@shared/types/studioTask";
+import type { StudioClipboardKind } from "@shared/types/studioClipboard";
 import type { WeatherBakeSpec } from "@shared/weather/model";
 import type {
     MacSigningIdentity,
@@ -34,13 +42,20 @@ import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
 import type { PreviewStudioBlueprintOpenPayload } from "@shared/types/previewStudioBlueprintOpen";
 import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
-import type { PrivilegedActor } from "@shared/types/privileged";
+import type { PrivilegedActor, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
 import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
 import type { VcsServerProbe } from "@shared/types/vcs";
-import type { RevisionId, VcsAddServerOutcome, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type {
+    TeamCallOutcome,
+    TeamConnection,
+    TeamEventMessage,
+    TeamSubscribeOutcome,
+} from "@shared/types/team";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -90,10 +105,14 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
+            requestWriteBatch: (actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWriteBatch", entries }),
             ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "ensureRegularFile", path, data, encoding }),
             writeFileNoFollow: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollow", path, data, encoding }),
+            writeFileNoFollowOrCreate: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "writeFileNoFollowOrCreate", path, data, encoding }),
             recoverCorruptedJsonFile: (actor: PrivilegedActor, path: string, replacement: string, encoding: BufferEncoding = "utf-8") =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "recoverCorruptedJsonFile", path, replacement, encoding }),
             createDir: (actor: PrivilegedActor, path: string) =>
@@ -221,6 +240,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     openPsd: () => ipcClient.invoke(IPCEventType.psdOpen, {}),
     bakePsd: (request) => ipcClient.invoke(IPCEventType.psdBake, { request }),
     probeMedia: (path: string) => ipcClient.invoke(IPCEventType.mediaProbe, { path }),
+    probeFontCoverage: (path: string) => ipcClient.invoke(IPCEventType.fontProbeCoverage, { path }),
     /** What long work Studio is doing. See `@shared/types/studioTask`. */
     studioTasks: {
         getOverview: () =>
@@ -274,6 +294,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.send(IPCEventType.workspaceMenuSync, { model }),
         reportLoadResult: (ok: boolean) =>
             ipcClient.send(IPCEventType.workspaceReportLoadResult, { ok }),
+        reportCommandLineBuild: (event: CommandLineBuildEvent) =>
+            ipcClient.send(IPCEventType.workspaceCommandLineBuild, event),
         reportWriteFreeze: (reason: WorkspaceFreezeKind | null, revision?: RevisionId) =>
             ipcClient.send(IPCEventType.workspaceReportWriteFreeze, { reason, revision }),
         onOpenViewRequest: (handler: (view: WorkspaceViewRequest) => void) =>
@@ -303,7 +325,11 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         },
         pickBackgroundImage: () => ipcClient.invoke(IPCEventType.appPickBackgroundImage, {}),
         readBackgroundImage: (file: string) => ipcClient.invoke(IPCEventType.appReadBackgroundImage, { file }),
-        launchProjectWizard: () => ipcClient.invoke(IPCEventType.projectWizardLaunch, {}) as Promise<RequestStatus<{created: boolean; projectPath: string} | null>>,
+        // The props go over. They used to be dropped here - the signature took them and the
+        // call sent `{}` - so `packagePath` reached the wizard only from a main-process call
+        // site, and any renderer trying to open the wizard on something got the first page.
+        launchProjectWizard: (props: WindowProps[WindowAppType.ProjectWizard]) =>
+            ipcClient.invoke(IPCEventType.projectWizardLaunch, props ?? {}) as Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>,
         promptServerTrust: (props: ServerTrustPromptProps) => ipcClient.invoke(IPCEventType.serverTrustPrompt, { props }),
         state: {
             getGlobalState: <K extends GlobalStateKeys>(key: K) => ipcClient.invoke(IPCEventType.appGlobalStateGet, { key }) as Promise<RequestStatus<{value: GlobalStateValue<K>}>>,
@@ -384,8 +410,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeOpenStoryRowInWorkspace, payload) as Promise<RequestStatus<void>>,
         onStoryRowOpen: (handler: (payload: DevModeStoryRowOpenRequest) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceStoryRowOpen, handler),
-        resolveWeatherClip: (spec: WeatherBakeSpec) =>
-            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec }) as Promise<RequestStatus<{ url: string }>>,
+        resolveWeatherClip: (spec: WeatherBakeSpec, attempt: string) =>
+            ipcClient.invoke(IPCEventType.devModeResolveWeatherClip, { spec, attempt }) as Promise<RequestStatus<{ url: string }>>,
         resolveAssetUrl: (assetId: string, assetType?: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
@@ -447,6 +473,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameTestLaunch, request) as Promise<RequestStatus<GameTestLaunchResult>>,
         stop: (projectPath: string, sessionId: string) =>
             ipcClient.invoke(IPCEventType.gameTestStop, { projectPath, sessionId }) as Promise<RequestStatus<void>>,
+        sendCommand: (projectPath: string, sessionId: string, command: GameTestCommand) =>
+            ipcClient.invoke(IPCEventType.gameTestSendCommand, { projectPath, sessionId, command }) as
+                Promise<RequestStatus<{ delivered: boolean }>>,
         onEvent: (handler: (payload: GameTestEventPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceGameTestEvent, handler),
     },
@@ -571,16 +600,46 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         listServers: () =>
             ipcClient.invoke(IPCEventType.vcsListServers, {}) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. Both addresses may be empty: the token usually carries them. */
-        addServer: (authUrl: string, remoteUrl: string, token: string) =>
-            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        addServer: (authUrl: string, remoteUrl: string, token: string, description?: VcsServerDescription) =>
+            ipcClient.invoke(IPCEventType.vcsAddServer, { authUrl, remoteUrl, token, description }) as Promise<RequestStatus<VcsAddServerOutcome>>,
+        /** Goes to the network. Records what the server says it is; changes no sign-in. */
+        refreshServer: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsRefreshServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         /** Goes to the network. The list is asked for every time; nothing here caches it. */
         listServerProjects: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsListServerProjects, { remoteOrigin }) as Promise<RequestStatus<VcsServerProjectsOutcome>>,
-        /** Goes to the network, and writes on the server. */
-        createServerProject: (remoteOrigin: string, name: string, description?: string) =>
-            ipcClient.invoke(IPCEventType.vcsCreateServerProject, { remoteOrigin, name, description }) as Promise<RequestStatus<VcsServerProjectOutcome>>,
+        /** Goes to the network. Only for a server that advertised `project-detail`. */
+        getServerProject: (remoteOrigin: string, projectId: string) =>
+            ipcClient.invoke(IPCEventType.vcsGetServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDetailOutcome>>,
+        /** Goes to the network. Takes the project off the server's list; the repository keeps everything in it. */
+        deleteServerProject: (remoteOrigin: string, projectId: string) =>
+            ipcClient.invoke(IPCEventType.vcsDeleteServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDeleteOutcome>>,
+        /** Goes to the network. Only for a server that advertised `project-history`. */
+        listServerProjectHistory: (remoteOrigin: string, projectId: string, limit?: number, before?: string) =>
+            ipcClient.invoke(IPCEventType.vcsListServerProjectHistory, { remoteOrigin, projectId, limit, before }) as Promise<RequestStatus<VcsServerProjectHistoryOutcome>>,
+        /** Goes to the network. Only for a server that advertised `members`. */
+        listServerMembers: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.vcsListServerMembers, { remoteOrigin }) as Promise<RequestStatus<VcsServerMembersOutcome>>,
+        /**
+         * Goes to the network, carrying no token because this is where one comes from.
+         * The password reaches the main process and is kept by neither side.
+         */
+        signInWithPassword: (authUrl: string, username: string, password: string) =>
+            ipcClient.invoke(IPCEventType.vcsSignInWithPassword, { authUrl, username, password }) as Promise<RequestStatus<VcsPasswordSignInOutcome>>,
+        /**
+         * Put this project on to a server: register it, connect it, send it.
+         *
+         * **Goes to the network three times and writes on both ends.** Slow, and the
+         * only call here that changes what a server holds AND what this project's
+         * config says in one press.
+         */
+        publishProject: (projectPath: string, remoteOrigin: string, name: string) =>
+            ipcClient.invoke(IPCEventType.vcsPublishProject, { projectPath, remoteOrigin, name }) as Promise<RequestStatus<VcsPublishOutcome>>,
+        /** Local, and no project: two plain file reads over the machine's own history. */
+        listLocalRepositories: () =>
+            ipcClient.invoke(IPCEventType.vcsListLocalRepositories, {}) as Promise<RequestStatus<{ repositories: VcsLocalRepository[] }>>,
         push: (projectPath: string) =>
             ipcClient.invoke(IPCEventType.vcsPush, { projectPath }) as Promise<RequestStatus<VcsPushResult>>,
         /** Writes the working tree: re-read every document once this resolves. */
@@ -589,6 +648,44 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** Destination must be an empty (or missing) folder. */
         clone: (url: string, destination: string) =>
             ipcClient.invoke(IPCEventType.vcsClone, { url, destination }) as Promise<RequestStatus<{ root: string; branch: string; fileCount: number }>>,
+    },
+
+    /**
+     * The Team protocol: what a server can be asked, and how it says something happened.
+     *
+     * Five entries, and it stays five. `call` names a method the server declared it
+     * serves - the names are in `@shared/types/team` - and the parameters and the answer
+     * are that method's business rather than this file's. Every screen that reads a
+     * server goes through `lib/team`, which types both ends of one call in one place.
+     *
+     * `onEvent` is the half the old API could not do at all. A server pushes on a topic
+     * this window subscribed to, so a comment somebody else wrote appears without anybody
+     * reopening anything.
+     *
+     * The token never comes near here. It stays sealed in the main process, which is what
+     * makes a call, and what crosses back is the answer.
+     */
+    team: {
+        /** Open a session with one server. Answers with where it stands, not when it is ready. */
+        open: (remoteOrigin: string) =>
+            ipcClient.invoke(IPCEventType.teamOpen, { remoteOrigin }) as Promise<RequestStatus<TeamConnection>>,
+        /** Where every server Studio knows about stands. Local: opens nothing. */
+        connections: () =>
+            ipcClient.invoke(IPCEventType.teamConnections, {}) as Promise<RequestStatus<{ connections: TeamConnection[] }>>,
+        /** Goes to the server, over the session. Opens one first if there is none. */
+        call: (remoteOrigin: string, method: string, params?: unknown) =>
+            ipcClient.invoke(IPCEventType.teamCall, { remoteOrigin, method, params }) as Promise<RequestStatus<TeamCallOutcome>>,
+        /** Ask to be told about a topic. Held for this window, and dropped when it closes. */
+        subscribe: (remoteOrigin: string, topic: string) =>
+            ipcClient.invoke(IPCEventType.teamSubscribe, { remoteOrigin, topic }) as Promise<RequestStatus<TeamSubscribeOutcome>>,
+        unsubscribe: (remoteOrigin: string, topic: string) =>
+            ipcClient.invoke(IPCEventType.teamUnsubscribe, { remoteOrigin, topic }) as Promise<RequestStatus<void>>,
+        /** Something happened on a topic this window asked about. */
+        onEvent: (handler: (message: TeamEventMessage) => void) =>
+            ipcClient.onMessage(IPCEventType.teamEvent, handler),
+        /** A session opened, dropped, or was refused. Sent to every window. */
+        onConnectionChanged: (handler: (payload: { connection: TeamConnection }) => void) =>
+            ipcClient.onMessage(IPCEventType.teamConnectionChanged, handler),
     },
 
     gameBuild: {
@@ -608,6 +705,17 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.gameBuildSelectPatchFile, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
         selectPatchBaseline: (defaultPath?: string) =>
             ipcClient.invoke(IPCEventType.gameBuildSelectPatchBaseline, { defaultPath }) as Promise<RequestStatus<{ path: string | null }>>,
+        readLastRun: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildReadLastRun, { projectPath }) as Promise<RequestStatus<{ run: LastGameBuildRun | null }>>,
+        revealOutput: (projectPath: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildRevealOutput, { projectPath }) as Promise<RequestStatus<{ revealed: boolean }>>,
+        readPatchBaseline: (path: string) =>
+            ipcClient.invoke(IPCEventType.gameBuildReadPatchBaseline, { path }) as Promise<RequestStatus<{
+                appTagId: string | null;
+                productName: string | null;
+                version: string | null;
+                builtAt: string | null;
+            }>>,
     },
 
     /**
@@ -757,8 +865,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
     projectTemplates: {
         list: () =>
             ipcClient.invoke(IPCEventType.projectTemplateList, {}),
-        scaffold: (templateId: string, projectPath: string) =>
-            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath }),
+        scaffold: (templateId: string, projectPath: string, locale?: string) =>
+            ipcClient.invoke(IPCEventType.projectTemplateScaffold, { templateId, projectPath, locale }),
     },
 
     assets: {
@@ -766,6 +874,19 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
         exportToFolder: (entries: AssetExportEntry[]) =>
             ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
+        transfer: {
+            offer: (entries: AssetTransferEntry[]) =>
+                ipcClient.invoke(IPCEventType.assetTransferOffer, { entries }),
+            redeem: (token: string) =>
+                ipcClient.invoke(IPCEventType.assetTransferRedeem, { token }),
+        },
+    },
+
+    clipboard: {
+        writeEditorSelection: (kind: StudioClipboardKind, payload: string) =>
+            ipcClient.invoke(IPCEventType.clipboardWriteEditorSelection, { kind, payload }),
+        readEditorSelection: (kind: StudioClipboardKind) =>
+            ipcClient.invoke(IPCEventType.clipboardReadEditorSelection, { kind }),
     },
 
     puppetRuntimes: {

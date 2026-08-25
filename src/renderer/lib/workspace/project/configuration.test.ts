@@ -1,7 +1,56 @@
 import { describe, expect, it } from "vitest";
-import { normalizeBuildConfiguration, normalizeCrashConfiguration } from "./configuration";
+import {
+    normalizeBuildConfiguration,
+    normalizeCrashConfiguration,
+    normalizePatchConfiguration,
+} from "./configuration";
+
+describe("normalizePatchConfiguration", () => {
+    it("returns null for empty / malformed input", () => {
+        expect(normalizePatchConfiguration(undefined)).toBeNull();
+        expect(normalizePatchConfiguration("variant")).toBeNull();
+    });
+
+    it("reads a mode it does not recognise as the folder one", () => {
+        // The folder mode is the one whose baseline the author states outright, so a stored value
+        // nothing here understands cannot become an export measured against something else.
+        expect(normalizePatchConfiguration({})?.baselineMode).toBe("artifact");
+        expect(normalizePatchConfiguration({ baselineMode: "whatever" })?.baselineMode).toBe("artifact");
+        expect(normalizePatchConfiguration({ baselineMode: "variant" })?.baselineMode).toBe("variant");
+    });
+
+    it("drops blank fields rather than storing an empty string", () => {
+        expect(normalizePatchConfiguration({
+            baselineMode: "variant",
+            targetAppTagId: "  demo  ",
+            contentAppTagId: "   ",
+            baselineAppDir: 42,
+            outputFile: "D:/out/game.patch.dat",
+        })).toEqual({
+            baselineMode: "variant",
+            targetAppTagId: "demo",
+            outputFile: "D:/out/game.patch.dat",
+        });
+    });
+});
 
 describe("normalizeBuildConfiguration", () => {
+    it("carries the variant the last build was made as", () => {
+        // Written by every build since variants existed; without this it was never read back, and
+        // the dialog always reopened on the release variant.
+        const result = normalizeBuildConfiguration({
+            appTagId: "demo",
+            platforms: ["windows"],
+            formats: { windows: ["nsis"] },
+        });
+        expect(result?.appTagId).toBe("demo");
+        expect(normalizeBuildConfiguration({
+            appTagId: "   ",
+            platforms: ["windows"],
+            formats: { windows: ["nsis"] },
+        })).not.toHaveProperty("appTagId");
+    });
+
     it("returns null for empty / malformed input", () => {
         expect(normalizeBuildConfiguration(undefined)).toBeNull();
         expect(normalizeBuildConfiguration({})).toBeNull();
@@ -27,7 +76,6 @@ describe("normalizeBuildConfiguration", () => {
             },
             archs: {},
             outputDir: "/tmp/out",
-            compression: "maximum",
             openWhenDone: true,
         });
     });
@@ -45,7 +93,6 @@ describe("normalizeBuildConfiguration", () => {
             formats: { windows: ["nsis"] },
             archs: {},
             outputDir: "",
-            compression: "maximum",
             openWhenDone: true,
         });
     });
@@ -80,8 +127,8 @@ describe("normalizeBuildConfiguration", () => {
         expect(result?.outputDir).toBe("");
     });
 
-    // Projects built before arch/compression/openWhenDone existed have none of
-    // these keys; each must fall back to what that build already did.
+    // Projects built before arch/openWhenDone existed have neither key; each must
+    // fall back to what that build already did.
     it("falls back for a selection stored before the new fields existed", () => {
         const result = normalizeBuildConfiguration({
             platforms: ["windows"],
@@ -89,7 +136,6 @@ describe("normalizeBuildConfiguration", () => {
             outputDir: "/tmp/out",
         });
         expect(result?.archs).toEqual({});
-        expect(result?.compression).toBe("maximum");
         expect(result?.openWhenDone).toBe(true);
     });
 
@@ -112,23 +158,17 @@ describe("normalizeBuildConfiguration", () => {
         expect(result?.archs).toEqual({});
     });
 
-    it("drops a junk compression level", () => {
+    it("keeps openWhenDone, and carries no compression level forward", () => {
         const result = normalizeBuildConfiguration({
             platforms: ["linux"],
             formats: { linux: ["appimage"] },
-            compression: "ultra",
-        });
-        expect(result?.compression).toBe("maximum");
-    });
-
-    it("keeps a valid stored compression and openWhenDone", () => {
-        const result = normalizeBuildConfiguration({
-            platforms: ["linux"],
-            formats: { linux: ["appimage"] },
+            // Written by a Studio that let the author pick a level. Every build takes
+            // the smallest artifact now, so the key is read by nothing and does not
+            // survive the next write.
             compression: "store",
             openWhenDone: false,
         });
-        expect(result?.compression).toBe("store");
+        expect(result).not.toHaveProperty("compression");
         expect(result?.openWhenDone).toBe(false);
     });
 });

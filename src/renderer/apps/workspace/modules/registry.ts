@@ -23,6 +23,7 @@ import { projectPanelModule } from "./project";
 import { storyPanelModule } from "./story";
 import { storyMotionPanelModule } from "./story-motion";
 import { storyVariablesPanelModule } from "./story-variables";
+import { dictionaryPanelModule } from "./dictionary";
 import { localizationPanelModule } from "./localization";
 import { voicePanelModule } from "./voice";
 import { dashboardPanelModule } from "./dashboard";
@@ -30,6 +31,7 @@ import { searchPanelModule } from "./search";
 import { notificationsPanelModule } from "./notifications";
 import { pluginsPanelModule } from "./plugins";
 import { testReportModule } from "./testing";
+import { buildReportModule } from "./build-report";
 
 /**
  * Built-in panel modules
@@ -49,6 +51,7 @@ export const builtInPanels: PanelModule[] = [
     assetsBottomModule,
     propertiesModule,
     storyVariablesPanelModule,
+    dictionaryPanelModule,
     notificationsPanelModule,
     pluginsPanelModule,
     consoleModule,
@@ -68,6 +71,7 @@ export const builtInEditors: EditorModule[] = [
     fontPreviewModule,
     jsonPreviewModule,
     testReportModule,
+    buildReportModule,
 ];
 
 /**
@@ -98,9 +102,11 @@ export { projectPanelModule } from "./project";
 export { storyPanelModule } from "./story";
 export { storyMotionPanelModule } from "./story-motion";
 export { storyVariablesPanelModule } from "./story-variables";
+export { dictionaryPanelModule, openDictionaryPanel, DICTIONARY_PANEL_ID } from "./dictionary";
 export { localizationPanelModule } from "./localization";
 export { voicePanelModule } from "./voice";
 export { dashboardPanelModule } from "./dashboard";
 export { pluginsPanelModule, openPluginsPanel, PLUGINS_PANEL_ID } from "./plugins";
 export { testReportModule, openTestDialog, openTestReportTab } from "./testing";
+export { buildReportModule, openBuildReportTab } from "./build-report";
 export { builtInStatusBarEntries } from "./status-bar";

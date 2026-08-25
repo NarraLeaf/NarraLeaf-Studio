@@ -1,5 +1,5 @@
 import type { LocalizationUnit } from "@shared/types/localization";
-import { isSourceHashStale } from "@shared/utils/localizationText";
+import { isSourceHashStale, segmentHasMarkup, validateMarkupParity } from "@shared/utils/localizationText";
 import { deriveUnitState } from "../../workspace/services/localization/localizationModel";
 import type { LintContext, LintLocalizationContext } from "../context";
 import type { LintFinding, LintRule } from "../types";
@@ -171,6 +171,54 @@ function runOrphan(ctx: LintContext): LintFinding[] {
     return findings;
 }
 
+/**
+ * A translation that renders plainly where the line does not.
+ *
+ * This is the one drift `localization/stale` cannot see, and deliberately so: a translation is
+ * hashed against the line's plain text, precisely so that restyling a sentence does not invalidate
+ * work already done in nine languages. The cost of that ruling is that emphasis added after the
+ * translation was written leaves no trace anywhere - the unit still reads `translated`, and the
+ * player of that language simply never sees the stress the author put on the word. This rule is
+ * where it leaves a trace.
+ *
+ * Reported at `info`, not `warning`: dropping a mark is a decision a translator is entitled to make
+ * (a phrase that wants emphasis in Japanese may want none in English), and a line that renders
+ * plainly still renders. It is a list to read through, not a queue to clear.
+ *
+ * A tag naming a run the line does not have is in the same finding rather than its own rule - both
+ * are answered by opening that unit and looking at the source beside it.
+ */
+function runMarkup(ctx: LintContext): LintFinding[] {
+    const localization = ctx.localization;
+    if (!localization) {
+        return [];
+    }
+    const locales = targetLocales(localization);
+    if (locales.length === 0) {
+        return [];
+    }
+    const findings: LintFinding[] = [];
+    for (const ref of translatableSegments(ctx)) {
+        if (!segmentHasMarkup(ref.segment)) {
+            continue;
+        }
+        for (const locale of locales) {
+            const unit = localization.documents.get(locale)?.units[ref.textId];
+            // A line with no translation at all renders in the source language, styling included -
+            // `localization/missing` owns that one.
+            if (!hasTranslation(unit)) {
+                continue;
+            }
+            const issues = validateMarkupParity(unit.target, ref.segment);
+            if (issues.length === 0) {
+                continue;
+            }
+            findings.push(finding(ref, "lint.rule.localizationMarkup.message", locale, "localization/markup"));
+        }
+    }
+    return findings;
+}
+
 function finding(
     ref: LintTextSegmentRef,
     messageKey: LintFinding["messageKey"],
@@ -200,6 +248,13 @@ export const LOCALIZATION_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "warning",
         slug: "localizationStale",
         run: ctx => runStale(ctx),
+    },
+    {
+        id: "localization/markup",
+        category: "localization",
+        defaultSeverity: "info",
+        slug: "localizationMarkup",
+        run: ctx => runMarkup(ctx),
     },
     {
         id: "localization/orphan",

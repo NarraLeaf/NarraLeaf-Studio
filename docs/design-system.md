@@ -72,6 +72,13 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 原生控件细节(滚动条、checkbox/radio)另有 `--nl-scrollbar-*`、`--nl-control-*` 变量,只在 styles.css 内部使用。
 
+**滚动条默认不画滑块**,只在滚动时出现,停下约 0.8 秒后消失(规则在 styles.css,"正在滚动"这个状态由
+`styles/scrollbarAutoHide.ts` 打在滚动容器上的 `data-nl-scrollbar` 提供)。8px 槽位**始终占位**,
+所以滑块显示与否不改变布局。浮层里的选择列表(节点选择框、命令候选菜单这类)连槽位都不要,加 `.nl-no-scrollbar`。
+**横向的窄条外壳**(编辑器标签栏这类,整条只有一行高)也加:8px 槽位在这种高度上是明显的一条,而横滑块几乎
+和条一样宽,说不出什么。这类条子改用「被裁掉的那一侧画一段 24px 渐隐」提示还有内容——渐隐要画在滚动容器
+**外面**的定位父级上,画在里面会跟着内容一起滑走。
+
 ## 2. 圆角
 
 | 场景 | 类 |
@@ -110,7 +117,7 @@ token 定义在 [tailwind.config.js](../tailwind.config.js),值在 [src/renderer
 
 ## 5. 交互态（统一写法）
 
-- **hover**：行 / 图标按钮用两档——弱 `hover:bg-edge-subtle`、强 `hover:bg-edge`。
+- **hover**：行 / 图标按钮一律 `hover:bg-fill`——共享 `Button` 的 ghost 变体内部就是它,手写行照抄这一档才与组件对齐;要更轻一档(密集列表、已有底色上再叠一层)用 `hover:bg-fill-subtle`。**hover 底不写 `edge` 系**:`edge` 只给 `border-`/`divide-`(见 §1),本条早先误写成 `hover:bg-edge-subtle` / `hover:bg-edge`,全仓没有一处是照它写的。
 - **focus**：统一 `focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50`;容器型输入用 `focus-within:` 变体。禁止 `focus:border-*` 与裸 hex ring。
 - **selected / active**：填充式 `bg-primary/15 text-fg`;导航类列表可加左竖条 `border-l-2 border-primary`;tab 用底部下划线 `bg-primary`。
 - **disabled**：统一 `disabled:opacity-50 disabled:cursor-not-allowed`。
@@ -185,3 +192,21 @@ Phase 2 新增(用来替换各处手写模式):
 | `arbitrary-hex` | 长尾近黑舞台色（判断密集,[scripts/style-codemod.mjs](../scripts/style-codemod.mjs) 有意不自动化） |
 
 ⚠️ 每加一个模态背板,`raw-white-black-alpha` 就会 +1 并让 ratchet 变红。这是**设计如此**：它逼你确认这一笔真的属于 §0 豁免,而不是顺手写的裸 `bg-black/40`。确认了就带理由 `--save`。
+
+## 9. 文案
+
+**像素看这份文件,字看 [help-system.md](help-system.md)。** 那份是界面文案的**唯一事实来源**,地位与本文件对等;
+写任何标签、提示、确认或帮助条目前先读它。尤其是 §3(什么话一律不得出现)、§3a(语域)、§3b(形状)、
+§3c(三种语言)。
+
+一句话的规矩：**界面只说当前状态、作者该做什么、做完会得到什么。不说机制,不说路线图,不跟人聊天。**
+
+两条可以直接跑的检查,与 §8 的门禁一样是机械的：
+
+```sh
+grep -nE '"[^"]*(—|——)[^"]*"' src/shared/i18n/catalog/*/*.ts
+grep -nE '"[^"]*(the engine|internally|because |which means)' src/shared/i18n/catalog/*/*.ts
+```
+
+第一条命中的破折号**只在格式示例里合法**,别处一律拆成两句;第二条命中即是这条字符串在描述自己的
+实现,删掉那半句,不要改写。

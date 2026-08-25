@@ -23,7 +23,7 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
-import { FsRejectErrorCode } from "@shared/types/os";
+import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -111,6 +111,24 @@ import {
     MAIN_APP_SURFACE_ID,
 } from "@shared/constants/ui-editor";
 import { isListLikeWidgetType, type UIListElementExtra } from "@shared/types/ui-editor/list";
+import {
+    UI_STRUCT_ID_CHOICE_ITEM,
+    UI_STRUCT_ID_NOTIFICATION_ITEM,
+    UI_STRUCT_ID_NVL_ITEM,
+} from "@shared/types/ui-editor/builtinStructs";
+import type { UIStructField } from "@shared/types/ui-editor/struct";
+import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
+import {
+    normalizeUIInputActionLibrary,
+    normalizeUIInputBindings,
+    normalizeUISurfaceActionEnablements,
+    normalizeUISurfaceInputMode,
+    pruneUISurfaceActionEnablements,
+    type UIInputActionDef,
+    type UIInputBinding,
+    type UISurfaceActionEnablement,
+    type UISurfaceInputMode,
+} from "@shared/types/ui-editor/inputAction";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
@@ -577,13 +595,45 @@ export type ImportTemplateResult = {
     importedComponents: UIComponentDefinition[];
 };
 
+/**
+ * Placement read off the surface being imported instead of declared by the caller.
+ *
+ * A template states where its screen belongs, because the document it ships is a design and not a
+ * page out of anyone's project. A surface copied from another project already is one: it was a Page
+ * or a Game UI over there, and a Game UI sat in a named stage slot. Both are carried across rather
+ * than asked about again — an author copying their dialog layout is not choosing a slot for it.
+ */
+export const IMPORT_PLACEMENT_FROM_SOURCE = "sourceSurface" as const;
+
+/** Where an import puts its surfaces: one declared placement, or each surface's own. */
+export type ImportTemplatePlacement = UITemplateSurfacePlacement | typeof IMPORT_PLACEMENT_FROM_SOURCE;
+
+/**
+ * The placement one surface lands under.
+ *
+ * A source surface with no mount is a Page, and a Page has nowhere else to be; a stage surface
+ * brings its slot. Whether that slot is free is a separate question, answered against the receiving
+ * document by {@link UIDocumentService.importTemplateBundle}.
+ */
+export function resolveImportedSurfacePlacement(
+    declared: ImportTemplatePlacement,
+    sourceSurface: UISurface,
+): UITemplateSurfacePlacement {
+    if (declared !== IMPORT_PLACEMENT_FROM_SOURCE) {
+        return declared;
+    }
+    return sourceSurface.kind === "stageSurface"
+        ? { kind: "stageSurface", slotId: sourceSurface.mount?.slotId ?? DEFAULT_UI_STAGE_SLOT_ID }
+        : { kind: "appSurface" };
+}
+
 /** One template's fetched documents plus a resolved placement, ready to import.
  * `assetIdMap` maps the template's original asset ids to the ids they were
  * ingested under in this project; empty/undefined for asset-free templates. */
 export type ImportTemplateBundleInput = {
     document: unknown;
     graphs: unknown;
-    placement: UITemplateSurfacePlacement;
+    placement: ImportTemplatePlacement;
     assetIdMap?: Record<string, string>;
 };
 
@@ -694,7 +744,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             },
         };
         const data = JSON.stringify(updated, null, 2);
-        const result = await fs.write(documentPath, data, "utf-8");
+        const result = await this.writeDocumentFile(fs, documentPath, data);
         if (!result.ok) {
             throw new RendererError(result.error.message);
         }
@@ -702,6 +752,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
         this.events.emit("documentChanged", this.document);
+    }
+
+    /**
+     * The one route `uidoc.json` goes out by.
+     *
+     * **Not `fs.write`.** That verb mints a write grant over IPC and then `PUT`s the payload back
+     * through the app protocol; the pair costs about the same whatever the payload weighs, and this
+     * document is written on every auto-save while the author drags things around a surface. The
+     * direct call is the same atomic temp-fsync-rename core reached in one structured-clone IPC
+     * call. `BaseFileSystemService.writeFileNoFollowOrCreate` carries the measurement.
+     *
+     * The shape this service needs is exactly the one that verb was added for: the file has to be
+     * *created* on the first open of a project that has never had an interface document (see
+     * {@link load}, which saves a freshly built empty document) and *replaced* on every save after
+     * that. `writeFileNoFollow` can only overwrite and `ensureRegularFile` writes nothing when the
+     * file is already there.
+     *
+     * What changes for the author: a `uidoc.json` that is a symlink, a non-regular file or has a
+     * hard link is now refused with `INVALID_PATH` instead of being written through. Nothing in
+     * Studio creates any of those, and a symlinked or junctioned `editor/ui/` *directory* still
+     * works - only the final path component is inspected.
+     *
+     * What does not change is what this method reads back: a real failure is still `ok: false` with
+     * a code, still reported to `SaveStatusService` through `observeWrites`, and still thrown from
+     * {@link save}. A refused write still answers `ok` with `refused`; this service, like every
+     * document service other than `StoryService`, does not read that flag and clears its dirty state
+     * on `ok` alone - unchanged by the swap, and announced to the author on the latch's own channel.
+     */
+    private writeDocumentFile(fs: FileSystemService, path: string, data: string): Promise<FsRequestResult<void>> {
+        return fs.writeFileNoFollowOrCreate(path, data, "utf-8");
     }
 
     /**
@@ -873,6 +953,248 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       mergeKey: `props:${elementId}:${Object.keys(propsPatch).sort().join(",")}`,
                   }
                 : false,
+        });
+    }
+
+    /** A fresh id for something this document will own. */
+    public generateId(): string {
+        return this.getContext().services.get<UuidService>(Services.Uuid).generate();
+    }
+
+    /**
+     * Declare the shape of one widget's items.
+     *
+     * Fields and the pointer to them are written in one transaction, and the library is pruned in
+     * the same one: a shape that stops being named by anything has no author-visible existence to
+     * preserve, and leaving it behind would let a later widget silently adopt a stale spelling
+     * through the reuse rule. Undo restores both halves because both are in the snapshot.
+     *
+     * Refuses on a linked component instance for the same reason props do: the definition owns the
+     * shape, and an instance that could redeclare it would be editing every other instance.
+     */
+    public setListItemStructFields(elementId: string, fields: readonly UIStructField[]): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element || isLinkedUIComponentElement(element)) {
+                return;
+            }
+            const currentStructId = (element.props as Record<string, unknown> | undefined)?.itemStructId;
+            const applied = applyUIStructFieldsForOwner({
+                document,
+                ownerElementId: elementId,
+                currentStructId: typeof currentStructId === "string" ? currentStructId : null,
+                fields,
+                generateId: () => uuidService.generate(),
+            });
+            element.props = {
+                ...(element.props ?? {}),
+                itemStructId: applied.structId,
+            };
+            document.structs = pruneUIStructs({ ...document, structs: applied.structs });
+        }, {
+            history: surfaceId ? { surfaceId } : false,
+        });
+    }
+
+    /** What the gestures of this project mean, keyed by id. */
+    public getInputActions(): Record<string, UIInputActionDef> {
+        return this.getDocument().actions ?? {};
+    }
+
+    /**
+     * Add an entry to the project's action vocabulary.
+     *
+     * Bindings start empty: the project default is what every surface inherits, so guessing one
+     * would silently wire a gesture the author never asked for into every interface at once.
+     */
+    public createInputAction(name: string): UIInputActionDef | null {
+        const actionName = name.trim();
+        if (!actionName) {
+            return null;
+        }
+        const actionId = this.getContext().services.get<UuidService>(Services.Uuid).generate();
+        const action: UIInputActionDef = { id: actionId, name: actionName, bindings: [] };
+        this.mutateDocument(document => {
+            document.actions = { ...(document.actions ?? {}), [actionId]: action };
+        }, { history: false });
+        return action;
+    }
+
+    /** Rename one vocabulary entry. Surfaces store the id, so nothing they answer moves. */
+    public renameInputAction(actionId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action || action.name === nextName) {
+                return;
+            }
+            action.name = nextName;
+        }, { history: false });
+    }
+
+    /**
+     * Replace the bindings a surface gets unless it overrides them.
+     *
+     * Every surface that took the default is rebound by this, which is the point of the vocabulary
+     * being a project-level table; a surface that had said otherwise keeps what it said.
+     */
+    public setInputActionBindings(actionId: string, bindings: readonly UIInputBinding[]): void {
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action) {
+                return;
+            }
+            action.bindings = normalizeUIInputBindings(bindings);
+        }, { history: false });
+    }
+
+    /**
+     * Drop one vocabulary entry, and every surface's answer to it, in one transaction.
+     *
+     * Both halves together for the reason `setListItemStructFields` prunes in its own transaction: a
+     * surface left answering an action nothing defines is a row with no name and no bindings, and a
+     * later action minted onto the same id would inherit those replies without anyone asking for it.
+     */
+    public deleteInputAction(actionId: string): void {
+        this.mutateDocument(document => {
+            if (!document.actions?.[actionId]) {
+                return;
+            }
+            const actions = { ...document.actions };
+            delete actions[actionId];
+            document.actions = actions;
+            const remaining = new Set(Object.keys(actions));
+            for (const surface of document.surfaces) {
+                if (!surface.actions) {
+                    continue;
+                }
+                const kept = pruneUISurfaceActionEnablements(surface.actions, remaining);
+                if (kept.length === surface.actions.length) {
+                    continue;
+                }
+                surface.actions = kept;
+            }
+        }, { history: false });
+    }
+
+    /** What this surface does with input that lands on it. */
+    public setSurfaceInputMode(surfaceId: string, mode: UISurfaceInputMode): void {
+        this.updateSurface(surfaceId, surface => {
+            surface.input = normalizeUISurfaceInputMode(mode);
+        }, { mergeKey: `surface:${surfaceId}:input` });
+    }
+
+    /**
+     * Whether this surface answers one of the project's actions.
+     *
+     * Enabling adds a bare enablement - no added bindings, no override - so the surface starts on
+     * the project's defaults and the row an author sees says exactly that. Disabling removes the
+     * record rather than flagging it off: a surface that does not answer an action has nothing to
+     * store about it, and a hidden set of per-surface bindings that reappear on re-enable is a
+     * state nobody can see.
+     */
+    public setSurfaceActionEnabled(surfaceId: string, actionId: string, enabled: boolean): void {
+        const id = actionId.trim();
+        if (!id) {
+            return;
+        }
+        this.updateSurface(surfaceId, surface => {
+            const current = surface.actions ?? [];
+            if (!enabled) {
+                const kept = current.filter(entry => entry.actionId !== id);
+                if (kept.length === current.length) {
+                    return;
+                }
+                if (kept.length === 0) {
+                    delete surface.actions;
+                    return;
+                }
+                surface.actions = kept;
+                return;
+            }
+            if (current.some(entry => entry.actionId === id)) {
+                return;
+            }
+            surface.actions = [...current, { actionId: id }];
+        });
+    }
+
+    /**
+     * Change one field of one surface's answer.
+     *
+     * A key **present** in the patch is written even when its value is `undefined`, which is how
+     * `overrideBindings` is cleared - an override present but empty means "no gesture here" and is a
+     * different statement from having no override at all (see `resolveSurfaceActionBindings`).
+     */
+    public updateSurfaceActionEnablement(
+        surfaceId: string,
+        actionId: string,
+        patch: Partial<Omit<UISurfaceActionEnablement, "actionId">>,
+    ): void {
+        this.updateSurface(surfaceId, surface => {
+            const enablement = surface.actions?.find(entry => entry.actionId === actionId);
+            if (!enablement) {
+                return;
+            }
+            for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+                const value = patch[key];
+                if (value === undefined) {
+                    delete enablement[key];
+                    continue;
+                }
+                if (key === "addBindings" || key === "overrideBindings") {
+                    enablement[key] = normalizeUIInputBindings(value);
+                    continue;
+                }
+                (enablement as Record<string, unknown>)[key] = value;
+            }
+        }, { mergeKey: `surface:${surfaceId}:action:${actionId}:${Object.keys(patch).sort().join(",")}` });
+    }
+
+    /**
+     * Bind one prop of one element to a field of the list item it is drawn for. `null` unbinds.
+     *
+     * Its own entry point rather than a shape passed through `ensureElementBlueprintValueBinding`,
+     * because the two bindings cost different things: that one mints a blueprint the author then
+     * owns and has to be torn down with `clearElementBlueprintValueBinding`, and this one is a
+     * field id. Switching between them therefore goes through the clear, which is why it runs here.
+     */
+    public setElementListItemFieldBinding(elementId: string, propPath: string, fieldId: string | null): void {
+        const surfaceId = this.getElementSurfaceId(elementId);
+        if (isLinkedUIComponentElement(this.getDocument().elements[elementId])) {
+            return;
+        }
+        const existing = this.getDocument().elements[elementId]?.valueBindings?.[propPath];
+        if (existing?.kind === "blueprintValue") {
+            this.clearElementBlueprintValueBinding(elementId, propPath);
+        }
+        this.mutateDocument(document => {
+            const element = document.elements[elementId];
+            if (!element) {
+                return;
+            }
+            const id = fieldId?.trim();
+            if (!id) {
+                if (!element.valueBindings) {
+                    return;
+                }
+                delete element.valueBindings[propPath];
+                if (Object.keys(element.valueBindings).length === 0) {
+                    delete element.valueBindings;
+                }
+                return;
+            }
+            element.valueBindings = {
+                ...(element.valueBindings ?? {}),
+                [propPath]: { kind: "listItemField", fieldId: id },
+            };
+        }, {
+            history: surfaceId ? { surfaceId } : false,
         });
     }
 
@@ -1217,6 +1539,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
+        return this.normalizeInputModel(this.migrateSchemaVersion(document));
+    }
+
+    /**
+     * The input vocabulary and every surface's reply to it, read the way this build understands them.
+     *
+     * Runs on every load rather than in one numbered migration, and carries **no** schema bump. The
+     * precedent is the struct library: fields whose absence already means a defined default are read
+     * through a normalizer instead of being backfilled once, so a document written by an older
+     * Studio loads with an empty vocabulary, `capture`, and no enablements without ever having
+     * claimed to be a newer schema. The numbered migrations here are the other kind - each one
+     * restructures elements a normalizer could not reconstruct.
+     *
+     * `input` and `actions` are written back only when the surface carries them, so a project that
+     * has never opened the input panel keeps its surface records exactly as short as they were and
+     * the load path's "did normalizing change anything" check stays quiet.
+     */
+    private normalizeInputModel(document: UIDocument): UIDocument {
+        const actions = normalizeUIInputActionLibrary(document.actions);
+        if (Object.keys(actions).length > 0) {
+            document.actions = actions;
+        } else {
+            delete document.actions;
+        }
+        for (const surface of document.surfaces) {
+            if (surface.input !== undefined) {
+                surface.input = normalizeUISurfaceInputMode(surface.input);
+            }
+            if (surface.actions !== undefined) {
+                surface.actions = normalizeUISurfaceActionEnablements(surface.actions);
+            }
+        }
+        return document;
+    }
+
+    private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }
@@ -1864,19 +2222,26 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     /**
-     * Import a downloaded UI template into the open project.
+     * Import surfaces that came from outside this document — a downloaded template,
+     * or a page copied in another project's window.
      *
-     * A template is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
+     * The input is a `UIDocument` + `UIGraphDocument` pair (possibly on an older
      * schema). Both are migrated to the current schema, every surface / element /
      * blueprint id is regenerated, and cross-references are remapped together — the
-     * same discipline as {@link duplicateSurface}, but sourcing from external docs
-     * and building the surface envelope from the caller's `placement` rather than
-     * cloning the source surface's own kind/mount. Nothing in the user's existing
-     * work is replaced; the template's surfaces are appended.
+     * same discipline as {@link duplicateSurface}, but sourcing from external docs.
+     * A surface's blueprints are the part that cannot be done by hand: they are not
+     * on the surface but filed in the blueprint document under owner keys naming
+     * `(surfaceId, elementId)`, so re-idding a surface without re-keying them leaves
+     * a page whose logic still belongs to the ids it had elsewhere.
      *
-     * A stage template whose target slot is already occupied is skipped and its
-     * slot reported back, so the caller can tell the user rather than silently
-     * dropping or clobbering a surface.
+     * The surface envelope is built from `placement`: a template declares one for
+     * the whole bundle, while {@link IMPORT_PLACEMENT_FROM_SOURCE} keeps each
+     * surface's own kind and stage slot. Nothing in the user's existing work is
+     * replaced; the imported surfaces are appended.
+     *
+     * A stage surface whose target slot is already occupied is skipped and its slot
+     * reported back, so the caller can tell the user rather than silently dropping
+     * or clobbering a surface.
      */
     public importTemplateBundle(input: ImportTemplateBundleInput): ImportTemplateResult {
         // migrateIfNeeded is pure (does not touch this.document) and, unlike load(),
@@ -1931,7 +2296,7 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         for (const sourceSurface of importable) {
-            let placement = input.placement;
+            let placement = resolveImportedSurfacePlacement(input.placement, sourceSurface);
             if (placement.kind === "stageSurface") {
                 const slotId = placement.slotId ?? DEFAULT_UI_STAGE_SLOT_ID;
                 if (occupiedStageSlots.has(slotId)) {
@@ -4466,9 +4831,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "id",
+                itemStructId: UI_STRUCT_ID_NOTIFICATION_ITEM,
+                itemKeyFieldId: "id",
                 itemGap: 12,
-                previewItems: [
+                items: [
                     { id: "preview-1", message: translate("defaultDoc.notification.messageText") },
                     { id: "preview-2", message: translate("defaultDoc.notification.anotherMessage") },
                 ],
@@ -4581,9 +4947,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "index",
+                itemStructId: UI_STRUCT_ID_CHOICE_ITEM,
+                itemKeyFieldId: "index",
                 itemGap: 16,
-                previewItems: [
+                items: [
                     { text: translate("defaultDoc.choice.previewA"), index: 0, disabled: false, voiceId: "" },
                     { text: translate("defaultDoc.choice.previewB"), index: 1, disabled: false, voiceId: "" },
                     { text: translate("defaultDoc.choice.previewC"), index: 2, disabled: true, voiceId: "" },
@@ -4761,11 +5128,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 visible: true,
             }),
             props: createListTemplateProps({
-                itemKeyPath: "index",
+                itemStructId: UI_STRUCT_ID_NVL_ITEM,
+                itemKeyFieldId: "index",
                 itemGap: 18,
                 templateDirection: "vertical",
                 templateGap: 6,
-                previewItems: [
+                items: [
                     { nametag: translate("defaultDoc.speaker"), index: 0, isActive: false },
                     { nametag: "", index: 1, isActive: true },
                 ],

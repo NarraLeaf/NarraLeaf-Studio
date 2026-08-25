@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { getInterface } from "@/lib/app/bridge";
 import { translate, useTranslation } from "@/lib/i18n";
+import { useGlobalSetting } from "@/lib/settings/useGlobalSetting";
 import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { WindowAppType } from "@shared/types/window";
-import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
+import { CloneFailure, CloneStatus, ImportFailure, ImportStatus, ProjectData, ProjectFlow, PublishTarget, WizardStep, ValidationErrors, DirectoryValidationResult } from "../types";
 import { defaultProjectData, WIZARD_FLOW_STEPS } from "../constants";
 import { ValidationService } from "../services/validationService";
 import { DirectoryService } from "../services/directoryService";
@@ -53,6 +54,23 @@ export function useProjectWizard() {
     const [cloneFailure, setCloneFailure] = useState<CloneFailure | null>(null);
     const [importStatus, setImportStatus] = useState<ImportStatus>("idle");
     const [importFailure, setImportFailure] = useState<ImportFailure | null>(null);
+    /**
+     * The server this project is being made for, when the wizard was opened from one.
+     *
+     * Read once off the window's props and never written here. Nothing in this hook sends
+     * anything: what it changes is what the wizard asks - the origin is answered, version
+     * control is answered, and the review page has a server to name.
+     */
+    const [publishTo, setPublishTo] = useState<PublishTarget | null>(null);
+    /**
+     * Whether the address on screen is still the one this window was handed.
+     *
+     * The picker above the address field exists for the author who came here with nothing:
+     * it turns "paste a repository address" into "choose one off a server". Somebody who
+     * arrived by choosing a project has already used it, and showing it again offers the
+     * choice they just made as though it had not been made.
+     */
+    const [addressGiven, setAddressGiven] = useState(false);
 
     const [projectData, setProjectData] = useState<ProjectData>(defaultProjectData);
 
@@ -77,33 +95,74 @@ export function useProjectWizard() {
         setProjectData(prev => (prev.sourceLocale ? prev : { ...prev, sourceLocale: locale }));
     }, [locale]);
 
+    /**
+     * And the author line this installation was set up with (`project.defaultAuthor`).
+     *
+     * Same "only ever fills a blank" rule as the language above, for the same reason: it is a
+     * starting point offered to a new project, not a value Studio keeps re-asserting. Somebody who
+     * clears the field, or types a different name for this one project, has answered the question.
+     */
+    const defaultAuthor = useGlobalSetting("project.defaultAuthor", stored => (typeof stored === "string" ? stored : ""));
+    useEffect(() => {
+        if (!defaultAuthor) {
+            return;
+        }
+        setProjectData(prev => (prev.author ? prev : { ...prev, author: defaultAuthor }));
+    }, [defaultAuthor]);
+
     /** The server and repository name the address names, or null while it is not an address yet. */
     const remote = useMemo(() => parseVcsRemoteUrl(projectData.remoteUrl), [projectData.remoteUrl]);
 
     /**
-     * Open on the package this window was handed, when it was handed one.
+     * Open on whatever this window was handed, when it was handed something.
      *
-     * Studio can be pointed at a `.nlspkg` from outside - a double-click in the file manager, a
-     * second launch handing one to the running instance - and there is exactly one thing to do
-     * with a package, so the wizard starts on the import page with it already chosen rather than
-     * asking a first-page question the author has answered by opening the file.
+     * Two things can arrive that way, and both mean the first page has already been answered:
      *
-     * The path arrives on the window's props, granted to this window by the main process before the
-     * window loaded; nothing here resolves it. Runs once - a window is handed a package when it is
-     * built or never, and re-running would drag an author who pressed Back straight forward again.
+     *  - a `.nlspkg` Studio was pointed at from outside - a double-click in the file manager, a
+     *    second launch handing one to the running instance - and there is exactly one thing to
+     *    do with a package, so the wizard starts on the import page with it chosen;
+     *  - a repository the author picked off a server's list in the launcher, or made there a
+     *    moment ago, which starts the clone flow on its source page with the address filled in.
+     *
+     * Both arrive on the window's props, set by the main process before the window loaded;
+     * nothing here resolves either. Runs once - a window is handed these when it is built or
+     * never, and re-running would drag an author who pressed Back straight forward again.
      */
     useEffect(() => {
         let alive = true;
         void (async () => {
             try {
                 const props = await getInterface().getWindowProps<WindowAppType.ProjectWizard>();
-                const packagePath = props.success ? props.data?.packagePath : undefined;
-                if (!alive || !packagePath) {
+                if (!alive || !props.success) {
                     return;
                 }
-                setFlow("import");
-                setCurrentStep("import");
-                setProjectData(prev => ({ ...prev, packagePath }));
+                const packagePath = props.data?.packagePath;
+                if (packagePath) {
+                    setFlow("import");
+                    setCurrentStep("import");
+                    setProjectData(prev => ({ ...prev, packagePath }));
+                    return;
+                }
+                const remoteUrl = props.data?.remoteUrl;
+                if (remoteUrl) {
+                    setFlow("clone");
+                    // The source page, not the last one: where the copy lands is still the
+                    // author's to choose, and it is chosen through the native picker there.
+                    setCurrentStep("source");
+                    setAddressGiven(true);
+                    setProjectData(prev => ({ ...prev, remoteUrl }));
+                    return;
+                }
+                const target = props.data?.publishTo;
+                if (target) {
+                    // The create flow, on its first page. That page is where the template is
+                    // picked, so it is not skipped - only the column of origins on it is, and
+                    // that is `OriginStep`'s business. Version control is settled here rather
+                    // than offered: a project with no repository has nothing to send.
+                    setFlow("create");
+                    setPublishTo(target);
+                    setProjectData(prev => ({ ...prev, versionControl: "lore" }));
+                }
             } catch {
                 // A wizard that cannot say how it was opened is still a wizard: it opens on its
                 // first page, which is where every other way in starts.
@@ -278,6 +337,9 @@ export function useProjectWizard() {
         setProjectData(prevData => ({ ...prevData, remoteUrl }));
         // A new address is a new attempt; the last one's verdict no longer describes anything.
         setCloneFailure(null);
+        // Changing it is the author saying the project they were handed is not the one they
+        // meant, so the list of projects to choose from comes back.
+        setAddressGiven(false);
     }, []);
 
     /**
@@ -556,6 +618,8 @@ export function useProjectWizard() {
         cloneFailure,
         importStatus,
         importFailure,
+        publishTo,
+        addressGiven,
         locationInputDirty,
         locationInputFocused,
         appIdManuallyEdited,

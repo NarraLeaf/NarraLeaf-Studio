@@ -41,6 +41,22 @@ export const brand = {
         textInput: "テキスト入力",
     },
 
+    fonts: {
+        description: "文字は、その字を持つ最初のフォントで表示する",
+        add: "フォントを追加",
+        remove: "{name}を削除",
+        moveUp: "{name}を上へ",
+        moveDown: "{name}を下へ",
+        missing: "フォントが見つからない",
+        locales: {
+            edit: "{name}の言語",
+            title: "言語",
+            all: "すべての言語",
+        },
+        preview: "プレビュー言語",
+        excluded: "{language}では使わない",
+    },
+
     panel: {
         add: "色を追加",
         newColorName: "新しい色",

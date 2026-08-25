@@ -140,6 +140,19 @@ export const lint = {
             description: "A row compared with a variant the project does not have",
             message: "No build variant is named \"{name}\", so this row is in no build",
         },
+        storyRowsAfterEnding: {
+            title: "Rows after an ending",
+            description: "Rows written after an /ending row in the same list, which never play",
+            // States the consequence, not the mistake: the rows are already gone from the build, and
+            // an author reading this needs to know that before they know why.
+            message: "This row comes after an ending and is never played. Move it before the ending, or delete it",
+        },
+        storyEndingNameDuplicate: {
+            title: "Two endings with one name",
+            description: "More than one ending sharing a display name",
+            // Says where it shows, because nothing about the story itself is wrong.
+            message: "Another ending is also called \"{name}\". A screen listing endings shows the name twice",
+        },
         storyCutPointOrphan: {
             title: "Cut point with no variant",
             description: "A cut point written while the project has no build variant",
@@ -159,10 +172,22 @@ export const lint = {
             // A character is not created, it walks on - so the remedy is the one word that changes.
             messageCharacter: "Nothing brings {object} on stage, so this row has nothing to act on",
         },
+        storyDeclaredNeverShown: {
+            title: "Unshown stage object",
+            description: "A create row declares an object no row shows",
+            message: "{object} is declared here and no row shows it",
+        },
         storyStageObjectDuplicate: {
             title: "Duplicate stage object",
             description: "Two rows creating one stage name; the second reuses the first",
             message: "{object} is already created above, so this row acts on that one",
+        },
+        storyCharacterMissing: {
+            title: "Missing character",
+            description: "A row naming a character the project does not have",
+            // No subject in the sentence: an unresolved reference leaves only its stored id, which
+            // is a UUID, and a UUID in a report is a word nobody can search a project for.
+            message: "This row names a character the project does not have",
         },
         storyTransitionUnavailable: {
             title: "Unavailable transition",
@@ -181,13 +206,35 @@ export const lint = {
             messageStory: "Starts a story that no longer exists",
             messageScene: "Names a scene that no longer exists",
             messageChoice: "Names a choice that no longer exists",
+            messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
+            messageDlc: "Names a DLC the project does not have",
+            messageInputAction: "Names an input action the project does not declare",
+        },
+        blueprintElementRefMissing: {
+            title: "Missing widget",
+            description: "A node bound to a widget the project no longer has",
+            message: "Bound to a widget that no longer exists",
+        },
+        blueprintFnTargetMissing: {
+            title: "Missing function",
+            description: "A Call Fn node whose function does not exist in its scope",
+            // The fallback, for a call stored without a signature snapshot: all that is left of the
+            // target then is its ref, which is a pair of ids - and an id in a report is a word
+            // nobody can search a project for.
+            message: "Calls a function that does not exist in this scope",
+            messageNamed: "Calls {name}, which does not exist in this scope",
         },
         blueprintUnreachableNode: {
             title: "Unreachable node",
             description: "A node no entry point in its graph can reach",
             message: "Nothing reaches this node, so it never runs",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "Unguarded DLC entrance",
+            description: "A Start Story into a DLC's story, with nothing asking whether the DLC is here",
+            message: "Nothing in this graph asks whether the DLC is installed",
         },
         blueprintEmptyEvent: {
             title: "Empty event",
@@ -210,6 +257,26 @@ export const lint = {
             title: "Button with no handler",
             description: "A clickable widget nothing listens to",
             message: "Nothing runs when this is clicked",
+        },
+        uiComponentMissing: {
+            title: "Missing component",
+            description: "An instance of a component the project does not have",
+            message: "This instance points at a component the project does not have",
+        },
+        uiFrameTargetMissing: {
+            title: "Missing embedded page",
+            description: "A Page widget embedding a page the project does not have",
+            message: "This Page widget embeds a page the project does not have",
+        },
+        uiListItemFieldMissing: {
+            title: "Missing item field",
+            description: "A widget bound to an item field the list drawing it does not declare",
+            message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
+        uiGestureAnsweredTwice: {
+            title: "Gesture answered twice",
+            description: "A widget with a pointer handler of its own, on a page whose action answers the same gesture",
+            message: "{action} on this page answers the same gesture this widget does, so both run",
         },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",
@@ -258,6 +325,11 @@ export const lint = {
             description: "The source line changed after it was translated",
             message: "{locale} translation is older than the line",
         },
+        localizationMarkup: {
+            title: "Translation drops styling",
+            description: "The line is styled and the translation renders it plainly",
+            message: "{locale} translation does not carry this line's styling",
+        },
         localizationOrphan: {
             title: "Orphan translation",
             description: "A translation whose line no longer exists",
@@ -288,6 +360,27 @@ export const lint = {
             messageChain: "{where} uses {color}, which links on to {missing}, a color the palette does not have",
             messageCycle: "{where} uses {color}, whose links lead back to themselves",
         },
+        typographyGlyphCoverage: {
+            title: "Missing glyphs",
+            description: "Text using characters no font of the project can draw",
+            // The character itself, because nothing in the location can carry it and it is the only
+            // thing that tells one of these findings from the next. Its count travels with it: one
+            // finding per line would be thousands of them when the font is simply the wrong one.
+            message: "No project font can draw “{character}” ({count} times)",
+            messageInLanguage: "No project font can draw “{character}” in {language} ({count} times)",
+            messageMore: "{count} more characters no project font can draw",
+            messageMoreInLanguage: "{count} more characters no project font can draw in {language}",
+            // Not a coverage finding at all: the check could not be made. Said out loud because a
+            // check that quietly did not run reads on screen as a check that passed.
+            messageUnreadable: "{font} could not be read, so glyph coverage was not checked",
+            // A different fact from the one above: this file is fine and renders nothing anyway.
+            messageUnloadable: "{font} is a .{format} font, which the game cannot draw with",
+        },
+        typographyLocaleNoFont: {
+            title: "Language with no font",
+            description: "A language every font of the project is restricted away from",
+            message: "No project font is set for {language}",
+        },
     },
     message: {
         ruleFailed: "{rule} could not run",
@@ -308,6 +401,10 @@ export const lint = {
         voice: "Voice",
         // Named after the panel the author fixes one of these in, not after the link protocol.
         brand: "Brand palette",
+        // The word for the subject rather than for the panel, unlike `brand` above: the fonts
+        // are edited on the same page as the palette, so naming this one after the page too
+        // would give two categories one name.
+        typography: "Typography",
     },
     severity: {
         error: "Error",

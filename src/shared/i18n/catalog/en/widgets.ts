@@ -35,6 +35,9 @@ export const widgets = {
         wrapWords: "Words",
         wrapCharacters: "Characters",
         wrapNone: "No wrap",
+        autoFit: "Auto fit",
+        autoFitMinFontSize: "Smallest size",
+        autoFitTip: "Reduces the font size when the text exceeds the widget's size, down to Smallest size. Text that still exceeds it is clipped.",
         alignment: "Alignment",
         verticalAlignment: "Vertical alignment",
         alignLeft: "Align left",
@@ -53,7 +56,7 @@ export const widgets = {
         orientationUpright: "All upright",
         orientationSideways: "All sideways",
         tateChuYoko: "Set short runs upright",
-        tateChuYokoHint: "Numbers and short Latin runs read across the column.",
+        tateChuYokoHint: "Numbers and short Latin runs read across the column",
         tateChuYokoMaxLength: "Longest run set upright",
         italic: "Italic",
         enableItalic: "Enable italic",
@@ -76,7 +79,7 @@ export const widgets = {
     },
     list: {
         title: "List",
-        sectionPreview: "Preview",
+        sectionContent: "Content",
         runtimeItems: "Runtime items",
         runtimePreviewOnly: "Preview only",
         runtimePageState: "Page state array",
@@ -86,7 +89,14 @@ export const widgets = {
         stateKeyPlaceholder: "choices",
         propName: "Prop name",
         propNamePlaceholder: "choices",
-        previewCount: "Preview count",
+        placeholderCount: "Placeholder rows",
+        contentTitle: "List content",
+        fields: "Fields",
+        rows: "Rows",
+        editContent: "Edit content",
+        keyField: "Row key",
+        keyFieldByIndex: "By position",
+        sectionItemAnimation: "Row animation",
         sectionLayout: "Layout",
         sectionTemplate: "Item template",
         sectionScrollbar: "Scrollbar",
@@ -262,7 +272,7 @@ export const widgets = {
     },
     /**
      * The widget's stored type is `nl.puppet` and names no renderer; every string an author reads
-     * says "Spine2D / Live2D Model" instead, because "Puppet" tells nobody what it is for.
+     * says "Spine / Live2D Model" instead, because "Puppet" tells nobody what it is for.
      */
     puppet: {
         title: "Model",
@@ -365,7 +375,7 @@ export const widgets = {
         video: { name: "Video" },
         // Names the two renderers on purpose while the stored type names neither - user ruling
         // 2026-07-29. An author looking for Spine or Live2D has to be able to find this in a palette.
-        puppet: { name: "Spine2D / Live2D Model" },
+        puppet: { name: "Spine / Live2D Model" },
     },
     unsupportedType: "Unsupported type: {type}",
 } as const;

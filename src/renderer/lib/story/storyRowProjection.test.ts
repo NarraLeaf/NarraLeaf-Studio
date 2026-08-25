@@ -8,7 +8,6 @@ import {
     storyBlockBadge,
     storyContainerChain,
     storyRowAccentColor,
-    storyRowBarColor,
     storyRowSentence,
     storyRowSpeaker,
     storyTextSegmentPlain,
@@ -286,12 +285,6 @@ describe("colour", () => {
         expect(storyBlockBadge(invalid).group).toBeNull();
         expect(storyRowAccentColor(invalid)).toBe("rgb(var(--nl-danger))");
     });
-
-    it("bars staging rows and leaves prose bare, matching the editor's row chrome", () => {
-        expect(storyRowBarColor(narration("hi"))).toBeNull();
-        expect(storyRowBarColor(action({ action: "character", operation: "enter", characterId: "c1" })))
-            .toBe("var(--narraleaf-accent, #40a8c4)");
-    });
 });
 
 describe("storyContainerChain", () => {
@@ -325,12 +318,11 @@ describe("storyContainerChain", () => {
 });
 
 describe("projectStoryRow", () => {
-    it("answers the four things a row surface needs in one pass", () => {
+    it("answers the three things a row surface needs in one pass", () => {
         const block = action({ action: "character", operation: "enter", characterId: "c1" });
         expect(projectStoryRow(block, withCharacters({ c1: "Nattou" }))).toEqual({
             sentence: "Show Nattou",
             speaker: null,
-            barColor: "var(--narraleaf-accent, #40a8c4)",
             containerPill: null,
         });
     });

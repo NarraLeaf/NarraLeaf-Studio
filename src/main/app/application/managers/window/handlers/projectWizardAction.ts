@@ -1,5 +1,5 @@
 import { IPCMessageType } from "@shared/types/ipc";
-import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
 import { app, dialog } from "electron";
 import path from "path";
@@ -10,8 +10,18 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
     readonly name = IPCEventType.projectWizardLaunch;
     readonly type = IPCMessageType.request;
 
-    public async handle(window: AppWindow): Promise<RequestStatus<{created: boolean; projectPath: string} | null>> {
-        const wizardWindow = await window.getApp().launchProjectWizard(window, {}, {
+    /**
+     * The props are carried through rather than replaced with an empty object.
+     *
+     * They are how a caller opens the wizard on a question already answered - a package
+     * chosen outside Studio, a repository picked off a server's list - and dropping them
+     * here is what made `packagePath` reachable only from inside the main process.
+     */
+    public async handle(
+        window: AppWindow,
+        props: IPCEvents[IPCEventType.projectWizardLaunch]["data"],
+    ): Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>> {
+        const wizardWindow = await window.getApp().launchProjectWizard(window, props ?? {}, {
             parent: window.win,
             resizable: false,
             // Wider than it is tall, unlike the 600x800 this used to be. The first page is now two
@@ -32,17 +42,20 @@ export class ProjectWizardLaunchHandler extends IPCHandler<IPCEventType.projectW
         window.addChild(wizardWindow, "independent");
 
         // Wait for the wizard window to close and get the result
-        return new Promise<RequestStatus<{created: boolean; projectPath: string} | null>>((resolve) => {
+        return new Promise<RequestStatus<WindowCloseResults[WindowAppType.ProjectWizard]>>((resolve) => {
             // Set up resolver that will be called when window closes
             // This handles both cases: closeWith was called or window was closed directly
             wizardWindow.setCloseResultResolver((result: WindowCloseResults[WindowAppType.ProjectWizard]) => {
-                // If result is provided and has created property, return it
-                // Otherwise return null (user cancelled or closed without result)
-                if (result && typeof result === 'object' && 'created' in result && 'projectPath' in result) {
-                    resolve(this.success({ created: result.created, projectPath: result.projectPath }));
-                } else {
-                    resolve(this.success(null));
-                }
+                // **Handed on whole, not rebuilt field by field.** It used to be copied into a
+                // fresh `{ created, projectPath }`, which silently dropped everything else the
+                // wizard reported - and a field added at both ends then arrives as `undefined`
+                // with nothing anywhere to say why. The two fields below are still checked,
+                // because they are what tells a wizard that finished from one that was closed.
+                const answered = result !== null
+                    && typeof result === "object"
+                    && "created" in result
+                    && "projectPath" in result;
+                resolve(this.success(answered ? result : null));
             });
         });
     }

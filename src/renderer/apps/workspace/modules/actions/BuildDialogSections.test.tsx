@@ -2,7 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BuildPreflightSection } from "@shared/types/gameBuild";
 import type { SigningCredential } from "@shared/types/signing";
-import { RELEASE_APP_TAG, resolveAppTagIdentity, type ProjectAppTag } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE, RELEASE_APP_TAG, resolveAppTagIdentity, type ProjectAppTag } from "@shared/types/appTag";
 import type { PluginBuildConfigFieldContribution } from "@shared/types/plugins";
 import type { PluginBuildConfigDeclaringPlugin } from "@shared/utils/pluginBuildConfig";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
@@ -57,6 +57,7 @@ const neverRemoves = async (_credential: SigningCredential) => false;
 
 /** A project called "My Game", with only the release variant and no plugin asking for anything. */
 const info: BuildDialogInfo = {
+    dlcs: [],
     hostPlatform: "macos",
     hostArch: "arm64",
     productName: "My Game",
@@ -373,10 +374,13 @@ describe("the variant page", () => {
     it("lists every variant, release first, and marks the selected one", () => {
         const markup = render(withVariant, "tag-demo");
 
+        // Built from the constant rather than the word: the release edition's id is `main`, and a
+        // literal here is how a rename passes a test that is checking the wrong thing.
+        const releaseOption = `data-build-app-tag-option="${APP_TAG_ID_RELEASE}"`;
         expect(markup).toContain('data-build-app-tag="tag-demo"');
-        expect(markup).toContain('data-build-app-tag-option="release"');
+        expect(markup).toContain(releaseOption);
         expect(markup).toContain('data-build-app-tag-option="tag-demo"');
-        expect(markup.indexOf('data-build-app-tag-option="release"'))
+        expect(markup.indexOf(releaseOption))
             .toBeLessThan(markup.indexOf('data-build-app-tag-option="tag-demo"'));
     });
 
@@ -604,4 +608,7 @@ vi.mock("@/lib/app/bridge", () => ({
 let frozen = false;
 vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFrozen: () => frozen,
+    // The guard reads the whole reason now, so it can ask whether a partial freeze spares the
+    // document a surface names. Nothing in this dialog names one, so any kind will do.
+    useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
 }));

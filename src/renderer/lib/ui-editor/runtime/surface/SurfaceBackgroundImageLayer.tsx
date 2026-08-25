@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import type { UISurface } from "@shared/types/ui-editor/document";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useLocalizedAssetId } from "@/lib/ui-editor/runtime/localization/GameLocalizationContext";
 import { getSurfaceBackgroundImage, surfaceBackgroundImageStyle } from "@/lib/ui-editor/runtime/surfaceBackground";
 
 /**
@@ -26,7 +27,10 @@ export function SurfaceBackgroundImageLayer({
     opacity?: number;
 }) {
     const background = getSurfaceBackgroundImage(surface);
-    const { url } = useAssetObjectUrl(background?.assetId ?? null);
+    // The Surface's own settings are the reference point: a background that names an asset set is
+    // answered by the map the build wrote beside it, and by nothing else on the page.
+    const backgroundAssetId = useLocalizedAssetId(surface.settings, background?.assetId ?? null);
+    const { url } = useAssetObjectUrl(backgroundAssetId ?? null);
     if (!background || !url) {
         return null;
     }

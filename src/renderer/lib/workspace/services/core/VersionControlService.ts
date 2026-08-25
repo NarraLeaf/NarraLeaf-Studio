@@ -14,6 +14,7 @@ import type {
     VcsMergeDecision,
     VcsMergeDocument,
     VcsMergeState,
+    VcsPublishOutcome,
     VcsPushResult,
     VcsRepositoryInfo,
     VcsRevisionDiffResult,
@@ -131,6 +132,21 @@ type VersionControlServiceEvents = {
      * holding different vintages of the same answer.
      */
     mergeChanged: void;
+    /**
+     * Where this project sends its versions, or who this machine is on that server, is no longer
+     * what it was.
+     *
+     * Two surfaces answer that question and neither can see the other's press: the version rail
+     * and the Team cell in the status bar each read the remote and the session for themselves, on
+     * project open, and nothing else re-read them. Without this the rail goes on naming a server
+     * the project was pointed away from a moment ago in the panel - the same contradiction
+     * {@link revisionRecorded} exists to prevent, arrived at through the address rather than
+     * through the head.
+     *
+     * Carries nothing: both halves are re-read rather than passed, so two subscribers cannot end
+     * up holding different vintages of the same answer.
+     */
+    serverChanged: void;
 };
 
 /** The settings key holding the checkpoint interval in minutes. 0 disables. */
@@ -671,7 +687,34 @@ export class VersionControlService extends Service<VersionControlService> implem
         }
         const result = await getInterface().vcs.setRemote(this.projectPath(), url);
         if (!result.success) throw vcsCallFailed(result);
+        this.events.emit("serverChanged", undefined);
         return result.data.url;
+    }
+
+    /**
+     * Put this project on a server: register it there, point it at the server, send it.
+     *
+     * **Contacts the server, where {@link setRemote} does not**, and writes on both ends.
+     * Slow by the standards of this service: three calls, one of which sends the whole
+     * history.
+     *
+     * The two shapes of refusal are not a mixture by accident. Only the first step
+     * answers through the outcome, because it is the only one whose failure has no
+     * sentence anywhere yet; connecting and sending refuse by throwing, with the
+     * backend's own words, which the rail already knows how to draw.
+     */
+    public async publish(remoteOrigin: string, name: string): Promise<VcsPublishOutcome> {
+        const availability = await this.getAvailability();
+        if (!availability.available) {
+            throw new Error(`Version control is not available on this machine (${availability.reason})`);
+        }
+        const result = await getInterface().vcs.publishProject(this.projectPath(), remoteOrigin, name);
+        if (!result.success) throw vcsCallFailed(result);
+        // Announced even where the outcome says the server refused to record the project: the
+        // connect step may still have written the address (see `VcsManager.publishProject`), and a
+        // surface left naming the old server would be naming one this project no longer uses.
+        this.events.emit("serverChanged", undefined);
+        return result.data;
     }
 
     /**
@@ -697,8 +740,9 @@ export class VersionControlService extends Service<VersionControlService> implem
      * Who this installation is signed in to this project's server as, or null.
      *
      * A LOCAL read, like {@link getRemote}: nothing is contacted, so the panel may ask it
-     * on open. Null on a bare server, which asks nobody who they are and needs no
-     * sign-in at all.
+     * on open. Null for a server this installation has no account on - a project copied
+     * from somebody else, or one whose server was signed out of - which is a state the
+     * Team panel names and offers the way out of.
      */
     public async getServerSession(): Promise<VcsServerSession | null> {
         if (!(await this.isAvailable())) return null;
@@ -726,6 +770,9 @@ export class VersionControlService extends Service<VersionControlService> implem
         }
         const result = await getInterface().vcs.signIn(this.projectPath(), authUrl, token);
         if (!result.success) throw new Error(result.error);
+        // Only where it took. A refusal changes nothing about who this machine is, and announcing
+        // one would have every surface re-read to find exactly what it already had.
+        if (result.data.ok) this.events.emit("serverChanged", undefined);
         return result.data;
     }
 
@@ -749,6 +796,7 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (!(await this.isAvailable())) return;
         const result = await getInterface().vcs.signOut(this.projectPath());
         if (!result.success) throw new Error(result.error);
+        this.events.emit("serverChanged", undefined);
     }
 
     /**
@@ -1184,6 +1232,17 @@ export class VersionControlService extends Service<VersionControlService> implem
      */
     public onMergeChanged(handler: () => void): () => void {
         return this.events.on("mergeChanged", handler);
+    }
+
+    /**
+     * This project's server, or the account it is reached with, has changed.
+     *
+     * Subscribe from anything that names either one; re-read {@link getRemote} and
+     * {@link getServerSession} rather than assuming which of them moved. Both are local reads and
+     * neither scans, so answering this costs a round trip and nothing else.
+     */
+    public onServerChanged(handler: () => void): () => void {
+        return this.events.on("serverChanged", handler);
     }
 
     private async isAvailable(): Promise<boolean> {

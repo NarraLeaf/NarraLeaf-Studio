@@ -216,6 +216,23 @@ export class CharacterAppearance {
         return cloneAppearance(this.appearance);
     }
 
+    /**
+     * Replace everything this holds, **without telling anybody**.
+     *
+     * The write half of {@link toJSON}, and silent on purpose: its two callers both announce the
+     * change themselves, and in one of them announcing from here would be wrong. A live session
+     * builds the operation for an edit out of the mutated object and then puts the previous record
+     * back before anything has looked at it - a notification in the middle of that would show the
+     * edit this machine is not allowed to have applied yet.
+     *
+     * In place rather than by replacing the object, because the panels hold this instance and its
+     * subscribers are on it: a new object would leave every one of them watching something nothing
+     * writes to again.
+     */
+    public adopt(appearance: ICharacterAppearance): void {
+        this.appearance = cloneAppearance(appearance);
+    }
+
     public getKind(): CharacterAppearanceKind {
         return this.appearance.kind;
     }

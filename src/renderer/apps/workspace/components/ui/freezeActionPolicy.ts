@@ -1,3 +1,6 @@
+import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
+import { WorkspaceMenuAction } from "@shared/types/menu";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import type { ActionDefinition, ActionMenuItem, ActionSubmenu } from "../../registry/types";
 import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
 
@@ -27,6 +30,10 @@ import { isActionMenuAction, isActionMenuSeparator } from "./actionMenuModel";
  * group rather than per-command because a top-bar group is what those three are registered as; the
  * editor had to be given a fixed id first, since it used to build one per tab and a table that
  * matches ids exactly can name no such thing.
+ *
+ * A fourth escape is conditional rather than absolute, and is why everything here takes the freeze
+ * KIND instead of a boolean: an action that only *starts* something main owns - the production build
+ * - is exempt from the freezes main itself does not refuse. See {@link FREEZE_OPERATION_ACTION_IDS}.
  */
 const FREEZE_EXEMPT_GROUP_IDS: ReadonlySet<string> = new Set([
     "narraleaf-studio:file",
@@ -64,18 +71,51 @@ export function isFreezeExemptCommand(commandId: string): boolean {
 }
 
 /**
+ * The actions that do not write project data at all but *start* something the main process owns.
+ *
+ * A third table because it is exempt under a different condition from the two above. Those are
+ * exempt from every freeze; these are exempt only from a freeze that does not refuse operations,
+ * which `refusesOperations` decides and main's managers ask for themselves before they run anything.
+ * The pair has to agree: main lets a live session build, and a Build row greyed out over a build
+ * main would have started is a dead button, which is worse than either honest state.
+ *
+ * One member today - Production Build is the only operation reachable as a registered action; Dev
+ * Mode, Preview and Test are palette commands the Run control registers and gates itself.
+ */
+const FREEZE_OPERATION_ACTION_IDS: ReadonlySet<string> = new Set<string>([WorkspaceMenuAction.Build]);
+
+/**
+ * Whether this action starts an operation the freeze in force does not refuse.
+ *
+ * The only place the KIND of freeze is read, and it is not compared against a name here: it goes
+ * straight to `refusesOperations`, which is also what the manager on the other side of the IPC
+ * boundary asks before it starts the same thing.
+ */
+function staysLiveAsOperation(actionId: string, freeze: WorkspaceFreezeKind | null): boolean {
+    return freeze !== null && FREEZE_OPERATION_ACTION_IDS.has(actionId) && !refusesOperations(freeze);
+}
+
+/**
  * Whether the freeze is what makes `action` unavailable - which is what the hover reason keys off,
  * so the top bar only claims "frozen" when that is actually the cause.
  *
  * Answers independently of `action.disabled`: an action that was registered disabled is disabled for
  * its own reason, and saying "because the project is frozen" about it would be a lie that outlives
  * the thaw.
+ *
+ * `freeze` is the kind in force, or null when the workspace is writable. It is the kind rather than
+ * a boolean because the answer is not the same for all of them: see {@link FREEZE_OPERATION_ACTION_IDS}.
+ * Everything else stays frozen out under every kind - an action carries no statement of which
+ * document it writes, so there is nothing here to be partial about.
  */
-export function isActionFrozenOut(action: ActionDefinition, frozen: boolean): boolean {
-    if (!frozen) {
+export function isActionFrozenOut(action: ActionDefinition, freeze: WorkspaceFreezeKind | null): boolean {
+    if (freeze === null) {
         return false;
     }
-    return action.group === undefined || !isFreezeExemptActionGroup(action.group);
+    if (action.group !== undefined && isFreezeExemptActionGroup(action.group)) {
+        return false;
+    }
+    return !staysLiveAsOperation(action.id, freeze);
 }
 
 /**
@@ -83,8 +123,8 @@ export function isActionFrozenOut(action: ActionDefinition, frozen: boolean): bo
  * objects are shared registry state that outlives a freeze, so a freeze that mutated them would
  * leave every action disabled forever once the author thawed.
  */
-export function resolveFrozenActionDisabled(action: ActionDefinition, frozen: boolean): boolean {
-    return action.disabled === true || isActionFrozenOut(action, frozen);
+export function resolveFrozenActionDisabled(action: ActionDefinition, freeze: WorkspaceFreezeKind | null): boolean {
+    return action.disabled === true || isActionFrozenOut(action, freeze);
 }
 
 /**
@@ -94,10 +134,20 @@ export function resolveFrozenActionDisabled(action: ActionDefinition, frozen: bo
  * freeze is doing, and the point of rendering-but-disabled is that the author can look. So the menu
  * still expands, every leaf inside it is inert.
  *
+ * `frozenOut` is the caller's verdict on the GROUP, which is where the group exemption is decided
+ * (a menu row does not carry the group it was declared in). `freeze` is the kind in force, passed
+ * through so a row that starts an operation this freeze does not refuse survives the sweep - a menu
+ * that greyed out Production Build while main would have run it teaches the author the opposite of
+ * what is true.
+ *
  * `frozenOut === false` returns the input untouched, by identity, so nothing downstream re-renders
  * on the common path.
  */
-export function applyFreezeToActionMenuItems(items: ActionMenuItem[], frozenOut: boolean): ActionMenuItem[] {
+export function applyFreezeToActionMenuItems(
+    items: ActionMenuItem[],
+    frozenOut: boolean,
+    freeze: WorkspaceFreezeKind | null,
+): ActionMenuItem[] {
     if (!frozenOut) {
         return items;
     }
@@ -106,8 +156,8 @@ export function applyFreezeToActionMenuItems(items: ActionMenuItem[], frozenOut:
             return item;
         }
         if (isActionMenuAction(item)) {
-            return { ...item, disabled: true };
+            return staysLiveAsOperation(item.id, freeze) ? item : { ...item, disabled: true };
         }
-        return { ...item, items: applyFreezeToActionMenuItems(item.items, true) } satisfies ActionSubmenu;
+        return { ...item, items: applyFreezeToActionMenuItems(item.items, true, freeze) } satisfies ActionSubmenu;
     });
 }

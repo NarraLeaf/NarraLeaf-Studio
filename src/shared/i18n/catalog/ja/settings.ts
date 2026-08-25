@@ -53,6 +53,10 @@ export const settings = {
             label: "ワークスペース",
             description: "起動時の動作、ワークスペースの履歴、自動保存",
         },
+        performance: {
+            label: "パフォーマンス",
+            description: "Studio がこのマシンをどれだけ使い、どれだけ待たせるか",
+        },
         shortcuts: {
             label: "ショートカット",
             description: "Studio 全体で各コマンドに割り当てたキー",
@@ -62,8 +66,11 @@ export const settings = {
             description: "チェックポイントと、そこに記録される作者の情報",
         },
         servers: {
-            label: "サーバー",
-            description: "このインストールがサインインしているサーバーと、使用しているアカウント",
+            // 製品名を省略せずに書く。Team だけでは訳し忘れた英単語に見える。
+            // プロジェクト作成時とワークスペースの隅で出会う名前と同じものを使う。
+            // パネル内では引き続き個々の機械をサーバーと呼ぶ。
+            label: "NarraLeaf Team",
+            description: "このインストールがサインインしている NarraLeaf Team サーバーと、使用しているアカウント",
         },
         network: {
             label: "ネットワーク",
@@ -84,10 +91,24 @@ export const settings = {
             label: "開発者オプション",
             description: "右クリックのメニューに、クリックした項目の ID をコピーする節が加わる",
         },
+        screenEffectThreads: {
+            label: "画面エフェクトのスレッド数",
+            description: "エンコーダーの実行中にフレームを描くスレッドの数。自動はこのマシンを見て決める",
+            options: {
+                auto: "自動",
+            },
+        },
+        screenEffectQuality: {
+            label: "開発モードでの画面エフェクト",
+            description: "プレビューとビルドは最終品質しか受け取らないため、下書きを選ぶと各エフェクトを二度焼くことになる。いま一度、初めて実行したときにもう一度",
+            options: {
+                draft: "下書き",
+                final: "最終品質",
+            },
+        },
         confirmQuit: {
             label: "⌘Q で終了するときに確認する",
             description: "⌘Q を続けて 2 回押すと終了する。1 回だけでは終了しない",
-            unsupportedPlatform: "この項目はこのオペレーティングシステムでは使用できない",
         },
         themeMode: {
             label: "テーマ",
@@ -117,6 +138,10 @@ export const settings = {
                 rose: "ローズ",
                 slate: "スレート",
             },
+        },
+        uiFontFamily: {
+            label: "インターフェイスのフォント",
+            description: "Studio の画面に使う書体。この端末に入っているフォントならどれでも選べる",
         },
         tooltipDelay: {
             label: "ヒントの遅延",
@@ -250,14 +275,22 @@ export const settings = {
             label: "ワークスペースを閉じるときにチェックポイントを記録",
             description: "上の間隔とは別に、ウィンドウを閉じる時点で記録する",
         },
+        quitCheckpointTimeout: {
+            label: "終了時のチェックポイントの制限時間",
+            description:
+                "終了時に開いているすべてのプロジェクトのチェックポイントを待つ時間。これを超えたプロジェクトは記録しない。0 にすると終了時は記録しない",
+        },
+        projectDefaultAuthor: {
+            label: "新規プロジェクトの既定の作者",
+            description: "プロジェクト作成時に作者欄へ入る。既存のプロジェクトはそのまま",
+        },
         versionControlAuthor: {
             label: "作者名",
-            description: "コミットとチェックポイントに記録される。空のままなら NarraLeaf Studio と記録する",
-            fromServer: "このインストールがサインインしているサーバーから取得されます。自分の名前を記録するにはサインアウトしてください。",
+            description: "サーバーに接続していないプロジェクトで記録される。空のままなら NarraLeaf Studio と記録する",
         },
         versionControlAuthorEmail: {
             label: "作者のメールアドレス",
-            description: "作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
+            description: "サーバーに接続していないプロジェクトで、作者名の隣に「Name <email>」の形で記録される。空のままならアドレスを記録しない",
         },
         confirmBeforeClose: {
             label: "ワークスペースを閉じる前に確認",
@@ -282,6 +315,11 @@ export const settings = {
             label: "ステータスバーを表示",
             description: "ワークスペースの下端に並ぶ帯",
         },
+        menuBarMode: {
+            label: "メインメニュー",
+            description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
+            unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
+        },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
             description: "タイトルバー中央の検索欄",
@@ -300,6 +338,10 @@ export const settings = {
         },
         servers: {
             label: "サーバー",
+        },
+        teamMachineLabel: {
+            label: "この端末の名前",
+            description: "共同作業者にアカウント名と並べて表示される。空欄のときはホスト名を使う",
         },
         settingsTransfer: {
             label: "設定を端末間で移す",
@@ -327,6 +369,7 @@ export const settings = {
         refresh: "再取得",
         browsing: "読み込んでいます…",
         download: "ダウンロード",
+        update: "更新",
         downloading: "ダウンロードしています…",
         failed: "辞書の一覧を取得できませんでした。設定のネットワークポリシーを確認してください。",
         installed: {
@@ -350,13 +393,27 @@ export const settings = {
         checking: "確認しています…",
         done: "完了",
         signOut: "サインアウト",
+        signIn: "サインイン",
+        signingIn: "サインインしています…",
         addressLabel: "サーバーアドレス",
         addressPlaceholder: "nlteam://studio.example.lan:41402",
-        reached: "{name} が {address} で応答した",
+        reached: "{address} のサーバーは {name}",
         tokenLabel: "アクセストークン",
         tokenPlaceholder: "アクセストークンを貼り付ける",
         hint: "アクセストークンはサーバー管理者が発行する",
-        noAccount: "{name} は誰にも身元を尋ねないため、サーバーは追加されない",
+        usernameLabel: "ユーザー名",
+        passwordLabel: "パスワード",
+        useToken: "代わりにアクセストークンを使う",
+        usePassword: "代わりにユーザー名とパスワードを使う",
+        signInRefused: "サーバーはそのユーザー名とパスワードを受け付けなかった",
+        signInUnavailable: "この端末ではパスワードでサインインできない",
+        noAccount: "{name} はアカウントを発行しないため追加できない。管理者にアカウントを求めること",
+        joined: {
+            signedInAs: "{name} としてサインインしている",
+            projects: {
+                other: "プロジェクト {count} 件",
+            },
+        },
         probe: {
             unreachable: "そのアドレスから応答がない",
             notAServer: "そのアドレスからの応答は NarraLeaf Team サーバーのものではない",
@@ -406,6 +463,10 @@ export const settings = {
                 spellcheckDictionaries: {
                     label: "スペル辞書",
                     description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
+                },
+                optimizedImages: {
+                    label: "ビルド用最適化画像",
+                    description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
                 },
                 psdImports: {
                     label: "PSD 読み込みの残り物",

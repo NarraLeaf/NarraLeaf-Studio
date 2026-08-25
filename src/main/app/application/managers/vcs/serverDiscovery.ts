@@ -97,6 +97,27 @@ export function parseServerAddress(address: string): ServerEndpoint | null {
     };
 }
 
+/**
+ * The address to ask again at, for a server that was added before.
+ *
+ * A session records where its tokens are presented (`https://host:port`) and never the
+ * `nlteam://` address that was typed, because that address answered once and its answers
+ * are what got stored. The endpoint is the same machine and the same listener - the
+ * document is served over HTTP/1.1 on the port the tokens go to - so the address can be
+ * written back out rather than kept a second time.
+ */
+export function serverAddressForAuthUrl(authUrl: string): string | null {
+    let parsed: URL;
+    try {
+        parsed = new URL(authUrl.trim());
+    } catch {
+        return null;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+    if (!hostname) return null;
+    return `${SERVER_SCHEME}//${hostname}:${parsed.port || DEFAULT_PORT}`;
+}
+
 /** What one attempt at the document came back with. */
 interface Answer {
     status: number;
@@ -255,7 +276,27 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
         data: { url: data.url.trim() },
         authority: { sha256: authority.sha256.trim() },
         version: document.version.trim(),
+        capabilities: readCapabilities(document.capabilities),
     };
+}
+
+/**
+ * The capability names a document offered, or none.
+ *
+ * Optional rather than required, and a malformed one is none rather than a refusal: a
+ * server that says nothing here is a server from before the field, and refusing it would
+ * take away the deployments this is meant to describe. Names are not checked against a
+ * list - one this Studio does not know is still worth recording.
+ */
+function readCapabilities(offered: unknown): string[] {
+    if (!Array.isArray(offered)) return [];
+    const names: string[] = [];
+    for (const entry of offered) {
+        if (typeof entry !== "string") continue;
+        const name = entry.trim();
+        if (name && !names.includes(name)) names.push(name);
+    }
+    return names;
 }
 
 /** Which of the three failures a rejected request was. */

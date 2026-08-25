@@ -78,4 +78,14 @@ export enum CacheNamespace {
      * version controlled. A dictionary is never written into a project.
      */
     SpellcheckDictionaries = "spellcheck-dictionaries",
+    /**
+     * Images a game build re-encoded, keyed by the source bytes and what was
+     * asked of them.
+     *
+     * Global rather than per-project, which the content-addressed key is what
+     * makes correct: the same artwork in two projects, or the same project built
+     * from a second checkout, is the same entry. Deleting it costs the next build
+     * the encoding time it already paid once.
+     */
+    OptimizedImages = "optimized-images",
 }

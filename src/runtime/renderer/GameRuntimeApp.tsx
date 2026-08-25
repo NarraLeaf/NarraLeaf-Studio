@@ -1,25 +1,30 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
+import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { DevModeBundle } from "@shared/types/devMode";
-import type { GameRuntimePackV1, GameRuntimePreloadBridge } from "@shared/types/gameRuntime";
+import type { GameRuntimePackV1, GameRuntimePreloadBridge, GameSessionClaim } from "@shared/types/gameRuntime";
 import type { UISurface } from "@shared/types/ui-editor/document";
+import { translate } from "@/lib/i18n";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { GameApp } from "@/lib/ui-editor/runtime/app/GameApp";
+import { GameApp, type GameAppTestControls } from "@/lib/ui-editor/runtime/app/GameApp";
 import type { GameAppFrameContext, GameAppHost, GameAppSaveStore } from "@/lib/ui-editor/runtime/app/GameAppHost";
 import { StageViewportFrame } from "@/lib/ui-editor/runtime/app/StageViewportFrame";
 import { loadRuntimePlugins } from "@/lib/ui-editor/runtime/plugins/loadRuntimePlugins";
 import { RuntimePluginHostController } from "@/lib/ui-editor/runtime/plugins/runtimePluginHostController";
 import { RuntimeCrashScreen } from "./RuntimeCrashScreen";
+import { RuntimeSessionTakenScreen } from "./RuntimeSessionTakenScreen";
 import { clearAutomaticRestarts, setRuntimeCrashPolicy } from "./crashPolicy";
 import { RuntimeSidecarBackend } from "./runtimeSidecarBackend";
 import { isMobileShellDocument, resolveStageViewport } from "./stageViewportConfig";
-import { readRuntimeTestSignalReporter } from "../gameTestSignal";
+import type { GameTestCommand } from "@shared/types/gameTest";
+import { readRuntimeTestCommandSource, readRuntimeTestSignalReporter } from "../gameTestSignal";
 import { listPackPuppetBackendSources, resolvePackModelBundleUrl } from "@/lib/ui-editor/runtime/game/puppetPackRuntimes";
 import type { WeatherBakeSpec } from "@shared/weather/model";
 import { weatherClipAssetId } from "@shared/weather/stage";
@@ -57,7 +62,10 @@ function useRuntimePack(): {
         let disposed = false;
         const bridge = getGameRuntimeBridge();
         if (!bridge) {
-            setError("Runtime bridge is not available");
+            // The preload never ran, so there is no way through to the pack, the saves or
+            // anything else. Localized like the screen that will show it: this is one of the two
+            // failures a player is most likely to meet, and it reads as a black window otherwise.
+            setError(translate("game.crash.bridgeUnavailable"));
             return;
         }
         void bridge.readPack()
@@ -85,6 +93,7 @@ function useRuntimePack(): {
                 // web export, which has no such channel, it is the first answer there is.
                 setRuntimeCrashPolicy(nextPack.crash?.policy);
                 setActiveBrandPalette(nextPack.bundle.brand ?? BUILTIN_BRAND_COLORS);
+                setActiveProjectFonts(nextPack.bundle.fonts ?? []);
                 setActiveSaveSchemaFields(nextPack.bundle.ui.saveSchema ?? []);
                 setPack(nextPack);
                 setError(null);
@@ -115,6 +124,46 @@ function RuntimeErrorScreen(props: { message: string }): ReactNode {
 
 function RuntimeLoadingScreen(): ReactNode {
     return <div className="h-screen w-screen bg-black" />;
+}
+
+/**
+ * Which copy of the game this page is, where a shell can be opened more than once.
+ *
+ * Asked before anything is drawn and before the game touches its store: two tabs of one web export
+ * share a single IndexedDB, and the harm is done the moment the second one saves. The desktop
+ * shells have no such method - their main process refuses a second copy long before a renderer
+ * exists - and an absent method is a granted session, which is also what a game packaged before
+ * this existed gets.
+ *
+ * A shell that fails to answer is granted too. The gate protects saves; refusing to run because a
+ * lock could not be reached would cost the player the game instead.
+ */
+function useGameSessionClaim(): "pending" | GameSessionClaim {
+    const [claim, setClaim] = useState<"pending" | GameSessionClaim>(
+        () => (getGameRuntimeBridge()?.claimSession ? "pending" : "granted"),
+    );
+    useEffect(() => {
+        const claimSession = getGameRuntimeBridge()?.claimSession;
+        if (!claimSession) {
+            return;
+        }
+        let disposed = false;
+        void claimSession()
+            .then(result => {
+                if (!disposed) {
+                    setClaim(result);
+                }
+            })
+            .catch(() => {
+                if (!disposed) {
+                    setClaim("granted");
+                }
+            });
+        return () => {
+            disposed = true;
+        };
+    }, []);
+    return claim;
 }
 
 function useRuntimePackPreload(input: {
@@ -327,7 +376,29 @@ function createRuntimePluginHost(
     });
 }
 
+/**
+ * The gate in front of the game, and everything the game costs to start.
+ *
+ * A page that is not this game's session may not read the pack, preload its assets or run its
+ * plugins - a plugin's `setup()` can write to the very store this is protecting - so the claim is
+ * settled here, above the component that does all of it, rather than inside it. On every shell
+ * without the method (both desktop ones, and any game packaged before this existed) the answer is
+ * granted from the first render and this costs a component that renders once.
+ */
 export function GameRuntimeApp() {
+    const sessionClaim = useGameSessionClaim();
+    if (sessionClaim === "taken") {
+        return <RuntimeSessionTakenScreen />;
+    }
+    if (sessionClaim === "pending") {
+        // The black screen a boot already shows, for the fraction of a second a lock takes to
+        // answer - and for the second and a half it takes to conclude that another tab holds it.
+        return <RuntimeLoadingScreen />;
+    }
+    return <GameRuntimeSession />;
+}
+
+function GameRuntimeSession() {
     const { pack, error } = useRuntimePack();
     const [renderScale, setRenderScale] = useState(1);
     const bridge = getGameRuntimeBridge();
@@ -343,13 +414,14 @@ export function GameRuntimeApp() {
     );
     useEffect(() => pluginHost.bindShellEvents(), [pluginHost]);
     /**
-     * The engine reaching an ending, on its way out of the process.
+     * What the game witnesses, on its way out of the process.
      *
-     * `event:state.end` is already observed - the plugin host maps it to `gameEnd` and re-binds it
-     * for every relaunch and hot reload - but it had no exit from this renderer, so "does this game
-     * reach an ending" was unanswerable from outside. Riding the existing hub rather than binding
-     * the engine event a second time keeps one subscription per session and means a relaunch does
-     * not need remembering here.
+     * All three already exist on the plugin event hub - the host maps the engine's `event:state.end`
+     * to `gameEnd`, emits `endingReached` where an `/ending` row runs, and `choiceShown` where a
+     * menu registers its runtime - but none of them had an exit from this renderer, so "does this
+     * game reach *that* ending, and what was it offered on the way" was unanswerable from outside.
+     * Riding the existing hub rather than binding each source a second time keeps one subscription
+     * per session and means a relaunch does not need remembering here.
      *
      * Inert unless a test is watching: the reporter is absent on the web export and on any pack
      * with no control server, which is every shipped game.
@@ -360,10 +432,87 @@ export function GameRuntimeApp() {
         if (!report || !events) {
             return;
         }
-        return events.on("gameEnd", () => {
-            report({ kind: "game-end" });
-        });
+        const tokens = [
+            events.on("gameEnd", () => {
+                report({ kind: "game-end" });
+            }),
+            // Beside `gameEnd` rather than instead of it: a story that ends by running out of rows
+            // fires the first and not this, and a test that has to know *which* ending was reached
+            // can only read this one.
+            events.on("endingReached", ending => {
+                report({ kind: "ending", endingId: ending.endingId, name: ending.name });
+            }),
+            events.on("choiceShown", ({ options }) => {
+                report({ kind: "choice", options });
+            }),
+        ];
+        return () => {
+            for (const dispose of tokens) {
+                dispose();
+            }
+        };
     }, [bridge, pluginHost]);
+
+    /**
+     * The other direction: what a test asks this game to do.
+     *
+     * The handle is published by `GameApp` while it is mounted and withdrawn when it is not, so a
+     * command that arrives before the game app exists is refused here rather than queued - a queue
+     * would replay a Start into a session that has since been replaced. Refusals are logged and go
+     * no further: the socket was answered when the frame was understood, and what actually happened
+     * is told by the observations above.
+     */
+    const testControlsRef = useRef<GameAppTestControls | null>(null);
+    /**
+     * A `start` that reached this window before the game could act on one.
+     *
+     * There are two gaps between a test being able to SEND a command and the game being able to
+     * OBEY one, and this is the second: the main process holds the first command until a listener
+     * exists here, and by then the surface that can start a story may still be mounting. Held
+     * rather than logged and dropped, because nothing re-sends a start - the run is waiting on the
+     * story it asked for, and every later advance would arrive at a game still sitting on its
+     * title. Only a `start`, and only the latest; the main process holds by the same rule.
+     */
+    const pendingTestStartRef = useRef<GameTestCommand | null>(null);
+    const runTestCommand = useCallback((command: GameTestCommand, controls: GameAppTestControls) => {
+        const acted = command.kind === "start"
+            ? controls.startStory({ storyId: command.storyId, sceneId: command.sceneId })
+            : command.kind === "advance"
+                ? controls.advance()
+                : controls.choose(command.index);
+        // A command the game refuses is a real answer about the game, not a harness fault: the
+        // line says which one, and the test sees the observation it was waiting for never come.
+        void acted.catch((error: unknown) => {
+            bridge?.log("warning", `[Runtime] test command "${command.kind}" failed: ${normalizeError(error)}`);
+        });
+    }, [bridge]);
+    const onTestControlsChanged = useCallback((controls: GameAppTestControls | null) => {
+        testControlsRef.current = controls;
+        const pending = pendingTestStartRef.current;
+        if (!controls || !pending) {
+            return;
+        }
+        pendingTestStartRef.current = null;
+        runTestCommand(pending, controls);
+    }, [runTestCommand]);
+    useEffect(() => {
+        const subscribe = readRuntimeTestCommandSource(bridge);
+        if (!subscribe) {
+            return;
+        }
+        return subscribe(command => {
+            const controls = testControlsRef.current;
+            if (!controls) {
+                if (command.kind === "start") {
+                    pendingTestStartRef.current = command;
+                    return;
+                }
+                bridge?.log("warning", `[Runtime] test command "${command.kind}" arrived before the game was up`);
+                return;
+            }
+            runTestCommand(command, controls);
+        });
+    }, [bridge, runTestCommand]);
     // Before useRuntimePlugins' effect, which is what makes `available()` a real
     // answer by the time any plugin's setup() can ask: effects run in the order
     // their hooks were called, and this hook is declared above that one.
@@ -463,6 +612,18 @@ export function GameRuntimeApp() {
     }, [bridge]);
 
     /**
+     * Whether this shell's saves stay written - the desktop answer is always yes, the web export's
+     * is whatever grant the browser gave the page.
+     *
+     * Optional-chained because a game packaged before the shell carried this is still a game that
+     * can be patched: the shell it boots is its own, and one that cannot answer says `unknown`.
+     */
+    const storageDurability = useCallback<NonNullable<GameAppHost["storageDurability"]>>(
+        async () => (await bridge?.storageDurability?.()) ?? "unknown",
+        [bridge],
+    );
+
+    /**
      * A model bundle resolves to the URL of its *entry file*, not of the asset id.
      *
      * The engine's `PuppetMountContext.resolveSibling(rel)` does URL arithmetic against whatever
@@ -550,6 +711,42 @@ export function GameRuntimeApp() {
         await bridge?.restart();
     }, [bridge]);
 
+    /**
+     * Hold the display for a story moving on its own. Fire-and-forget, and optional-chained because
+     * a build packaged before the bridge carried this has no such method - the shell is loaded from
+     * the game's own files, so a patched game can still be running an older one.
+     */
+    const setDisplayAwake = useCallback((awake: boolean): void => {
+        bridge?.setDisplayAwake?.(awake);
+    }, [bridge]);
+
+    /**
+     * The sizes worth offering, measured by the shell against the display the window is on. None
+     * at all where the shell has no window it can size.
+     */
+    const getWindowScaleOptions = useCallback(async (): Promise<number[]> => {
+        if (!bridge?.capabilities?.windowScale) {
+            return [];
+        }
+        return (await bridge.getWindowScaleOptions?.()) ?? [];
+    }, [bridge]);
+
+    const getWindowScale = useCallback(async (): Promise<number> => {
+        return (await bridge?.getWindowScale?.()) ?? WINDOW_SCALE_DESIGN;
+    }, [bridge]);
+
+    const setWindowScale = useCallback(async (scale: number): Promise<void> => {
+        await bridge?.setWindowScale?.(scale);
+    }, [bridge]);
+
+    const getWindowSize = useCallback(async (): Promise<{ width: number; height: number }> => {
+        return (await bridge?.getWindowSize?.()) ?? { width: 0, height: 0 };
+    }, [bridge]);
+
+    const setWindowSize = useCallback(async (width: number, height: number): Promise<void> => {
+        await bridge?.setWindowSize?.(width, height);
+    }, [bridge]);
+
     const getFullscreen = useCallback(async (): Promise<boolean> => {
         return (await bridge?.getFullscreen()) === true;
     }, [bridge]);
@@ -593,6 +790,10 @@ export function GameRuntimeApp() {
             // a build that shows nothing when its story ends, which is what every pack made before
             // this field carries and what every pack whose project picked no page carries.
             endingSurfaceId: pack.endingSurfaceId,
+            // What the layer stack found beside this game, plus whatever the payload itself
+            // carried. The pack is the one place both are already stated, because composing it is
+            // where the two meet.
+            installedDlcIds: pack.installedDlc,
             ready: runtimeReady,
             bootAction: pack.entry.kind === "story"
                 ? { kind: "story", storyId: pack.entry.storyId, sceneId: pack.entry.sceneId }
@@ -606,6 +807,12 @@ export function GameRuntimeApp() {
             saveStore,
             quitApplication,
             restartApplication,
+            setDisplayAwake,
+            getWindowScaleOptions,
+            getWindowScale,
+            setWindowScale,
+            getWindowSize,
+            setWindowSize,
             getFullscreen,
             setFullscreen,
             subscribeFullscreenChanged,
@@ -616,6 +823,7 @@ export function GameRuntimeApp() {
             openExternal,
             exportProgress,
             importProgress,
+            storageDurability,
         };
     }, [
         entrySurfaceId,
@@ -624,6 +832,7 @@ export function GameRuntimeApp() {
         openExternal,
         exportProgress,
         importProgress,
+        storageDurability,
         getFullscreen,
         listPuppetBackendModules,
         log,
@@ -635,6 +844,12 @@ export function GameRuntimeApp() {
         resolveStoryAssetUrl,
         resolveWeatherClip,
         runtimeReady,
+        setDisplayAwake,
+        getWindowScaleOptions,
+        getWindowScale,
+        setWindowScale,
+        getWindowSize,
+        setWindowSize,
         setFullscreen,
         subscribeFullscreenChanged,
         subscribeCloseRequested,
@@ -699,6 +914,7 @@ export function GameRuntimeApp() {
             renderFrame={renderFrame}
             renderPlaceholder={renderPlaceholder}
             pluginHost={pluginHost}
+            onTestControlsChanged={onTestControlsChanged}
         />
     );
 }

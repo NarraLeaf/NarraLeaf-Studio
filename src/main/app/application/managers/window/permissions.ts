@@ -31,6 +31,25 @@ type RuntimeGrantPolicy = {
         mode: FileSystemGrantMode;
         recursive: false;
     };
+    /**
+     * Files another window of the same Studio process offered, redeemed against a token that
+     * crossed the clipboard with a paste. The manifest was verified against the offering window's
+     * own read access before the token existed. See `@shared/types/assetTransfer`.
+     *
+     * Non-recursive for a file entry: the grant covers exactly the path the manifest named.
+     * `recursiveForDirectories` is the one exception, and it is a separate field rather than a
+     * looser `recursive` so that neither reach can be handed out in place of the other - a model
+     * bundle is a directory, its contents are the asset, and an entry that is not one gets no reach
+     * below the file it names.
+     *
+     * Declaring it says the window type takes part in asset transfer at all, which is why both
+     * halves - offering and redeeming - are gated on it.
+     */
+    transferredAsset?: {
+        mode: FileSystemGrantMode;
+        recursive: false;
+        recursiveForDirectories: true;
+    };
 };
 
 type WindowPermissionContext = {
@@ -68,6 +87,7 @@ const workspaceImportGrants: RuntimeGrantPolicy = {
     selectSaveFile: { mode: "write", recursive: false },
     selectDirectory: { mode: "read", recursive: true },
     droppedFile: { mode: "read", recursive: false },
+    transferredAsset: { mode: "read", recursive: false, recursiveForDirectories: true },
 };
 
 const pluginPermissionElevatedAccess = (): ApiCapability[] => [
@@ -113,6 +133,9 @@ export const windowPermissionDeclarations: { [T in WindowAppType]: WindowPermiss
     // which is open to any window and checks the certificate against Studio's own directory
     // rather than trusting whoever named it.
     [WindowAppType.ServerTrustPrompt]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
+    // A sample of the interface, drawn from preferences and nothing else. It reads global state
+    // and the list of servers this installation is signed in to, both of which are open to any
+    // window; it opens no project and touches no file.
     [WindowAppType.Raw]: { fs: noFileSystemAccess, api: noElevatedAccess, capabilities: noDefaultCapabilities },
 };
 
@@ -122,7 +145,17 @@ export function getDeclaredFileSystemGrants(window: AppWindow, mode: FileSystemA
         .filter(grant => grant.mode === mode);
 }
 
-export function getRuntimeGrantPolicy(window: AppWindow, grantType: keyof RuntimeGrantPolicy): RuntimeGrantPolicy[typeof grantType] {
+/**
+ * The policy for one kind of runtime grant, or undefined when this window type declares none.
+ *
+ * Generic in the key so a caller gets that kind's own policy rather than the union of every kind's:
+ * the kinds do not agree on their fields, and reading one through the union would only ever reach
+ * what they all happen to share.
+ */
+export function getRuntimeGrantPolicy<K extends keyof RuntimeGrantPolicy>(
+    window: AppWindow,
+    grantType: K,
+): RuntimeGrantPolicy[K] {
     return windowPermissionDeclarations[window.getWindowType()].runtimeGrants?.[grantType];
 }
 

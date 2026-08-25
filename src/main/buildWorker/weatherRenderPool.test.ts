@@ -1,0 +1,205 @@
+import os from "os";
+import { SCREEN_EFFECT_THREAD_CHOICES } from "@shared/constants/screenEffects";
+import { describe, expect, it } from "vitest";
+import type { WeatherBakeSpec } from "@shared/weather/model";
+import {
+    createWeatherRenderPool,
+    resolveWeatherRenderThreads,
+    weatherRenderThreadCount,
+    weatherRenderThreadFootprint,
+    WEATHER_RENDER_THREADS,
+    type WeatherRenderThread,
+} from "./weatherRenderPool";
+
+/**
+ * The pool's whole job is to be invisible.
+ *
+ * Frames drawn on several threads have to arrive in the same order, exactly once each, in bounded
+ * memory - and a clip baked this way has to be the same bytes as one drawn in a loop, because the
+ * cache is content-addressed and would otherwise start lying. The drawing itself is not under test
+ * here: these fakes answer with a frame that says which phase it is.
+ */
+
+const SPEC: WeatherBakeSpec = { ref: { seed: "snow" }, width: 64, height: 36, fps: 30, frames: 10 };
+
+/**
+ * What this machine will give a bake: one thread per two cores, because a thread drawing needs a
+ * core to spare beside the encoder writing.
+ *
+ * Written out rather than assumed. A count asserted flat below passes on the workstation it was
+ * written on and fails on a four-core runner, which is a fact about the runner rather than about
+ * the clamp under test.
+ */
+const MACHINE_SHARE = Math.max(1, Math.floor(os.cpus().length / 2));
+
+/** Threads that answer only when the test says so, and remember everything they were asked. */
+function fakeThreads() {
+    const asked: number[] = [];
+    const waiting: { index: number; resolve: (frame: Uint8Array) => void; reject: (error: Error) => void }[] = [];
+    let closes = 0;
+
+    const spawn = (): WeatherRenderThread => ({
+        render: (index: number) => new Promise<Uint8Array>((resolve, reject) => {
+            asked.push(index);
+            waiting.push({ index, resolve, reject });
+        }),
+        close: () => { closes += 1; },
+    });
+
+    /** Answer whatever is outstanding, newest first, so nothing can pass by arriving in order. */
+    const settleReversed = async (): Promise<void> => {
+        const pending = waiting.splice(0, waiting.length).reverse();
+        for (const item of pending) {
+            item.resolve(Uint8Array.of(item.index));
+        }
+        await Promise.resolve();
+        await Promise.resolve();
+    };
+
+    return { spawn, asked, waiting, settleReversed, closes: () => closes };
+}
+
+describe("the weather render pool", () => {
+    it("hands frames over in order however the threads answer", async () => {
+        const threads = fakeThreads();
+        const pool = createWeatherRenderPool(SPEC, { threads: 4, spawn: threads.spawn });
+
+        const seen: number[] = [];
+        const reader = (async () => {
+            for (;;) {
+                const frame = await pool.next();
+                if (!frame) {
+                    return;
+                }
+                seen.push(frame[0]!);
+            }
+        })();
+        for (let round = 0; round < 12 && threads.waiting.length > 0; round++) {
+            await threads.settleReversed();
+        }
+        await reader;
+
+        expect(seen).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    });
+
+    it("draws every frame exactly once", async () => {
+        const threads = fakeThreads();
+        const pool = createWeatherRenderPool(SPEC, { threads: 3, spawn: threads.spawn });
+
+        const reader = (async () => {
+            while (await pool.next()) { /* drain */ }
+        })();
+        for (let round = 0; round < 12 && threads.waiting.length > 0; round++) {
+            await threads.settleReversed();
+        }
+        await reader;
+
+        expect([...threads.asked].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    });
+
+    it("stops drawing ahead of a reader that is not reading", async () => {
+        // The encoder is the slower half often enough that an unbounded read-ahead would hold the
+        // whole clip in memory - eleven gigabytes of it at 4K.
+        const threads = fakeThreads();
+        createWeatherRenderPool(SPEC, { threads: 2, spawn: threads.spawn });
+
+        for (let round = 0; round < 6; round++) {
+            await threads.settleReversed();
+        }
+
+        expect(threads.asked.length).toBeLessThanOrEqual(4);
+    });
+
+    it("closes every thread when the bake lets go", async () => {
+        const threads = fakeThreads();
+        const pool = createWeatherRenderPool(SPEC, { threads: 3, spawn: threads.spawn });
+
+        pool.close();
+
+        expect(threads.closes()).toBe(3);
+        expect(await pool.next()).toBeNull();
+    });
+
+    it("reports a thread that died rather than handing back a short clip", async () => {
+        // A truncated stream makes the encoder complain about its input, which names the wrong
+        // thing entirely. The bake turns this into its own sentence.
+        const threads = fakeThreads();
+        const pool = createWeatherRenderPool(SPEC, { threads: 1, spawn: threads.spawn });
+
+        const first = pool.next();
+        threads.waiting.shift()?.reject(new Error("a weather render thread stopped (1)"));
+
+        await expect(first).rejects.toThrow("a weather render thread stopped");
+    });
+});
+
+describe("how many threads a bake asks for", () => {
+    it("stops at the ceiling however big the machine is, because the encoder wants the rest", () => {
+        // Measured rather than reasoned, and the ceiling is not a fraction of the machine: threads
+        // buy back the drawing half of a pipeline and nothing else, so they stop paying the moment
+        // drawing is no longer the wall. See the tables in `weatherRenderPool.ts`.
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 24))
+            .toBe(WEATHER_RENDER_THREADS);
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 64))
+            .toBe(WEATHER_RENDER_THREADS);
+    });
+
+    it("leaves the encoder half the machine on a small one", () => {
+        // The ceiling is not the only bound, and on a four-core laptop it is not the binding one:
+        // taking three of four cores to draw would hand the encoder a machine it cannot work on.
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 4)).toBe(2);
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 6)).toBe(3);
+    });
+
+    it("never asks for more than the largest stop the settings offer", () => {
+        // So the automatic answer can never land somewhere an author cannot also choose. If this
+        // ever fails, the settings row and this ceiling have drifted apart.
+        expect(WEATHER_RENDER_THREADS)
+            .toBe(Math.max(...SCREEN_EFFECT_THREAD_CHOICES.filter(c => c !== "auto").map(Number)));
+    });
+
+    it("draws on one thread when there is no core to spare", () => {
+        expect(weatherRenderThreadCount({ width: 1280, height: 720, frames: 360 }, 2)).toBe(1);
+    });
+
+    it("never asks for more than it can hold", () => {
+        // One 4K thread carries a 100 MB float accumulator; a machine with cores to spare still has
+        // a memory bill for them.
+        const fourK = { width: 3840, height: 2160, frames: 360 };
+        const budget = weatherRenderThreadFootprint(3840, 2160) * 2;
+        expect(weatherRenderThreadCount(fourK, 64, budget)).toBe(2);
+        expect(weatherRenderThreadCount(fourK, 64, weatherRenderThreadFootprint(3840, 2160))).toBe(1);
+    });
+
+    it("never asks for more threads than there are frames", () => {
+        expect(weatherRenderThreadCount({ width: 640, height: 360, frames: 2 }, 64)).toBe(2);
+        expect(weatherRenderThreadCount({ width: 640, height: 360, frames: 1 }, 64)).toBe(1);
+    });
+
+    it("takes the count the author asked for, still bounded by the machine", () => {
+        // The settings row offers a small number of stops, but the clip does not: one 4K thread
+        // carries a 166 MB accumulator, and a choice made on a 1080p project follows the author to
+        // the next one. So an explicit count is clamped exactly as the automatic one is.
+        expect(resolveWeatherRenderThreads(SPEC, 3, {})).toBe(Math.min(3, MACHINE_SHARE));
+        // One survives every clamp, on every machine: it is the floor the pool already had.
+        expect(resolveWeatherRenderThreads(SPEC, 1, {})).toBe(1);
+        expect(resolveWeatherRenderThreads({ ...SPEC, frames: 2 }, 4, {})).toBe(Math.min(2, MACHINE_SHARE));
+        // Reverse control: without the clamp this would answer 4 rather than the machine's share.
+        expect(resolveWeatherRenderThreads(SPEC, 4, {})).toBeLessThanOrEqual(4);
+    });
+
+    it("reads the machine when the author asked for auto", () => {
+        expect(resolveWeatherRenderThreads(SPEC, null, {}))
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
+    });
+
+    it("lets an operator pin the count, which is how the threads were measured at all", () => {
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "1" })).toBe(1);
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "3" })).toBe(3);
+        // Nonsense is ignored rather than obeyed: this is a measuring knob, not a way to wedge a bake.
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "0" }))
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
+        expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "lots" }))
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
+    });
+});

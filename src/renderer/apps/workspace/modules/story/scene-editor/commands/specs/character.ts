@@ -11,6 +11,7 @@ import {
     asText,
     defineStoryCommand,
     placementParam,
+    holdParam,
     puppetNameParam,
     secondsParam,
     targetParam,
@@ -216,11 +217,20 @@ function buildShowHide<P extends StoryCommandParamsShape>(
 
     // An ambience overlay fades rather than shows: its own payload, and `d=` is the fade the action
     // waits out (NLR `Vfx.show({duration})`), not a transform preset it has no pipeline for.
+    //
+    // `opacity=` and `rate=` ride along on the way IN only. They are this showing's own - the same
+    // rain reading faintly behind a memory and at full strength in the storm - while the overlay's
+    // configured values, set on the row that declares it, say how strong that rain is. A fade out
+    // ends at zero and at a stopped clip, so neither has anything to say there.
     if (target.objectKind === "vfx") {
         const durationMs = asDurationMs(args.d);
+        const opacity = direction === "show" ? asNumber(args.opacity) : undefined;
+        const rate = direction === "show" ? asNumber(args.rate) : undefined;
         return vfxOperationBlock(direction, target.name, ctx.generateId, {
             target: actionableTargetRef(target),
             ...(durationMs === undefined ? {} : { durationMs }),
+            ...(opacity === undefined ? {} : { opacity }),
+            ...(rate === undefined ? {} : { rate }),
         });
     }
 
@@ -277,13 +287,53 @@ export const show = defineStoryCommand({
         // because the direction is what the verb already decided.
         in: { aliases: ["reveal"], hint: "reveal", type: { kind: "enum", options: transitionOptions("reveal") } },
         d: secondsParam(),
+        // The two knobs an ambience overlay can carry for one showing. They are not a general
+        // `/show` vocabulary: on anything else the pose is a transform, which `at=` and `/transform`
+        // already say properly, so a row that puts them on another subject is refused below rather
+        // than writing fields nothing reads.
+        opacity: { hint: "opacity", type: { kind: "number", min: 0, max: 1 } },
+        rate: { hint: "rate", type: { kind: "number", min: 0 } },
     },
     build: (args, ctx) => buildShowHide("show", args, ctx),
     validate: (args, ctx) => [
         ...validateTransitionForTarget("show", args, ctx),
         ...validateFormTarget(args, ctx),
+        ...validateOverlayOnlyParams(args, ctx),
     ],
 });
+
+/**
+ * `opacity=` / `rate=` on a `/show` whose subject is not an ambience overlay.
+ *
+ * Both write fields that live on the `vfx` payload and nowhere else, so on any other subject they
+ * would be typed, accepted, stored and read by nothing - the silent failure this layer exists to
+ * refuse. The message names the KEY rather than the subject, because the subject is not the mistake.
+ */
+function validateOverlayOnlyParams(
+    args: { readonly target?: StoryCommandValue; readonly opacity?: StoryCommandValue; readonly rate?: StoryCommandValue },
+    ctx: StoryCommandValidateContext,
+): StoryCommandResolutionIssue[] {
+    const target = asTarget(args.target);
+    if (target && target.type === "stageObject" && target.objectKind === "vfx") {
+        return [];
+    }
+    const issues: StoryCommandResolutionIssue[] = [];
+    for (const key of ["opacity", "rate"] as const) {
+        const span = args[key] === undefined ? undefined : ctx.spanOf(key);
+        if (span) {
+            issues.push({ code: "unsupportedParam", span, key, kind: showHideSubjectWord(target) });
+        }
+    }
+    return issues;
+}
+
+/** What an `unsupportedParam` on `/show` calls the subject - the word the author sees in the report. */
+function showHideSubjectWord(target: StoryCommandTargetValue | undefined): string {
+    if (!target) {
+        return "target";
+    }
+    return target.type === "character" ? "character" : target.type === "reserved" ? "layer" : target.objectKind;
+}
 
 export const hide = defineStoryCommand({
     id: "hide",
@@ -314,7 +364,7 @@ export const hide = defineStoryCommand({
  * rather than the character, because the character is not the mistake here.
  */
 function validateFaceTransition(
-    args: { readonly character?: StoryCommandValue; readonly t?: StoryCommandValue; readonly d?: StoryCommandValue },
+    args: { readonly character?: StoryCommandValue; readonly t?: StoryCommandValue; readonly d?: StoryCommandValue; readonly hold?: StoryCommandValue },
     ctx: StoryCommandValidateContext,
 ): StoryCommandResolutionIssue[] {
     const character = args.character;
@@ -322,7 +372,7 @@ function validateFaceTransition(
         return [];
     }
     const issues: StoryCommandResolutionIssue[] = [];
-    for (const key of ["t", "d"] as const) {
+    for (const key of ["t", "d", "hold"] as const) {
         const span = args[key] === undefined ? undefined : ctx.spanOf(key);
         if (span) {
             issues.push({ code: "unsupportedParam", span, key, kind: "puppet character" });
@@ -362,6 +412,8 @@ export const face = defineStoryCommand({
         // keeps the vocabulary's own `t=` - it is the same kind of thing a `/bg t=` is.
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("expression") } },
         d: secondsParam(),
+        // Read by `black` / `exposure` / `darkness`, and taken out of `d=` rather than added to it.
+        hold: holdParam(),
     },
     build(args, ctx) {
         const block = createBlockForCommand("characterExpression", ctx.generateId);
@@ -379,7 +431,7 @@ export const face = defineStoryCommand({
         if (puppetName !== undefined) {
             payload.puppetName = puppetName;
         }
-        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d);
+        const transition = withTransitionRef(payload.transition, "expression", args.t, args.d, undefined, args.hold);
         if (transition) {
             payload.transition = transition;
         }

@@ -1,5 +1,6 @@
 import { AssetExtensions, AssetType } from "./assetTypes";
 import { parseSharedBlueprintAssetJson, SharedBlueprintAssetParseError } from "./blueprintAssetSchema";
+import { UNRENDERABLE_FONT_FORMATS } from "@shared/typography/fontFormats";
 
 export type FileFormatValidationResult = {
     success: true;
@@ -259,6 +260,13 @@ export class FileFormatValidator {
             return 'eot';
         }
 
+        // TrueType/OpenType collection. Recognised only so that a collection carrying a `.ttf` name
+        // is refused as a mismatch: a file named `.ttc` never reaches here, having been turned away
+        // by UNDECODABLE_EXTENSIONS first.
+        if (buffer[0] === 0x74 && buffer[1] === 0x74 && buffer[2] === 0x63 && buffer[3] === 0x66) {
+            return 'ttc';
+        }
+
         return 'unknown';
     }
 
@@ -392,6 +400,9 @@ const UNDECODABLE_VERB: Partial<Record<AssetType, string>> = {
     [AssetType.Image]: "display",
     [AssetType.Audio]: "play",
     [AssetType.Video]: "play",
+    // "use" rather than "read": a collection is perfectly readable, and saying otherwise would send
+    // an author looking for a corrupt file. What it cannot be is *loaded as a typeface*.
+    [AssetType.Font]: "use",
 };
 
 export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, string>>> = {
@@ -402,4 +413,12 @@ export const UNDECODABLE_EXTENSIONS: Partial<Record<AssetType, Record<string, st
         ['avi', 'flv', 'wmv', 'asf', 'mpg', 'mpeg', 'mpe', 'mpv', 'm2v', 'ts', 'm2ts', 'mts', 'm2t', 'vob'],
         '.mp4 or .webm',
     ),
+    /**
+     * Fonts nothing can draw with - collections, SVG fonts, Embedded OpenType.
+     *
+     * Not a decoder gap like the rows above: these files are readable and the gap is in the *loader*,
+     * which is why the table lives beside the rest of the typography model rather than here. See
+     * `@shared/typography/fontFormats` for what was measured for each.
+     */
+    [AssetType.Font]: { ...UNRENDERABLE_FONT_FORMATS },
 };

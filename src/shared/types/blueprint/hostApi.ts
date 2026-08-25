@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 35 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 36 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -72,6 +72,20 @@ export const BLUEPRINT_GAME_TEXT_READ_STATE_KEY = "game.dialog.textRead" as cons
  * can still wipe the record.
  */
 export const BLUEPRINT_TEXT_READ_PERSISTENCE_KEY = "nlr.textRead" as const;
+
+/**
+ * Project-persistence key holding the ids of the endings the player has reached (string[]).
+ *
+ * The **project** store, not the save file, and that is the whole decision. An endings screen exists
+ * to say what this player has ever seen: a record kept inside a save would rewind the moment they
+ * loaded an earlier one, so a gallery would lock entries back up in front of them and a "5 of 8"
+ * count would go down. The visited record next door (`__nlr_story_visited__`) is deliberately the
+ * other way round, because it answers a different question - "have I been down this route in *this*
+ * playthrough" - and has to rewind.
+ *
+ * Ids are `ending` rows' block ids, so renaming an ending keeps every unlock.
+ */
+export const BLUEPRINT_ENDINGS_PERSISTENCE_KEY = "nlr.endings" as const;
 
 /**
  * Project-persistence key holding the title's total playtime in seconds (number).
@@ -193,6 +207,55 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { fullscreen: false },
+            output: null,
+        },
+        /**
+         * The window's size, as a multiple of the size the game is drawn at.
+         *
+         * The list comes first and the pair below act on it: the sizes a build offers are the
+         * author's answer in `app.window`, and a shell with no window of its own to size answers
+         * with an empty list - so a configuration screen built from it draws no size row there,
+         * rather than a row that cannot work.
+         */
+        getWindowScaleOptions: {
+            capabilityId: "navigation.getWindowScaleOptions",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [] as number[],
+        },
+        getWindowScale: {
+            capabilityId: "navigation.getWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: 1,
+        },
+        setWindowScale: {
+            capabilityId: "navigation.setWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { scale: 1 },
+            output: null,
+        },
+        /** The same size in pixels, for a game whose number comes from somewhere else. */
+        getWindowSize: {
+            capabilityId: "navigation.getWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: { width: 0, height: 0 },
+        },
+        setWindowSize: {
+            capabilityId: "navigation.setWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { width: 0, height: 0 },
             output: null,
         },
         /**
@@ -700,6 +763,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             purity: "effectful",
             callableFromBinding: false,
             async: false,
+            input: {},
+            output: null,
+        },
+        isEndingReached: {
+            capabilityId: "game.isEndingReached",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { endingId: "" },
+            output: false,
+        },
+        listEndings: {
+            capabilityId: "game.listEndings",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { storyId: "" },
+            output: [],
+        },
+        clearEndingState: {
+            capabilityId: "game.clearEndingState",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { endingId: "" },
+            output: null,
+        },
+        clearEndings: {
+            capabilityId: "game.clearEndings",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
             input: {},
             output: null,
         },

@@ -1,7 +1,7 @@
 {
   "name": "narraleaf-studio",
   "productName": "NarraLeaf Studio",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": true,
   "description": "IDE for NarraLeaf Projects",
   "homepage": "https://github.com/NarraLeaf/NarraLeaf-Studio#readme",
@@ -42,6 +42,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "style:ratchet": "node scripts/style-ratchet.mjs",
+    "gen:skeleton-locale": "node scripts/gen-skeleton-locale.mjs",
     "build:plugin-types": "node packages/plugin-types/build.mjs"
   },
   "dependencies": {
@@ -65,7 +66,7 @@
     "monaco-editor": "^0.55.1",
     "motion": "^11",
     "msgpack-lite": "^0.1.26",
-    "narraleaf-react": "^0.32.0",
+    "narraleaf-react": "^0.38.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-moveable": "^0.56.0",

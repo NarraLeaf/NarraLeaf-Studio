@@ -7,6 +7,10 @@ export const story = {
         emptyStories: "此项目中还没有故事",
         storyActions: "故事操作",
         setDefault: "设为默认",
+            dlc: {
+                title: "所属",
+                base: "游戏本体",
+            },
         outline: "大纲",
         newChapter: "新建章节",
         newSceneInChapter: "在章节中新建场景",
@@ -91,6 +95,39 @@ export const story = {
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
     },
+    // 因为实时会话而无法动作的控件所显示的话。会话能带走的故事操作只有固定的一组，这一组之外的
+    // 编辑只写在本机、传不到任何别处。每个界面被拿掉的都是同一样东西，所以只用一句话说，不按面
+    // 各写各的托词。
+    live: {
+        editUnavailable: "实时会话期间不可用，退出会话后再修改",
+        // 该行正被他人书写时那个标记的悬停文字。要点名到人：标记旁边没有写名字的宽度，
+        // 而截断的名字谁也认不出。
+        rowClaimed: "{name} 正在写这一行",
+        // 会话主持方拒绝的修改。作者已经打出来的文字原样留在屏幕上——被拒绝的那一行，
+        // 屏幕上的内容就是它唯一的一份——所以这几条只说发生了什么。
+        refusedRowClaimed: "{name} 正在写该行，本次修改未生效",
+        refusedRowGone: "该行已不存在，本次修改未生效",
+        refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
+        refusedSceneGone: "该场景已不存在，本次修改未生效",
+        refusedCharacterGone: "该角色已不存在，本次修改未生效",
+        refusedTooLarge: "该角色过大，无法在实时会话中共享，本次修改未生效",
+        refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
+        refusedNotInSession: "本机已不在该会话中",
+        refusedUnknownOp: "该会话没有接受这次修改",
+        // 上一次撤销或重做没有发出任何内容的原因，每一条点名让该步骤无法回退的状态。
+        undoNotMine: "该步骤是他人所做",
+        undoNoRecord: "该步骤已无法撤销",
+        undoSceneGone: "该场景已不存在",
+        undoRowGone: "该行已不存在",
+        undoRowRestored: "该行已重新回到场景中",
+        undoContainerGone: "该行所在的区块已不存在",
+        undoAnchorGone: "该行原来的位置已不存在",
+        undoContainerFilled: "该区块中现在已有其他行",
+        undoSubtreeLost: "其中原有的行无法恢复",
+        undoChaptersChanged: "章节与该步骤记录的那一份不一致",
+        undoCharacterGone: "该角色已不存在",
+        undoCharacterRestored: "该角色已经回到名册中",
+    },
     narralang: {
         exportScene: "导出为 NarraLang…",
         exportStory: "将故事导出为 NarraLang…",
@@ -122,6 +159,7 @@ export const story = {
             customTransition: "该转场带有脚本未命名的属性",
             effectProps: "该效果带有脚本未命名的属性",
             unresolvedRef: "该行指向的对象已不存在",
+            endingPage: "该结局指定了自己的页面，脚本不携带这一项",
             unknownPayload: "脚本尚未覆盖此类行",
         },
         parse: {
@@ -194,6 +232,32 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
+        sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
+        translationsCarried: {
+            other: "已带入 {count} 条译文",
+        },
+        translationsDropped: {
+            other: "已跳过 {count} 条译文",
+        },
+    },
+    // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
+    crossProject: {
+        pasted: {
+            other: "已粘贴 {count} 行",
+        },
+        pastedFrom: {
+            other: "已从 {project} 粘贴 {count} 行",
+        },
+        speakerNames: {
+            other: "未关联角色 {count} 行",
+        },
+        imported: {
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            other: "{count} 处引用未解析",
+        },
     },
     flow: {
         tabTitle: "场景流程",
@@ -236,8 +300,10 @@ export const story = {
             noEntryScene: "未设置入口场景，无法列出路线",
             noRoutes: "没有路线",
             noDecisions: "没有分支选择",
+            // 尚未命名的结局行。行本身与通向它的路线都真实存在，列表总得有个称呼。
+            endingUnnamed: "未命名结局",
             stopsHere: "在此中断",
-            stopsHereTitle: "路径在此终止，但这里不是结局：它回到了已经过的场景，或者某个分支没有后续内容",
+            stopsHereTitle: "路径在此终止，但没有到达任何结局：它回到了已经过的场景，或者某个分支没有后续内容，又或者这个场景既没有出口也没有 /ending 行",
             diagnostics: {
                 unreachableEndings: {
                     other: "{count} 个结局没有路线到达",
@@ -336,6 +402,26 @@ export const story = {
         clickHint: "等待玩家点击后继续",
         remove: "移除暂停",
     },
+    /**
+     * 需要选值的三个行内标记：字旁的着重号、这一段的字号、以及它打出来的速度。
+     */
+    textType: {
+        emphasis: "着重号",
+        emphasisNone: "无",
+        emphasisDot: "行上实心点",
+        emphasisCircle: "行上空心圈",
+        emphasisSesame: "行上胡麻点",
+        emphasisUnderDot: "行下实心点",
+        /** 着重号按钮上用来演示的字。 */
+        emphasisSample: "文",
+        size: "字号",
+        sizeSmaller: "调小",
+        sizeLarger: "调大",
+        sizeUnit: "级",
+        speed: "打字速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "整行",
+    },
     ruby: {
         title: "注音",
         placeholder: "读音",
@@ -350,6 +436,12 @@ export const story = {
         checking: "正在找替换建议…",
         noSuggestions: "没有建议",
         addToDictionary: "加入工程词典",
+    },
+    /** 右键点击词典标记时弹出的面板：一个动作，以及它背后的词条。 */
+    dictionary: {
+        replaceWith: "替换为 {term}",
+        applyReading: "添加注音 {reading}",
+        openEntry: "在词典中编辑",
     },
     interpolation: {
         title: "插入值",
@@ -371,6 +463,8 @@ export const story = {
         insertExpression: "插入表情切换",
         ruby: "注音",
         rubyHint: "注音（先选中要注音的文字）",
+        type: "文字",
+        typeHint: "文字（先选中要设置的文字）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",
@@ -432,6 +526,7 @@ export const story = {
         target: "目标",
         lineText: "文本",
         labelName: "标签",
+        endingName: "结局",
         scene: "场景",
         track: "音轨",
         appTag: "变体",
@@ -491,6 +586,8 @@ export const story = {
         delay: "延迟秒数",
         repeat: "重复次数",
         repeatDelay: "重复间隔",
+        repeatType: "重复方式",
+        stopLoop: "停止循环",
         fromProps: "起始属性",
         conceal: "退场",
     },
@@ -504,6 +601,10 @@ export const story = {
      * 未翻译的词（代码语言这类专有名词）直接留空，回落到英文原词——那一定是解析器认得的写法。
      */
     enumValue: {
+        // 每一轮怎么放（`repeatType=`）。
+        loop: "重新开始",
+        reverse: "反向",
+        mirror: "往返",
         // 天气种子——`/vfx` 来源槽里的保留词。
         snow: "雪",
         rain: "雨",
@@ -512,6 +613,7 @@ export const story = {
         fade: "淡变",
         // "淡变"是相对词，换到差分上指的是另一种做法；这个词只指交叉溶解，在哪儿写都一样。
         dissolve: "溶解",
+        "fade-in": "淡入",
         slide: "推移",
         "slide-left": "左滑",
         "slide-right": "右滑",
@@ -637,6 +739,7 @@ export const story = {
                 data: "变量",
                 utils: "其他",
                 invalid: "无效行",
+                empty: "空行",
             },
         },
     },
@@ -763,6 +866,8 @@ export const story = {
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
         createCharacter: "创建角色「{name}」",
+        // 上面那一项变灰时的悬停提示，也用在粘贴向导的「新建角色」上：同一件事的两个入口。
+        createCharacterUnavailable: "实时会话期间不可用，改选已有角色",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
         voicePlay: "试听配音",
@@ -920,10 +1025,10 @@ export const story = {
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
         say: { label: "对白", detail: "一句台词" },
-        image: { label: "图片", detail: "在舞台上放置图片" },
-        text: { label: "文本", detail: "在舞台上放置文本" },
-        video: { label: "视频", detail: "在舞台上放置视频" },
-        vfx: { label: "氛围特效", detail: "全屏循环叠加：落花、雨雪、尘埃、光斑" },
+        image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
+        text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
+        video: { label: "视频", detail: "在舞台上声明视频，由 /show 显示" },
+        vfx: { label: "氛围特效", detail: "声明全屏循环叠加：落花、雨雪、尘埃、光斑" },
         layer: { label: "图层", detail: "创建渲染图层" },
         swap: { label: "替换", detail: "替换对象的图片或文本内容" },
         play: { label: "播放", detail: "播放视频" },
@@ -961,6 +1066,9 @@ export const story = {
         // 不叫「剪切」：编辑器里那个词已经归剪贴板了。这个名字说的是它造出来的那一行本身，
         // 而它属于哪一个变体、其他变体里为何没有这一行，交给 detail 说。
         cut: { label: "截断", detail: "让某个变体的剧情在此行结束，其他变体中没有这一行" },
+        // 按它造出来的行来命名。详情把行做的两件事都说出来：记录结局是写这一行而不是干脆停下的理由，
+        // 画廊界面与通关测试读的都是这份记录。
+        ending: { label: "结局", detail: "在此行结束剧情，并记录玩家到达的结局" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、滤镜或淡入淡出舞台上的任何东西，镜头也在内" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
@@ -1007,9 +1115,11 @@ export const story = {
         goto: "跳到标签",
         break: "跳出",
         cut: "截断点",
+        ending: "结局",
         jump: "跳转",
         note: "备注",
         invalid: "无效",
+        empty: "空行",
     },
     emptyPlaceholder: {
         narration: "双击输入旁白",
@@ -1017,6 +1127,7 @@ export const story = {
         choice: "双击输入选择提示",
         note: "双击输入备注",
         text: "双击输入文本",
+        blank: "点击键入",
     },
     characterName: {
         unassigned: "未指定角色",
@@ -1071,9 +1182,11 @@ export const story = {
         // 没有变体可命名：要么这一行指向的 id 已经没人认领，要么这个读者手上根本没有变体表。
         // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
         cutUnknown: "截断点",
+        ending: "结局 {name}",
         jump: "跳转 {scene}",
         note: "备注",
         invalid: "无效指令",
+        empty: "空行",
         sceneUnassigned: "未指定",
         sceneUnknown: "未知场景",
         variableFallback: "变量",
@@ -1094,6 +1207,10 @@ export const story = {
         duplicate: "复制行",
         disable: "禁用",
         enable: "启用",
+        bindSpeaker: {
+            one: "关联 {count} 行的说话人",
+            other: "关联 {count} 行的说话人",
+        },
         playFromHere: "从此行播放",
         openInspector: "打开检查器",
         delete: "删除",

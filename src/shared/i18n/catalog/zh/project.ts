@@ -16,7 +16,7 @@ export const project = {
         // 设定要放到它旁边。
         design: {
             title: "设计",
-            description: "颜色，以及由它们上色的控件",
+            description: "颜色、字体，以及由它们上色的控件",
         },
         project: {
             title: "工程",
@@ -35,8 +35,11 @@ export const project = {
     group: {
         details: "详情",
         appTags: "变体",
+        dlc: "DLC",
         userData: "玩家文件",
         icons: "图标",
+        window: "窗口",
+        screenEffects: "屏幕效果",
         dependencies: "依赖",
         saving: "存档",
         olderSaves: "旧存档",
@@ -48,6 +51,7 @@ export const project = {
         // 命名空间里，与它们命名的那份模型放在一起。
         brandColors: "颜色",
         brandControls: "控件",
+        typography: "字体",
         distribution: "分发密钥",
         linting: "工程检查",
         security: "安全",
@@ -94,7 +98,17 @@ export const project = {
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
     // 任何平台，把这些交给谁是作者自己的判断。描述只说这些路径是什么，到此为止。
     userData: {
-        description: "发布后的游戏把玩家的存档与进度存放在该目录。修改应用名称不会移动它。",
+        description: "发布后的桌面版游戏把玩家的存档与进度存放在这里。",
+        windowsLinux: "Windows 和 Linux",
+        windowsLinuxDescription: "Windows 与 Linux 版本把玩家文件放在哪里。",
+        macos: "macOS",
+        macosDescription: "macOS 版本把玩家文件放在哪里。",
+        mode: {
+            appRoot: "游戏文件夹内",
+            userData: "用户文件夹内",
+        },
+        // 代表玩家把这份游戏放在哪个文件夹，只有他自己的机器写得出这条路径。
+        gameFolder: "<游戏文件夹>",
         copy: "复制位置",
         copied: "位置已复制",
         copyFailed: "无法复制位置",
@@ -155,6 +169,29 @@ export const project = {
         deleteDetailCuts: {
             one: "剧本中的 {count} 处截断点将保留，并不再生效",
             other: "剧本中的 {count} 处截断点将保留，并不再生效",
+        },
+    },
+    dlc: {
+        add: "添加 DLC",
+        history: {
+            add: "添加 DLC {name}",
+            rename: "将 DLC 重命名为 {name}",
+            delete: "删除 DLC {name}",
+            edit: "编辑 DLC",
+        },
+        newDlcName: "新建 DLC",
+        nameTitle: "名称",
+        idTitle: "ID",
+        idFile: "产出文件为 {file}",
+        idChangeConfirm: "将 ID 改为“{id}”？",
+        idChangeDetail: "已经发出去的文件仍然是原文件名，标记为原 ID 的故事将不再指向这个 DLC。",
+        idChangeAction: "更改",
+        attachTitle: "装入",
+        delete: "删除",
+        deleteConfirm: "删除“{name}”？",
+        deleteDetail: {
+            one: "{count} 个故事将回到基础构建中。",
+            other: "{count} 个故事将回到基础构建中。",
         },
     },
     assets: {
@@ -364,17 +401,10 @@ export const project = {
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
-        webLosslessImagesTitle: "图像转为 WebP",
-        webLosslessImagesDescription: "在体积更小时，将导出的图像重编码为无损 WebP",
-        webLosslessImagesHint: "转换后的图像解码结果与原图完全一致；Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
-        webPrecompressTitle: "预压缩文本文件",
-        webPrecompressDescription: "为站点的脚本、样式与剧本数据额外生成 Brotli 与 Gzip 副本",
-        webPrecompressHint: "只有配置了预压缩支持的服务器会用到该副本，其余主机提供原文件",
-        webLossyImagesTitle: "重压缩图像",
-        webLossyImagesDescription: "将导出的图像重编码为有损 WebP；体积明显更小，损失的画面细节无法恢复",
-        webLossyQualityTitle: "图像质量",
-        webLossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
-        webSharedWithMobileHint: "Android 与 iOS 构建使用同一份导出站点，因此该设置对它们同样生效",
+        lossyImagesTitle: "重压缩图像",
+        lossyImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        lossyQualityTitle: "图像质量",
+        lossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
         // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
         orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
@@ -403,6 +433,19 @@ export const project = {
             center: "居中",
             right: "右侧",
         },
+    },
+    window: {
+        resizableTitle: "可调整窗口大小",
+        resizableDescription: "玩家可以拖拽窗口改变大小。舞台在窗口内保持自身比例。",
+        rememberTitle: "记住窗口",
+        rememberDescription: "游戏按上次关闭时的大小、位置与显示模式重新打开。",
+        fullscreenTitle: "启动时全屏",
+        fullscreenDescription: "首次启动时以全屏打开。",
+    },
+    screenEffects: {
+        frameRateTitle: "天气帧率",
+        frameRateDescription: "作用于雪、雨、樱花；导入的素材保持原有帧率",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "重新扫描",

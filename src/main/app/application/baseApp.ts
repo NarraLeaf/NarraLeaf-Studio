@@ -21,6 +21,8 @@ import path from "path";
 import { MenuManager } from "./managers/menuManager";
 import { TrayManager } from "./managers/trayManager";
 import { WINDOW_ICON_KEY, WindowIconEntry, resolveWindowIcon } from "@shared/constants/windowIcon";
+import { ONBOARDING_STATE_KEY, needsOnboarding } from "@shared/constants/onboarding";
+import { LAUNCHER_HOME_SIZE, applyLauncherWindowSize } from "./launcherWindow";
 import type { AppWindow } from "./managers/window/appWindow";
 import { ProtocolManager } from "./managers/protocolManager";
 import { StorageManager } from "./managers/storageManager";
@@ -32,7 +34,12 @@ import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
 import { UITemplatePosterCache } from "./managers/uiTemplatePosterCache";
-import { isMainDevMode, parseMainCommandLine } from "./commandLine";
+import {
+    isMainDevMode,
+    parseMainCommandLine,
+    type BuildCommandLineOptions,
+    type ExperimentalCommandLineOptions,
+} from "./commandLine";
 import {
     EXPERIMENTAL_FLAG,
     EXPERIMENTAL_OFF,
@@ -285,6 +292,20 @@ export class BaseApp {
         // all of them.
         if (key === WINDOW_ICON_KEY) {
             this.refreshWindowIcons();
+        }
+
+        // Setup is over - the marker is written by finishing it and by skipping it, and by nothing
+        // else - so the launcher hands back the extra room it was opened with and becomes the home
+        // screen it is about to show. Hooked to the marker rather than to a channel of its own
+        // because the marker IS the end of the flow; a second signal could only ever disagree with
+        // it. Idempotent, so a profile that writes it again costs nothing.
+        if (key === ONBOARDING_STATE_KEY && !needsOnboarding(value)) {
+            for (const window of this.windowManager.getWindows()) {
+                if (window.isClosed() || window.getWindowType() !== WindowAppType.Launcher) {
+                    continue;
+                }
+                applyLauncherWindowSize(window.getBrowserWindow(), LAUNCHER_HOME_SIZE);
+            }
         }
     }
 
@@ -716,6 +737,34 @@ export class BaseApp {
      */
     public wantsLauncherOnStartup(): boolean {
         return this.commandLine.launcher;
+    }
+
+    /**
+     * What `--build` asked for, or null when this launch asked for no build.
+     *
+     * Not dev-gated, unlike `--project` beside it, and the reasoning is in
+     * {@link MainCommandLineOptions.build}: a build agent runs an installed Studio, and this flag
+     * opens no interface for a stray argument to redirect.
+     *
+     * Answers the options whenever `--build` appeared *at all*, including when what followed it was
+     * wrong. A launch that meant to build and mistyped a flag has to end as a bad invocation, not
+     * on the home screen with nobody there to read it.
+     */
+    public getCommandLineBuild(): BuildCommandLineOptions | null {
+        return this.commandLine.build.requested ? this.commandLine.build : null;
+    }
+
+    /**
+     * What the command line asked experimental mode for, before anything decided whether it could
+     * be honoured.
+     *
+     * {@link getExperimentalState} is the honoured answer and is what every other reader wants; the
+     * two differ exactly where a launch asked for something it did not get. `--build` is the one
+     * caller that has to see the difference, because it is the one with nobody to read the warning
+     * the log leaves about it.
+     */
+    public getRequestedExperimental(): ExperimentalCommandLineOptions {
+        return this.commandLine.experimental;
     }
 
     public getAppEntry(type: WindowAppType): string {

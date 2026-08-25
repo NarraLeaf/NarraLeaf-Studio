@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { BlurDissolve, Control, Darkness, DevTools, Exposure, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
+import { BlurDissolve, Control, Darkness, DevTools, Exposure, Pause, Push, Reveal, ThroughColor, Transition } from "narraleaf-react";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { BUILTIN_BRAND_COLORS } from "@shared/types/brand";
 import type { CharacterAppearanceSummary, DevModeCharacterSummary } from "@shared/types/devMode";
-import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryTransitionRef } from "@shared/types/story";
+import type { StoryActionPayload, StoryAnimationAsset, StoryBlock, StoryConditionRef, StoryDocument, StoryEndingPage, StoryTransitionRef } from "@shared/types/story";
 import {
     isPlayableStoryTransitionKind,
     STORY_DOCUMENT_SCHEMA_VERSION,
@@ -11,7 +11,7 @@ import {
     UNPLAYABLE_STORY_TRANSITION_KINDS,
 } from "@shared/types/story";
 import { BUILTIN_AUDIO_TRACKS } from "@shared/types/audioTrack";
-import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS } from "@/lib/ui-editor/runtime/game/storyCompiler";
+import { compileStudioStoryToNlr, resolveBundleEntry, STORY_WHILE_LOOP_MAX_ITERATIONS, type StoryEndingReach } from "@/lib/ui-editor/runtime/game/storyCompiler";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 
 /** A character with no sprites: enough to be a speaker, which is all these cases need. */
@@ -541,8 +541,12 @@ describe("compileStudioStoryToNlr", () => {
             },
         };
         const blocks: Record<string, StoryBlock> = {
-            text: {
-                id: "text",
+            // Declared on its own row, because a create row no longer reveals anything: the animation
+            // belongs to the row that SHOWS the caption, which is also what keeps the opacity
+            // assertion below meaningful (a reveal ends at opacity 1; a bare transform says nothing
+            // about opacity at all).
+            textCreate: {
+                id: "textCreate",
                 kind: "action",
                 parentId: null,
                 childrenIds: [],
@@ -551,6 +555,17 @@ describe("compileStudioStoryToNlr", () => {
                     operation: "create",
                     objectName: "caption",
                     text: "Hello",
+                },
+            },
+            text: {
+                id: "text",
+                kind: "action",
+                parentId: null,
+                childrenIds: [],
+                payload: {
+                    action: "text",
+                    operation: "show",
+                    objectName: "caption",
                     transform: { mode: "animation", animationId: animation.id },
                 },
             },
@@ -578,7 +593,7 @@ describe("compileStudioStoryToNlr", () => {
         };
 
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["text", "layerCreate", "layer"]),
+            document: baseDocument(blocks, ["textCreate", "text", "layerCreate", "layer"]),
             sceneId: "scene-1",
             animations: { [animation.id]: animation },
         });
@@ -1662,18 +1677,84 @@ describe("compileStudioStoryToNlr", () => {
         expect(darkness.to).toBe(0);
     });
 
-    it("passes exposure through in stops, with hold read as a percentage", async () => {
-        // `ev` is stops, not a multiplier — the engine raises 2 to it — and `hold` is stored as the
-        // percentage the inspector shows while the engine wants a fraction, the same split
-        // `throughColor` already uses. Getting either conversion wrong is invisible in the type.
-        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06, hold: 40 });
+    it("passes exposure through in stops, with the hold as the milliseconds it is", async () => {
+        // `ev` is stops, not a multiplier — the engine raises 2 to it. The hold used to be stored as
+        // a percentage of the duration and divided by 100 here; since v22 it is a length of time,
+        // in the same unit as the duration beside it, and goes through untouched.
+        const compiled = await compileBackgroundTransition("exposure", { ev: 3, lift: 0.06 }, { holdMs: 160 });
         const exposure = findTransition(compiled) as any;
 
         expect(compiled.diagnostics).toEqual([]);
         expect(exposure).toBeInstanceOf(Exposure);
         expect(exposure.ev).toBe(3);
         expect(exposure.lift).toBe(0.06);
-        expect(exposure.hold).toBe(0.4);
+        expect(exposure.holdMs).toBe(160);
+    });
+
+    it("holds the colour for the time the row asks for, out of the duration rather than on top", async () => {
+        // The whole point of v22. A share of the run could not promise a number of seconds, and the
+        // engine spent it as a share of *eased* progress on top of that - a nominal 30% played as
+        // 17.8% of the wall clock. Both halves are gone: the compiler hands over milliseconds and the
+        // engine runs its channel linearly.
+        const compiled = await compileBackgroundTransition("throughColor", { pattern: "plain" }, { durationMs: 4000, holdMs: 2000 });
+        const through = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(through).toBeInstanceOf(ThroughColor);
+        expect(through.holdMs).toBe(2000);
+        // Fully covered from a quarter of the run to three quarters of it - one second in, two of
+        // colour, one out - and that is read off the compiled transition, not recomputed here.
+        const overlay = through.createTask().resolve[2];
+        const opacityAt = (t: number) => (typeof overlay === "function" ? overlay(t) : overlay.resolver(t)).style.opacity;
+        expect(opacityAt(0.25)).toBe(1);
+        expect(opacityAt(0.75)).toBe(1);
+        expect(opacityAt(0.2)).toBeLessThan(1);
+        expect(opacityAt(0.8)).toBeLessThan(1);
+    });
+
+    it("leaves the hold unstated when the row states none, so the transition keeps its own default", async () => {
+        const compiled = await compileBackgroundTransition("throughColor", { pattern: "plain" });
+        expect((findTransition(compiled) as any).holdMs).toBeUndefined();
+    });
+
+    it("gives darkness the same hold, sitting at the darkness it starts from", async () => {
+        const compiled = await compileBackgroundTransition("darkness", { from: 1, to: 0 }, { durationMs: 3000, holdMs: 2000 });
+        const darkness = findTransition(compiled) as any;
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(darkness).toBeInstanceOf(Darkness);
+        expect(darkness.holdMs).toBe(2000);
+    });
+
+    it("covers through every geometry the mask catalogue has, not the four the editor once offered", async () => {
+        // A colour can cover through any shape a direct cut can reveal through - they are the same
+        // `Mask` patterns - so offering four of the seven made "cover the frame with a clock"
+        // unreachable while "cut to the new frame with a clock" was one menu item away.
+        for (const pattern of ["linear", "blinds", "iris", "barnDoor", "clock", "fan", "dots"]) {
+            const compiled = await compileBackgroundTransition("throughColor", { pattern });
+            const through = findTransition(compiled) as any;
+            expect(compiled.diagnostics, pattern).toEqual([]);
+            expect(through.pattern, pattern).toBeTruthy();
+        }
+        expect((await compileBackgroundTransition("throughColor", { pattern: "plain" }).then(findTransition) as any).pattern).toBeNull();
+    });
+
+    it("closes an iris rim-in unless the row says otherwise, and lets it say otherwise", async () => {
+        // The classic iris-to-black, and what every stored iris was getting while the orientation was
+        // hard-coded - so the default has to stay what it was, and the toggle is additive.
+        const covered = await compileBackgroundTransition("throughColor", { pattern: "iris" });
+        expect((findTransition(covered) as any).inverted).toBe(true);
+        const outward = await compileBackgroundTransition("throughColor", { pattern: "iris", inverted: false });
+        expect((findTransition(outward) as any).inverted).toBe(false);
+        const wipe = await compileBackgroundTransition("throughColor", { pattern: "linear" });
+        expect((findTransition(wipe) as any).inverted).toBe(false);
+    });
+
+    it("passes the uncover mode through, and states nothing when the row wants the default", async () => {
+        const kept = await compileBackgroundTransition("throughColor", { pattern: "clock", uncover: "continue" });
+        expect((findTransition(kept) as any).uncover).toBe("continue");
+        const backed = await compileBackgroundTransition("throughColor", { pattern: "clock" });
+        expect((findTransition(backed) as any).uncover).toBe("retreat");
     });
 
     it("clamps exposure's lift into the 0-1 its filter can express", async () => {
@@ -1712,11 +1793,15 @@ describe("compileStudioStoryToNlr", () => {
         expect(compiled.diagnostics).toEqual([]);
         expect(exposure.ev).toBe(4.6);
         expect(exposure.lift).toBe(0.04);
-        expect(exposure.hold).toBe(0);
+        expect(exposure.holdMs).toBe(0);
     });
 
     /** Compile a one-row scene whose `/bg` carries `kind`, with every custom transition's props set. */
-    async function compileBackgroundTransition(kind: StoryTransitionRef["kind"], overrides: StoryTransitionRef["props"] = {}) {
+    async function compileBackgroundTransition(
+        kind: StoryTransitionRef["kind"],
+        overrides: StoryTransitionRef["props"] = {},
+        ref: Partial<StoryTransitionRef> = {},
+    ) {
         const bg: StoryBlock = {
             id: "bg",
             kind: "action",
@@ -1732,7 +1817,8 @@ describe("compileStudioStoryToNlr", () => {
                     // unfinished without one. Supplied for every kind because only that one looks.
                     ruleAssetId: "asset-bg",
                     // Superset of every custom transition's params; each kind reads only its own.
-                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, hold: 40, center: "50% 50%", ...overrides },
+                    props: { pattern: "iris", color: "#000000", blur: 12, direction: "right", orientation: "vertical", slats: 6, feather: 20, center: "50% 50%", ...overrides },
+                    ...ref,
                 },
             },
         };
@@ -1844,6 +1930,103 @@ describe("compileStudioStoryToNlr localization", () => {
         const words = getSaySentence(compiled, "say").text as any[];
         expect(words.every(word => typeof word.text !== "function")).toBe(true);
         expect(renderDynamicResult(words.map(word => word.text))).toBe("没有翻译的行。");
+    });
+
+    it("carries styling, an inline pause and a reveal-time event through into a translation", async () => {
+        let locale = "en";
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-marked",
+                    value: "我去年决定的。",
+                    role: "narration",
+                    rich: [
+                        { text: "我" },
+                        { text: "去年", marks: { emphasis: "under-dot", bold: true } },
+                        { pause: 400 },
+                        { text: "决定的。" },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [{ code: "zh-CN", displayName: "简体中文" }, { code: "en", displayName: "English" }],
+                // The translator moved the emphasis onto the English words it belongs on, and the
+                // beat to where English wants it.
+                tables: { en: { "text-marked": "I ‹1›did‹/1› decide‹2› last year." } },
+                getLocale: () => locale,
+            },
+        });
+        expect(compiled.diagnostics).toEqual([]);
+
+        const dynamic = (getSaySentence(compiled, "say").text as any[])[0].text;
+        const parts = dynamic({}) as any[];
+        expect(renderDynamicResult(parts)).toBe("I did decide last year.");
+
+        // The tagged span wears run 1's marks, and only that span does.
+        const marked = parts.filter(part => part?.config?.emphasis);
+        expect(marked).toHaveLength(1);
+        expect(marked[0].text).toBe("did");
+        expect(marked[0].config).toMatchObject({
+            bold: true,
+            emphasis: { mark: "dot", fill: "filled", position: "under" },
+        });
+
+        // The pause survives as a pause, not as the characters of its own tag.
+        // `Pause.isPause` is internal to the engine and stripped from the shipped declarations.
+        const pauses = parts.filter(part => part instanceof Pause);
+        expect(pauses).toHaveLength(1);
+        expect((pauses[0] as any).config.duration).toBe(400);
+        expect(renderDynamicResult(parts)).not.toContain("‹");
+
+        // The source language still renders its own runs, untouched.
+        locale = "zh-CN";
+        expect(renderDynamicResult(dynamic({}))).toBe("我去年决定的。");
+    });
+
+    it("renders a translation written before run tags existed exactly as it always did", async () => {
+        const say: StoryBlock = {
+            id: "say",
+            kind: "nodeAction",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "narration",
+                text: {
+                    textId: "text-old",
+                    value: "我去年决定的。",
+                    role: "narration",
+                    rich: [
+                        { text: "我" },
+                        { text: "去年", marks: { bold: true } },
+                        { text: "决定的。" },
+                    ],
+                },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ say }, ["say"]),
+            sceneId: "scene-1",
+            localization: {
+                sourceLocale: "zh-CN",
+                locales: [{ code: "zh-CN", displayName: "简体中文" }, { code: "en", displayName: "English" }],
+                tables: { en: { "text-old": "I decided last year." } },
+                getLocale: () => "en",
+            },
+        });
+        const dynamic = (getSaySentence(compiled, "say").text as any[])[0].text;
+        const parts = dynamic({}) as any[];
+        expect(renderDynamicResult(parts)).toBe("I decided last year.");
+        expect(parts.some(part => part?.config?.bold)).toBe(false);
     });
 
     it("maps {n} placeholders in translations back to the source interpolation words", async () => {
@@ -2411,7 +2594,47 @@ describe("compileStudioStoryToNlr voice", () => {
         ]);
     });
 
-    it("compiles /vfx onto one Vfx, showing on create and clamping its knobs", async () => {
+    it("declares on a create row and reveals only on a show row", async () => {
+        // The rule for every stage object except a layer: `create` names it, sources it and poses it,
+        // and nothing is on screen until something shows it. A layer is exempt because a layer is a
+        // container - one that mounted invisible would take its contents with it.
+        const blocks: Record<string, StoryBlock> = {
+            image: {
+                id: "image", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "create", objectName: "poster", assetId: "asset-poster" },
+            },
+            video: {
+                id: "video", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "video", operation: "create", objectName: "opening", assetId: "asset-opening" },
+            },
+            reveal: {
+                id: "reveal", kind: "action", parentId: null, childrenIds: [],
+                payload: { action: "image", operation: "show", objectName: "poster" },
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument(blocks, ["image", "video", "reveal"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+        const typesOf = (blockId: string) => compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .map(action => action.type);
+
+        expect(compiled.diagnostics).toEqual([]);
+        // The source lands and nothing else: no transform, so nothing raises the element's opacity
+        // off the zero it mounts at.
+        expect(typesOf("image")).toContain("image:setSrc");
+        expect(typesOf("image")).not.toContain("displayable:applyTransform");
+        // A declared video is on stage and buffering, which is the whole reason the row is worth
+        // writing early - but it is not visible and it is not playing.
+        expect(typesOf("video")).toContain("video:preload");
+        expect(typesOf("video")).not.toContain("video:show");
+        expect(typesOf("reveal")).toContain("displayable:applyTransform");
+    });
+
+    it("compiles /vfx onto one Vfx, declaring on create and clamping its knobs", async () => {
         const vfxBlock = (id: string, payload: Extract<StoryBlock["payload"], { action: "vfx" }>): StoryBlock => ({
             id, kind: "action", parentId: null, childrenIds: [], payload,
         });
@@ -2423,9 +2646,12 @@ describe("compileStudioStoryToNlr voice", () => {
             rate: vfxBlock("rate", { action: "vfx", operation: "setRate", objectName: "rain", rate: -1 }),
             freeze: vfxBlock("freeze", { action: "vfx", operation: "pause", objectName: "rain" }),
             hide: vfxBlock("hide", { action: "vfx", operation: "hide", objectName: "rain", durationMs: 400 }),
+            show: vfxBlock("show", {
+                action: "vfx", operation: "show", objectName: "rain", durationMs: 300, opacity: 0.4, rate: 2,
+            }),
         };
         const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["create", "rate", "freeze", "hide"]),
+            document: baseDocument(blocks, ["create", "rate", "freeze", "hide", "show"]),
             sceneId: "scene-1",
             resolveAssetUrl: async assetId => `nlr://${assetId}`,
         });
@@ -2433,8 +2659,12 @@ describe("compileStudioStoryToNlr voice", () => {
         const actionOf = (blockId: string) => compiled.actionIdBindings.find(binding => binding.blockId === blockId)?.action as any;
 
         expect(compiled.diagnostics).toEqual([]);
-        // A create puts the overlay on screen - the row an author writes to "start the rain" must.
-        expect(actionOf("create")?.type).toBe("vfx:show");
+        // A create DECLARES the overlay and warms its clip; nothing appears until a row shows it.
+        expect(actionOf("create")?.type).toBe("vfx:preload");
+        expect(actionOf("show")?.type).toBe("vfx:show");
+        // Opacity and rate on a show row belong to that showing, so they travel as options - and are
+        // clamped on the way, like every other knob the compiler passes through.
+        expect(actionOf("show")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 300, opacity: 0.4, rate: 2 });
         expect(actionOf("freeze")?.type).toBe("vfx:pause");
         expect(actionOf("hide")?.type).toBe("vfx:hide");
         expect(actionOf("hide")?.contentNode?.getContent?.()[0]).toMatchObject({ duration: 400 });
@@ -4050,6 +4280,102 @@ describe("cut point", () => {
         expect(compiled.diagnostics).toEqual([]);
         const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
         expect(boundBlocks).not.toContain("cut");
+        expect(boundBlocks).toContain("after");
+    });
+});
+
+/**
+ * `/ending` — the row that says the story is over.
+ *
+ * Two things it does and one it deliberately does not. It emits a statement bound to its own block,
+ * so a host can be told which ending was reached; it truncates the list that holds it, because the
+ * engine has no way to be stopped mid-story and rows after an ending would otherwise play with the
+ * stage already on its way out. It does NOT reach past that list: a row after the container the
+ * ending sits in depends on which arm ran and stays compiled.
+ */
+describe("ending", () => {
+    function endingBlock(id: string, name: string, page?: StoryEndingPage): StoryBlock {
+        return {
+            id,
+            kind: "control",
+            parentId: null,
+            childrenIds: [],
+            payload: { control: "ending", name, ...(page ? { page } : {}) },
+        };
+    }
+
+    it("tells the host which ending was reached, with the row's own id and page", async () => {
+        const reached: StoryEndingReach[] = [];
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: endingBlock("end", "  True End  ", { kind: "surface", surfaceId: "surface-credits" }),
+            }, ["end"]),
+            sceneId: "scene-1",
+            onEndingReached: ending => reached.push(ending),
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("end");
+        // Nothing has run yet: the statement carries the call, it does not make it at compile time.
+        expect(reached).toEqual([]);
+    });
+
+    it("drops the rows after it in the same list", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: endingBlock("end", "True End"),
+                after: narrationBlock("after", "text-after", "Never played"),
+            }, ["end", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("end");
+        expect(boundBlocks).not.toContain("after");
+    });
+
+    it("keeps a row written after the container the ending sits in", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                group: { id: "group", kind: "control", parentId: null, childrenIds: ["end"], payload: { control: "sequence" } },
+                end: { ...endingBlock("end", "True End"), parentId: "group" },
+                after: narrationBlock("after", "text-after", "Depends on the arm"),
+            }, ["group", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("end");
+        expect(boundBlocks).toContain("after");
+    });
+
+    it("emits nothing at all for a host that cannot act on an ending", async () => {
+        // The build sweeps and the stage preview compile the same document without playing it, so
+        // they pass no hook - and a row that reported an ending to nobody would be worse than one
+        // that compiled to nothing.
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ end: endingBlock("end", "True End") }, ["end"]),
+            sceneId: "scene-1",
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).not.toContain("end");
+    });
+
+    it("compiles nothing for a disabled ending, and lets the scene carry on past it", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                end: { ...endingBlock("end", "True End"), disabled: true },
+                after: narrationBlock("after", "text-after", "Still here"),
+            }, ["end", "after"]),
+            sceneId: "scene-1",
+            onEndingReached: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).not.toContain("end");
         expect(boundBlocks).toContain("after");
     });
 });

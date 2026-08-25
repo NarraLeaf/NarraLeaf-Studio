@@ -1,6 +1,12 @@
 import path from "path";
 import { describe, expect, it, vi } from "vitest";
-import { resolveRuntimeUserDataDir, type PlayerDataEnvironment } from "./userDataDir";
+import {
+    resolveGameRootDir,
+    resolvePlayerFilesDir,
+    resolveRuntimeUserDataDir,
+    type GameRootEnvironment,
+    type PlayerDataEnvironment,
+} from "./userDataDir";
 
 /**
  * `path` here is the host's, so the Windows cases assert Windows separators only
@@ -153,5 +159,92 @@ describe("resolveRuntimeUserDataDir", () => {
             expect(resolveRuntimeUserDataDir("com.studio.game", env)).toBe(shellUserDataDir);
             expect(warn).toHaveBeenCalledOnce();
         });
+    });
+});
+
+describe("resolveGameRootDir", () => {
+    function packaged(overrides: Partial<GameRootEnvironment> = {}): GameRootEnvironment {
+        return {
+            platform: "win32",
+            packaged: true,
+            resourcesPath: path.join("C:", "Games", "My Game", "resources"),
+            appDir: path.join("C:", "Games", "My Game", "resources", "app.asar"),
+            ...overrides,
+        };
+    }
+
+    it("takes the folder holding the executable on Windows", () => {
+        expect(resolveGameRootDir(packaged())).toBe(path.join("C:", "Games", "My Game"));
+    });
+
+    // Not `Contents/`: that is inside a signed bundle, and the folder a player
+    // put the game in is the one holding the bundle.
+    it("takes the folder holding the bundle on macOS", () => {
+        expect(resolveGameRootDir(packaged({
+            platform: "darwin",
+            resourcesPath: "/Applications/My Game.app/Contents/Resources",
+            appDir: "/Applications/My Game.app/Contents/Resources/app.asar",
+        }))).toBe(path.resolve("/Applications"));
+    });
+
+    // An AppImage's resources are on a read-only mount under /tmp, which is
+    // nobody's folder; the file itself is the only thing the player has.
+    it("takes the folder holding the AppImage file", () => {
+        expect(resolveGameRootDir(packaged({
+            platform: "linux",
+            resourcesPath: "/tmp/.mount_MyGamAbc123/resources",
+            appDir: "/tmp/.mount_MyGamAbc123/resources/app.asar",
+            appImagePath: "/home/p/Games/My Game.AppImage",
+        }))).toBe(path.dirname("/home/p/Games/My Game.AppImage"));
+    });
+
+    it("ignores a relative APPIMAGE and keeps to the resources path", () => {
+        expect(resolveGameRootDir(packaged({
+            platform: "linux",
+            resourcesPath: "/opt/my-game/resources",
+            appDir: "/opt/my-game/resources/app.asar",
+            appImagePath: "My Game.AppImage",
+        }))).toBe(path.dirname("/opt/my-game/resources"));
+    });
+
+    it("takes the app directory's parent when nothing is packaged", () => {
+        expect(resolveGameRootDir(packaged({
+            packaged: false,
+            appDir: path.join("D:", "build", "app"),
+        }))).toBe(path.resolve(path.join("D:", "build")));
+    });
+});
+
+describe("resolvePlayerFilesDir", () => {
+    const gameRootDir = path.join("C:", "Games", "My Game");
+    const userDataDir = path.join("C:", "Users", "p", "AppData", "Roaming", "com.studio.game");
+
+    it("writes beside the game where the author said so", () => {
+        expect(resolvePlayerFilesDir({
+            platform: "win32",
+            config: { windowsLinux: "app-root", macos: "user-data" },
+            gameRootDir,
+            userDataDir,
+        })).toBe(gameRootDir);
+    });
+
+    // The same project, the same setting object, the other platform group: this
+    // is the reason there are two fields rather than one.
+    it("writes to the per-user directory on macOS with the same configuration", () => {
+        expect(resolvePlayerFilesDir({
+            platform: "darwin",
+            config: { windowsLinux: "app-root", macos: "user-data" },
+            gameRootDir,
+            userDataDir,
+        })).toBe(userDataDir);
+    });
+
+    it("puts Linux with Windows", () => {
+        expect(resolvePlayerFilesDir({
+            platform: "linux",
+            config: { windowsLinux: "app-root", macos: "user-data" },
+            gameRootDir,
+            userDataDir,
+        })).toBe(gameRootDir);
     });
 });

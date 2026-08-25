@@ -1,6 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
-import { WEB_SHELL_VARIANT_META, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import {
+    WEB_SHELL_MOBILE_VARIANT,
+    WEB_SHELL_VARIANT_META,
+    type GameRuntimePackV1,
+} from "@shared/types/gameRuntime";
 import { resolveGameRuntimeInitialBackgroundColor } from "@shared/utils/gameRuntimeEntrySurface";
 import { networkAllowlistCspSources, packNetworkAllowlist } from "@shared/types/networkAllowlist";
 import {
@@ -93,18 +97,24 @@ export function buildWebIndexHtml(
     // viewport-fit=cover lets the game paint under a notch/home indicator
     // instead of being letterboxed by the browser's default safe-area inset;
     // the shells run full-screen, so the inset would show as bars.
+    //
+    // user-scalable=no is mobile-only, and so is the ban on zoom it belongs to: a shell has no
+    // browser chrome for a zoomed-in player to zoom back out with, while a page in a browser does.
+    // It is the belt for a WebKit older than `touch-action` - Safari has ignored the flag since
+    // iOS 10, but the WebViews both shells embed still obey it.
     const viewport = options.variant === "mobile"
-        ? "width=device-width, initial-scale=1.0, viewport-fit=cover"
+        ? "width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no"
         : "width=device-width, initial-scale=1.0";
     // The pack is built once and the mobile repack serves this same site, so the pack cannot say
     // which shell is running it — the entry document can, and it is already the one file that
     // differs. The stage crop is mobile-only, and this is what it reads.
     const shellMeta = options.variant === "mobile"
-        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="mobile" />\n`
+        ? `    <meta name="${WEB_SHELL_VARIANT_META}" content="${WEB_SHELL_MOBILE_VARIANT}" />\n`
         : "";
     const cspMeta = buildWebCspMeta(pack);
+    const language = resolveDocumentLanguage(pack);
     return `<!doctype html>
-<html lang="en">
+<html${language ? ` lang="${language}"` : ""}>
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="${viewport}" />
@@ -122,7 +132,8 @@ ${shellMeta}${cspMeta}
     }
     </script>
 ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
-    <style>html, body { margin: 0; background: ${background}; }</style>
+    <style>
+${documentStyle(background, options.variant)}    </style>
 </head>
 <body>
     <div id="root"></div>
@@ -130,6 +141,83 @@ ${iconLinks}    <link rel="stylesheet" href="./renderer.css" />
     <script defer src="./renderer.js"></script>
 </body>
 </html>
+`;
+}
+
+/**
+ * The language attribute of the entry document.
+ *
+ * It decides which Han forms a system font draws, how the browser breaks lines and where it sets
+ * emphasis marks by default, so a Japanese title served with `lang="en"` is read in whatever face
+ * an English page resolves to. The pack states the language the project is written in, and this
+ * document is generated per project, so the first paint is already right.
+ *
+ * A player who has chosen another language, or whose system matched one, is a language this file
+ * cannot know: the choice lives in the store the page has yet to open. The runtime rewrites
+ * `documentElement.lang` once it has read it (see the runtime's `documentLanguage`), and this is
+ * what stands until then.
+ *
+ * Empty for a project with no localization set up, and for a source language that is not a language
+ * tag - an attribute the browser cannot parse is worse than none, which simply means "unknown".
+ */
+function resolveDocumentLanguage(pack: GameRuntimePackV1): string {
+    const source = pack.bundle?.localization?.sourceLocale?.trim() ?? "";
+    return /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*$/.test(source) ? source : "";
+}
+
+/**
+ * The document's own style: the pre-boot background, and the browser behaviours a game window has
+ * no use for.
+ *
+ * Everything below is about the *document*, which is why it lives here rather than in the shared
+ * stylesheet the interface is drawn with. A page and an app window differ in what a stray finger
+ * does to them, and a game shipped to a phone is expected to be the second one:
+ *
+ *  - **Zoom, and how much of it.** `touch-action` is set on the root, so every element inherits
+ *    what it allows by intersection - a gesture only gets what its whole ancestor chain grants.
+ *    Neither value is `none`: the game's own scrollers (a saves list, the history log) must still
+ *    take a finger.
+ *
+ *    A shell gets `pan-x pan-y`, which leaves no zoom at all. A stage is scaled to the viewport by
+ *    construction, so zooming it reveals nothing, and a full-screen shell has no browser chrome for
+ *    the player to zoom back out with - the gesture can only end somewhere they cannot leave.
+ *
+ *    The web target gets `manipulation`, which drops the double tap and keeps the pinch. A browser
+ *    window still has its own chrome and its own zoom controls, and a pinch there is visual zoom:
+ *    it magnifies what is drawn without re-laying anything out, which is a reader holding a page
+ *    closer rather than a gesture the game has to survive. The double tap goes either way, because
+ *    tapping is how this game is played and a mistimed pair of taps is not a request to zoom.
+ *  - **Pull-to-refresh.** `overscroll-behavior: none` also stops the overscroll glow and the
+ *    rubber band. On Chrome for Android a downward drag on a page that does not scroll reloads it,
+ *    which for a running game means dropping everything since the last save.
+ *  - **The long press.** `-webkit-touch-callout` is what puts the iOS magnifier and share sheet
+ *    over held text; selection itself is already off globally in the shared stylesheet. Editable
+ *    fields keep the callout, or a name-entry box would have no Paste.
+ *  - **Font boosting.** `-webkit-text-size-adjust` stops a WebView inflating the text of a wide
+ *    block, which on a design-sized stage is not an accessibility win but a broken layout.
+ *  - **The tap flash.** A grey rectangle over a menu button is browser feedback, and the game
+ *    already draws its own.
+ *
+ * The scroll rules are equally about the shells: both run full-screen with no browser chrome, so a
+ * document that scrolled by a pixel would show the player nothing but a shifted stage.
+ *
+ * The JavaScript half - Safari's pinch events and the context menu - is in `browserGestures.ts`,
+ * which the same web.js installs, and it draws the same line between the two hosts.
+ */
+function documentStyle(background: string, variant: GameWebShellVariant | undefined): string {
+    const zoom = variant === "mobile" ? "pan-x pan-y" : "manipulation";
+    return `        html, body {
+            margin: 0;
+            height: 100%;
+            overflow: hidden;
+            overscroll-behavior: none;
+            touch-action: ${zoom};
+            -webkit-text-size-adjust: 100%;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            background: ${background};
+        }
+        input, textarea, select, [contenteditable] { -webkit-touch-callout: default; }
 `;
 }
 

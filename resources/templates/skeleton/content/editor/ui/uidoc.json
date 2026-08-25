@@ -51,7 +51,19 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss",
+          "addBindings": [
+            {
+              "kind": "pointer",
+              "gesture": "wheelDown"
+            }
+          ],
+          "overControls": "fire"
+        }
+      ]
     },
     {
       "id": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -76,7 +88,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "afa4f872-ce72-4456-a86b-a8edc1594316",
@@ -101,7 +118,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "2334bffd-671e-42f4-a1f5-b652b585b92a",
@@ -151,7 +173,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
@@ -176,7 +203,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "a656476f-829e-4b6f-94f9-87ad486a68d1",
@@ -212,7 +244,15 @@
       "mount": {
         "kind": "slot",
         "slotId": "dialog"
-      }
+      },
+      "actions": [
+        {
+          "actionId": "advance"
+        },
+        {
+          "actionId": "backlog"
+        }
+      ]
     },
     {
       "id": "f772ffc3-f108-40b9-a217-4fc652fb68d2",
@@ -682,7 +722,7 @@
           "layout": {
             "x": 0,
             "y": 0,
-            "width": 80,
+            "width": 96,
             "height": 40,
             "visible": true,
             "opacity": 1
@@ -708,7 +748,7 @@
           "layout": {
             "x": 0,
             "y": 0,
-            "width": 80,
+            "width": 96,
             "height": 40,
             "visible": true,
             "opacity": 1
@@ -739,7 +779,7 @@
         }
       },
       "previewMeta": {
-        "width": 80,
+        "width": 96,
         "height": 40
       },
       "createdAt": "2026-08-07T04:10:39.278Z",
@@ -3812,30 +3852,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "p0",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p1",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p2",
-            "nametag": "Speaker",
-            "text": "Line"
-          },
-          {
-            "id": "p3",
-            "nametag": "Speaker",
-            "text": "Line"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 5,
         "selectedIndex": -1,
         "itemGap": 8,
         "repeatDirection": "vertical",
@@ -3879,7 +3895,52 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 5,
+        "itemStructId": "nl.historyEntry",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "p0",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p1",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p2",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          },
+          {
+            "id": "p3",
+            "type": "say",
+            "text": "Line",
+            "character": "Speaker",
+            "voice": "",
+            "voiceId": "",
+            "selected": "",
+            "isPending": false
+          }
+        ]
       }
     },
     "e1e45cc5-f9bf-48da-b126-555dcc1abcf6": {
@@ -4449,9 +4510,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "244ce5e4-90b4-4ec1-9afb-b8376e92f195",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "character"
         }
       }
     },
@@ -4644,9 +4704,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "6a89cfda-3bde-4156-8d4c-23e0aa770962",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -28542,7 +28601,7 @@
       "layout": {
         "x": 1540,
         "y": 265,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -44470,25 +44529,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "text": "Choice A",
-            "index": 0,
-            "disabled": false
-          },
-          {
-            "text": "Choice B",
-            "index": 1,
-            "disabled": false
-          },
-          {
-            "text": "Choice C",
-            "index": 2,
-            "disabled": false
-          }
-        ],
-        "itemKeyPath": "index",
-        "previewCount": 4,
         "selectedIndex": -1,
         "itemGap": 18,
         "repeatDirection": "vertical",
@@ -44532,7 +44572,27 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 4,
+        "itemStructId": "nl.choiceItem",
+        "itemKeyFieldId": "index",
+        "items": [
+          {
+            "text": "Choice A",
+            "index": 0,
+            "disabled": false
+          },
+          {
+            "text": "Choice B",
+            "index": 1,
+            "disabled": false
+          },
+          {
+            "text": "Choice C",
+            "index": 2,
+            "disabled": false
+          }
+        ]
       }
     },
     "39358c7e-403f-4248-b9a4-975e0f8a31ae": {
@@ -45472,9 +45532,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "cfdd4e6a-e983-4c1e-97b1-1851671262c3",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -45484,7 +45543,6 @@
       "name": "Root",
       "parentId": null,
       "childrenIds": [
-        "6f476541-9b16-45f7-a3d9-3e6702697334",
         "10012a54-2d93-40d8-8c4b-be7c5f24ba91"
       ],
       "layout": {
@@ -47406,18 +47464,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "preview-1",
-            "message": "Notification message"
-          },
-          {
-            "id": "preview-2",
-            "message": "Another message"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 2,
         "selectedIndex": -1,
         "itemGap": 12,
         "repeatDirection": "vertical",
@@ -47461,7 +47507,20 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 2,
+        "itemStructId": "nl.notificationItem",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "preview-1",
+            "message": "Notification message"
+          },
+          {
+            "id": "preview-2",
+            "message": "Another message"
+          }
+        ]
       }
     },
     "0e33b3a5-ce67-49fe-8746-d778d07812fd": {
@@ -48401,9 +48460,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "e17db2d7-fd2d-43b7-8571-5724ff6b7dd1",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "message"
         }
       }
     },
@@ -48439,9 +48497,9 @@
         "d334eb23-3689-48c2-88a9-f8ece0768d34"
       ],
       "layout": {
-        "x": 1294,
+        "x": 1182,
         "y": 668,
-        "width": 596,
+        "width": 708,
         "height": 44,
         "visible": true,
         "opacity": 1
@@ -48812,7 +48870,7 @@
       "layout": {
         "x": 0,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -48929,9 +48987,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 86,
+        "x": 102,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49048,9 +49106,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 172,
+        "x": 204,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49086,9 +49144,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 258,
+        "x": 306,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49124,9 +49182,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 344,
+        "x": 408,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -49162,9 +49220,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 430,
+        "x": 510,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -64001,377 +64059,6 @@
         }
       }
     },
-    "6f476541-9b16-45f7-a3d9-3e6702697334": {
-      "id": "6f476541-9b16-45f7-a3d9-3e6702697334",
-      "type": "nl.container",
-      "name": "Advance",
-      "parentId": "3f75130c-73bb-428a-a7b5-388e32d231e5",
-      "childrenIds": [],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 640,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "layoutKind": "free",
-        "stackDirection": "vertical",
-        "stackGap": 8,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "stretch",
-        "stackJustifyContent": "start",
-        "scrollAxis": "y",
-        "backgroundColor": "transparent",
-        "borderRadius": 0,
-        "borderRadiusTL": 0,
-        "borderRadiusTR": 0,
-        "borderRadiusBL": 0,
-        "borderRadiusBR": 0,
-        "borderRadiusLinked": true,
-        "borderColor": "nlbrand:container.border",
-        "borderWidth": 0,
-        "borderStyle": "none",
-        "backgroundImage": "",
-        "backgroundFit": "cover",
-        "fillType": "color",
-        "fillVisible": false,
-        "fillOpacity": 1,
-        "strokeVisible": true,
-        "strokeOpacity": 1,
-        "strokeAlign": "center",
-        "strokeSide": "all",
-        "borderJoin": "miter",
-        "cornerAdvanced": false,
-        "clipContent": false,
-        "transformOffsetX": 0,
-        "transformOffsetY": 0,
-        "transformScale": 1,
-        "transformRotation": 0,
-        "transformOpacity": 1,
-        "appearance": {
-          "defaultVariantId": "default",
-          "variants": [
-            {
-              "id": "default",
-              "name": "Default",
-              "propertyGroups": [
-                {
-                  "key": "backgroundColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "transparent"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadius",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusLinked",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "none"
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundImage",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundFit",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "cover"
-                    }
-                  ]
-                },
-                {
-                  "key": "imageFill",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "fillType",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "color"
-                    }
-                  ]
-                },
-                {
-                  "key": "fillVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "fillOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeAlign",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "center"
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeSide",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "all"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderJoin",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "miter"
-                    }
-                  ]
-                },
-                {
-                  "key": "cornerAdvanced",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetX",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetY",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformScale",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "transformRotation",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBackgroundBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectInnerShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlend",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectFilter",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    },
     "387326a1-5514-4ee2-9d73-48fbe03de0b8": {
       "id": "387326a1-5514-4ee2-9d73-48fbe03de0b8",
       "type": "nl.container",
@@ -69431,20 +69118,6 @@
           "kind": "pageProp",
           "key": "buttons"
         },
-        "previewItems": [
-          {
-            "text": "Return to title",
-            "index": 0,
-            "disabled": false
-          },
-          {
-            "text": "Cancel",
-            "index": 1,
-            "disabled": false
-          }
-        ],
-        "itemKeyPath": "index",
-        "previewCount": 2,
         "selectedIndex": -1,
         "itemGap": 20,
         "repeatDirection": "horizontal",
@@ -69488,7 +69161,22 @@
           },
           "trackElementId": null,
           "thumbElementId": null
-        }
+        },
+        "placeholderCount": 2,
+        "itemStructId": "nl.confirmButton",
+        "itemKeyFieldId": "index",
+        "items": [
+          {
+            "text": "Return to title",
+            "index": 0,
+            "disabled": false
+          },
+          {
+            "text": "Cancel",
+            "index": 1,
+            "disabled": false
+          }
+        ]
       }
     },
     "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e75": {
@@ -70056,9 +69744,8 @@
       },
       "valueBindings": {
         "text": {
-          "kind": "blueprintValue",
-          "blueprintId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e79",
-          "valueType": "string"
+          "kind": "listItemField",
+          "fieldId": "text"
         }
       }
     },
@@ -75159,22 +74846,6 @@
       },
       "props": {
         "itemsBinding": null,
-        "previewItems": [
-          {
-            "id": "p0"
-          },
-          {
-            "id": "p1"
-          },
-          {
-            "id": "p2"
-          },
-          {
-            "id": "p3"
-          }
-        ],
-        "itemKeyPath": "id",
-        "previewCount": 4,
         "selectedIndex": -1,
         "itemGap": 12,
         "repeatDirection": "horizontal",
@@ -75229,7 +74900,40 @@
           "effectBlend": "",
           "effectGlow": null,
           "effectFilter": null
-        }
+        },
+        "placeholderCount": 4,
+        "itemStructId": "nl.saveEntry",
+        "itemKeyFieldId": "id",
+        "items": [
+          {
+            "id": "p0",
+            "slot": 0,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p1",
+            "slot": 1,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p2",
+            "slot": 2,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          },
+          {
+            "id": "p3",
+            "slot": 3,
+            "timestamp": 0,
+            "createdAt": 0,
+            "metadata": null
+          }
+        ]
       }
     },
     "f4d2f822-fd4f-4f62-924d-0cfb8a945a23": {
@@ -76006,9 +75710,9 @@
       "parentId": "b290232d-b132-493c-97a3-fff8a375a105",
       "childrenIds": [],
       "layout": {
-        "x": 516,
+        "x": 612,
         "y": 0,
-        "width": 80,
+        "width": 96,
         "height": 40,
         "visible": true,
         "opacity": 1
@@ -82458,6 +82162,38 @@
         },
         "localizationKey": "menu.scenes"
       }
+    }
+  },
+  "actions": {
+    "advance": {
+      "id": "advance",
+      "name": "Advance",
+      "bindings": [
+        {
+          "kind": "pointer",
+          "gesture": "click"
+        }
+      ]
+    },
+    "backlog": {
+      "id": "backlog",
+      "name": "Backlog",
+      "bindings": [
+        {
+          "kind": "pointer",
+          "gesture": "wheelUp"
+        }
+      ]
+    },
+    "dismiss": {
+      "id": "dismiss",
+      "name": "Dismiss",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Escape"
+        }
+      ]
     }
   },
   "meta": {

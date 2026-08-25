@@ -1,13 +1,4 @@
-import { HELP_RESOURCES, HelpBrowser, type HelpTopicId } from "@/lib/help";
-
-export interface LearningTabProps {
-    /**
-     * Topic to land on; the list's first otherwise. Set when the tab was opened on the author's
-     * behalf - first-run setup ends on three links into it - and left unset when they picked the
-     * tab themselves, because then they have not asked for a particular topic.
-     */
-    initialTopic?: HelpTopicId;
-}
+import { HELP_RESOURCES, HelpBrowser } from "@/lib/help";
 
 /**
  * The Learning tab: Studio's help topics, read here.
@@ -20,10 +11,12 @@ export interface LearningTabProps {
  * No title row: the sidebar entry already names this page, and the plugins tab sets the precedent
  * for a launcher page that starts with its content.
  */
-export function LearningTab({ initialTopic }: LearningTabProps) {
+export function LearningTab() {
     return (
         <div className="h-full w-full text-fg">
-            <HelpBrowser resources={HELP_RESOURCES} initialTopic={initialTopic} />
+            {/* No `initialTopic`: the tab is only ever opened by the author picking it, and they
+                have not asked for a particular topic by doing so. */}
+            <HelpBrowser resources={HELP_RESOURCES} />
         </div>
     );
 }

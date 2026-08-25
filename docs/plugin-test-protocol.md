@@ -3,7 +3,7 @@
 Normative contract for tests contributed by a plugin. Intended to be folded into the plugin spec.
 
 Types: `narraleaf-studio/plugin`. Source of truth: `src/renderer/lib/testing/types.ts`.
-Current protocol version: **1**.
+Current protocol version: **2**.
 
 The key words MUST, MUST NOT, SHOULD and MAY are used in their usual normative sense.
 
@@ -71,10 +71,11 @@ app.services.tests.protocolVersion: number
 | `title: TestText` | yes | Row label in the picker and the report tab. |
 | `description?: TestText` | no | One line under the title. |
 | `category?: TestCategory` | no | `integrity` \| `runtime` \| `compatibility` \| `custom`. Omitted means `custom`. |
-| `presentation: TestPresentation` | yes | `headless` \| `windowed`. See §6. |
+| `presentation: TestPresentation` | yes | `headless` \| `windowed`. See §7. |
 | `requires?: readonly TestCapability[]` | no | See §5. Omitted means the test is a pure computation over what it was given. |
+| `parameters?: readonly TestParameterDefinition[]` | no | See §6. Omitted means the test needs no input: the author selects it and presses Start. |
 | `checkAvailability?(ctx)` | no | Synchronous, cheap, side-effect free. Runs on **every** picker open. |
-| `run(ctx): Promise<TestVerdict> \| TestVerdict` | yes | See §7. |
+| `run(ctx): Promise<TestVerdict> \| TestVerdict` | yes | See §8. |
 
 `TestText` is either `{ key, params? }` (an i18n key in Studio's own catalogue) or `{ text }` (a
 literal). A plugin has no keys in Studio's catalogue and MUST use `{ text }`, producing the string
@@ -98,10 +99,96 @@ reach are the same set by construction, and a test MUST read the handle rather t
 
 `TestProjectHandle` is deliberately thin: `projectPath`, `listStories()`, `listScenes(storyId)`. It
 is the read half of the story catalogue and no more. A test needing the scene *graph* needs a
-protocol addition and a version bump (§9) — that is the designated extension point, not something to
+protocol addition and a version bump (§10) — that is the designated extension point, not something to
 reach around.
 
-## 6. Presentation
+## 6. Parameters
+
+A test that needs the author to tell it something — which ending to walk to, whether to skip text
+already read — declares it. Studio draws one control per declaration in the picker and hands the
+answers to `run` as `ctx.parameters`.
+
+```ts
+export type TestParameterOption = { value: string; label: TestText };
+
+export type TestParameterDefinition =
+    | {
+        id: string;
+        kind: "select";
+        label: TestText;
+        description?: TestText;
+        options(ctx: TestAvailabilityContext): TestParameterOption[];
+        defaultValue?: string;
+    }
+    | { id: string; kind: "boolean"; label: TestText; description?: TestText; defaultValue?: boolean };
+```
+
+- `label` names the control; `description` is one clause about what the value selects, and most
+  parameters need none. Neither is a place to explain the interface.
+- `options(ctx)` is called **when the picker opens**, with the same context `checkAvailability` is
+  given, so a list may be drawn from the project. It MUST be synchronous, cheap and free of side
+  effects — the same contract, for the same reason.
+- `value` is what the test reads and what Studio remembers; `label` is what the author sees. Values
+  MUST stay stable across releases and MUST NOT be derived from a display string, which follows the
+  editor's language.
+- `defaultValue` is where a control starts. A `select` falls back to the first option when it is
+  absent, and also when it names an option that is no longer in the list.
+- Ids MUST be unique within one definition. A repeated id is one parameter: the first declaration
+  wins.
+
+### Empty option lists
+
+**An empty list is a normal answer, not a failure.** A project with no endings yet has nothing for a
+walkthrough to walk to. Studio treats it as availability rather than as input: the whole test is
+greyed out naming the parameter, and Start is refused — the same treatment §4 describes for an
+unavailable test, because a dropdown with nothing in it above a Start that cannot work is worse than
+a row that says why.
+
+Return the list you have and let the host decide. Do not return a placeholder option.
+
+### `ctx.parameters`
+
+```ts
+readonly parameters: Readonly<Record<string, string | boolean>>
+```
+
+**Only declared ids are present**, and every one of them is — the same construction `requires` uses
+from the other side. Studio resolves the values against the live declarations before the run starts,
+so a remembered choice whose option has since disappeared arrives as the default rather than as a
+value a test would have to defend against. A test that declares no parameters reads `{}`.
+
+The resolved values are recorded on the run record, so a report kept afterwards still says what the
+run was told, and Run again in the report tab repeats that same check rather than starting a fresh
+one from defaults.
+
+```ts
+const walkthrough: TestDefinition = {
+    id: "acme.qa-pack.walkthrough",
+    title: { text: "Walk to an ending" },
+    presentation: "windowed",
+    requires: ["project.read", "game.launch"],
+    parameters: [
+        {
+            id: "ending",
+            kind: "select",
+            label: { text: "Ending" },
+            options: () => listEndings().map(ending => ({ value: ending.id, label: { text: ending.name } })),
+        },
+        { id: "skipRead", kind: "boolean", label: { text: "Skip text already read" }, defaultValue: true },
+    ],
+    async run(ctx) {
+        const ending = String(ctx.parameters.ending);
+        const skipRead = ctx.parameters.skipRead === true;
+        // ...
+    },
+};
+```
+
+Studio remembers the values each test was last run with in the project's editor cache, which version
+control excludes — so it is one copy per machine, and deleting it costs the author one pick from a
+dropdown. A plugin needs to know nothing about it.
+
+## 7. Presentation
 
 `presentation` is a **declaration, not a mechanism**. A window appears because a test asked the host
 for a game session; the field is what the picker badges and what warns the author a window is about
@@ -115,7 +202,7 @@ to open.
 A `headless` test that calls `ctx.game.launch()` is a host error, not a silent success. Declare
 `windowed` if you launch.
 
-## 7. Verdicts
+## 8. Verdicts
 
 `run` MUST return one of:
 
@@ -162,13 +249,14 @@ finding does not point anywhere; do not invent a shape.
 `progress(null)` returns the bar to indeterminate. `total` is optional because most interesting
 tests do not know it up front; omitting it renders an indeterminate bar rather than a fake fraction.
 
-## 8. Game sessions
+## 9. Game sessions
 
 Requires `game.launch` and `presentation: "windowed"`.
 
 ```ts
 const session = await ctx.game.launch({ network: "blocked" });
 const off = session.onEvent(event => { /* … */ });
+await session.sendCommand({ kind: "start", storyId, sceneId });
 const exit = await session.waitForExit();
 await session.stop();
 ```
@@ -190,8 +278,38 @@ and "the game then died" is load-bearing evidence:
 |---|---|
 | `console` | `level`, `source`, `message` — a line the game logged. |
 | `runtime-error` | `scope: "renderer" \| "main"`, `message`, `stack?` — an **uncaught** error inside the running game. |
-| `game-end` | The engine reached an ending. |
+| `game-end` | The story ended: an authored ending ran, or the action stack drained. |
+| `ending` | `endingId`, `name` — an `/ending` row ran, naming which. Fires alongside `game-end`; a story that simply runs out of rows has no ending to name and produces only `game-end`. |
+| `choice` | `options: { index, text, disabled }[]` — a choice menu is on screen. |
 | `exit` | `exit: TestGameExit` — terminal. |
+
+### Driving the game
+
+```ts
+const delivered = await session.sendCommand(command);
+```
+
+| `command` | Means |
+|---|---|
+| `{ kind: "start", storyId, sceneId }` | Begin a story at a scene. A session boots to the main app surface — the title screen — and no story runs until something starts one. |
+| `{ kind: "advance" }` | One click on the dialogue: finish the line being typed, or move to the next. |
+| `{ kind: "choose", index }` | Pick an option of the choice on screen. |
+
+Every command is carried out along the path a player's pointer would take — `start` is the same host
+call a title screen's Start button makes — so a game that cannot be played cannot be driven either.
+
+`sendCommand` resolves `true` when the command reached the game and `false` when it could not: a
+session that has already exited, or one whose game never opened its control channel. It **never**
+says the game acted on it. The game is a separate process; what happened comes back through
+`onEvent`, in order with everything else it says. A test that needs to know waits for the
+observation, and treats one that never arrives as the answer it is.
+
+`index` is the **compiler's** index for an option — its position among the non-disabled
+`choiceOption` rows of its choice, in document order — which is what the `choice` event reports and
+what `choose` takes. It is not the row's position on screen: an option a `hiddenWhen` condition
+hides at play time is left out of the reported list without shifting the indices of the rest.
+Planning a route offline therefore yields indices that stay valid, and an index the game no longer
+offers is evidence that a condition took the option away.
 
 ### Exit reasons
 
@@ -208,12 +326,22 @@ handle each explicitly:
 Do not infer a reason from `code`. `code` and `signal` are diagnostics for the finding message;
 `reason` is the classification, and only the host can make it.
 
-## 9. Versioning
+## 10. Versioning
 
 `TEST_PROTOCOL_VERSION` is bumped **when a change here would break an already-published plugin** —
 a removed or narrowed field, a changed meaning, a new required member. Purely additive changes (a
 new optional field, a new event kind, a new capability) do **not** bump it: a plugin that does not
 name them is unaffected.
+
+**Version 2** added parameters (§6). What breaks is `TestRunContext.parameters`, a required member
+a version 1 host does not supply. Definitions are unaffected: `parameters` is optional, and one that
+declares none behaves exactly as it did at version 1.
+
+Driving a game (§9) did **not** bump it. `sendCommand` is a member the host provides and a plugin
+only ever calls, and the `ending` and `choice` events are two more kinds in a union a `switch`
+already had to have a default for — so nothing already published stops compiling or changes meaning.
+A definition that wants them SHOULD feature-detect (`"sendCommand" in session`) rather than assume a
+host new enough to have them.
 
 - The version is recorded on every run record, so a report kept across a Studio upgrade still says
   which contract produced it.
@@ -224,7 +352,7 @@ name them is unaffected.
   `narraleaf-studio/plugin` re-exports only `definePlugin` and the enums, so import it with
   `import type` (or read `ctx.protocolVersion`) rather than as a value.
 
-## 10. Complete example
+## 11. Complete example
 
 `manifest.json`:
 

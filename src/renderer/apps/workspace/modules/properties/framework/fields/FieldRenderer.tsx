@@ -1,4 +1,5 @@
 import { memo, useMemo, type ReactElement } from "react";
+import { FieldLabelRow } from "./FieldLabelRow";
 import { FieldDefinition } from "../types";
 import { BindablePropertyField } from "@/apps/workspace/modules/properties/blueprint/BindablePropertyField";
 import { isUIInspectorData, type PropertyFieldBindingMeta } from "@/apps/workspace/modules/properties/blueprint/bindingMeta";
@@ -22,6 +23,7 @@ import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../type
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { needsStructuralReadOnly } from "./fieldReadOnlyStrategy";
+import { useInspectorWrites } from "./inspectorWrites";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -69,10 +71,28 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
      * `readOnly` is honoured by the text, number, input-group and colour fields; the field types that
      * ignore it are the remaining gap, not a second design.
      */
-    const freeze = useFreezeGuard();
+    const writes = useInspectorWrites();
+    const freeze = useFreezeGuard(writes.scope);
+    /**
+     * Three reasons a field stands down, and they are not the same thing.
+     *
+     * A freeze is the write boundary refusing the bytes; a claim is somebody else being inside this
+     * record in a live session, where the document IS writable and the host would refuse the
+     * operation; a schema declared read-only is a view that never had a write to offer, such as one
+     * half of a version comparison, whose element comes out of a revision the workspace no longer
+     * holds. All three end in the same place - the author must not be able to type a paragraph and
+     * be told afterwards - so they are collapsed here rather than in each field.
+     *
+     * The third one reaches the clamp below and not only the flag, so that the flag alone is enough.
+     * A field type that hands its rendering to the caller cannot honour `readOnly` itself - there is
+     * nothing to thread it into - so a schema that declares a field read-only inside a workspace
+     * that is not frozen would otherwise get the flag on the types that read it and nothing at all
+     * around the types that cannot.
+     */
+    const readOnly = freeze.frozen || writes.heldBy !== undefined || definition.readOnly === true;
     const field = useMemo(
-        () => (freeze.frozen ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
-        [definition, freeze.frozen],
+        () => (readOnly ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
+        [definition, readOnly],
     );
 
     // Check if field should be hidden
@@ -89,7 +109,7 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
     }
 
     const rendered = renderFieldBody(field, data, onSaving);
-    if (!freeze.frozen || !needsStructuralReadOnly(field)) {
+    if (!readOnly || !needsStructuralReadOnly(field)) {
         return rendered;
     }
     /**
@@ -108,7 +128,8 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
      * rows the inline-row fields build are untouched (the disabled rule is tree-based, not layout-based)
      * - as an inline style rather than a utility class, because a wrapper whose whole job is to be
      * invisible must not depend on a class having been emitted into the stylesheet.
-     * Rendered only while frozen, so the writable path is byte-for-byte what it was.
+     * Rendered only around a field that is read-only, so the editable path is byte-for-byte what it
+     * was.
      */
     return (
         <fieldset disabled aria-readonly style={{ display: "contents" }}>
@@ -212,11 +233,7 @@ function renderFieldBody<TData>(
             const CustomComponent = field.component;
             return (
                 <div className={field.className}>
-                    {field.label && (
-                        <label className="block text-xs font-medium text-fg-muted mb-1">
-                            {field.label}
-                        </label>
-                    )}
+                    <FieldLabelRow field={field} />
                     <CustomComponent
                         data={data}
                         onChange={() => {

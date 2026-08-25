@@ -1,12 +1,20 @@
 import { AppSettingDefinition, SettingCategory, SettingScope } from "@/lib/settings/models";
+import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MENU_BAR_MODES } from "@/lib/settings/menuBarOptions";
 import { SettingValueType } from "@/lib/settings/types";
 import {
     EDITOR_FONT_FAMILY_DEFAULT,
     EDITOR_FONT_FAMILY_PRESETS,
+    EDITOR_FONT_PRESET_STACKS,
     EDITOR_FONT_SIZE_DEFAULT,
     EDITOR_FONT_SIZE_MAX,
     EDITOR_FONT_SIZE_MIN,
 } from "@/lib/settings/editorFontOptions";
+import {
+    UI_FONT_FAMILY_DEFAULT,
+    UI_FONT_FAMILY_KEY,
+    UI_FONT_FAMILY_PRESETS,
+    UI_FONT_PRESET_STACKS,
+} from "@/lib/settings/uiFontOptions";
 import {
     EDITOR_SURFACE_OPACITY_DEFAULT,
     EDITOR_SURFACE_OPACITY_MAX,
@@ -47,7 +55,16 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
-import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
+import {
+    CONFIRM_QUIT_DEFAULT,
+    CONFIRM_QUIT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
+} from "@shared/constants/quit";
+import { isMacPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
 import { clearAllProjectStats } from "@/lib/stats/clearAllProjectStats";
@@ -71,6 +88,14 @@ import {
     RECENT_PROJECTS_LIMIT_MIN,
 } from "@shared/constants/recentProjects";
 import { DEVELOPER_MODE_DEFAULT, DEVELOPER_MODE_KEY } from "@/lib/developer";
+import {
+    SCREEN_EFFECT_QUALITY_DEFAULT,
+    SCREEN_EFFECT_QUALITY_KEY,
+    SCREEN_EFFECT_THREAD_CHOICES,
+    SCREEN_EFFECT_THREADS_DEFAULT,
+    SCREEN_EFFECT_THREADS_KEY,
+} from "@shared/constants/screenEffects";
+import { WEATHER_BAKE_QUALITIES } from "@shared/weather/model";
 import {
     TOOLTIP_DELAY_DEFAULT_MS,
     TOOLTIP_DELAY_KEY,
@@ -117,6 +142,19 @@ export const AppSettingCategories: SettingCategory[] = [
         order: 3,
     },
     {
+        // Its own category rather than a row filed under Workspace, and the reason is what the
+        // settings here have in common: every one of them trades the author's time against this
+        // machine, and none of them changes what a project contains or what a player receives.
+        // An author looking for "why is this slow" has one place to look, and an author who never
+        // looks is never asked a question about threads.
+        key: "performance",
+        label: "Performance",
+        labelKey: "settings.categories.performance.label",
+        description: "How much of this machine Studio spends, and how long you wait for it.",
+        descriptionKey: "settings.categories.performance.description",
+        order: 4,
+    },
+    {
         // Its own category rather than a panel filed under Editor: shortcuts reach every surface in
         // Studio, not just the editors, and nobody looking for them thought to open Editor first.
         key: "shortcuts",
@@ -124,7 +162,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.shortcuts.label",
         description: "Keys bound to each command throughout Studio.",
         descriptionKey: "settings.categories.shortcuts.description",
-        order: 4,
+        order: 5,
     },
     {
         // Was "Sync", whose description promised a backup cadence that was never implemented; the
@@ -135,18 +173,20 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.versionControl.label",
         description: "Checkpoints and the identity recorded on them.",
         descriptionKey: "settings.categories.versionControl.description",
-        order: 5,
+        order: 6,
     },
     {
         // Its own category rather than a panel under Version control: a server is signed in to
         // once and then serves every project pointed at it, so it outlives any of them. Filing
         // it under version control would say the opposite - that it is a property of a project.
+        // Named after the product, in full: "Team" alone reads as an untranslated word. The key
+        // stays `servers` because it is what the stored category id has always been.
         key: "servers",
-        label: "Servers",
+        label: "NarraLeaf Team",
         labelKey: "settings.categories.servers.label",
-        description: "Servers this installation is signed in to, and the accounts it uses.",
+        description: "NarraLeaf Team servers this installation is signed in to, and the accounts it uses.",
         descriptionKey: "settings.categories.servers.description",
-        order: 6,
+        order: 7,
     },
     {
         // Absorbed the former "Plugins" and "Advanced" categories, which between them held four
@@ -157,7 +197,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.network.label",
         description: "Where Studio downloads plugins, templates and build tooling from.",
         descriptionKey: "settings.categories.network.description",
-        order: 7,
+        order: 8,
     },
     {
         key: "data",
@@ -165,7 +205,7 @@ export const AppSettingCategories: SettingCategory[] = [
         labelKey: "settings.categories.data.label",
         description: "Cached files, resetting preferences, and moving them between machines.",
         descriptionKey: "settings.categories.data.description",
-        order: 8,
+        order: 9,
     },
 ];
 
@@ -176,6 +216,70 @@ export const AppSettingCategories: SettingCategory[] = [
  * production code reads the stored value and applies it to real behavior.
  */
 export const AppSettings: AppSettingDefinition[] = [
+    {
+        // Read by the main process when a Dev Mode session asks for a screen effect it has no clip
+        // for (`weather/screenEffectQuality`), and by the pre-baker beside it - both through the same
+        // reader, because two answers would make the speculative bake a different task from the one
+        // the author is waiting on.
+        //
+        // Dev Mode only, and the row says so rather than leaving it to be discovered: a preview and a
+        // build always produce the final picture, because what they produce is what a player gets.
+        // There is deliberately no option here that could change that.
+        //
+        // Names the wait, not the machinery. The author is choosing how long they sit watching a
+        // progress cell, and the encoder that decides how long that is has no business appearing in
+        // the row - the same rule the status bar's own label follows.
+        key: SCREEN_EFFECT_QUALITY_KEY,
+        category: "performance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Screen effects in Dev Mode",
+        labelKey: "settings.items.screenEffectQuality.label",
+        description: "Draft is generated in about a third of the time. Previews and builds always use the final quality.",
+        descriptionKey: "settings.items.screenEffectQuality.description",
+        defaultValue: SCREEN_EFFECT_QUALITY_DEFAULT,
+        // Derived from the shared list so a tier added there cannot be missing here.
+        options: [...WEATHER_BAKE_QUALITIES],
+        optionLabels: {
+            draft: "Draft",
+            final: "Final quality",
+        },
+        optionLabelKeys: {
+            draft: "settings.items.screenEffectQuality.options.draft",
+            final: "settings.items.screenEffectQuality.options.final",
+        },
+    },
+    {
+        // Read by the main process on its way into a bake (`weather/screenEffectQuality`), and
+        // applied to every one of them - Dev Mode, preview and build alike. Unlike the row above it
+        // is not a statement about the file: drawing frames on more threads cannot change a frame,
+        // because each one is a pure function of its phase.
+        //
+        // Four stops and no more. Past four the curve flattens and then reverses - the drawing
+        // starts taking the cores the encoder was using - so the options past the knee would be
+        // options to make it slower, and an author cannot tell which side of the knee they are on.
+        key: SCREEN_EFFECT_THREADS_KEY,
+        category: "performance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Threads for screen effects",
+        labelKey: "settings.items.screenEffectThreads.label",
+        description: "How many threads draw frames while the encoder runs. Automatic reads this machine.",
+        descriptionKey: "settings.items.screenEffectThreads.description",
+        defaultValue: SCREEN_EFFECT_THREADS_DEFAULT,
+        // Derived from the shared list so a stop added there cannot be missing here.
+        options: [...SCREEN_EFFECT_THREAD_CHOICES],
+        optionLabels: {
+            auto: "Automatic",
+            "1": "1",
+            "2": "2",
+            "3": "3",
+            "4": "4",
+        },
+        optionLabelKeys: {
+            auto: "settings.items.screenEffectThreads.options.auto",
+        },
+    },
     {
         // Applied by the i18n runtime (`src/shared/i18n`): changing this writes the
         // `app.language` global-state key, which the main process broadcasts so every
@@ -219,9 +323,11 @@ export const AppSettings: AppSettingDefinition[] = [
         // can be seen at all: ⌘Q reaches Studio as the App menu's key equivalent, and swallowing it
         // has to happen before the menu acts on it.
         //
-        // macOS only, and the platform check is the whole of the availability rule - there is no
-        // state anywhere else that could make it true, so unlike the background-image row this one
-        // never changes answer for the lifetime of the window.
+        // macOS only, and hidden outright everywhere else. ⌘Q is a macOS keystroke; on Windows and
+        // Linux there is no gesture for this row to govern, so a disabled row with "not available on
+        // this operating system" under it was answering a question the author had no way to ask.
+        // The key is still stored and still exported - see `getAllAppSettings` - so a settings file
+        // that travels between machines keeps whatever the Mac chose.
         key: CONFIRM_QUIT_KEY,
         category: "general",
         scope: SettingScope.Global,
@@ -231,15 +337,10 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "⌘Q quits when it is pressed twice in a row. A single press does nothing.",
         descriptionKey: "settings.items.confirmQuit.description",
         defaultValue: CONFIRM_QUIT_DEFAULT,
-        availability: async () => {
-            // Dynamic, like the background-image row below: `platform` reaches the window bootstrap
-            // for its cached answer, and this module is also loaded by the settings export/import
-            // scope walker, which runs where no window has booted.
-            const { isMacPlatform } = await import("@/lib/app/platform");
-            return isMacPlatform()
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.confirmQuit.unsupportedPlatform" };
-        },
+        // Asked at render, never at module load: `isMacPlatform` reads the bootstrap's cached
+        // platform info and answers `false` where no window has booted, which is also where this
+        // module gets loaded by the settings export/import scope walker.
+        visible: () => isMacPlatform(),
     },
     {
         // Read by the main process's UpdateManager when it decides whether to schedule the launch
@@ -361,6 +462,35 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        // Applied by `lib/appearance` as the `--nl-ui-font` custom property, which one guarded rule
+        // in styles.css reads (`html.nl-studio`). Studio chrome only: the game stage in Dev Mode
+        // and every surface preview on a canvas stay in the base stack, because what they show is
+        // the author's game and not their editor.
+        //
+        // `Font`, not `Enum`, for the same reason as the story editor's font below: the list is the
+        // presets PLUS every family installed on this computer, which the picker discovers at open
+        // time. `options` therefore carries only the presets, and nothing validates a stored value
+        // against it.
+        key: UI_FONT_FAMILY_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Font,
+        label: "Interface font",
+        labelKey: "settings.items.uiFontFamily.label",
+        description: "Typeface used for the Studio interface. Any font installed on this computer can be chosen.",
+        descriptionKey: "settings.items.uiFontFamily.description",
+        defaultValue: UI_FONT_FAMILY_DEFAULT,
+        options: [...UI_FONT_FAMILY_PRESETS],
+        optionFontStacks: UI_FONT_PRESET_STACKS,
+        // The same four preset ids as the story editor's font, so the same four labels.
+        optionLabelKeys: {
+            "Default": "settings.items.editorFontFamily.options.default",
+            "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
+            "Serif": "settings.items.editorFontFamily.options.serif",
+            "Monospace": "settings.items.editorFontFamily.options.monospace",
+        },
+    },
+    {
         // Handed to the tooltip controller by `lib/appearance`, which is also where the accent and
         // the motion preference are applied: a value JS has to read, with no media query or CSS
         // custom property that could carry it instead.
@@ -383,7 +513,7 @@ export const AppSettings: AppSettingDefinition[] = [
         // `.nl-reduce-motion` class on the root element neutralizes CSS transitions and
         // animations (styles.css), and the MotionConfig in `lib/renderApp` does the same for
         // framer-motion, which animates from JS where no CSS rule applies. Game content — the
-        // story preview's stage, Dev Mode — is exempt from both.
+        // story preview's stage, the UI editor's canvas, Dev Mode — is exempt from both.
         key: "ui.reduceMotion",
         category: "appearance",
         scope: SettingScope.Global,
@@ -464,6 +594,7 @@ export const AppSettings: AppSettingDefinition[] = [
         descriptionKey: "settings.items.editorFontFamily.description",
         defaultValue: EDITOR_FONT_FAMILY_DEFAULT,
         options: [...EDITOR_FONT_FAMILY_PRESETS],
+        optionFontStacks: EDITOR_FONT_PRESET_STACKS,
         optionLabelKeys: {
             "Default": "settings.items.editorFontFamily.options.default",
             "Sans Serif": "settings.items.editorFontFamily.options.sansSerif",
@@ -791,6 +922,27 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: null,
     },
     {
+        // What a collaborator sees this machine called, beside the account name, wherever a
+        // Team server lists who has a project open. Read by the main process as each session
+        // opens (`managers/team/clientInstance.ts`), so a change reaches the next server this
+        // machine connects to rather than the next launch.
+        //
+        // Empty falls back to the host name, which is what most people would put here anyway.
+        // It is a field rather than a fact because a host name is published to everybody on
+        // that server, and somebody who would rather it were not has to have somewhere to say
+        // so. Nothing here identifies the installation - that is a separate id which is never
+        // shown and never leaves the main process.
+        key: "team.machineLabel",
+        category: "servers",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "This machine's name",
+        labelKey: "settings.items.teamMachineLabel.label",
+        description: "Shown to collaborators beside your account. Leave empty to use the host name.",
+        descriptionKey: "settings.items.teamMachineLabel.description",
+        defaultValue: "",
+    },
+    {
         // Rendered by `SETTING_PANELS.cacheInventory`. Nothing is stored under this key; the panel
         // measures the buckets over IPC and clears them the same way.
         key: "data.cache",
@@ -883,6 +1035,38 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "The strip along the bottom of the workspace.",
         descriptionKey: "settings.items.statusBarVisible.description",
         defaultValue: true,
+    },
+    {
+        // Read by WorkspaceLayout, which either hands the groups to the title bar's ActionBar or
+        // hides them there and draws the hamburger that holds them (`MainMenuButton`). The same
+        // choice is on the title bar's own right-click menu, which is where an author who has just
+        // lost their File menu goes looking for it.
+        key: MENU_BAR_MODE_KEY,
+        category: "appearance",
+        scope: SettingScope.Global,
+        type: SettingValueType.Enum,
+        label: "Main menu",
+        labelKey: "settings.items.menuBarMode.label",
+        description: "Where the File, Help and panel menus live in the title bar.",
+        descriptionKey: "settings.items.menuBarMode.description",
+        defaultValue: MENU_BAR_MODE_DEFAULT,
+        options: [...MENU_BAR_MODES],
+        // The mode names belong to the title bar rather than to this window, so both readers take
+        // them from the same keys - a second wording here could only disagree with the menu.
+        optionLabelKeys: {
+            hamburger: "workspace.shell.mainMenu.modes.hamburger",
+            toolbar: "workspace.shell.mainMenu.modes.toolbar",
+        },
+        availability: async () => {
+            // macOS puts these groups on the system menu bar instead (`useNativeMenuSync`), so
+            // neither value would move anything. Shown disabled with the reason rather than hidden
+            // like the ⌘Q row: this preference has a meaning on every platform and the author can
+            // still read which one is stored - it is only the applying of it that macOS takes over.
+            const { isMacPlatform } = await import("@/lib/app/platform");
+            return isMacPlatform()
+                ? { enabled: false, reasonKey: "settings.items.menuBarMode.unsupportedPlatform" }
+                : { enabled: true };
+        },
     },
     {
         // Read by WorkspaceLayout: drops the title-bar search pill. The palette keeps working -
@@ -1087,6 +1271,41 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: true,
     },
     {
+        // Under the switch it depends on, because it is the same feature at the one moment it
+        // cannot be given all the time it wants: quitting closes every open project at once, and
+        // the checkpoints share the deadline that also has to close the version-control stores.
+        // Read by the main process (App.checkpointOpenWorkspacesForShutdown) as the quit starts,
+        // so a change here applies to the next quit without a restart.
+        key: QUIT_CHECKPOINT_TIMEOUT_KEY,
+        category: "versionControl",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Checkpoint deadline when quitting",
+        labelKey: "settings.items.quitCheckpointTimeout.label",
+        description: "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
+        descriptionKey: "settings.items.quitCheckpointTimeout.description",
+        defaultValue: QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+        min: QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+        max: QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+        step: QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
+        unit: "s",
+    },
+    {
+        // Read by the project wizard, which fills its author field with this only while that
+        // field is empty (`useProjectWizard`, the same rule the source language follows). It is
+        // therefore a starting point and never an override: a project that already names someone
+        // keeps its name however often this changes.
+        key: "project.defaultAuthor",
+        category: "general",
+        scope: SettingScope.Global,
+        type: SettingValueType.String,
+        label: "Default author for new projects",
+        labelKey: "settings.items.projectDefaultAuthor.label",
+        description: "Fills the author field when a project is created. Existing projects keep what they were given.",
+        descriptionKey: "settings.items.projectDefaultAuthor.description",
+        defaultValue: "",
+    },
+    {
         // Read by the main process (VcsManager.resolveIdentity) for every commit and
         // checkpoint. Empty records UNCONFIGURED_IDENTITY; deliberately not the OS
         // account name, which is not Studio's to publish on the author's behalf.
@@ -1096,30 +1315,15 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.String,
         label: "Author name",
         labelKey: "settings.items.versionControlAuthor.label",
-        description: "Recorded on commits and checkpoints. Leave empty to record NarraLeaf Studio instead.",
+        // Always editable, and the description says which projects it reaches.
+        // `VcsManager.resolveIdentity` picks a session by the project's OWN remote, so a
+        // project connected to no server records this whatever else the machine is signed
+        // in to. It was closed while ANY session existed, which made it unreachable on a
+        // machine with one server and a shelf of offline projects - and said, of every one
+        // of them, that their revisions carried a name from a server they never reach.
+        description: "Recorded on projects that are not connected to a server. Leave empty to record NarraLeaf Studio instead.",
         descriptionKey: "settings.items.versionControlAuthor.description",
         defaultValue: "",
-        /**
-         * Read-only while this installation is signed in to a server.
-         *
-         * The point of signing in is that a team's history says who actually made each
-         * revision rather than what each person typed here, so while a session is in force
-         * the name on a revision comes from the token and this field is not what is
-         * recorded. Left editable it would be a box that accepts a name and changes
-         * nothing - which is worse than one that says why it is closed.
-         *
-         * The setting itself stays, and so does everything that reads it: a project with no
-         * server has no token to take a name from, and that is the case this exists for.
-         */
-        availability: async () => {
-            const { getInterface } = await import("@/lib/app/bridge");
-            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
-            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
-            return sessions.length === 0
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
-        },
-
     },
     {
         // Folded into the name by `composeVcsIdentity` before it reaches Lore, which stores ONE
@@ -1133,29 +1337,9 @@ export const AppSettings: AppSettingDefinition[] = [
         type: SettingValueType.String,
         label: "Author email",
         labelKey: "settings.items.versionControlAuthorEmail.label",
-        description: "Recorded next to the author name, as \"Name <email>\". Leave empty to record no address.",
+        // Always editable, for the reason given on the author name above.
+        description: "Recorded next to the author name, as \"Name <email>\", on projects that are not connected to a server. Leave empty to record no address.",
         descriptionKey: "settings.items.versionControlAuthorEmail.description",
         defaultValue: "",
-        /**
-         * Read-only while this installation is signed in to a server.
-         *
-         * The point of signing in is that a team's history says who actually made each
-         * revision rather than what each person typed here, so while a session is in force
-         * the name on a revision comes from the token and this field is not what is
-         * recorded. Left editable it would be a box that accepts a name and changes
-         * nothing - which is worse than one that says why it is closed.
-         *
-         * The setting itself stays, and so does everything that reads it: a project with no
-         * server has no token to take a name from, and that is the case this exists for.
-         */
-        availability: async () => {
-            const { getInterface } = await import("@/lib/app/bridge");
-            const result = await getInterface().app.state.getGlobalState("versionControl.serverSessions");
-            const sessions = result.success && Array.isArray(result.data.value) ? result.data.value : [];
-            return sessions.length === 0
-                ? { enabled: true }
-                : { enabled: false, reasonKey: "settings.items.versionControlAuthor.fromServer" as const };
-        },
-
     },
 ];

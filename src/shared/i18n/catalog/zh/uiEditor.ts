@@ -31,7 +31,9 @@ export const uiEditor = {
         globalBlueprintUnavailable: "全局蓝图不可用",
         openSurface: "打开{label}",
         renameSurface: "重命名{label}",
-        duplicateSurface: "复制{label}",
+        duplicateSurface: "创建{label}副本",
+        copySurface: "复制{label}",
+        pasteSurface: "粘贴界面",
         deleteSurface: "删除{label}",
         surfaceActions: "{label}操作",
         deleteConfirm: "删除{label}？",
@@ -45,6 +47,37 @@ export const uiEditor = {
         page: "页面 {index}",
         gameUi: "{slot} UI",
         component: "组件 {index}",
+        inputAction: "操作 {index}",
+    },
+    inputActions: {
+        title: "输入操作",
+        create: "新建操作",
+        createTitle: "新建输入操作",
+        rename: "重命名…",
+        delete: "删除操作",
+        deleteConfirm: "删除 {name}？",
+        deleteDetail: {
+            other: "有 {count} 个界面响应该操作，删除后将不再响应",
+        },
+        actionOptions: "操作选项",
+        empty: "先在这里为一个手势命名，再让各个界面去响应它",
+        noMatches: "无匹配项",
+        answered: {
+            other: "{count} 个界面",
+        },
+        noBindings: "未绑定",
+        addBinding: "添加绑定",
+        addKey: "按键…",
+        removeBinding: "移除 {binding}",
+        gesture: {
+            click: "单击",
+            doubleClick: "双击",
+            rightClick: "右键单击",
+            wheelUp: "滚轮上滚",
+            wheelDown: "滚轮下滚",
+            wheelLeft: "滚轮左滚",
+            wheelRight: "滚轮右滚",
+        },
     },
     createDialog: {
         slotIntro: "请选择该游戏 UI 在游玩期间所属的位置",
@@ -156,6 +189,34 @@ export const uiEditor = {
             bottom: "下",
             left: "左",
         },
+    },
+    crossProject: {
+        pasted: {
+            one: "已粘贴 {count} 个元素",
+            other: "已粘贴 {count} 个元素",
+        },
+        pastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个元素",
+            other: "已从 {project} 粘贴 {count} 个元素",
+        },
+        imported: {
+            one: "已导入 {count} 项资产",
+            other: "已导入 {count} 项资产",
+        },
+        unresolved: {
+            one: "{count} 处引用未解析",
+            other: "{count} 处引用未解析",
+        },
+        surfacePasted: {
+            one: "已粘贴 {count} 个界面",
+            other: "已粘贴 {count} 个界面",
+        },
+        surfacePastedFrom: {
+            one: "已从 {project} 粘贴 {count} 个界面",
+            other: "已从 {project} 粘贴 {count} 个界面",
+        },
+        slotTaken: "{slot} 槽位已有一个游戏界面",
+        surfaceNotAdded: "无法粘贴该界面",
     },
     templateStore: {
         open: "从模板开始",

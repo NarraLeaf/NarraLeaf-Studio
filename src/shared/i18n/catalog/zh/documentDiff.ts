@@ -42,7 +42,7 @@ export const documentDiff = {
     summary: {
         title: "名称",
         count: "{name}",
-        other: "已改动，但概要无法说明具体改动",
+        other: "总数之外有改动",
     },
     structural: {
         property: "{name}",
@@ -50,15 +50,20 @@ export const documentDiff = {
         root: "文档本身",
     },
     count: {
-        appTags: "变体",
+        appTags: "变体",
+        dlc: "DLC",
+
         assetSets: "资产集",
         assets: "资产",
         audioTracks: "音轨",
         brandColors: "配色",
+        brandFonts: "默认字体",
         characterGroups: "角色分组",
         characters: "角色",
-        dictionaryWords: "词典词条",
+        dictionaryTerms: "词典词条",
         localizationKeys: "本地化键",
+        projectLanguages: "语言",
+        projectPlugins: "插件",
         saveFields: "存档字段",
         storyBlocks: "故事行",
         storyChapters: "章节",
@@ -125,11 +130,28 @@ export const documentDiff = {
         groupRemoved: "删除分组",
         groupRenamed: "分组改名",
     },
-    /** 只有 merge3 会用到；这个格式还没有语义 diff，行旁边也不放 subject（单元 id 不是作者写的字）。 */
+    /**
+     * 某一种语言的译文库：整份文档的内容就是文字本身。
+     *
+     * 前三条由版本对比和三方合并共用。这里没有一条会点名具体是哪一条译文，也点不了：
+     * 单元 id 是故事文本 id，或者 `key:`／`char:`／`scene:` 这样的句柄，都不是作者写下的字。
+     * 认出一行靠的是译文本身，它作为值对画在标签旁边；所以 changed 只说这行重译过，
+     * 改动前后的两段文字交给值对。
+     *
+     * 四条状态说的是这条译文现在处于什么状态，用的是译文表格里那四个词，
+     * 而不是把文件里存的两个标识符对起来。
+     */
     localization: {
         added: "新增译文",
         removed: "删除译文",
         changed: "译文改动",
+        note: "备注改动",
+        /** 译文本身没变，但当初对照的那一行原文变了。 */
+        source: "所对照的原文行已不同",
+        statusUntranslated: "改为未翻译",
+        statusMachine: "改为机翻",
+        statusTranslated: "改为已翻译",
+        statusReviewed: "改为已校对",
     },
     /**
      * 界面文档：界面与界面上的元素。
@@ -214,16 +236,228 @@ export const documentDiff = {
         renamed: "改名",
         content: "文件内容已替换",
         field: "{field} 改动",
+        /** 资产内容文件，本次对比里没有任何资产记录指向它。文件名是 id 的分片，说不出别的。 */
+        orphanContent: "没有对应资产记录的文件",
+    },
+    /**
+     * 工程配色。
+     *
+     * subject 是作者给这个颜色起的名字；内置的那十七条没有名字——它们的名字是面板给的翻译串，
+     * 所以这类行只带两个颜色值，底下由 `BrandChangeDetail` 画出整份配色。
+     */
+    brand: {
+        added: "新增配色",
+        removed: "删除配色",
+        renamed: "改名",
+        /** 一对值就是两个颜色，画成两块色块而不是当文字读。 */
+        value: "颜色改动",
+        /** 默认字体栈。整份列表只出一行：每一级存的是资产 id。 */
+        fonts: "默认字体改动",
+    },
+    /**
+     * 构建变体：同一个工程出货的几个版本。
+     *
+     * 除开头三条，下面每一条都只报字段名，不说「改动」——这是八条能共用的唯一一种写法。
+     * 其中四条是变体面板本来就用的长名字（「剧本结束后显示的页面」），另外四条各用两遍：
+     * 挂在某个变体下面时由 subject 点名，单独出现时说的是每个变体都继承的那份工程取值。
+     * 发生了什么，行上已经有了：标记，以及旁边那一对值。
+     *
+     * `version` 说明这是谁的版本。这个界面本身满是版本号（#3、#7），
+     * 不加限定的「版本」会被读成其中之一。
+     */
+    appTags: {
+        added: "新增变体",
+        removed: "删除变体",
+        renamed: "改名",
+        /** 三个身份字段。某一侧没有值，就是这个变体在继承工程的取值。 */
+        displayName: "应用名称",
+        identifier: "标识符",
+        version: "项目版本",
+        plugins: "插件设置",
+        assetAxes: "构建使用的资产",
+        scenes: "可以开始的场景",
+        ending: "剧本结束后显示的页面",
+        order: "变体顺序",
+    },
+    /**
+     * 工程的调音台。
+     *
+     * `rerouted` 是这一层存在的理由。一条总线汇入哪里，决定它的音量跟谁相乘、玩家的哪一根滑杆
+     * 管得到它，而这件事不改变任何计数——所以在概要那一层，改过路由的文件只能说「变了，但概要
+     * 说不出变在哪」。一对值是两条总线的名字；直接挂到主输出的那种情况没有父级可以点名，
+     * 所以它自成一条，而不是只填半对值。
+     */
+    audioTracks: {
+        added: "新增音轨",
+        removed: "删除音轨",
+        renamed: "改名",
+        rerouted: "改为汇入别的总线",
+        reroutedToMaster: "改为直接汇入主输出",
+        /** 一对值是滑杆自己的数字（百分数），不是存下来的 0 到 1。 */
+        volume: "音量改动",
+        /** 说的是现在的默认行为，因为 `true` / `false` 是文件的说法，不是作者的。 */
+        loopOn: "默认循环播放",
+        loopOff: "默认只播放一次",
+        order: "音轨顺序调整",
+    },
+    /**
+     * 工程的存档变量与全局变量。
+     *
+     * `defaultValue` 是这一层存在的理由：它是每一周目的起点，也是变量出现之前写下的存档读出来的值，
+     * 改动它就改动了出货的游戏，而计数一动不动。作用域那两条说的是这个变量现在是什么，
+     * 而不是把两个存储用词摆成一对——其中 persistent 那个词，面板里根本不这么叫。
+     */
+    variables: {
+        added: "新增变量",
+        removed: "删除变量",
+        renamed: "改名",
+        defaultValue: "默认值改动",
+        valueType: "类型改动",
+        scopeSaved: "现在是存档变量",
+        scopeGlobal: "现在是全局变量",
+        /** 值存在哪个键下。改名本来就设计成永远不动它。 */
+        storageKey: "已经存下的值从此读不回来",
+        description: "备注改动",
+    },
+    /**
+     * 一个存档槽位除引擎自身记录之外还带的字段。
+     *
+     * `removed` 是这里唯一一条把代价说出口的，也是唯一一条需要说的。加字段天生是安全的——
+     * 槽位里没有这个值就读默认值；删字段则把读它的针脚一并拿掉，玩家硬盘上已有的每一个存档
+     * 从此攥着一个工程里再也没人问得出来的值。
+     */
+    saveSchema: {
+        added: "新增存档字段",
+        removed: "删除存档字段。已有存档里的值还在，但没有地方读它",
+        renamed: "改名",
+        valueType: "类型改动",
+        defaultValue: "默认值改动",
+        /** 存档内部的键，创建时定下，正是为了让改名不会让已写入的值失去归属。 */
+        storageKey: "已经存下的值从此读不回来",
+        description: "备注改动",
+        /** 它在存档节点针脚里的位置。游戏本身什么都没变。 */
+        reordered: "在字段中的位置改变",
+    },
+    /**
+     * 工程自己的词汇表。
+     *
+     * 这里没有「改名」，也不可能有：词条没有 id，写法本身就是身份，所以改写法读作一条没了、
+     * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在工程里每一份剧本上标出的东西。
+     */
+    dictionary: {
+        added: "新增词条",
+        removed: "删除词条",
+        reading: "读音改动",
+        /** 一个列表，所以不摆一对值：两串异体写法挤在一行，多宽都读不了。 */
+        variants: "异体写法改动",
+        note: "备注改动",
+        readingsOn: "现在会建议读音",
+        readingsOff: "现在不再建议读音",
+        variantsOn: "现在会检查异体写法",
+        variantsOff: "现在不再检查异体写法",
+    },
+    /**
+     * 第一档，项目自身的设置——游戏叫什么，以及构建、存档和玩家第一次启动时读到的一切。
+     *
+     * 项目的每个区域一行，区域里每项设置一条子行，因为作者就是这样接触它们的：这些值散落在十四个面板里，
+     * 作者认得的是面板上的说法，不是文件里的字段名。两侧的值摆在行上，所以策略和模式仍按文件里的原词引用。
+     *
+     * `field` 是最后手段，有五个区域完全落在它上面——签名凭据、分发密钥，以及构建、补丁和检查三个对话框
+     * 记住的上次选择。其中四个只是对话框的记忆，一个是没人手写的密钥；给它们的字段编一套作者文案，
+     * 等于宣称存在一个并不存在的面板。
+     */
+    project: {
+        name: "应用名称",
+        identifier: "标识符",
+        /** 这个版本没有对应说法的设置，按文件里的原名列出。 */
+        field: "{field} 改动",
+        metadata: "详情",
+        metaVersion: "项目版本",
+        metaDescription: "简介",
+        metaAuthor: "作者",
+        metaEmail: "联系邮箱",
+        metaWebsite: "网站",
+        /** 一行字，写进打包出来的可执行文件属性里。 */
+        metaCopyright: "版权",
+        /** 完整声明，随游戏一起发出去。 */
+        metaCopyrightText: "版权声明",
+        metaResolution: "窗口尺寸",
+        metaIcons: "图标",
+        network: "网络访问",
+        networkPolicy: "网络策略",
+        networkAllowlist: "网络请求白名单",
+        networkHttp: "明文 HTTP 请求",
+        networkRemoteResource: "远程资源",
+        networkRemoteScript: "远程脚本",
+        localization: "语言",
+        sourceLocale: "源语言",
+        locales: "语言列表",
+        voice: "语音",
+        voicedLocales: "有语音的语言",
+        voiceNaming: "语音文件命名",
+        voiceCast: "语音分配",
+        voiceChoices: "选项语音",
+        dialogue: "对话",
+        dialogueAutoForwardPause: "自动前进时的停顿时长",
+        preferences: "玩家默认设置",
+        prefTextSpeed: "文字速度",
+        prefGameSpeed: "游戏速度",
+        prefAutoForward: "自动前进",
+        prefAutoForwardDelay: "自动前进等待时间",
+        prefShowDialog: "显示对话框",
+        prefSkip: "允许跳过",
+        prefSkipReadText: "跳过已读文本",
+        prefSkipDelay: "跳过延迟",
+        prefSkipInterval: "跳过间隔",
+        prefGlobalVolume: "总音量",
+        prefBgmVolume: "音乐音量",
+        prefSoundVolume: "音效音量",
+        prefVoiceVolume: "语音音量",
+        prefVoiceEndMode: "语音随句子结束时",
+        prefVoiceFadeDuration: "语音淡出时长",
+        autoSave: "存档",
+        autoSaveEnabled: "自动保存",
+        autoSaveInterval: "保存间隔",
+        autoSaveSlots: "保留数量",
+        saveCompatibility: "旧存档",
+        saveCompatible: "其他项目版本的存档",
+        saveIncompatible: "故事变更前的存档",
+        saveLocation: "玩家文件",
+        saveLocationWindowsLinux: "Windows 与 Linux",
+        saveLocationMacos: "macOS",
+        languageChange: "语言切换",
+        languageChangeInGame: "游戏进行中切换语言",
+        security: "安全",
+        encryptAssets: "加密资产",
+        crash: "崩溃",
+        crashPolicy: "游戏停止工作时",
+        assetOptimization: "优化",
+        lossyImages: "重压缩图像",
+        lossyQuality: "图片质量",
+        vfx: "画面特效",
+        vfxFrameRate: "天气帧率",
+        mobile: "移动端",
+        mobileOrientation: "屏幕方向",
+        mobileFit: "屏幕适配",
+        mobileCropX: "水平保留",
+        mobileCropY: "垂直保留",
+        distribution: "分发密钥",
+        signing: "签名",
+        build: "构建设置",
+        patch: "补丁导出设置",
+        linting: "工程检查",
+        dependencies: "依赖",
+        dependencyPlugins: "插件列表",
     },
     tier: {
         summary: "仅概要",
-        summaryHint: "没有比较内容本身，这些是两个版本各自报告的数字",
+        summaryHint: "只比较了总数，没有比较内容本身",
         structural: "结构级",
-        structuralHint: "仅按 JSON 结构比较，所以生成的 id 和重排过的数组都会被算成改动",
+        structuralHint: "这份列表里可能有并非改动的差异",
         content: "仅格式信息",
         contentHint: "比较的是文件自述的信息，没有比较内容本身",
         opaque: "未读取",
-        opaqueHint: "文件过大、非文本或无法读取，只能报告体积",
+        opaqueHint: "只比较了文件体积",
     },
     rows: {
         loading: "正在读取差异…",
@@ -231,7 +465,7 @@ export const documentDiff = {
         // 三种「空」。「已修改」配上「没有差异」读起来是自相矛盾，而每一档能给出的
         // 说法强度不一样，理由见 documentDiffEmptyKey。
         emptyFormatting: "只有格式变了",
-        emptyUntracked: "编辑器记录的内容没有变化",
+        emptyUntracked: "编辑器中没有可见的变化",
         emptyCounts: "总数没有变化",
         moreInGroup: "另有 {count} 处",
         showing: "已显示 {shown} / {total}",
@@ -293,6 +527,39 @@ export const documentDiff = {
         },
     },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
+    /**
+     * What the author calls each kind of document.
+     *
+     * The fallback for a thing with no name of its own. Never a file name: the author did not
+     * make a file, they made a project, a story, a set of pages.
+     */
+    name: {
+        project: "工程设置",
+        storyIndex: "故事列表",
+        story: "故事",
+        animationIndex: "动效列表",
+        animation: "动效",
+        uiDocument: "界面页面",
+        uiGraphs: "界面蓝图",
+        blueprint: "蓝图",
+        variables: "变量",
+        audioTracks: "音频轨道",
+        brand: "品牌配色",
+        appTags: "构建变体",
+        dlc: "追加内容",
+        dictionary: "词典",
+        saveSchema: "存档字段",
+        assetSets: "资产集",
+        localization: "译文",
+        localizationKeys: "译文键",
+        voice: "语音",
+        assetsMetadata: "资产库",
+        assetsGroups: "资产文件夹",
+        assetsOrder: "资产排序",
+        characters: "角色表",
+        assetContent: "资产文件",
+        qualified: "{name}（{qualifier}）",
+    },
     category: {
         story: "故事",
         characters: "角色",
@@ -307,7 +574,7 @@ export const documentDiff = {
     shell: {
         fileList: "变更文件",
         resize: "调整文件列表宽度",
-        selectPrompt: "展开一个分组并选中文件，即可查看其中的改动",
+        selectPrompt: "展开一个分组并选中文件，查看其中的改动",
         changes: {
             one: "{count} 处改动",
             other: "{count} 处改动",
@@ -315,10 +582,15 @@ export const documentDiff = {
         fileAdded: "新增",
         fileRemoved: "删除",
         fileMoved: "移动",
+        /** 一份文档由多个文件组成时，在行的悬浮提示里说一次。 */
+        setFiles: {
+            one: "本文档有 {count} 个文件发生改动",
+            other: "本文档有 {count} 个文件发生改动",
+        },
         /** 每组只说一次，不逐行重复；具体是哪一种，写在该文件自己的详情里。 */
         partial: {
-            one: "本组有 {count} 个文件未被完整比较",
-            other: "本组有 {count} 个文件未被完整比较",
+            one: "本组有 {count} 个文件可能存在未列出的改动",
+            other: "本组有 {count} 个文件可能存在未列出的改动",
         },
     },
     tab: {
@@ -330,10 +602,36 @@ export const documentDiff = {
         refresh: "重新读取",
         empty: "两个版本之间没有差异",
         emptyWorkingTree: "自上一个版本以来没有改动",
-        readFailure: "无法读取本次对比所需的数据：{error}",
-        incomplete: "{total} 条变更路径里比较了 {shown} 条，其余被略过",
-        documentsOmitted: "另有 {count} 个文件没有列出",
+        readFailure: "无法读取本次对比：{error}",
+        incomplete: "{total} 份变更文档中比较了 {shown} 份",
+        documentsOmitted: "另有 {count} 份文档没有列出",
         unavailable: "该工程没有可用的版本控制",
+    },
+    /** 把一份文件的两个版本放进各自的标签页并排看。这里只放并排排布本身用到的词。 */
+    split: {
+        open: "并排打开",
+        thisProject: "本工程",
+        notInVersion: "该版本没有这一处",
+        resize: "调整两侧宽度",
+        previous: "上一处改动",
+        next: "下一处改动",
+        position: "{index} / {total}",
+        gone: "该文件不在本次比较中",
+        inspect: "查看 {name} 的属性",
+    },
+    /**
+     * 选中某一半里的一个元素时，右侧的属性栏。
+     *
+     * 画的就是界面编辑器那一套检查器，只是换成该半边显示的那个版本。所以这里没有一句在解释字段——
+     * 字段说的还是它们一贯说的那些；这几条补的是字段说不出的那一件事：这是哪个版本，以及它是那个
+     * 版本的一张画面而不是一块画布。
+     */
+    inspector: {
+        version: "来自 {version}",
+        onlyHere: "{version} 里没有这一处",
+        readOnly: "比较只能查看，要改这些属性请打开界面编辑器",
+        differs: "{version}：{value}",
+        noValue: "空",
     },
     /**
      * 整份取一边地收尾一次合并。
@@ -428,7 +726,7 @@ export const documentDiff = {
         markLabel: "查看这条改动",
         /** 与蓝图编辑器同一个词：同一张图、同一个结果，换个说法会被读成另一种行为。 */
         fitView: "适应视图",
-        oneChange: "当前只看一条改动",
+        oneChange: "只显示一条改动",
         showAll: "显示全部改动",
         /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
         notMarked: {
@@ -437,9 +735,16 @@ export const documentDiff = {
         },
         onOtherPages: "{count} 条在其他页面",
         onOtherGraphs: "{count} 条在其他蓝图",
-        offCanvas: "{count} 条无法画在页面上",
+        offCanvas: "{count} 条在所有页面之外",
         /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
-        unplaced: "{count} 条在画面上定位不到",
+        unplaced: "{count} 条在页面上没有位置",
+        /** 画面上没有按该版本显示的资产，与上一行一样必须说出来，而不是留一个空白的方框。 */
+        assetsNotShown: {
+            one: "有 {count} 项资产没有显示：",
+            other: "有 {count} 项资产没有显示：",
+        },
+        assetsAbsent: "{count} 项不在该版本中",
+        assetsFailed: "{count} 项无法读取",
         notDrawn: "该版本的页面无法绘制",
         emptyGraph: "这张图里没有节点",
         tooLarge: "该文件过大，无法在此绘制",

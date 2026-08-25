@@ -33,6 +33,8 @@ export const uiEditor = {
         openSurface: "Open {label}",
         renameSurface: "Rename {label}",
         duplicateSurface: "Duplicate {label}",
+        copySurface: "Copy {label}",
+        pasteSurface: "Paste interface",
         deleteSurface: "Delete {label}",
         surfaceActions: "{label} actions",
         deleteConfirm: "Delete {label}?",
@@ -46,6 +48,42 @@ export const uiEditor = {
         page: "Page {index}",
         gameUi: "{slot} UI",
         component: "Component {index}",
+        inputAction: "Action {index}",
+    },
+    // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
+    // interface answers the ones it wants, so the same six words are read in the library panel and
+    // again in the interface's own Input section.
+    inputActions: {
+        title: "Input Actions",
+        create: "Create action",
+        createTitle: "Create Input Action",
+        rename: "Rename…",
+        delete: "Delete action",
+        deleteConfirm: "Delete {name}?",
+        deleteDetail: {
+            one: "{count} interface answers this action and will stop answering it.",
+            other: "{count} interfaces answer this action and will stop answering it.",
+        },
+        actionOptions: "Action options",
+        empty: "Name a gesture here, then let each interface answer it.",
+        noMatches: "No matches.",
+        answered: {
+            one: "{count} interface",
+            other: "{count} interfaces",
+        },
+        noBindings: "No bindings",
+        addBinding: "Add binding",
+        addKey: "Key…",
+        removeBinding: "Remove {binding}",
+        gesture: {
+            click: "Click",
+            doubleClick: "Double click",
+            rightClick: "Right click",
+            wheelUp: "Wheel up",
+            wheelDown: "Wheel down",
+            wheelLeft: "Wheel left",
+            wheelRight: "Wheel right",
+        },
     },
     createDialog: {
         slotIntro: "Choose where this Game UI belongs during gameplay.",
@@ -161,6 +199,40 @@ export const uiEditor = {
             bottom: "bottom",
             left: "left",
         },
+    },
+    /**
+     * A paste of elements, or of a whole interface, copied in another project.
+     *
+     * Counts only: what came across, and what still needs the author. Each unresolved reference is
+     * named again by the project lint, where it can be jumped to.
+     */
+    crossProject: {
+        pasted: {
+            one: "{count} element pasted",
+            other: "{count} elements pasted",
+        },
+        pastedFrom: {
+            one: "{count} element pasted from {project}",
+            other: "{count} elements pasted from {project}",
+        },
+        imported: {
+            one: "{count} asset imported",
+            other: "{count} assets imported",
+        },
+        unresolved: {
+            one: "{count} reference unresolved",
+            other: "{count} references unresolved",
+        },
+        surfacePasted: {
+            one: "{count} interface pasted",
+            other: "{count} interfaces pasted",
+        },
+        surfacePastedFrom: {
+            one: "{count} interface pasted from {project}",
+            other: "{count} interfaces pasted from {project}",
+        },
+        slotTaken: "The {slot} slot already has a Game UI",
+        surfaceNotAdded: "The interface could not be pasted",
     },
     templateStore: {
         open: "Start from a template",

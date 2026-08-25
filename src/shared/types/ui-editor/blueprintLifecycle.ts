@@ -67,8 +67,9 @@ const WINDOW_FULLSCREEN_EVENTS: readonly LifecycleEventDef[] = [
 
 /**
  * Fires when the user asks to close the application window (native close box, OS shortcut). The
- * main process holds the close open while the blueprint runs: synchronously running a Stop Event
- * Bubble node during this dispatch cancels the close, otherwise the window proceeds to close.
+ * main process holds the close open while the blueprint runs, then lets it proceed; a handler that
+ * runs the `Keep Window Open` node (`blueprint.app.keepWindowOpen`) cancels the close instead, by
+ * stopping propagation on the dispatch's shared event control.
  * In Dev Mode this covers the Dev Mode window; in preview/production it covers the game window.
  * Shared by the global and surface owners so either can intercept.
  */
@@ -76,9 +77,31 @@ const WINDOW_CLOSE_EVENTS: readonly LifecycleEventDef[] = [
     {
         id: "windowCloseRequested",
         displayName: "Window close requested",
-        description: "Fires when the user asks to close the window; run Stop Event Bubble to cancel the close.",
+        description: "Fires when the user asks to close the window.",
         dispatchKind: "interaction",
         headNodeTypes: ["blueprint.event.head.windowCloseRequested"],
+    },
+];
+
+/**
+ * Fires when one of the project's declared input actions is raised on this owner.
+ *
+ * One event carries the whole vocabulary rather than one event per action: which actions exist is
+ * the author's decision and changes as they work, so a lifecycle table enumerating them would have
+ * to be rewritten from the document every time. The action's id travels in the payload and each
+ * `On Action` head filters on the one it names.
+ *
+ * Shared by the global and surface owners: a surface answers the actions it enables, and a global
+ * blueprint answers whatever reached it, so a gesture that means the same thing everywhere is
+ * written once.
+ */
+const INPUT_ACTION_EVENTS: readonly LifecycleEventDef[] = [
+    {
+        id: "inputAction",
+        displayName: "Input action",
+        description: "Fires when one of the project's declared input actions is raised.",
+        dispatchKind: "interaction",
+        headNodeTypes: ["blueprint.event.head.action"],
     },
 ];
 
@@ -104,6 +127,7 @@ export const GLOBAL_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
     ...WINDOW_CLOSE_EVENTS,
+    ...INPUT_ACTION_EVENTS,
 ];
 
 export const GLOBAL_LIFECYCLE_API: OwnerLifecycleApi = {
@@ -159,6 +183,7 @@ export const SURFACE_LIFECYCLE_EVENTS: readonly LifecycleEventDef[] = [
     ...GAME_PREFERENCE_EVENTS,
     ...WINDOW_FULLSCREEN_EVENTS,
     ...WINDOW_CLOSE_EVENTS,
+    ...INPUT_ACTION_EVENTS,
 ];
 
 export const SURFACE_LIFECYCLE_API: OwnerLifecycleApi = {

@@ -12,13 +12,20 @@ import {
 
 const CHOICE_LIST_WIDGET_TYPE = "nl.choice.list";
 
-/** Runtime bridge registered while a NarraLeaf choice menu is mounted. */
+/**
+ * Runtime bridge registered while a NarraLeaf choice menu is mounted.
+ *
+ * `items` is what is on screen; `choose` addresses the engine's own index, which is the `index`
+ * field of an item and not its position in this array - a hidden option is left out of the list
+ * without renumbering the ones after it.
+ */
 export type ChoiceSlotRuntime = {
     count: number;
+    items: readonly ChoiceSlotItem[];
     choose: (index: number) => void;
 };
 
-type ChoiceSlotItem = {
+export type ChoiceSlotItem = {
     text: string;
     index: number;
     disabled: boolean;
@@ -155,9 +162,9 @@ export function ChoiceSlotSurface(props: {
                 evaluated: choiceText(choice),
             });
         };
-        setChoiceRuntime({ count: items.length, choose });
+        setChoiceRuntime({ count: items.length, items, choose });
         return () => setChoiceRuntime(null);
-    }, [items.length, menu, setChoiceRuntime]);
+    }, [items, menu, setChoiceRuntime]);
 
     useEffect(() => {
         if (!core) {

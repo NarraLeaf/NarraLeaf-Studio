@@ -145,6 +145,22 @@ describe("projectStoryCommandLine", () => {
         expect(project("/wait click")).toBe("/wait click");
     });
 
+    it("keeps the loop flag on the row, because it is what the row IS", () => {
+        // A `loop` row does not hold the scene up, and the only thing that says so on the line is
+        // the word - so it prints next to the subject rather than being inferred from the payload.
+        // Spelled out as `loop=true`, which is what a bare flag reads back as everywhere: the row is
+        // the full spelling of a line the author may have typed short (`/bgm theme loop` too).
+        expect(project("/transform hero loop scaleY=1.02 d=0.9 repeatType=mirror"))
+            .toBe("/transform hero loop=true scaleY=1.02 d=0.9s repeatType=mirror");
+        // The way back, and nothing else: a `stopLoop` row holds no bag to print.
+        expect(project("/transform hero stopLoop d=0.3")).toBe("/transform hero stopLoop=true d=0.3s");
+        // Both round-trip: the line the row prints builds the row again.
+        expect(build(project("/transform hero loop zoom=1.1 d=0.5")).payload)
+            .toEqual(build("/transform hero loop zoom=1.1 d=0.5").payload);
+        expect(build(project("/transform hero stopLoop d=0.3")).payload)
+            .toEqual(build("/transform hero stopLoop d=0.3").payload);
+    });
+
     it("says it in the command language, keys and values and all", () => {
         i18nStore.setLocale("zh");
         // The line the request asked for: nothing abbreviated, nothing in a language the author is not
@@ -506,7 +522,10 @@ describe("projectStoryCommandLine", () => {
             "/video intro name=cutscene muted",
             "/play clip",
             "/layer overlay z=10",
-            "/vfx intro name=petals opacity=0.5 d=0.8",
+            "/vfx intro name=petals opacity=0.5",
+            // A weather seed: the word IS the source, so the line has to print it.
+            "/vfx snow",
+            "/vfx rain name=storm opacity=0.7",
             "/transform camera zoom=2",
             "/transform camera pan=left",
             "/transform camera rot=15 d=0.5",
@@ -820,6 +839,20 @@ describe("projectStoryCommandLine — what a word points at", () => {
         expect(links(row({ action: "layer", operation: "show", objectName: "overlay", target: { kind: "custom", name: "overlay", sourceBlockId: "d_layer" } })))
             .toEqual([{ text: "overlay", ref: { kind: "block", blockId: "d_layer" } }]);
         expect(typed("/transform overlay opacity=0.4")).toContainEqual({ text: "overlay", ref: { kind: "block", blockId: "d_layer" } });
+    });
+
+    it("points an overlay at its declaring row in ANOTHER scene, which is where it usually is", () => {
+        // The overlay is the one stage object the engine does not scope to a scene, so the row that
+        // started the rain a scene hides is normally somewhere else - and the link has to say where,
+        // or the jump opens the right row number in the scene being read.
+        const context: StoryCommandContext = {
+            ...LINK_CONTEXT,
+            stageObjects: { ...LINK_CONTEXT.stageObjects, vfx: ["petals", "rain"] },
+            vfxSources: { rain: { blockId: "d_rain", sceneId: "s2" } },
+        };
+        const lookups: StoryCommandLineLookups = { ...LINK_LOOKUPS, commandContext: context };
+        expect(links(row({ action: "vfx", operation: "hide", objectName: "rain" }), lookups))
+            .toContainEqual({ text: "rain", ref: { kind: "block", blockId: "d_rain", sceneId: "s2" } });
     });
 
     it("resolves an old document by name, since that is what the engine does with it", () => {

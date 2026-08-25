@@ -5,7 +5,9 @@ import type { ColorValue, CustomFieldProps } from "@/apps/workspace/modules/prop
 import { createPropertyEditorSchema, defineField } from "@/apps/workspace/modules/properties/framework";
 import { parseColorValue, serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { AssetSelector } from "@/apps/workspace/modules/assets/components/AssetSelector";
+import { useAssetSetPickerSource } from "@/apps/workspace/modules/assets/state/useAssetSetPickerSource";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
+import { resolveAssetDisplayName } from "@/lib/workspace/assets/assetDisplayName";
 import { useWorkspace } from "@/apps/workspace/context";
 import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
@@ -71,7 +73,7 @@ function AssetRow({
     onChange: (next: string | null) => void;
 }) {
     const { t } = useTranslation();
-    const { context } = useWorkspace();
+    const { context, isInitialized } = useWorkspace();
     const assetsService = useMemo(
         () => (context ? context.services.get<AssetsService>(Services.Assets) : null),
         [context],
@@ -82,12 +84,23 @@ function AssetRow({
     // The library edits its records in place, so a rename or a delete moves nothing else this memo
     // keys on - without the revision the field keeps the name the file had when it was picked.
     const assetLibraryRevision = useAssetLibraryRevision();
+    // Through the shared reader, not the pool table: this slot may hold an asset set, and a set has
+    // no row in the library - looking only there would print "missing" for a reference the picker
+    // itself just offered.
     const assetName = useMemo(() => {
         if (!assetId || !assetsService) {
             return null;
         }
-        return assetsService.getAssets()[assetType]?.[assetId]?.name ?? null;
-    }, [assetId, assetLibraryRevision, assetsService, assetType]);
+        return resolveAssetDisplayName(context?.services, assetId);
+    }, [assetId, assetLibraryRevision, assetsService, context]);
+    // Both slots may be answered by a set: a clip and its still are one piece of art with one job,
+    // which is the kind of thing that changes with the language it is read in.
+    const { virtualGroups, resolveAssetPreviewUrl } = useAssetSetPickerSource({
+        context,
+        isInitialized,
+        assetType,
+        enabled: true,
+    });
 
     /**
      * An id with no library record is a broken reference, not an empty slot - saying "None" there
@@ -147,6 +160,7 @@ function AssetRow({
                 title={chooseLabel}
                 onClose={() => setSelectorOpen(false)}
                 onConfirm={handleConfirm}
+                {...(virtualGroups ? { virtualGroups, resolveAssetPreviewUrl } : {})}
             />
         </>
     );

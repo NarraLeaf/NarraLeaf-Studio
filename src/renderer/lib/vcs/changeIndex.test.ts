@@ -5,6 +5,7 @@ import type {
     DocumentDiffTier,
 } from "@shared/documents/diff";
 import { buildChangeIndex, GROUP_COLLAPSE_THRESHOLD, splitDocumentPath } from "./changeIndex";
+import { NO_DOCUMENT_NAMES } from "./documentName";
 
 /**
  * The index's job is to stay an index.
@@ -32,12 +33,14 @@ function entry(init: {
     total?: number;
     complete?: boolean;
     documentKind?: DocumentDiffEntry["documentKind"];
+    members?: readonly string[];
 }): DocumentDiffEntry {
     const changes = Array.from({ length: init.changes ?? 1 }, (_, index) => change(`field${index}`));
     return {
         path: init.path,
         kind: init.kind ?? "changed",
         ...(init.documentKind ? { documentKind: init.documentKind } : {}),
+        ...(init.members ? { members: init.members } : {}),
         diff: {
             changes,
             complete: init.complete ?? true,
@@ -47,7 +50,45 @@ function entry(init: {
     };
 }
 
-const budget = { rowBudget: 1000 };
+const budget = { rowBudget: 1000, names: NO_DOCUMENT_NAMES };
+
+describe("a document stored as several files", () => {
+    it("is one row, and says how many files it stands for", () => {
+        // The producer folds; this is where the fold has to survive without becoming a lie. The row
+        // is named by the manifest - which may not itself have changed - and the count of files is
+        // the only thing on the row that says the document is not one file.
+        const index = buildChangeIndex([
+            entry({
+                path: "editor/story/stories/a/storydoc.json",
+                changes: 3,
+                members: [
+                    "editor/story/stories/a/scenes/s1.json",
+                    "editor/story/stories/a/scenes/s2.json",
+                ],
+            }),
+            entry({ path: "editor/brand.json" }),
+        ], budget);
+
+        expect(index.rows).toHaveLength(2);
+        expect(index.rows.find((row) => row.path.endsWith("storydoc.json"))?.memberCount).toBe(2);
+        // Zero, not one: an ordinary document is one file and has nothing to add.
+        expect(index.rows.find((row) => row.path === "editor/brand.json")?.memberCount).toBe(0);
+    });
+
+    it("counts as one file against a group's heading and its budget", () => {
+        // The number beside a heading is read as "this is what opening it will cost me". A set
+        // counted by its members would say forty over a group that opens to one line.
+        const index = buildChangeIndex([
+            entry({
+                path: "editor/story/stories/a/storydoc.json",
+                members: Array.from({ length: 40 }, (_, i) => `editor/story/stories/a/scenes/s${i}.json`),
+            }),
+        ], budget);
+
+        expect(index.groups[0].count).toBe(1);
+        expect(index.omitted).toBe(0);
+    });
+});
 
 describe("buildChangeIndex", () => {
     it("gives every file exactly one row, whatever is inside it", () => {
@@ -78,8 +119,10 @@ describe("buildChangeIndex", () => {
 
         const row = index.rows[0];
         expect(row.changeCount).toBe(7);
-        expect(row.name).toBe("brand.json");
-        expect(row.directory).toBe("editor");
+        // Named by what it is, not by the file it is stored in; the path stays on the row for
+        // the surfaces that need to locate it.
+        expect(row.name).toMatchObject({ source: "kind" });
+        expect(row.path).toBe("editor/brand.json");
         // Nothing on the row is a list of anything. The entry is carried whole for the detail pane
         // to read; the row itself has no per-change field for a renderer to loop over.
         expect(Object.entries(row).filter(([, value]) => Array.isArray(value))).toEqual([]);
@@ -224,7 +267,7 @@ describe("buildChangeIndex", () => {
             (_, index) => entry({ path: `assets/content/ab/cd/file${index}` }),
         );
 
-        const index = buildChangeIndex(entries, { rowBudget: 10 });
+        const index = buildChangeIndex(entries, { rowBudget: 10, names: NO_DOCUMENT_NAMES });
 
         expect(index.rows).toHaveLength(10);
         expect(index.omitted).toBe(20);

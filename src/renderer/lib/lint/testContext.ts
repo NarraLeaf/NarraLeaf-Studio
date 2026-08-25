@@ -9,8 +9,15 @@ import type { LintContext } from "./context";
  * than twelve lines of empty collections that every new rule file would copy and that would all
  * need editing the day the context grows a field. `io` refuses everything (`null` / `ok: false`),
  * which is the correct default: a test that cares about bytes says so by overriding it.
+ *
+ * `io` is merged rather than replaced, so a test overriding one probe keeps the refusing defaults
+ * for the rest - and a probe added to {@link LintIo} later does not have to be written into every
+ * ad-hoc `io` object in the rule tests before the project compiles again.
  */
-export function createTestLintContext(overrides: Partial<LintContext> = {}): LintContext {
+export function createTestLintContext(
+    overrides: Partial<Omit<LintContext, "io">> & { io?: Partial<LintContext["io"]> } = {},
+): LintContext {
+    const { io: ioOverrides, ...rest } = overrides;
     return {
         config: { ...DEFAULT_LINTING_CONFIGURATION },
         // The secure default, same as a new project. A test about the network rule turns it on.
@@ -33,19 +40,22 @@ export function createTestLintContext(overrides: Partial<LintContext> = {}): Lin
         // The release variant, because every project has it and a rule that saw an empty list would
         // be reading a state no project can be in.
         appTags: [RELEASE_APP_TAG],
+        dlcs: [],
         variableRegistry: [],
         persistentNameCollisions: [],
         savedNameCollisions: [],
         localization: null,
-        localizationKeyNames: null,
+        localizationKeys: null,
         voice: null,
         buildPlatforms: [],
         io: {
             exists: async () => false,
             readBytes: async () => null,
             probeImage: async () => ({ ok: false, reason: "test context has no io" }),
+            probeFontCoverage: async () => ({ ok: false, reason: "malformed" as const }),
             probeVideoAlpha: async () => ({ ok: false, reason: "test context has no io" }),
+            ...ioOverrides,
         },
-        ...overrides,
+        ...rest,
     };
 }

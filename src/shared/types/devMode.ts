@@ -1,7 +1,9 @@
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/document";
 import type { BrandColor } from "./brand";
+import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
+import type { ProjectFontEntry } from "./typography";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
 import type { PlayerPreferences } from "./preference";
@@ -9,6 +11,7 @@ import type { AutoSaveConfiguration } from "./saves";
 import type { SaveCompatibilityConfiguration } from "./saveCompatibility";
 import type { SaveSchemaRuntimeTable } from "./saveSchema";
 import type { GameVoiceBundle } from "./voice";
+import type { VfxConfiguration } from "./vfx";
 import type { GameAudioBundle } from "./audio";
 import type { GameRuntimeViewportConfig } from "./gameRuntime";
 import type { UIDocument } from "./ui-editor/document";
@@ -264,6 +267,19 @@ export type DevModeStartStoryRequest = {
 
 export type DevModeBundle = {
     bundleId: string;
+    /**
+     * The DLC whose content this bundle carries, when the host that asked for it named a selection.
+     *
+     * Absent when the host named none, which means "everything the project has" - see
+     * `DevModeBundleLoadContext.includedDlc`. Empty when it named an empty one, which is the ordinary
+     * base build.
+     *
+     * Written by the assembler because the assembler is what decided, and read by both consumers
+     * rather than either of them re-deriving it: the packaged pack states it as `installedDlc`, and
+     * a Dev Mode host answers `Is DLC Installed` from it. Two derivations of one fact would be two
+     * places for it to be wrong.
+     */
+    installedDlc?: readonly string[];
     revision: number;
     timestamp: string;
     ui: {
@@ -360,6 +376,29 @@ export type DevModeBundle = {
      */
     dialogue?: DialogueConfiguration;
     /**
+     * What the shipped game's window may do, baked from `.nlproj` `app.window`.
+     *
+     * Read by two halves that must not disagree: the shell opens the window it describes, and the
+     * game's own configuration screen offers its scale steps as the list a player chooses from (see
+     * the `Get Window Scale Options` node). Carried by the bundle rather than as a pack field of its
+     * own so both halves read the one answer.
+     *
+     * Absent on bundles that predate the section, which every consumer reads as the defaults.
+     */
+    window?: WindowConfiguration;
+    /**
+     * The frame rate this project's screen effects are baked at, from `.nlproj` `app.vfx`.
+     *
+     * Carried by the bundle because the game is what asks for a clip: a `/vfx snow` row is compiled
+     * inside the running game, and the id it computes has to be the id the build put in the package.
+     * The rate is half of that id (see `weatherBakeDescriptor`), so a bundle without it is a game
+     * that asks for a file its own build never made.
+     *
+     * Absent on bundles that predate the setting, which every consumer reads as 30 - the rate those
+     * builds were baked at, so an old bundle and a project that never opened the page agree.
+     */
+    vfx?: VfxConfiguration;
+    /**
      * The author's own version for this build, copied from `.nlproj` `metadata.version`.
      *
      * Stamped into every save this build writes and compared against the stamp on every save it is
@@ -400,6 +439,21 @@ export type DevModeBundle = {
      * Studio assembles carries it.
      */
     brand?: BrandColor[];
+    /**
+     * The project's default font stack, baked from `editor/brand.json` beside the palette.
+     *
+     * Carried for the same reason and read the same way: a widget that names no font of its own is
+     * set in this list, so a bundle without it is a game whose text falls back to whatever the host
+     * happens to render in - which is what the editor beside it would *not* have shown.
+     *
+     * Absent means the bundle predates the feature, which every consumer reads as an empty stack -
+     * the same state a project that has never chosen a default font holds on disk, so an old bundle
+     * and a fresh project answer identically. Every bundle this Studio assembles carries it.
+     *
+     * The ids in it are ordinary asset references: the packer's sweep sees them, so the fonts a
+     * project defaults to ship even though no widget names one.
+     */
+    fonts?: ProjectFontEntry[];
     scripts?: Record<string, unknown>;
     compiled?: Record<string, unknown>;
     meta?: Record<string, unknown>;

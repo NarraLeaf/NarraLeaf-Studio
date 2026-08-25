@@ -24,17 +24,19 @@ import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
+import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
 import type { SigningPlatform } from "@shared/types/signing";
+import type { WindowConfiguration } from "@shared/types/appWindow";
+import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
-import type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
+import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
 import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
     isDesktopBuildPlatform,
     normalizeGameBuildArch,
     type GameBuildArch,
-    type GameBuildCompression,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
     type GameBuildPlatform,
@@ -51,12 +53,22 @@ export {
 } from "@shared/types/voice";
 export type { VoiceConfiguration, VoiceLocaleEntry } from "@shared/types/voice";
 export {
-    DEFAULT_WEB_OPTIMIZATION_CONFIGURATION,
-    normalizeWebOptimizationConfiguration,
-    WEB_LOSSY_QUALITY_MAX,
-    WEB_LOSSY_QUALITY_MIN,
-} from "@shared/types/webOptimization";
-export type { WebOptimizationConfiguration } from "@shared/types/webOptimization";
+    DEFAULT_VFX_CONFIGURATION,
+    DEFAULT_VFX_FRAME_RATE,
+    normalizeVfxConfiguration,
+    VFX_FRAME_RATES,
+} from "@shared/types/vfx";
+export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
+export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
+export type { WindowConfiguration } from "@shared/types/appWindow";
+export {
+    ASSET_LOSSY_QUALITY_MAX,
+    ASSET_LOSSY_QUALITY_MIN,
+    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+    normalizeAssetOptimizationConfiguration,
+    readAssetOptimizationConfiguration,
+} from "@shared/types/assetOptimization";
+export type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -82,6 +94,11 @@ export type {
     SaveCompatiblePolicy,
     SaveIncompatiblePolicy,
 } from "@shared/types/saveCompatibility";
+export {
+    DEFAULT_SAVE_LOCATION_CONFIGURATION,
+    normalizeSaveLocationConfiguration,
+} from "@shared/utils/userDataLocation";
+export type { SaveLocationConfiguration, SaveLocationMode } from "@shared/utils/userDataLocation";
 export {
     DEFAULT_LANGUAGE_CHANGE_CONFIGURATION,
     normalizeLanguageChangeConfiguration,
@@ -254,19 +271,42 @@ export type BuildConfiguration = {
     archs: Partial<Record<GameBuildDesktopPlatform, GameBuildArch>>;
     /** Absolute output directory chosen last time; empty means the default. */
     outputDir: string;
-    compression: GameBuildCompression;
+    /** Whether the last build also produced this variant DLC. Absent on selections made before it. */
+    includeDlc?: boolean;
     /** Reveal the output folder when a build finishes. */
     openWhenDone: boolean;
 };
 
-/** Compression levels offered, in display order (slowest/smallest first). */
-export const BUILD_COMPRESSIONS: GameBuildCompression[] = ["maximum", "normal", "store"];
+/**
+ * How the build a patch is measured against is arrived at.
+ *
+ * `variant` builds it as part of the export, from the project as it stands; `artifact` measures
+ * against a build folder the author points at.
+ */
+export type PatchBaselineMode = "variant" | "artifact";
 
 /**
- * electron-builder's own default compression, and the level every build used
- * before the setting existed.
+ * Remembered patch-export selection, so the dialog re-opens on the same two editions, the same
+ * build folder and the same file.
+ *
+ * The name and the layer are deliberately not here. Both belong to one patch rather than to the
+ * project, and a dialog that re-opened holding the previous patch's name would offer to ship a
+ * second file claiming to be the first.
  */
-export const DEFAULT_BUILD_COMPRESSION: GameBuildCompression = "maximum";
+export type PatchConfiguration = {
+    baselineMode: PatchBaselineMode;
+    /**
+     * The variant the patch installs into, in `variant` mode. Absent means the release variant,
+     * which is also what a stored id whose variant has since been deleted resolves to.
+     */
+    targetAppTagId?: string;
+    /** The build folder chosen last time, in `artifact` mode. */
+    baselineAppDir?: string;
+    /** The variant whose content the patch carries. Absent means the same one it installs into. */
+    contentAppTagId?: string;
+    /** Absolute path of the file written last time; empty means the default. */
+    outputFile?: string;
+};
 
 /**
  * Which signing credential the project uses for each platform, by credential
@@ -372,14 +412,23 @@ export type ProjectAppConfiguration = {
     localization?: LocalizationConfiguration;
     /** Game voice-over setup (see @shared/types/voice); absent until configured. */
     voice?: VoiceConfiguration;
+    /**
+     * How the screen effects Studio bakes are made (see @shared/types/vfx); absent until configured.
+     *
+     * Absent has to keep meaning 30, because the rate is part of the identity of every clip already
+     * baked for every existing project - see `weatherBakeDescriptor`.
+     */
+    vfx?: VfxConfiguration;
     /** Asset-protection policy applied at pack time; absent until configured. */
     security?: SecurityConfiguration;
     /** What the shipped game does when it stops working; absent until configured. */
     crash?: CrashConfiguration;
-    /** What the exported static site may do to the author's bytes; absent until configured. */
-    webOptimization?: WebOptimizationConfiguration;
+    /** What a build may do to the author's artwork, on every target; absent until configured. */
+    assetOptimization?: AssetOptimizationConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
+    /** What the shipped game's window does; absent until configured (see the defaults). */
+    window?: WindowConfiguration;
     /** Automatic saving in the shipped game; absent until configured (see the defaults). */
     autoSave?: AutoSaveConfiguration;
     /**
@@ -388,6 +437,12 @@ export type ProjectAppConfiguration = {
      * player back where it stopped).
      */
     saveCompatibility?: SaveCompatibilityConfiguration;
+    /**
+     * Where a shipped desktop game keeps the player's files; absent until configured (see the
+     * defaults, which put them beside the game on Windows and Linux and in the per-user directory
+     * on macOS).
+     */
+    saveLocation?: SaveLocationConfiguration;
     /**
      * What a language change does to a running playthrough; absent until configured (see the
      * default, which restarts the game and puts the player back where they were).
@@ -417,6 +472,8 @@ export type ProjectAppConfiguration = {
     signing?: SigningConfiguration;
     /** Last production-build dialog selection; absent until the first build. */
     build?: BuildConfiguration;
+    /** Last patch-export dialog selection; absent until the first export. */
+    patch?: PatchConfiguration;
     /** Project lint policy; absent until configured (see the defaults). */
     linting?: LintingConfiguration;
 };
@@ -608,8 +665,10 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
     if (platforms.length === 0) {
         return null;
     }
-    // Projects built before arch/compression/openWhenDone existed have none of
-    // these keys; each falls back to the behaviour that build would have had.
+    // Projects built before arch/openWhenDone existed have neither key; each falls
+    // back to the behaviour that build would have had. A stored compression level
+    // is read by nothing and dropped on the next write: every build takes the
+    // smallest artifact now, and that was never a choice a player could notice.
     const rawArchs = (record.archs && typeof record.archs === "object")
         ? record.archs as Record<string, unknown>
         : {};
@@ -626,11 +685,42 @@ export function normalizeBuildConfiguration(value: unknown): BuildConfiguration 
         archs[platform] = normalizeGameBuildArch(platform, stored);
     }
     return {
+        // Carried through so the dialog re-opens on the variant it was last built as. Written by
+        // the build since variants existed; without this line nothing ever read it back.
+        ...(typeof record.appTagId === "string" && record.appTagId.trim()
+            ? { appTagId: record.appTagId.trim() }
+            : {}),
         platforms,
         formats,
         archs,
         outputDir: typeof record.outputDir === "string" ? record.outputDir.trim() : "",
-        compression: BUILD_COMPRESSIONS.find(level => level === record.compression) ?? DEFAULT_BUILD_COMPRESSION,
         openWhenDone: typeof record.openWhenDone === "boolean" ? record.openWhenDone : true,
+    };
+}
+
+/**
+ * Coerce an unknown persisted value into a PatchConfiguration. Returns null when nothing usable
+ * was stored, so the dialog falls back to its own defaults.
+ *
+ * An unrecognised mode reads as `artifact`: that is the one mode whose baseline the author states
+ * outright, so a stored value nothing here understands cannot turn into an export measured against
+ * something they did not choose.
+ */
+export function normalizePatchConfiguration(value: unknown): PatchConfiguration | null {
+    if (!value || typeof value !== "object") {
+        return null;
+    }
+    const record = value as Record<string, unknown>;
+    const text = (key: string): string => (typeof record[key] === "string" ? (record[key] as string).trim() : "");
+    const targetAppTagId = text("targetAppTagId");
+    const baselineAppDir = text("baselineAppDir");
+    const contentAppTagId = text("contentAppTagId");
+    const outputFile = text("outputFile");
+    return {
+        baselineMode: record.baselineMode === "variant" ? "variant" : "artifact",
+        ...(targetAppTagId ? { targetAppTagId } : {}),
+        ...(baselineAppDir ? { baselineAppDir } : {}),
+        ...(contentAppTagId ? { contentAppTagId } : {}),
+        ...(outputFile ? { outputFile } : {}),
     };
 }

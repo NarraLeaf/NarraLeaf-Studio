@@ -199,8 +199,16 @@ export type StoryCommandLineRef =
      * call rather than a fact about the line.
      */
     | { kind: "variable"; target: StoryVariableRef }
-    /** A row in this scene — the label a `/goto` lands on, or the row that declares a stage object. */
-    | { kind: "block"; blockId: string };
+    /**
+     * A row — the label a `/goto` lands on, or the row that declares a stage object.
+     *
+     * `sceneId` is absent for all but one of them, and absent MEANS "this row's own scene": every
+     * declaration index a line reads is scene-scoped, because every stage object but one ends with
+     * the scene that made it. The exception is the ambience overlay, which the engine holds at game
+     * level, so the row that declares the rain a scene hides is usually somewhere else entirely -
+     * and a link to it has to say where.
+     */
+    | { kind: "block"; blockId: string; sceneId?: string };
 
 /**
  * One pointing word inside the line: where it sits, and what it points at.
@@ -591,6 +599,32 @@ function stageObjectLink(
 }
 
 /**
+ * The row that declares an ambience overlay, wherever in the story it is.
+ *
+ * The one link that may leave this scene, because the overlay is the one stage object that outlives
+ * one: a `/hide rain` is very often written in a scene that never mentions rain otherwise, and being
+ * taken to the row that started it is exactly what an author is asking for there.
+ *
+ * The row's own reference is still tried first and still wins, on the same terms as every other
+ * subject - it is the stable anchor and it follows a rename - but only when it points into THIS
+ * scene, which is all a bare block id can address. Anything else resolves by name through the
+ * story-wide index, which is also how the compiler resolves it.
+ */
+function vfxLink(
+    lookups: StoryCommandLineLookups,
+    ref: { builtin?: string; sourceBlockId?: string } | undefined,
+    name: string | undefined,
+): Pick<Arg, "link"> {
+    const bound = blockLink(lookups, ref?.sourceBlockId);
+    if (bound.link) {
+        return bound;
+    }
+    const key = name?.trim().toLowerCase();
+    const declared = key ? lookups.commandContext?.vfxSources?.[key] : undefined;
+    return declared ? { link: { kind: "block", blockId: declared.blockId, sceneId: declared.sceneId } } : {};
+}
+
+/**
  * The `label` row a `/goto` lands on, when this scene declares one by that name.
  *
  * Matched EXACTLY, case included, and resolved through the same scan the compiler validates with -
@@ -779,6 +813,19 @@ function ruleArg(
     });
 }
 
+/**
+ * `hold=` — the seconds the change sits at its extreme, printed only when the row states one.
+ *
+ * Beside `d=` and never inside it: the hold is taken out of the duration, so the two numbers are a
+ * pair an author reads together. A row that has never been given one prints nothing here and gets
+ * the transition's own default, which is how every existing line stays byte-identical.
+ */
+function holdArg<P extends { transition?: StoryTransitionRef }>(payload: P): Arg | null {
+    return arg("hold", seconds(payload.transition?.holdMs), {
+        apply: next => patchTransition(payload, { holdMs: msOf(next) }),
+    });
+}
+
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
 function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character" | "expression"): string | undefined {
     if (kind === undefined) {
@@ -917,6 +964,7 @@ function characterSentence(
     const swapDuration = arg("d", seconds(payload.transition?.durationMs), {
         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
     });
+    const swapHold = holdArg(payload);
     switch (payload.operation) {
         case "enter":
             return {
@@ -930,7 +978,7 @@ function characterSentence(
             // reads back as the row that writes one. `/transform` names its subject `target`.
             return { commandId, args: [positional("target", name, who), placement, duration] };
         case "expression":
-            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration] };
+            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration, swapHold] };
         case "setMotion":
         case "setSkin":
             // The two puppet-only channels: their value is the model's own string, never a project ref.
@@ -1071,7 +1119,24 @@ function imageSentence(
         };
     }
     if (payload.operation === "setSource") {
-        return { commandId, args: [positional("target", name, object), positional("content", asset ?? payload.color, swapAsset)] };
+        // `char(src, transition)` is what this row compiles to, so it plays a transition exactly the
+        // way `/face` does - and until these slots existed, one set in the inspector was a setting the
+        // line could not say.
+        return {
+            commandId,
+            args: [
+                positional("target", name, object),
+                positional("content", asset ?? payload.color, swapAsset),
+                arg("t", transitionWord(payload.transition?.kind, "expression"), {
+                    enum: true,
+                    apply: next => patchTransition(payload, { kind: transitionKindFor("expression", next) ?? "fadeIn" }),
+                }),
+                arg("d", seconds(payload.transition?.durationMs), {
+                    apply: next => patchTransition(payload, { durationMs: msOf(next) }),
+                }),
+                holdArg(payload),
+            ],
+        };
     }
     return {
         commandId,
@@ -1209,19 +1274,26 @@ function vfxSentence(
         return {
             commandId,
             args: [
-                positional("clip", assetWord(lookups, payload.assetId), {
-                    ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
-                    ...assetLink(lookups, payload.assetId),
-                }),
+                // A seeded overlay says its weather WORD in the slot a clip would name, because that
+                // is what the author typed and what the line has to take back: printed as a clip that
+                // is not there, the row read as an overlay with no source at all, and re-typing it
+                // produced exactly that. No picker on this branch - the source select in the
+                // inspector is what swaps a seed for a clip, and it clears the parameters of
+                // whichever it left behind, which a slot-level pick could not do.
+                payload.seed
+                    ? positional("clip", payload.seed.seed, { enum: true })
+                    : positional("clip", assetWord(lookups, payload.assetId), {
+                        ...(pickAsset(payload, lookups, "video", next => ({ ...payload, assetId: next }), { allowSets: true }) ?? {}),
+                        ...assetLink(lookups, payload.assetId),
+                    }),
                 arg("name", name),
                 arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }),
-                duration,
             ],
         };
     }
     const object = {
         ...(pickStageObject(lookups, "vfx", name, next => retargetActionable(payload, lookups, "vfx", next)) ?? {}),
-        ...stageObjectLink(lookups, "vfx", payload.target, name),
+        ...vfxLink(lookups, payload.target, name),
     };
     if (payload.operation === "setRate") {
         return {
@@ -1231,7 +1303,18 @@ function vfxSentence(
     }
     // `/show` and `/hide` carry the fade an overlay waits out; `/pause` and `/resume` take the name alone.
     const fades = payload.operation === "show" || payload.operation === "hide";
-    return { commandId, args: [positional("target", name, object), fades ? duration : null] };
+    // Only on the way in: a fade out ends at zero with the clip stopped, so neither has anything
+    // to say there - and `/hide` does not take either word.
+    const showing = payload.operation === "show";
+    return {
+        commandId,
+        args: [
+            positional("target", name, object),
+            fades ? duration : null,
+            showing ? arg("opacity", numberValue(payload.opacity), { apply: next => ({ ...payload, opacity: Number(next) }) }) : null,
+            showing ? arg("rate", numberValue(payload.rate), { apply: next => ({ ...payload, rate: Number(next) }) }) : null,
+        ],
+    };
 }
 
 /**
@@ -1316,17 +1399,34 @@ function displayableSentence(
     if (payload.operation === "bringToFront") {
         return { commandId, args: [positional("target", label, who)] };
     }
-    if (payload.operation === "transform") {
+    // Ending a loop is a `/transform` line whose whole content is the flag and how long the way back
+    // takes. No bag is printed because a `stopLoop` row holds none - see the spec's refusal.
+    if (payload.operation === "stopLoop") {
+        return {
+            commandId,
+            args: [
+                positional("target", label, who),
+                arg("stopLoop", "true"),
+                arg("d", seconds(payload.transform?.durationMs), {
+                    apply: next => patchTransform(payload, { durationMs: msOf(next) }),
+                }),
+            ],
+        };
+    }
+    if (payload.operation === "transform" || payload.operation === "loop") {
+        // The flag is what makes the row read as the thing it is - a motion that keeps going rather
+        // than a pose the scene waits for - so it is printed first, next to the subject.
+        const looping = payload.operation === "loop" ? [arg("loop", "true")] : [];
         // A Story Motion states its shot in a binding rather than in props, so the line says which
         // mode the row is in and the motion's name rides the inspector - the same shape the retired
         // `/camera motion` had.
         if (payload.transform?.mode === "animation") {
-            return { commandId, args: [positional("target", label, who), arg("motion", "true")] };
+            return { commandId, args: [positional("target", label, who), ...looping, arg("motion", "true")] };
         }
         // The whole neutral bag, and only the whole one, is a `/reset`. A partial clear prints as the
         // `=none` that produced it (`/transform hero mask=none`), which is the same row and the
         // spelling the vocabulary calls canonical.
-        if (isNeutralStoryTransformProps(payload.transform?.to)) {
+        if (payload.operation === "transform" && isNeutralStoryTransformProps(payload.transform?.to)) {
             return {
                 commandId: "reset",
                 args: [
@@ -1337,7 +1437,7 @@ function displayableSentence(
                 ],
             };
         }
-        return { commandId, args: [positional("target", label, who), ...transformArgs(payload, lookups)] };
+        return { commandId, args: [positional("target", label, who), ...looping, ...transformArgs(payload, lookups)] };
     }
     const direction = payload.operation === "show" ? "reveal" : "conceal";
     return {
@@ -1462,6 +1562,7 @@ function actionSentence(
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                     }),
+                    holdArg(payload),
                 ],
             };
         case "character":
@@ -1584,6 +1685,7 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                 arg("d", seconds(payload.transition?.durationMs), {
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                 }),
+                holdArg(payload),
             ],
         };
     }
@@ -1623,6 +1725,12 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     apply: next => ({ ...payload, appTagId: next }),
                 })],
             };
+        }
+        // The name is written straight, exactly as a label's is: it is the author's own words, it is
+        // what the line was typed with, and it is the only part of the row a line can carry - the
+        // page the ending lands on is picked in the inspector.
+        if (block.payload.control === "ending") {
+            return { commandId: "ending", args: [positional("name", block.payload.name)] };
         }
         // Containers lead with their own pill and hold children; a one-line command would be a header
         // that lies about what the row is.

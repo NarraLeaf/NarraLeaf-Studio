@@ -1,6 +1,7 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ClipboardEvent, CSSProperties, KeyboardEvent } from "react";
-import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun } from "@shared/types/story";
+import type { StoryInlineEvent, StoryInterpolationRef, StoryRichRun, StoryTextEmphasis } from "@shared/types/story";
+import { isStoryTextEmphasis } from "@shared/utils/storyTextMarks";
 import type { StoryCaretTarget } from "./storySceneEditorTypes";
 import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import { useTranslation } from "@/lib/i18n";
@@ -9,12 +10,14 @@ import {
     createUnitRange,
     domToRuns,
     getSelectionUnitRange,
+    markedRunAt,
     marksAtUnit,
     markSelectedChips,
     normalizeRuns,
     rangeHasMark,
     rangeMarkColor,
     rangeMarkRuby,
+    rangeTextMark,
     renderRunsToElement,
     richRunsToPlain,
     rubyRunAt,
@@ -28,6 +31,7 @@ import {
     type RichRenderOptions,
 } from "./richText";
 import { editKindForInputType, RichTextHistory, type RichTextSnapshot } from "./richTextHistory";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { getInterface } from "@/lib/app/bridge";
 import {
     markAtUnit,
@@ -38,6 +42,13 @@ import {
     type UnderlineBox,
 } from "./storySpellcheck";
 import type { StorySpellcheckBinding } from "./useStorySpellcheck";
+import {
+    dictionaryMarkAtUnit,
+    dictionaryMarks,
+    sameDictionaryMarks,
+    type DictionaryMark,
+} from "./storyDictionary";
+import type { StoryDictionaryBinding } from "./useStoryDictionary";
 
 export type ActiveMarks = {
     bold: boolean;
@@ -53,6 +64,18 @@ export type ActiveMarks = {
      */
     ruby?: string;
     canRuby: boolean;
+    /**
+     * The three marks the type panel edits: emphasis, the size step, and the typing speed. Each is
+     * the value shared by the selection, or the one carried by the run a collapsed caret stands in.
+     */
+    emphasis?: StoryTextEmphasis;
+    fontSizeStep?: number;
+    cps?: number;
+    /**
+     * Whether the field holds a real selection. A mark is set over characters, so a control with no
+     * selection can only change a value already written — see {@link RichTextInputHandle.setTypeMark}.
+     */
+    hasSelection: boolean;
 };
 
 /**
@@ -61,6 +84,18 @@ export type ActiveMarks = {
  * Resolved once, when the popover opens, and handed back at commit time - see `getRubyTarget`.
  */
 export type RubyTarget = { start: number; end: number; ruby?: string };
+
+/** The three marks the type panel sets, in the order it offers them. */
+const TYPE_MARKS = ["emphasis", "fontSizeStep", "cps"] as const;
+
+/** The unit range the type panel addresses, and the three marks already on it. */
+export type TypeTarget = {
+    start: number;
+    end: number;
+    emphasis?: StoryTextEmphasis;
+    fontSizeStep?: number;
+    cps?: number;
+};
 
 export type PauseClickInfo = {
     unit: number;
@@ -88,6 +123,18 @@ export type SpellingClickInfo = {
     anchor: { top: number; left: number; bottom: number };
 };
 
+/**
+ * A right click that landed on something the project dictionary has to say about the row.
+ *
+ * Carries the mark whole rather than a word, because the two kinds are acted on differently: a
+ * variant is replaced with the term, a reading is written over the term as ruby, and both need the
+ * entry they came from to say so.
+ */
+export type DictionaryClickInfo = {
+    mark: DictionaryMark;
+    anchor: { top: number; left: number; bottom: number };
+};
+
 export type RichTextInputHandle = {
     focus: () => void;
     toggleMark: (mark: "bold" | "italic") => void;
@@ -105,6 +152,17 @@ export type RichTextInputHandle = {
      * afresh, which is only right when nothing can have moved the caret in between.
      */
     setRuby: (ruby: string | null, target?: { start: number; end: number }) => void;
+    /**
+     * The characters the type panel would act on, and the marks already on them. Read once, when the
+     * panel opens. `null` when there is nothing to set.
+     */
+    getTypeTarget: () => TypeTarget | null;
+    /**
+     * Set one of the type panel's marks — emphasis, the size step, the typing speed. `null` clears
+     * it. `target` is what {@link RichTextInputHandle.getTypeTarget} gave the panel on the way in,
+     * and passing it back is how the second press writes to the same characters as the first.
+     */
+    setTypeMark: (mark: "emphasis" | "fontSizeStep" | "cps", value: string | number | null, target?: { start: number; end: number }) => void;
     insertPause: (pause: number | true) => void;
     updatePauseAt: (unit: number, pause: number | true) => void;
     removePauseAt: (unit: number) => void;
@@ -206,6 +264,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     spellcheck?: StorySpellcheckBinding;
     /** A right click landed on a marked word; the parent opens the suggestion popover over it. */
     onSpellingClick?: (info: SpellingClickInfo) => void;
+    /**
+     * The project dictionary for this field. Omitted (or holding nothing to look for), the row is
+     * read against nothing and the overlay draws no dictionary marks.
+     */
+    dictionary?: StoryDictionaryBinding;
+    /** A right click landed on a dictionary mark; the parent opens the panel over it. */
+    onDictionaryClick?: (info: DictionaryClickInfo) => void;
     resolveInterpolationLabel?: ResolveInterpolationLabel;
     /**
      * Names the look an inline expression chip switches to. Omitted, the chip is icon-only — never an
@@ -310,8 +375,10 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     spellcheckRef.current = props.spellcheck;
     /** The misspellings currently believed true, in unit offsets. */
     const spellMarksRef = useRef<readonly SpellMark[]>([]);
-    /** Where they are drawn. The only part of this field React renders. */
-    const [spellBoxes, setSpellBoxes] = useState<UnderlineBox[]>([]);
+    /** What the project dictionary has to say about the row, in unit offsets. */
+    const dictionaryMarksRef = useRef<readonly DictionaryMark[]>([]);
+    /** Where all of them are drawn. The only part of this field React renders. */
+    const [markBoxes, setMarkBoxes] = useState<MarkBox[]>([]);
     /** What the sync effect below last handed the runner. Reset whenever a new runner is built. */
     const spellSyncRef = useRef<{ language: string | null; revision: number } | null>(null);
 
@@ -324,11 +391,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
      * that space is also why scrolling costs nothing: the underlines sit inside the same scrolled
      * content as the words, and move with them without a listener.
      */
-    const measureSpellMarks = useCallback(() => {
+    const measureMarks = useCallback(() => {
         const el = editorRef.current;
-        const marks = spellMarksRef.current;
-        if (!el || marks.length === 0) {
-            setSpellBoxes(current => (current.length === 0 ? current : []));
+        const spelling = spellMarksRef.current;
+        const dictionary = dictionaryMarksRef.current;
+        if (!el || (spelling.length === 0 && dictionary.length === 0)) {
+            setMarkBoxes(current => (current.length === 0 ? current : []));
             return;
         }
         const parent = el.offsetParent as HTMLElement | null;
@@ -339,13 +407,44 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         const scroll = parent
             ? { left: parent.scrollLeft, top: parent.scrollTop }
             : { left: globalThis.window.scrollX, top: globalThis.window.scrollY };
-        const boxes: UnderlineBox[] = [];
-        for (const mark of marks) {
-            const rects = createUnitRange(el, mark.unitStart, mark.unitEnd).getClientRects();
-            boxes.push(...underlineBoxes(Array.from(rects), origin, scroll));
+        const boxes: MarkBox[] = [];
+        const measure = (unitStart: number, unitEnd: number, kind: MarkBox["kind"]) => {
+            const rects = createUnitRange(el, unitStart, unitEnd).getClientRects();
+            for (const box of underlineBoxes(Array.from(rects), origin, scroll)) {
+                boxes.push({ ...box, kind });
+            }
+        };
+        for (const mark of spelling) {
+            measure(mark.unitStart, mark.unitEnd, "spelling");
         }
-        setSpellBoxes(current => (sameBoxes(current, boxes) ? current : boxes));
+        for (const mark of dictionary) {
+            measure(mark.unitStart, mark.unitEnd, mark.kind);
+        }
+        setMarkBoxes(current => (sameBoxes(current, boxes) ? current : boxes));
     }, []);
+
+    /**
+     * Read the row against the project dictionary and keep what it says.
+     *
+     * Recomputed outright rather than pruned, because there is nothing to be stale: the answer is
+     * worked out here, from these runs, with no round trip in between. Cheap for the same reason the
+     * needles are built by the binding rather than here - the walk over the dictionary happens once
+     * when the dictionary changes, and what remains per keystroke is a scan of one line.
+     */
+    const dictionaryRef = useRef(props.dictionary);
+    dictionaryRef.current = props.dictionary;
+    const readOnlyRef = useRef(readOnly);
+    readOnlyRef.current = readOnly;
+    const readDictionary = useCallback((runs: readonly StoryRichRun[] | null) => {
+        const needles = readOnlyRef.current ? [] : dictionaryRef.current?.needles ?? [];
+        const next = runs && needles.length > 0 ? dictionaryMarks(runs, needles) : [];
+        if (!sameDictionaryMarks(dictionaryMarksRef.current, next)) {
+            dictionaryMarksRef.current = next;
+        }
+        // Measured either way: the words can have moved on the line while the marks still say the
+        // same thing, and the boxes are drawn under the words rather than under the marks.
+        measureMarks();
+    }, [measureMarks]);
 
     /**
      * The checking loop. It owns the timing and the two staleness guards; see {@link SpellcheckRunner}.
@@ -374,7 +473,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             isKnownWord: word => spellcheckRef.current?.isKnownWord(word) ?? false,
             onMarks: marks => {
                 spellMarksRef.current = marks;
-                measureSpellMarks();
+                measureMarks();
             },
         });
         spellRunnerRef.current = runner;
@@ -388,12 +487,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             }
             spellMarksRef.current = [];
         };
-    }, [measureSpellMarks]);
+    }, [measureMarks]);
 
     const onSpellRuns = useCallback((runs: StoryRichRun[]) => {
         spellRunnerRef.current?.edited(runs);
-    }, []);
+        readDictionary(runs);
+    }, [readDictionary]);
     onSpellRunsRef.current = onSpellRuns;
+
+    /**
+     * The dictionary changed under a row that is already open, or the field has just mounted over
+     * runs nobody has read yet. Either way the row is read again from the live DOM.
+     */
+    useEffect(() => {
+        readDictionary(editorRef.current ? domToRuns(editorRef.current) : null);
+    }, [readDictionary, props.dictionary?.revision]);
 
     /**
      * The language, and every reason to ask again that the field does not cause itself: the author
@@ -420,13 +528,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, [spellLanguage, spellRevision]);
 
     // Re-layout the field does not announce: the pane was resized, the window was, the row rewrapped
-    // because something beside it grew. Scrolling is deliberately absent — see `measureSpellMarks`.
+    // because something beside it grew. Scrolling is deliberately absent — see `measureMarks`.
     useEffect(() => {
         const el = editorRef.current;
         if (!el) {
             return;
         }
-        const remeasure = () => measureSpellMarks();
+        const remeasure = () => measureMarks();
         const observer = typeof ResizeObserver === "function" ? new ResizeObserver(remeasure) : null;
         observer?.observe(el);
         globalThis.window.addEventListener("resize", remeasure);
@@ -434,7 +542,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             observer?.disconnect();
             globalThis.window.removeEventListener("resize", remeasure);
         };
-    }, [measureSpellMarks]);
+    }, [measureMarks]);
 
 
 
@@ -495,6 +603,13 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             // is always annotatable; a collapsed caret only when it is standing in a reading already.
             let ruby: string | undefined;
             let canRuby = false;
+            // The type panel's three marks travel with ruby: none of them has an execCommand, all
+            // three are set over a range, and each can be changed from a caret standing in a run that
+            // already carries it.
+            let emphasis: StoryTextEmphasis | undefined;
+            let fontSizeStep: number | undefined;
+            let cps: number | undefined;
+            const hasSelection = Boolean(range && range.start !== range.end);
             if (el && range && range.start !== range.end) {
                 // A selection can include inline value chips (contentEditable=false), which execCommand's
                 // query state ignores — derive the active marks from the unit model instead.
@@ -503,15 +618,25 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 italic = rangeHasMark(runs, range.start, range.end, "italic");
                 color = rangeMarkColor(runs, range.start, range.end);
                 ruby = rangeMarkRuby(runs, range.start, range.end);
+                emphasis = rangeTextMark(runs, range.start, range.end, "emphasis");
+                fontSizeStep = rangeTextMark(runs, range.start, range.end, "fontSizeStep");
+                cps = rangeTextMark(runs, range.start, range.end, "cps");
                 canRuby = true;
             } else if (el && selection) {
                 // Read off the DOM, not the unit model. This branch runs on every caret move, and
                 // `domToRuns` walks and normalizes the whole row to answer a question the span the
-                // caret is standing in already carries.
+                // caret is standing in already carries. One `closest` for all four marks: they are
+                // written onto one span per run and those spans do not nest.
                 const node = selection.focusNode;
                 const from = node?.nodeType === Node.ELEMENT_NODE ? (node as HTMLElement) : node?.parentElement ?? null;
-                const host = from && el.contains(from) ? from.closest<HTMLElement>("[data-ruby]") : null;
-                ruby = host && el.contains(host) ? host.dataset.ruby || undefined : undefined;
+                const host = from && el.contains(from)
+                    ? from.closest<HTMLElement>("[data-ruby],[data-emphasis],[data-fontstep],[data-cps]")
+                    : null;
+                const marked = host && el.contains(host) ? host : null;
+                ruby = marked?.dataset.ruby || undefined;
+                emphasis = isStoryTextEmphasis(marked?.dataset.emphasis) ? marked.dataset.emphasis : undefined;
+                fontSizeStep = marked?.dataset.fontstep ? Number(marked.dataset.fontstep) : undefined;
+                cps = marked?.dataset.cps ? Number(marked.dataset.cps) : undefined;
                 canRuby = ruby !== undefined;
             }
             const previousMarks = lastMarksRef.current;
@@ -520,9 +645,14 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 || previousMarks.italic !== italic
                 || previousMarks.color !== color
                 || previousMarks.ruby !== ruby
-                || previousMarks.canRuby !== canRuby) {
-                lastMarksRef.current = { bold, italic, color, ruby, canRuby };
-                onActiveRef.current?.({ bold, italic, color, ruby, canRuby });
+                || previousMarks.canRuby !== canRuby
+                || previousMarks.emphasis !== emphasis
+                || previousMarks.fontSizeStep !== fontSizeStep
+                || previousMarks.cps !== cps
+                || previousMarks.hasSelection !== hasSelection) {
+                const next: ActiveMarks = { bold, italic, color, ruby, canRuby, emphasis, fontSizeStep, cps, hasSelection };
+                lastMarksRef.current = next;
+                onActiveRef.current?.(next);
             }
             setCaretColor(color ?? null);
         } catch {
@@ -702,6 +832,12 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     }, []);
 
     const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
+        // Nothing below is the author's while an IME is composing: Enter confirms the conversion,
+        // Escape cancels it, the arrows walk the candidate list. Taking any of them here would end
+        // the row - or open the next one - in the middle of a word being converted.
+        if (isImeKeyEvent(event)) {
+            return;
+        }
         // Only a vertical arrow continues a vertical run; every other key that reaches the field is
         // the author saying where the caret goes now. Pressing a modifier on its own says nothing.
         const modifierOnly = event.key === "Shift" || event.key === "Control" || event.key === "Alt" || event.key === "Meta";
@@ -912,6 +1048,91 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         emitChange();
     }, [emitChange, recordStructural, resolveRubyTarget, saveSelection, scheduleReportActive]);
 
+    /**
+     * The characters the type panel addresses, and the three marks already on them. `null` when
+     * there is nothing to set — see `hasSelection`.
+     *
+     * Resolved once, when the panel opens, and handed back with every write. Reading it afresh per
+     * write cannot work here: the panel is portalled to the body, so the first press takes focus off
+     * the field and empties the selection, and the second press would find nothing to act on.
+     */
+    const resolveTypeTarget = useCallback((): TypeTarget | null => {
+        const el = editorRef.current;
+        if (!el) {
+            return null;
+        }
+        const selection = getSelectionUnitRange(el) ?? savedRange.current;
+        if (!selection) {
+            return null;
+        }
+        const runs = domToRuns(el);
+        const marksOver = (start: number, end: number): TypeTarget => ({
+            start,
+            end,
+            emphasis: rangeTextMark(runs, start, end, "emphasis"),
+            fontSizeStep: rangeTextMark(runs, start, end, "fontSizeStep"),
+            cps: rangeTextMark(runs, start, end, "cps"),
+        });
+        if (selection.start !== selection.end) {
+            return marksOver(selection.start, selection.end);
+        }
+        // A collapsed caret names no characters, so the only thing it can address is a run that is
+        // already marked — the same rule the ruby control follows.
+        for (const mark of TYPE_MARKS) {
+            const found = markedRunAt(runs, selection.start, mark);
+            if (found) {
+                return marksOver(found.start, found.end);
+            }
+        }
+        return null;
+    }, []);
+
+    /**
+     * Set or clear one of the type panel's marks over `target`. `null` removes it.
+     *
+     * The same shape as {@link setRuby}, and for the same reasons: the value comes from a panel that
+     * holds the focus, so the editor must not take it back, and a mark belongs to characters the
+     * author wrote, so inline value chips in the range are left alone.
+     */
+    const setTypeMark = useCallback((
+        mark: "emphasis" | "fontSizeStep" | "cps",
+        value: string | number | null,
+        target?: { start: number; end: number },
+    ) => {
+        const el = editorRef.current;
+        if (!el) {
+            return;
+        }
+        const range = target ?? resolveTypeTarget();
+        if (!range) {
+            return;
+        }
+        const runs = domToRuns(el);
+        const next = value === null || value === ""
+            ? undefined
+            : mark === "emphasis" ? value : Number(value);
+        if (next === rangeTextMark(runs, range.start, range.end, mark)) {
+            return;
+        }
+        recordStructural();
+        const applied = applyMarkToRange(
+            runs,
+            range.start,
+            range.end,
+            marks => ({ ...marks, [mark]: next }),
+            { textOnly: true },
+        );
+        renderRunsToElement(el, applied, renderOptionsRef.current);
+        if (globalThis.document.activeElement === el) {
+            setSelectionUnitRange(el, range.start, range.end);
+            saveSelection();
+        } else {
+            savedRange.current = { start: range.start, end: range.end };
+        }
+        scheduleReportActive(true);
+        emitChange();
+    }, [emitChange, recordStructural, resolveTypeTarget, saveSelection, scheduleReportActive]);
+
     // Splice by explicit unit range without focusing the editor (so a pause popover's input keeps
     // focus). Caret is only restored when the editor already holds focus.
     const spliceUnits = useCallback((start: number, deleteCount: number, insert: StoryRichRun[], caretAfter: boolean) => {
@@ -1023,6 +1244,8 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         toggleMark: (mark) => applyMark(mark),
         setColor: (color) => applyMark("color", color),
         getRubyTarget: resolveRubyTarget,
+        getTypeTarget: resolveTypeTarget,
+        setTypeMark,
         setRuby,
         insertPause,
         updatePauseAt: (unit, pause) => spliceUnits(unit, 1, [{ pause }], true),
@@ -1035,7 +1258,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
         removeEventAt: (unit) => spliceUnits(unit, 1, [], false),
         replaceSpelling,
         getRuns: () => (editorRef.current ? domToRuns(editorRef.current) : null),
-    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, setRuby, spliceUnits]);
+    }), [applyMark, insertPause, insertInterpolation, insertEvent, readOnly, replaceSpelling, resolveRubyTarget, resolveTypeTarget, setRuby, setTypeMark, spliceUnits]);
 
     return (
         <>
@@ -1045,6 +1268,11 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             style={{ ...props.style, caretColor: caretColor ?? undefined }}
             contentEditable={!readOnly}
             suppressContentEditableWarning
+            // What tells the workspace's editable-text menu that this field is a line of script, and
+            // so that a selection in it can be taught to the project dictionary. Every other text
+            // field in Studio names something (an asset, a variable, a scene) rather than writing
+            // the script, and offering to add those to the vocabulary would fill it with ids.
+            data-story-rich-text="true"
             // No `spellCheck` attribute, deliberately. Chromium's own checker is switched off across
             // the app (`@shared/types/spellcheck`), so asking it to check would draw nothing; the
             // squiggles below are Studio's, over text Studio checked.
@@ -1052,31 +1280,49 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
                 if (readOnly) {
                     return;
                 }
-                // A right click on a marked word asks about that word, and that is the only claim
-                // this field makes on the gesture. Everything else is left to bubble: the row skips
-                // a right click that landed inside the open field (see `StoryBlockRow`), so what
-                // reaches the workspace is the editable-text menu — cut, copy, paste — as before.
+                // A right click on a mark asks about what is marked there, and that is the only
+                // claim this field makes on the gesture. Everything else is left to bubble: the row
+                // skips a right click that landed inside the open field (see `StoryBlockRow`), so
+                // what reaches the workspace is the editable-text menu — cut, copy, paste — as
+                // before.
                 //
                 // Blink's own menu request no longer matters either way. It used to be the one
                 // channel carrying the spellchecker's verdict, which is why this handler was once
                 // careful never to prevent the default; there is now no checker under the page to
                 // have a verdict, and the suggestions come from the main process on request.
                 const el = editorRef.current;
-                if (!el || !props.onSpellingClick || spellMarksRef.current.length === 0) {
+                if (!el) {
                     return;
                 }
                 const unit = unitOffsetFromPoint(el, event.clientX, event.clientY);
-                const mark = unit === null ? null : markAtUnit(spellMarksRef.current, unit);
-                if (!mark) {
+                if (unit === null) {
+                    return;
+                }
+                // Spelling first. The two kinds of mark never cover the same characters in practice
+                // — the dictionary's own terms are exactly what the checker is told to accept — but
+                // the order settles it without either side having to know about the other.
+                const spelling = props.onSpellingClick ? markAtUnit(spellMarksRef.current, unit) : null;
+                if (spelling) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const rect = createUnitRange(el, spelling.unitStart, spelling.unitEnd).getBoundingClientRect();
+                    props.onSpellingClick?.({
+                        unitStart: spelling.unitStart,
+                        unitEnd: spelling.unitEnd,
+                        word: spelling.word,
+                        anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
+                    });
+                    return;
+                }
+                const entry = props.onDictionaryClick ? dictionaryMarkAtUnit(dictionaryMarksRef.current, unit) : null;
+                if (!entry) {
                     return;
                 }
                 event.preventDefault();
                 event.stopPropagation();
-                const rect = createUnitRange(el, mark.unitStart, mark.unitEnd).getBoundingClientRect();
-                props.onSpellingClick({
-                    unitStart: mark.unitStart,
-                    unitEnd: mark.unitEnd,
-                    word: mark.word,
+                const rect = createUnitRange(el, entry.unitStart, entry.unitEnd).getBoundingClientRect();
+                props.onDictionaryClick?.({
+                    mark: entry,
                     anchor: { top: rect.top, left: rect.left, bottom: rect.bottom },
                 });
             }}
@@ -1160,7 +1406,7 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
             onBlur={() => { saveSelection(); props.onBlur(); }}
             onKeyDown={handleKeyDown}
         />
-        {spellBoxes.length > 0 ? (
+        {markBoxes.length > 0 ? (
             /*
              * The underlines, as a sibling of the field rather than as spans inside it.
              *
@@ -1169,16 +1415,20 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
              * the caret's way. A sibling shares the field's containing block, which is what lets the
              * boxes be laid out in the same coordinate space the words are.
              *
+             * One layer for all three kinds. They are drawn by the same measurement over the same
+             * ranges and differ only in what the strip is painted with, so a second layer would be a
+             * second set of boxes to keep in step with the first.
+             *
              * Inert, and aria-hidden. The squiggle is three pixels tall and sits exactly where a
              * click lands when the author aims at the bottom of a line; a strip that took the
-             * pointer would refuse the caret to the one word they most want to edit. The suggestions
-             * are reached by right-clicking the word, which hit-tests the text underneath.
+             * pointer would refuse the caret to the one word they most want to edit. What is marked
+             * is reached by right-clicking it, which hit-tests the text underneath.
              */
             <div className="story-rt-spell-layer" aria-hidden="true">
-                {spellBoxes.map((box, index) => (
+                {markBoxes.map((box, index) => (
                     <span
-                        key={`${box.top}:${box.left}:${index}`}
-                        className="story-rt-spell"
+                        key={`${box.kind}:${box.top}:${box.left}:${index}`}
+                        className={MARK_CLASS[box.kind]}
                         style={{ left: box.left, top: box.top, width: box.width, height: UNDERLINE_HEIGHT_PX }}
                     />
                 ))}
@@ -1188,10 +1438,21 @@ export const RichTextInput = forwardRef<RichTextInputHandle, {
     );
 });
 
+/** One drawn strip: where it goes, and what it is saying. */
+type MarkBox = UnderlineBox & { kind: "spelling" | "variant" | "reading" };
+
+/** What each kind is painted with. See `styles.css` for the three. */
+const MARK_CLASS: Record<MarkBox["kind"], string> = {
+    spelling: "story-rt-spell",
+    variant: "story-rt-variant",
+    reading: "story-rt-reading",
+};
+
 /** Whether two measured sets of underlines are the same, so an unchanged layout costs no render. */
-function sameBoxes(a: readonly UnderlineBox[], b: readonly UnderlineBox[]): boolean {
+function sameBoxes(a: readonly MarkBox[], b: readonly MarkBox[]): boolean {
     return a.length === b.length
-        && a.every((box, index) => box.left === b[index].left && box.top === b[index].top && box.width === b[index].width);
+        && a.every((box, index) => box.kind === b[index].kind
+            && box.left === b[index].left && box.top === b[index].top && box.width === b[index].width);
 }
 
 /**

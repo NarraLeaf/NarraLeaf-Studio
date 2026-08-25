@@ -17,7 +17,7 @@ export const project = {
         // 文字組みなどプロジェクトの見た目はここに合流していく。
         design: {
             title: "デザイン",
-            description: "色と、その色で塗られるコントロール",
+            description: "色、フォント、そしてそれらで塗られるコントロール",
         },
         project: {
             title: "プロジェクト",
@@ -37,8 +37,11 @@ export const project = {
     group: {
         details: "詳細",
         appTags: "ビルドバリアント",
+        dlc: "DLC",
         userData: "プレイヤーのファイル",
         icons: "アイコン",
+        window: "ウィンドウ",
+        screenEffects: "画面エフェクト",
         dependencies: "依存関係",
         saving: "セーブ",
         olderSaves: "以前のセーブ",
@@ -50,6 +53,7 @@ export const project = {
         // このページの残りの言葉は、id の元になるモデルの隣、`brand` 名前空間にある。
         brandColors: "色",
         brandControls: "コントロール",
+        typography: "フォント",
         distribution: "配布キー",
         linting: "プロジェクトチェック",
         security: "セキュリティ",
@@ -96,8 +100,17 @@ export const project = {
         required: "必須",
     },
     userData: {
-        description: "配布したゲームがプレイヤーのセーブと進行を置く場所。"
-            + "アプリケーション名を変更しても場所は移動しない",
+        description: "配布したデスクトップ版がプレイヤーのセーブと進行を置く場所",
+        windowsLinux: "Windows と Linux",
+        windowsLinuxDescription: "Windows・Linux 版がプレイヤーのファイルを置く場所",
+        macos: "macOS",
+        macosDescription: "macOS 版がプレイヤーのファイルを置く場所",
+        mode: {
+            appRoot: "ゲームのフォルダー内",
+            userData: "ユーザーフォルダー内",
+        },
+        // プレイヤーがこのゲームを置いたフォルダーの代わり。そのパスは本人の環境にしか書けない。
+        gameFolder: "<ゲームフォルダー>",
         copy: "場所をコピー",
         copied: "場所をコピーした",
         copyFailed: "場所をコピーできなかった",
@@ -161,6 +174,29 @@ export const project = {
         // どのバリアントも名指さないカットポイントは何も終わらせない。
         deleteDetailCuts: {
             other: "スクリプトの {count} 箇所のカットポイントは残り、効かなくなる",
+        },
+    },
+    dlc: {
+        add: "DLC を追加",
+        history: {
+            add: "DLC {name} を追加",
+            rename: "DLC の名前を {name} に変更",
+            delete: "DLC {name} を削除",
+            edit: "DLC を編集",
+        },
+        newDlcName: "新しい DLC",
+        nameTitle: "名前",
+        idTitle: "ID",
+        idFile: "出力されるファイル: {file}",
+        idChangeConfirm: "ID を「{id}」に変更しますか？",
+        idChangeDetail: "すでに配布したファイルのファイル名は変わらず、元の ID を指定したストーリーはこの DLC を指さなくなります。",
+        idChangeAction: "変更",
+        attachTitle: "組み込む先",
+        delete: "削除",
+        deleteConfirm: "「{name}」を削除しますか？",
+        deleteDetail: {
+            one: "{count} 件のストーリーがベースビルドに戻ります。",
+            other: "{count} 件のストーリーがベースビルドに戻ります。",
         },
     },
     assets: {
@@ -376,17 +412,10 @@ export const project = {
         // 関わらず行が並ぶ。証明書はそれを使うビルドの何日も前に用意するもので、その準備こそが
         // これがビルドのダイアログではなくパネルにある理由。
         signingDescription: "どの資格情報でどのプラットフォームに署名するか。証明書とパスワードはこの端末に留まり、プロジェクトはどれを使うかだけを持つ",
-        webLosslessImagesTitle: "画像を WebP に変換",
-        webLosslessImagesDescription: "書き出す画像を、そのほうが小さくなる場合に可逆 WebP へ再エンコードする",
-        webLosslessImagesHint: "変換後の画像は元の画像と完全に同じにデコードされる。Android と iOS のビルドは同じ書き出しを配信するので、そちらにも適用される",
-        webPrecompressTitle: "テキストを事前圧縮",
-        webPrecompressDescription: "サイトのスクリプト、スタイル、ストーリーのデータについて Brotli と Gzip の版も書き出す",
-        webPrecompressHint: "使うのは、事前圧縮したファイルを配信するよう設定したサーバーだけ。それ以外のホストは元のファイルを配信する",
-        webLossyImagesTitle: "画像を再圧縮",
-        webLossyImagesDescription: "書き出す画像を非可逆 WebP へ再エンコードする。ファイルは大幅に小さくなり、失われた情報は戻らない",
-        webLossyQualityTitle: "画像の品質",
-        webLossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
-        webSharedWithMobileHint: "Android と iOS のビルドは同じ書き出しを配信するので、そちらにも効く",
+        lossyImagesTitle: "画像を再圧縮",
+        lossyImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        lossyQualityTitle: "画像の品質",
+        lossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
         // 「モバイルの向き」とはしない。モバイルの見出しの下にあり、語を重ねると 318px のパネルで
         // ラベルが 2 行になる。
         orientationTitle: "画面の向き",
@@ -421,6 +450,19 @@ export const project = {
             center: "中央",
             right: "右",
         },
+    },
+    window: {
+        resizableTitle: "サイズ変更を許可",
+        resizableDescription: "プレイヤーがウィンドウをドラッグしてサイズを変更できます。ステージは自身の比率を保って表示されます。",
+        rememberTitle: "ウィンドウを記憶",
+        rememberDescription: "前回終了時のサイズ・位置・表示モードで開きます。",
+        fullscreenTitle: "起動時にフルスクリーン",
+        fullscreenDescription: "初回起動時にフルスクリーンで開きます。",
+    },
+    screenEffects: {
+        frameRateTitle: "天候のフレームレート",
+        frameRateDescription: "雪・雨・桜に適用される。読み込んだクリップは元のフレームレートのまま",
+        frameRateOption: "{rate} fps",
     },
     dependencies: {
         rescan: "調べ直す",

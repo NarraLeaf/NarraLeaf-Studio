@@ -10,6 +10,7 @@ import { PrivilegedCapability, PrivilegedFileSystemCallResult } from "@shared/ty
 import { PluginPermissionPromptResult, PluginPermissionRequest } from "@shared/types/pluginPermissions";
 import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import { Fs } from "@shared/utils/fs";
+import { WRITE_BATCH_MAX_ENTRIES } from "@shared/utils/writeBatchFrame";
 import { splitFileEntry } from "@shared/utils/fileEntry";
 import { AppWindow } from "../appWindow";
 import {
@@ -186,6 +187,9 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 if (denied) return this.success(denied);
                 return this.success(await this.allocateWrite(window, data.path, data.raw, "encoding" in data ? data.encoding : undefined));
             }
+            case "requestWriteBatch": {
+                return this.success(await this.allocateWriteBatch(window, data));
+            }
             case "ensureRegularFile": {
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.ensureRegularFile(data.path, data.data, data.encoding));
@@ -193,6 +197,12 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
             case "writeFileNoFollow": {
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
                 return this.success(denied ?? await Fs.writeFileNoFollow(data.path, data.data, data.encoding));
+            }
+            case "writeFileNoFollowOrCreate": {
+                // Authorized exactly as the write-grant route authorizes the same path: this verb
+                // exists to skip the grant's *round trip*, never its permission check.
+                const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
+                return this.success(denied ?? await Fs.writeFileNoFollowOrCreate(data.path, data.data, data.encoding));
             }
             case "recoverCorruptedJsonFile": {
                 const denied = await ensureActorPathAllowed<void>(window, data, data.path, "write");
@@ -295,6 +305,70 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
             window.app.storageManager.cleanup(hash);
             return this.unknownError(error);
         }
+    }
+
+    /**
+     * Mint one grant covering every path in `entries`.
+     *
+     * All-or-nothing on *authorization*: one denied path refuses the whole grant, so a batch can
+     * never reach a file that `requestWrite` for it alone would have refused. The refusal carries the
+     * first offending path's own message, which is the same sentence the single-path route would
+     * have produced.
+     *
+     * Per-file on everything else. Whether each directory still exists is checked when the bytes
+     * arrive, not here - `allocateWrite` does it up front because it has exactly one file to fail,
+     * while a batch that refused the whole set over one missing directory would be strictly worse
+     * than the N separate writes it replaces. See `FileSystemHashHandler.handleBatchWrite`.
+     */
+    private async allocateWriteBatch(
+        window: AppWindow,
+        data: Extract<IPCEvents[IPCEventType.privilegedFsCall]["data"], { operation: "requestWriteBatch" }>,
+    ): Promise<FsRequestResult<string>> {
+        if (data.entries.length === 0) {
+            return {
+                ok: false,
+                error: { code: FsRejectErrorCode.INVALID_PATH, message: "A batched write grant must name at least one file" },
+            };
+        }
+        if (data.entries.length > WRITE_BATCH_MAX_ENTRIES) {
+            return {
+                ok: false,
+                error: {
+                    code: FsRejectErrorCode.INVALID_PATH,
+                    message: `A batched write grant may name at most ${WRITE_BATCH_MAX_ENTRIES} files; ${data.entries.length} were asked for`,
+                },
+            };
+        }
+
+        const seen = new Set<string>();
+        for (const entry of data.entries) {
+            // Refused rather than resolved to a winner. The files in a batch are written
+            // concurrently, so naming one twice has no defined outcome, and quietly picking one of
+            // the two payloads is a worse answer than saying the request is malformed.
+            if (seen.has(entry.path)) {
+                return {
+                    ok: false,
+                    error: { code: FsRejectErrorCode.INVALID_PATH, message: `A batched write grant names ${entry.path} twice` },
+                };
+            }
+            seen.add(entry.path);
+
+            const denied = await ensureActorPathAllowed<string>(window, data, entry.path, "write");
+            if (denied) {
+                return denied;
+            }
+        }
+
+        const hash = window.app.storageManager.allocateWriteBatchHash(
+            data.entries.map(entry => ({
+                path: entry.path,
+                // Same meaning as the single-path verbs: no encoding is the `raw: true` arm.
+                raw: entry.encoding === undefined,
+                encoding: entry.encoding,
+            })),
+        );
+        window.app.storageManager.updateStatus(hash, "ready");
+        return { ok: true, data: hash };
     }
 
     private async allocateWrite(
