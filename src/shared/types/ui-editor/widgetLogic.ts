@@ -43,6 +43,23 @@ export type WidgetLogicApi = {
     commands: readonly WidgetLogicCommandDef[];
     readableState: readonly WidgetLogicReadableStateDef[];
     writableProps: readonly WidgetLogicWritablePropDef[];
+    /**
+     * Whether the player operates this widget directly - a Button, a Switch, a Slider, a Text Input,
+     * a list they pick a row from. Scenery (Container, Text, Image, Video, Model, the page host)
+     * leaves it unset.
+     *
+     * Declared rather than derived, and the retreat is deliberate. A panel-wide gesture has to stand
+     * down over a control (`overControls: "skip"` in `inputAction.ts`), so something has to answer
+     * "is this a control", and the tempting derivation - "declares an interaction event beyond the
+     * shared displayable set" - is wrong at both ends: `nl.button` declares exactly the displayable
+     * set, and `nl.frame` declares `pageEvent`. Nothing else in an entry separates a Button from a
+     * Container, because what makes a Button a control is how the runtime draws and handles it, not
+     * what its graphs can listen to. So it is stated here, beside the rest of what a widget type can
+     * do, where a new widget type is already being described - and `inputAction.test.ts` pins every
+     * built-in answer against this table and the insert palette, so a type added to either fails
+     * until somebody classifies it.
+     */
+    operable?: boolean;
 };
 
 const INIT_EVENT: WidgetLogicEventDef = {
@@ -480,6 +497,9 @@ function createCollectionWidgetLogicApi(blueprintLabel: string): WidgetLogicApi 
     return {
         supportsPrivateBlueprint: true,
         blueprintLabel,
+        // The player picks rows out of it, so every collection widget is a control - including the
+        // three Game UI slot wrappers, which is why the flag is set here rather than per entry.
+        operable: true,
         events: COLLECTION_WIDGET_EVENTS,
         commands: [
             {
@@ -683,6 +703,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.button": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Button logic",
+        operable: true,
         events: DISPLAYABLE_WIDGET_EVENTS,
         commands: [
             ...baseCommands,
@@ -722,6 +743,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.slider": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Slider logic",
+        operable: true,
         events: SLIDER_EVENTS,
         commands: [
             ...baseCommands,
@@ -749,6 +771,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.textInput": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Text input logic",
+        operable: true,
         events: TEXT_INPUT_EVENTS,
         commands: [
             ...baseCommands,
@@ -773,6 +796,7 @@ export const BUILTIN_WIDGET_LOGIC_APIS: Record<string, WidgetLogicApi> = {
     "nl.switch": {
         supportsPrivateBlueprint: true,
         blueprintLabel: "Switch logic",
+        operable: true,
         events: SWITCH_EVENTS,
         commands: [
             ...baseCommands,

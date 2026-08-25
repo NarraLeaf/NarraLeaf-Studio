@@ -118,6 +118,17 @@ import {
 } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructField } from "@shared/types/ui-editor/struct";
 import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
+import {
+    normalizeUIInputActionLibrary,
+    normalizeUIInputBindings,
+    normalizeUISurfaceActionEnablements,
+    normalizeUISurfaceInputMode,
+    pruneUISurfaceActionEnablements,
+    type UIInputActionDef,
+    type UIInputBinding,
+    type UISurfaceActionEnablement,
+    type UISurfaceInputMode,
+} from "@shared/types/ui-editor/inputAction";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
@@ -987,6 +998,164 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** What the gestures of this project mean, keyed by id. */
+    public getInputActions(): Record<string, UIInputActionDef> {
+        return this.getDocument().actions ?? {};
+    }
+
+    /**
+     * Add an entry to the project's action vocabulary.
+     *
+     * Bindings start empty: the project default is what every surface inherits, so guessing one
+     * would silently wire a gesture the author never asked for into every interface at once.
+     */
+    public createInputAction(name: string): UIInputActionDef | null {
+        const actionName = name.trim();
+        if (!actionName) {
+            return null;
+        }
+        const actionId = this.getContext().services.get<UuidService>(Services.Uuid).generate();
+        const action: UIInputActionDef = { id: actionId, name: actionName, bindings: [] };
+        this.mutateDocument(document => {
+            document.actions = { ...(document.actions ?? {}), [actionId]: action };
+        }, { history: false });
+        return action;
+    }
+
+    /** Rename one vocabulary entry. Surfaces store the id, so nothing they answer moves. */
+    public renameInputAction(actionId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action || action.name === nextName) {
+                return;
+            }
+            action.name = nextName;
+        }, { history: false });
+    }
+
+    /**
+     * Replace the bindings a surface gets unless it overrides them.
+     *
+     * Every surface that took the default is rebound by this, which is the point of the vocabulary
+     * being a project-level table; a surface that had said otherwise keeps what it said.
+     */
+    public setInputActionBindings(actionId: string, bindings: readonly UIInputBinding[]): void {
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action) {
+                return;
+            }
+            action.bindings = normalizeUIInputBindings(bindings);
+        }, { history: false });
+    }
+
+    /**
+     * Drop one vocabulary entry, and every surface's answer to it, in one transaction.
+     *
+     * Both halves together for the reason `setListItemStructFields` prunes in its own transaction: a
+     * surface left answering an action nothing defines is a row with no name and no bindings, and a
+     * later action minted onto the same id would inherit those replies without anyone asking for it.
+     */
+    public deleteInputAction(actionId: string): void {
+        this.mutateDocument(document => {
+            if (!document.actions?.[actionId]) {
+                return;
+            }
+            const actions = { ...document.actions };
+            delete actions[actionId];
+            document.actions = actions;
+            const remaining = new Set(Object.keys(actions));
+            for (const surface of document.surfaces) {
+                if (!surface.actions) {
+                    continue;
+                }
+                const kept = pruneUISurfaceActionEnablements(surface.actions, remaining);
+                if (kept.length === surface.actions.length) {
+                    continue;
+                }
+                surface.actions = kept;
+            }
+        }, { history: false });
+    }
+
+    /** What this surface does with input that lands on it. */
+    public setSurfaceInputMode(surfaceId: string, mode: UISurfaceInputMode): void {
+        this.updateSurface(surfaceId, surface => {
+            surface.input = normalizeUISurfaceInputMode(mode);
+        }, { mergeKey: `surface:${surfaceId}:input` });
+    }
+
+    /**
+     * Whether this surface answers one of the project's actions.
+     *
+     * Enabling adds a bare enablement - no added bindings, no override - so the surface starts on
+     * the project's defaults and the row an author sees says exactly that. Disabling removes the
+     * record rather than flagging it off: a surface that does not answer an action has nothing to
+     * store about it, and a hidden set of per-surface bindings that reappear on re-enable is a
+     * state nobody can see.
+     */
+    public setSurfaceActionEnabled(surfaceId: string, actionId: string, enabled: boolean): void {
+        const id = actionId.trim();
+        if (!id) {
+            return;
+        }
+        this.updateSurface(surfaceId, surface => {
+            const current = surface.actions ?? [];
+            if (!enabled) {
+                const kept = current.filter(entry => entry.actionId !== id);
+                if (kept.length === current.length) {
+                    return;
+                }
+                if (kept.length === 0) {
+                    delete surface.actions;
+                    return;
+                }
+                surface.actions = kept;
+                return;
+            }
+            if (current.some(entry => entry.actionId === id)) {
+                return;
+            }
+            surface.actions = [...current, { actionId: id }];
+        });
+    }
+
+    /**
+     * Change one field of one surface's answer.
+     *
+     * A key **present** in the patch is written even when its value is `undefined`, which is how
+     * `overrideBindings` is cleared - an override present but empty means "no gesture here" and is a
+     * different statement from having no override at all (see `resolveSurfaceActionBindings`).
+     */
+    public updateSurfaceActionEnablement(
+        surfaceId: string,
+        actionId: string,
+        patch: Partial<Omit<UISurfaceActionEnablement, "actionId">>,
+    ): void {
+        this.updateSurface(surfaceId, surface => {
+            const enablement = surface.actions?.find(entry => entry.actionId === actionId);
+            if (!enablement) {
+                return;
+            }
+            for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+                const value = patch[key];
+                if (value === undefined) {
+                    delete enablement[key];
+                    continue;
+                }
+                if (key === "addBindings" || key === "overrideBindings") {
+                    enablement[key] = normalizeUIInputBindings(value);
+                    continue;
+                }
+                (enablement as Record<string, unknown>)[key] = value;
+            }
+        }, { mergeKey: `surface:${surfaceId}:action:${actionId}:${Object.keys(patch).sort().join(",")}` });
+    }
+
     /**
      * Bind one prop of one element to a field of the list item it is drawn for. `null` unbinds.
      *
@@ -1370,6 +1539,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
+        return this.normalizeInputModel(this.migrateSchemaVersion(document));
+    }
+
+    /**
+     * The input vocabulary and every surface's reply to it, read the way this build understands them.
+     *
+     * Runs on every load rather than in one numbered migration, and carries **no** schema bump. The
+     * precedent is the struct library: fields whose absence already means a defined default are read
+     * through a normalizer instead of being backfilled once, so a document written by an older
+     * Studio loads with an empty vocabulary, `capture`, and no enablements without ever having
+     * claimed to be a newer schema. The numbered migrations here are the other kind - each one
+     * restructures elements a normalizer could not reconstruct.
+     *
+     * `input` and `actions` are written back only when the surface carries them, so a project that
+     * has never opened the input panel keeps its surface records exactly as short as they were and
+     * the load path's "did normalizing change anything" check stays quiet.
+     */
+    private normalizeInputModel(document: UIDocument): UIDocument {
+        const actions = normalizeUIInputActionLibrary(document.actions);
+        if (Object.keys(actions).length > 0) {
+            document.actions = actions;
+        } else {
+            delete document.actions;
+        }
+        for (const surface of document.surfaces) {
+            if (surface.input !== undefined) {
+                surface.input = normalizeUISurfaceInputMode(surface.input);
+            }
+            if (surface.actions !== undefined) {
+                surface.actions = normalizeUISurfaceActionEnablements(surface.actions);
+            }
+        }
+        return document;
+    }
+
+    private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }
