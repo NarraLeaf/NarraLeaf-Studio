@@ -755,6 +755,30 @@ export const documentDiff = {
          */
         position: "{index} / {total}",
         gone: "This file is not in this comparison.",
+        /** A row that selects the element it is about, so the right rail can show its properties. */
+        inspect: "Inspect {name}",
+    },
+    /**
+     * The right rail while an element of one half is selected.
+     *
+     * The rail draws the same inspector the interface editor draws, over the version that half is
+     * showing. So nothing here describes a field - the fields say what they always say - and what
+     * these keys add is the one thing the fields cannot: which version this is, and that it is a
+     * picture of one rather than a canvas.
+     */
+    inspector: {
+        /** Above the fields, so the rail never leaves which version unsaid. */
+        version: "From {version}",
+        /** An element the other half does not hold at all. Stated, rather than left as a blank. */
+        onlyHere: "Not in {version}",
+        readOnly: "A comparison is read-only. Open the interface editor to edit these properties.",
+        /**
+         * What the other half holds for one field, on the hover of the dot beside its name. Drawn as
+         * a pair rather than worded, for the reason a change's own two values are.
+         */
+        differs: "{version}: {value}",
+        /** The counterpart where there is no value at all - an empty text, a cleared colour. */
+        noValue: "Empty",
     },
     /**
      * Finishing a merge by taking one side of each file.
