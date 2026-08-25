@@ -438,6 +438,8 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             // Visibility follows the calling execution, not this adapter's surface
             // (global callers pass no surface and only see global fns).
             surfaceId: input.callerSurfaceId,
+            callerComponentId: input.callerComponentId,
+            callerComponentParams: input.callerComponentParams,
             runtimeScopeId: effectiveRuntimeScopeId,
             hostAdapter: adapter,
             debug,

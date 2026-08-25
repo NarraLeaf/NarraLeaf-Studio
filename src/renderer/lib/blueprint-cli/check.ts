@@ -17,6 +17,7 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import {
     validateBlueprintDocumentGraphs,
 } from "@services/ui-editor/blueprint/graphValidation";
+import { ownerRefToIndexKey } from "@services/ui-editor/blueprint/ownerKeys";
 import type { BpDiagnostic } from "./dsl/ast";
 import { compileBlueprintDocument } from "./dsl/compile";
 import { parseBlueprintText } from "./dsl/parse";
@@ -122,6 +123,16 @@ function runGraphValidation(
     };
     for (const blueprint of blueprints) {
         document.blueprints[blueprint.id] = blueprint;
+        // Registered as its owner's active blueprint, exactly as `apply` is about to register it.
+        // Without this the check answers about a document that will never exist: a NEW blueprint
+        // that declares a Fn and calls it reads as `fn.call_target_not_found`, because the fn
+        // catalogue only looks inside blueprints that are active for their owner. That refusal then
+        // stops `apply` writing it - so the graph could never be written at all, and the way out
+        // was to hand-edit the JSON this tool exists to keep people out of.
+        document.ownerRecords[ownerRefToIndexKey(blueprint.owner)] = {
+            activeBlueprintId: blueprint.id,
+            privateBlueprintIds: [blueprint.id],
+        };
     }
 
     const out: BpDiagnostic[] = [];

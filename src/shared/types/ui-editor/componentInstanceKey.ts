@@ -41,3 +41,41 @@ export function readUIComponentInstanceElementId(instanceKey: string | undefined
     }
     return null;
 }
+
+/**
+ * The surface id a component definition's own tree is laid out under.
+ *
+ * A definition is rendered inside a virtual surface of its own (see `SurfaceElementTree`), because
+ * everything downstream of a render wants a surface and a definition has none of its own. Element
+ * references written inside its blueprint therefore name this rather than whichever surface an
+ * instance ended up on - which the definition cannot know, and which differs between two placements
+ * of the same component.
+ *
+ * Here rather than inlined at each of the two ends, for the ordinary reason: one is minted by the
+ * renderer and the other is compared against by every node that targets an element, and a format
+ * spelled twice is a format that stops matching the first time either side is touched.
+ */
+export function buildUIComponentSurfaceId(componentId: string): string {
+    return `component:${componentId}`;
+}
+
+/**
+ * Whether an element reference is allowed to name this surface from this execution.
+ *
+ * A graph may reach the surface it runs on, and a component definition's graph may reach its own
+ * tree. Nothing else: reaching into another surface is the thing the check exists to stop, and it
+ * still is. An execution that cannot say where it is running answers yes, which is what the check
+ * did before there was anything to compare against.
+ */
+export function isUIElementRefInScope(
+    refSurfaceId: string | undefined,
+    owner: { surfaceId?: string; componentId?: string } | undefined,
+): boolean {
+    if (!owner?.surfaceId) {
+        return true;
+    }
+    if (refSurfaceId === owner.surfaceId) {
+        return true;
+    }
+    return Boolean(owner.componentId) && refSurfaceId === buildUIComponentSurfaceId(owner.componentId!);
+}
