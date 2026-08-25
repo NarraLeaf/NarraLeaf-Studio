@@ -159,13 +159,12 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // an action with, so Ctrl+V and Delete kept working on a frozen project.
     const freeze = useFreezeGuard();
     /**
-     * The half of the panel a live session leaves working: what the project SAYS about a file.
+     * The asset library's own guard.
      *
-     * Two guards rather than one, because a session freezes this panel down the middle. Renaming,
-     * describing, tagging and filing a row write the metadata shard, which a session carries;
-     * importing, replacing, duplicating and deleting write the bytes, which it never does - and the
-     * folder tree is a document with no verb. Those keep {@link freeze}, which is frozen by any
-     * freeze at all, so they grey with the same sentence they always did.
+     * Two guards rather than one, and the line between them is not "what a session can carry" any
+     * more - it carries the whole library, files included. It is **which document**: everything that
+     * writes the library reads this one, and the asset SETS beside it are a different document with
+     * no verbs of its own, so their controls keep {@link freeze} and grey under any freeze at all.
      */
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
     // One subscription for every row. Empty outside a live session.
@@ -955,7 +954,6 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const { menuState, contextMenu, showContextMenu, closeContextMenu } = useAssetsContextMenu({
         clipboard, contextMenuTarget, setContextMenuTarget, selectedItems, isMultiSelectMode,
-        libraryWritable: !libraryFreeze.frozen,
         handleClearSelection,
         handleCopy: () => handleCopyRef.current(),
         handleCut: () => handleCutRef.current(),
@@ -1042,7 +1040,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     // by the freeze policy already, but `mod+v` runs the action straight from the
                     // keybinding, and on a frozen project it created assets that never landed.
                     // Copy and cut above only fill the clipboard, so they are left alone.
-                    onClick: freeze.run((_workspace) => handlePasteRef.current()),
+                    onClick: libraryFreeze.run((_workspace) => handlePasteRef.current()),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
                     order: 2,
@@ -1056,7 +1054,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     menuRole: "delete",
                     // Same for Delete, which reaches the files themselves: the key runs the action
                     // without ever consulting the greyed row.
-                    onClick: freeze.run((_workspace) => handleDeleteRef.current()),
+                    onClick: libraryFreeze.run((_workspace) => handleDeleteRef.current()),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -1067,7 +1065,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze, libraryFreeze]);
 
     useEffect(() => {
         if (showHeader) {
