@@ -128,6 +128,24 @@ export const documentDiff = {
         avatarChanged: "对白头像 {key}",
         groupAdded: "新增分组",
         groupRemoved: "删除分组",
+        /**
+         * 角色编辑器画得出、却从未给过标签的六个字段。其余字段一律沿用作者编辑它的那块面板的词
+         * （见 `CHARACTER_FIELD_NAME_KEY`），这六个没有可沿用的键：角色列表把别名印在名字下面
+         * 却不加说明，分组是靠移动一行来设定的，画布、头像差分轴、立绘来源的 PSD、以及傀儡静置
+         * 时的状态各自藏在一个按钮或一个没有标签的控件后面。取词来源是那些控件自己的说法
+         * （设定画布、头像随此轴变化、导入 PSD），不在这里另造。
+         *
+         * attributes 与 options 不在其中：Studio 没有编辑它们的界面，两者都是插件或导入写进去的
+         * 数据袋，所以它们的行保留文档里的存储名。
+         */
+        fields: {
+            nicknames: "别名",
+            group: "分组",
+            canvas: "画布",
+            avatarAxes: "头像差分轴",
+            psd: "PSD",
+            puppetDefaultState: "默认状态",
+        },
         groupRenamed: "分组改名",
     },
     /**
