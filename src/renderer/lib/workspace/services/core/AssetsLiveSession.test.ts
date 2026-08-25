@@ -87,6 +87,17 @@ function createHarness(assets: Asset<AssetType, AssetSource.Local>[], groups: As
                         },
                     };
                 }
+                if (serviceId === Services.Reference) {
+                    // The delete guard still runs first inside a session - a file something still
+                    // points at is refused before anything is stated - so it needs an index that can
+                    // answer. Nothing here references anything.
+                    return {
+                        async ensureReady() { },
+                        async flushPendingRebuilds() { },
+                        getReferencesForAll: () => new Map(),
+                        getIndexResult: () => ({ complete: true, gaps: [] }),
+                    };
+                }
                 throw new Error(`Unexpected service ${serviceId}`);
             },
         },
@@ -321,56 +332,76 @@ describe("an effect arriving for the asset library", () => {
     });
 });
 
-describe("what the asset library refuses while a session is running", () => {
+describe("the gestures that move a file", () => {
     /**
-     * ⚠ **The walk that catches the next one somebody adds.** Every gesture here moves bytes, and
-     * bytes do not travel between the people in a session; the write boundary cannot catch them,
-     * because it leaves the metadata shard writable and a refused byte write answers `ok`.
+     * ⚠ **The half of the library that used to be refused outright.** What these pin is that each of
+     * them now becomes an operation and touches nothing locally - the record moves when the effect
+     * comes back, exactly as an edit does. A gesture that quietly did its local half as well would be
+     * a library one machine has and the others do not.
      */
-    it("refuses every gesture that would add, replace or remove a file", async () => {
+    it("states a deletion rather than doing one, and trashes nothing yet", async () => {
         const record = asset("asset-1", AssetType.Image);
-        const { service, sink } = createHarness([record], [IMAGE_GROUP]);
+        const { service, metadata, stated, sink } = createHarness([record]);
         service.setOperationSink(sink);
 
-        const answers = await Promise.all([
-            service.importLocalAssets(AssetType.Image),
-            service.importRemoteAsset(AssetCategory.Image, "https://example.invalid/a.png"),
-            service.importFromPaths(AssetType.Image, ["C:/a.png"]),
-            service.createLocalAssetFromBytes(AssetType.Other, "notes.txt", new Uint8Array()),
-            service.createLocalBundleAssetFromDirectory(AssetType.Model, "C:/model"),
-            service.duplicateAsset(record),
-            service.replaceAssetContent(record, "C:/b.png"),
-            service.writeAssetTextContent(record, "hello", "utf-8"),
-            service.refreshRemoteAsset(record as never),
-            service.deleteAsset(record),
-            service.deleteGroup(AssetCategory.Image, "group-1", true),
-            service.duplicateGroup(AssetCategory.Image, "group-1"),
-        ]);
+        const answer = await service.deleteAsset(record);
 
-        for (const answer of answers) {
-            expect(answer.success).toBe(false);
-        }
+        expect(answer.success).toBe(true);
+        expect(stated).toEqual([{ op: "delete-assets", assetType: AssetType.Image, assetIds: ["asset-1"] }]);
+        // Still here: every machine, this one included, removes it when the effect arrives.
+        expect(metadata[AssetType.Image]["asset-1"]).toBeDefined();
     });
 
-    it("refuses folder changes for a different reason, and says so", async () => {
-        // Nothing about a folder moves bytes. The folder shard is simply a document with no verb -
-        // the half of the invariant the named-key registry is on - and the author is owed the
-        // reason that is actually true.
-        const { service, sink } = createHarness([], [IMAGE_GROUP]);
+    it("states a folder rather than making one, and mints its id here", async () => {
+        // ⚠ The id and the timestamps are decided by one machine on purpose: an applier that minted
+        // its own would give every machine a different folder from one gesture.
+        const { service, groupMap, stated, sink } = createHarness([]);
         service.setOperationSink(sink);
 
-        const created = await service.createGroup(AssetCategory.Image, "Chapter 2");
-        const renamed = await service.renameGroup(AssetCategory.Image, "group-1", "Chapter 1");
-        const moved = await service.moveGroupToParent(AssetCategory.Image, "group-1", undefined);
+        const answer = await service.createGroup(AssetCategory.Image, "Chapter 2");
 
-        for (const answer of [created, renamed, moved]) {
-            expect(answer.success).toBe(false);
-            expect(!answer.success && answer.error).toContain("not shared by a live session");
-        }
+        expect(answer.success).toBe(true);
+        expect(stated).toHaveLength(1);
+        expect(stated[0]).toMatchObject({
+            op: "set-asset-folder",
+            category: AssetCategory.Image,
+            folder: { name: "Chapter 2", category: AssetCategory.Image },
+        });
+        expect(Object.keys(groupMap[AssetCategory.Image])).toHaveLength(0);
     });
 
-    it("lets all of them through again once the sink is gone", async () => {
-        const { service, groupMap } = createHarness([], []);
+    it("states a rename and a re-parent as the same verb, carrying the whole record", async () => {
+        const { service, groupMap, stated, sink } = createHarness([], [IMAGE_GROUP]);
+        service.setOperationSink(sink);
+
+        await service.renameGroup(AssetCategory.Image, "group-1", "Chapter 1");
+        await service.moveGroupToParent(AssetCategory.Image, "group-1", undefined);
+
+        expect(stated.map(op => op.op)).toEqual(["set-asset-folder", "set-asset-folder"]);
+        expect(stated[0]).toMatchObject({ folder: { id: "group-1", name: "Chapter 1" } });
+        // And nothing moved here: the tree redraws when the effect comes back.
+        expect(groupMap[AssetCategory.Image]["group-1"].name).toBe("Backgrounds");
+    });
+
+    it("states a folder deletion as one operation and carries none of the cascade", async () => {
+        // Which folders are below this one and which files are in them is a question every machine
+        // answers for itself, from documents the room already agrees on.
+        const { service, stated, sink } = createHarness([], [IMAGE_GROUP]);
+        service.setOperationSink(sink);
+
+        const answer = await service.deleteGroup(AssetCategory.Image, "group-1", true);
+
+        expect(answer.success).toBe(true);
+        expect(stated).toEqual([{
+            op: "delete-asset-folder",
+            category: AssetCategory.Image,
+            folderId: "group-1",
+            recursive: true,
+        }]);
+    });
+
+    it("goes back to doing all of them the moment the sink is gone", async () => {
+        const { service, groupMap } = createHarness([]);
 
         const created = await service.createGroup(AssetCategory.Image, "Chapter 2");
 
