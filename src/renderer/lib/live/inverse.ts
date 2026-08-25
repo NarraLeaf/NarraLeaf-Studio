@@ -1,6 +1,8 @@
 import type { LiveCastView } from "@shared/live/cast";
 import type { LiveDialogueRowRef, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { VoiceUnit } from "@shared/types/voice";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
 
@@ -201,7 +203,23 @@ export type LiveBefore =
      * every member was moved out of it, and the group record says nothing about which ones. Undoing
      * has to put the cast back where it was, not re-create an empty group with the right name.
      */
-    | { op: "delete-character-group"; group: CharacterGroup; members: readonly string[] };
+    | { op: "delete-character-group"; group: CharacterGroup; members: readonly string[] }
+    /**
+     * The entry the translation held, or null when there was none.
+     *
+     * `update-block`'s shape two documents along, with one difference: null is a value here rather
+     * than the absence of a record. In a locale library "no entry" is what an untranslated line
+     * looks like, so a set that wrote the first translation of a line is undone by putting the
+     * nothing back - and a record that could not tell "there was no entry" from "nothing was kept"
+     * would leave the first translation of every line impossible to take back.
+     */
+    | { op: "set-translation"; unit: LocalizationUnit | null }
+    /** What every entry of a batch held, one per entry the batch named, in the order it named them. */
+    | { op: "set-translations"; units: readonly { unitId: string; unit: LocalizationUnit | null }[] }
+    /** The take the line held, or null when there was none. The translation's mirror. */
+    | { op: "set-take"; unit: VoiceUnit | null }
+    /** What every take of a batch held, one per entry the batch named. */
+    | { op: "set-takes"; units: readonly { unitId: string; unit: VoiceUnit | null }[] };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -334,6 +352,50 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "reorder-chapters":
             return { op: "reorder-chapters", chapterIds: document.chapters.map(chapter => chapter.id) };
 
+        case "set-translation": {
+            const units = sources.translations?.(op.locale) ?? null;
+            // Null is the library not being held, which is a different fact from the entry being
+            // absent: nothing can be read, so nothing is kept and the undo answers `no-record`.
+            const held = units === null ? undefined : units[op.unitId];
+            return units === null
+                ? null
+                : { op: "set-translation", unit: held ? { ...held } : null };
+        }
+
+        case "set-translations": {
+            const units = sources.translations?.(op.locale) ?? null;
+            if (units === null) {
+                return null;
+            }
+            return {
+                op: "set-translations",
+                units: op.units.map(entry => {
+                    const held = units[entry.unitId];
+                    return { unitId: entry.unitId, unit: held ? { ...held } : null };
+                }),
+            };
+        }
+
+        case "set-take": {
+            const units = sources.takes?.(op.locale) ?? null;
+            const held = units === null ? undefined : units[op.unitId];
+            return units === null ? null : { op: "set-take", unit: held ? { ...held } : null };
+        }
+
+        case "set-takes": {
+            const units = sources.takes?.(op.locale) ?? null;
+            if (units === null) {
+                return null;
+            }
+            return {
+                op: "set-takes",
+                units: op.units.map(entry => {
+                    const held = units[entry.unitId];
+                    return { unitId: entry.unitId, unit: held ? { ...held } : null };
+                }),
+            };
+        }
+
         case "delete-character": {
             const record = cast.characters[op.characterId];
             if (!record) {
@@ -395,6 +457,16 @@ export type LiveBeforeSources = {
      * project could not be exercised without one.
      */
     spoke?: readonly LiveDialogueRowRef[];
+    /**
+     * One language's translations as they stand, or null when this machine does not hold them.
+     *
+     * A reader rather than a document, because which language an operation is about is stated inside
+     * the operation and this is called before the switch that reads it. Still nothing but a lookup -
+     * the module reaches for no service.
+     */
+    translations?(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
+    /** One language's voice takes as they stand, or null when this machine does not hold them. */
+    takes?(locale: string): Readonly<Record<string, VoiceUnit>> | null;
 };
 
 /** Stand-ins for an absent source, so the cases below need no null check of their own. */
@@ -811,6 +883,73 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                 return { op: { op: "delete-character-group", groupId: op.groupId } };
             }
             return { op: { op: "set-character-group", groupId: op.groupId, group: { ...before.group } } };
+        }
+
+        case "set-translation": {
+            if (!before || before.op !== "set-translation") {
+                return { impossible: "no-record" };
+            }
+            // No way to fail, and the reason belongs to the document rather than to this operation:
+            // an entry is whatever it was last set to, and nothing in a session can take away the
+            // thing it is about - the story row it belongs to lives in another document, and a
+            // translation of a line that has since been deleted is a harmless orphan the library
+            // already tolerates.
+            return {
+                op: {
+                    op: "set-translation",
+                    locale: op.locale,
+                    unitId: op.unitId,
+                    unit: before.unit === null ? null : { ...before.unit },
+                },
+            };
+        }
+
+        case "set-translations": {
+            if (!before || before.op !== "set-translations" || before.units.length !== op.units.length) {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "set-translations",
+                    locale: op.locale,
+                    // Copies, because applying one writes the unit into the library; handing over
+                    // the record itself would leave a redo holding entries that belong to it.
+                    units: before.units.map(entry => ({
+                        unitId: entry.unitId,
+                        unit: entry.unit === null ? null : { ...entry.unit },
+                    })),
+                },
+            };
+        }
+
+        case "set-take": {
+            if (!before || before.op !== "set-take") {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "set-take",
+                    locale: op.locale,
+                    unitId: op.unitId,
+                    unit: before.unit === null ? null : { ...before.unit },
+                },
+            };
+        }
+
+        case "set-takes": {
+            if (!before || before.op !== "set-takes" || before.units.length !== op.units.length) {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "set-takes",
+                    locale: op.locale,
+                    units: before.units.map(entry => ({
+                        unitId: entry.unitId,
+                        unit: entry.unit === null ? null : { ...entry.unit },
+                    })),
+                },
+            };
         }
 
         case "delete-character-group": {

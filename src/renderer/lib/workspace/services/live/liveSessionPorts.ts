@@ -1,11 +1,23 @@
 import type { TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveCharacterOp, LiveDerived, LiveDialogueRowRef, LiveDigestScope, LiveStoryOp } from "@shared/live/ops";
+import type {
+    LiveCharacterOp,
+    LiveDerived,
+    LiveDialogueRowRef,
+    LiveDigestScope,
+    LiveLocalizationOp,
+    LiveStoryOp,
+    LiveVoiceOp,
+} from "@shared/live/ops";
+import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { VoiceUnit } from "@shared/types/voice";
 import type { CharacterOpSink } from "../core/CharacterService";
+import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
  * Everything a live session needs from the workspace it is running in, and nothing it needs to know
@@ -111,7 +123,40 @@ export type LiveStoryPort = {
      * let the localization panel write, and that write has no effect behind it for anybody else to
      * derive the same thing from.
      */
-    adoptDerived(derived: LiveDerived): void;
+    adoptDerived(derived: LiveDerived): readonly LiveDigestScope[];
+};
+
+/**
+ * One language's translations, and the same three things any shared document has to provide.
+ *
+ * **Per language rather than per project**, which is the shape the story port has and the cast port
+ * does not: `editor/localization/<locale>.json` is one file per language, so a session carries as
+ * many of them as it managed to read.
+ */
+export type LiveLocalizationPort = {
+    /** Where translation edits go instead of into the library, or null to take them back. */
+    setSink(sink: LocalizationOpSink | null): void;
+    /**
+     * Read every language's library into memory, and answer with the ones that could be read.
+     *
+     * Called once, on the way into a session, for `LiveStoryPort.loadAll`'s reason: appliers are
+     * synchronous, and a library that is not in memory when the session starts is one no effect can
+     * ever reach. What comes back is what the session carries and what the freeze leaves writable -
+     * one set, from one call.
+     */
+    loadAll(): Promise<readonly string[]>;
+    /** One language's entries as they stand, or null when this window does not hold them. */
+    units(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveLocalizationOp): void;
+};
+
+/** One language's voice takes. The translations port's mirror, method for method. */
+export type LiveVoicePort = {
+    setSink(sink: VoiceOpSink | null): void;
+    loadAll(): Promise<readonly string[]>;
+    units(locale: string): Readonly<Record<string, VoiceUnit>> | null;
+    applyOp(op: LiveVoiceOp): void;
 };
 
 /**
@@ -189,6 +234,8 @@ export type LiveSessionDeps = {
     rooms(remoteOrigin: string): LiveRooms;
     story: LiveStoryPort;
     cast: LiveCastPort;
+    localization: LiveLocalizationPort;
+    voice: LiveVoicePort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;

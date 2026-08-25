@@ -37,8 +37,10 @@ import type {
  * one point every edit to that document passes through.** For a story that is a block, because
  * `StoryService`'s mutators take one; for the cast it is a whole character record, because
  * `CharacterService` learns of an edit from a change notification that names the record and nothing
- * else. What is forbidden is the verb that would fit any document - "here is the new file" - which is
- * whole-document last-writer-wins, and the reason a line of prose has a claim on it instead.
+ * else. For a language's translations it is one entry, because `LocalizationService` takes one; same
+ * for its voice takes. What is forbidden is the verb that would fit any document - "here is the new
+ * file" - which is whole-document last-writer-wins, and the reason a line of prose has a claim on it
+ * instead.
  *
  * ⚠ **Size.** One `live.say` payload is capped, and a whole document is far larger than the cap.
  * That is not a limitation to work around here - the bulk of a project travels through version
@@ -246,13 +248,69 @@ export type LiveCharacterOp =
     | { op: "delete-character-group"; groupId: string };
 
 /**
+ * Everything that can be done to one locale's translations.
+ *
+ * **Two verbs, and the addressing is the story's rather than the cast's.** `LocalizationService`
+ * exposes a mutator that takes one entry - `updateUnit(locale, unitId, …)` - and every editing
+ * gesture in the table ends up calling it, so the finest thing that can be stated truthfully at the
+ * one point every edit passes through is one entry, exactly as a story's is one block. There was no
+ * need for the cast's compromise here.
+ *
+ * ⚠ **A unit travels whole, and `null` is one of its values.** In this document "no entry" and
+ * "no translation" are the same state - the service deletes the entry when a translator clears the
+ * box, because an entry holding an empty string is what an untranslated line already looks like. So
+ * there is no delete verb to pair with a set verb; there is one verb that says what the entry is
+ * now, and nothing is one of the answers. Splitting them would invent a distinction the document
+ * does not have, and a machine would then have to decide which of two operations an emptied box was.
+ */
+export type LiveLocalizationOp =
+    /**
+     * What one entry now is, or that there is none.
+     *
+     * The whole unit rather than the patch the panel produced, for the reason `update-block` carries
+     * a whole payload: the receiving machines must not each recompute a result from their own copy,
+     * because then the operation states an intention and the document states an outcome, and the two
+     * can differ. `sourceHash` in particular is derived from the source line the editor was looking
+     * at, which is not a thing every machine can be relied on to read the same way.
+     */
+    | { op: "set-translation"; locale: string; unitId: string; unit: LocalizationUnit | null }
+    /**
+     * What many entries now are, as ONE operation.
+     *
+     * What an exchange import is - a CSV, an XLIFF, a PO file folded back into one locale. The same
+     * reasoning as the story's `update-blocks`: the host applies one operation at a time and
+     * broadcasts each, so an import sent as four hundred operations would draw three hundred and
+     * ninety-nine half-imported libraries on every other screen, and taking it back would cost a
+     * press per row where taking it back outside a session costs one.
+     *
+     * One locale, because that is what an import is: the rows were read for a language.
+     */
+    | { op: "set-translations"; locale: string; units: readonly { unitId: string; unit: LocalizationUnit | null }[] };
+
+/**
+ * Everything that can be done to one locale's voice takes.
+ *
+ * The translations' mirror, one document along, and deliberately the same two verbs: `VoiceService`
+ * has the same `updateUnit(locale, unitId, …)` shape, the same `applyImportedRows` for a recording
+ * script coming back from the booth, and the same rule that an entry with no clip is no entry.
+ *
+ * ⚠ **A take is NOT claimed, where a translation is** - see {@link CLAIMED_OPS} for the test and the
+ * reason.
+ */
+export type LiveVoiceOp =
+    /** What one take now is, or that there is none. */
+    | { op: "set-take"; locale: string; unitId: string; unit: VoiceUnit | null }
+    /** What many takes now are, as ONE operation. What a recording script folded back in is. */
+    | { op: "set-takes"; locale: string; units: readonly { unitId: string; unit: VoiceUnit | null }[] };
+
+/**
  * Everything a session can be asked to do, whichever document it is about.
  *
  * Flat rather than nested by document, because every consumer of this type switches over `op` and a
  * nesting would make each of them switch twice. Which document a verb belongs to is
  * {@link opDocumentKind}'s answer, and it is a property of the verb rather than of the message.
  */
-export type LiveOp = LiveStoryOp | LiveCharacterOp;
+export type LiveOp = LiveStoryOp | LiveCharacterOp | LiveLocalizationOp | LiveVoiceOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -272,7 +330,17 @@ export type LiveOpKind = LiveOp["op"];
  */
 export type LiveDocument =
     | { doc: "story"; storyId: StoryId }
-    | { doc: "characters" };
+    | { doc: "characters" }
+    /**
+     * One language's translations - `editor/localization/<locale>.json`.
+     *
+     * Parameterised for the story's reason, not the cast's: a project has a library per language and
+     * an operation applied to the wrong one writes a French line into the Japanese file, which reads
+     * as a translation somebody made rather than as a fault.
+     */
+    | { doc: "localization"; locale: string }
+    /** One language's voice takes - `editor/voice/<locale>.json`. The translations' mirror. */
+    | { doc: "voice"; locale: string };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -304,25 +372,77 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-character-group":
         case "delete-character-group":
             return "characters";
+        case "set-translation":
+        case "set-translations":
+            return "localization";
+        case "set-take":
+        case "set-takes":
+            return "voice";
     }
 }
 
-/** Whether a message's operation and the document it states agree. See {@link opDocumentKind}. */
+/**
+ * Whether a message's operation and the document it states agree. See {@link opDocumentKind}.
+ *
+ * ⚠ **The kind agreeing is not the whole of the check for a parameterised document.** A
+ * `set-translation` names the locale it is about, and a message pairing it with a different locale's
+ * address would pass this and write the entry into the wrong file. See {@link opAddresses}, which
+ * the host asks as well.
+ */
 export function opBelongsTo(op: LiveOp, document: LiveDocument): boolean {
     return opDocumentKind(op) === document.doc;
 }
 
+/**
+ * Whether an operation that names its own address agrees with the address the message states.
+ *
+ * The story's operations do not name their document at all - a scene id says nothing about which
+ * story holds it - which is why an address travels on the message in the first place. The library
+ * operations DO name their locale, because the service they came from is addressed by it, and two
+ * spellings of one fact are two chances to be wrong: an entry written into the wrong language's file
+ * is a translation nobody made, sitting in a document with a digest that agrees with itself.
+ *
+ * True for everything that has nothing of its own to compare, which is the ordinary case.
+ */
+export function opAddresses(op: LiveOp, document: LiveDocument): boolean {
+    switch (op.op) {
+        case "set-translation":
+        case "set-translations":
+            return document.doc === "localization" && document.locale === op.locale;
+        case "set-take":
+        case "set-takes":
+            return document.doc === "voice" && document.locale === op.locale;
+        default:
+            return true;
+    }
+}
+
 /** Two addresses naming one document. */
 export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boolean {
-    if (left.doc === "story") {
-        return right.doc === "story" && left.storyId === right.storyId;
+    switch (left.doc) {
+        case "story":
+            return right.doc === "story" && left.storyId === right.storyId;
+        case "characters":
+            return right.doc === "characters";
+        case "localization":
+            return right.doc === "localization" && right.locale === left.locale;
+        case "voice":
+            return right.doc === "voice" && right.locale === left.locale;
     }
-    return right.doc === "characters";
 }
 
 /** A document address in one line, for a log line or a refusal that has to name it. */
 export function describeLiveDocument(document: LiveDocument): string {
-    return document.doc === "story" ? `story ${document.storyId}` : "characters";
+    switch (document.doc) {
+        case "story":
+            return `story ${document.storyId}`;
+        case "characters":
+            return "characters";
+        case "localization":
+            return `translations ${document.locale}`;
+        case "voice":
+            return `voice ${document.locale}`;
+    }
 }
 
 /**
@@ -354,15 +474,28 @@ export function describeLiveDocument(document: LiveDocument): string {
  * one follows the row's reasoning: a character's fields hold each other up - the appearance kind
  * decides whether poses or layers mean anything, `defaultPoseId` names one of the poses - and the
  * panel edits one character at a time anyway.
+ *
+ * **A translation is claimed; a voice take is not**, and the two answers come from the same test.
+ * The translation field is a draft layer of exactly the kind the rule is about - the contentEditable
+ * IS the working copy while the translator types, and it reaches the document on Enter or blur - so
+ * the loser of a race loses a line of prose they have just written, silently. A take is assigned by
+ * dropping a clip on a row and approved by pressing a button; the one drafted thing on it is a
+ * director's short note, and the loser of that race loses a sentence and can see the winner's in the
+ * box. Claiming it would cost the ceremony of holding a record for as long as a panel is open, for a
+ * document two people are almost never inside at once.
+ *
+ * ⚠ That ruling turns over the day a take grows a field somebody writes paragraphs into.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
     "update-blocks",
     "delete-block",
     "delete-blocks",
-    "set-block-disabled",
     "update-character",
     "delete-character",
+    "set-block-disabled",
+    "set-translation",
+    "set-translations",
 ]);
 
 /**
@@ -497,6 +630,20 @@ export function characterClaimKey(characterId: string): LiveClaimKey {
 }
 
 /**
+ * The claim over one translation, in one language.
+ *
+ * The locale is in the key because the same line has an entry in every language and two translators
+ * working in two languages are not in each other's way - a key that named only the unit would have
+ * the Japanese translator holding the French one's line.
+ *
+ * ⚠ A locale code cannot contain a colon (`isValidLocaleCode`), so the two segments after the prefix
+ * are unambiguous however the reader splits them.
+ */
+export function translationClaimKey(locale: string, unitId: string): LiveClaimKey {
+    return `translation:${locale}:${unitId}`;
+}
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -531,6 +678,17 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-character-group":
         case "delete-character-group":
             return [];
+        case "set-translation":
+            return [translationClaimKey(op.locale, op.unitId)];
+        case "set-translations":
+            // Every entry, and one held entry refuses the whole import - the rule every batch
+            // follows. Half an import is a library nobody produced, and the translator whose file it
+            // was would be told a line was taken while watching the rest of it land.
+            return op.units.map(entry => translationClaimKey(op.locale, entry.unitId));
+        case "set-take":
+        case "set-takes":
+            // Not claimed - see {@link CLAIMED_OPS}.
+            return [];
     }
 }
 
@@ -561,7 +719,18 @@ export type LiveDigestScope =
     /** One character's record. */
     | { of: "character"; characterId: string }
     /** The cast's shape - its groups and who is in them - which no single record covers. */
-    | { of: "cast" };
+    | { of: "cast" }
+    /**
+     * One language's translations, whole.
+     *
+     * **The one shared document whose digest covers all of it**, and `@shared/live/libraries` gives
+     * the two reasons: these operations reach across entries freely - an import restates hundreds,
+     * a paste derives entries into every language at once - so a per-entry digest would not fit in
+     * the message, and a locale library is the smallest document in the project anyway.
+     */
+    | { of: "translations"; locale: string }
+    /** One language's voice takes, whole. The translations' mirror, for the same two reasons. */
+    | { of: "takes"; locale: string };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -605,18 +774,29 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "set-character-group":
         case "delete-character-group":
             return { of: "cast" };
+        case "set-translation":
+        case "set-translations":
+            return { of: "translations", locale: op.locale };
+        case "set-take":
+        case "set-takes":
+            return { of: "takes", locale: op.locale };
     }
 }
 
 /** Two scopes naming one unit. */
 export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): boolean {
-    if (left.of === "scene") {
-        return right.of === "scene" && left.storyId === right.storyId && left.sceneId === right.sceneId;
+    switch (left.of) {
+        case "scene":
+            return right.of === "scene" && left.storyId === right.storyId && left.sceneId === right.sceneId;
+        case "character":
+            return right.of === "character" && left.characterId === right.characterId;
+        case "cast":
+            return right.of === "cast";
+        case "translations":
+            return right.of === "translations" && right.locale === left.locale;
+        case "takes":
+            return right.of === "takes" && right.locale === left.locale;
     }
-    if (left.of === "character") {
-        return right.of === "character" && left.characterId === right.characterId;
-    }
-    return right.of === "cast";
 }
 
 /* -------------------------------------------------------------------- messages */
@@ -637,6 +817,18 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
  * the text alone and every line lands with no hash, which the reader derives as stale, and with its
  * review thrown away - so pasting inside a session would quietly demote work that pasting outside one
  * preserves, and the demotion is invisible until somebody re-reviews a language.
+ *
+ * **It stays a derivation now that the libraries have verbs of their own, and that is not an
+ * oversight.** A paste is one gesture, and one gesture is one operation; sending it as an insert plus
+ * a set of library operations would put a paste's rows in every document one press of undo apart from
+ * its translations, and would make an operation about the story reach three other documents anyway.
+ * The criterion has not moved either - the entries were read out of the copier's memory, so nobody
+ * else can compute them.
+ *
+ * ⚠ **What the derivation writes is fingerprinted like everything else.** The machine that adopts
+ * these entries reports the libraries it touched, and each is digested into {@link LiveEffect.digests}
+ * - which is what catches the machine that skipped half of them, the failure this mechanism has
+ * already produced once.
  */
 export type LiveDerived = {
     /** Locale to text id to the whole translation unit. */
