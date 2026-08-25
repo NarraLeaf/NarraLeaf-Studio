@@ -4,6 +4,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSource } from "@/lib/workspace/services/assets/types";
 import { runReplaceAssetContentFlow } from "@/lib/workspace/assets/replaceAssetContentFlow";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspace } from "../../../context";
 
 /**
@@ -12,10 +13,17 @@ import { useWorkspace } from "../../../context";
  *
  * It sits next to the file's own readings (hash, size, dimensions) because that is what it changes:
  * the id, the name, the tags and every reference survive, so nothing below this button moves.
+ *
+ * ⚠ **Its guard names no document, unlike the fields around it.** Everything else in this inspector
+ * writes the metadata shard, which a live session carries; this writes the file's bytes, which no
+ * session carries and no freeze allows. Left unguarded it was a button that opened a file picker
+ * under a freeze and discarded the answer - and inside a session it would read as offered while
+ * `AssetsService` refused it.
  */
 export function AssetReplaceAction({ asset }: { asset: Asset }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
+    const freeze = useFreezeGuard();
     const [busy, setBusy] = useState(false);
 
     const handleReplace = useCallback(async () => {
@@ -37,8 +45,8 @@ export function AssetReplaceAction({ asset }: { asset: Asset }) {
     return (
         <button
             type="button"
-            onClick={handleReplace}
-            disabled={busy || !context}
+            onClick={freeze.run(handleReplace)}
+            {...freeze.writes(busy || !context)}
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md border border-edge bg-surface-raised text-xs text-fg-muted hover:bg-fill transition-colors disabled:opacity-50 cursor-default"
         >
             <RefreshCw className={`w-3 h-3 ${busy ? "animate-spin" : ""}`} />
