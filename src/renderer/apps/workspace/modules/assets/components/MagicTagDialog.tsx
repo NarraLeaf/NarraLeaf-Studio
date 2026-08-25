@@ -5,6 +5,7 @@ import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core
 import { Asset } from '@/lib/workspace/services/assets/types';
 import { useWindowOverlayHost } from '@/lib/components/layout';
 import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useTranslation } from '@/lib/i18n';
 
 export interface MagicTagDialogProps {
@@ -22,7 +23,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
     // window's overlay layer, so it has no ancestor in the assets panel at all and nothing the panel
     // switches off can reach it - and the tagging pass below is a conversation the author works
     // through, long enough for a session to open on the project while it is on screen.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const [categoryMapping, setCategoryMapping] = useState<Record<number, string>>({});
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
     const [preview, setPreview] = useState<MagicTagPreview[]>([]);
