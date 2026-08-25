@@ -206,6 +206,19 @@ describe("which graph the canvas opens on", () => {
         expect(graph?.edges).toEqual([]);
     });
 
+    /** A wire is drawn from one pin to another, so the two pins have to survive the reading. */
+    it("reads the pins a wire joins, not only the nodes", () => {
+        const graph = readGraphs(baseDocument()).get(GRAPH_KEY);
+
+        expect(graph?.edges).toEqual([{
+            key: "n-head:then->n-log:in",
+            from: "n-head",
+            to: "n-log",
+            fromPort: "then",
+            toPort: "in",
+        }]);
+    });
+
     it("reads a graph out of a document with nothing in it rather than throwing", () => {
         expect(readGraphs(null).size).toBe(0);
         expect(readGraphs({} as UIGraphDocument).size).toBe(0);
@@ -236,6 +249,20 @@ describe("the viewport both columns share", () => {
         expect(viewport.y).toBeLessThanOrEqual(0);
         expect(viewport.x + viewport.width).toBeGreaterThanOrEqual(400 + GRAPH_NODE_WIDTH);
         expect(viewport.y + viewport.height).toBeGreaterThanOrEqual(300 + GRAPH_NODE_HEIGHT);
+    });
+
+    /**
+     * A node's card is as tall as its pins make it, so the box that has to hold every card cannot
+     * be worked out from the coordinates alone.
+     */
+    it("makes room for the card each node actually draws", () => {
+        const tall = () => ({ width: 300, height: 500 });
+        const viewport = sharedGraphViewport([base, head], { width: 10_000, height: 10_000 }, tall);
+
+        expect(viewport.x + viewport.width).toBeGreaterThanOrEqual(400 + 300);
+        expect(viewport.y + viewport.height).toBeGreaterThanOrEqual(300 + 500);
+        expect(graphNodeBox(base[0], viewport, { width: 300, height: 500 }))
+            .toMatchObject({ width: 300, height: 500 });
     });
 
     it("shrinks to fit the narrower of the two limits, and never magnifies", () => {
