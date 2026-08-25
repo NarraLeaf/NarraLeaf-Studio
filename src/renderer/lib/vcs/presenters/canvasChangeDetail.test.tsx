@@ -162,10 +162,10 @@ function graphNode(id: string, x: number, y: number): BlueprintGraphNode {
     return { id, type: `type.${id}`, params: {}, meta: { editorLayout: { x, y } } };
 }
 
-function uigraphs(nodes: BlueprintGraphNode[]): UIGraphDocument {
+function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu"): UIGraphDocument {
     const one: Blueprint = {
         id: "bp-1",
-        name: "Main menu",
+        name: blueprintName,
         owner: { kind: "globalMain" },
         frontend: "visual",
         programKind: "graph",
@@ -327,6 +327,141 @@ describe("marks on the blueprint canvas", () => {
         expect(tones.filter(tone => tone === "moved")).toHaveLength(2);
         expect(tones.filter(tone => tone === "added")).toHaveLength(1);
         expect(container.textContent).toContain("documentDiff.canvas.legend.moved");
+    });
+});
+
+// ---------------------------------------------------------------------------
+// Going the other way: from a row to the node
+// ---------------------------------------------------------------------------
+
+/**
+ * The list under the canvas as a way back onto it.
+ *
+ * The one thing jsdom cannot answer is whether the card ends up where a person would call the
+ * middle - but every number that decides it is in the markup, so "the card the row named is centred
+ * in the frame" reduces to arithmetic on two inline styles. The graph is laid out wide on purpose:
+ * fitted into half a pane it draws at about a tenth of size, which is the state this exists for.
+ */
+describe("going from a row to the node it names", () => {
+    const wideSides = () => {
+        const base = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 2000, 0)]);
+        const head = uigraphs([graphNode("n-a", 0, 0), graphNode("n-b", 2600, 300), graphNode("n-c", 4000, 0)]);
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+        return render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+    };
+
+    /** Every row of the list that offers to go and look. */
+    const revealRows = (container: HTMLElement): HTMLElement[] =>
+        [...container.querySelectorAll<HTMLElement>("button[data-change-row]")];
+
+    const centreOf = (element: HTMLElement): [number, number] => [
+        Number.parseFloat(element.style.left) + Number.parseFloat(element.style.width) / 2,
+        Number.parseFloat(element.style.top) + Number.parseFloat(element.style.height) / 2,
+    ];
+
+    /**
+     * Within a pixel, which is as exact as this can be said.
+     *
+     * Cards are snapped to whole pixels before they are drawn - a border half over a pixel is a
+     * grey border - so the middle of a card of odd height is half a pixel off the middle of the
+     * frame. Asking for more than this would be asking the canvas to stop rounding.
+     */
+    const isCentred = (value: number, middle: number): void => {
+        expect(Math.abs(value - middle)).toBeLessThanOrEqual(1);
+    };
+
+    it("names the change on the row rather than repeating one command down the list", () => {
+        const { container } = wideSides();
+        const labels = revealRows(container).map(row => row.getAttribute("aria-label") ?? "");
+
+        expect(labels.length).toBeGreaterThan(1);
+        expect(labels.every(label => label.startsWith("documentDiff.canvas.markLabel"))).toBe(true);
+        expect(new Set(labels).size).toBe(labels.length);
+    });
+
+    it("puts the card the row is about in the middle of every column that has it", () => {
+        const { container } = wideSides();
+        const added = revealRows(container).find(
+            row => (row.getAttribute("aria-label") ?? "").includes("documentDiff.uiGraphs.nodeAdded"),
+        );
+        expect(added).toBeTruthy();
+
+        fireEvent.click(added!);
+
+        // The added node is the only one wearing that tone, and it is only on the newer side - so
+        // exactly one column has a card to centre.
+        const marked = [...container.querySelectorAll<HTMLElement>('[data-change-mask="added"]')];
+        expect(marked).toHaveLength(1);
+
+        const card = marked[0]!.parentElement!;
+        const canvas = card.parentElement as HTMLElement;
+        const [x, y] = centreOf(card);
+        isCentred(x, Number.parseFloat(canvas.style.width) / 2);
+        isCentred(y, Number.parseFloat(canvas.style.height) / 2);
+    });
+
+    it("holds both places a dragged node is in, rather than centring one and losing the other", () => {
+        const { container } = wideSides();
+        const moved = revealRows(container).find(
+            row => (row.getAttribute("aria-label") ?? "").includes("documentDiff.uiGraphs.nodeMoved"),
+        );
+        expect(moved).toBeTruthy();
+
+        fireEvent.click(moved!);
+
+        // One card in each column, at the two coordinates the one shared transform draws them at.
+        const cards = [...container.querySelectorAll<HTMLElement>('[data-change-mask="moved"]')]
+            .map(mark => mark.parentElement!);
+        expect(cards).toHaveLength(2);
+
+        const canvas = cards[0]!.parentElement as HTMLElement;
+        const frame = [
+            Number.parseFloat(canvas.style.width),
+            Number.parseFloat(canvas.style.height),
+        ];
+        for (const card of cards) {
+            const [x, y] = centreOf(card);
+            expect(x).toBeGreaterThan(0);
+            expect(x).toBeLessThan(frame[0]!);
+            expect(y).toBeGreaterThan(0);
+            expect(y).toBeLessThan(frame[1]!);
+        }
+
+        // And the pair is centred, which is what makes the move the thing on screen.
+        const centres = cards.map(centreOf);
+        isCentred((centres[0]![0] + centres[1]![0]) / 2, frame[0]! / 2);
+        isCentred((centres[0]![1] + centres[1]![1]) / 2, frame[1]! / 2);
+    });
+
+    it("keeps every other row, because they are what the author is stepping through", () => {
+        const { container } = wideSides();
+        const rows = revealRows(container);
+        const first = rows[0]!;
+
+        fireEvent.click(first);
+
+        // A mark click narrows the list to its one change. A row click must not: the rows are the
+        // thing being used, and taking them away leaves one row and a button to get them back.
+        expect(container.textContent).not.toContain("documentDiff.canvas.oneChange");
+        expect(revealRows(container)).toHaveLength(rows.length);
+        expect(revealRows(container)[0]!.className).toContain("bg-fill");
+    });
+
+    it("leaves a change the canvas never drew as text", () => {
+        const base = uigraphs([graphNode("n-a", 0, 0)], "Main menu");
+        const head = uigraphs([graphNode("n-a", 0, 0), graphNode("n-c", 4000, 0)], "Title screen");
+        sideDocuments.set("before", base);
+        sideDocuments.set("after", head);
+
+        const { container } = render(<ChangeDetailHost entry={graphEntry(base, head)} sides={SIDES} />);
+
+        // The blueprint's own name is a row here and a mark nowhere - it belongs to no card, and a
+        // row that looked clickable would promise a place to go that does not exist.
+        const rows = [...container.querySelectorAll<HTMLElement>("[data-change-row]")];
+        const inert = rows.filter(row => row.tagName === "DIV");
+        expect(inert.length).toBeGreaterThan(0);
+        expect(inert.some(row => (row.textContent ?? "").includes("documentDiff.uiGraphs.blueprint"))).toBe(true);
     });
 });
 

@@ -4,6 +4,7 @@ import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
 import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import type { RowReveal } from "../DocumentChangeList";
 import { GenericChangeDetail } from "./GenericChangeDetail";
 import { CHANGE_MASK_CLASS, CHANGE_MASK_LABEL, CHANGE_MASK_TONES, type ChangeMaskTone } from "./changeMask";
 
@@ -19,7 +20,25 @@ import { CHANGE_MASK_CLASS, CHANGE_MASK_LABEL, CHANGE_MASK_TONES, type ChangeMas
  * a page that will not draw, a change that cannot be marked and a document nobody can parse all
  * still have somewhere to be read. Clicking a mark narrows that list to the one change instead of
  * navigating away from it.
+ *
+ * **The list is also the way back onto the canvas.** A mark and a row ask opposite questions of the
+ * same selection: a mark asks what changed on this node, and a row asks where this change is. So a
+ * mark narrows the list to its one row, and a row does NOT - narrowing there would take away the
+ * very rows the author is stepping through - it moves the canvas instead, on the surfaces that have
+ * somewhere to move to.
  */
+
+/**
+ * One change singled out, and which way the author reached it.
+ *
+ * Held by each canvas rather than by the shell, because the canvas is what acts on it - but the
+ * shape is here, with the two behaviours it decides between, so the two canvases cannot answer the
+ * same question differently.
+ */
+export interface CanvasSelection {
+    readonly index: number;
+    readonly from: "mark" | "row";
+}
 
 export interface CanvasShellProps {
     readonly entry: DocumentDiffEntry;
@@ -28,6 +47,15 @@ export interface CanvasShellProps {
     /** The change a mark was clicked on, which narrows the list below. */
     readonly selected: DocumentChange | null;
     readonly onClearSelection: () => void;
+    /**
+     * What a row click does, for a surface that can move to the change it names.
+     *
+     * Absent leaves every row as text, which is the right answer for a canvas that is already
+     * showing all of itself: there is nowhere to go.
+     */
+    readonly reveal?: RowReveal;
+    /** The change the canvas is pointing at, however it was chosen. Drawn as a fill on its row. */
+    readonly activeChange?: DocumentChange | null;
     /** What to look at: a page, a graph. Absent when there is only one of them. */
     readonly controls?: ReactNode;
     readonly legend?: ReactNode;
@@ -37,7 +65,7 @@ export interface CanvasShellProps {
 
 export function CanvasShell(props: CanvasShellProps) {
     const { t } = useTranslation();
-    const { entry, change, selected, onClearSelection, controls, legend, notes, children } = props;
+    const { entry, change, selected, onClearSelection, reveal, activeChange, controls, legend, notes, children } = props;
 
     return (
         <div className="flex flex-col gap-2 py-1">
@@ -66,7 +94,12 @@ export function CanvasShell(props: CanvasShellProps) {
                 </div>
             )}
 
-            <GenericChangeDetail entry={entry} change={selected ?? change} />
+            <GenericChangeDetail
+                entry={entry}
+                change={selected ?? change}
+                reveal={reveal}
+                activeChange={activeChange}
+            />
         </div>
     );
 }
