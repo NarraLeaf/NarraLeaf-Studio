@@ -183,7 +183,10 @@ export const build = {
             },
             exportAction: "Export",
             busy: "A build is already running.",
-            noKey: "This project has no distribution key. Create one on the Project page, then build the game again. Only builds produced after the key exists accept patches.",
+            noKey: "This project has no distribution key. Create one, then build the game again. Only builds produced after the key exists accept patches.",
+            // The notification carries the way there, so the message above no longer has to
+            // name the page.
+            noKeyAction: "Open the Project page",
         },
     signing: {
         empty: "Select a target that can be signed.",
