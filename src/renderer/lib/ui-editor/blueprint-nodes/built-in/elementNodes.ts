@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_BOUNDS,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_CENTER,
@@ -424,8 +425,7 @@ function resolveElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], expec
     if (ref.elementType !== expectedElementType) {
         throw new BlueprintGraphExecutionError(`Element node expected ${expectedElementType}, got ${ref.elementType}`, ctx.node.id);
     }
-    const currentSurfaceId = ctx.executionOwner?.surfaceId;
-    if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+    if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
         throw new BlueprintGraphExecutionError("Element node can only target the current Surface", ctx.node.id);
     }
     return ref.elementId;
@@ -450,8 +450,7 @@ function resolveDisplayableTargetElementId(
     if (!allowedElementTypes.includes(ref.elementType)) {
         throw new BlueprintGraphExecutionError(`Displayable Element node cannot target ${ref.elementType}`, ctx.node.id);
     }
-    const currentSurfaceId = ctx.executionOwner?.surfaceId;
-    if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+    if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
         throw new BlueprintGraphExecutionError("Displayable Element node can only target the current Surface", ctx.node.id);
     }
     return ref.elementId;

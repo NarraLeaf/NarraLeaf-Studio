@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_CLEAR,
@@ -216,8 +217,7 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
         if (ref.elementType !== LIST_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError("List node requires an nl.list element", ctx.node.id);
         }
-        const currentSurfaceId = ctx.executionOwner?.surfaceId;
-        if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+        if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError("List node can only target the current Surface", ctx.node.id);
         }
         return ref.elementId;

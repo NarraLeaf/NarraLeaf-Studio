@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
@@ -130,8 +131,7 @@ function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], ta
                 ctx.node.id,
             );
         }
-        const currentSurfaceId = ctx.executionOwner?.surfaceId;
-        if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+        if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError(
                 "Text Input node can only target the current Surface",
                 ctx.node.id,

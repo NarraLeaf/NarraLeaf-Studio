@@ -10,7 +10,7 @@ import {
     isUIElementFlowLayoutChild,
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
-import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -852,7 +852,7 @@ function renderLinkedComponentInstanceContent(input: {
     const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
     const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
     const virtualSurface: UISurface = {
-        id: `component:${component.id}`,
+        id: buildUIComponentSurfaceId(component.id),
         name: component.name,
         host: "app",
         kind: "appSurface",
