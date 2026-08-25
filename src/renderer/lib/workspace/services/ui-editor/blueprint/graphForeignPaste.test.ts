@@ -71,7 +71,10 @@ describe("blueprint graph paste routing", () => {
         const payload = payloadFrom(
             { nodes: { a: { id: "a", type: "x" } }, edges: [] },
             ["a"],
-            "D:\\Projects\\Here\\",
+            // A trailing separator: the one spelling of a directory that every host folds. Slash
+            // direction and case fold on Windows only, and are checked where the identity key can
+            // be asked for a named platform rather than the host's.
+            `${HERE}/`,
         );
 
         expect(isBlueprintGraphPasteFromAnotherProject(payload, HERE)).toBe(false);

@@ -46,15 +46,19 @@ function sourced(path: string, elements: Record<string, UIElement>): UIEditorCli
 
 describe("telling a foreign payload from one of this project's own", () => {
     it("reads two spellings of one directory as the same project", () => {
-        const copied = sourced("D:\\games\\one", { a: element({ id: "a", type: "nl.text" }) });
+        const copied = sourced("D:/games/one", { a: element({ id: "a", type: "nl.text" }) });
 
+        // A trailing separator, because it is the spelling every host folds. Which further
+        // spellings fold - slash direction and case, on Windows - is the identity key's own rule
+        // and is settled in recentProject's tests, where the platform can be named; asked through
+        // this function it would only ever measure the host the suite is running on.
         expect(isUiPasteFromAnotherProject(copied, "D:/games/one/")).toBe(false);
     });
 
     it("reads a different directory as another project", () => {
-        const copied = sourced("D:\\games\\one", { a: element({ id: "a", type: "nl.text" }) });
+        const copied = sourced("D:/games/one", { a: element({ id: "a", type: "nl.text" }) });
 
-        expect(isUiPasteFromAnotherProject(copied, "D:\\games\\two")).toBe(true);
+        expect(isUiPasteFromAnotherProject(copied, "D:/games/two")).toBe(true);
     });
 
     it("reads a payload with no source as this project's own", () => {
@@ -62,11 +66,11 @@ describe("telling a foreign payload from one of this project's own", () => {
         // in from elsewhere - so an unstamped payload never left this window.
         const copied = payload({ elements: { a: element({ id: "a", type: "nl.text" }) } });
 
-        expect(isUiPasteFromAnotherProject(copied, "D:\\games\\two")).toBe(false);
+        expect(isUiPasteFromAnotherProject(copied, "D:/games/two")).toBe(false);
     });
 
     it("cannot decide without a project of its own to compare against", () => {
-        const copied = sourced("D:\\games\\one", { a: element({ id: "a", type: "nl.text" }) });
+        const copied = sourced("D:/games/one", { a: element({ id: "a", type: "nl.text" }) });
 
         expect(isUiPasteFromAnotherProject(copied, "")).toBe(false);
     });
