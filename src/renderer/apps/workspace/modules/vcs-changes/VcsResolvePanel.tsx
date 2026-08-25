@@ -14,6 +14,8 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { ConflictFooter, ConflictResolveView, type WriteGuard } from "@/lib/vcs/ConflictResolveView";
+import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
     buildConflictRows,
     countUndecidedFiles,
@@ -95,6 +97,14 @@ const PERMISSIVE_GUARD: WriteGuard = {
     // events, so its reason is drawn by Studio's own tooltip rather than the browser's.
     writes: (ownDisabled, ownTooltip) => ({ disabled: Boolean(ownDisabled), "data-tip": ownTooltip }),
 };
+
+/**
+ * The one side a merge names things from: the tree on disk.
+ *
+ * Module-level so its identity is stable - `useDocumentNames` keys its read on the sides it is
+ * given, and a literal rebuilt every render would re-read the index on every render.
+ */
+const MERGE_NAME_SIDES: ComparisonSides = { before: null, after: { at: "working-tree" } };
 
 export function VcsResolvePanel() {
     const { t } = useTranslation();
@@ -204,6 +214,18 @@ export function VcsResolvePanel() {
         () => (state?.inProgress ? state.conflicts : []),
         [state],
     );
+
+    /**
+     * What to call each conflicted document.
+     *
+     * Read from the working tree, which during a merge is the merge's own result for everything
+     * that merged cleanly - and the story index nearly always does, because it is a different file
+     * from the stories it names. Where it did not, it is one of the conflicted files and unparseable
+     * like the rest, and `documentName.ts` answers with the kind and the id rather than inventing a
+     * title. There is no second side to read: a merge is not a comparison between two revisions, it
+     * is one tree with two answers in it.
+     */
+    const names = useDocumentNames(MERGE_NAME_SIDES);
 
     /**
      * Which merge is open, as one value the draft can be keyed by. Null when none is.
@@ -340,8 +362,8 @@ export function VcsResolvePanel() {
      * is on screen would offer to close a merge that the backend then refuses.
      */
     const rows = useMemo(
-        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }),
-        [conflicts, decisions, perChange, changeChoices, documents],
+        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }, names),
+        [conflicts, decisions, perChange, changeChoices, documents, names],
     );
     const undecided = countUndecidedFiles(rows);
 
