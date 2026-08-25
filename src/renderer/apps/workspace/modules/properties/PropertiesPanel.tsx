@@ -1516,6 +1516,31 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
 
 /**
+ * Every field in a schema, read-only, at any depth.
+ *
+ * Groups nest, so this walks rather than mapping the top level; `readOnly` is a field-definition
+ * flag the framework already understands, so nothing downstream has to learn a new one.
+ */
+function readOnlySchema<TData>(schema: PropertyEditorSchema<TData>): PropertyEditorSchema<TData> {
+    const mark = (field: FieldDefinition<TData>): FieldDefinition<TData> => {
+        const nested = (field as { fields?: readonly FieldDefinition<TData>[] }).fields;
+        const marked = { ...field, readOnly: true } as FieldDefinition<TData>;
+        // Only the field types that carry children get them back, and the cast is what lets one walk
+        // cover a union whose members do not agree on having any.
+        return Array.isArray(nested)
+            ? ({ ...marked, fields: nested.map(mark) } as unknown as FieldDefinition<TData>)
+            : marked;
+    };
+    // Fields live under the tabs as well as at the top level, and the tabbed ones are where the
+    // position inputs are - missing them is what let them arrive editable the first time.
+    return {
+        ...schema,
+        fields: (schema.fields ?? []).map(mark),
+        ...(schema.tabs ? { tabs: schema.tabs.map(tab => ({ ...tab, fields: (tab.fields ?? []).map(mark) })) } : {}),
+    };
+}
+
+/**
  * One element of one half of a version comparison, read and not edited.
  *
  * **The inspector is version-stateless.** It holds no comparison, reads no revision and asks the
@@ -1572,7 +1597,18 @@ export function ComparisonElementInspector({
                 subject,
                 t,
             );
-            return { schema, data: { element: subject, elements, documentService: service, surfaceId } };
+            /**
+             * Read-only stamped onto the schema itself, not left to the freeze guard.
+             *
+             * The guard sets this flag on the field types that honour it and wraps the ones that do
+             * not in a disabled fieldset - but a schema built here can reach the inspector through a
+             * path where the guard has not been consulted, and a field that honours the flag gets no
+             * fieldset to fall back on. That is not theoretical: the position inputs arrived on
+             * screen editable in a comparison, which offers the author a write this view cannot
+             * perform. Stamping it at the source means every field is read-only whatever route it
+             * takes, and the guard's clamp remains the second line rather than the only one.
+             */
+            return { schema: readOnlySchema(schema), data: { element: subject, elements, documentService: service, surfaceId } };
         };
 
         const here = inspectorFor(element, document);
