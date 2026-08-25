@@ -38,13 +38,32 @@ export function splitColumnCount(width: number): 1 | 2 {
     return width >= SPLIT_TWO_COLUMN_MIN_PX ? 2 : 1;
 }
 
-/** Which half of the comparison a row is drawn in. A removal was never in the newer version. */
+/**
+ * One height both halves reserve, and which of them has something to put in it.
+ *
+ * Deliberately says nothing about WHAT is drawn there. A half draws change rows for most documents
+ * and a script for a story, and the arithmetic that keeps the two halves level is the same either
+ * way - so it is stated once, over slots that are only a key, a presence and whether the navigation
+ * stops there.
+ */
 export interface SplitSlot {
-    /** The row's own key, and the handle both halves address this slot by in the DOM. */
+    /** The handle both halves address this slot by in the DOM. Unique within one list. */
     readonly key: string;
-    readonly row: DocumentChangeRow;
     readonly onBase: boolean;
     readonly onHead: boolean;
+    /**
+     * Whether previous and next stop here.
+     *
+     * Every slot of a change list is a change, so every one of them is a stop. A script is mostly
+     * lines that did not change, and stopping on those would make "next change" mean "next line" -
+     * so the two are separated here rather than by counting rows at the surface.
+     */
+    readonly stop: boolean;
+}
+
+/** A slot that draws one change row - what every document but a story is made of. */
+export interface SplitChangeSlot extends SplitSlot {
+    readonly row: DocumentChangeRow;
 }
 
 /**
@@ -53,10 +72,10 @@ export interface SplitSlot {
  * The two halves render the SAME list of slots, and each of them draws a row or a gap - which is
  * what makes "the thing facing this thing is its counterpart" true rather than approximately true.
  */
-export function buildSplitSlots(rows: readonly DocumentChangeRow[]): readonly SplitSlot[] {
+export function buildSplitSlots(rows: readonly DocumentChangeRow[]): readonly SplitChangeSlot[] {
     return rows.map(row => {
         const columns = maskColumns(row.change.kind);
-        return { key: row.key, row, onBase: columns.onBase, onHead: columns.onHead };
+        return { key: row.key, row, onBase: columns.onBase, onHead: columns.onHead, stop: true };
     });
 }
 
