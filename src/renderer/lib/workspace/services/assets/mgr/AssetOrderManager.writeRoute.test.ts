@@ -128,6 +128,44 @@ describe("AssetOrderManager takes the no-grant write route", () => {
         expect(manager.listMissingCategories()).not.toContain(AssetCategory.Image);
     });
 
+    /**
+     * The second load-bearing one, and it is what makes the asset library shareable at all.
+     *
+     * `AssetsService.markDirty` queues this shard beside the metadata shard on every record edit -
+     * because adding or removing an asset moves the order too - but renaming one does not, and
+     * neither does filing it in a folder. A live session leaves the metadata shard writable and this
+     * one refused, and a refusal is announced to the author as work that was not saved. Without the
+     * skip, every rename inside a session raises "could not save" about a file that did not change.
+     */
+    it("writes nothing when the order it is handed is the order it already holds", async () => {
+        const manager = await new AssetOrderManager(createContext()).init();
+        await manager.write(AssetCategory.Image, ["a", "b"], ["g1"]);
+        expect(hostWrites()).toEqual([IMAGE_ORDER]);
+
+        await manager.write(AssetCategory.Image, ["a", "b"], ["g1"]);
+        await manager.write(AssetCategory.Image, ["a", "b"], ["g1"]);
+
+        // Still one: the two later calls are what a rename inside a session produces.
+        expect(hostWrites()).toEqual([IMAGE_ORDER]);
+
+        // And a real move still writes, which is the half a skip must not swallow.
+        await manager.write(AssetCategory.Image, ["b", "a"], ["g1"]);
+        expect(hostWrites()).toEqual([IMAGE_ORDER, IMAGE_ORDER]);
+    });
+
+    it("never skips a category whose shard is not on the disk yet", async () => {
+        // "The same as what I hold" is not "the same as what is there" when there is nothing there:
+        // this manager starts holding an empty order for every category, and a project whose file is
+        // absent would otherwise never get one written.
+        const manager = await new AssetOrderManager(createContext()).init();
+        expect(manager.listMissingCategories()).toContain(AssetCategory.Image);
+
+        await manager.write(AssetCategory.Image, [], []);
+
+        expect(hostWrites()).toEqual([IMAGE_ORDER]);
+        expect(manager.listMissingCategories()).not.toContain(AssetCategory.Image);
+    });
+
     it("still owes a category whose shard failed for real, and reports the failure", async () => {
         const manager = await new AssetOrderManager(createContext()).init();
         privilegedFs.writeFileNoFollowOrCreate.mockResolvedValue({

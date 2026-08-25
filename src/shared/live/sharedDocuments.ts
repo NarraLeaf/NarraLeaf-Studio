@@ -1,4 +1,5 @@
 import {
+    assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
@@ -50,6 +51,20 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * so there is no later moment at which one could be fetched - and carrying it would be the same
  * silent divergence one step removed. The caller passes what it loaded; see `LiveLocalizationPort`.
  *
+ * **The asset library's metadata shards join them, and only those.** A session carries what the
+ * author says about a file; the file itself travels through version control, so `assets/content/`
+ * stays refused and so do the gestures that would write it - see `LiveAssetOp`. The folder shard
+ * (`assets/assets.groups.<category>.json`) and the row-order shard beside it are NOT here for the
+ * keys registry's reason: neither has a verb.
+ *
+ * ⚠ The row-order shard is the absence with a consequence worth naming. `AssetsService.markDirty`
+ * queues it beside the metadata shard on every record edit, so a session would announce a refused
+ * write on every rename - a "your work is not being saved" notice about a file that did not change.
+ * The answer is not to make it writable but to stop the write happening: `AssetOrderManager.write`
+ * now returns without touching the disk when the document it is asked to write is the one it already
+ * holds, which is true of every write a session can produce - nothing in the vocabulary adds a row,
+ * removes one or renames a folder, so the order cannot move.
+ *
  * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
  * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
  * for the length of a session and says so - which is the harmless half of the trade.
@@ -67,6 +82,19 @@ export type LiveSessionLocales = {
 export const NO_LIVE_LOCALES: LiveSessionLocales = { translations: [], voice: [] };
 
 /**
+ * The asset metadata shards a session carries, named by asset type.
+ *
+ * Strings rather than the renderer's `AssetType` enum, which lives under `renderer/lib` and cannot be
+ * imported here - the same reason the document spec that owns the path is structural about its
+ * records. Passed in by the caller for {@link LiveSessionLocales}' reason: what a machine holds is
+ * what it managed to read, and a shard nothing loaded is one no operation can be applied to.
+ */
+export type LiveSessionAssetTypes = readonly string[];
+
+/** No asset shards at all - what a caller with no asset library open passes. */
+export const NO_LIVE_ASSET_TYPES: LiveSessionAssetTypes = [];
+
+/**
  * The documents a session carries: every story in the project, the cast, and each language's two
  * libraries.
  *
@@ -76,12 +104,14 @@ export const NO_LIVE_LOCALES: LiveSessionLocales = { translations: [], voice: []
 export function liveSessionDocuments(
     storyIds: readonly StoryId[],
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
+    assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
 ): readonly LiveDocument[] {
     return [
         ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
         { doc: "characters" },
         ...locales.translations.map((locale): LiveDocument => ({ doc: "localization", locale })),
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
+        ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
     ];
 }
 
@@ -103,6 +133,8 @@ export function liveDocumentPath(document: LiveDocument): string {
             return localizationDocumentSpec.pathFor({ locale: document.locale });
         case "voice":
             return voiceDocumentSpec.pathFor({ locale: document.locale });
+        case "assets":
+            return assetsMetadataSpec.pathFor({ type: document.assetType });
     }
 }
 
@@ -115,8 +147,9 @@ export function liveDocumentPath(document: LiveDocument): string {
 export function liveSessionWritablePaths(
     storyIds: readonly StoryId[],
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
+    assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
 ): readonly string[] {
-    return liveSessionDocuments(storyIds, locales).map(liveDocumentPath);
+    return liveSessionDocuments(storyIds, locales, assetTypes).map(liveDocumentPath);
 }
 
 /**
@@ -131,6 +164,8 @@ export function liveSessionCarries(
     storyIds: readonly StoryId[],
     document: LiveDocument,
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
+    assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
 ): boolean {
-    return liveSessionDocuments(storyIds, locales).some(carried => sameLiveDocument(carried, document));
+    return liveSessionDocuments(storyIds, locales, assetTypes)
+        .some(carried => sameLiveDocument(carried, document));
 }

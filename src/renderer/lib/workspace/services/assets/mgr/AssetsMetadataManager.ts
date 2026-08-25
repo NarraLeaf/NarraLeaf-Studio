@@ -74,12 +74,20 @@ export class AssetsMetadataManager {
         return this;
     }
 
-    public async updateAssetTags<T extends AssetType>(
+    /**
+     * Edit one record, and let the service decide where it goes.
+     *
+     * **The one shape every record mutator below has**, and it is not merely tidiness: the edit is
+     * applied to the live record so that `AssetsService.recordChanged` can be handed the record as it
+     * WOULD have been written rather than the patch that was asked for, and put back untouched if
+     * something else has taken it. A mutator that wrote the shard itself would be an edit a live
+     * session never hears about, landing on one machine and nowhere else.
+     */
+    private editRecord<T extends AssetType>(
         asset: Asset<T, AssetSource>,
-        tags: string[]
-    ): Promise<RequestStatus<void>> {
-        const metadata = this.getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
+        edit: (record: Asset<AssetType, AssetSource>) => void,
+    ): RequestStatus<void> {
+        const existingAsset = this.getAssets()[asset.type][asset.id] as Asset<AssetType, AssetSource> | undefined;
         if (!existingAsset) {
             return {
                 success: false,
@@ -87,16 +95,25 @@ export class AssetsMetadataManager {
             };
         }
 
-        existingAsset.tags = tags;
-        this.assetsService.markDirty(asset.type);
-
-        // Emit update event so UI can react
-        this.assetsService.getEvents().emit("updated", existingAsset);
+        const previous = JSON.parse(JSON.stringify(existingAsset)) as Asset<AssetType, AssetSource>;
+        edit(existingAsset);
+        // Marks the shard dirty and announces `updated` on the branch where the edit stays here; on
+        // the other the record has already been put back and the row moves when the effect arrives.
+        this.assetsService.recordChanged(existingAsset, previous);
 
         return {
             success: true,
             data: void 0,
         };
+    }
+
+    public async updateAssetTags<T extends AssetType>(
+        asset: Asset<T, AssetSource>,
+        tags: string[]
+    ): Promise<RequestStatus<void>> {
+        return this.editRecord(asset, record => {
+            record.tags = tags;
+        });
     }
 
     /**
@@ -107,89 +124,42 @@ export class AssetsMetadataManager {
         asset: Asset<T, AssetSource>,
         patch: Partial<AssetExtras>,
     ): Promise<RequestStatus<void>> {
-        const metadata = this.getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
-        if (!existingAsset) {
-            return {
-                success: false,
-                error: `Asset not found: ${asset.id}`,
-            };
-        }
-
-        const extras: Record<string, unknown> = { ...(existingAsset.extras ?? {}) };
-        for (const [key, value] of Object.entries(patch)) {
-            if (value === undefined) {
-                delete extras[key];
-            } else {
-                extras[key] = value;
+        return this.editRecord(asset, record => {
+            const extras: Record<string, unknown> = { ...(record.extras ?? {}) };
+            for (const [key, value] of Object.entries(patch)) {
+                if (value === undefined) {
+                    delete extras[key];
+                } else {
+                    extras[key] = value;
+                }
             }
-        }
-        existingAsset.extras = extras as AssetExtras;
-        this.assetsService.markDirty(asset.type);
-        this.assetsService.getEvents().emit("updated", existingAsset);
-
-        return {
-            success: true,
-            data: void 0,
-        };
+            record.extras = extras as AssetExtras;
+        });
     }
 
     public async updateAssetDescription<T extends AssetType>(
         asset: Asset<T, AssetSource>,
         description: string
     ): Promise<RequestStatus<void>> {
-        const metadata = this.getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
-        if (!existingAsset) {
-            return {
-                success: false,
-                error: `Asset not found: ${asset.id}`,
-            };
-        }
-
-        existingAsset.description = description;
-        this.assetsService.markDirty(asset.type);
-
-        // Emit update event so UI can react
-        this.assetsService.getEvents().emit("updated", existingAsset);
-
-        return {
-            success: true,
-            data: void 0,
-        };
+        return this.editRecord(asset, record => {
+            record.description = description;
+        });
     }
 
     public async renameAsset<T extends AssetType>(
         asset: Asset<T, AssetSource>,
         newName: string
     ): Promise<RequestStatus<void>> {
-        const metadata = this.getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
-        if (!existingAsset) {
-            return {
-                success: false,
-                error: `Asset not found: ${asset.id}`,
-            };
-        }
+        return this.editRecord(asset, record => {
+            record.name = newName;
 
-        existingAsset.name = newName;
-
-        // Update extension if the new name has a different extension
-        const nameParts = newName.toLowerCase().split('.');
-        const newExtension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-        if (newExtension !== (existingAsset.ext || '')) {
-            setAssetExtension(existingAsset, newExtension || undefined);
-        }
-
-        this.assetsService.markDirty(asset.type);
-
-        // Emit update event so UI can react
-        this.assetsService.getEvents().emit("updated", existingAsset);
-
-        return {
-            success: true,
-            data: void 0,
-        };
+            // Update extension if the new name has a different extension
+            const nameParts = newName.toLowerCase().split('.');
+            const newExtension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+            if (newExtension !== (record.ext || '')) {
+                setAssetExtension(record, newExtension || undefined);
+            }
+        });
     }
 
     /**
