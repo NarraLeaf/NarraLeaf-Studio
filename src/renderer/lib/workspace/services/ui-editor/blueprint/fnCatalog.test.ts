@@ -184,9 +184,25 @@ describe("fnCatalog", () => {
             expect(isBlueprintFnVisibleToOwner(decl, callerWidgetS2)).toBe(false);
             expect(isBlueprintFnVisibleToOwner(decl, globalOwner)).toBe(false);
         }
-        // Component blueprints are out of scope in v1.
-        expect(isBlueprintFnVisibleToOwner(globalOwner, callerComponent)).toBe(false);
+        // A global fn is reachable from inside a component definition too: a helper some owners
+        // cannot call is a helper they have to copy, which is what a global one exists to prevent.
+        expect(isBlueprintFnVisibleToOwner(globalOwner, callerComponent)).toBe(true);
+        // A surface's fn is not. A definition is instantiated wherever somebody places it, so
+        // "the same surface" is not a question that can be asked about one.
         expect(isBlueprintFnVisibleToOwner(widgetDecl, callerComponent)).toBe(false);
+    });
+
+    it("keeps a component definition's fns inside that definition", () => {
+        const declInC1: BlueprintOwnerRef = { kind: "componentWidgetMain", componentId: "c1", elementId: "root" };
+        const callerInC1: BlueprintOwnerRef = { kind: "componentWidgetMain", componentId: "c1", elementId: "leaf" };
+        const callerInC2: BlueprintOwnerRef = { kind: "componentWidgetMain", componentId: "c2", elementId: "leaf" };
+
+        // The definition is the boundary, and it is the right one: a graph that runs once per
+        // instance is exactly where one chain gets wanted from three call sites.
+        expect(isBlueprintFnVisibleToOwner(declInC1, callerInC1)).toBe(true);
+        expect(isBlueprintFnVisibleToOwner(declInC1, callerInC2)).toBe(false);
+        expect(isBlueprintFnVisibleToOwner(declInC1, { kind: "widgetMain", surfaceId: "s1", elementId: "x" })).toBe(false);
+        expect(isBlueprintFnVisibleToOwner(declInC1, { kind: "globalMain" })).toBe(false);
     });
 
     it("lists dropdown options with scope-disambiguated labels", () => {

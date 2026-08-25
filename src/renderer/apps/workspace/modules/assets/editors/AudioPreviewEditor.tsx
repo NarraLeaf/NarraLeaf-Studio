@@ -25,6 +25,7 @@ import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useHistoryScope, useKeybindings, whenEditorFocused, type KeybindingDefinition } from "@/apps/workspace/hooks";
 import { audioLoopHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -91,7 +92,7 @@ export function AudioPreviewEditor({ tabId, payload, active }: EditorComponentPr
     // Playback, zoom, selection and the jump-to-point keys are pure inspection and stay live while
     // frozen. The cue points are the one thing here that is written back to the asset record, so
     // they are the one thing the freeze refuses.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const asset = payload?.asset;
 
     const [metadata, setMetadata] = useState<AssetData<AssetType.Audio>["metadata"] | null>(null);

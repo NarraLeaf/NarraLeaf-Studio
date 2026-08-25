@@ -444,7 +444,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations and what the project says about its assets are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations and the whole asset library - files included - are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.

@@ -9,6 +9,8 @@ import {
 import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import { assetsDigest } from "@shared/live/assets";
+import { assetGroupsDigest } from "@shared/live/assetGroups";
+import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
@@ -20,7 +22,12 @@ import {
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAssetBytePart,
+    type LiveAssetFolderOp,
     type LiveAssetOp,
+    type LiveAssetRecord,
+    type LiveBlobChunk,
+    type LiveBlobNeeded,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
@@ -40,6 +47,9 @@ import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import { blobChunkCount } from "@shared/live/blobs";
+import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
+import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { StoryOpSink } from "../story/StoryService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
@@ -103,6 +113,22 @@ type ActiveSession = {
      * be applied to.
      */
     assetTypes: readonly string[];
+    /** The sections whose folders this session carries, settled on the way in with the rest. */
+    assetCategories: readonly string[];
+    /**
+     * Slices that have arrived and are waiting for the operation naming them.
+     *
+     * ⚠ Held per session and cleared with it: a transfer nobody claimed is memory held for a while,
+     * never a stray file in the author's project.
+     */
+    blobsIn: LiveBlobInbox;
+    /**
+     * Files this window is carrying into the room, by transfer id.
+     *
+     * Kept after they are sent, because the only repair this channel has is somebody asking again -
+     * see `LiveBlobNeeded`. Dropped when the session ends.
+     */
+    blobsOut: Map<string, Uint8Array>;
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -155,6 +181,25 @@ type ActiveSession = {
     stopListening: () => void;
     stopWatching: () => void;
 };
+
+/**
+ * How many slices go out before the send loop lets the room have a turn.
+ *
+ * A thirty-megabyte file is a couple of thousand messages; sent in one loop they would sit in front
+ * of every operation anybody else states for as long as it took. Small enough that a transfer still
+ * finishes in seconds, large enough that the yield itself is not the cost.
+ */
+const BLOBS_PER_TURN = 24;
+
+/** The section an asset type is filed under, as the browser files it. */
+function assetCategoryOf(assetType: string): string {
+    return categoryOfAssetType(assetType as AssetType);
+}
+
+/** How many slices one part of a transfer takes. What a repair request has to name. */
+function chunkCountOf(part: LiveAssetBytePart): number {
+    return blobChunkCount(part.size);
+}
 
 export class LiveSession {
     private view: LiveSessionView = IDLE_LIVE_SESSION;
@@ -549,6 +594,7 @@ export class LiveSession {
             document,
             cast,
             assets: assetType => this.deps.assets.records(assetType),
+            assetFolders: category => this.deps.assets.folders(category),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -608,12 +654,13 @@ export class LiveSession {
         // Nothing to read: an asset shard is loaded as the workspace starts rather than when a panel
         // opens it, so this only asks which ones are there.
         const assetTypes = this.deps.assets.shardTypes();
+        const assetCategories = this.deps.assets.folderCategories();
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales, assetTypes),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories),
         });
 
         const session: ActiveSession = {
@@ -625,6 +672,9 @@ export class LiveSession {
             stories,
             locales,
             assetTypes,
+            assetCategories,
+            blobsIn: new LiveBlobInbox(),
+            blobsOut: new Map(),
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -654,9 +704,11 @@ export class LiveSession {
                 stories,
                 locales,
                 assetTypes,
+                assetCategories,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
+                readAssetFolders: category => this.deps.assets.folders(category),
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -710,7 +762,7 @@ export class LiveSession {
         this.deps.cast.setSink(this.castSinkFor(session));
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
-        this.deps.assets.setSink(this.librarySinkFor(session));
+        this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -740,7 +792,9 @@ export class LiveSession {
         this.deps.cast.setSink(null);
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
-        this.deps.assets.setSink(null);
+        this.deps.assets.setSink(null, null);
+        session.blobsIn.clear();
+        session.blobsOut.clear();
         session.stopListening();
         session.stopWatching();
         session.claimSweep?.();
@@ -810,6 +864,13 @@ export class LiveSession {
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.
+            return;
+        }
+        if (payload.kind === "blob" || payload.kind === "blob-needed") {
+            // ⚠ Before the host/guest split, and never through either of them. Bytes in flight are
+            // not operations: they change no document, take no sequence number and are applied by
+            // nobody, which is what keeps a large import from stopping everybody else's typing.
+            this.onBlobMessage(session, payload);
             return;
         }
         if (session.host) {
@@ -907,6 +968,8 @@ export class LiveSession {
             translations: locale => this.deps.localization.units(locale),
             takes: locale => this.deps.voice.units(locale),
             assets: assetType => this.deps.assets.records(assetType),
+            assetFolders: category => this.deps.assets.folders(category),
+            assetsByType: category => this.assetsOfCategory(category),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -924,7 +987,8 @@ export class LiveSession {
                 this.deps.voice.applyOp(op as LiveVoiceOp);
                 break;
             case "assets":
-                this.deps.assets.applyOp(op as LiveAssetOp);
+            case "asset-groups":
+                touched.push(...this.deps.assets.applyOp(op as LiveAssetOp | LiveAssetFolderOp));
                 break;
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
@@ -973,6 +1037,8 @@ export class LiveSession {
             // and for the same reason: the two spellings of "which document" can then never disagree.
             case "assets":
                 return { doc: "assets", assetType: (op as LiveAssetOp).assetType };
+            case "asset-groups":
+                return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
         }
@@ -1014,6 +1080,8 @@ export class LiveSession {
             // machine failed at something.
             case "assets":
                 return assetsDigest(this.deps.assets.records(scope.assetType));
+            case "asset-groups":
+                return assetGroupsDigest(this.deps.assets.folders(scope.category));
         }
     }
 
@@ -1038,7 +1106,9 @@ export class LiveSession {
     private tooLarge(op: LiveOp): boolean {
         if (op.op !== "create-character" && op.op !== "update-character"
             && op.op !== "set-translations" && op.op !== "set-takes"
-            && op.op !== "update-asset" && op.op !== "move-assets") {
+            && op.op !== "update-asset" && op.op !== "move-assets"
+            && op.op !== "create-assets" && op.op !== "replace-asset-content"
+            && op.op !== "delete-assets" && op.op !== "restore-asset-folder") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1269,6 +1339,153 @@ export class LiveSession {
                 return true;
             },
         };
+    }
+
+    /**
+     * Where the asset library's gestures go while this session is running.
+     *
+     * The library sink's shape with one addition, and the addition is the whole of what makes a file
+     * shareable: an operation that adds or replaces one arrives here with the bytes it is bringing,
+     * and those go on the wire beside it rather than inside it.
+     */
+    private assetSinkFor(session: ActiveSession): AssetOpSink {
+        const library = this.librarySinkFor(session);
+        return {
+            handle: (op, blobs): boolean => {
+                if (this.active !== session) {
+                    return false;
+                }
+                // Held before the operation is stated, not after: a guest's intent may be answered
+                // by the host before this window has finished its own send loop, and a receiver that
+                // asked for a slice must find somebody holding it.
+                if (blobs) {
+                    for (const [transferId, bytes] of blobs) {
+                        session.blobsOut.set(transferId, bytes);
+                    }
+                }
+                const taken = library.handle(op as LiveAssetOp);
+                if (taken && blobs) {
+                    void this.sendBlobs(session, [...blobs.keys()]);
+                }
+                return taken;
+            },
+        };
+    }
+
+    /**
+     * Where the asset library reads the files an operation named.
+     *
+     * A pull rather than a push, because an applier is synchronous and writing a file is not: the
+     * record lands now and the library comes back for the bytes. See `AssetBlobPort`.
+     */
+    private blobPortFor(session: ActiveSession): AssetBlobPort {
+        return {
+            take: part => {
+                if (this.active !== session) {
+                    return null;
+                }
+                const state = session.blobsIn.take(part.transferId, part.digest);
+                if (state.status === "complete") {
+                    return state.bytes;
+                }
+                if (state.status === "corrupt") {
+                    // Slices that do not add up to what the sender said. Asking again is the only
+                    // repair there is, and it is better than writing a file that opens as garbage.
+                    console.warn(`[live] transfer ${part.transferId} did not verify; asking again`);
+                }
+                return null;
+            },
+            request: part => {
+                if (this.active !== session) {
+                    return;
+                }
+                const missing = session.blobsIn.missing(part.transferId, chunkCountOf(part));
+                const needed: LiveBlobNeeded = {
+                    kind: "blob-needed",
+                    by: session.self,
+                    transferId: part.transferId,
+                    missing,
+                };
+                session.rooms.say(session.room.id, needed);
+            },
+        };
+    }
+
+    /**
+     * Put one transfer's slices on the wire, a few at a time.
+     *
+     * ⚠ **Paced on purpose.** A thirty-megabyte file is a couple of thousand messages, and sending
+     * them in one loop would sit in front of every operation anybody else states for as long as it
+     * took. The gap is small enough that a transfer still finishes in seconds and large enough that
+     * the room keeps answering.
+     */
+    private async sendBlobs(session: ActiveSession, transferIds: readonly string[]): Promise<void> {
+        for (const transferId of transferIds) {
+            const bytes = session.blobsOut.get(transferId);
+            if (!bytes) {
+                continue;
+            }
+            const chunks = sliceBlob(transferId, bytes);
+            for (let at = 0; at < chunks.length; at += 1) {
+                if (this.active !== session) {
+                    return;
+                }
+                session.rooms.say(session.room.id, chunks[at]);
+                if ((at + 1) % BLOBS_PER_TURN === 0) {
+                    await new Promise<void>(resolve => this.deps.schedule(0, resolve));
+                }
+            }
+        }
+    }
+
+    /**
+     * A slice arriving, or somebody saying they are short of some.
+     *
+     * The second half is the only repair this channel has: nothing is acknowledged and nothing is
+     * retransmitted on a timer, so a machine that finds itself short says exactly what it is short
+     * of and whoever holds the file sends those again.
+     */
+    private onBlobMessage(session: ActiveSession, message: LiveBlobChunk | LiveBlobNeeded): void {
+        if (message.kind === "blob") {
+            if (session.blobsIn.accept(message)) {
+                // A slice landing is the only moment a file that was waiting for one can become
+                // writable, so it is the only moment the library is asked to try again.
+                this.deps.assets.resumePayloads();
+            }
+            return;
+        }
+        if (message.by === session.self) {
+            // This window's own request, coming back off the topic.
+            return;
+        }
+        const bytes = session.blobsOut.get(message.transferId);
+        if (!bytes) {
+            // Somebody else is holding that file. Every message reaches the whole room, so the one
+            // that has it answers and the rest of us do nothing.
+            return;
+        }
+        const chunks = sliceBlob(message.transferId, bytes);
+        const wanted = message.missing.length === 0
+            ? chunks
+            : chunks.filter(chunk => message.missing.includes(chunk.index));
+        for (const chunk of wanted) {
+            session.rooms.say(session.room.id, chunk);
+        }
+    }
+
+    /** Every shard of one section, by asset type. What a folder deletion has to be recorded against. */
+    private assetsOfCategory(category: string): Record<string, Readonly<Record<string, LiveAssetRecord>>> {
+        const out: Record<string, Readonly<Record<string, LiveAssetRecord>>> = {};
+        for (const assetType of this.deps.assets.shardTypes()) {
+            if (assetCategoryOf(assetType) !== category) {
+                continue;
+            }
+            const records = this.deps.assets.records(assetType);
+            if (records) {
+                out[assetType] = records;
+            }
+        }
+        return out;
     }
 
     /* -------------------------------------------------------------------- states */

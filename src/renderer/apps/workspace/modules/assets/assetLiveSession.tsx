@@ -5,8 +5,9 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { assetsMetadataSpec } from "@shared/documents/specs";
+import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { assetGroupsSpec, assetsMetadataSpec } from "@shared/documents/specs";
+import { ASSET_PAYLOAD_ROOT } from "@shared/live/sharedDocuments";
 import { assetClaimKey } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
 
@@ -26,33 +27,35 @@ import { useWorkspace } from "../../context";
 /* --------------------------------------------------------------------------- freeze scopes */
 
 /**
- * Which files the asset library writes, as the project-relative paths the freeze policy takes.
+ * Everything the asset library writes, as the project-relative paths the freeze policy takes.
  *
- * **Every shard rather than the one a panel is looking at**, and that is honest rather than lazy: a
- * session carries the whole library or none of it (`LiveAssetsPort.shardTypes`), so "may I edit an
- * asset record" has one answer for all eight. A guard scoped to a single type would ask a narrower
- * question than the surface actually poses - the panel's rename shortcut acts on a selection, which
- * may be of any type.
+ * **All of it rather than the part a panel is looking at**, and that is honest rather than lazy: a
+ * session carries the library whole or not at all, so "may I change the library" has one answer. A
+ * guard scoped to a single type would ask a narrower question than the surface actually poses - the
+ * panel's rename shortcut acts on a selection, which may be of any type, and a drop can import,
+ * re-file a row and move a folder depending on what was dragged.
  *
- * Through the document spec rather than spelled out here, for the reason `writeFreeze` gives: a path
- * written a second time is a path that falls behind the one `AssetsService` actually saves to, and
- * this one is compared against the set a live session declares writable.
+ * Three kinds of path, and the third is the one worth naming:
  *
- * ⚠ **This is the metadata, never the bytes.** Importing, replacing and deleting write
- * `assets/content/`, which no session leaves writable - so those controls keep the unscoped guard and
- * stay greyed, which is what says out loud that a session shares what the project says about a file
- * and not the file.
+ *  - the **metadata shards**, one per asset type;
+ *  - the **folder shards**, one per section, which are a different axis - a folder under Media holds
+ *    audio and video alike;
+ *  - the **payloads**, `assets/content`, which is where a file's bytes are. `freezeAllowsWrite` takes
+ *    an entry as standing for everything under it, so this one directory covers every file.
+ *
+ * The first two come from their document specs rather than being spelled here, for the reason
+ * `writeFreeze` gives: a path written a second time is a path that falls behind the one the service
+ * actually saves to, and this one is compared against the set a session declares writable. The third
+ * has no spec because a payload is not a document anything parses - it is shared with
+ * `@shared/live/sharedDocuments`, which is what the session builds its writable set from.
  */
 export function assetLibraryFreezeScope(): readonly string[] {
-    return Object.values(AssetType).map(type => assetsMetadataSpec.pathFor({ type }));
+    return [
+        ...Object.values(AssetType).map(type => assetsMetadataSpec.pathFor({ type })),
+        ...ASSET_CATEGORY_ORDER.map(category => assetGroupsSpec.pathFor({ category })),
+        ASSET_PAYLOAD_ROOT,
+    ];
 }
-
-/*
- * ⚠ **There is no scope for the asset folders, and that absence is the invariant working.**
- * `assets/assets.groups.<category>.json` has no verb, so creating, renaming and moving a folder stays
- * frozen for the length of a session - which is what an unscoped `useFreezeGuard()` already answers.
- * Naming a scope for it would only be a way to ask a question whose answer is always the same one.
- */
 
 /* ---------------------------------------------------------------------------- holding one */
 

@@ -1,8 +1,9 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowCloseResults } from "@shared/types/window";
-import { app, dialog } from "electron";
+import { app } from "electron";
 import path from "path";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -66,7 +67,7 @@ export class ProjectWizardSelectDirectoryHandler extends IPCHandler<IPCEventType
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ dest: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             properties: ['openDirectory', 'createDirectory'],
             title: 'Select Project Directory',
             securityScopedBookmarks: true,

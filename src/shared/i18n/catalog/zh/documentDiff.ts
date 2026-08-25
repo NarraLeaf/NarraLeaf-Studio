@@ -55,6 +55,7 @@ export const documentDiff = {
 
         assetSets: "资产集",
         assets: "资产",
+        folders: "资产分组",
         audioTracks: "音轨",
         brandColors: "配色",
         brandFonts: "默认字体",
