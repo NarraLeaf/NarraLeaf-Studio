@@ -24,6 +24,7 @@ import {
     documentDiffEmptyKey,
     documentDiffTierCaption,
     isWholeDocumentChange,
+    type DocumentChangeRow,
 } from "../documentChangeView";
 import { useCanvasWidth } from "../presenters/canvasShell";
 import { DOCUMENT_ROW_CEILING } from "../presenters/GenericChangeDetail";
@@ -35,6 +36,7 @@ import {
     type SplitSlotLayout,
 } from "./splitLayout";
 import { anchorAt, NO_ANCHOR, stepAnchor } from "./splitNavigation";
+import type { SplitRowAction, SplitRowActionResolver } from "./useComparisonElements";
 
 /**
  * One document at two versions, as two halves of one tab.
@@ -45,8 +47,13 @@ import { anchorAt, NO_ANCHOR, stepAnchor } from "./splitNavigation";
  * older version on the left, the newer on the right, scrolled together.
  *
  * **This is the shell.** Each half draws the read-only change rows the detail column already draws,
- * filtered to the version that half is showing. The canvases that replace those rows, and the
- * inspector beside them, arrive later and land inside these halves without moving anything here.
+ * filtered to the version that half is showing. The canvases that replace those rows arrive later and
+ * land inside these halves without moving anything here.
+ *
+ * **A half is not an inert canvas.** Where the tab can say what a row is ABOUT - a page of the
+ * interface can, through `useComparisonElements` - the row becomes a control that selects that
+ * element at that half's version, and the right rail inspects it. Selectable and inspectable, never
+ * editable: the rail's own branch is what enforces that, and this file only publishes the selection.
  *
  * Four rules the halves have to keep, and each of them is a way this surface could lie quietly:
  *
@@ -76,6 +83,16 @@ export interface SplitComparisonViewProps {
     readonly headLabel: string;
     /** Anything the tab wants in its header, to the right of the navigation. */
     readonly actions?: ReactNode;
+    /**
+     * What a row in one half selects, when it selects anything.
+     *
+     * The seam through which a half stops being a picture: `useComparisonElements` answers with the
+     * element a row is about, at that half's version, and pressing the row publishes it as the
+     * app-wide selection so the right rail inspects it. Left out - and for every document kind that
+     * has no such answer - a row is text and stays text, rather than becoming a control that does
+     * nothing when pressed.
+     */
+    readonly rowAction?: SplitRowActionResolver;
     /** Rows one half may draw. The detail column's ceiling, and for the same reason. */
     readonly limit?: number;
 }
@@ -87,6 +104,7 @@ export function SplitComparisonView({
     baseLabel,
     headLabel,
     actions,
+    rowAction,
     limit = DOCUMENT_ROW_CEILING,
 }: SplitComparisonViewProps) {
     const { t } = useTranslation();
@@ -139,6 +157,7 @@ export function SplitComparisonView({
             notInVersion={t("documentDiff.split.notInVersion")}
             scrollerRef={side === "base" ? baseScroller : headScroller}
             onScroll={syncScroll(side)}
+            rowAction={rowAction}
         />
     );
 
@@ -264,6 +283,7 @@ function SplitHalf({
     notInVersion,
     scrollerRef,
     onScroll,
+    rowAction,
 }: {
     readonly side: "base" | "head";
     readonly label: string;
@@ -274,6 +294,7 @@ function SplitHalf({
     readonly notInVersion: string;
     readonly scrollerRef: RefObject<HTMLDivElement | null>;
     readonly onScroll: (event: UIEvent<HTMLDivElement>) => void;
+    readonly rowAction?: SplitRowActionResolver;
 }) {
     return (
         <section data-split-half={side} aria-label={label} className="flex h-full min-h-0 min-w-0 flex-col">
@@ -300,7 +321,13 @@ function SplitHalf({
                             style={{ minHeight: measured ? `${measured.height}px` : undefined }}
                         >
                             {present
-                                ? <DocumentChangeLine row={slot.row} dense={false} active={slot.key === activeKey} />
+                                ? (
+                                    <SplitRow
+                                        row={slot.row}
+                                        active={slot.key === activeKey}
+                                        action={rowAction?.(slot.row, side) ?? null}
+                                    />
+                                )
                                 : (
                                     <div
                                         // The one thing on this surface that is a gap on purpose.
@@ -317,6 +344,48 @@ function SplitHalf({
                 })}
             </div>
         </section>
+    );
+}
+
+/**
+ * One change line, and - where the half can answer for it - the control that selects what it is
+ * about.
+ *
+ * A `<button>` rather than a click handler on the line, so the row is reachable by keyboard and
+ * announces itself as something that can be pressed. The line inside is unchanged: what a change
+ * says is the same sentence whether or not it selects anything, and a second styling of it would be
+ * a second vocabulary for the same rows.
+ *
+ * A row that selects nothing is not wrapped at all. A control that looks like a control and does
+ * nothing is worse than text.
+ */
+function SplitRow({
+    row,
+    active,
+    action,
+}: {
+    readonly row: DocumentChangeRow;
+    readonly active: boolean;
+    readonly action: SplitRowAction | null;
+}) {
+    const line = <DocumentChangeLine row={row} dense={false} active={active} />;
+    if (!action) {
+        return line;
+    }
+    return (
+        <button
+            type="button"
+            data-split-select
+            aria-pressed={action.selected}
+            aria-label={action.label}
+            onClick={action.onSelect}
+            className={cn(
+                "w-full rounded-md text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50",
+                action.selected ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-surface-raised",
+            )}
+        >
+            {line}
+        </button>
     );
 }
 

@@ -600,6 +600,21 @@ export const documentDiff = {
         next: "下一处改动",
         position: "{index} / {total}",
         gone: "该文件不在本次比较中",
+        inspect: "查看 {name} 的属性",
+    },
+    /**
+     * 选中某一半里的一个元素时，右侧的属性栏。
+     *
+     * 画的就是界面编辑器那一套检查器，只是换成该半边显示的那个版本。所以这里没有一句在解释字段——
+     * 字段说的还是它们一贯说的那些；这几条补的是字段说不出的那一件事：这是哪个版本，以及它是那个
+     * 版本的一张画面而不是一块画布。
+     */
+    inspector: {
+        version: "来自 {version}",
+        onlyHere: "{version} 里没有这一处",
+        readOnly: "比较只能查看，要改这些属性请打开界面编辑器",
+        differs: "{version}：{value}",
+        noValue: "空",
     },
     /**
      * 整份取一边地收尾一次合并。
