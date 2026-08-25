@@ -29,6 +29,9 @@ function installDataPinResolver(): void {
 
 export function registerCoreBlueprintNodes(): void {
     installDataPinResolver();
+    // Before the loop, and unconditionally: the loop skips types already registered, and data pin
+    // resolution needs the built-in set complete whether or not this call did the registering.
+    blueprintNodeRegistry.markBuiltIn(allBuiltinBlueprintNodes.map(def => def.type));
     for (const def of allBuiltinBlueprintNodes) {
         if (!blueprintNodeRegistry.get(def.type)) {
             defineBlueprintNode(def);

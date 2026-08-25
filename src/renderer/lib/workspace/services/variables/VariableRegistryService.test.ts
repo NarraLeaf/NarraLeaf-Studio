@@ -161,6 +161,65 @@ describe("VariableRegistryService document adoption", () => {
         });
     });
 
+    /**
+     * A timestamp that moved when nothing else did is a change to the file, and a project shared
+     * between two machines cannot survive one: both authors open it, both rewrite the registry with
+     * their own clock, and the next sync is a conflict on a document neither of them touched. The
+     * declaration migration re-runs on every open by design, so the save with nothing to say is the
+     * normal case rather than an unusual one.
+     */
+    describe("a save with nothing to say", () => {
+        it("leaves the file byte-identical rather than moving the timestamp", async () => {
+            const { service, files } = await createHarness();
+            const written = files.get(DOCUMENT);
+            expect(written).toContain("\"updatedAt\"");
+
+            vi.useFakeTimers();
+            try {
+                vi.setSystemTime(new Date("2031-01-01T00:00:00.000Z"));
+                // What the migration's second run does: assign the same entries, then save.
+                service.applyRegistryMutation(() => undefined);
+                await service.save(service.getRegistry());
+            } finally {
+                vi.useRealTimers();
+            }
+
+            expect(files.get(DOCUMENT)).toBe(written);
+            expect(service.isDirty()).toBe(false);
+        });
+
+        it("still stamps the timestamp when something did change", async () => {
+            const { service, files } = await createHarness();
+            const written = files.get(DOCUMENT);
+
+            vi.useFakeTimers();
+            try {
+                vi.setSystemTime(new Date("2031-01-01T00:00:00.000Z"));
+                service.createEntry("persistent", { name: "Gold" });
+                await service.flushPendingChanges();
+            } finally {
+                vi.useRealTimers();
+            }
+
+            expect(files.get(DOCUMENT)).not.toBe(written);
+            expect(files.get(DOCUMENT)).toContain("\"updatedAt\": \"2031-01-01T00:00:00.000Z\"");
+        });
+
+        /**
+         * The trap the content key sets for itself: two projects with empty registries have the same
+         * key, so a key kept across a project switch would make the seeding write decide it had
+         * nothing to do and leave the new project with no registry at all.
+         */
+        it("does not mistake the next project's empty registry for the last one's", async () => {
+            const first = await createHarness();
+            expect(first.files.get(DOCUMENT)).toContain("\"entries\"");
+
+            const second = await createHarness(undefined, first.service);
+
+            expect(second.files.get(DOCUMENT)).toContain("\"entries\"");
+        });
+    });
+
     describe("when the file on disk cannot be read", () => {
         const BROKEN = "{\"entries\": {\"gold\": {\"name\": \"Gold\", \"storageKey\": \"gold\"";
 

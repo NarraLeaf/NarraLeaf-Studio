@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LiveCastView } from "@shared/live/cast";
+import type { LiveCharacterOp, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
     type StoryBlockId,
@@ -140,9 +142,12 @@ type Done = { effect: LiveEffect; before: LiveBefore | null };
  * overwrite, then apply it. The record is taken here and nowhere else - before the document moves.
  */
 function perform(document: StoryDocument, op: LiveOp, by = SELF): Done {
-    const before = captureBefore(op, document);
+    const before = captureBefore(op, { story: document });
     apply(document, op);
-    return { effect: { kind: "effect", by, seq: ++seq, op }, before };
+    return {
+        effect: { kind: "effect", by, seq: ++seq, document: { doc: "story", storyId: "story-1" }, op },
+        before,
+    };
 }
 
 function invert(document: StoryDocument, done: Done, self = SELF): LiveInverse {
@@ -703,20 +708,242 @@ describe("deleting a container", () => {
     });
 });
 
+/* ----------------------------------------------------------------------------- the cast */
+
+function record(id: string, name = id, groupId?: string): StoredCharacter {
+    return {
+        profile: {
+            id,
+            name,
+            description: "",
+            tags: [],
+            attributes: {},
+            thumbnail: null,
+            nicknames: [],
+            ...(groupId === undefined ? {} : { groupId }),
+            appearance: { kind: "preset", poses: [], defaultPoseId: null },
+        },
+    };
+}
+
+function makeCast(members: StoredCharacter[] = [], groups: CharacterGroup[] = []): LiveCastView & {
+    characters: Record<string, StoredCharacter>;
+    order: string[];
+    groups: Record<string, CharacterGroup>;
+} {
+    return {
+        characters: Object.fromEntries(members.map(member => [member.profile.id, member])),
+        order: members.map(member => member.profile.id),
+        groups: Object.fromEntries(groups.map(group => [group.id, group])),
+    };
+}
+
+/** The cast's half of {@link perform}: read what is about to be overwritten, then overwrite it. */
+function performOnCast(cast: ReturnType<typeof makeCast>, op: LiveCharacterOp, by = SELF): Done {
+    const before = captureBefore(op, { cast });
+    applyToCast(cast, op);
+    return {
+        effect: { kind: "effect", by, seq: ++seq, document: { doc: "characters" }, op },
+        before,
+    };
+}
+
+function invertOnCast(cast: ReturnType<typeof makeCast>, done: Done, self = SELF): LiveInverse {
+    return inverseOf(done.effect, { self, cast, before: done.before });
+}
+
+function applyToCast(cast: ReturnType<typeof makeCast>, op: LiveCharacterOp): void {
+    switch (op.op) {
+        case "create-character":
+            cast.characters[op.character.profile.id] = structuredClone(op.character);
+            if (!cast.order.includes(op.character.profile.id)) {
+                cast.order.push(op.character.profile.id);
+            }
+            return;
+        case "update-character":
+            cast.characters[op.characterId] = structuredClone(op.character);
+            return;
+        case "delete-character":
+            delete cast.characters[op.characterId];
+            cast.order = cast.order.filter(id => id !== op.characterId);
+            return;
+        case "set-character-group":
+            cast.groups[op.groupId] = { ...op.group };
+            for (const memberId of op.members ?? []) {
+                const member = cast.characters[memberId];
+                if (member) {
+                    member.profile.groupId = op.groupId;
+                }
+            }
+            return;
+        case "delete-character-group":
+            delete cast.groups[op.groupId];
+            for (const member of Object.values(cast.characters)) {
+                if (member.profile.groupId === op.groupId) {
+                    delete member.profile.groupId;
+                }
+            }
+            return;
+    }
+}
+
+describe("undoing what this window did to the cast", () => {
+    it("puts a record back exactly as it was, and carries the whole record to do it", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const done = performOnCast(cast, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Ada Lovelace"),
+        });
+
+        expect(asOp(invertOnCast(cast, done)))
+            .toEqual({ op: "update-character", characterId: "c1", character: record("c1", "Ada") });
+    });
+
+    it("keeps a copy, so the record still describes the state before the operation", () => {
+        // The store is edited in place. A record that pointed into it would describe the state after
+        // the operation - the one mistake that makes every inverse a no-op.
+        const cast = makeCast([record("c1", "Ada")]);
+        const before = captureBefore({ op: "update-character", characterId: "c1", character: record("c1", "X") }, { cast });
+        applyToCast(cast, { op: "update-character", characterId: "c1", character: record("c1", "X") });
+
+        expect(before).toEqual({ op: "update-character", character: record("c1", "Ada") });
+    });
+
+    it("refuses to undo an update whose record has gone, rather than creating one", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const done = performOnCast(cast, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Ada Lovelace"),
+        });
+        delete cast.characters.c1;
+        cast.order = [];
+
+        // Putting a record back that somebody else deleted is not undoing an edit, it is making a
+        // character - and the author asked for neither.
+        expect(asImpossible(invertOnCast(cast, done))).toBe("character-gone");
+    });
+
+    it("takes a creation back by deleting the record it made", () => {
+        const cast = makeCast();
+        const done = performOnCast(cast, { op: "create-character", character: record("c1", "Ada") });
+
+        expect(asOp(invertOnCast(cast, done))).toEqual({ op: "delete-character", characterId: "c1" });
+    });
+
+    it("takes a deletion back with the record, its place, and the lines it was speaking", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const spoke = [{ storyId: "story-1", sceneId: "s1", blockId: "b1" }];
+        const before = captureBefore({ op: "delete-character", characterId: "c1" }, { cast, spoke });
+        applyToCast(cast, { op: "delete-character", characterId: "c1" });
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "characters" }, op: { op: "delete-character", characterId: "c1" } },
+            before,
+        };
+
+        // The rows are carried where the deletion's own sweep was derived: they hold a bare name now,
+        // and a name is not an identifier - two characters may share one, and the author may have
+        // written more lines under it since.
+        expect(asOp(invertOnCast(cast, done))).toEqual({
+            op: "create-character",
+            character: record("c1", "Ada"),
+            rebind: spoke,
+        });
+    });
+
+    it("refuses to undo a deletion whose record is back, rather than making a second one", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const before = captureBefore({ op: "delete-character", characterId: "c1" }, { cast, spoke: [] });
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "characters" }, op: { op: "delete-character", characterId: "c1" } },
+            before,
+        };
+        // Applied nowhere: the record is still there, which is what a redo or somebody else's undo
+        // leaves behind.
+        expect(asImpossible(invertOnCast(cast, done))).toBe("character-restored");
+    });
+
+    it("takes a new group back by removing it, and a renamed one back by its old name", () => {
+        const cast = makeCast();
+        const created = performOnCast(cast, {
+            op: "set-character-group",
+            groupId: "g1",
+            group: { id: "g1", name: "Cast", createdAt: 1, updatedAt: 1 },
+        });
+        // There was no group, so the operation created one and taking it back is removing it.
+        expect(asOp(invertOnCast(cast, created))).toEqual({ op: "delete-character-group", groupId: "g1" });
+
+        const renamed = performOnCast(cast, {
+            op: "set-character-group",
+            groupId: "g1",
+            group: { id: "g1", name: "Extras", createdAt: 1, updatedAt: 2 },
+        });
+        expect(asOp(invertOnCast(cast, renamed))).toEqual({
+            op: "set-character-group",
+            groupId: "g1",
+            group: { id: "g1", name: "Cast", createdAt: 1, updatedAt: 1 },
+        });
+    });
+
+    it("puts a deleted group back with the members it had, as one operation", () => {
+        const cast = makeCast([record("c1", "Ada", "g1"), record("c2", "Bea", "g1"), record("c3", "Cy")],
+            [{ id: "g1", name: "Cast", createdAt: 1, updatedAt: 1 }]);
+        const done = performOnCast(cast, { op: "delete-character-group", groupId: "g1" });
+        expect(cast.characters.c1?.profile.groupId).toBeUndefined();
+
+        // A group put back empty is a group with the right name and the cast still scattered, and
+        // the author would have to re-assign every member by hand.
+        expect(asOp(invertOnCast(cast, done))).toEqual({
+            op: "set-character-group",
+            groupId: "g1",
+            group: { id: "g1", name: "Cast", createdAt: 1, updatedAt: 1 },
+            members: ["c1", "c2"],
+        });
+    });
+
+    it("keeps nothing for a deletion of a group that was already gone", () => {
+        const cast = makeCast();
+        expect(captureBefore({ op: "delete-character-group", groupId: "g1" }, { cast })).toBeNull();
+    });
+
+    it("offers nothing for somebody else's edit to the cast", () => {
+        // Not merely refused: an effect somebody else caused is not this machine's to take back at
+        // all, and the interface must not be able to draw an entry for one.
+        const cast = makeCast([record("c1", "Ada")]);
+        const done = performOnCast(cast, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Theirs"),
+        }, OTHER);
+        expect(asImpossible(invertOnCast(cast, done))).toBe("not-mine");
+    });
+
+    it("refuses an inverse with no record behind it", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const done = performOnCast(cast, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Ada Lovelace"),
+        });
+        expect(asImpossible(invertOnCast(cast, { ...done, before: null }))).toBe("no-record");
+    });
+});
+
 /* --------------------------------------------------------------------------- the record */
 
 describe("what a caller has to keep", () => {
     it("keeps nothing for an insert, because the effect already carries the row", () => {
         const document = makeDocument();
         const op: LiveOp = { op: "insert-block", sceneId: "s1", block: note("n"), target: { parentId: null } };
-        expect(captureBefore(op, document)).toBeNull();
+        expect(captureBefore(op, { story: document })).toBeNull();
     });
 
     it("keeps a copy, so the record still describes the state before the operation", () => {
         // The document is edited in place. A record that pointed into it would describe the state
         // after the operation - the one mistake that makes every inverse a no-op.
         const document = makeDocument();
-        const before = captureBefore({ op: "update-block", sceneId: "s1", blockId: "a", payload: REWRITTEN }, document);
+        const before = captureBefore({ op: "update-block", sceneId: "s1", blockId: "a", payload: REWRITTEN }, { story: document });
         apply(document, { op: "update-block", sceneId: "s1", blockId: "a", payload: REWRITTEN });
 
         expect(before).toEqual({ op: "update-block", payload: { text: { textId: "text-a", value: "a", role: "note" } } });
@@ -724,7 +951,7 @@ describe("what a caller has to keep", () => {
 
     it("reads where a row sits out of the document, at the moment the operation lands", () => {
         const document = makeDocument();
-        expect(captureBefore({ op: "delete-block", sceneId: "s1", blockId: "one" }, document))
+        expect(captureBefore({ op: "delete-block", sceneId: "s1", blockId: "one" }, { story: document }))
             .toEqual({ op: "delete-block", block: { ...note("one"), parentId: "g" }, at: { parentId: "g", beforeBlockId: "two" } });
     });
 
@@ -742,7 +969,7 @@ describe("what a caller has to keep", () => {
 
     it("keeps nothing readable for an operation about a row that is not there", () => {
         const document = makeDocument();
-        expect(captureBefore({ op: "update-block", sceneId: "s1", blockId: "stranger", payload: REWRITTEN }, document)).toBeNull();
-        expect(captureBefore({ op: "rename-scene", sceneId: "gone", name: "Corridor" }, document)).toBeNull();
+        expect(captureBefore({ op: "update-block", sceneId: "s1", blockId: "stranger", payload: REWRITTEN }, { story: document })).toBeNull();
+        expect(captureBefore({ op: "rename-scene", sceneId: "gone", name: "Corridor" }, { story: document })).toBeNull();
     });
 });

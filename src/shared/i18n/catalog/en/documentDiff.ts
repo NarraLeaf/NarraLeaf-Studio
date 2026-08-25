@@ -182,16 +182,28 @@ export const documentDiff = {
         groupRenamed: "Group renamed",
     },
     /**
-     * One translation unit, as a three-way merge reads it.
+     * Tier 1, one language's translation library - the document whose whole content is text.
      *
-     * Emitted only by `merge3` - this format has no semantic diff yet - and there is no `subject`
-     * beside them: a unit id is a story text id or a `key:`/`char:` handle, never a word the author
-     * typed. What identifies the row for them is the two translations drawn underneath it.
+     * The comparison and the three-way merge share the first three. Nothing here names the unit and
+     * nothing can: a unit id is a story text id or a `key:`/`char:`/`scene:` handle, never a word
+     * the author typed. What identifies a row is the translation itself, drawn beside the label as
+     * the value pair - which is why `changed` says only that a line was translated again and leaves
+     * the two texts to the pair.
+     *
+     * The four status lines state what the unit now is, in the translation table's own four words,
+     * rather than pairing the two identifiers the file keeps them under.
      */
     localization: {
         added: "Translation added",
         removed: "Translation removed",
         changed: "Translation changed",
+        note: "Note changed",
+        /** The translation did not change; the line it was written from is a different line now. */
+        source: "Written against a different source line",
+        statusUntranslated: "Now untranslated",
+        statusMachine: "Now a machine translation",
+        statusTranslated: "Now translated",
+        statusReviewed: "Now reviewed",
     },
     /**
      * Tier 1, the interface document: Surfaces and the elements on them.
@@ -755,6 +767,30 @@ export const documentDiff = {
          */
         position: "{index} / {total}",
         gone: "This file is not in this comparison.",
+        /** A row that selects the element it is about, so the right rail can show its properties. */
+        inspect: "Inspect {name}",
+    },
+    /**
+     * The right rail while an element of one half is selected.
+     *
+     * The rail draws the same inspector the interface editor draws, over the version that half is
+     * showing. So nothing here describes a field - the fields say what they always say - and what
+     * these keys add is the one thing the fields cannot: which version this is, and that it is a
+     * picture of one rather than a canvas.
+     */
+    inspector: {
+        /** Above the fields, so the rail never leaves which version unsaid. */
+        version: "From {version}",
+        /** An element the other half does not hold at all. Stated, rather than left as a blank. */
+        onlyHere: "Not in {version}",
+        readOnly: "A comparison is read-only. Open the interface editor to edit these properties.",
+        /**
+         * What the other half holds for one field, on the hover of the dot beside its name. Drawn as
+         * a pair rather than worded, for the reason a change's own two values are.
+         */
+        differs: "{version}: {value}",
+        /** The counterpart where there is no value at all - an empty text, a cleared colour. */
+        noValue: "Empty",
     },
     /**
      * Finishing a merge by taking one side of each file.

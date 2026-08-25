@@ -1,21 +1,21 @@
 import {
     isLiveMessage,
-    opSceneId,
     type LiveCatchUp,
+    type LiveClaim,
+    type LiveClaimKey,
     type LiveClaims,
     type LiveDerived,
+    type LiveDigestScope,
+    type LiveDocument,
     type LiveEffect,
     type LiveIntent,
     type LiveOp,
     type LiveRefusal,
     type LiveResync,
-    type LiveRowClaim,
 } from "@shared/live/ops";
-import { sceneDigest } from "@shared/live/sceneDigest";
-import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 
 /** Everything a guest can say. The other three kinds of message are the host's to send. */
-export type LiveGuestOutbound = LiveIntent | LiveResync | LiveRowClaim;
+export type LiveGuestOutbound = LiveIntent | LiveResync | LiveClaim;
 
 /**
  * How long a sent intent waits for its answer before it is sent again, unchanged.
@@ -41,8 +41,6 @@ export const DEFAULT_RESEND_AFTER_MS = 3000;
 export type LiveGuestDeps = {
     /** This machine's instance id. It addresses the resyncs this guest sends. */
     self: string;
-    /** The story this session is about. Stamped on every intent. */
-    story: StoryId;
     /**
      * Perform one operation on the local document.
      *
@@ -51,7 +49,7 @@ export type LiveGuestDeps = {
      * out of the copier's memory, which nobody else has, so the effect is the only place they exist
      * on this machine and the guest decides nothing about them.
      */
-    applyOp(op: LiveOp, derived?: LiveDerived): void;
+    applyOp(op: LiveOp, document: LiveDocument, derived?: LiveDerived): void;
     /** Put one message on the wire. Whether it arrives is not this class's business. */
     send(message: LiveGuestOutbound): void;
     /**
@@ -64,10 +62,14 @@ export type LiveGuestDeps = {
     /** Run `run` after at least `delayMs`; the returned function cancels it. Injected for the same reason. */
     schedule(delayMs: number, run: () => void): () => void;
     /**
-     * The scene as it stands right now, for {@link onDigest}. Absent when nothing is watching for
-     * divergence, in which case no digest is computed and none is needed.
+     * What this machine makes of one unit after applying an effect, for {@link onDigest}. Absent when
+     * nothing is watching for divergence, in which case no digest is computed and none is needed.
+     *
+     * The same port the host has, and deliberately the same shape: both sides fingerprint the unit
+     * `opDigestScope` names, and a guest that computed it a second way would report disagreements
+     * that were only two spellings of one document.
      */
-    readScene?(sceneId: StorySceneId): StoryScene | null;
+    digestOf?(scope: LiveDigestScope): string | null;
     /**
      * The seam the divergence guard hangs off: called after an effect that carried a digest has been
      * applied, with that effect and the digest this machine computed from its own copy of the scene
@@ -78,7 +80,7 @@ export type LiveGuestDeps = {
      * way, because a class that cannot tell which copy is wrong is in no position to act on the fact
      * that they differ.
      */
-    onDigest?(effect: LiveEffect, digest: string | null): void;
+    onDigest?(effect: LiveEffect, compute: (scope: LiveDigestScope) => string | null): void;
     /**
      * The host said no. Carries the intent that was refused when it was still outstanding, so the
      * interface can name the row rather than the key.
@@ -131,7 +133,7 @@ export class LiveGuest {
     private lastApplied = 0;
     /** A resync has gone out and the catch-up answering it has not arrived. */
     private catchingUp = false;
-    private held: Readonly<Record<StoryBlockId, string>> = {};
+    private held: Readonly<Record<LiveClaimKey, string>> = {};
     private heldSeq = 0;
     private minted = 0;
     private cancelResend: (() => void) | null = null;
@@ -148,11 +150,11 @@ export class LiveGuest {
      * Returned so a caller can hold on to what it asked for - the key on it is what every later
      * answer is matched by.
      */
-    public intend(op: LiveOp, derived?: LiveDerived): LiveIntent {
+    public intend(op: LiveOp, document: LiveDocument, derived?: LiveDerived): LiveIntent {
         const intent: LiveIntent = {
             kind: "intent",
             clientId: this.mintClientId(),
-            story: this.deps.story,
+            document,
             op,
         };
         if (derived) {
@@ -165,15 +167,15 @@ export class LiveGuest {
     }
 
     /**
-     * Say that this machine is writing a row, or that it has stopped. **Nothing is held here.**
+     * Say that this machine is writing something, or that it has stopped. **Nothing is held here.**
      *
      * The mirror of {@link intend}: the host is the only place a claim exists, so this asks and
-     * records nothing of its own. The row is held when a set arrives naming this author on it, and
-     * until then it is held by whoever the last set said - which may be somebody else, in which
-     * case this ask changed nothing and no set will come back.
+     * records nothing of its own. It is held when a set arrives naming this author on it, and until
+     * then it is held by whoever the last set said - which may be somebody else, in which case this
+     * ask changed nothing and no set will come back.
      */
-    public claimRow(blockId: StoryBlockId, holding: boolean): void {
-        this.deps.send({ kind: "row-claim", blockId, holding });
+    public claim(key: LiveClaimKey, holding: boolean): void {
+        this.deps.send({ kind: "claim", key, holding });
     }
 
     /**
@@ -202,7 +204,7 @@ export class LiveGuest {
                 return;
             case "intent":
             case "resync":
-            case "row-claim":
+            case "claim":
                 // The things a guest itself says. One arriving here is this guest's own message
                 // coming back off the topic, or another guest's - every participant receives
                 // everything - and neither is anything to act on: only the host answers an intent,
@@ -234,8 +236,8 @@ export class LiveGuest {
         return this.catchingUp;
     }
 
-    /** Who is writing which row, as the host last said. Recorded for the interface; acted on nowhere. */
-    public get claimedRows(): Readonly<Record<StoryBlockId, string>> {
+    /** Who is writing what, as the host last said. Recorded for the interface; acted on nowhere. */
+    public get claimed(): Readonly<Record<LiveClaimKey, string>> {
         return this.held;
     }
 
@@ -327,7 +329,7 @@ export class LiveGuest {
         // The operation as the effect carries it, which is not always the one that was asked for: an
         // insert whose anchor row had just been deleted still lands where that row was, and the
         // effect names the position the host actually used. A guest applies what it is told.
-        this.deps.applyOp(effect.op, effect.derived);
+        this.deps.applyOp(effect.op, effect.document, effect.derived);
         this.lastApplied = effect.seq;
         this.reportDigest(effect);
     }
@@ -344,16 +346,21 @@ export class LiveGuest {
     }
 
     /**
-     * Hand the divergence guard the effect and what this machine makes of the scene after applying
-     * it. Skipped when nobody is watching, since the digest is real work per effect.
+     * Hand the divergence guard the effect and what this machine makes of the same unit after
+     * applying it. Skipped when nobody is watching, since the digest is real work per effect.
+     *
+     * ⚠ **The scopes come from the effect, not from this machine's reading of the operation.** The
+     * two agree today, and they have to keep agreeing for the comparison to mean anything - so the
+     * values that travelled are the ones used, and an effect from a build that fingerprints something
+     * else reports `unproven` rather than a disagreement about which unit was measured. It is also
+     * what lets an effect fingerprint work it derived rather than carried: this machine is asked about
+     * the units the host actually touched.
      */
     private reportDigest(effect: LiveEffect): void {
-        if (!this.deps.onDigest || effect.sceneDigest === undefined) {
+        if (!this.deps.onDigest || effect.digests === undefined || effect.digests.length === 0) {
             return;
         }
-        const sceneId = opSceneId(effect.op);
-        const scene = sceneId === null ? null : (this.deps.readScene?.(sceneId) ?? null);
-        this.deps.onDigest(effect, scene ? sceneDigest(scene) : null);
+        this.deps.onDigest(effect, scope => this.deps.digestOf?.(scope) ?? null);
     }
 
     /* ------------------------------------------------------------- the re-send */

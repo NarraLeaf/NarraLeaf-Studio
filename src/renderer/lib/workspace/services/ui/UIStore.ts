@@ -9,6 +9,7 @@ import type { Asset } from "../assets/types";
 import type { Character } from "../character/Character";
 import type { StoryBlockSelection } from "@/apps/workspace/modules/story/scene-editor/storySelection";
 import type { StoryMotionKeyframeSelection } from "@/apps/workspace/modules/story-motion/storyMotionTypes";
+import type { ComparisonElementSelection } from "@/lib/vcs/compare/comparisonSelection";
 import {
     Notification,
     ActionBarItem,
@@ -60,6 +61,14 @@ export type SelectionState =
     | { type: "asset"; data: Asset }
     | { type: "assetSet"; data: AssetSet }
     | { type: "character"; data: Character }
+    /**
+     * An element of one half of a version comparison, carried whole rather than by id.
+     *
+     * The only member whose payload is the subject itself instead of an address into the live
+     * project: every other kind names something the workspace holds right now, and this one names
+     * something at a version that has already happened. See `lib/vcs/compare/comparisonSelection.ts`.
+     */
+    | { type: "comparisonElement"; data: ComparisonElementSelection }
     | { type: "element"; data: UIElementSelection }
     /** A surface id, or a component editor's pseudo-surface id (`component-editor:<id>`). */
     | { type: "scene"; data: UISurfaceId }

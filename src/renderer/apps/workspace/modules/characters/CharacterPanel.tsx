@@ -8,6 +8,12 @@ import { FilterSystem, FilterConfig, ActiveFilter } from "../assets/components/F
 import { PanelComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+import {
+    CharacterClaimMark,
+    CharacterClaimsProvider,
+    characterDocumentFreezeScope,
+    useCharacterClaim,
+} from "./characterLiveSession";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterGroup } from "@/lib/workspace/services/character/types";
 import { CharacterService } from "@/lib/workspace/services/core/CharacterService";
@@ -63,8 +69,22 @@ interface CharacterPanelState {
 }
 
 export function CharacterPanel({ panelId }: PanelComponentProps) {
+    return (
+        // One subscription for the whole list. A row that read the session itself would re-render on
+        // every remote keystroke, and every window in the room publishes one.
+        <CharacterClaimsProvider>
+            <CharacterPanelBody panelId={panelId} />
+        </CharacterClaimsProvider>
+    );
+}
+
+function CharacterPanelBody({ panelId }: PanelComponentProps) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    // Scoped to the cast's own document, which is what keeps this panel working inside a live
+    // session: that freeze leaves the documents the session can carry writable and refuses the rest.
+    // Unscoped, every control here would be switched off by any freeze at all - the conservative
+    // default, and the right one for a surface that has not said which file it writes.
+    const freeze = useFreezeGuard(characterDocumentFreezeScope());
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
@@ -377,15 +397,15 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         closeMenu();
         const created = await promptCreateCharacter();
         if (!created) return;
-        const character = characterService.createCharacter(created.name, created.kind);
-        if (created.color) {
-            // Absent means "no colour", which is not the same as a colour that happens to match the
-            // hash — the story rows fall back to the name for as long as this stays unset.
-            character.profile.setColor(created.color);
-        }
-        if (groupId) {
-            characterService.assignCharacterToGroup(character.profile.getId(), groupId);
-        }
+        // Colour and group go in with the creation rather than being set on the way out. One
+        // gesture, one record: the object this hands back is not a member of the cast while a live
+        // session is carrying the creation, so anything set on it afterwards would be written to
+        // nothing. Absent colour means "no colour", which is not the same as a colour that happens to
+        // match the hash — the story rows fall back to the name for as long as this stays unset.
+        characterService.createCharacter(created.name, created.kind, {
+            ...(created.color ? { color: created.color } : {}),
+            ...(groupId ? { groupId } : {}),
+        });
         loadCharacters();
     }, [characterService, closeMenu, loadCharacters, promptCreateCharacter]);
 
@@ -579,50 +599,16 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
         setMenuState({ visible: true, position: { x: rect.right, y: rect.bottom } });
     }, [buildContextMenu, closeMenu, context, freeze]);
 
-    const renderCharacterRow = useCallback((item: CharacterItem) => {
-        const thumbnailUrl = thumbnails[item.id];
-        const isFocused = focusedCharacterId === item.id;
-
-        return (
-            <div
-                key={item.id}
-                className={cn(
-                    "group flex items-center gap-3 px-3 py-2 cursor-default transition-colors hover:bg-fill",
-                    // Per side, not `border-edge-subtle`: the whole-element form also paints the accent
-                    // bar below, and the row that had one was the only row in the list showing it.
-                    "border-b border-b-edge-subtle last:border-b-0",
-                    isFocused && "bg-primary/20 border-l-2 border-l-primary",
-                )}
-                data-character-id={item.id}
-                onClick={() => handleCharacterClick(item.source)}
-            >
-                <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
-                    {thumbnailUrl ? (
-                        <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
-                    ) : (
-                        <User className="w-5 h-5 text-fg-muted" />
-                    )}
-                </div>
-                <div className="min-w-0 flex-1">
-                    {/* The accent is a real field the story editor already renders on nametags; the
-                        list was the one place a character's colour could be set and never seen. */}
-                    <div className="text-sm text-fg truncate" style={item.color ? { color: item.color } : undefined}>
-                        {item.name}
-                    </div>
-                    {item.nicknames.length > 0 && (
-                        <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
-                    )}
-                </div>
-                <button
-                    className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
-                    onClick={(event) => { event.stopPropagation(); handleMenuOpen(event, { type: "character", character: item.source }); }}
-                    data-tip={t("characters.panel.rowActions")} aria-label={t("characters.panel.rowActions")}
-                >
-                    <MoreVertical className="w-4 h-4" />
-                </button>
-            </div>
-        );
-    }, [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails, t]);
+    const renderCharacterRow = useCallback((item: CharacterItem) => (
+        <CharacterRow
+            key={item.id}
+            item={item}
+            thumbnailUrl={thumbnails[item.id]}
+            isFocused={focusedCharacterId === item.id}
+            onSelect={handleCharacterClick}
+            onMenu={handleMenuOpen}
+        />
+    ), [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails]);
 
     const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
@@ -770,3 +756,65 @@ export function CharacterPanel({ panelId }: PanelComponentProps) {
     );
 }
 
+
+/**
+ * One character in the list.
+ *
+ * Its own component so that the claim it may be wearing is read by this row alone: the claims come
+ * through a context, and a row that reads one only re-renders when the answer for *that* record
+ * changes. Inlined in the list's callback, every row in the panel would repaint whenever anybody in
+ * the room opened or closed any character.
+ */
+function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onMenu }: {
+    item: CharacterItem;
+    thumbnailUrl: string | undefined;
+    isFocused: boolean;
+    onSelect: (character: Character) => void;
+    onMenu: (event: React.MouseEvent, target: MenuTarget) => void;
+}) {
+    const { t } = useTranslation();
+    const claimedBy = useCharacterClaim(item.id);
+
+    return (
+        <div
+            className={cn(
+                "group flex items-center gap-3 px-3 py-2 cursor-default transition-colors hover:bg-fill",
+                // Per side, not `border-edge-subtle`: the whole-element form also paints the accent
+                // bar below, and the row that had one was the only row in the list showing it.
+                "border-b border-b-edge-subtle last:border-b-0",
+                isFocused && "bg-primary/20 border-l-2 border-l-primary",
+            )}
+            data-character-id={item.id}
+            onClick={() => onSelect(item.source)}
+        >
+            <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
+                {thumbnailUrl ? (
+                    <img src={thumbnailUrl} alt={item.name} className="w-full h-full object-cover" />
+                ) : (
+                    <User className="w-5 h-5 text-fg-muted" />
+                )}
+            </div>
+            <div className="min-w-0 flex-1">
+                {/* The accent is a real field the story editor already renders on nametags; the
+                    list was the one place a character's colour could be set and never seen. */}
+                <div className="text-sm text-fg truncate" style={item.color ? { color: item.color } : undefined}>
+                    {item.name}
+                </div>
+                {item.nicknames.length > 0 && (
+                    <div className="text-xs text-fg-subtle truncate">{item.nicknames.join(", ")}</div>
+                )}
+            </div>
+            {/* Before the actions button rather than after it, so the monogram keeps its place while
+                the button fades in under the pointer. A mark that moved as the mouse arrived would
+                be the one thing on the row that could not be aimed at. */}
+            {claimedBy && <CharacterClaimMark account={claimedBy} />}
+            <button
+                className="p-1 rounded-md hover:bg-fill text-fg-muted opacity-0 group-hover:opacity-100"
+                onClick={(event) => { event.stopPropagation(); onMenu(event, { type: "character", character: item.source }); }}
+                data-tip={t("characters.panel.rowActions")} aria-label={t("characters.panel.rowActions")}
+            >
+                <MoreVertical className="w-4 h-4" />
+            </button>
+        </div>
+    );
+}

@@ -130,11 +130,28 @@ export const documentDiff = {
         groupRemoved: "删除分组",
         groupRenamed: "分组改名",
     },
-    /** 只有 merge3 会用到；这个格式还没有语义 diff，行旁边也不放 subject（单元 id 不是作者写的字）。 */
+    /**
+     * 某一种语言的译文库：整份文档的内容就是文字本身。
+     *
+     * 前三条由版本对比和三方合并共用。这里没有一条会点名具体是哪一条译文，也点不了：
+     * 单元 id 是故事文本 id，或者 `key:`／`char:`／`scene:` 这样的句柄，都不是作者写下的字。
+     * 认出一行靠的是译文本身，它作为值对画在标签旁边；所以 changed 只说这行重译过，
+     * 改动前后的两段文字交给值对。
+     *
+     * 四条状态说的是这条译文现在处于什么状态，用的是译文表格里那四个词，
+     * 而不是把文件里存的两个标识符对起来。
+     */
     localization: {
         added: "新增译文",
         removed: "删除译文",
         changed: "译文改动",
+        note: "备注改动",
+        /** 译文本身没变，但当初对照的那一行原文变了。 */
+        source: "所对照的原文行已不同",
+        statusUntranslated: "改为未翻译",
+        statusMachine: "改为机翻",
+        statusTranslated: "改为已翻译",
+        statusReviewed: "改为已校对",
     },
     /**
      * 界面文档：界面与界面上的元素。
@@ -600,6 +617,21 @@ export const documentDiff = {
         next: "下一处改动",
         position: "{index} / {total}",
         gone: "该文件不在本次比较中",
+        inspect: "查看 {name} 的属性",
+    },
+    /**
+     * 选中某一半里的一个元素时，右侧的属性栏。
+     *
+     * 画的就是界面编辑器那一套检查器，只是换成该半边显示的那个版本。所以这里没有一句在解释字段——
+     * 字段说的还是它们一贯说的那些；这几条补的是字段说不出的那一件事：这是哪个版本，以及它是那个
+     * 版本的一张画面而不是一块画布。
+     */
+    inspector: {
+        version: "来自 {version}",
+        onlyHere: "{version} 里没有这一处",
+        readOnly: "比较只能查看，要改这些属性请打开界面编辑器",
+        differs: "{version}：{value}",
+        noValue: "空",
     },
     /**
      * 整份取一边地收尾一次合并。

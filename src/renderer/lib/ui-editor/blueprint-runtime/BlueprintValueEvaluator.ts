@@ -7,7 +7,7 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
-import { executeGraph } from "@/lib/ui-editor/behavior-graph";
+import { behaviorNodeRegistry, executeGraph } from "@/lib/ui-editor/behavior-graph";
 import type { BlueprintValueDependency } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { BlueprintGraphExecutionError } from "@/lib/ui-editor/behavior-graph/GraphExecutionError";
 import { blueprintNodeRegistry, isBlueprintNodeAllowedInBlueprintValueGraph } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
@@ -32,6 +32,13 @@ export function validateBlueprintValueGraphSafe(ir: BlueprintGraphIr | undefined
     for (const node of Object.values(ir?.nodes ?? {})) {
         const def = blueprintNodeRegistry.get(node.type);
         if (!def) {
+            // No definition, yet the executor can run it: a runtime plugin entry registers
+            // type/displayName/execute and no pins, so in a shipped game a plugin's node reaches
+            // only the behaviour registry. There is no declaration to read there, and refusing the
+            // whole binding over that would shut the door the editor opened on the way out of it.
+            if (behaviorNodeRegistry.get(node.type)) {
+                continue;
+            }
             errors.push(`Node ${node.id} uses unknown type ${node.type}`);
             continue;
         }

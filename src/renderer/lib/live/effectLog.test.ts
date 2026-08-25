@@ -3,7 +3,13 @@ import type { LiveEffect } from "@shared/live/ops";
 import { LiveEffectLog } from "./effectLog";
 
 function effect(seq: number): LiveEffect {
-    return { kind: "effect", by: "host", seq, op: { op: "rename-story", name: `take ${seq}` } };
+    return {
+        kind: "effect",
+        by: "host",
+        seq,
+        document: { doc: "story", storyId: "story-1" },
+        op: { op: "rename-story", name: `take ${seq}` },
+    };
 }
 
 describe("the effect log", () => {

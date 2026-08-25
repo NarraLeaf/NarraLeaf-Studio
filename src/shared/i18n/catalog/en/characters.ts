@@ -299,4 +299,11 @@ export const characters = {
         // layered one, and the crop is keyed on whichever it is.
         portraitScoped: "Frame this look only",
     },
+    // What a live session changes about this panel. The cast is one of the documents a session
+    // carries, so it stays editable - with two exceptions the author has to be able to see.
+    live: {
+        // On the mark a character wears while somebody else has it open. A person is named: there is
+        // no width for a name beside the monogram, and a truncated one names nobody.
+        recordClaimed: "{name} is editing this character",
+    },
 } as const;

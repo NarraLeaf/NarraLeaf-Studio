@@ -1,13 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import type {
-    LiveEffect,
-    LiveIntent,
-    LiveMessage,
-    LiveOp,
-    LiveRefusal,
-    LiveRefusalReason,
+import {
+    characterClaimKey,
+    opDocumentKind,
+    storyRowClaimKey,
+    type LiveDocument,
+    type LiveEffect,
+    type LiveIntent,
+    type LiveMessage,
+    type LiveOp,
+    type LiveRefusal,
+    type LiveRefusalReason,
 } from "@shared/live/ops";
+import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type {
     StoryBlock,
     StoryBlockId,
@@ -64,15 +70,35 @@ type World = {
     host: LiveHost;
     scenes: Record<StorySceneId, StoryScene>;
     story: { name: string; entrySceneId: StorySceneId | null; chapterIds: readonly string[] };
+    /** The cast, the second document a session carries. Mutated by the applier below. */
+    cast: { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
 
+/** A character record with nothing on it but what addresses it. */
+function record(id: string, name = id): StoredCharacter {
+    return {
+        profile: {
+            id,
+            name,
+            description: "",
+            tags: [],
+            attributes: {},
+            thumbnail: null,
+            nicknames: [],
+            appearance: { kind: "preset", poses: [], defaultPoseId: null },
+        },
+    };
+}
+
 function makeWorld(options: {
     scenes?: StoryScene[];
     members?: string[];
-    /** Block id to the instance holding it, answered INSTEAD of the host's own store. */
-    claims?: Record<StoryBlockId, string>;
+    /** Claim key to the instance holding it, answered INSTEAD of the host's own store. */
+    claims?: Record<string, string>;
+    /** The cast this host starts with. Empty when a test is only about the story. */
+    cast?: StoredCharacter[];
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -88,28 +114,45 @@ function makeWorld(options: {
         scenes[scene.id] = scene;
     }
     const story = { name: "Skeleton", entrySceneId: "s1" as StorySceneId | null, chapterIds: ["c1", "c2"] as readonly string[] };
+    const cast: World["cast"] = { characters: {}, order: [], groups: {} };
+    for (const member of options.cast ?? []) {
+        cast.characters[member.profile.id] = member;
+        cast.order.push(member.profile.id);
+    }
     const applied: LiveOp[] = [];
     let seq = 0;
 
     const world: World = {
         scenes,
         story,
+        cast,
         applied,
         host: new LiveHost({
             self: "host",
-            story: STORY,
-            readScene: id => scenes[id] ?? null,
+            stories: [STORY],
+            readScene: (_storyId, id) => scenes[id] ?? null,
+            readCharacter: id => cast.characters[id] ?? null,
+            digestOf: scope => {
+                if (scope.of === "scene") {
+                    const scene = scenes[scope.sceneId];
+                    return scene ? sceneDigest(scene) : null;
+                }
+                if (scope.of === "character") {
+                    return characterRecordDigest(characterAt(cast, scope.characterId));
+                }
+                return castDigest(cast);
+            },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, op);
+                apply(scenes, story, cast, op);
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
             claimBlocking: options.claims
                 // A real predicate answers with the account holding the row; here the instance ids
                 // stand in for accounts, which is all the host needs to be told.
-                ? (blockId, by) => {
-                    const holder = options.claims?.[blockId];
+                ? (key, by) => {
+                    const holder = options.claims?.[key];
                     return holder && holder !== by ? holder : null;
                 }
                 : undefined,
@@ -121,8 +164,39 @@ function makeWorld(options: {
     return world;
 }
 
-function apply(scenes: Record<StorySceneId, StoryScene>, story: World["story"], op: LiveOp): void {
+function apply(
+    scenes: Record<StorySceneId, StoryScene>,
+    story: World["story"],
+    cast: World["cast"],
+    op: LiveOp,
+): void {
     switch (op.op) {
+        case "create-character":
+            cast.characters[op.character.profile.id] = structuredClone(op.character);
+            if (!cast.order.includes(op.character.profile.id)) {
+                cast.order.push(op.character.profile.id);
+            }
+            return;
+        case "update-character":
+            cast.characters[op.characterId] = structuredClone(op.character);
+            return;
+        case "set-character-group":
+            cast.groups[op.groupId] = { ...op.group };
+            for (const memberId of op.members ?? []) {
+                const member = cast.characters[memberId];
+                if (member) {
+                    member.profile.groupId = op.groupId;
+                }
+            }
+            return;
+        case "delete-character-group":
+            delete cast.groups[op.groupId];
+            for (const member of Object.values(cast.characters)) {
+                if (member.profile.groupId === op.groupId) {
+                    delete member.profile.groupId;
+                }
+            }
+            return;
         case "insert-block":
             // A clone, because the block arrived from somebody else's memory and the document keeps
             // what it is given - the same thing writing it through IPC would do.
@@ -186,7 +260,19 @@ function apply(scenes: Record<StorySceneId, StoryScene>, story: World["story"], 
 let nextClientId = 0;
 
 function intent(op: LiveOp, clientId: string = `c${++nextClientId}`): LiveIntent {
-    return { kind: "intent", clientId, story: STORY, op };
+    return { kind: "intent", clientId, document: documentOf(op), op };
+}
+
+/**
+ * The address the message carries, which the host checks against the verb.
+ *
+ * Defensive about the shape because one of the cases below sends an operation that is not an object
+ * at all - the message came off a channel another Studio wrote to - and the address has to be built
+ * before the host has had a chance to refuse it.
+ */
+function documentOf(op: LiveOp): LiveDocument {
+    const kind = op === null || typeof op !== "object" ? undefined : opDocumentKind(op);
+    return kind === "characters" ? { doc: "characters" } : { doc: "story", storyId: STORY };
 }
 
 function send(world: World, op: LiveOp, from = "guest-1"): LiveOutbound | null {
@@ -231,7 +317,7 @@ describe("a live host turning intents into effects", () => {
             {
                 kind: "intent",
                 clientId: "paste",
-                story: STORY,
+                document: { doc: "story", storyId: STORY },
                 op: { op: "insert-block", sceneId: "s1", block: note("new"), target: { parentId: null } },
                 derived,
             },
@@ -492,7 +578,7 @@ describe("a batch, which is one gesture", () => {
         // Deleting a selection is one gesture, so it is refused whole. Letting the unheld rows go
         // would leave the author with a selection half deleted and one line they were told nothing
         // about still sitting in it.
-        const world = makeWorld({ claims: { b: "guest-2" } });
+        const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
 
         const refusal = asRefusal(send(world, {
             op: "delete-blocks",
@@ -540,7 +626,7 @@ describe("a batch, which is one gesture", () => {
     it("refuses the whole of a batch when one row of it is claimed, and writes none of it", () => {
         // Half a replace is the arrangement this verb exists to prevent: the rows nobody holds would
         // carry the new text and the held one would keep the old, with nothing anywhere saying so.
-        const world = makeWorld({ claims: { b: "guest-2" } });
+        const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
 
         const refusal = asRefusal(send(world, {
             op: "update-blocks",
@@ -611,9 +697,9 @@ describe("a batch, which is one gesture", () => {
             ],
         }));
 
-        expect(inside.sceneDigest).toBe(afterInside);
+        expect(inside.digests?.[0].hash).toBe(afterInside);
         // Nothing dishonest to send: a digest names one scene, and this operation changed two.
-        expect(across.sceneDigest).toBeUndefined();
+        expect(across.digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -659,18 +745,18 @@ describe("the digest an effect carries", () => {
     it("is the scene after applying, and changes when the scene does", () => {
         const world = makeWorld();
         const first = asEffect(send(world, { op: "delete-block", sceneId: "s1", blockId: "b" }));
-        expect(first.sceneDigest).toBe(sceneDigest(world.scenes.s1));
+        expect(first.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
 
         const second = asEffect(send(world, { op: "rename-scene", sceneId: "s1", name: "Corridor" }));
-        expect(second.sceneDigest).toBe(sceneDigest(world.scenes.s1));
-        expect(second.sceneDigest).not.toBe(first.sceneDigest);
+        expect(second.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
+        expect(second.digests?.[0].hash).not.toBe(first.digests?.[0].hash);
     });
 
     it("is absent from the operations that are about the story rather than a scene", () => {
         const world = makeWorld();
-        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).sceneDigest).toBeUndefined();
-        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).sceneDigest).toBeUndefined();
-        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).sceneDigest).toBeUndefined();
+        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -687,12 +773,30 @@ describe("an intent the host will not read", () => {
             reason: "unknown-op",
         },
         {
-            name: "another story",
+            name: "another story document",
             make: world => world.host.receive(
-                { kind: "intent", clientId: "x", story: "story-2", op: { op: "rename-story", name: "Rain" } },
+                {
+                    kind: "intent",
+                    clientId: "x",
+                    document: { doc: "story", storyId: "story-2" },
+                    op: { op: "rename-story", name: "Rain" },
+                },
                 "guest-1",
             ),
-            reason: "not-in-session",
+            reason: "document-not-shared",
+        },
+        {
+            name: "an operation that could not be about the document it names",
+            make: world => world.host.receive(
+                {
+                    kind: "intent",
+                    clientId: "x",
+                    document: { doc: "characters" },
+                    op: { op: "rename-story", name: "Rain" },
+                },
+                "guest-1",
+            ),
+            reason: "document-not-shared",
         },
         {
             name: "a scene that is gone",
@@ -723,7 +827,7 @@ describe("the claim check", () => {
     });
 
     it("refuses a claimed row and names who holds it", () => {
-        const world = makeWorld({ claims: { b: "guest-2" } });
+        const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
         const refusal = asRefusal(send(world, { op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "mine").payload }, "guest-1"));
 
         expect(refusal.reason).toBe("row-claimed");
@@ -732,13 +836,118 @@ describe("the claim check", () => {
     });
 
     it("lets the holder write its own row", () => {
-        const world = makeWorld({ claims: { b: "guest-2" } });
+        const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
         expect(asEffect(send(world, { op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "mine").payload }, "guest-2")).seq).toBe(1);
     });
 
     it("is not consulted for the operations a claim does not govern", () => {
-        const world = makeWorld({ claims: { b: "guest-2" } });
+        const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
         expect(asEffect(send(world, { op: "move-block", sceneId: "s1", blockId: "b", target: { parentId: null, beforeBlockId: "a" } }, "guest-1")).seq).toBe(1);
+    });
+});
+
+describe("the cast, the second document a session carries", () => {
+    it("creates a record without asking anything, because a fresh id can collide with nothing", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, { op: "create-character", character: record("c1", "Ada") }));
+
+        expect(world.cast.characters.c1?.profile.name).toBe("Ada");
+        // Not claimed and not checked against what is already there: the id was minted by whoever
+        // built the record, so two of them colliding is a uuid collision rather than a race, and a
+        // *retry* of one creation is what the receipts answer.
+        expect(effect.digests).toEqual([{
+            scope: { of: "character", characterId: "c1" },
+            hash: characterRecordDigest(characterAt(world.cast, "c1")),
+        }]);
+    });
+
+    it("refuses an update naming a record that is gone, and never turns it into a creation", () => {
+        const world = makeWorld();
+        const refusal = asRefusal(send(world, {
+            op: "update-character",
+            characterId: "stranger",
+            character: record("stranger", "Nobody"),
+        }));
+
+        // ⚠ Says the record is gone. It never says the author's typing is: the panel is full of
+        // their own work. Creating it here would put a character somebody else deleted back on every
+        // machine in the room.
+        expect(refusal.reason).toBe("character-gone");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("refuses an update to a record somebody else is inside, and names them", () => {
+        const world = makeWorld({
+            cast: [record("c1", "Ada")],
+            claims: { [characterClaimKey("c1")]: "guest-2" },
+        });
+        const refusal = asRefusal(send(world, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Mine"),
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("row-claimed");
+        expect(refusal.heldBy).toBe("guest-2");
+        expect(world.cast.characters.c1?.profile.name).toBe("Ada");
+    });
+
+    it("lets the holder write the record it is inside", () => {
+        const world = makeWorld({
+            cast: [record("c1", "Ada")],
+            claims: { [characterClaimKey("c1")]: "guest-2" },
+        });
+        expect(asEffect(send(world, {
+            op: "update-character",
+            characterId: "c1",
+            character: record("c1", "Ada Lovelace"),
+        }, "guest-2")).seq).toBe(1);
+    });
+
+    it("takes a group and its membership as one operation, and fingerprints the cast", () => {
+        const world = makeWorld({ cast: [record("c1", "Ada")] });
+        const effect = asEffect(send(world, {
+            op: "set-character-group",
+            groupId: "g1",
+            group: { id: "g1", name: "Cast", createdAt: 1, updatedAt: 2 },
+            members: ["c1"],
+        }));
+
+        expect(world.cast.groups.g1?.name).toBe("Cast");
+        expect(world.cast.characters.c1?.profile.groupId).toBe("g1");
+        // The cast's shape rather than any one record: a group deletion moves members out, and no
+        // update is sent for any of them.
+        expect(effect.digests).toEqual([{ scope: { of: "cast" }, hash: castDigest(world.cast) }]);
+    });
+
+    it("takes a second deletion of one group as agreement rather than a conflict", () => {
+        const world = makeWorld();
+        // Last-writer-wins, and deliberately tolerant: the second of two deletions changes nothing,
+        // and refusing it would report a conflict where there is only agreement.
+        expect(asEffect(send(world, { op: "delete-character-group", groupId: "never-existed" })).seq).toBe(1);
+    });
+
+    it("refuses an operation about the cast from a message that names another document", () => {
+        const world = makeWorld();
+        const refusal = asRefusal(world.host.receive(
+            {
+                kind: "intent",
+                clientId: "x",
+                document: { doc: "story", storyId: STORY },
+                op: { op: "create-character", character: record("c1", "Ada") },
+            },
+            "guest-1",
+        ));
+        expect(refusal.reason).toBe("document-not-shared");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("stamps the document it changed on every effect, so nothing is applied to the wrong one", () => {
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "create-character", character: record("c1", "Ada") })).document)
+            .toEqual({ doc: "characters" });
+        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).document)
+            .toEqual({ doc: "story", storyId: STORY });
     });
 });
 
@@ -752,21 +961,21 @@ describe("taking a row and giving it back", () => {
         // An account and never the instance: a refusal names a PERSON, and an instance id means
         // nothing at all to whoever reads it.
         const world = makeWorld({ accounts: { "guest-1": "ada" } });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
 
-        expect(held(world)).toEqual({ b: "ada" });
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "ada" });
     });
 
     it("gives the row back, and only to the machine holding it", () => {
         const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
 
         // Honouring somebody else's release would be a way to take a row off the person writing it
         // without ever being refused.
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: false }, "guest-2");
-        expect(held(world)).toEqual({ b: "ada" });
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: false }, "guest-2");
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "ada" });
 
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: false }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: false }, "guest-1");
         expect(held(world)).toEqual({});
     });
 
@@ -774,17 +983,17 @@ describe("taking a row and giving it back", () => {
         // The set the asker already has names the holder, so there is nothing to send it that it
         // does not know - which is why this message has no refusal of its own.
         const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
 
-        expect(world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-2")).toBeNull();
-        expect(held(world)).toEqual({ b: "ada" });
+        expect(world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-2")).toBeNull();
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "ada" });
     });
 
     it("records nothing for an instance it cannot put a person's name to", () => {
         // A set carrying ids would name nobody in a refusal, and an editor comparing the holder
         // against its own account would read its own author's line as taken by a stranger.
         const world = makeWorld({ accounts: {} });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
 
         expect(held(world)).toEqual({});
     });
@@ -793,16 +1002,16 @@ describe("taking a row and giving it back", () => {
         // A row the host took without recording it would be held by nobody as far as the set is
         // concerned: no mark on any other screen, and nothing refusing a guest writing over it.
         const world = makeWorld({ accounts: { host: "ada" } });
-        world.host.claimLocal("b", true);
-        expect(held(world)).toEqual({ b: "ada" });
+        world.host.claimLocal(storyRowClaimKey("b"), true);
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "ada" });
 
-        world.host.claimLocal("b", false);
+        world.host.claimLocal(storyRowClaimKey("b"), false);
         expect(held(world)).toEqual({});
     });
 
     it("refuses everybody else's edit to a claimed row, naming the holder", () => {
         const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
 
         const refusal = asRefusal(send(world, {
             op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "mine").payload,
@@ -819,7 +1028,7 @@ describe("taking a row and giving it back", () => {
 
     it("forgets the claim on a row that has been deleted", () => {
         const world = makeWorld({ accounts: { "guest-1": "ada" } });
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
         send(world, { op: "delete-block", sceneId: "s1", blockId: "b" }, "guest-1");
 
         expect(held(world)).toEqual({});
@@ -827,11 +1036,11 @@ describe("taking a row and giving it back", () => {
 
     it("drops everything a window that has left the room was writing", () => {
         const world = makeWorld({ accounts: { "guest-1": "ada", "guest-2": "bob" } });
-        world.host.receive({ kind: "row-claim", blockId: "a", holding: true }, "guest-1");
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-2");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("a"), holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-2");
 
         world.host.forgetInstance("guest-1");
-        expect(held(world)).toEqual({ b: "bob" });
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "bob" });
     });
 
     it("keeps a row past the raw timeout while its author keeps typing", () => {
@@ -843,16 +1052,16 @@ describe("taking a row and giving it back", () => {
             claimStore: new LiveClaimStore({ now: () => clock }),
         });
 
-        world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
         let assertions = 1;
         // Four minutes of writing, asserting on the interval the editor actually uses.
         while (clock < 240_000) {
             clock += CLAIM_REASSERT_MS;
-            world.host.receive({ kind: "row-claim", blockId: "b", holding: true }, "guest-1");
+            world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
             assertions += 1;
         }
 
-        expect(held(world)).toEqual({ b: "ada" });
+        expect(held(world)).toEqual({ [storyRowClaimKey("b")]: "ada" });
         // Bounded, and by the interval rather than by how much was typed: one message per author
         // per ten seconds, for a paragraph that could have been thousands of keystrokes.
         expect(assertions).toBe(1 + 240_000 / CLAIM_REASSERT_MS);
@@ -881,7 +1090,13 @@ describe("catching a guest up", () => {
     it("says nothing about the messages the host itself produces", () => {
         const world = makeWorld();
         const own: LiveMessage[] = [
-            { kind: "effect", by: "host", seq: 1, op: { op: "rename-story", name: "Rain" } },
+            {
+                kind: "effect",
+                by: "host",
+                seq: 1,
+                document: { doc: "story", storyId: STORY },
+                op: { op: "rename-story", name: "Rain" },
+            },
             { kind: "refusal", clientId: "x", reason: "row-gone" },
             { kind: "claims", seq: 1, held: {} },
             { kind: "catch-up", to: "guest-1", effects: [] },
@@ -897,7 +1112,7 @@ describe("catching a guest up", () => {
 describe("the host's own edits", () => {
     it("go through the same door, take the same numbers and reach the log", () => {
         const world = makeWorld();
-        const effect = world.host.applyLocal({ op: "rename-scene", sceneId: "s1", name: "Corridor" }) as LiveEffect;
+        const effect = world.host.applyLocal({ op: "rename-scene", sceneId: "s1", name: "Corridor" }, documentOf({ op: "rename-scene", sceneId: "s1", name: "Corridor" })) as LiveEffect;
 
         expect(effect.kind).toBe("effect");
         expect(effect.by).toBe("host");
@@ -908,7 +1123,7 @@ describe("the host's own edits", () => {
 
     it("leave the position of a row the host deleted behind, so a guest can still aim at it", () => {
         const world = makeWorld();
-        world.host.applyLocal({ op: "delete-block", sceneId: "s1", blockId: "b" });
+        world.host.applyLocal({ op: "delete-block", sceneId: "s1", blockId: "b" }, documentOf({ op: "delete-block", sceneId: "s1", blockId: "b" }));
 
         const effect = asEffect(send(world, {
             op: "insert-block",

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { LiveIntent, LiveOp, LiveRefusal } from "@shared/live/ops";
+import { storyRowClaimKey, type LiveIntent, type LiveOp, type LiveRefusal } from "@shared/live/ops";
 import type { StoryBlock, StoryBlockId, StoryNoteBlock, StoryScene } from "@shared/types/story";
 import { DEFAULT_CLAIM_TIMEOUT_MS, LiveClaimStore } from "./claims";
 import { LiveHost } from "./liveHost";
@@ -139,9 +139,9 @@ describe("the claim store", () => {
         const claims = makeStore();
         claims.claim("row-1", { instance: "i-1", account: "Aoi" });
 
-        expect(claims.forgetRow("row-1")).toBe(true);
+        expect(claims.forget("row-1")).toBe(true);
         expect(claims.snapshot().held).toEqual({});
-        expect(claims.forgetRow("row-1")).toBe(false);
+        expect(claims.forget("row-1")).toBe(false);
     });
 
     it("snapshots exactly the rows being written, and follows every way the set changes", () => {
@@ -208,8 +208,10 @@ function makeHost(claims?: LiveClaimStore): { host: LiveHost; scene: StoryScene 
     let seq = 0;
     const host = new LiveHost({
         self: "host",
-        story: STORY,
-        readScene: id => (id === scene.id ? scene : null),
+        stories: [STORY],
+        readScene: (_storyId, id) => (id === scene.id ? scene : null),
+        readCharacter: () => null,
+        digestOf: () => null,
         applyOp: op => {
             if (op.op === "delete-block") {
                 delete scene.blocks[op.blockId];
@@ -223,7 +225,7 @@ function makeHost(claims?: LiveClaimStore): { host: LiveHost; scene: StoryScene 
 }
 
 function intent(clientId: string, op: LiveOp): LiveIntent {
-    return { kind: "intent", clientId, story: STORY, op };
+    return { kind: "intent", clientId, document: { doc: "story", storyId: STORY }, op };
 }
 
 /** An edit of one row. Its payload is beside the point here - what is under test is who may send it. */
@@ -235,7 +237,7 @@ describe("a host answering from its claim store", () => {
     it("refuses a claimed row to anybody but its holder, and names the account", () => {
         const claims = makeStore();
         const { host } = makeHost(claims);
-        claims.claim("row-1", { instance: "guest-1", account: "Aoi" });
+        claims.claim(storyRowClaimKey("row-1"), { instance: "guest-1", account: "Aoi" });
 
         const refusal = host.receive(intent("c1", update("row-1")), "guest-2") as LiveRefusal;
         expect(refusal.kind).toBe("refusal");
@@ -246,7 +248,7 @@ describe("a host answering from its claim store", () => {
     it("lets the holder write the row it claimed", () => {
         const claims = makeStore();
         const { host } = makeHost(claims);
-        claims.claim("row-1", { instance: "guest-1", account: "Aoi" });
+        claims.claim(storyRowClaimKey("row-1"), { instance: "guest-1", account: "Aoi" });
 
         expect(host.receive(intent("c1", update("row-1")), "guest-1")?.kind).toBe("effect");
     });
@@ -260,7 +262,7 @@ describe("a host answering from its claim store", () => {
     it("drops the claim on a row it deletes, because nobody is writing a row that is gone", () => {
         const claims = makeStore();
         const { host } = makeHost(claims);
-        claims.claim("row-1", { instance: "guest-1", account: "Aoi" });
+        claims.claim(storyRowClaimKey("row-1"), { instance: "guest-1", account: "Aoi" });
 
         host.receive(intent("c1", { op: "delete-block", sceneId: "s1", blockId: "row-1" }), "guest-1");
 

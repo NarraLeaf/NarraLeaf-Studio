@@ -101,7 +101,7 @@ describe("ChangeIndexPane", () => {
         expect(container.querySelectorAll("[data-testid='group-caveat']")).toHaveLength(0);
     });
 
-    it("names a content file nothing claims, rather than drawing its hash", () => {
+    it("names an asset file by what it is, rather than drawing its hash", () => {
         // The one row whose file name says nothing at all. Its path is still in the tooltip, so
         // naming it hides nothing - and leaving it out would hide the state entirely.
         const orphan: DocumentDiffEntry = {
@@ -132,7 +132,11 @@ describe("ChangeIndexPane", () => {
         const { container } = pane([shard, orphan], () => true);
 
         expect(rows(container)).toHaveLength(2);
-        expect(rows(container)[1].textContent).toContain("documentDiff.assets.orphanContent");
+        // What it is plus which asset it belongs to - not a hash, and not a claim that no record
+        // names it, which this pass has no way to know.
+        expect(rows(container)[1].textContent).toContain("documentDiff.name.assetContent");
+        expect(rows(container)[1].textContent).toContain("99553d15-abb5");
+        expect(rows(container)[1].textContent).not.toContain("3d15abb54213bad");
         expect(rows(container)[1].getAttribute("data-tip"))
             .toBe("assets/content/99/55/3d15abb54213bad7203798a1adc4");
     });
