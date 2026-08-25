@@ -5,6 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { basename } from "@shared/utils/path";
 import { mediaConvertTargetExtension } from "@shared/types/mediaConvert";
@@ -104,7 +105,7 @@ export function MediaImportDialog({
     const { context } = useWorkspace();
     // Every way out of this dialog except Cancel writes into the project, so a freeze that starts
     // while it is open has to reach the buttons - and the conversion loop, which outlives a render.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const frozenRef = useRef(freeze.frozen);
     frozenRef.current = freeze.frozen;
 
