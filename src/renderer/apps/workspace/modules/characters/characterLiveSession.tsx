@@ -10,13 +10,19 @@ import { characterClaimKey } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
 
 /**
- * The cast, as a live session shows it: which records somebody else is inside, and what the panel
- * may still do while a session is running.
+ * The cast, as a live session shows it: which records somebody else is inside.
  *
  * The story editor's file of the same shape is `storyRowClaims`, and everything here is its
  * counterpart one document along - deliberately, because a second design for the same idea would be
- * a second thing to keep correct. What differs is only what a claim is over (a character record
- * rather than a row) and what a session cannot carry at all (deleting a character).
+ * a second thing to keep correct. What differs is only what a claim is over: a character record
+ * rather than a row.
+ *
+ * **Nothing on this panel is switched off by a session.** Deleting a character reaches every story
+ * document that holds a line it speaks, which is why a session carries them all - see
+ * `@shared/live/sharedDocuments`. There was briefly a third kind of "unavailable in a session" here
+ * for that gesture; it is gone, and the reason is worth keeping: the alternative to carrying a
+ * document is refusing the gestures that touch it, and refusals accumulate into a feature nobody can
+ * predict the shape of.
  */
 
 /** Which file the cast's editors write, as the project-relative path the freeze policy takes. */
@@ -220,55 +226,3 @@ export function CharacterClaimMark({ account }: { account: string }) {
     );
 }
 
-/* ------------------------------------------------------------------ what a session refuses */
-
-/** Whether the cast may still lose a member, and what to say when it may not. */
-export type CharacterDeleteFreeze = {
-    unavailable: boolean;
-    /** Hover text for the control this switches off; undefined while it is live. */
-    reason: string | undefined;
-};
-
-/**
- * Whether deleting a character is available, and why not when it is not.
- *
- * ⚠ **A session leaves the cast writable and still cannot carry a deletion**, which is the one place
- * on this panel where "the document is writable" is not the whole answer. Deleting a character
- * rewrites every dialogue row in the PROJECT that speaks it, across every story document, and a
- * session carries one: sending the deletion alone would leave the other documents holding an id that
- * resolves to nothing, and sweeping them would write to files the session froze.
- *
- * So it is refused whole rather than applied partly - the same ruling already shipped for the other
- * direction, promoting an unresolved speaker into a character, which is this seam seen from the other
- * side. `CharacterService.deleteCharacter` is what makes it true; this is only what says so before
- * the author presses anything.
- */
-export function useCharacterDeleteFreeze(inSession: boolean): CharacterDeleteFreeze {
-    const { t } = useTranslation();
-    if (!inSession) {
-        return { unavailable: false, reason: undefined };
-    }
-    return { unavailable: true, reason: t("characters.live.deleteUnavailable") };
-}
-
-/** Whether this window is in a live session at all. The one thing the delete rung has to ask. */
-export function useInLiveSession(): boolean {
-    const { context, isInitialized } = useWorkspace();
-    const service = useMemo(
-        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
-        [context, isInitialized],
-    );
-    const [inSession, setInSession] = useState(false);
-
-    useEffect(() => {
-        if (!service) {
-            setInSession(false);
-            return;
-        }
-        const read = () => setInSession(service.getView().phase !== "idle");
-        read();
-        return service.onChanged(read);
-    }, [service]);
-
-    return inSession;
-}

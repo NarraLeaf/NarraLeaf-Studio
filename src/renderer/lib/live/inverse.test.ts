@@ -763,6 +763,10 @@ function applyToCast(cast: ReturnType<typeof makeCast>, op: LiveCharacterOp): vo
         case "update-character":
             cast.characters[op.characterId] = structuredClone(op.character);
             return;
+        case "delete-character":
+            delete cast.characters[op.characterId];
+            cast.order = cast.order.filter(id => id !== op.characterId);
+            return;
         case "set-character-group":
             cast.groups[op.groupId] = { ...op.group };
             for (const memberId of op.members ?? []) {
@@ -821,14 +825,43 @@ describe("undoing what this window did to the cast", () => {
         expect(asImpossible(invertOnCast(cast, done))).toBe("character-gone");
     });
 
-    it("refuses to take a creation back at all, and says which vocabulary is missing", () => {
+    it("takes a creation back by deleting the record it made", () => {
         const cast = makeCast();
         const done = performOnCast(cast, { op: "create-character", character: record("c1", "Ada") });
 
-        // Deleting a character rewrites every dialogue row in the project that speaks it, across
-        // every story document, and a session carries one. Until an effect can carry operations on
-        // several documents at once, a character made inside a session is taken back by leaving it.
-        expect(asImpossible(invertOnCast(cast, done))).toBe("delete-unavailable");
+        expect(asOp(invertOnCast(cast, done))).toEqual({ op: "delete-character", characterId: "c1" });
+    });
+
+    it("takes a deletion back with the record, its place, and the lines it was speaking", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const spoke = [{ storyId: "story-1", sceneId: "s1", blockId: "b1" }];
+        const before = captureBefore({ op: "delete-character", characterId: "c1" }, { cast, spoke });
+        applyToCast(cast, { op: "delete-character", characterId: "c1" });
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "characters" }, op: { op: "delete-character", characterId: "c1" } },
+            before,
+        };
+
+        // The rows are carried where the deletion's own sweep was derived: they hold a bare name now,
+        // and a name is not an identifier - two characters may share one, and the author may have
+        // written more lines under it since.
+        expect(asOp(invertOnCast(cast, done))).toEqual({
+            op: "create-character",
+            character: record("c1", "Ada"),
+            rebind: spoke,
+        });
+    });
+
+    it("refuses to undo a deletion whose record is back, rather than making a second one", () => {
+        const cast = makeCast([record("c1", "Ada")]);
+        const before = captureBefore({ op: "delete-character", characterId: "c1" }, { cast, spoke: [] });
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "characters" }, op: { op: "delete-character", characterId: "c1" } },
+            before,
+        };
+        // Applied nowhere: the record is still there, which is what a redo or somebody else's undo
+        // leaves behind.
+        expect(asImpossible(invertOnCast(cast, done))).toBe("character-restored");
     });
 
     it("takes a new group back by removing it, and a renamed one back by its old name", () => {

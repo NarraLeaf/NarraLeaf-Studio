@@ -129,8 +129,8 @@ function makeWorld(options: {
         applied,
         host: new LiveHost({
             self: "host",
-            story: STORY,
-            readScene: id => scenes[id] ?? null,
+            stories: [STORY],
+            readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             digestOf: scope => {
                 if (scope.of === "scene") {
@@ -697,9 +697,9 @@ describe("a batch, which is one gesture", () => {
             ],
         }));
 
-        expect(inside.digest?.hash).toBe(afterInside);
+        expect(inside.digests?.[0].hash).toBe(afterInside);
         // Nothing dishonest to send: a digest names one scene, and this operation changed two.
-        expect(across.digest?.hash).toBeUndefined();
+        expect(across.digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -745,18 +745,18 @@ describe("the digest an effect carries", () => {
     it("is the scene after applying, and changes when the scene does", () => {
         const world = makeWorld();
         const first = asEffect(send(world, { op: "delete-block", sceneId: "s1", blockId: "b" }));
-        expect(first.digest?.hash).toBe(sceneDigest(world.scenes.s1));
+        expect(first.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
 
         const second = asEffect(send(world, { op: "rename-scene", sceneId: "s1", name: "Corridor" }));
-        expect(second.digest?.hash).toBe(sceneDigest(world.scenes.s1));
-        expect(second.digest?.hash).not.toBe(first.digest?.hash);
+        expect(second.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
+        expect(second.digests?.[0].hash).not.toBe(first.digests?.[0].hash);
     });
 
     it("is absent from the operations that are about the story rather than a scene", () => {
         const world = makeWorld();
-        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).digest?.hash).toBeUndefined();
-        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).digest?.hash).toBeUndefined();
-        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).digest?.hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -855,10 +855,10 @@ describe("the cast, the second document a session carries", () => {
         // Not claimed and not checked against what is already there: the id was minted by whoever
         // built the record, so two of them colliding is a uuid collision rather than a race, and a
         // *retry* of one creation is what the receipts answer.
-        expect(effect.digest).toEqual({
+        expect(effect.digests).toEqual([{
             scope: { of: "character", characterId: "c1" },
             hash: characterRecordDigest(characterAt(world.cast, "c1")),
-        });
+        }]);
     });
 
     it("refuses an update naming a record that is gone, and never turns it into a creation", () => {
@@ -917,7 +917,7 @@ describe("the cast, the second document a session carries", () => {
         expect(world.cast.characters.c1?.profile.groupId).toBe("g1");
         // The cast's shape rather than any one record: a group deletion moves members out, and no
         // update is sent for any of them.
-        expect(effect.digest).toEqual({ scope: { of: "cast" }, hash: castDigest(world.cast) });
+        expect(effect.digests).toEqual([{ scope: { of: "cast" }, hash: castDigest(world.cast) }]);
     });
 
     it("takes a second deletion of one group as agreement rather than a conflict", () => {

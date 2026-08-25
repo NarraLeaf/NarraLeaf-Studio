@@ -76,6 +76,14 @@ type ActiveSession = {
     project: LiveProjectIdentity;
     role: LiveSessionRole;
     storyId: StoryId;
+    /**
+     * Every story document this session carries, settled on the way in.
+     *
+     * Read once rather than asked for per operation, because it is what the host compares an
+     * incoming document against - and a set that grew mid-session would start accepting operations
+     * about a document nobody else has.
+     */
+    stories: readonly StoryId[];
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -528,12 +536,16 @@ export class LiveSession {
         // put the scene back as it was before anybody else joined.
         this.deps.history.forgetStoryScenes(input.storyId);
         // Flushes what is owed first, then refuses everything but this session's story document.
+        // Every story into memory before anything is frozen or applied. A machine that never opened
+        // one could not apply a sweep that reaches it, and appliers are synchronous - there is no
+        // later moment at which a document could be fetched. See `LiveStoryPort.loadAll`.
+        const stories = await this.deps.story.loadAll();
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(input.storyId),
+            writable: liveSessionWritablePaths(stories),
         });
 
         const session: ActiveSession = {
@@ -542,6 +554,7 @@ export class LiveSession {
             project: input.project,
             role,
             storyId: input.storyId,
+            stories,
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -568,11 +581,11 @@ export class LiveSession {
                 // the one that decides a refusal must be the one a test can move.
                 claims: new LiveClaimStore({ now: () => this.deps.now() }),
                 self: input.self,
-                story: input.storyId,
-                readScene: sceneId => this.readScene(session, sceneId),
+                stories,
+                readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
-                digestOf: scope => this.digestOf(session, scope),
-                applyOp: op => this.applyOp(session, op),
+                digestOf: scope => this.digestOf(scope),
+                applyOp: (op, document) => this.applyOp(session, op, document),
                 nextSeq: () => (session.seq += 1),
                 // The room's own roster, which is the only thing that knows which account a window
                 // signed in as. Read through `session.room` rather than captured, so a claim taken
@@ -590,13 +603,13 @@ export class LiveSession {
             session.guard = new LiveDivergenceGuard();
             session.guest = new LiveGuest({
                 self: input.self,
-                applyOp: (op, derived) => this.applyOp(session, op, derived),
+                applyOp: (op, document, derived) => this.applyOp(session, op, document, derived),
                 send: message => session.rooms.say(session.room.id, message),
                 now: () => this.deps.now(),
                 schedule: (delayMs, run) => this.deps.schedule(delayMs, run),
-                digestOf: scope => this.digestOf(session, scope),
-                onDigest: (effect, digest) => {
-                    const ruling = session.guard?.check(effect, digest);
+                digestOf: scope => this.digestOf(scope),
+                onDigest: (effect, compute) => {
+                    const ruling = session.guard?.check(effect, compute);
                     if (ruling && ruling.verdict === "diverged") {
                         // Recorded rather than acted on: this runs inside the guest's own apply
                         // loop, and leaving from underneath it would tear the session down while a
@@ -799,18 +812,28 @@ export class LiveSession {
      * "immediately before applying" a single moment rather than a rule every call site has to
      * remember: what an operation is about to overwrite is knowable here and nowhere later.
      */
-    private applyOp(session: ActiveSession, op: LiveOp, derived?: LiveDerived): void {
+    private applyOp(
+        session: ActiveSession,
+        op: LiveOp,
+        document: LiveDocument,
+        derived?: LiveDerived,
+    ): readonly LiveDigestScope[] {
         // Read from both documents, whichever this operation is about. One call rather than a switch,
         // because "what was here immediately before" is one question and answering it in two places
         // would be two moments, only one of which is the right one.
         session.pendingBefore = captureBefore(op, {
-            story: this.deps.story.document(session.storyId),
+            story: this.deps.story.document(document.doc === "story" ? document.storyId : session.storyId),
             cast: this.deps.cast.view(),
+            // The rows a deletion is about to un-speak, read while they still say whose they are.
+            // Only this window needs them - they are what ITS undo would have to put back - so they
+            // are read here rather than carried on the effect.
+            ...(op.op === "delete-character" ? { spoke: this.deps.story.rowsSpokenBy(op.characterId) } : {}),
         });
-        if (opDocumentKind(op) === "characters") {
-            this.deps.cast.applyOp(op as LiveCharacterOp);
+        let touched: readonly LiveDigestScope[] = [];
+        if (document.doc === "characters") {
+            touched = this.deps.cast.applyOp(op as LiveCharacterOp);
         } else {
-            this.deps.story.applyOp(session.storyId, op as LiveStoryOp);
+            this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
         }
         this.rememberDerived(session, op, derived);
         if (derived) {
@@ -825,6 +848,7 @@ export class LiveSession {
             this.record(session, mine, session.pendingBefore);
             session.pendingBefore = null;
         }
+        return touched;
     }
 
     /**
@@ -852,10 +876,10 @@ export class LiveSession {
      * machine that failed to apply a creation is caught rather than excused; a scene this window does
      * not hold is a window that has nothing to say.
      */
-    private digestOf(session: ActiveSession, scope: LiveDigestScope): string | null {
+    private digestOf(scope: LiveDigestScope): string | null {
         switch (scope.of) {
             case "scene": {
-                const scene = this.readScene(session, scope.sceneId);
+                const scene = this.deps.story.document(scope.storyId)?.scenes[scope.sceneId] ?? null;
                 return scene ? sceneDigest(scene) : null;
             }
             case "character":

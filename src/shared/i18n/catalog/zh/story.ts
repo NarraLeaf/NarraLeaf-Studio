@@ -126,7 +126,7 @@ export const story = {
         undoSubtreeLost: "其中原有的行无法恢复",
         undoChaptersChanged: "章节与该步骤记录的那一份不一致",
         undoCharacterGone: "该角色已不存在",
-        undoDeleteUnavailable: "实时会话中不能删除角色",
+        undoCharacterRestored: "该角色已经回到名册中",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

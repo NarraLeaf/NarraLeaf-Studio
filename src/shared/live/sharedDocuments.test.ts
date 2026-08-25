@@ -20,8 +20,13 @@ const STORY = "story-1";
  * nothing anywhere reporting a problem.
  */
 describe("the documents a session carries", () => {
-    it("is the story it was opened on, and the cast", () => {
-        expect(liveSessionDocuments(STORY)).toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }]);
+    it("is every story in the project, and the cast", () => {
+        expect(liveSessionDocuments([STORY])).toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }]);
+        expect(liveSessionDocuments([STORY, "story-2"])).toEqual([
+            { doc: "story", storyId: STORY },
+            { doc: "story", storyId: "story-2" },
+            { doc: "characters" },
+        ]);
     });
 
     it("addresses each one through its own document spec, so a document that moves takes this with it", () => {
@@ -30,18 +35,19 @@ describe("the documents a session carries", () => {
     });
 
     it("names paths the repository actually stores, or the freeze would be exempting nothing", () => {
-        for (const path of liveSessionWritablePaths(STORY)) {
+        for (const path of liveSessionWritablePaths([STORY])) {
             expect(isVersioned(path)).toBe(true);
         }
     });
 
-    it("carries the cast, and the story it opened on rather than every story", () => {
-        // ⚠ The one that must not be widened to "every document of a shared kind". A session applies
-        // operations about one story; making the second one writable would leave the boundary
-        // allowing an edit the host refuses, which is a local change with no digest over it.
-        expect(liveSessionCarries(STORY, { doc: "story", storyId: STORY })).toBe(true);
-        expect(liveSessionCarries(STORY, { doc: "story", storyId: "story-2" })).toBe(false);
-        expect(liveSessionCarries(STORY, { doc: "characters" })).toBe(true);
+    it("carries the cast and the stories it was given, and nothing it was not", () => {
+        // ⚠ Compared against the set rather than assumed. A story created DURING a session is in
+        // nobody else's copy - the room agreed a revision on the way in - so an operation about it
+        // would be one the others could not apply, and the boundary must not be allowing writes to
+        // a document the host would refuse.
+        expect(liveSessionCarries([STORY, "story-2"], { doc: "story", storyId: "story-2" })).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "story", storyId: "story-2" })).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "characters" })).toBe(true);
     });
 
     it("has a writable path for every document kind the vocabulary can carry, and no others", () => {
@@ -57,6 +63,8 @@ describe("the documents a session carries", () => {
             carried.add(opDocumentKind(op));
         }
         expect([...carried].sort()).toEqual(["characters", "story"]);
-        expect(liveSessionWritablePaths(STORY)).toHaveLength(carried.size);
+        // One path per story plus one for the cast: every document the vocabulary can carry, and no
+        // path for a kind it cannot.
+        expect(liveSessionWritablePaths([STORY, "story-2"])).toHaveLength(3);
     });
 });

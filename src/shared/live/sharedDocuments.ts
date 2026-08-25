@@ -27,21 +27,28 @@ import type { LiveDocument } from "./ops";
  * the boundary keeps refusing its writes. Which means forgetting to do the work costs a harmless
  * no-op and a visible notice, not a working tree with one machine's edits in it.
  *
- * **Addresses, not kinds.** A project holds many story documents and a session carries exactly one of
- * them, so the entries here are `LiveDocument` values rather than document kinds. Widening this to
- * "every path of every shared kind" would make the second story document writable while the host
- * still refused operations about it - the first failure above, on the most-used document in the
- * project.
+ * **Every story document, not just the one the room is named after.** A session is *opened* on one
+ * story, and that is still the only one anybody is expected to be editing - but deleting a character
+ * rewrites the dialogue rows that spoke it wherever they are, and they are wherever the author put
+ * them. A session that carried one story would have to refuse that gesture, and refusing it is worse
+ * than it sounds: the alternative to rewriting those rows is leaving them pointing at a character
+ * that no longer exists, which the compiler renders as "Unknown".
+ *
+ * So the set is every story plus the cast, and the entries are still `LiveDocument` **addresses**
+ * rather than a document kind. That distinction stops mattering for stories the moment they are all
+ * carried, and it goes on mattering for the next kind somebody adds: widening this to "every path of
+ * every shared kind" would make a document writable while the host still refused operations about it,
+ * which is an edit that lands on one machine and nowhere else with no digest over it.
  */
 
 /**
- * The documents a session opened on `storyId` carries.
+ * The documents a session carries: every story in the project, and the cast.
  *
- * The story it was opened on, and the cast. The cast is not parameterised - there is one per project -
- * which is why it needs nothing from the caller and why a session cannot be opened on "some of" it.
+ * The cast is not parameterised - there is one per project - which is why it needs nothing from the
+ * caller and why a session cannot be opened on "some of" it.
  */
-export function liveSessionDocuments(storyId: StoryId): readonly LiveDocument[] {
-    return [{ doc: "story", storyId }, { doc: "characters" }];
+export function liveSessionDocuments(storyIds: readonly StoryId[]): readonly LiveDocument[] {
+    return [...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })), { doc: "characters" }];
 }
 
 /**
@@ -67,16 +74,17 @@ export function liveDocumentPath(document: LiveDocument): string {
  * What `WorkspaceFreezeReason`'s `writable` is built from. Nothing else may build it: a caller that
  * assembled the list itself would be the second representation this file exists to prevent.
  */
-export function liveSessionWritablePaths(storyId: StoryId): readonly string[] {
-    return liveSessionDocuments(storyId).map(liveDocumentPath);
+export function liveSessionWritablePaths(storyIds: readonly StoryId[]): readonly string[] {
+    return liveSessionDocuments(storyIds).map(liveDocumentPath);
 }
 
 /**
- * Whether a session on `storyId` carries this document.
+ * Whether a session over `storyIds` carries this document.
  *
- * The host's half of the same table. Story documents are compared by id, because carrying one is not
- * carrying the rest; the cast is a single document, so naming it is enough.
+ * The host's half of the same table. A story is compared against the set rather than assumed, because
+ * a story created *during* a session is in nobody else's copy - the room agreed a revision on the way
+ * in, and a document that was not in it is one the others cannot apply an operation to.
  */
-export function liveSessionCarries(storyId: StoryId, document: LiveDocument): boolean {
-    return document.doc === "characters" || document.storyId === storyId;
+export function liveSessionCarries(storyIds: readonly StoryId[], document: LiveDocument): boolean {
+    return document.doc === "characters" || storyIds.includes(document.storyId);
 }
