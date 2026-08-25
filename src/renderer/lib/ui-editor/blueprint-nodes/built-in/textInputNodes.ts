@@ -4,6 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_CLEAR,
     BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_INPUT_GET_VALUE,
@@ -137,7 +138,7 @@ function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], ta
                 ctx.node.id,
             );
         }
-        return { api, elementId: ref.elementId };
+        return { api, elementId: buildUIWidgetAddress(ref.elementId, ctx.instanceKey) };
     }
     if (target === "element") {
         throw new BlueprintGraphExecutionError(
@@ -149,7 +150,7 @@ function runtimeTextInputRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], ta
     if (!elementId) {
         throw new BlueprintGraphExecutionError("Text Input node requires a Text Input target", ctx.node.id);
     }
-    return { api, elementId };
+    return { api, elementId: buildUIWidgetAddress(elementId, ctx.instanceKey) };
 }
 
 function toStringValue(raw: unknown): string {

@@ -4,6 +4,7 @@
  */
 
 import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED,
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED,
@@ -118,7 +119,7 @@ function runtimeSwitchRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], targe
         if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError("Switch node can only target the current Surface", ctx.node.id);
         }
-        return { api, elementId: ref.elementId };
+        return { api, elementId: buildUIWidgetAddress(ref.elementId, ctx.instanceKey) };
     }
     if (target === "element") {
         throw new BlueprintGraphExecutionError("Switch Element node requires a Switch input", ctx.node.id);
@@ -127,7 +128,7 @@ function runtimeSwitchRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], targe
     if (!elementId) {
         throw new BlueprintGraphExecutionError("Switch node requires a Switch target", ctx.node.id);
     }
-    return { api, elementId };
+    return { api, elementId: buildUIWidgetAddress(elementId, ctx.instanceKey) };
 }
 
 function readPin(ctx: Parameters<BlueprintNodeDef["execute"]>[0], pinId: string): unknown {
