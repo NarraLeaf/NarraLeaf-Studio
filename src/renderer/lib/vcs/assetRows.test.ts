@@ -178,7 +178,7 @@ describe("an asset that is one record and one file", () => {
 });
 
 describe("a content file nothing claims", () => {
-    it("stays on the list and says what it is", () => {
+    it("is named as an asset's file, and is not declared unclaimed", () => {
         // A real state after a bad merge: the bytes survived and the record naming them did not.
         // Hiding the row would make the one case where the fold is wrong the one case nobody sees.
         const index = buildChangeIndex([
@@ -188,7 +188,10 @@ describe("a content file nothing claims", () => {
 
         expect(index.rows).toHaveLength(2);
         const orphan = index.rows.find(row => row.path === PORTRAIT_CONTENT);
-        expect(orphan?.name).toMatchObject({ source: "kind", key: ORPHAN_CONTENT_NAME_KEY });
+        // The record pool holds records that CHANGED, so "no record" is not something this pass
+        // can know. It says what the file is and which asset it belongs to, and stops there.
+        expect(orphan?.name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
+        expect(JSON.stringify(orphan?.name)).toContain("99553d15-abb5");
         expect(orphan?.member).toBeUndefined();
         // Still filed with the assets, so it is found where an author would look for it.
         expect(index.groups.map(group => group.category)).toEqual(["assets"]);

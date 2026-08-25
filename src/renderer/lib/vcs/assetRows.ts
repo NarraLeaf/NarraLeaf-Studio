@@ -174,11 +174,18 @@ export function joinAssetEntries(
             if (paired.has(entry.path)) {
                 continue;
             }
-            units.push({
-                key: `document:${entry.path}`,
-                entry,
-                ...(recordsWereRead ? { nameKey: ORPHAN_CONTENT_NAME_KEY } : {}),
-            });
+            /**
+             * Named as what it is - an asset's file, and the id it is filed under - and never
+             * claimed to be an orphan.
+             *
+             * The pool this pairs against is built from records that CHANGED, so an asset whose
+             * bytes were replaced while its name, tags and folder stayed put has no record here
+             * and yet plainly has one on disk. Calling that file unclaimed is a statement about
+             * the repository that this pass cannot support: proving it needs every record of that
+             * asset's type, and a comparison entry carries a shard's changes rather than its
+             * contents. Until the join can read the shard whole, the claim is not made.
+             */
+            units.push({ key: `document:${entry.path}`, entry });
             continue;
         }
 
