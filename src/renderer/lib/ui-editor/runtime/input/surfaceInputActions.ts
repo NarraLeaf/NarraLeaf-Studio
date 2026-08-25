@@ -1,12 +1,22 @@
 /**
- * Which of a surface's declared actions one input fires.
+ * What one lane does with one input: which of a surface's declared actions it fires, and whether the
+ * input travels any further.
  *
  * The second half of a lane's answer. The first is the element walk - every element from the hit
  * element up to the surface root that declares a head for this event. This is what happens after
- * it: the surface's own reply to the project's action vocabulary, resolved once per input.
+ * it: the surface's own reply to the project's action vocabulary, resolved once per input, and then
+ * {@link stopsAtLane} on the way back out.
  *
- * Four rules, and all four are the reason this is a function rather than a condition inlined at the
- * call site:
+ * There is no walk in here, and no list of lanes to walk, because on screen there is none to have.
+ * The lanes under a pointer are whatever the browser's own hit test carries the event through; each
+ * surface shell asks {@link stopsAtLane} about itself as the event goes past, and a surface that
+ * passes hands a copy to whatever is painted behind it (`handOffInputToLaneBehind`). That is also
+ * why the order between the two hosts is nowhere written as a number: the app page stack is in front
+ * of the stage slots because that is what the composite paints, and a layering number pretending the
+ * two shared a stacking context would be unimplementable.
+ *
+ * Four rules decide which actions fire, and all four are the reason that is a function rather than a
+ * condition inlined at the call site:
  *
  *  - A binding matches or it does not. Pointer gestures compare by name; keys compare by the
  *    canonical spelling `normalizeUIInputBinding` already put them in, which is the same spelling
@@ -36,6 +46,7 @@ import {
     type UIInputBinding,
     type UIInputPointerGesture,
     type UISurfaceActionEnablement,
+    type UISurfaceInputMode,
 } from "@shared/types/ui-editor/inputAction";
 import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
@@ -158,4 +169,31 @@ export function resolveSurfaceInputActionHits(input: {
 /** Whether any of these hits takes the input off the lane walk. */
 export function hitsConsumeInput(hits: readonly UISurfaceInputActionHit[]): boolean {
     return hits.some(hit => hit.consume);
+}
+
+/** What stopped an input at a lane. */
+export type UIInputLaneStop = "capture" | "consume";
+
+/**
+ * Whether the input stops at a lane that has just answered, and what stopped it.
+ *
+ * The whole stopping rule, in one place, so that the two things able to end an input's travel are
+ * read off one function rather than two conditions that could drift:
+ *
+ *  - `capture` (the default, `UI_SURFACE_DEFAULT_INPUT_MODE`) stops it whether or not anything on
+ *    the surface listened - which is exactly what every surface authored before input modes existed
+ *    already did, so a document that predates them behaves as it always has.
+ *  - `pass` lets it carry on to whatever is behind.
+ *  - An action that fired with `consume` stops it either way. An element head firing does not: a
+ *    head is "I want this", not "this is mine", and a lane that stopped because a decorative panel
+ *    happened to listen would be the ownership rule back under another name.
+ *
+ * `none` never reaches here. A surface out of input is click-through, so the browser aims nothing at
+ * it in the first place.
+ */
+export function stopsAtLane(input: UISurfaceInputMode, consumed: boolean): UIInputLaneStop | null {
+    if (consumed) {
+        return "consume";
+    }
+    return input === "capture" ? "capture" : null;
 }

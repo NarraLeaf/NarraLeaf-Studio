@@ -211,6 +211,7 @@ function makeHost(claims?: LiveClaimStore): { host: LiveHost; scene: StoryScene 
         stories: [STORY],
         readScene: (_storyId, id) => (id === scene.id ? scene : null),
         readCharacter: () => null,
+        hasAsset: () => false,
         digestOf: () => null,
         applyOp: op => {
             if (op.op === "delete-block") {

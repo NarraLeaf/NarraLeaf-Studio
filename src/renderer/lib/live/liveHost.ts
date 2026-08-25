@@ -60,6 +60,13 @@ export type LiveHostDeps = {
      * way in. Both go to the same table.
      */
     locales?: LiveSessionLocales;
+    /**
+     * The asset types whose metadata shards this session carries.
+     *
+     * Beside {@link locales} rather than folded in, for its reason: these are the shards this machine
+     * holds. Both go to the same table.
+     */
+    assetTypes?: readonly string[];
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -70,6 +77,15 @@ export type LiveHostDeps = {
      * panel is theirs to keep.
      */
     readCharacter(characterId: string): StoredCharacter | null;
+    /**
+     * Whether one asset record is in the library right now.
+     *
+     * The library's answer to {@link readCharacter}, and a boolean rather than the record because
+     * presence is the whole of what is asked: an operation naming a record that is gone is refused so
+     * that the author keeps the inspector full of their own typing. Handing the record over would
+     * invite a later reader to plan against a copy instead of against the document.
+     */
+    hasAsset(assetType: string, assetId: string): boolean;
     /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
@@ -165,6 +181,8 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-translations": true,
     "set-take": true,
     "set-takes": true,
+    "update-asset": true,
+    "move-assets": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -349,6 +367,8 @@ export class LiveHost {
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
         }
+        // There is deliberately no asset counterpart to those two. A session carries no verb that
+        // removes an asset record, so a claim on one can only ever be given back or lapse.
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
             this.positions.forget(applied.sceneId, applied.block.id);
@@ -615,6 +635,29 @@ export class LiveHost {
                 // button, and the one drafted thing on it is a short direction note. See
                 // `CLAIMED_OPS` for the test both answers come from.
                 return { op };
+
+            case "update-asset": {
+                if (!this.deps.hasAsset(op.assetType, op.assetId)) {
+                    // ⚠ Says the record is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would put a record back after somebody deleted the file,
+                    // leaving a row in the browser with no bytes under it.
+                    return { refuse: "asset-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "move-assets": {
+                // Whole or not at all, and checked before a single row moves: half a drag is an
+                // arrangement the author never asked for, and the half that landed would look
+                // exactly like the whole of it. Unclaimed - see `CLAIMED_OPS`.
+                for (const move of op.moves) {
+                    if (!this.deps.hasAsset(op.assetType, move.assetId)) {
+                        return { refuse: "asset-gone" };
+                    }
+                }
+                return { op };
+            }
         }
     }
 
@@ -715,7 +758,12 @@ export class LiveHost {
 
     /** Whether this session speaks for a document, asked of the one table both halves read. */
     private carries(document: LiveDocument): boolean {
-        return liveSessionCarries(this.deps.stories, document, this.deps.locales ?? NO_LIVE_LOCALES);
+        return liveSessionCarries(
+            this.deps.stories,
+            document,
+            this.deps.locales ?? NO_LIVE_LOCALES,
+            this.deps.assetTypes ?? [],
+        );
     }
 }
 

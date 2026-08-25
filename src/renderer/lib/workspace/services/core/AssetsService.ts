@@ -308,18 +308,24 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     /**
      * One type's records as they stand, or null when this window does not hold them.
      *
-     * What the digest is taken over. A string rather than an {@link AssetType} because it arrives
-     * from another Studio, which may name a type this build has never heard of.
+     * What the digest is taken over and what an inverse is read from. A string rather than an
+     * {@link AssetType} because it arrives from another Studio, which may name a type this build has
+     * never heard of.
+     *
+     * ⚠ **The one cast between the library's model and the wire's**, and it is here on purpose: the
+     * renderer's `Asset` interface and `LiveAssetRecord` are one document read two ways, and an
+     * interface carries no index signature for TypeScript to line the two up through. Everything past
+     * this point speaks the structural view, which is the one a message from another build arrives in.
      */
-    public recordsOf(assetType: string): Readonly<Record<string, Asset<AssetType, AssetSource>>> | null {
+    public recordsOf(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null {
         if (!this.assetsMetadataManager || !isAssetType(assetType)) {
             return null;
         }
-        return this.assetsMetadataManager.getAssets()[assetType] as Record<string, Asset<AssetType, AssetSource>>;
+        return this.assetsMetadataManager.getAssets()[assetType] as unknown as Record<string, LiveAssetRecord>;
     }
 
     /** One record as it stands, or null when there is none. What the host's `asset-gone` asks. */
-    public recordOf(assetType: string, assetId: string): Asset<AssetType, AssetSource> | null {
+    public recordOf(assetType: string, assetId: string): LiveAssetRecord | null {
         return this.recordsOf(assetType)?.[assetId] ?? null;
     }
 
@@ -337,7 +343,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public applyLiveOp(op: LiveAssetOp): void {
         switch (op.op) {
             case "update-asset": {
-                const record = this.recordOf(op.assetType, op.assetId);
+                const record = this.liveRecord(op.assetType, op.assetId);
                 if (!record) {
                     console.warn(`[AssetsService] no record ${op.assetId} in ${op.assetType}; effect not applied`);
                     return;
@@ -353,7 +359,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 return;
             }
             case "move-assets": {
-                const records = this.recordsOf(op.assetType);
+                const records = this.liveRecords(op.assetType);
                 if (!records) {
                     console.warn(`[AssetsService] no shard for ${op.assetType}; effect not applied`);
                     return;
@@ -387,6 +393,25 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 throw new RendererError(`No applier for live asset operation: ${JSON.stringify(unapplied)}`);
             }
         }
+    }
+
+    /**
+     * One type's records as the library's own model, or null when this window does not hold them.
+     *
+     * {@link recordsOf}'s twin, and the split is the cast this file is careful to make exactly once:
+     * everything facing a live session reads the structural view, and everything writing the library
+     * reads the interface it is stored under.
+     */
+    private liveRecords(assetType: string): Record<string, Asset<AssetType, AssetSource>> | null {
+        if (!this.assetsMetadataManager || !isAssetType(assetType)) {
+            return null;
+        }
+        return this.assetsMetadataManager.getAssets()[assetType] as Record<string, Asset<AssetType, AssetSource>>;
+    }
+
+    /** The live record behind an address, as the library's own model. The applier's reader. */
+    private liveRecord(assetType: string, assetId: string): Asset<AssetType, AssetSource> | null {
+        return this.liveRecords(assetType)?.[assetId] ?? null;
     }
 
     /**
@@ -980,7 +1005,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             if (this.opSink?.handle({ op: "move-assets", assetType: type, moves })) {
                 continue;
             }
-            const records = this.recordsOf(type);
+            const records = this.liveRecords(type);
             if (!records) {
                 return { success: false, error: `Assets metadata not initialized: ${type}` };
             }
