@@ -2,6 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { DocumentChange, DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { ORPHAN_CONTENT_NAME_KEY } from "./assetRows";
 import { buildChangeIndex } from "./changeIndex";
+import { NO_DOCUMENT_NAMES } from "./documentName";
+
+/** The author's own text, for the assertions that are about what a row is called. */
+function authoredText(name: { source: string } & Record<string, unknown>): unknown {
+    return name.source === "authored" ? name.text : name;
+}
 
 /**
  * One asset, one line.
@@ -26,7 +32,7 @@ const SHARD = "assets/assets.metadata.image.json";
   * The everyday comparison: every changed document listed. Anything less is stated per test, because
   * what the read managed is what decides whether an unpaired file may be called an orphan.
   */
-const budget = { rowBudget: 1000, complete: true };
+const budget = { rowBudget: 1000, complete: true, names: NO_DOCUMENT_NAMES };
 
 /** One asset's record, as `specs/assetsMetadata.ts` reports it: keyed by id, named by the author. */
 function record(
@@ -84,7 +90,7 @@ describe("an asset that is one record and one file", () => {
 
         expect(index.rows).toHaveLength(1);
         const row = index.rows[0];
-        expect(row.name).toBe("Hero portrait");
+        expect(row.name).toMatchObject({ source: "authored", text: "Hero portrait" });
         expect(row.path).toBe(SHARD);
         expect(row.member?.path).toBe(PORTRAIT_CONTENT);
         expect(row.memberCount).toBe(1);
@@ -113,7 +119,7 @@ describe("an asset that is one record and one file", () => {
         );
 
         expect(index.rows).toHaveLength(1);
-        expect(index.rows[0].name).toBe("Old sprite");
+        expect(index.rows[0].name).toMatchObject({ source: "authored", text: "Old sprite" });
         expect(index.rows[0].member?.path).toBe(LEGACY_CONTENT);
     });
 
@@ -139,7 +145,7 @@ describe("an asset that is one record and one file", () => {
             ]),
         ], budget);
 
-        expect(index.rows.map(row => [row.name, row.kind])).toEqual([
+        expect(index.rows.map(row => [authoredText(row.name), row.kind])).toEqual([
             ["Added", "added"],
             ["Removed", "removed"],
             ["Retagged", "changed"],
@@ -161,11 +167,13 @@ describe("an asset that is one record and one file", () => {
         expect(new Set(index.rows.map(row => row.key)).size).toBe(2);
     });
 
-    it("names a record with no authored name after the file it is reported at", () => {
+    it("names a record with no authored name by its kind, never by its file", () => {
         const index = buildChangeIndex([shard([record(PORTRAIT)])], budget);
 
-        expect(index.rows[0].name).toBe("assets.metadata.image.json");
-        expect(index.rows[0].nameKey).toBeUndefined();
+        // The author never made a thing called assets.metadata.image.json, so the row cannot be
+        // called that. With no name of its own to read, the kind is the complete answer.
+        expect(index.rows[0].name.source).toBe("kind");
+        expect(index.rows[0].name).not.toMatchObject({ source: "authored" });
     });
 });
 
@@ -180,7 +188,7 @@ describe("a content file nothing claims", () => {
 
         expect(index.rows).toHaveLength(2);
         const orphan = index.rows.find(row => row.path === PORTRAIT_CONTENT);
-        expect(orphan?.nameKey).toBe(ORPHAN_CONTENT_NAME_KEY);
+        expect(orphan?.name).toMatchObject({ source: "kind", key: ORPHAN_CONTENT_NAME_KEY });
         expect(orphan?.member).toBeUndefined();
         // Still filed with the assets, so it is found where an author would look for it.
         expect(index.groups.map(group => group.category)).toEqual(["assets"]);
@@ -191,11 +199,15 @@ describe("a content file nothing claims", () => {
         // renderer cannot tell that from a shard that never changed - both arrive as an absence.
         // "File with no asset record" would then be a claim about the repository whose cause is a
         // read limit, so the row falls back to what it was before the fold existed.
-        const index = buildChangeIndex([content(PORTRAIT_CONTENT)], { rowBudget: 1000, complete: false });
+        const index = buildChangeIndex([content(PORTRAIT_CONTENT)], { rowBudget: 1000, complete: false, names: NO_DOCUMENT_NAMES });
 
         expect(index.rows).toHaveLength(1);
-        expect(index.rows[0].nameKey).toBeUndefined();
-        expect(index.rows[0].name).toBe("3d15abb54213bad7203798a1adc4");
+        expect(index.rows[0].name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
+        // Whatever shape the name takes, it has to carry the id - that is the only thing that
+        // tells two unclaimed content files apart.
+        // The qualifier is the asset id in the form the author would see it elsewhere, which is what
+        // tells two unclaimed content files apart.
+        expect(JSON.stringify(index.rows[0].name)).toContain("99553d15-abb5");
     });
 
     it("says nothing of the sort when no metadata was compared at all", () => {
@@ -204,7 +216,7 @@ describe("a content file nothing claims", () => {
         const index = buildChangeIndex([content(PORTRAIT_CONTENT)], budget);
 
         expect(index.rows).toHaveLength(1);
-        expect(index.rows[0].nameKey).toBeUndefined();
+        expect(index.rows[0].name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
     });
 
     it("says nothing of the sort when a shard was not read record by record", () => {
@@ -225,7 +237,7 @@ describe("a content file nothing claims", () => {
         // The shard is one row, whole, still carrying the count and the caveat it is owed.
         expect(index.rows.map(row => row.path)).toEqual([SHARD, PORTRAIT_CONTENT]);
         expect(index.rows[0].changeCount).toBe(900);
-        expect(index.rows[1].nameKey).toBeUndefined();
+        expect(index.rows[1].name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
         expect(index.groups[0].caveats.partialDocuments).toBe(2);
     });
 
@@ -235,8 +247,9 @@ describe("a content file nothing claims", () => {
         const index = buildChangeIndex([content("assets/content/ab/cd/notes.txt")], budget);
 
         expect(index.rows).toHaveLength(1);
-        expect(index.rows[0].name).toBe("notes.txt");
-        expect(index.rows[0].nameKey).toBeUndefined();
+        expect(index.rows[0].name).toMatchObject({ source: "file" });
+        expect(JSON.stringify(index.rows[0].name)).toContain("notes.txt");
+        expect(index.rows[0].name).not.toMatchObject({ key: ORPHAN_CONTENT_NAME_KEY });
     });
 });
 
@@ -277,7 +290,7 @@ describe("what the fold does not touch", () => {
         const index = buildChangeIndex([structural], budget);
 
         expect(index.rows).toHaveLength(1);
-        expect(index.rows[0].name).toBe("assets.metadata.image.json");
+        expect(index.rows[0].name).toMatchObject({ source: "kind" });
     });
 
     it("counts a folded row once against the budget and the heading", () => {

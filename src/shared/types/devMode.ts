@@ -267,6 +267,19 @@ export type DevModeStartStoryRequest = {
 
 export type DevModeBundle = {
     bundleId: string;
+    /**
+     * The DLC whose content this bundle carries, when the host that asked for it named a selection.
+     *
+     * Absent when the host named none, which means "everything the project has" - see
+     * `DevModeBundleLoadContext.includedDlc`. Empty when it named an empty one, which is the ordinary
+     * base build.
+     *
+     * Written by the assembler because the assembler is what decided, and read by both consumers
+     * rather than either of them re-deriving it: the packaged pack states it as `installedDlc`, and
+     * a Dev Mode host answers `Is DLC Installed` from it. Two derivations of one fact would be two
+     * places for it to be wrong.
+     */
+    installedDlc?: readonly string[];
     revision: number;
     timestamp: string;
     ui: {

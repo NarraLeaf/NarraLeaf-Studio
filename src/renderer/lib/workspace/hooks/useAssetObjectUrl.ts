@@ -84,7 +84,8 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
      */
     const libraryRevision = useAssetLibraryRevision();
     const setRevision = useMemo(() => {
-        if (!context || !requestedAssetId) {
+        // Both live keys are held at a constant under a mounted source, for the reason below.
+        if (!context || !requestedAssetId || assetBytesSource) {
             return 0;
         }
         try {
@@ -94,10 +95,21 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         } catch {
             return 0;
         }
-    }, [context, requestedAssetId, libraryRevision]);
+    }, [context, requestedAssetId, libraryRevision, assetBytesSource]);
 
     useEffect(() => {
         if (!assetsService || !requestedAssetId) {
+            return;
+        }
+        /**
+         * Not while a source is mounted.
+         *
+         * These two events say the LIVE library moved, and under a source that is not what is on
+         * screen: a version's bytes are fixed, so an import or a delete the author does in another
+         * tab cannot change them. Left subscribed, every import would re-run the effect below for
+         * every picture in the comparison, re-reading history to arrive at the same answer.
+         */
+        if (assetBytesSource) {
             return;
         }
         // Keyed on the id the caller asked for, not on the file it resolves to. A set's own id never
@@ -112,7 +124,7 @@ export function useAssetObjectUrl(requestedAssetId?: string | null, assetType: A
         const events = assetsService.getEvents();
         const unsubs = [events.on("updated", bump), events.on("deleted", bump)];
         return () => unsubs.forEach(unsub => unsub());
-    }, [assetsService, requestedAssetId]);
+    }, [assetsService, requestedAssetId, assetBytesSource]);
 
     useEffect(() => {
         /**

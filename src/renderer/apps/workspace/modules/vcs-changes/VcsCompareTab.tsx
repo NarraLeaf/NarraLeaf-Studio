@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import type { Translator } from "@shared/i18n";
 import { HelpTrigger } from "@/lib/help";
@@ -6,6 +6,8 @@ import { useTranslation } from "@/lib/i18n";
 import { EmptyState } from "@/lib/components/elements";
 import { splitDocumentPath } from "@/lib/vcs/changeIndex";
 import { SplitComparisonView } from "@/lib/vcs/compare/SplitComparisonView";
+import { useComparisonElements } from "@/lib/vcs/compare/useComparisonElements";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import { useDocumentDiff, type DocumentDiffRequest } from "@/lib/vcs/useDocumentDiff";
 import { revisionLabel } from "../../components/layout/versionRailModel";
 import type { VcsComparePayload } from "./vcsCompareIds";
@@ -27,6 +29,11 @@ import type { VcsComparePayload } from "./vcsCompareIds";
  * **Nothing here freezes the workspace.** The two halves read bytes at each version directly, the
  * way every presenter in the comparison does. Showing a revision through the freeze would reload
  * every other tab in the window into the past, for a question about one file.
+ *
+ * **The halves carry editor logic.** For a page of the interface, a row is a control that makes the
+ * element it is about the app-wide selection at that half's version, and the right rail inspects it
+ * read-only. The tab is where that is wired because the tab is what knows both things it needs: the
+ * two versions to read, and what each half calls the one it shows.
  */
 export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
     const { t } = useTranslation();
@@ -39,6 +46,44 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
     );
     const diff = useDocumentDiff(request, { enabled: payload !== undefined });
     const entry = diff.result?.documents.find(document => document.path === payload?.path) ?? null;
+
+    /**
+     * The two versions the halves read at, in the shape every presenter takes them in.
+     *
+     * The working tree's older side is whichever version the comparison was taken against, which the
+     * result names - a repository with nothing recorded yet has no older side at all rather than one
+     * to guess at. Null until the comparison has answered, which is when the halves have nothing to
+     * select in anyway.
+     */
+    const sides = useMemo<ComparisonSides | null>(() => {
+        if (!payload) {
+            return null;
+        }
+        if (payload.comparison.mode === "between") {
+            return {
+                before: { at: "revision", revision: payload.comparison.from },
+                after: { at: "revision", revision: payload.comparison.to },
+            };
+        }
+        return {
+            before: diff.result?.head ? { at: "revision", revision: diff.result.head } : null,
+            after: { at: "working-tree" },
+        };
+    }, [payload?.comparison, diff.result?.head]);
+
+    const versions = payload ? compareVersionLabels(payload, t) : null;
+    const labelFor = useCallback(
+        (elementName: string) => t("documentDiff.split.inspect", { name: elementName }),
+        [t],
+    );
+    const rowAction = useComparisonElements({
+        entry,
+        path: payload?.path ?? "",
+        sides,
+        baseLabel: versions?.base ?? "",
+        headLabel: versions?.head ?? "",
+        labelFor,
+    });
 
     if (!payload) {
         // A tab of this kind cannot be opened without one, and a restored session that lost it has
@@ -62,7 +107,6 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
     }
 
     const { directory, name } = splitDocumentPath(payload.path);
-    const versions = compareVersionLabels(payload, t);
 
     return (
         <div className="h-full" data-help-topic="versionChanges">
@@ -70,8 +114,9 @@ export function VcsCompareTab({ payload }: { payload?: VcsComparePayload }) {
                 entry={entry}
                 name={payload.name || name}
                 directory={directory}
-                baseLabel={versions.base}
-                headLabel={versions.head}
+                baseLabel={versions?.base ?? ""}
+                headLabel={versions?.head ?? ""}
+                rowAction={rowAction}
                 actions={<HelpTrigger topic="versionChanges" />}
             />
         </div>

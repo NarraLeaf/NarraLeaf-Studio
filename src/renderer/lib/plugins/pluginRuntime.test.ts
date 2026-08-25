@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { definePlugin, type PluginApp } from "@/plugin";
-import { createPluginApp, exposePluginModule, resolvePluginDefinition } from "./pluginRuntime";
+import { createPluginApp, exposePluginModule, pluginEntryImportSpecifier, resolvePluginDefinition } from "./pluginRuntime";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import type { WorkspacePluginDescriptor } from "@shared/types/plugins";
@@ -23,6 +23,26 @@ describe("plugin runtime", () => {
 
     it("rejects entries that do not export definePlugin definitions", () => {
         expect(() => resolvePluginDefinition({ default: {} })).toThrow("default-export definePlugin");
+    });
+});
+
+describe("pluginEntryImportSpecifier", () => {
+    it("gives every load its own specifier, so a rebuilt entry is not served from the module registry", () => {
+        const entryUrl = "app://plugins/test-plugin/1.0.0/main.js";
+
+        const first = pluginEntryImportSpecifier(entryUrl);
+        const second = pluginEntryImportSpecifier(entryUrl);
+
+        expect(first).not.toBe(second);
+        // Only the query differs: the handler resolves the file from the pathname.
+        expect(new URL(first).pathname).toBe("/test-plugin/1.0.0/main.js");
+        expect(new URL(second).pathname).toBe(new URL(first).pathname);
+    });
+
+    it("appends to a query the entry URL already carries", () => {
+        const specifier = pluginEntryImportSpecifier("app://plugins/test-plugin/1.0.0/main.js?a=1");
+
+        expect(specifier).toContain("?a=1&");
     });
 });
 

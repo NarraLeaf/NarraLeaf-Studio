@@ -43,6 +43,8 @@ import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
+import { decideReopenAction } from "./application/reopenAction";
+import { shouldCheckpointOnClose } from "./application/closeCheckpoint";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -538,11 +540,37 @@ export class App extends BaseApp {
     }
 
     /**
+     * macOS: the Dock icon was clicked, or Studio was otherwise reopened while already running.
+     *
+     * The rule, and why it is not simply "show the home screen", is in `decideReopenAction`. All
+     * this adds is the reading of the windows it decides from, and the raising of the most recently
+     * opened one when the reopen brought nothing forward by itself.
+     */
+    public handleReopen(hasVisibleWindows: boolean): void {
+        const onScreen = this.windowManager.getWindows()
+            .filter(window => !window.isClosed() && (window.win.isVisible() || window.win.isMinimized()));
+        const action = decideReopenAction({ hasVisibleWindows, windowsOnScreen: onScreen.length });
+
+        if (action === "launcher") {
+            void this.revealLauncher();
+            return;
+        }
+        if (action === "raise") {
+            const front = onScreen[onScreen.length - 1];
+            if (front.win.isMinimized()) {
+                front.win.restore();
+            }
+            front.focus();
+        }
+    }
+
+    /**
      * Bring the home screen in front of the user, opening it if they closed everything.
      *
      * The entry point for every "get me back into Studio" gesture now that closing the last
-     * window no longer ends the session: the tray item and its Open Launcher row, macOS's dock
-     * `activate`, and a second launch handing its intent to the running instance.
+     * window no longer ends the session: the tray item and its Open Launcher row, a second launch
+     * handing its intent to the running instance, and a macOS reopen that found nothing to come
+     * back to (see {@link handleReopen}).
      *
      * Restores before focusing because a minimized window is the common case for the tray - and
      * `focus()` alone leaves a minimized window minimized.
@@ -1175,6 +1203,23 @@ export class App extends BaseApp {
     }
 
     /**
+     * Whether this closing workspace is going to be check pointed at all.
+     *
+     * Asked by every close path before it says so on screen, as well as by the checkpoint itself:
+     * telling the author a checkpoint is being recorded and then recording nothing is the one way
+     * this can be wrong that they can see. The rule, and the lock wait that made it necessary, is
+     * in {@link shouldCheckpointOnClose}.
+     */
+    private wantsCheckpointOnClose(window: AppWindow<WindowAppType.Workspace>): boolean {
+        const projectPath = window.getProps().projectPath;
+        return shouldCheckpointOnClose({
+            enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
+            projectPath: typeof projectPath === "string" ? projectPath : null,
+            workspaceLoaded: window.hasLoadedWorkspace(),
+        });
+    }
+
+    /**
      * Record a checkpoint for a project that is about to be closed.
      *
      * The point of it: after this returns, nothing is watching the working tree, so an
@@ -1209,13 +1254,10 @@ export class App extends BaseApp {
         window: AppWindow<WindowAppType.Workspace>,
         timeoutMs: number = CLOSE_CHECKPOINT_TIMEOUT_MS,
     ): Promise<void> {
-        // Only an explicit `false` skips it. A missing or non-boolean value means the author never
-        // answered, and the answer they never gave must not be the one that loses their session.
-        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
-            return;
-        }
         const projectPath = window.getProps().projectPath;
-        if (typeof projectPath !== "string" || projectPath.length === 0) {
+        // The `typeof` is what narrows the path for the call below; the rule it repeats is
+        // `wantsCheckpointOnClose`'s, which every caller has already asked.
+        if (!this.wantsCheckpointOnClose(window) || typeof projectPath !== "string") {
             return;
         }
         try {
@@ -1347,8 +1389,10 @@ export class App extends BaseApp {
      * that close every project at once - were the exits that recorded nothing, while
      * `versionControl.checkpointOnClose` told the author a closing workspace is check pointed.
      *
-     * The setting is read here as well as in {@link App.checkpointBeforeClose}, so that an author
-     * who turned it off is not shown a window telling them a checkpoint is being recorded.
+     * Which workspaces are check pointed is decided before the stage is announced rather than
+     * inside the checkpoint, so that a window that is going to skip it - the author turned it off,
+     * or the workspace never finished opening - is not shown a card telling them one is being
+     * recorded. See {@link App.wantsCheckpointOnClose}.
      *
      * Concurrent, because Lore queues per project and two projects do not contend; bounded per
      * project by `timeoutMs`, so one repository somebody else has locked cannot spend the whole
@@ -1357,10 +1401,10 @@ export class App extends BaseApp {
      * and it leaves a workspace closed by hand recording its checkpoint as before.
      */
     public async checkpointOpenWorkspacesForShutdown(timeoutMs: number): Promise<void> {
-        if (timeoutMs <= 0 || this.globalState.get("versionControl.checkpointOnClose") === false) {
+        if (timeoutMs <= 0) {
             return;
         }
-        const workspaces = this.liveWorkspaceWindows();
+        const workspaces = this.liveWorkspaceWindows().filter(window => this.wantsCheckpointOnClose(window));
         for (const window of workspaces) {
             this.reportWorkspaceCloseStage(window, "checkpoint");
         }
@@ -1399,8 +1443,10 @@ export class App extends BaseApp {
 
         // Flush first, check point second: the checkpoint's whole value is that it
         // records what is on disk, and the flush is what puts the last edit there.
-        this.reportWorkspaceCloseStage(window, "checkpoint");
-        await this.checkpointBeforeClose(window);
+        if (this.wantsCheckpointOnClose(window)) {
+            this.reportWorkspaceCloseStage(window, "checkpoint");
+            await this.checkpointBeforeClose(window);
+        }
 
         // The app may have started quitting, or the window may be gone, while the sheet was up.
         // Reopening the launcher now would resurrect a window in the middle of a quit.
@@ -1702,8 +1748,10 @@ export class App extends BaseApp {
                 const workspace = opener as AppWindow<WindowAppType.Workspace>;
                 this.reportWorkspaceCloseStage(workspace, "saving");
                 await this.flushWorkspacePendingSaves(workspace);
-                this.reportWorkspaceCloseStage(workspace, "checkpoint");
-                await this.checkpointBeforeClose(workspace);
+                if (this.wantsCheckpointOnClose(workspace)) {
+                    this.reportWorkspaceCloseStage(workspace, "checkpoint");
+                    await this.checkpointBeforeClose(workspace);
+                }
             }
             if (!opener.isClosed()) {
                 opener.forceClose();

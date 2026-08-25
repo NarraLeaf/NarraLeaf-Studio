@@ -7,20 +7,23 @@
  * other half of that answer: what sizes the player may pick, whether they may drag the window to
  * one of their own, and whether the game comes back where they left it.
  *
- * Read by two very different places from one field: the shell decides the window it opens, and the
- * game's own configuration screen offers {@link WindowConfiguration.scaleSteps} as the list a
- * player chooses from (see the `Get Window Scale Options` node). One source, so the screen can
- * never offer a size the shell refuses.
+ * What is NOT here is a list of sizes. It was, and it was the wrong shape: a project cannot know
+ * what will fit the screen a player turns out to have, and a list declared here became a limit on
+ * what a running game could ask for. The sizes a configuration screen offers are answered by the
+ * shell instead, against the display in front of the player (see the `Get Window Scale Options`
+ * node), and a game may ask for any size at all.
  */
 
 /**
- * The sizes an author may offer, as multiples of the design size.
+ * The sizes a configuration screen may offer, as multiples of the design size.
  *
- * A ladder rather than a free number: the whole value of a step is that the stage lands on a whole
- * multiple of the art it was drawn at, and an author typing 0.63 would get a blurred stage and no
- * warning. Steps above 1 upscale, which is the right answer on a screen larger than the project -
- * a 1080p game on a 1440p display - and the wrong one on a small laptop, which is why each is the
- * author's to offer rather than a rule.
+ * A ladder rather than a free number, because the whole value of a step is that the stage lands on
+ * a whole multiple of the art it was drawn at. Which rungs a given player is offered is decided by
+ * their screen, not by the project: see `windowGeometry.fittingWindowScales`.
+ *
+ * Nothing stops a game asking for a size that is not on it - `Set Window Scale` and
+ * `Set Window Size` take what they are given. This is what a screen built with
+ * `Get Window Scale Options` lists, not a rule.
  */
 export const WINDOW_SCALE_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2] as const;
 
@@ -31,18 +34,11 @@ export const WINDOW_SCALE_DESIGN: WindowScaleStep = 1;
 
 export type WindowConfiguration = {
     /**
-     * Sizes the player may choose, as multiples of the design size, ascending.
-     *
-     * Always contains {@link WINDOW_SCALE_DESIGN}: the game is drawn at that size, and a project
-     * that offered no way back to it would be one where the art can never be seen as it was made.
-     */
-    scaleSteps: WindowScaleStep[];
-    /**
      * Whether the player may drag the window to a size of their own.
      *
-     * Independent of the steps: the steps are what a configuration screen offers, this is what the
-     * window frame allows. A window dragged off the design ratio letterboxes the stage inside it,
-     * the same way a screen of another shape does.
+     * Independent of anything a configuration screen offers: this is what the window frame allows.
+     * A window dragged off the design ratio letterboxes the stage inside it, the same way a screen
+     * of another shape does.
      */
     resizable: boolean;
     /** Whether the game reopens at the size, position and screen mode it was last closed at. */
@@ -58,9 +54,6 @@ export type WindowConfiguration = {
 };
 
 export const DEFAULT_WINDOW_CONFIGURATION: WindowConfiguration = {
-    // Nothing above the design size: those upscale, and whether that is right depends on a screen
-    // this file cannot see. The two below it are what makes a 1080p project openable on a laptop.
-    scaleSteps: [0.5, 0.75, 1],
     resizable: true,
     rememberGeometry: true,
     startFullscreen: false,
@@ -75,7 +68,6 @@ export const DEFAULT_WINDOW_CONFIGURATION: WindowConfiguration = {
 export function normalizeWindowConfiguration(value: unknown): WindowConfiguration {
     const record = (value && typeof value === "object" ? value : {}) as Record<string, unknown>;
     return {
-        scaleSteps: normalizeWindowScaleSteps(record.scaleSteps),
         resizable: record.resizable === undefined
             ? DEFAULT_WINDOW_CONFIGURATION.resizable
             : record.resizable !== false,
@@ -86,20 +78,7 @@ export function normalizeWindowConfiguration(value: unknown): WindowConfiguratio
     };
 }
 
-/** The offered steps, deduplicated, ascending, and always including the design size. */
-export function normalizeWindowScaleSteps(value: unknown): WindowScaleStep[] {
-    const offered = Array.isArray(value) ? value : DEFAULT_WINDOW_CONFIGURATION.scaleSteps;
-    const kept = new Set<WindowScaleStep>([WINDOW_SCALE_DESIGN]);
-    for (const candidate of offered) {
-        const step = WINDOW_SCALE_STEPS.find(known => known === candidate);
-        if (step !== undefined) {
-            kept.add(step);
-        }
-    }
-    return WINDOW_SCALE_STEPS.filter(step => kept.has(step));
-}
-
-/** The offered step nearest a value, for a request that names a size this project does not offer. */
+/** The step nearest a value, for reading back what size a window is currently at. */
 export function nearestWindowScaleStep(scale: number, steps: readonly WindowScaleStep[]): WindowScaleStep {
     const offered = steps.length > 0 ? steps : [WINDOW_SCALE_DESIGN];
     return offered.reduce((best, step) => (

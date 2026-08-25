@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { CHANGE_CATEGORY_LABEL_KEY } from "./changeCategory";
 import type { ChangeIndex, ChangeIndexGroup, ChangeIndexRow } from "./changeIndex";
+import { renderDocumentName } from "./documentName";
 import { CHANGE_KIND_GLYPH, CHANGE_KIND_TINT } from "./documentChangeView";
 
 /**
@@ -145,9 +146,15 @@ export function ChangeIndexGroupView({
 /**
  * One file, one line, whatever is inside it.
  *
- * Four things at most and every one of them truncates rather than wraps: the marker, the name, where
- * it sits, and how much changed. Nothing here grows with the number of changes or with which tier
- * produced them, which is what keeps the index scannable at forty files and at four hundred.
+ * Three things at most and every one of them truncates rather than wraps: the marker, the name and
+ * how much changed. Nothing here grows with the number of changes or with which tier produced them,
+ * which is what keeps the index scannable at forty files and at four hundred.
+ *
+ * **The directory used to be the fourth, and it is gone.** It was there because the name was the
+ * file name, and a column of rows all reading `storydoc.json` needed something beside them to be
+ * told apart by - which is how an author ended up picking a scene out of a list by its uuid. The
+ * name is the thing's own name now, so the directory has nothing left to distinguish and would only
+ * be competing with it. The whole path is in the tooltip, where the row already put it.
  */
 function ChangeIndexRowView({
     row,
@@ -184,9 +191,6 @@ function ChangeIndexRowView({
                 {CHANGE_KIND_GLYPH[row.kind]}
             </span>
             <span className="min-w-0 truncate text-xs text-fg">{changeIndexRowName(row, translator.t)}</span>
-            {row.directory !== null && (
-                <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{row.directory}</span>
-            )}
             <span className="ml-auto shrink-0 pl-1 text-2xs text-fg-subtle">
                 {changeIndexRowSummary(row, translator)}
             </span>
@@ -197,12 +201,12 @@ function ChangeIndexRowView({
 /**
  * What this row is called.
  *
- * The file name for most rows, the author's own name for an asset, and a translated label for the
- * one row whose file name says nothing at all - a content file no asset record claims, stored under
- * a shard of its id. The path is still in the tooltip, so nothing is being hidden by naming it.
+ * A one-line forward to `documentName.ts`, kept because three surfaces name a row through it - this
+ * pane, the detail line beside it and the split tab it opens - and a second spelling of the same
+ * answer is how a tab strip ends up disagreeing with the row that was pressed.
  */
 export function changeIndexRowName(row: ChangeIndexRow, t: Translator["t"]): string {
-    return row.nameKey ? t(row.nameKey) : row.name;
+    return renderDocumentName(row.name, t);
 }
 
 /** What one file's row says it stands for. A count, except where a count would be misleading. */
