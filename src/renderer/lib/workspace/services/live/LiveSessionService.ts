@@ -13,6 +13,7 @@ import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
 import { LocalizationService } from "../localization/LocalizationService";
+import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
@@ -164,6 +165,23 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             rooms: remoteOrigin => createTeamLiveRooms(remoteOrigin),
             story: {
                 setSink: sink => story().setOperationSink(sink),
+                listStories: () => story().listStories().map(entry => entry.id),
+                loadAll: async () => {
+                    const loaded: StoryId[] = [];
+                    for (const entry of story().listStories()) {
+                        try {
+                            await story().loadStory(entry.id);
+                            loaded.push(entry.id);
+                        } catch (error) {
+                            // Skipped rather than fatal, for the reason the speaker sweep skips one: a
+                            // session refused because an unrelated story is corrupt would be worse than
+                            // one that leaves that story out of what it carries.
+                            console.warn(`[live] could not read story ${entry.id} for the session:`, error);
+                        }
+                    }
+                    return loaded;
+                },
+                rowsSpokenBy: characterId => rowsSpokenBy(story(), characterId),
                 document: storyId => {
                     try {
                         return story().getStoryDocument(storyId);

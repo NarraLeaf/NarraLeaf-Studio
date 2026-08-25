@@ -300,6 +300,5 @@ export const characters = {
     },
     live: {
         recordClaimed: "{name} がこのキャラクターを編集している",
-        deleteUnavailable: "リアルタイムセッション中はキャラクターを削除できない。削除するにはセッションを抜ける",
     },
 } satisfies LocaleNamespace<"characters">;

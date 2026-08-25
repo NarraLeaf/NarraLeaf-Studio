@@ -145,6 +145,13 @@ export type LiveStoryOp =
     /** Chapters in their new order, named by id. */
     | { op: "reorder-chapters"; chapterIds: readonly string[] };
 
+/** One dialogue row, addressed across the whole project. What a rebind names. */
+export type LiveDialogueRowRef = {
+    storyId: StoryId;
+    sceneId: StorySceneId;
+    blockId: StoryBlockId;
+};
+
 /**
  * Everything that can be done to the cast.
  *
@@ -181,9 +188,38 @@ export type LiveCharacterOp =
     | {
           op: "create-character";
           character: StoredCharacter;
+          /**
+           * Dialogue rows to point back at this character, for the creation that undoes a deletion.
+           *
+           * **Carried, where the deletion's own sweep is derived, and the asymmetry is the point.**
+           * Going down, "which rows does this character speak" is a question about the document.
+           * Coming back up, the rows now hold a bare name, and a name is not an identifier - two
+           * characters may share one, and the author may have written more lines under it since. So
+           * the only correct answer is the one recorded when the deletion happened, which is this.
+           * Absent for an ordinary creation, which has no lines to reclaim.
+           */
+          rebind?: readonly LiveDialogueRowRef[];
       }
     /** Replace a character's record. The whole record - see {@link LiveCharacterOp}. */
     | { op: "update-character"; characterId: string; character: StoredCharacter }
+    /**
+     * Remove a character, and let every machine rewrite the lines it spoke.
+     *
+     * **One operation for something that changes several documents, because the other documents'
+     * share of it is DERIVED rather than carried.** A deleted character's dialogue rows keep their
+     * words and lose their speaker id, falling back to the bare name so the line still reads as it
+     * always did - and every machine can work out exactly which rows those are, from a cast and a set
+     * of story documents the room already agrees on. Sending them would be a second statement of
+     * something every receiver can compute, and the criterion for that is the one a paste's
+     * translations fail and this passes: **can everybody else reach the same answer from the same
+     * effect?**
+     *
+     * ⚠ **What the sweep touches is fingerprinted, not taken on trust.** The applier reports which
+     * scenes it rewrote and the effect carries a digest for each - see {@link LiveEffect.digests} -
+     * so a machine that swept differently is caught by the same guard that catches everything else,
+     * on the same message rather than some later one.
+     */
+    | { op: "delete-character"; characterId: string }
     /**
      * Add or replace a group, and say who is in it.
      *
@@ -264,6 +300,7 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
             return "story";
         case "create-character":
         case "update-character":
+        case "delete-character":
         case "set-character-group":
         case "delete-character-group":
             return "characters";
@@ -325,6 +362,7 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "delete-blocks",
     "set-block-disabled",
     "update-character",
+    "delete-character",
 ]);
 
 /**
@@ -486,6 +524,7 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "reorder-chapters":
             return opBlockIds(op).map(storyRowClaimKey);
         case "update-character":
+        case "delete-character":
             return [characterClaimKey(op.characterId)];
         case "create-character":
             return [characterClaimKey(op.character.profile.id)];
@@ -512,8 +551,13 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
  * cast-level state for the operations that are about neither.
  */
 export type LiveDigestScope =
-    /** One scene of the session's story. */
-    | { of: "scene"; sceneId: StorySceneId }
+    /**
+     * One scene of one story.
+     *
+     * The story is named because a session carries every story document in the project, so a scene id
+     * alone would be an address that happens to be unique rather than one that is.
+     */
+    | { of: "scene"; storyId: StoryId; sceneId: StorySceneId }
     /** One character's record. */
     | { of: "character"; characterId: string }
     /** The cast's shape - its groups and who is in them - which no single record covers. */
@@ -532,7 +576,7 @@ export type LiveDigest = {
  * operations change nothing a scene digest would cover, so an effect for one travels without a digest
  * and the guard rules `unproven` rather than either verdict.
  */
-export function opDigestScope(op: LiveOp): LiveDigestScope | null {
+export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | null {
     switch (op.op) {
         case "insert-block":
         case "insert-blocks":
@@ -545,7 +589,7 @@ export function opDigestScope(op: LiveOp): LiveDigestScope | null {
         case "set-block-disabled":
         case "rename-scene": {
             const sceneId = opSceneId(op);
-            return sceneId === null ? null : { of: "scene", sceneId };
+            return sceneId === null ? null : { of: "scene", storyId, sceneId };
         }
         // Names a scene it does not change: the pointer moved, the scene did not, and a digest of it
         // would be a fingerprint of something this operation cannot have altered.
@@ -556,6 +600,7 @@ export function opDigestScope(op: LiveOp): LiveDigestScope | null {
         case "create-character":
             return { of: "character", characterId: op.character.profile.id };
         case "update-character":
+        case "delete-character":
             return { of: "character", characterId: op.characterId };
         case "set-character-group":
         case "delete-character-group":
@@ -566,7 +611,7 @@ export function opDigestScope(op: LiveOp): LiveDigestScope | null {
 /** Two scopes naming one unit. */
 export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): boolean {
     if (left.of === "scene") {
-        return right.of === "scene" && left.sceneId === right.sceneId;
+        return right.of === "scene" && left.storyId === right.storyId && left.sceneId === right.sceneId;
     }
     if (left.of === "character") {
         return right.of === "character" && left.characterId === right.characterId;
@@ -650,15 +695,22 @@ export type LiveEffect = {
     document: LiveDocument;
     op: LiveOp;
     /**
-     * The unit's content after applying, so a guest can prove it agrees.
+     * Every unit this effect changed, fingerprinted after applying, so a guest can prove it agrees.
      *
      * Disagreement is the most expensive way this design can fail: two documents that differ, each
      * written into its own history, with nothing anywhere reporting a problem. A guest that computes
      * a different digest leaves the session and says so.
      *
-     * Absent for the operations no unit covers - see {@link opDigestScope}.
+     * **A list rather than one, because an operation may change more than the unit it names.**
+     * Deleting a character rewrites the dialogue rows that spoke it, in any story - work every
+     * machine derives for itself rather than being sent - and derived work is exactly the kind that
+     * has to be checked, not assumed. The applier reports what it touched and each of those is
+     * fingerprinted here, so a machine that derived something else is caught on this message rather
+     * than on some later one that happens to reach the same scene.
+     *
+     * Empty for the operations no unit covers - see {@link opDigestScope}.
      */
-    digest?: LiveDigest;
+    digests?: readonly LiveDigest[];
     derived?: LiveDerived;
 };
 

@@ -1,5 +1,5 @@
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LiveDialogueRowRef, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
@@ -99,17 +99,8 @@ export type LiveInverseReason =
      * putting back a record somebody else deleted is not undoing an edit, it is making a character.
      */
     | "character-gone"
-    /**
-     * There is no verb that takes a creation back, because a session carries no character deletion.
-     *
-     * Deleting a character is not one document's operation: it rewrites every dialogue row in the
-     * project that the character speaks, across every story document, and a session carries one. The
-     * ruling already shipped for the other direction - promoting an unresolved speaker into a
-     * character, which creates a record and rebinds a row - and this is the same seam seen from the
-     * other side. Until an effect can carry operations on several documents at once, a character made
-     * inside a session is taken back by leaving it.
-     */
-    | "delete-unavailable";
+    /** The record this delete removed is in the cast again, so there is nothing left to put back. */
+    | "character-restored";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -191,6 +182,18 @@ export type LiveBefore =
      * delete, and the record says which of the two it was.
      */
     | { op: "set-character-group"; group: CharacterGroup | null }
+    /**
+     * The record itself, whole, where it sat, and the lines it was speaking.
+     *
+     * A delete names an id: the record is gone from the store by the time anybody asks, and no message
+     * in the session carries it. The rows are here for a sharper reason than the record is. Going
+     * down, the sweep is derived - every machine can ask "which rows does this character speak". Coming
+     * back up it cannot be: those rows now hold a bare NAME, and a name is not an identifier. Two
+     * characters may share one, and the author may have written more lines under it since the
+     * deletion. So the only correct answer to "which lines were this character's" is the one recorded
+     * at the moment they stopped being.
+     */
+    | { op: "delete-character"; character: StoredCharacter; at: number; spoke: readonly LiveDialogueRowRef[] }
     /**
      * The group itself and who was in it.
      *
@@ -331,6 +334,23 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "reorder-chapters":
             return { op: "reorder-chapters", chapterIds: document.chapters.map(chapter => chapter.id) };
 
+        case "delete-character": {
+            const record = cast.characters[op.characterId];
+            if (!record) {
+                return null;
+            }
+            const at = cast.order.indexOf(op.characterId);
+            return at < 0 ? null : {
+                op: "delete-character",
+                character: structuredClone(record),
+                at,
+                // Read before the sweep runs, which is the only moment these rows still say whose they
+                // are. Supplied by the caller, because finding them means walking every story and this
+                // module is handed documents rather than reaching for them.
+                spoke: [...(sources.spoke ?? [])],
+            };
+        }
+
         case "update-character": {
             const record = cast.characters[op.characterId];
             return record ? { op: "update-character", character: structuredClone(record) } : null;
@@ -367,6 +387,14 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
 export type LiveBeforeSources = {
     story?: StoryDocument | null;
     cast?: LiveCastView | null;
+    /**
+     * The dialogue rows the character about to be deleted is speaking, across every story.
+     *
+     * Passed in rather than derived here for the reason the rest of this module takes its documents
+     * as arguments: finding them is a walk over the whole project, and a rule that reached for a
+     * project could not be exercised without one.
+     */
+    spoke?: readonly LiveDialogueRowRef[];
 };
 
 /** Stand-ins for an absent source, so the cases below need no null check of their own. */
@@ -727,11 +755,33 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             return { op: { op: "reorder-chapters", chapterIds: [...before.chapterIds] } };
         }
 
-        case "create-character":
-            // Nothing takes it back. See `delete-unavailable`, which is a statement about the
-            // vocabulary rather than about this document: the record is right there and deletable the
-            // moment the session ends.
-            return { impossible: "delete-unavailable" };
+        case "create-character": {
+            const id = op.character.profile.id;
+            if (!cast.characters[id]) {
+                return { impossible: "character-gone" };
+            }
+            return { op: { op: "delete-character", characterId: id } };
+        }
+
+        case "delete-character": {
+            if (!before || before.op !== "delete-character") {
+                return { impossible: "no-record" };
+            }
+            if (cast.characters[op.characterId]) {
+                // Somebody put it back - a redo of this delete, or an undo somewhere else - and
+                // creating it again would be a second copy of one character under one id.
+                return { impossible: "character-restored" };
+            }
+            return {
+                op: {
+                    op: "create-character",
+                    character: structuredClone(before.character),
+                    // The lines this character was speaking when it went. Nothing else can answer
+                    // that now: they hold a bare name, and a name is not an identifier.
+                    rebind: [...before.spoke],
+                },
+            };
+        }
 
         case "update-character": {
             if (!before || before.op !== "update-character") {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveCharacterOp } from "@shared/live/ops";
 import { HistoryService } from "../history/HistoryService";
+import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
 import { CharacterService, type CharacterOpSink } from "./CharacterService";
 
@@ -172,21 +173,33 @@ describe("the cast's live-session seam", () => {
             expect(service.listGroups()).toHaveLength(1);
         });
 
-        it("refuses to delete a character at all, because a deletion reaches beyond the cast", () => {
+        it("hands a deletion over, and sweeps nothing here", async () => {
             const { service, sink, declining, taken, names } = createHarness();
             service.setOperationSink(declining);
             const ada = service.createCharacter("Ada");
             service.setOperationSink(sink);
 
-            // Deleting a character rewrites every dialogue row in the PROJECT that speaks it, across
-            // every story document, and a session carries one. Refused whole rather than applied
-            // partly - the same ruling as promoting an unresolved speaker into a character, seen
-            // from the other side.
-            return expect(service.deleteCharacter(ada.profile.getId())).resolves.toBe(false)
-                .then(() => {
-                    expect(taken).toEqual([]);
-                    expect(names()).toEqual(["Ada"]);
-                });
+            expect(await service.deleteCharacter(ada.profile.getId())).toBe(true);
+
+            // One operation, and the rows the character spoke are not in it: every machine finds them
+            // for itself from a cast and a set of stories the room already agrees on. Running the
+            // sweep here as well would write the same rows twice on this machine and once elsewhere.
+            expect(taken).toEqual([{ op: "delete-character", characterId: ada.profile.getId() }]);
+            expect(names()).toEqual(["Ada"]);
+        });
+
+        it("pushes no history entry for a deletion it handed over", async () => {
+            const { service, history, sink, declining } = createHarness();
+            service.setOperationSink(declining);
+            const ada = service.createCharacter("Ada");
+            service.setOperationSink(sink);
+
+            await service.deleteCharacter(ada.profile.getId());
+
+            // Inside a session undo is sending the inverse of one's own operation. An entry here would
+            // offer a second undo that writes straight to this machine's store - a local edit no
+            // effect carries, which is the divergence the whole design is built to make impossible.
+            expect(history.canUndo(projectHistoryScope())).toBe(false);
         });
     });
 

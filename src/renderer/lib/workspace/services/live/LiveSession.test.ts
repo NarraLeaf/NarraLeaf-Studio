@@ -285,6 +285,10 @@ function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
         case "update-character":
             cast.characters[op.characterId] = structuredClone(op.character);
             return;
+        case "delete-character":
+            delete cast.characters[op.characterId];
+            cast.order = cast.order.filter(id => id !== op.characterId);
+            return;
         case "set-character-group":
             cast.groups[op.groupId] = { ...op.group };
             for (const memberId of op.members ?? []) {
@@ -336,6 +340,14 @@ function createWindow(world: World, instance: string): Window {
         rooms: () => createRooms(world, instance, calls),
         story: {
             setSink: sink => service.setOperationSink(sink),
+            listStories: () => service.listStories().map(entry => entry.id),
+            loadAll: async () => {
+                for (const entry of service.listStories()) {
+                    await service.loadStory(entry.id);
+                }
+                return service.listStories().map(entry => entry.id);
+            },
+            rowsSpokenBy: () => [],
             document: storyId => {
                 try {
                     return service.getStoryDocument(storyId);
@@ -354,6 +366,7 @@ function createWindow(world: World, instance: string): Window {
             applyOp: op => {
                 calls.push(`cast:${op.op}`);
                 applyCastOp(window.cast, op);
+                return [];
             },
         },
         version: {
@@ -591,7 +604,7 @@ describe("a live session", () => {
 
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
-            expect(guest.freeze.armed?.writable).toEqual(liveSessionWritablePaths(other.id));
+            expect(guest.freeze.armed?.writable).toEqual(liveSessionWritablePaths(guest.story.listStories().map(e => e.id)));
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
 
@@ -654,7 +667,7 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.storyId),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id)),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
@@ -699,10 +712,10 @@ describe("a live session", () => {
                 seq: 1,
                 document: { doc: "story", storyId: guest.storyId },
                 op: { op: "rename-scene", sceneId: guest.sceneId, name: "Elsewhere" },
-                digest: {
-                    scope: { of: "scene", sceneId: guest.sceneId },
+                digests: [{
+                    scope: { of: "scene", storyId: guest.storyId, sceneId: guest.sceneId },
                     hash: "a-digest-nobody-computed",
-                },
+                }],
             }, "instance-host");
             await drain(world.bus);
             expect(guest.freeze.armed).toBeNull();
@@ -854,14 +867,34 @@ describe("a live session", () => {
             expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
         });
 
-        it("says why a creation cannot be taken back inside a session", async () => {
+        it("takes a creation back by deleting the record it made", async () => {
             await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // A deletion is a shared operation like any other, so the record goes everywhere it went.
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
+        });
+
+        it("carries a deletion to the other machine", async () => {
+            await openRoom();
+            await joinRoom();
             edit(host, { op: "create-character", character: record("c1", "Ada") });
             await drain(world.bus);
 
-            expect(host.session.undo()).toBe(false);
-            expect(host.session.getView().undoRefusal).toBe("delete-unavailable");
-            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+            edit(guest, { op: "delete-character", characterId: "c1" });
+            // Nothing is applied optimistically: the record is still there until the effect arrives.
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            await drain(world.bus);
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
         });
 
         it("refuses a record too large to travel, rather than sending half of it", async () => {
