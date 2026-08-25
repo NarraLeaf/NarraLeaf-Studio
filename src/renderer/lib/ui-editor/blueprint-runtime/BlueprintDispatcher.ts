@@ -1292,6 +1292,14 @@ export async function invokeBlueprintFnCall(options: {
      * as belonging to another surface.
      */
     callerComponentParams?: Record<string, string>;
+    /**
+     * Which drawing the call came from, carried into the body for the same reason as the params.
+     *
+     * Without it every widget the fn writes is addressed as the template rather than as this
+     * placement, so the write lands where nothing reads it and the widget goes on showing what the
+     * author typed - a failure that looks like the write never happened.
+     */
+    callerInstanceKey?: string;
     runtimeScopeId?: string;
     fnRef: string;
     args: Record<string, unknown>;
@@ -1367,6 +1375,7 @@ export async function invokeBlueprintFnCall(options: {
         hostAdapter,
         blueprintLocals,
         executionOwner,
+        instanceKey: options.callerInstanceKey,
         persistentVariables: options.persistentVariables,
         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
         signal: options.signal,
