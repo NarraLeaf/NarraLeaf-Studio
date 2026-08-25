@@ -65,6 +65,7 @@ export type NavigationEvent =
     | { type: "PREPAINT_READY"; entryKey: string }
     | { type: "ENTER_COMPLETE"; entryKey: string }
     | { type: "ALL_EXITED" }
+    | { type: "COLLAPSE_TO_ACTIVE" }
     | { type: "HIDE_ALL_FOR_GAME" };
 
 /** Wait parameters the controller uses to settle an open()/close() promise. */
@@ -181,6 +182,21 @@ export function reduceNavigation(state: NavigationState, event: NavigationEvent)
                     pendingWaitEntry: null,
                     presenceMode: "sync",
                     visibleEntries: [pendingEntry],
+                },
+            };
+        }
+        case "COLLAPSE_TO_ACTIVE": {
+            // The page on top becomes the whole stack. Only `Quit Game` asks for this, and only
+            // once its own transition has settled - so `visibleEntries` is already down to that
+            // page and nothing here is taken out from under an animation.
+            if (state.navStack.length <= 1) {
+                return { state };
+            }
+            const active = state.navStack[state.navStack.length - 1]!;
+            return {
+                state: {
+                    ...state,
+                    navStack: [active],
                 },
             };
         }

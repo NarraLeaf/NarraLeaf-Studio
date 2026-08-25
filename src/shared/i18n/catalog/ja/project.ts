@@ -452,10 +452,6 @@ export const project = {
         },
     },
     window: {
-        sizesTitle: "ウィンドウサイズ",
-        sizesDescription: "ゲームがプレイヤーに提示するサイズ。デザインサイズに対する倍率で、起動時は画面に収まる最大のものが選ばれます。",
-        sizeOption: "{percent}%",
-        sizeDimensions: "{width} × {height}",
         resizableTitle: "サイズ変更を許可",
         resizableDescription: "プレイヤーがウィンドウをドラッグしてサイズを変更できます。ステージは自身の比率を保って表示されます。",
         rememberTitle: "ウィンドウを記憶",

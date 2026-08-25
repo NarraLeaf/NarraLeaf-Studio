@@ -230,6 +230,30 @@ describe("navigationMachine", () => {
         expect(hidden.navStack).toEqual(opened.navStack);
     });
 
+    it("COLLAPSE_TO_ACTIVE leaves the page on top as the whole stack", () => {
+        const home = makeEntry("home");
+        const next = makeEntry("settings");
+        const { state: opened } = reduceNavigation(resetTo(home), {
+            type: "OPEN",
+            fromSurface: makeSurface("home"),
+            targetSurface: makeSurface("settings"),
+            currentHiddenForGame: false,
+            reducedMotion: false,
+            createNextEntry: () => next,
+        });
+        const { state: collapsed } = reduceNavigation(opened, { type: "COLLAPSE_TO_ACTIVE" });
+        expect(collapsed.navStack).toEqual([next]);
+        // Only the stack. What is on screen was settled by the transition that just finished, and
+        // re-deciding it here would take a page out from under its own animation.
+        expect(collapsed.visibleEntries).toEqual(opened.visibleEntries);
+    });
+
+    it("COLLAPSE_TO_ACTIVE leaves a stack that is already one page alone", () => {
+        const home = makeEntry("home");
+        const state = resetTo(home);
+        expect(reduceNavigation(state, { type: "COLLAPSE_TO_ACTIVE" }).state).toBe(state);
+    });
+
     it("reduced motion collapses transitions to zero duration", () => {
         const home = makeEntry("home");
         const next = makeEntry("settings");
