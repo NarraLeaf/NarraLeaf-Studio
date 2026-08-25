@@ -369,6 +369,24 @@ execute: async ctx => {
 
 编辑器本身没有游戏可读，因此节点在 Studio 内预览执行时 `ctx.game` 上的门控域全部缺席，节点必须能降级运行。
 
+### 数据输出引脚
+
+节点用 `execute()` 返回值里的 `outputValues` 发布自己声明的数据输出引脚，下游节点照常用连线读：
+
+```ts
+execute: async ctx => {
+  const rows = await loadRows(ctx);
+  return { nextPort: "next", outputValues: { entries: rows, count: rows.length } };
+},
+```
+
+⚠ **`isPure: true` 的节点做不到这件事。** pure 节点没有 exec 引脚，宓主的执行器永远走不到它，
+`execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
+**产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
+
+同样的道理，插件节点现在也进不了**控件属性的值绑定**（Blueprint Value 图）：
+那张调色板只收录经过审核的、无副作用的内建节点，因为值绑定会随依赖变化反复重跑。
+
 ## 构建要求
 
 如果用 TypeScript 或 React 编写插件，把源码按 target 打包为独立的 ESM 入口。Studio 会提供 `narraleaf-studio/plugin`、`narraleaf-studio/runtime` 和 React host runtime；这些包必须 external，避免把第二份 React 打进插件。

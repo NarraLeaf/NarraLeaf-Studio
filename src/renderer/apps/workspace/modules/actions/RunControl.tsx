@@ -782,31 +782,16 @@ export function RunControl() {
     // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
     // can trust at any moment" only holds while it cannot quietly have become something else, and a
     // setting one click deep in a menu is quiet.
-    /**
-     * What rides on the face, after the mode's own name.
-     *
-     * The variant whenever it is not the whole game, and the DLC count whenever any are ticked on.
-     * Both for one reason: "Dev Mode is the preview you can trust at any moment" only holds while it
-     * cannot quietly have become something else, and a setting one click deep in a menu is quiet. A
-     * run carrying extra content is not the package a player starts from, and this is the only place
-     * that says so.
-     *
-     * Nothing when none are on, which is the default and the plain thing.
-     */
-    const runSuffix = useMemo(() => {
-        const parts: string[] = [];
-        if (selectedVariant) {
-            parts.push(selectedVariant.name);
-        }
-        if (activeDlcCount > 0) {
-            parts.push(t("actions.run.dlcCount", { active: activeDlcCount, total: dlcs.length }));
-        }
-        return parts;
-    }, [activeDlcCount, dlcs.length, selectedVariant, t]);
-
+    //
+    // The DLC selection deliberately does NOT ride here. It is a set rather than a name, so the
+    // only thing it could add is a count - and a count is not what the face is for: the face says
+    // what this run IS, and every run is the game with whatever the author asked for beside it.
+    // The menu row states the count where it can be read against the list it counts.
     const runLabel = testActive
         ? t("test.statusBar.label")
-        : [t(meta.labelKey), ...runSuffix].join(" · ");
+        : selectedVariant
+            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
+            : t(meta.labelKey);
 
     return (
         <div className="relative flex items-center" ref={menuRef}>
