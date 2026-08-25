@@ -145,6 +145,19 @@ export class NavigationController {
         this.dispatch({ type: "PREPAINT_READY", entryKey });
     }
 
+    /**
+     * Throw away everything under the page currently on top.
+     *
+     * `Quit Game` ends a playthrough and lands the player on a page - but the pages beneath that
+     * one belong to the run: the screens the player had open over the stage, and the title screen
+     * they started from. They are hidden while the game is running and un-hidden the moment it
+     * ends, so without this Back from a freshly opened title screen walks into a playthrough that
+     * no longer exists.
+     */
+    public collapseToActive(): void {
+        this.dispatch({ type: "COLLAPSE_TO_ACTIVE" });
+    }
+
     /** The game stage covered the page stack: hide all current entries and settle any wait. */
     public hideAllForGame(): void {
         this.dispatch({ type: "HIDE_ALL_FOR_GAME" });

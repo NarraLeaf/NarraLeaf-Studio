@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { normalizeWindowScaleSteps, WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
+import { WINDOW_SCALE_DESIGN } from "@shared/types/appWindow";
 import { setActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { setActiveProjectFonts } from "@shared/typography/projectFonts";
 import { setActiveSaveSchemaFields } from "@shared/saves/saveSchemaRegistry";
@@ -721,17 +721,15 @@ function GameRuntimeSession() {
     }, [bridge]);
 
     /**
-     * The sizes this build offers, or none at all where the shell cannot size its own window.
-     *
-     * Read from the pack rather than asked of the shell: the list is the author's answer in
-     * `app.window`, and the shell only decides whether a window exists to apply it to.
+     * The sizes worth offering, measured by the shell against the display the window is on. None
+     * at all where the shell has no window it can size.
      */
-    const windowScaleOptions = useMemo<number[]>(
-        () => (bridge?.capabilities?.windowScale
-            ? normalizeWindowScaleSteps(pack?.bundle?.window?.scaleSteps)
-            : []),
-        [bridge, pack],
-    );
+    const getWindowScaleOptions = useCallback(async (): Promise<number[]> => {
+        if (!bridge?.capabilities?.windowScale) {
+            return [];
+        }
+        return (await bridge.getWindowScaleOptions?.()) ?? [];
+    }, [bridge]);
 
     const getWindowScale = useCallback(async (): Promise<number> => {
         return (await bridge?.getWindowScale?.()) ?? WINDOW_SCALE_DESIGN;
@@ -810,7 +808,7 @@ function GameRuntimeSession() {
             quitApplication,
             restartApplication,
             setDisplayAwake,
-            windowScaleOptions,
+            getWindowScaleOptions,
             getWindowScale,
             setWindowScale,
             getWindowSize,
@@ -847,7 +845,7 @@ function GameRuntimeSession() {
         resolveWeatherClip,
         runtimeReady,
         setDisplayAwake,
-        windowScaleOptions,
+        getWindowScaleOptions,
         getWindowScale,
         setWindowScale,
         getWindowSize,

@@ -260,14 +260,15 @@ export type GameAppHost = {
      */
     setDisplayAwake?: (awake: boolean) => void;
     /**
-     * The window sizes this build offers a player, as multiples of the game's design size.
+     * The window sizes worth offering this player, as multiples of the game's design size.
      *
-     * The author's own list, from `app.window` - EXCEPT where the shell has no window it can size,
-     * which answers with an empty list. A configuration screen builds its size row out of this
-     * (see the `Get Window Scale Options` node), so on the web export, in Dev Mode and in the story
-     * preview the row has nothing to draw rather than drawing a control that does nothing.
+     * Measured by the shell against the display the window is on, because which multiples fit is a
+     * fact about that screen and not about the project. Empty - or the whole capability absent -
+     * where the shell has no window it can size, so a configuration screen built from it (see the
+     * `Get Window Scale Options` node) draws no size row on the web export, in Dev Mode or in the
+     * story preview, rather than drawing a control that does nothing.
      */
-    windowScaleOptions?: number[];
+    getWindowScaleOptions?: () => Promise<number[]>;
     /**
      * Read and set the stage's size, as a multiple of the design size or in pixels.
      *

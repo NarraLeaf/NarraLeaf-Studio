@@ -1468,11 +1468,11 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
-            // Dev Mode carries every story the project has, DLC ones included, so every DLC that
-            // has content is here. Derived from the bundle rather than from the DLC registry: what
-            // an author can reach is what is loaded, and a DLC with nothing in it yet has no
-            // entrance to draw.
-            installedDlcIds: [...new Set(
+            // What the assembly says it carried, which for a Dev Mode run is exactly what the
+            // author ticked in Run - none of them until they do. The fallback is for a bundle
+            // assembled by a host that named no selection at all (a test, an older session): it
+            // carried every story, so every DLC with content is installed.
+            installedDlcIds: bundle.installedDlc ?? [...new Set(
                 (bundle.storyLibrary?.index.stories ?? [])
                     .map(story => story.dlcId?.trim())
                     .filter((id): id is string => Boolean(id)),

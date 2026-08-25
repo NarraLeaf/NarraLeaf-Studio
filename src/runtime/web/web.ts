@@ -187,6 +187,7 @@ const bridge: GameRuntimePreloadBridge = {
     // player a row that does nothing.
     getWindowScale: async () => 1,
     setWindowScale: async () => undefined,
+    getWindowScaleOptions: async () => [],
     getWindowSize: async () => ({ width: window.innerWidth, height: window.innerHeight }),
     setWindowSize: async () => undefined,
     getFullscreen: async () => document.fullscreenElement != null,

@@ -221,7 +221,7 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             capabilityId: "navigation.getWindowScaleOptions",
             purity: "effectful",
             callableFromBinding: false,
-            async: false,
+            async: true,
             input: {},
             output: [] as number[],
         },

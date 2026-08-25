@@ -3,7 +3,6 @@ import {
     DEFAULT_WINDOW_CONFIGURATION,
     nearestWindowScaleStep,
     normalizeWindowConfiguration,
-    normalizeWindowScaleSteps,
     WINDOW_SCALE_STEPS,
 } from "./appWindow";
 
@@ -20,26 +19,10 @@ describe("normalizeWindowConfiguration", () => {
             rememberGeometry: false,
             startFullscreen: true,
         })).toEqual({
-            scaleSteps: DEFAULT_WINDOW_CONFIGURATION.scaleSteps,
             resizable: false,
             rememberGeometry: false,
             startFullscreen: true,
         });
-    });
-});
-
-describe("normalizeWindowScaleSteps", () => {
-    it("always offers the design size", () => {
-        expect(normalizeWindowScaleSteps([])).toEqual([1]);
-        expect(normalizeWindowScaleSteps([0.5])).toEqual([0.5, 1]);
-    });
-
-    it("drops sizes this ladder does not have, and orders what is left", () => {
-        expect(normalizeWindowScaleSteps([2, 0.63, "1.5", 0.75, 0.75])).toEqual([0.75, 1, 2]);
-    });
-
-    it("falls back to the defaults when the field is not a list", () => {
-        expect(normalizeWindowScaleSteps("all")).toEqual(DEFAULT_WINDOW_CONFIGURATION.scaleSteps);
     });
 });
 
