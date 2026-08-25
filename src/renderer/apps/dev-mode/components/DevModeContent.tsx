@@ -1468,9 +1468,10 @@ export function DevModeContent(props: DevModeContentProps) {
             bundle,
             sessionKey: `${bundle.bundleId}:${bundle.revision}:${surface.id}`,
             entrySurfaceId: surface.id,
-            // What the assembly says it carried. Absent means it was told nothing and carried the
-            // lot, which is what Dev Mode does until an author switches one off in Run - so every
-            // DLC with content is installed. Stated, it is exactly the selection.
+            // What the assembly says it carried, which for a Dev Mode run is exactly what the
+            // author ticked in Run - none of them until they do. The fallback is for a bundle
+            // assembled by a host that named no selection at all (a test, an older session): it
+            // carried every story, so every DLC with content is installed.
             installedDlcIds: bundle.installedDlc ?? [...new Set(
                 (bundle.storyLibrary?.index.stories ?? [])
                     .map(story => story.dlcId?.trim())
