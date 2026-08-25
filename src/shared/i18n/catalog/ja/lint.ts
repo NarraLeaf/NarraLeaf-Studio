@@ -206,6 +206,7 @@ export const lint = {
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
             messageDlc: "指している DLC はプロジェクトに存在しない",
+            messageInputAction: "指している入力アクションはプロジェクトで宣言されていない",
         },
         blueprintElementRefMissing: {
             title: "ウィジェットの欠落",
@@ -264,6 +265,11 @@ export const lint = {
             title: "項目が見つかりません",
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
             message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
+        },
+        uiGestureAnsweredTwice: {
+            title: "二重に反応する操作",
+            description: "独自のポインター処理を持つウィジェットが、同じ操作に反応するページに置かれている",
+            message: "このページの {action} とこのウィジェットが同じ操作に反応するため、両方が実行される",
         },
         blueprintSaveFieldEmpty: {
             title: "未入力のセーブ項目",

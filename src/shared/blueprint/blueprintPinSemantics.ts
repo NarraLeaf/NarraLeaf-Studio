@@ -182,7 +182,8 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getEndings", "blueprint.game.isEndingReached", "blueprint.game.isDlcInstalled",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
-    "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.layer.isMounted",
+    "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.input.isActionHeld",
+    "blueprint.layer.isMounted",
     "blueprint.list.findItemByField", "blueprint.list.getEnabled", "blueprint.list.getItemAt",
     "blueprint.list.getItemCount", "blueprint.list.getItemField", "blueprint.list.getItemIndex",
     "blueprint.list.getItemKey", "blueprint.list.getItemProps", "blueprint.list.getItems",
@@ -235,7 +236,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
 const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.app.getFullscreen", "blueprint.app.getWindowScale",
     "blueprint.app.getWindowScaleOptions", "blueprint.app.getWindowSize",
-    "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
+    "blueprint.app.keepWindowOpen", "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
     "blueprint.app.setWindowSize", "blueprint.broadcast.send",
     "blueprint.button.setEnabled", "blueprint.button.setLabel", "blueprint.button.setPointer",
     "blueprint.button.setVariant", "blueprint.button.setVisible", "blueprint.container.setClipContent",
@@ -247,7 +248,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.element.button.setVariant", "blueprint.element.button.setVisible",
     "blueprint.element.container.setClipContent", "blueprint.element.container.setEnabled",
     "blueprint.element.container.setVariant", "blueprint.element.container.setVisible",
-    "blueprint.element.continueEventBubble", "blueprint.element.displayable.animateProperty",
+    "blueprint.element.displayable.animateProperty",
     "blueprint.element.displayable.setDisplay", "blueprint.element.displayable.setProperty",
     "blueprint.element.displayable.setVariant", "blueprint.element.displayable.stopAnimation",
     "blueprint.element.frame.setEnabled", "blueprint.element.frame.setParams",
@@ -265,7 +266,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.element.list.setSelectedItem", "blueprint.element.list.setVisible",
     "blueprint.element.slider.setEnabled", "blueprint.element.slider.setRange",
     "blueprint.element.slider.setValue", "blueprint.element.slider.setVisible",
-    "blueprint.element.stopEventBubble", "blueprint.element.switch.setChecked",
+    "blueprint.element.switch.setChecked",
     "blueprint.element.switch.setEnabled", "blueprint.element.switch.setVisible",
     "blueprint.element.switch.toggle", "blueprint.element.switch.turnOff",
     "blueprint.element.switch.turnOn", "blueprint.element.text.appendText",
@@ -332,6 +333,7 @@ const STEP_NODE_TYPES: readonly string[] = [
  * body is the exec-reachable subgraph below it inside its host event graph.
  */
 const EVENT_HEAD_NODE_TYPES: readonly string[] = [
+    "blueprint.event.head.action",
     "blueprint.event.head.afterSurfaceEnter", "blueprint.event.head.anyKeyDown",
     "blueprint.event.head.anyKeyUp", "blueprint.event.head.anyPreferenceChanged",
     "blueprint.event.head.appBoot", "blueprint.event.head.beforeSurfaceExit", "blueprint.event.head.blur",

@@ -166,6 +166,9 @@ import { createSessionGate } from "./sessionGate";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
+import type { BlueprintKeyboardEventLike } from "@shared/types/blueprint/graph";
+import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
+import { resolveSurfaceInputActionHits } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { isTextEntryTarget } from "./isTextEntryTarget";
 import { readNlrCharacterName } from "./nlrDialogReaders";
 import {
@@ -4189,8 +4192,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             }
             const payload = keyboardBlueprintPayload(event);
             const eventControl = getOrCreateDomEventPropagationControl(event);
-            // A widget-level keyboard handler may already have stopped propagation
-            // (Stop Event Bubble); documented semantics skip the app-level dispatch then.
+            // Inert for a key today, and kept anyway. An element head is a subscription rather than
+            // a claim, so nothing a widget runs can silence the surface any more - the one case that
+            // ever mattered, typing into a text field, is answered unconditionally above. What still
+            // reaches here is `Keep Window Open`, which stops propagation while a close request is
+            // being answered; a key arriving inside that window has no business starting anything.
             if (eventControl.isPropagationStopped()) {
                 return;
             }
@@ -4224,6 +4230,35 @@ export function GameApp(props: GameAppProps): ReactNode {
                     setSurfaceState: (key, value) => surfaceStore.set(key, value),
                     executionManager: core.executionManager,
                 });
+            }).then(() => {
+                // The keyboard half of the surface's declared actions.
+                //
+                // Here rather than beside the pointer half in `GameSurfaceRenderer`, because a key
+                // press is not aimed at anything: it belongs to whichever surface currently owns the
+                // keys, and that is a fact about the whole composite that only this level knows. For
+                // the same reason nothing consumes here - `consume` decides how far down the lanes
+                // under a pointer an input travels, and a key has no lanes under it.
+                if (eventName !== "keyDown" || eventControl.isPropagationStopped()) {
+                    return undefined;
+                }
+                const actionHits = resolveSurfaceInputActionHits({
+                    vocabulary: bundle.ui.uidoc.actions,
+                    enablements: activeSurface.actions,
+                    signal: { kind: "key", event: payload as BlueprintKeyboardEventLike },
+                });
+                return Promise.all(actionHits.map(hit => dispatchSurfaceBlueprintEvent({
+                    blueprintDocument: bundle.ui.localBlueprints,
+                    persistentVariables: bundle.ui.persistentVariables,
+                    surfaceId: activeSurface.id,
+                    runtimeScopeId: hostAdapterBundle.runtimeScopeId,
+                    eventName: UI_SURFACE_INPUT_ACTION_EVENT,
+                    eventPayload: { ...hit.payload },
+                    hostAdapter: hostAdapterBundle.hostAdapter,
+                    debug: core.debug,
+                    getSurfaceState: key => surfaceStore.get(key),
+                    setSurfaceState: (key, value) => surfaceStore.set(key, value),
+                    executionManager: core.executionManager,
+                }))).then(() => undefined);
             }).catch(err => host.log("error", normalizeError(err)));
         };
         const onKeyDown = (event: KeyboardEvent) => dispatchKeyboardEvent("keyDown", event);
@@ -4531,7 +4566,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             } catch (err) {
                 host.log("error", normalizeError(err));
             }
-            // Default is to close; a handler that ran Stop Event Bubble cancels it.
+            // Default is to close; a handler that ran `Keep Window Open` cancels it.
             return !eventControl.isPropagationStopped();
         });
     }, [activeSurface, bundle, core, host, hostAdapterBundle]);

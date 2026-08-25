@@ -35,6 +35,7 @@ import {
     type BlueprintOpenOptions,
 } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { ComponentLibraryPanel } from "./panel/ComponentLibraryPanel";
+import { InputActionLibraryPanel } from "./input/InputActionLibraryPanel";
 import { getComponentEditorSurfaceId, getComponentTabId } from "./editors/componentEditorAdapter";
 import { createBlueprintEntryEditorTab } from "../blueprint-lite/openBlueprintEditorTab";
 import type { BlueprintEntryTabPayload } from "../blueprint-lite/blueprintEntryTabId";
@@ -660,6 +661,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 uiService={uiService}
                 onOpenComponent={handleOpenComponent}
             />
+            <InputActionLibraryPanel documentService={documentService} uiService={uiService} />
             <ContextMenu
                 items={menuItems}
                 position={menuState.position}

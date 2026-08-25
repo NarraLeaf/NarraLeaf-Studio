@@ -48,6 +48,10 @@ import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
 import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
+    listBlueprintInputActionOptions,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/inputActionNodes";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
@@ -96,6 +100,7 @@ import type {
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
@@ -1612,6 +1617,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
             const def = blueprintNodeRegistry.get(node.type);
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE)) {
+                out[node.id] = {
+                    [BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE]: listBlueprintInputActionOptions({
+                        document: currentDocument,
+                        pickedId: String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? ""),
+                        unnamedLabel: t("blueprint.options.unnamedInputAction"),
+                        missingLabel: id => t("blueprint.options.missingInputAction", { id }),
+                    }),
+                };
+                continue;
+            }
             if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE)) {
                 const listElement = resolveFieldPickerList(node);
                 const structId = (listElement?.props as Record<string, unknown> | undefined)?.itemStructId;

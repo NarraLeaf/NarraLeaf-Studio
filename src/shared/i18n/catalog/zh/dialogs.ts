@@ -58,6 +58,7 @@ export const dialogs = {
         scene: "场景",
         chapter: "章节",
         component: "组件",
+        inputAction: "输入操作",
         asset: "资产",
         page: "页面",
         gameUi: "游戏 UI",
