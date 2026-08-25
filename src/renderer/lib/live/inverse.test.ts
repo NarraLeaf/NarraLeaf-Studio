@@ -1,7 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveCharacterOp, LiveEffect, LiveOp } from "@shared/live/ops";
+import type {
+    LiveCharacterOp,
+    LiveEffect,
+    LiveLocalizationOp,
+    LiveOp,
+    LiveVoiceOp,
+} from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { VoiceUnit } from "@shared/types/voice";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
     type StoryBlockId,
@@ -971,5 +979,127 @@ describe("what a caller has to keep", () => {
         const document = makeDocument();
         expect(captureBefore({ op: "update-block", sceneId: "s1", blockId: "stranger", payload: REWRITTEN }, { story: document })).toBeNull();
         expect(captureBefore({ op: "rename-scene", sceneId: "gone", name: "Corridor" }, { story: document })).toBeNull();
+    });
+});
+
+/* ---------------------------------------------------------- the translation and voice libraries */
+
+/** The library applier a machine runs, for both kinds: a null entry removes. */
+function applyLibrary<T>(units: Record<string, T>, entries: readonly { unitId: string; unit: T | null }[]): void {
+    for (const entry of entries) {
+        if (entry.unit === null) {
+            delete units[entry.unitId];
+        } else {
+            units[entry.unitId] = entry.unit;
+        }
+    }
+}
+
+const JA = "ja";
+
+function translation(target: string): LocalizationUnit {
+    return { target, sourceHash: "h", status: "translated" };
+}
+
+/** Capture, apply, and answer the effect - the library half of {@link perform}. */
+function performTranslation(
+    units: Record<string, LocalizationUnit>,
+    op: LiveLocalizationOp,
+    by = SELF,
+): Done {
+    const before = captureBefore(op, { translations: locale => (locale === JA ? units : null) });
+    applyLibrary(units, op.op === "set-translation" ? [{ unitId: op.unitId, unit: op.unit }] : op.units);
+    return {
+        effect: { kind: "effect", by, seq: ++seq, document: { doc: "localization", locale: JA }, op },
+        before,
+    };
+}
+
+function invertTranslation(units: Record<string, LocalizationUnit>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before });
+}
+
+describe("undoing what this window did to a language", () => {
+    it("puts the entry back to what it held", () => {
+        const units: Record<string, LocalizationUnit> = { "text-a": translation("遅いよ。") };
+        const done = performTranslation(units, {
+            op: "set-translation", locale: JA, unitId: "text-a", unit: translation("早いね。"),
+        });
+        expect(units["text-a"].target).toBe("早いね。");
+
+        const back = asOp(invertTranslation(units, done));
+        applyLibrary(units, back.op === "set-translation" ? [{ unitId: back.unitId, unit: back.unit }] : []);
+        expect(units["text-a"].target).toBe("遅いよ。");
+    });
+
+    it("undoes the FIRST translation of a line by putting the nothing back", () => {
+        // ⚠ The case a record that could not tell "there was no entry" from "nothing was kept" would
+        // make impossible to undo - and that is every line's first translation.
+        const units: Record<string, LocalizationUnit> = {};
+        const done = performTranslation(units, {
+            op: "set-translation", locale: JA, unitId: "text-a", unit: translation("遅いよ。"),
+        });
+        expect(done.before).toEqual({ op: "set-translation", unit: null });
+
+        expect(asOp(invertTranslation(units, done)))
+            .toEqual({ op: "set-translation", locale: JA, unitId: "text-a", unit: null });
+    });
+
+    it("takes back a whole import in one operation", () => {
+        // An import is one gesture, so taking it back is one press - the same bargain a paste makes
+        // in the story editor.
+        const units: Record<string, LocalizationUnit> = { "text-a": translation("old") };
+        const done = performTranslation(units, {
+            op: "set-translations",
+            locale: JA,
+            units: [
+                { unitId: "text-a", unit: translation("new") },
+                { unitId: "text-b", unit: translation("fresh") },
+            ],
+        });
+        expect(Object.keys(units).sort()).toEqual(["text-a", "text-b"]);
+
+        const inverse = asOp(invertTranslation(units, done)) as LiveLocalizationOp;
+        expect(inverse).toEqual({
+            op: "set-translations",
+            locale: JA,
+            units: [
+                { unitId: "text-a", unit: translation("old") },
+                // Never there before the import, so it goes back to not being there.
+                { unitId: "text-b", unit: null },
+            ],
+        });
+        applyLibrary(units, inverse.op === "set-translations" ? inverse.units : []);
+        expect(units).toEqual({ "text-a": translation("old") });
+    });
+
+    it("keeps nothing for a language this machine does not hold", () => {
+        // Not the same fact as "the entry was absent": nothing could be read, so there is nothing to
+        // put back and the undo says so rather than writing an emptiness nobody asked for.
+        expect(captureBefore(
+            { op: "set-translation", locale: "fr", unitId: "text-a", unit: translation("x") },
+            { translations: () => null },
+        )).toBeNull();
+    });
+
+    it("refuses to undo somebody else's translation", () => {
+        const units: Record<string, LocalizationUnit> = {};
+        const done = performTranslation(units, {
+            op: "set-translation", locale: JA, unitId: "text-a", unit: translation("遅いよ。"),
+        }, OTHER);
+        expect(asImpossible(inverseOf(done.effect, { self: SELF, before: done.before }))).toBe("not-mine");
+    });
+
+    it("undoes a take the same way, without a claim ever being involved", () => {
+        const takes: Record<string, VoiceUnit> = { "text-a": { assetId: "clip-1", sourceHash: "h", status: "linked" } };
+        const op: LiveVoiceOp = { op: "set-take", locale: JA, unitId: "text-a", unit: null };
+        const before = captureBefore(op, { takes: locale => (locale === JA ? takes : null) });
+        applyLibrary(takes, [{ unitId: "text-a", unit: null }]);
+
+        const effect: LiveEffect = {
+            kind: "effect", by: SELF, seq: ++seq, document: { doc: "voice", locale: JA }, op,
+        };
+        expect(asOp(inverseOf(effect, { self: SELF, before })))
+            .toEqual({ op: "set-take", locale: JA, unitId: "text-a", unit: { assetId: "clip-1", sourceHash: "h", status: "linked" } });
     });
 });

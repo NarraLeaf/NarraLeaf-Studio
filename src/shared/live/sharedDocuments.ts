@@ -1,6 +1,11 @@
-import { charactersSpec, storyDocumentSpec } from "@shared/documents/specs";
+import {
+    charactersSpec,
+    localizationDocumentSpec,
+    storyDocumentSpec,
+    voiceDocumentSpec,
+} from "@shared/documents/specs";
 import type { StoryId } from "@shared/types/story";
-import type { LiveDocument } from "./ops";
+import { sameLiveDocument, type LiveDocument } from "./ops";
 
 /**
  * Which documents a live session carries, and where each of them lives on disk.
@@ -34,21 +39,50 @@ import type { LiveDocument } from "./ops";
  * than it sounds: the alternative to rewriting those rows is leaving them pointing at a character
  * that no longer exists, which the compiler renders as "Unknown".
  *
- * So the set is every story plus the cast, and the entries are still `LiveDocument` **addresses**
- * rather than a document kind. That distinction stops mattering for stories the moment they are all
- * carried, and it goes on mattering for the next kind somebody adds: widening this to "every path of
- * every shared kind" would make a document writable while the host still refused operations about it,
+ * So the set is every story, the cast, and one translation library and one voice library per
+ * language - and the entries are `LiveDocument` **addresses** rather than document kinds. That
+ * distinction goes on mattering for every parameterised kind: widening this to "every path of every
+ * shared kind" would make a document writable while the host still refused operations about it,
  * which is an edit that lands on one machine and nowhere else with no digest over it.
+ *
+ * ⚠ **The languages are the ones a machine actually read, not the ones the project declares.** A
+ * library that could not be loaded is one no operation can be applied to - appliers are synchronous,
+ * so there is no later moment at which one could be fetched - and carrying it would be the same
+ * silent divergence one step removed. The caller passes what it loaded; see `LiveLocalizationPort`.
+ *
+ * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
+ * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
+ * for the length of a session and says so - which is the harmless half of the trade.
  */
 
+/** The languages a session carries libraries for. Two lists, because the two are configured apart. */
+export type LiveSessionLocales = {
+    /** Languages whose translations this machine holds. */
+    translations: readonly string[];
+    /** Languages whose voice takes this machine holds. */
+    voice: readonly string[];
+};
+
+/** No libraries at all - what a caller that has not read any passes. */
+export const NO_LIVE_LOCALES: LiveSessionLocales = { translations: [], voice: [] };
+
 /**
- * The documents a session carries: every story in the project, and the cast.
+ * The documents a session carries: every story in the project, the cast, and each language's two
+ * libraries.
  *
  * The cast is not parameterised - there is one per project - which is why it needs nothing from the
  * caller and why a session cannot be opened on "some of" it.
  */
-export function liveSessionDocuments(storyIds: readonly StoryId[]): readonly LiveDocument[] {
-    return [...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })), { doc: "characters" }];
+export function liveSessionDocuments(
+    storyIds: readonly StoryId[],
+    locales: LiveSessionLocales = NO_LIVE_LOCALES,
+): readonly LiveDocument[] {
+    return [
+        ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
+        { doc: "characters" },
+        ...locales.translations.map((locale): LiveDocument => ({ doc: "localization", locale })),
+        ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
+    ];
 }
 
 /**
@@ -65,26 +99,38 @@ export function liveDocumentPath(document: LiveDocument): string {
             return storyDocumentSpec.pathFor({ storyId: document.storyId });
         case "characters":
             return charactersSpec.pathFor();
+        case "localization":
+            return localizationDocumentSpec.pathFor({ locale: document.locale });
+        case "voice":
+            return voiceDocumentSpec.pathFor({ locale: document.locale });
     }
 }
 
 /**
- * Every path a session opened on `storyId` leaves writable.
+ * Every path a session over these documents leaves writable.
  *
  * What `WorkspaceFreezeReason`'s `writable` is built from. Nothing else may build it: a caller that
  * assembled the list itself would be the second representation this file exists to prevent.
  */
-export function liveSessionWritablePaths(storyIds: readonly StoryId[]): readonly string[] {
-    return liveSessionDocuments(storyIds).map(liveDocumentPath);
+export function liveSessionWritablePaths(
+    storyIds: readonly StoryId[],
+    locales: LiveSessionLocales = NO_LIVE_LOCALES,
+): readonly string[] {
+    return liveSessionDocuments(storyIds, locales).map(liveDocumentPath);
 }
 
 /**
- * Whether a session over `storyIds` carries this document.
+ * Whether a session over these documents carries this one.
  *
- * The host's half of the same table. A story is compared against the set rather than assumed, because
- * a story created *during* a session is in nobody else's copy - the room agreed a revision on the way
- * in, and a document that was not in it is one the others cannot apply an operation to.
+ * The host's half of the same table. Every parameterised kind is compared against the set rather
+ * than assumed, because a document created *during* a session is in nobody else's copy - the room
+ * agreed a revision on the way in, and a document that was not in it is one the others cannot apply
+ * an operation to.
  */
-export function liveSessionCarries(storyIds: readonly StoryId[], document: LiveDocument): boolean {
-    return document.doc === "characters" || storyIds.includes(document.storyId);
+export function liveSessionCarries(
+    storyIds: readonly StoryId[],
+    document: LiveDocument,
+    locales: LiveSessionLocales = NO_LIVE_LOCALES,
+): boolean {
+    return liveSessionDocuments(storyIds, locales).some(carried => sameLiveDocument(carried, document));
 }

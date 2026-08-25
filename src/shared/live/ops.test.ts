@@ -144,6 +144,8 @@ describe("the operation vocabulary", () => {
             "delete-blocks",
             "delete-character",
             "set-block-disabled",
+            "set-translation",
+            "set-translations",
             "update-block",
             "update-blocks",
             "update-character",
@@ -151,6 +153,18 @@ describe("the operation vocabulary", () => {
         for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
+    });
+
+    it("claims a translation and not a voice take, which is the same test applied twice", () => {
+        // The translation field IS the working copy while a translator types - a contentEditable the
+        // browser edits, reaching the document on Enter or blur - so the loser of a race loses the
+        // line they were halfway through writing, silently. A take is dropped on a row and approved
+        // with a button; the one drafted thing on it is a short direction note, and its loser can
+        // read the winner's in the box.
+        expect(CLAIMED_OPS.has("set-translation")).toBe(true);
+        expect(CLAIMED_OPS.has("set-translations")).toBe(true);
+        expect(CLAIMED_OPS.has("set-take")).toBe(false);
+        expect(CLAIMED_OPS.has("set-takes")).toBe(false);
     });
 
     it("claims a character record, and does not claim the cast's order or its groups", () => {

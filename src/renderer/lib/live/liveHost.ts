@@ -1,6 +1,7 @@
 import {
     CLAIMED_OPS,
     characterClaimKey,
+    opAddresses,
     opBelongsTo,
     opClaimKeys,
     opDigestScope,
@@ -22,7 +23,7 @@ import {
     storyRowClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries } from "@shared/live/sharedDocuments";
+import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -51,6 +52,14 @@ export type LiveHostDeps = {
      * refused, and the set it is compared against has to be the same one the write boundary uses.
      */
     stories: readonly StoryId[];
+    /**
+     * The languages whose libraries this session carries.
+     *
+     * Beside {@link stories} rather than folded into it because the two are settled differently: the
+     * stories are the project's, and these are the ones this machine actually managed to read on the
+     * way in. Both go to the same table.
+     */
+    locales?: LiveSessionLocales;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -87,7 +96,7 @@ export type LiveHostDeps = {
      * each machine rather than sent - so it is precisely the work that has to be fingerprinted rather
      * than assumed. Naming those scenes here is what puts them in {@link LiveEffect.digests}.
      */
-    applyOp(op: LiveOp, document: LiveDocument): readonly LiveDigestScope[] | void;
+    applyOp(op: LiveOp, document: LiveDocument, derived?: LiveDerived): readonly LiveDigestScope[] | void;
     /** The next number in the host's application order. Called once per effect, after it is applied. */
     nextSeq(): number;
     /**
@@ -152,6 +161,10 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "delete-character": true,
     "set-character-group": true,
     "delete-character-group": true,
+    "set-translation": true,
+    "set-translations": true,
+    "set-take": true,
+    "set-takes": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -236,7 +249,7 @@ export class LiveHost {
      * `clientId` on an effect means.
      */
     public applyLocal(op: LiveOp, document: LiveDocument, derived?: LiveDerived): LiveEffect | LiveRefusal {
-        if (!liveSessionCarries(this.deps.stories, document) || !opBelongsTo(op, document)) {
+        if (!this.carries(document) || !opBelongsTo(op, document) || !opAddresses(op, document)) {
             return this.refuse(undefined, "document-not-shared");
         }
         return this.perform(op, this.deps.self, undefined, derived, document);
@@ -292,8 +305,8 @@ export class LiveHost {
         // about this room; whether the operation could be about it is a fact about the message, and a
         // message whose two halves disagree is malformed rather than out of scope. Folding them would
         // report a build mismatch as "not shared" and send somebody looking in the wrong place.
-        if (!intent.document || !liveSessionCarries(this.deps.stories, intent.document)
-            || !opBelongsTo(intent.op, intent.document)) {
+        if (!intent.document || !this.carries(intent.document)
+            || !opBelongsTo(intent.op, intent.document) || !opAddresses(intent.op, intent.document)) {
             return this.refuse(intent.clientId, "document-not-shared");
         }
         return this.perform(intent.op, from, intent.clientId, intent.derived, intent.document);
@@ -326,7 +339,7 @@ export class LiveHost {
                 this.positions.remember(scene, applied.blockId);
             }
         }
-        const alsoTouched = this.deps.applyOp(applied, document) ?? [];
+        const alsoTouched = this.deps.applyOp(applied, document, derived) ?? [];
         if (applied.op === "delete-block") {
             // Nobody is writing a row that is gone.
             this.claims.forget(storyRowClaimKey(applied.blockId));
@@ -581,6 +594,27 @@ export class LiveHost {
                 // the second of two deletions changes nothing, and refusing it would report a
                 // conflict where there is only agreement.
                 return { op };
+
+            case "set-translation":
+            case "set-translations":
+                // ⚠ The claim check, and nothing else. There is deliberately no "entry is gone"
+                // refusal to pair with `row-gone`: in this document absence is a value rather than a
+                // state to be found missing, so an operation that names an entry nobody has is a
+                // translator writing the first one - which is the ordinary case, not a race. What
+                // CAN be raced is a line somebody is halfway through translating, and that is
+                // exactly what the claim covers.
+                //
+                // The locale is not checked here either. Whether this session speaks for that
+                // language was settled before `plan` was reached, by the same table the write
+                // boundary reads - see `carries` and `opAddresses`.
+                return this.claimed(op, by) ?? { op };
+
+            case "set-take":
+            case "set-takes":
+                // Last-writer-wins, and unclaimed: a take is dropped on a row and approved with a
+                // button, and the one drafted thing on it is a short direction note. See
+                // `CLAIMED_OPS` for the test both answers come from.
+                return { op };
         }
     }
 
@@ -677,6 +711,11 @@ export class LiveHost {
 
     private isMember(instance: string): boolean {
         return this.deps.isMember ? this.deps.isMember(instance) : true;
+    }
+
+    /** Whether this session speaks for a document, asked of the one table both halves read. */
+    private carries(document: LiveDocument): boolean {
+        return liveSessionCarries(this.deps.stories, document, this.deps.locales ?? NO_LIVE_LOCALES);
     }
 }
 
