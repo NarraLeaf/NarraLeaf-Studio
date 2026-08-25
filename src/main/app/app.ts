@@ -43,6 +43,7 @@ import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
+import { decideReopenAction } from "./application/reopenAction";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -538,11 +539,37 @@ export class App extends BaseApp {
     }
 
     /**
+     * macOS: the Dock icon was clicked, or Studio was otherwise reopened while already running.
+     *
+     * The rule, and why it is not simply "show the home screen", is in `decideReopenAction`. All
+     * this adds is the reading of the windows it decides from, and the raising of the most recently
+     * opened one when the reopen brought nothing forward by itself.
+     */
+    public handleReopen(hasVisibleWindows: boolean): void {
+        const onScreen = this.windowManager.getWindows()
+            .filter(window => !window.isClosed() && (window.win.isVisible() || window.win.isMinimized()));
+        const action = decideReopenAction({ hasVisibleWindows, windowsOnScreen: onScreen.length });
+
+        if (action === "launcher") {
+            void this.revealLauncher();
+            return;
+        }
+        if (action === "raise") {
+            const front = onScreen[onScreen.length - 1];
+            if (front.win.isMinimized()) {
+                front.win.restore();
+            }
+            front.focus();
+        }
+    }
+
+    /**
      * Bring the home screen in front of the user, opening it if they closed everything.
      *
      * The entry point for every "get me back into Studio" gesture now that closing the last
-     * window no longer ends the session: the tray item and its Open Launcher row, macOS's dock
-     * `activate`, and a second launch handing its intent to the running instance.
+     * window no longer ends the session: the tray item and its Open Launcher row, a second launch
+     * handing its intent to the running instance, and a macOS reopen that found nothing to come
+     * back to (see {@link handleReopen}).
      *
      * Restores before focusing because a minimized window is the common case for the tray - and
      * `focus()` alone leaves a minimized window minimized.
