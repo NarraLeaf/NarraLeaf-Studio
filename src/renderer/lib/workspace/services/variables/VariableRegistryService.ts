@@ -1,3 +1,4 @@
+import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { variableRegistrySpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
@@ -33,6 +34,22 @@ type VariableRegistryServiceEvents = {
 };
 
 /**
+ * Everything about a registry except when it was last written, as one comparable string.
+ *
+ * The document's own canonical encoder, so that two registries compare equal exactly when they would
+ * produce the same file - key order included, which a hand-rolled walk over `entries` would get
+ * wrong the moment a mutation reinserted a key.
+ *
+ * `meta` is dropped by rest, not by naming the fields to keep, so a field added to the registry later
+ * is compared without anybody remembering to add it here. The one thing that must NOT be compared is
+ * the timestamp this exists to decide about.
+ */
+function contentKey(registry: VariableRegistry): string {
+    const { meta: _meta, ...content } = registry;
+    return encodeCanonicalJson(content);
+}
+
+/**
  * Project-level variable registry (M-VAR). Owns `editor/variables.json`: the project-scoped variable
  * definitions - `saved` and `persistent` - authored from the variables panel. Mirrors
  * {@link UIGraphService} (single project JSON, migrate-on-load, revision + debounced autosave,
@@ -58,6 +75,13 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      */
     private unreadable: DocumentCorruptError | null = null;
     private readonly events = new EventEmitter<VariableRegistryServiceEvents>();
+    /**
+     * {@link contentKey} of what is on disk, or null when nothing has been read or written yet.
+     *
+     * A string rather than the registry itself because {@link applyRegistryMutation} mutates the
+     * live object in place: a kept reference would compare equal to every later state of it.
+     */
+    private savedContentKey: string | null = null;
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
@@ -114,6 +138,11 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         // project switch, and a latch left set by the previous project would make the next one's
         // first save refuse - i.e. one broken project would follow the author into every other.
         this.unreadable = null;
+        // Same reasoning, and the failure it prevents is worse: two projects whose registries are
+        // both empty have the same content key, so a stale one would make the seeding write below
+        // decide it had nothing to do and leave the new project with no `editor/variables.json` at
+        // all.
+        this.savedContentKey = null;
 
         if (result.status === "missing") {
             // The registry is created on first open rather than lazily, so a project that predates
@@ -130,6 +159,10 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
             reportUnreadableDocument(this.getContext(), result);
         } else {
             this.registry = result.document;
+            // What is on disk right now, so that a save which would reproduce it writes nothing. Set
+            // only here: after a corrupt read the in-memory registry is empty and stands for nothing
+            // on disk, and `save` refuses outright while `unreadable` is set anyway.
+            this.savedContentKey = contentKey(this.registry);
         }
 
         this.revision = 0;
@@ -139,6 +172,25 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         return this.registry;
     }
 
+    /**
+     * Write the registry, **unless doing so would only move the clock.**
+     *
+     * The declaration migration in {@link activate} re-runs on every open of a project that still
+     * holds project-scoped rows, and it re-runs by design: it has no "already done" flag, because a
+     * flag on a frozen project would record itself as done having written nothing. Its second run
+     * assigns the same entries the first one did, so the registry it hands here is byte-identical to
+     * the one on disk - and stamping `updatedAt` regardless turned that into a real change to the
+     * file, every time the project was opened, on every machine.
+     *
+     * ⚠ **That is not cosmetic; it is what makes two machines unable to share a project.** Both open
+     * it, both rewrite `editor/variables.json` with their own clock, and the next sync is a conflict
+     * on a document neither author touched - which then blocks joining a live session, because
+     * joining takes a checkpoint and syncs first. Measured on real machines: timestamps 115 ms and
+     * 813 ms apart, conflicting three times out of three.
+     *
+     * So the timestamp says when the registry last *changed*, which is what a timestamp on a
+     * document is for, and a save with nothing to say leaves the file alone entirely.
+     */
     public async save(registry: VariableRegistry): Promise<void> {
         if (this.unreadable) {
             throw new RendererError(
@@ -148,6 +200,19 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         }
         // This write supersedes whatever the timer was going to do.
         this.autoSaver.cancel();
+
+        const key = contentKey(registry);
+        if (key === this.savedContentKey) {
+            // Nothing to write. The bookkeeping still runs: the caller asked for a save and is
+            // entitled to be clean afterwards, and a dirty flag left standing here would have the
+            // shell reporting unsaved work that does not exist.
+            this.registry = registry;
+            this.lastSavedRevision = this.revision;
+            this.setDirty(false);
+            this.events.emit("registryChanged", this.registry);
+            return;
+        }
+
         const updated: VariableRegistry = {
             ...registry,
             meta: {
@@ -157,6 +222,7 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         };
         await saveDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor(), updated);
         this.registry = updated;
+        this.savedContentKey = key;
         this.lastSavedRevision = this.revision;
         this.setDirty(false);
         this.events.emit("registryChanged", this.registry);
