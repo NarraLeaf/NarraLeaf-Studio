@@ -33,7 +33,9 @@ import { parseVcsRemoteUrl } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
-import { NO_DOCUMENT_NAMES, documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
+import type { DocumentNameContext } from "@/lib/vcs/documentName";
+import { documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
+import { useDocumentNames } from "@/lib/vcs/storyTitles";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -617,7 +619,19 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
  * rather than running one whenever a row was opened.
  */
+/**
+ * The one side this rail is ever about.
+ *
+ * The rail lists what has changed on disk, so the titles it needs are the ones on disk. Held as a
+ * module constant rather than written at the call site because `useDocumentNames` keys its read on
+ * the identity of the sides it is given.
+ */
+const WORKING_TREE_SIDES = { before: null, after: { at: "working-tree" } } as const;
+
 export function ChangesSection({ surface }: { surface: VersionSurface }) {
+    // Named the way the comparison names them, so one story is not `Demo` in the comparison and an
+    // id in the rail beside it.
+    const names = useDocumentNames(WORKING_TREE_SIDES);
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
@@ -678,7 +692,7 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
                     {view.rows.map(file => (
-                        <ChangeRow key={file.path} file={file} />
+                        <ChangeRow key={file.path} file={file} names={names} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -714,12 +728,12 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
  * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
  * has burned us before.
  */
-function ChangeRow({ file }: { file: VcsFileChange }) {
+function ChangeRow({ file, names }: { file: VcsFileChange; names: DocumentNameContext }) {
     const { t } = useTranslation();
     // What the author calls this thing, not the file it is stored in. The rail has no comparison
     // to read a story's title out of, so a document that has a name of its own is qualified by its
     // id rather than given a title this surface cannot see - the whole path is in the tooltip.
-    const name = renderDocumentName(documentNameOf(file.path, NO_DOCUMENT_NAMES), t);
+    const name = renderDocumentName(documentNameOf(file.path, names), t);
     const Icon = CHANGE_ICONS[file.kind];
     // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
     // renamed or missing one is a type error here rather than a string that renders as itself.
