@@ -85,28 +85,41 @@ export class LiveDivergenceGuard {
     /**
      * Weigh one effect against what this machine made of the same unit after applying it.
      *
-     * `computed` is null when the unit could not be read, which is the guest saying it has nothing
-     * to offer rather than saying it disagrees. ⚠ A **deleted** character record is not that case:
-     * absence is a value the cast's digest can state, so a machine that failed to apply a deletion is
-     * caught rather than excused. See `characterRecordDigest`.
+     * `compute` is asked once per unit the effect fingerprinted - an operation may change more than
+     * the one it names, and derived work is exactly what has to be checked - and answers null when
+     * this machine has nothing to offer about that unit. Null is "nothing was compared", never "they
+     * agree". ⚠ A **deleted** character record is not that case: absence is a value the cast's digest
+     * can state, so a machine that failed to apply a deletion is caught rather than excused. See
+     * `characterRecordDigest`.
+     *
+     * An effect whose every unit answered null is `unproven` as a whole, which is what keeps a run of
+     * them from reading as a clean bill of health.
      */
-    public check(effect: LiveEffect, computed: string | null): LiveDivergenceRuling {
+    public check(effect: LiveEffect, compute: (scope: LiveDigestScope) => string | null): LiveDivergenceRuling {
         if (this.ruling) {
             // Answered, not re-asked. See the field.
             return this.ruling;
         }
-        const carried = effect.digest;
-        if (carried === undefined || computed === null) {
-            return { verdict: "unproven" };
+        let agreed = false;
+        for (const carried of effect.digests ?? []) {
+            const computed = compute(carried.scope);
+            if (computed === null) {
+                // This machine has nothing to offer about that unit. Not agreement, and not
+                // disagreement either - so it neither settles the effect nor condemns it.
+                continue;
+            }
+            if (carried.hash !== computed) {
+                // The first mismatch decides. Weighing the rest would only produce more evidence for
+                // a ruling already made, and the session is over either way.
+                this.ruling = {
+                    verdict: "diverged",
+                    divergence: { scope: carried.scope, seq: effect.seq, expected: carried.hash, computed },
+                };
+                return this.ruling;
+            }
+            agreed = true;
         }
-        if (carried.hash === computed) {
-            return { verdict: "agreed" };
-        }
-        this.ruling = {
-            verdict: "diverged",
-            divergence: { scope: carried.scope, seq: effect.seq, expected: carried.hash, computed },
-        };
-        return this.ruling;
+        return agreed ? { verdict: "agreed" } : { verdict: "unproven" };
     }
 
     /**

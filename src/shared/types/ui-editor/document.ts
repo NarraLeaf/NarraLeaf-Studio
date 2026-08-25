@@ -1,5 +1,6 @@
 import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
+import type { UIInputActionDef, UISurfaceActionEnablement, UISurfaceInputMode } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
@@ -31,6 +32,16 @@ export type UIDocument = {
      * an implicit library safe to edit are in `struct.ts`.
      */
     structs?: Record<UIStructId, UIStructDef>;
+    /**
+     * What the gestures of this project mean, keyed by id.
+     *
+     * The vocabulary half of the input model: "advance", "skip", "open the menu" - named once for
+     * the whole project, with the bindings a surface gets unless it says otherwise. A surface stores
+     * only the id, in {@link UISurface.actions}, so renaming an action here renames it everywhere
+     * and rebinding it rebinds every surface that took the default. The rules are in
+     * `inputAction.ts`.
+     */
+    actions?: Record<string, UIInputActionDef>;
     meta?: UIDocumentMeta;
 };
 
@@ -58,6 +69,17 @@ export type UIAppSurface = {
     designSize: UISurfaceDesignSize;
     rootElementId: UIElementId;
     settings?: UISurfaceSettings;
+    /**
+     * What this surface does with input that lands on it. Absent means `capture` (see
+     * `UI_SURFACE_DEFAULT_INPUT_MODE`), which is what every surface authored before the field
+     * existed already did.
+     */
+    input?: UISurfaceInputMode;
+    /**
+     * Which of the project's actions this surface answers, and how. An id here names an entry of
+     * {@link UIDocument.actions}; absent means it answers none of them.
+     */
+    actions?: UISurfaceActionEnablement[];
 };
 
 export type UIStageSurface = {
@@ -70,6 +92,10 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
+    /** @see UIAppSurface.input */
+    input?: UISurfaceInputMode;
+    /** @see UIAppSurface.actions */
+    actions?: UISurfaceActionEnablement[];
 };
 
 export type UISurface = UIAppSurface | UIStageSurface;

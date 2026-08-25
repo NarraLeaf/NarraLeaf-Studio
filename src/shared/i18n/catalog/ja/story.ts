@@ -137,7 +137,7 @@ export const story = {
         undoSubtreeLost: "中にあった行は戻せない",
         undoChaptersChanged: "チャプターがその手順の記録と一致しない",
         undoCharacterGone: "そのキャラクターは存在しない",
-        undoDeleteUnavailable: "リアルタイムセッション中はキャラクターを削除できない",
+        undoCharacterRestored: "そのキャラクターは名簿に戻っている",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の

@@ -143,7 +143,7 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "subtree-lost": "story.live.undoSubtreeLost",
     "chapters-changed": "story.live.undoChaptersChanged",
     "character-gone": "story.live.undoCharacterGone",
-    "delete-unavailable": "story.live.undoDeleteUnavailable",
+    "character-restored": "story.live.undoCharacterRestored",
 };
 
 export function liveUndoRefusalSentence(reason: LiveUndoRefusalReason): TranslationKey | null {

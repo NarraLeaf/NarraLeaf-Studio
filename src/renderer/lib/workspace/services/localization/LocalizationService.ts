@@ -24,6 +24,7 @@ import {
     isValidLocalizationKeyName,
     type LocaleFallbackConflict,
 } from "@shared/types/localization";
+import type { LiveLocalizationOp } from "@shared/live/ops";
 import { hashSourceText } from "@shared/utils/localizationText";
 import { normalizeExchangeStatus, type TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { StoryDocument } from "@shared/types/story";
@@ -71,6 +72,30 @@ function describeFallbackConflict(conflict: LocaleFallbackConflict, code: string
     }
 }
 
+/**
+ * Somewhere a translation edit can go instead of into the library.
+ *
+ * **The seam a live session hangs the translations off, and the reason the localization table needs
+ * no live-session code.** The shape is `StoryOpSink`'s and the bargain is the same: with a sink
+ * installed an edit becomes an operation and the document is not touched; the row moves when the
+ * operation comes back as somebody's effect and {@link LocalizationService.applyLiveOp} applies it.
+ * Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * This service needed none of the cast's contortions. Every editing gesture in the table ends at
+ * `updateUnit`, and an import ends at `applyImportedRows`, so the sink is asked *before* the
+ * document moves - exactly as the story's is - and what it is handed is the entry as it would have
+ * been written rather than the patch that was asked for.
+ */
+export type LocalizationOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the library must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveLocalizationOp): boolean;
+};
+
 export type TranslationImportSummary = {
     /** Units written (created or changed). */
     applied: number;
@@ -87,6 +112,8 @@ export class LocalizationService extends Service<LocalizationService> implements
     private readonly dirtyLocales = new Set<string>();
     private keysDocument: LocalizationKeysDocument | null = null;
     private keysDirty = false;
+    /** Where translation edits go instead of into the library, when something else owns them. */
+    private opSink: LocalizationOpSink | null = null;
     private readonly events = new EventEmitter<LocalizationServiceEvents>();
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
@@ -275,26 +302,71 @@ export class LocalizationService extends Service<LocalizationService> implements
     public updateUnit(locale: string, unitId: string, sourceText: string, patch: LocalizationUnitPatch): LocalizationDocument {
         const document = this.requireLoadedDocument(locale);
         const existing = document.units[unitId];
+        const unit = this.unitFromPatch(existing, sourceText, patch);
+        if (unit === null && !existing) {
+            return document;
+        }
+        // The sink is asked with the entry as it WOULD have been written, never with the patch: a
+        // patch states an intention and every machine would have to resolve it against its own copy,
+        // which is how two libraries come to hold two different things from one gesture. See
+        // {@link LocalizationOpSink}.
+        if (this.opSink?.handle({ op: "set-translation", locale, unitId, unit })) {
+            return document;
+        }
+        return this.writeUnits(locale, document, [{ unitId, unit }]);
+    }
+
+    /**
+     * The entry a patch produces, or null when the line ends up with no entry at all.
+     *
+     * Pulled out of {@link updateUnit} because it is now needed one step earlier: the operation a
+     * session sends has to carry the result, so the result has to exist before anybody decides
+     * whether the document is going to be touched.
+     *
+     * ⚠ Clearing the target and the note removes the entry rather than writing an empty one, and
+     * that is the document's own rule rather than a shortcut - an entry holding an empty string is
+     * exactly what an untranslated line already looks like.
+     */
+    private unitFromPatch(
+        existing: LocalizationUnit | undefined,
+        sourceText: string,
+        patch: LocalizationUnitPatch,
+    ): LocalizationUnit | null {
         const target = patch.target !== undefined ? patch.target : existing?.target ?? "";
         const note = patch.note !== undefined ? (patch.note.trim() ? patch.note : undefined) : existing?.note;
-        const units = { ...document.units };
         if (!target && !note) {
-            if (!existing) {
-                return document;
+            return null;
+        }
+        const status: LocalizationUnitStatus = patch.status
+            ?? (patch.target !== undefined
+                ? (target ? "translated" : "untranslated")
+                : existing?.status ?? "untranslated");
+        return {
+            target,
+            sourceHash: hashSourceText(sourceText),
+            status,
+            ...(note ? { note } : {}),
+        };
+    }
+
+    /**
+     * Write entries into one locale's library, whichever path asked for it.
+     *
+     * The one place the map is replaced, so an ordinary edit, an import and an arriving effect all
+     * mark the same things dirty and raise the same event. A null entry removes.
+     */
+    private writeUnits(
+        locale: string,
+        document: LocalizationDocument,
+        entries: readonly { unitId: string; unit: LocalizationUnit | null }[],
+    ): LocalizationDocument {
+        const units = { ...document.units };
+        for (const entry of entries) {
+            if (entry.unit === null) {
+                delete units[entry.unitId];
+            } else {
+                units[entry.unitId] = entry.unit;
             }
-            delete units[unitId];
-        } else {
-            const status: LocalizationUnitStatus = patch.status
-                ?? (patch.target !== undefined
-                    ? (target ? "translated" : "untranslated")
-                    : existing?.status ?? "untranslated");
-            const unit: LocalizationUnit = {
-                target,
-                sourceHash: hashSourceText(sourceText),
-                status,
-                ...(note ? { note } : {}),
-            };
-            units[unitId] = unit;
         }
         const next: LocalizationDocument = { ...document, units };
         this.documents.set(locale, next);
@@ -500,6 +572,16 @@ export class LocalizationService extends Service<LocalizationService> implements
         const document = this.requireLoadedDocument(locale);
         const summary: TranslationImportSummary = { applied: 0, unchanged: 0, unknown: 0, skippedEmpty: 0 };
         const units = { ...document.units };
+        /**
+         * Only the entries this import actually changes, in the order the file named them.
+         *
+         * ⚠ **An import is ONE gesture and travels as one operation.** Sent as a run of
+         * `set-translation`s it would draw a partly-imported library on every other screen, put
+         * somebody else's edit in the middle of it, and cost the translator a press of undo per row
+         * where the same import outside a session costs one. Collected rather than derived from
+         * `units` afterwards because the rows the import left alone are not part of it.
+         */
+        const changed: { unitId: string; unit: LocalizationUnit }[] = [];
         for (const row of rows) {
             const currentSource = currentSourceByUnit.get(row.unitId);
             if (currentSource === undefined) {
@@ -534,16 +616,96 @@ export class LocalizationService extends Service<LocalizationService> implements
                 continue;
             }
             units[row.unitId] = unit;
+            changed.push({ unitId: row.unitId, unit });
             summary.applied += 1;
         }
         if (summary.applied > 0) {
-            const next: LocalizationDocument = { ...document, units };
-            this.documents.set(locale, next);
-            this.dirtyLocales.add(locale);
-            this.scheduleAutoSave();
-            this.events.emit("documentChanged", { locale, document: next });
+            if (!this.opSink?.handle({ op: "set-translations", locale, units: changed })) {
+                this.writeUnits(locale, document, changed);
+            }
         }
+        // Reported whichever way it went. The summary is what the import DECIDED, and that is the
+        // same either way; inside a session the entries land when the effect comes back, which is
+        // the bargain every gesture on this seam makes.
         return summary;
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send translation edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: LocalizationOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /** Every language the project declares translations for, in configuration order. */
+    public listLocales(): readonly string[] {
+        return this.getConfiguration().locales.map(entry => entry.code);
+    }
+
+    /**
+     * Read every language's library into memory, and say which ones could be read.
+     *
+     * Called once, on the way into a live session, for the reason `LiveStoryPort.loadAll` is:
+     * libraries are loaded lazily in an ordinary workspace - a language the author never opened has
+     * no document here - and an applier is synchronous, so there is no moment later at which one
+     * could be fetched. A language that could not be read is left out of the answer, and therefore
+     * out of what the session carries and out of what the write boundary leaves writable; those
+     * three have to be one set.
+     */
+    public async loadAllDocuments(): Promise<readonly string[]> {
+        const loaded: string[] = [];
+        for (const locale of this.listLocales()) {
+            try {
+                await this.loadDocument(locale);
+                loaded.push(locale);
+            } catch (error) {
+                // Warned rather than fatal, for the reason the story port skips an unreadable
+                // document: a session refused because one language's file is broken is worse than a
+                // session that does not carry that language.
+                console.warn(`[LocalizationService] could not read translations for ${locale}`, error);
+            }
+        }
+        return loaded;
+    }
+
+    /** One language's entries as they stand, or null when this window does not hold them. */
+    public unitsOf(locale: string): Readonly<Record<string, LocalizationUnit>> | null {
+        return this.documents.get(locale)?.units ?? null;
+    }
+
+    /**
+     * Apply one operation to the library, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the table is
+     * finally allowed to move.
+     *
+     * ⚠ **A language this window does not hold is a no-op rather than a throw.** An applier runs
+     * inside the host reading a message, and one that threw would take the session down over one
+     * document; the divergence guard is what catches it instead, on this very effect - the digest of
+     * a library nobody holds is a value, not a missing answer, so the two copies are seen to have
+     * parted company rather than quietly excused.
+     */
+    public applyLiveOp(op: LiveLocalizationOp): void {
+        const document = this.documents.get(op.locale);
+        if (!document) {
+            console.warn(`[LocalizationService] no translations loaded for ${op.locale}; effect not applied`);
+            return;
+        }
+        switch (op.op) {
+            case "set-translation":
+                this.writeUnits(op.locale, document, [{ unitId: op.unitId, unit: op.unit }]);
+                return;
+            case "set-translations":
+                this.writeUnits(op.locale, document, op.units);
+                return;
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
+                // other machine in the room and not on this one, and nothing says so until a digest
+                // disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live translation operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
     }
 
     // --- Extraction & progress ---

@@ -17,6 +17,7 @@ import {
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
+import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
@@ -524,6 +525,14 @@ export function EditorNodeWrapper({
 
     const onWheel = useCallback(
         (e: WheelEvent<HTMLDivElement>) => {
+            // The element half of "one wheel gesture counts once". A gesture something has already
+            // answered is over for every listener, not only for the surface that answered it -
+            // otherwise the momentum tail of the flick that opened a page would still be running
+            // this widget's wheel head on the page it just left behind. Asked here as well as at the
+            // surface shell because this fires first, on the way up from the element that was hit.
+            if (!wheelGestureGate.admit(e.nativeEvent, readInputEventTime(e.nativeEvent))) {
+                return;
+            }
             dispatchWidgetEvent("mouseWheel", e.target, {
                 ...localMousePayload(e),
                 deltaX: e.deltaX,

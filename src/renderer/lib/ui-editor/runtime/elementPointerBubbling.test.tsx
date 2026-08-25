@@ -54,13 +54,14 @@ function dispatchedEvents(mock: ReturnType<typeof vi.fn>): string[] {
 
 /**
  * A collection, slider, text input or frame declares no mouse events of its own - the abstraction it
- * offers is "which row was clicked", not "the list was clicked". That is not the same as owning the
- * event: an element with no listener for a pointer event hands it to its parent, and the walk that
- * does so lives past the dispatch call. These lock the two halves apart, because collapsing them
- * again is silent - the wheel over a list simply stops reaching the container around it.
+ * offers is "which row was clicked", not "the list was clicked". It still has to dispatch: a pointer
+ * event goes to every element from the hit one up to the surface root, and that walk lives past the
+ * dispatch call, so a type that returned early here would take the event away from the whole chain
+ * above it. These lock the two halves apart, because collapsing them again is silent - the wheel
+ * over a list simply stops reaching the container around it.
  */
 describe("pointer events over a widget that declares none", () => {
-    it("dispatches so the event can bubble to an ancestor", () => {
+    it("dispatches so the event reaches the elements above it", () => {
         for (const type of ["nl.list", "nl.choice.list", "nl.slider", "nl.textInput", "nl.frame"]) {
             const { dispatchElementBlueprintEvent, node } = renderWrapper(elementOfType(type));
 
@@ -84,8 +85,8 @@ describe("pointer events over a widget that declares none", () => {
         ]);
     });
 
-    it("still keeps events that do not bubble", () => {
-        // Move and hover are deliberately outside the bubbling set: handing them up would light up
+    it("still keeps events that do not travel", () => {
+        // Move and hover are deliberately outside the travelling set: handing them up would light up
         // the whole ancestor chain as hovered at once.
         const { dispatchElementBlueprintEvent, node } = renderWrapper(elementOfType("nl.list"));
 

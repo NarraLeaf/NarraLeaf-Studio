@@ -18,24 +18,6 @@ Element Literal 是纯数据字面量，输出可以 fan out 到多个读取或�
 - Image 元素暴露 `blueprint.element.image.*` 控件操作节点，并归入 `Element` 分类；`Image Asset` 字面量卡片仍归入 `Image` 分类。
 - Button / Container / Frame 等控件暴露 `blueprint.element.<widget>.*` 属性方法节点。
 
-## Continue Event Bubble
-
-`blueprint.element.continueEventBubble` - 继续当前元素事件冒泡
-
-在 Widget 私有事件图中使用，将当前接入的元素事件连同原始 event payload 继续派发给结构父元素。例如子按钮的 `Mouse Click` 图执行该节点后，父容器若也接入同类事件 Head，会继续执行父容器的事件图。父元素也可以再次调用该节点继续向上冒泡。
-
-该节点只在当前执行上下文存在元素 owner 和事件名时可用；普通函数图、无事件上下文的宏，或没有父元素的 root 不会产生新的父级事件。
-- `in` - 执行入口
-- `next` - 冒泡请求完成后的执行出口
-
-## Stop Event Bubble
-
-`blueprint.element.stopEventBubble` - 阻止当前事件继续传播
-
-在事件图中标记当前事件已经被处理，并从 `next` 继续执行本地图逻辑。后续 `Continue Event Bubble` 会变成 no-op；同一次键盘事件也不会继续派发给后续 Surface / Widget 监听者。典型用法是在前景叠层的 `On Key Down` / `Any Key Down` 中拦截 Space，避免按键继续影响背景游戏。
-- `in` - 执行入口
-- `next` - 停止传播后的执行出口
-
 Self 节点是另一套形态：它们没有 Element/ref 输入，只在对应控件自己的私有蓝图分类中出现。
 
 Blueprint Value 会在读取这些 Element-targeted 节点时记录具体属性依赖。后续 document/runtime 同步只在记录的属性变化时重跑对应 value binding。

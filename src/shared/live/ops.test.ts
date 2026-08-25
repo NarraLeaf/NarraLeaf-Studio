@@ -59,6 +59,7 @@ const EVERY_STORY_OP: LiveStoryOp[] = [
 const EVERY_CHARACTER_OP: LiveCharacterOp[] = [
     { op: "create-character", character: RECORD },
     { op: "update-character", characterId: "char-1", character: RECORD },
+    { op: "delete-character", characterId: "char-1" },
     { op: "set-character-group", groupId: "g1", group: GROUP },
     { op: "delete-character-group", groupId: "g1" },
 ];
@@ -141,7 +142,10 @@ describe("the operation vocabulary", () => {
         expect([...CLAIMED_OPS].sort()).toEqual([
             "delete-block",
             "delete-blocks",
+            "delete-character",
             "set-block-disabled",
+            "set-translation",
+            "set-translations",
             "update-block",
             "update-blocks",
             "update-character",
@@ -151,12 +155,27 @@ describe("the operation vocabulary", () => {
         }
     });
 
+    it("claims a translation and not a voice take, which is the same test applied twice", () => {
+        // The translation field IS the working copy while a translator types - a contentEditable the
+        // browser edits, reaching the document on Enter or blur - so the loser of a race loses the
+        // line they were halfway through writing, silently. A take is dropped on a row and approved
+        // with a button; the one drafted thing on it is a short direction note, and its loser can
+        // read the winner's in the box.
+        expect(CLAIMED_OPS.has("set-translation")).toBe(true);
+        expect(CLAIMED_OPS.has("set-translations")).toBe(true);
+        expect(CLAIMED_OPS.has("set-take")).toBe(false);
+        expect(CLAIMED_OPS.has("set-takes")).toBe(false);
+    });
+
     it("claims a character record, and does not claim the cast's order or its groups", () => {
         // The test is whether the interface holds a draft of it. A character's description
         // accumulates in the properties panel until the field is blurred, and an arriving edit to the
         // same character would wipe it mid-sentence - the row's own reason, in another panel.
         // Rearranging the cast is a drag, and a drag costs one gesture to repeat.
         expect(CLAIMED_OPS.has("update-character")).toBe(true);
+        // Deleting a record somebody else has open takes their whole panel of typing with it, which
+        // is the row's own reason for a claim seen at its most expensive.
+        expect(CLAIMED_OPS.has("delete-character")).toBe(true);
         for (const kind of ["create-character", "set-character-group", "delete-character-group"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
@@ -260,20 +279,20 @@ describe("digest scopes", () => {
     it("fingerprints the unit the operation names, never the document", () => {
         // A per-document digest would re-encode a whole story on every committed line; this
         // repository has measured that at 133 ms of the renderer's thread for a 15.4 MB document.
-        expect(opDigestScope({ op: "update-block", sceneId: "s1", blockId: "b1", payload: BLOCK.payload }))
-            .toEqual({ of: "scene", sceneId: "s1" });
-        expect(opDigestScope({ op: "update-character", characterId: "char-1", character: RECORD }))
+        expect(opDigestScope({ op: "update-block", sceneId: "s1", blockId: "b1", payload: BLOCK.payload }, "s"))
+            .toEqual({ of: "scene", storyId: "s", sceneId: "s1" });
+        expect(opDigestScope({ op: "update-character", characterId: "char-1", character: RECORD }, "s"))
             .toEqual({ of: "character", characterId: "char-1" });
-        expect(opDigestScope({ op: "set-character-group", groupId: "g1", group: GROUP })).toEqual({ of: "cast" });
-        expect(opDigestScope({ op: "delete-character-group", groupId: "g1" })).toEqual({ of: "cast" });
+        expect(opDigestScope({ op: "set-character-group", groupId: "g1", group: GROUP }, "s")).toEqual({ of: "cast" });
+        expect(opDigestScope({ op: "delete-character-group", groupId: "g1" }, "s")).toEqual({ of: "cast" });
     });
 
     it("has no scope for the operations no unit covers, which is not the same as agreeing", () => {
         // `set-entry-scene` names a scene it does not change, and a digest of it would fingerprint
         // something the operation cannot have altered. The guard rules `unproven` on these.
-        expect(opDigestScope({ op: "set-entry-scene", sceneId: "s1" })).toBeNull();
-        expect(opDigestScope({ op: "rename-story", name: "Skeleton" })).toBeNull();
-        expect(opDigestScope({ op: "reorder-chapters", chapterIds: ["c1"] })).toBeNull();
+        expect(opDigestScope({ op: "set-entry-scene", sceneId: "s1" }, "s")).toBeNull();
+        expect(opDigestScope({ op: "rename-story", name: "Skeleton" }, "s")).toBeNull();
+        expect(opDigestScope({ op: "reorder-chapters", chapterIds: ["c1"] }, "s")).toBeNull();
         // And a batch across two scenes has no single scene to fingerprint.
         expect(opDigestScope({
             op: "update-blocks",
@@ -281,7 +300,7 @@ describe("digest scopes", () => {
                 { sceneId: "s1", blockId: "b1", payload: BLOCK.payload },
                 { sceneId: "s2", blockId: "b2", payload: BLOCK.payload },
             ],
-        })).toBeNull();
+        }, "s")).toBeNull();
     });
 });
 

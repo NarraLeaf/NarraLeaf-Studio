@@ -1,7 +1,7 @@
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { charactersSpec } from "@shared/documents/specs";
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveCharacterOp } from "@shared/live/ops";
+import type { LiveCharacterOp, LiveDigestScope } from "@shared/live/ops";
 import type { DocumentCorruptError } from "@shared/documents/types";
 import type { CharacterStoreDocument } from "@shared/characters/characterStoreModel";
 import type { TranslationKey } from "@shared/i18n";
@@ -18,6 +18,7 @@ import {
     planCharacterSpeakerFallback,
     revertCharacterSpeakerFallback,
 } from "../story/characterSpeakerFallback";
+import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
 import { AssetsService } from "./AssetsService";
@@ -228,19 +229,17 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!character) {
             return false;
         }
-        if (this.opSink) {
-            // ⚠ **Not a shared operation, and the reason is the sweep below.** Deleting a character
-            // rewrites every dialogue row in the PROJECT that it speaks - across every story document
-            // - and a session carries one. Sending the deletion alone would leave the other documents
-            // holding an id that resolves to nothing; sweeping them would write to files the session
-            // froze. Refused whole rather than applied partly, exactly as promoting an unresolved
-            // speaker into a character is refused, and for the same seam seen from the other side.
+        if (this.handedToSink({ op: "delete-character", characterId: id })) {
+            // ⚠ **The sweep below does not run here, and that is the point.** Deleting a character
+            // rewrites every dialogue row in the PROJECT that it speaks, across every story document,
+            // and inside a session each machine derives those rows for itself from the one effect -
+            // see `characterSweepLive`. Running it here as well would write the same rows twice on
+            // this machine and once everywhere else.
             //
-            // The interface must not offer it: see `characterLiveSession`, which is what greys the
-            // control out and says why. This is the boundary that makes it true rather than the
-            // notice, because a control nobody remembered to disable would otherwise delete a
-            // character on one machine and no other.
-            return false;
+            // Nor is a history entry pushed. Inside a session undo is sending the inverse of one's own
+            // operation, and an entry here would offer a second undo that writes straight to this
+            // machine's store - a local edit no effect carries.
+            return true;
         }
 
         const stored = character.toJSON();
@@ -703,18 +702,22 @@ export class CharacterService extends Service<CharacterService> implements IChar
      * machine, and an undo that offered to take it back would be offering to delete a stranger's
      * character. Inside a session, undo is sending the inverse of one's own last operation instead.
      */
-    public applyLiveOp(op: LiveCharacterOp): void {
+    public applyLiveOp(op: LiveCharacterOp): readonly LiveDigestScope[] {
+        let touched: readonly LiveDigestScope[] = [];
         this.applying = true;
         try {
-            this.getHistoryService().withoutRecording(() => this.applyOperation(op));
+            this.getHistoryService().withoutRecording(() => {
+                touched = this.applyOperation(op);
+            });
         } finally {
             this.applying = false;
         }
         this.markDirty();
         this.emitChange();
+        return touched;
     }
 
-    private applyOperation(op: LiveCharacterOp): void {
+    private applyOperation(op: LiveCharacterOp): readonly LiveDigestScope[] {
         switch (op.op) {
             case "create-character": {
                 const record = structuredClone(op.character) as StoredCharacter;
@@ -731,7 +734,9 @@ export class CharacterService extends Service<CharacterService> implements IChar
                     this.lockCharacterAssets(character);
                 }
                 this.lastKnown.set(record.profile.id, record);
-                return;
+                // Present only on the creation that undoes a deletion, and it carries the rows rather
+                // than finding them: they hold a bare name now, and a name is not an identifier.
+                return op.rebind ? rebindRows(this.getStoryService(), op.rebind, record.profile.id) : [];
             }
 
             case "update-character": {
@@ -740,14 +745,30 @@ export class CharacterService extends Service<CharacterService> implements IChar
                     // The host refuses an update naming a record it cannot find, so reaching this is
                     // this machine having missed the creation. Silently creating the record would
                     // hide that; the digest on the next effect is what reports it.
-                    return;
+                    return [];
                 }
                 const record = structuredClone(op.character) as StoredCharacter;
                 const before = character.profile.getThumbnail();
                 character.adopt(record);
                 this.updateAssetLock(op.characterId, before, character.profile.getThumbnail());
                 this.lastKnown.set(op.characterId, record);
-                return;
+                return [];
+            }
+
+            case "delete-character": {
+                const character = this.characters[op.characterId];
+                if (!character) {
+                    // The host refuses a deletion naming a record it cannot find, so reaching this is
+                    // this machine having missed the creation. The digest reports it.
+                    return [];
+                }
+                // The name is read before the record goes, because it is what every line the character
+                // spoke falls back to - and the whole point of the sweep is that a player reads those
+                // lines exactly as before.
+                const speakerName = character.profile.getName();
+                this.removeCharacter(op.characterId, character, character.profile.getThumbnail() ?? undefined);
+                this.lastKnown.delete(op.characterId);
+                return sweepSpeakerName(this.getStoryService(), op.characterId, speakerName);
             }
 
             case "set-character-group": {
@@ -762,7 +783,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
                     }
                 }
                 this.refreshLastKnown();
-                return;
+                return [];
             }
 
             case "delete-character-group": {
@@ -773,7 +794,7 @@ export class CharacterService extends Service<CharacterService> implements IChar
                 }
                 delete this.groups[op.groupId];
                 this.refreshLastKnown();
-                return;
+                return [];
             }
 
             default: {

@@ -61,6 +61,7 @@ export const dialogs = {
         scene: "シーン",
         chapter: "チャプター",
         component: "コンポーネント",
+        inputAction: "入力アクション",
         asset: "アセット",
         page: "ページ",
         gameUi: "ゲーム UI",

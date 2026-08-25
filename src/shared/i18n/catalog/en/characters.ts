@@ -305,9 +305,5 @@ export const characters = {
         // On the mark a character wears while somebody else has it open. A person is named: there is
         // no width for a name beside the monogram, and a truncated one names nobody.
         recordClaimed: "{name} is editing this character",
-        // Deleting a character rewrites every dialogue row in the project that speaks it, across
-        // every story document, and a session carries one. Says what is unavailable and what makes
-        // it available again, and nothing about why the machinery cannot do it.
-        deleteUnavailable: "A character cannot be removed during a live session. Leave the session to remove one.",
     },
 } as const;

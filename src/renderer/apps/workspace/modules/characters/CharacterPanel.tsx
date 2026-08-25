@@ -13,8 +13,6 @@ import {
     CharacterClaimsProvider,
     characterDocumentFreezeScope,
     useCharacterClaim,
-    useCharacterDeleteFreeze,
-    useInLiveSession,
 } from "./characterLiveSession";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { CharacterGroup } from "@/lib/workspace/services/character/types";
@@ -87,8 +85,6 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
     // Unscoped, every control here would be switched off by any freeze at all - the conservative
     // default, and the right one for a surface that has not said which file it writes.
     const freeze = useFreezeGuard(characterDocumentFreezeScope());
-    const inSession = useInLiveSession();
-    const deleteFreeze = useCharacterDeleteFreeze(inSession);
     const { context, isInitialized } = useWorkspace();
     const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
@@ -541,13 +537,6 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                 {
                     id: "delete-character",
                     label: t("common.delete"),
-                    // ⚠ Switched off during a live session even though the cast is writable in one,
-                    // which is the only row here where "the document is writable" is not the whole
-                    // answer. A deletion rewrites every dialogue row in the PROJECT that speaks this
-                    // character, across every story document, and a session carries one. The service
-                    // refuses it whichever way it is reached; this is what says so beforehand.
-                    disabled: deleteFreeze.unavailable,
-                    ...(deleteFreeze.reason === undefined ? {} : { tooltip: deleteFreeze.reason }),
                     onClick: () => item && handleDeleteCharacter(item),
                 },
             ];
@@ -591,7 +580,7 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
                 onClick: loadCharacters,
             },
         ];
-    }, [deleteFreeze.reason, deleteFreeze.unavailable, filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters, t]);
+    }, [filteredCharacters, groups, handleAssignToGroup, handleCreateCharacter, handleCreateGroup, handleDeleteCharacter, handleDeleteGroup, handleRenameCharacter, handleRenameGroup, loadCharacters, t]);
 
     const handleMenuOpen = useCallback((event: React.MouseEvent, target: MenuTarget) => {
         event.preventDefault();

@@ -98,11 +98,11 @@ export function LiveSessionFreezeCommands() {
                         // value that looked like one would be a lie the next reader has to check.
                         session: "experimental",
                         kind: "live-session",
-                        writable: liveSessionWritablePaths(storyId),
+                        writable: liveSessionWritablePaths(stories.listStories().map(entry => entry.id)),
                     });
                     notify(
                         "Frozen as a live session",
-                        `Only ${liveSessionWritablePaths(storyId).join(", ")} may be written. Everything else `
+                        `Only ${liveSessionWritablePaths(stories.listStories().map(entry => entry.id)).join(", ")} may be written. Everything else `
                         + "the repository stores is read-only, and building, previewing and testing keep working.",
                     );
                 },

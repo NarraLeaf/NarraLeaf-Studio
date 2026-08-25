@@ -44,6 +44,7 @@
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Preference Changed | `blueprint.event.head.preferenceChanged` | **已实现**。监听当前 `LiveGame` 指定 Game Preference（如 BGM Volume）变化；Inspector `Preference` 选择偏好键；输出 `then` / `value` / `previousValue`；订阅 NarraLeaf React `game.preference.onPreferenceChange`；Global 与 Surface 蓝图可用。 |
 | On Any Preference Changed | `blueprint.event.head.anyPreferenceChanged` | **已实现**。监听当前 `LiveGame` 任意 Game Preference 变化；输出 `then` / `key` / `value` / `previousValue`；Global 与 Surface 蓝图可用。 |
+| On Action | `blueprint.event.head.action` | **已实现**。工程声明的输入操作被触发时执行；Inspector `Action` 从工程的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
@@ -220,6 +221,14 @@
 按属性排序、按属性筛选、按属性查找覆盖了 VN 界面里绝大多数用法，且不需要作者再学一个概念。
 列表控件上还有一组同样按字段（而不是按属性名字符串）操作的节点，见 List 一节——
 那些能给出真正的字段下拉，因为列表声明了自己的条目结构。
+
+## Input
+
+工程给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
+
+| 节点 | 类型 ID 建议 | 说明 |
+| --- | --- | --- |
+| Is Action Held | `blueprint.input.isActionHeld` | **已实现**。指定输入操作当前是否按住，用于长按类手势；纯节点，输出 `held`；事件图、函数图、宏都可用。 |
 
 ## Displayable / Widget
 
@@ -452,6 +461,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get Current Page | `blueprint.page.getCurrent` | 获取当前 Page ID。 |
 | Is Surface Exiting | `blueprint.page.isSurfaceExiting` | **已实现**。读取当前 Surface 是否处于退出动画状态。 |
 | Is Surface Entering | `blueprint.page.isSurfaceEntering` | **已实现**。读取当前 Surface 是否处于进入动画状态。 |
+| Keep Window Open | `blueprint.app.keepWindowOpen` | **已实现**。取消玩家发出的窗口关闭请求，把窗口留在原地；只在 `On Window Close Requested` 事件图里有意义，其他派发中执行会抛出蓝图执行错误。 |
 | Is Page Open | `blueprint.page.isOpen` | 判断指定 Page 是否处于打开状态。 |
 | Preload Page | `blueprint.page.preload` | 预加载指定 Page。 |
 | Unload Page | `blueprint.page.unload` | 卸载指定 Page 资源。 |

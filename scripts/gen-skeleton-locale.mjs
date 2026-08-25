@@ -116,6 +116,11 @@ function buildVariant(locale) {
     for (const surface of uidoc.value.surfaces ?? []) {
         surface.name = say(surface.name);
     }
+    // The project's input vocabulary. Only the name: an id is what a surface and a head store, and
+    // translating one would leave every reference to it pointing at nothing.
+    for (const action of Object.values(uidoc.value.actions ?? {})) {
+        action.name = say(action.name);
+    }
     for (const component of uidoc.value.components ?? []) {
         component.name = say(component.name);
         for (const element of Object.values(component.elements ?? {})) {
