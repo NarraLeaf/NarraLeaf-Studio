@@ -510,6 +510,39 @@ export const documentDiff = {
         },
     },
     /** 变更文件的分组标题，用作者编辑它们的面板名，而不是它们在磁盘上的目录名。 */
+    /**
+     * What the author calls each kind of document.
+     *
+     * The fallback for a thing with no name of its own. Never a file name: the author did not
+     * make a file, they made a project, a story, a set of pages.
+     */
+    name: {
+        project: "工程设置",
+        storyIndex: "故事列表",
+        story: "故事",
+        animationIndex: "动效列表",
+        animation: "动效",
+        uiDocument: "界面页面",
+        uiGraphs: "界面蓝图",
+        blueprint: "蓝图",
+        variables: "变量",
+        audioTracks: "音频轨道",
+        brand: "品牌配色",
+        appTags: "构建变体",
+        dlc: "追加内容",
+        dictionary: "词典",
+        saveSchema: "存档字段",
+        assetSets: "资产集",
+        localization: "译文",
+        localizationKeys: "译文键",
+        voice: "语音",
+        assetsMetadata: "资产库",
+        assetsGroups: "资产文件夹",
+        assetsOrder: "资产排序",
+        characters: "角色表",
+        assetContent: "资产文件",
+        qualified: "{name}（{qualifier}）",
+    },
     category: {
         story: "故事",
         characters: "角色",
@@ -567,6 +600,21 @@ export const documentDiff = {
         next: "下一处改动",
         position: "{index} / {total}",
         gone: "该文件不在本次比较中",
+        inspect: "查看 {name} 的属性",
+    },
+    /**
+     * 选中某一半里的一个元素时，右侧的属性栏。
+     *
+     * 画的就是界面编辑器那一套检查器，只是换成该半边显示的那个版本。所以这里没有一句在解释字段——
+     * 字段说的还是它们一贯说的那些；这几条补的是字段说不出的那一件事：这是哪个版本，以及它是那个
+     * 版本的一张画面而不是一块画布。
+     */
+    inspector: {
+        version: "来自 {version}",
+        onlyHere: "{version} 里没有这一处",
+        readOnly: "比较只能查看，要改这些属性请打开界面编辑器",
+        differs: "{version}：{value}",
+        noValue: "空",
     },
     /**
      * 整份取一边地收尾一次合并。
@@ -673,6 +721,13 @@ export const documentDiff = {
         offCanvas: "{count} 条在所有页面之外",
         /** 组件内部的元素本来就不带 id：同一个组件的每个实例共用内部 id，带上就分不清是哪一处放置。 */
         unplaced: "{count} 条在页面上没有位置",
+        /** 画面上没有按该版本显示的资产，与上一行一样必须说出来，而不是留一个空白的方框。 */
+        assetsNotShown: {
+            one: "有 {count} 项资产没有显示：",
+            other: "有 {count} 项资产没有显示：",
+        },
+        assetsAbsent: "{count} 项不在该版本中",
+        assetsFailed: "{count} 项无法读取",
         notDrawn: "该版本的页面无法绘制",
         emptyGraph: "这张图里没有节点",
         tooLarge: "该文件过大，无法在此绘制",

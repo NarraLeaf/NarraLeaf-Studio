@@ -125,10 +125,11 @@ app.whenReady().then(async () => {
             });
     });
 
-    // macOS: clicking the Dock icon of an app with no windows. The Dock is what stands in for the
-    // status-bar item there, so this is the same gesture as a tray click.
-    app.electronApp.on('activate', () => {
-        void app.revealLauncher();
+    // macOS: the Dock icon was clicked, or Studio was reopened some other way. Only a reopen that
+    // finds nothing to come back to is the same gesture as a tray click; what the rest do, and why,
+    // is in `handleReopen`.
+    app.electronApp.on('activate', (_event, hasVisibleWindows) => {
+        app.handleReopen(hasVisibleWindows);
     });
 
     app.windowManager.events.on("window-closed", (window) => {

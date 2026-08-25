@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from "react";
-import { render, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEmitter } from "../services/ui/EventEmitter";
 import { Services } from "../services/services";
@@ -20,17 +20,20 @@ import { useAssetObjectUrl } from "./useAssetObjectUrl";
  * The versioned-asset seam, pinned from both sides.
  *
  * The half that matters most is the half where nothing happens: this hook resolves every picture in
- * Studio, and the seam added above its live ladder is inert until something mounts a source - which
- * nothing does yet. So the first three cases assert the ladder behaves exactly as it did, and the
- * rest assert what the seam does once a source IS mounted, including that it wins over the avatar
- * table - an arm that would otherwise keep answering with the running compile's URLs inside a
- * render of an older version.
+ * Studio, and the seam above its live ladder is inert unless something mounts a source - which only
+ * a version-control comparison does. So the first group asserts the live ladder behaves exactly as
+ * it did, its subscription to the library included, and the second asserts what the seam does once
+ * a source IS mounted: that it wins over the avatar table - an arm that would otherwise keep
+ * answering with the running compile's URLs inside a render of an older version - and that it stops
+ * listening to a live library whose movements cannot change what a version holds.
  */
 
 const assetEvents = new EventEmitter<Record<string, unknown>>();
 
 let assets: Record<string, Record<string, { id: string; type: AssetType }>> = {};
 let fetchResult: { success: boolean; data?: unknown; error?: string } = { success: false };
+/** Which ids name a SET rather than a file. A set is keyed on the library, not on one record. */
+let knownSets = new Map<string, { id: string }>();
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
@@ -55,7 +58,7 @@ vi.mock("@/apps/workspace/context", () => {
         fetch: async () => fetchResult,
     };
     const setsService = {
-        getSet: () => undefined,
+        getSet: (id: string) => knownSets.get(id),
         onSetsChanged: () => () => undefined,
     };
     const workspace = {
@@ -82,6 +85,7 @@ let mintedUrls = 0;
 beforeEach(() => {
     assetEvents.clear();
     assets = {};
+    knownSets = new Map();
     fetchResult = { success: false };
     mintedUrls = 0;
     clearCharacterAvatarAssets();
@@ -143,6 +147,20 @@ describe("useAssetObjectUrl with no source mounted", () => {
         await waitFor(() => expect(result.current.url).toBe("app://avatar/live.png"));
         // The live ladder was never reached, so no blob was minted.
         expect(mintedUrls).toBe(0);
+    });
+
+    it("still re-reads when the live library replaces the asset's bytes", async () => {
+        imageAsset("picture");
+        fetchResult = { success: true, data: { data: new Uint8Array([1, 2, 3]) } };
+
+        const { result } = renderHook(() => useAssetObjectUrl("picture"));
+        await waitFor(() => expect(result.current.url).toBe("blob:test/1"));
+
+        await act(async () => {
+            assetEvents.emit("updated", { id: "picture" });
+        });
+
+        await waitFor(() => expect(result.current.url).toBe("blob:test/2"));
     });
 });
 
@@ -211,6 +229,55 @@ describe("useAssetObjectUrl with a source mounted", () => {
 
         rerender(tree("version-2"));
         await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    });
+
+    /**
+     * The live library moving is not a historical column's business.
+     *
+     * `AssetsService` raises `updated` and `deleted` for every import, replacement and delete the
+     * author makes anywhere in the project, and a comparison pane holds one of these hooks per
+     * picture on the page. Left subscribed, one import would re-run every one of them and re-read
+     * history to arrive at the same answer - a version's bytes are fixed, and nothing the author
+     * does today can change them.
+     */
+    it("ignores live library churn, because a version's bytes cannot move", async () => {
+        imageAsset("picture");
+        const read = vi.fn(someBytes);
+
+        const { result } = renderHook(() => useAssetObjectUrl("picture"), {
+            wrapper: withSource(source(read)),
+        });
+        await waitFor(() => expect(result.current.url).toBe("blob:test/1"));
+
+        await act(async () => {
+            assetEvents.emit("updated", { id: "picture" });
+            assetEvents.emit("deleted", { id: "picture" });
+        });
+
+        // No second read, and the picture on screen is the one the version holds.
+        expect(read).toHaveBeenCalledTimes(1);
+        expect(result.current.url).toBe("blob:test/1");
+    });
+
+    it("does not re-resolve a set id when the live library it would resolve against moves", async () => {
+        knownSets.set("backdrops", { id: "backdrops" });
+        const read = vi.fn(someBytes);
+
+        const { result } = renderHook(() => useAssetObjectUrl("backdrops"), {
+            wrapper: withSource(source(read)),
+        });
+        await waitFor(() => expect(result.current.url).toBe("blob:test/1"));
+
+        // The second live key: a set has no record of its own, so live it is watched on the whole
+        // library's revision - which any asset event bumps, including one about another file.
+        await act(async () => {
+            assetEvents.emit("updated", { id: "some-other-file" });
+        });
+
+        // Which file a set means at that version is the source's to answer, from that version's
+        // tags. It was handed the set id untouched, and handed it once.
+        expect(read).toHaveBeenCalledTimes(1);
+        expect(read).toHaveBeenCalledWith("backdrops", AssetType.Image);
     });
 });
 

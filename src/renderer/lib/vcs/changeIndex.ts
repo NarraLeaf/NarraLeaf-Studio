@@ -5,9 +5,10 @@ import {
     type DocumentDiffEntry,
     type DocumentDiffTier,
 } from "@shared/documents/diff";
-import type { TranslationKey } from "@shared/i18n";
+import { assetStorageIdFromContentPath } from "@shared/utils/assetStorageId";
 import { joinAssetEntries, type ChangeIndexUnit } from "./assetRows";
 import { CHANGE_CATEGORY_ORDER, changeCategoryOf, type ChangeCategory } from "./changeCategory";
+import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
 import { isWholeDocumentChange } from "./documentChangeView";
 
 /**
@@ -42,19 +43,23 @@ export interface ChangeIndexRow {
      * and no producer, merger or resolver has ever seen it.
      */
     readonly key: string;
-    /** The document path: where the comparison reported this row. Not unique across rows. */
-    readonly path: string;
-    /** The file name, or the name the author gave the asset. What identifies this row. */
-    readonly name: string;
     /**
-     * What to call this row instead of {@link name}, when its own file name says nothing.
+     * Where the comparison reported this row. Not unique across rows, and not what the row says.
      *
-     * A translation KEY rather than a sentence, for the reason a change label is one: there is no
-     * locale in this module. Only a content file that no asset record claims has one.
+     * **Demoted to the tooltip.** It used to be the row: the title was the path's last segment, so
+     * every story in a project was a line reading `storydoc.json` under a dim uuid. A path is where
+     * a thing is stored, which an author needs about once a month and never navigates by, so it is
+     * one hover away rather than in the column the eye scans. See {@link name}.
      */
-    readonly nameKey?: TranslationKey;
-    /** Where it sits, or null at the project root. Shown dimmed beside the name, never instead. */
-    readonly directory: string | null;
+    readonly path: string;
+    /**
+     * What the author calls this thing: a scene's title, an asset's name, or the name of its kind.
+     *
+     * Resolved rather than a plain string, so a surface can tell a name from a stand-in for one -
+     * `documentName.ts` holds the rule that a name nobody could read is never quietly replaced by
+     * something that reads like one.
+     */
+    readonly name: DocumentName;
     /** What happened to the file itself, as opposed to what changed inside it. */
     readonly kind: DocumentChangeKind;
     /** Changes this file stands for - `DocumentDiff.total`, including any the producer dropped. */
@@ -189,6 +194,15 @@ export interface BuildChangeIndexOptions {
      * point: a caller that has not said cannot have its silence read as a guarantee.
      */
     readonly complete?: boolean;
+    /**
+     * What the rows are named from, beyond their own paths.
+     *
+     * Required rather than defaulted, and that is the point: a caller that has not read the story
+     * index has not read it, and `NO_DOCUMENT_NAMES` says so in one word at the call site. A default
+     * here would let a surface lose every title in the project by leaving one argument out, with
+     * nothing on screen or in a type to report it.
+     */
+    readonly names: DocumentNameContext;
 }
 
 /**
@@ -217,7 +231,7 @@ export function buildChangeIndex(
     for (const unit of listed) {
         const category = changeCategoryOf(unit.entry);
         const rows = byCategory.get(category) ?? [];
-        rows.push(indexRow(unit));
+        rows.push(indexRow(unit, options.names));
         byCategory.set(category, rows);
 
         // The tier set is the evidence behind the count and is gated on the same answer, so a
@@ -301,18 +315,15 @@ function comparisonsBehind(unit: ChangeIndexUnit): readonly DocumentDiffEntry[] 
     return [unit.entry];
 }
 
-function indexRow(unit: ChangeIndexUnit): ChangeIndexRow {
+function indexRow(unit: ChangeIndexUnit, names: DocumentNameContext): ChangeIndexRow {
     const { entry, change, member } = unit;
-    const { directory, name } = splitDocumentPath(entry.path);
     // The record's own kind, never the file's: an asset added to a shard that was merely changed is
     // an addition, and the shard's `changed` would draw it as an edit of something already there.
     const kind = change?.kind ?? entry.kind;
     return {
         key: unit.key,
         path: entry.path,
-        name: unit.name ?? name,
-        ...(unit.nameKey ? { nameKey: unit.nameKey } : {}),
-        directory,
+        name: rowName(unit, names),
         kind,
         changeCount: change ? countDocumentChanges([change]) : entry.diff.total,
         wholeDocument: isWholeDocumentChange(kind),
@@ -323,6 +334,33 @@ function indexRow(unit: ChangeIndexUnit): ChangeIndexRow {
         ...(change ? { change } : {}),
         ...(member ? { member } : {}),
     };
+}
+
+/**
+ * What one row is called.
+ *
+ * Three sources in one place, so the index cannot end up calling one thing two things. The asset
+ * fold has already answered for the rows it owns - the name the author gave the asset, or the label
+ * for a content file no record claims - and everything else is named from its path by the layer all
+ * four version-control surfaces share.
+ *
+ * The orphan content file is qualified by its storage id here rather than left as a bare label. The
+ * label alone is true and is not enough: a project can hold several of them at once, which is
+ * exactly the state a bad merge leaves behind, and a column of identical rows is a list an author
+ * cannot work through.
+ */
+function rowName(unit: ChangeIndexUnit, names: DocumentNameContext): DocumentName {
+    if (unit.name) {
+        return { source: "authored", text: unit.name };
+    }
+    if (unit.nameKey) {
+        return {
+            source: "kind",
+            key: unit.nameKey,
+            qualifier: assetStorageIdFromContentPath(unit.entry.path),
+        };
+    }
+    return documentNameOf(unit.entry.path, names);
 }
 
 /**

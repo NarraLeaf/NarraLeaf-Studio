@@ -572,6 +572,39 @@ export const documentDiff = {
         },
     },
     /** 変更されたファイルの見出し。ディスク上のフォルダ名ではなく、作者がそれを編集するパネルの名前で呼ぶ。 */
+    /**
+     * What the author calls each kind of document.
+     *
+     * The fallback for a thing with no name of its own. Never a file name: the author did not
+     * make a file, they made a project, a story, a set of pages.
+     */
+    name: {
+        project: "プロジェクト設定",
+        storyIndex: "ストーリーの一覧",
+        story: "ストーリー",
+        animationIndex: "モーションの一覧",
+        animation: "モーション",
+        uiDocument: "インターフェースのページ",
+        uiGraphs: "インターフェースのブループリント",
+        blueprint: "ブループリント",
+        variables: "変数",
+        audioTracks: "オーディオトラック",
+        brand: "ブランドの配色",
+        appTags: "ビルドバリアント",
+        dlc: "追加コンテンツ",
+        dictionary: "辞書",
+        saveSchema: "セーブ項目",
+        assetSets: "アセットセット",
+        localization: "翻訳",
+        localizationKeys: "翻訳キー",
+        voice: "ボイス",
+        assetsMetadata: "アセットライブラリ",
+        assetsGroups: "アセットのフォルダー",
+        assetsOrder: "アセットの並び",
+        characters: "キャラクター一覧",
+        assetContent: "アセットのファイル",
+        qualified: "{name}（{qualifier}）",
+    },
     category: {
         story: "ストーリー",
         characters: "キャラクター",
@@ -626,6 +659,22 @@ export const documentDiff = {
         next: "次の変更",
         position: "{index} / {total}",
         gone: "このファイルは今回の比較に含まれていない",
+        inspect: "{name} のプロパティを見る",
+    },
+    /**
+     * 片側の要素を選んでいるときの右側のプロパティ欄。
+     *
+     * 描くのは UI エディタと同じインスペクタで、対象がその半分の見せているバージョンに変わるだけ。
+     * だからここにフィールドの説明は一つも無い。フィールドはいつもどおりのことを言う。ここが足すのは
+     * フィールドには言えない一点、どのバージョンなのか、そしてそれはキャンバスではなくその版の画である
+     * ということだけ。
+     */
+    inspector: {
+        version: "{version} の内容",
+        onlyHere: "{version} には無い",
+        readOnly: "比較は読むためのもので、これらのプロパティを変えるには UI エディタを開く",
+        differs: "{version}：{value}",
+        noValue: "空",
     },
     /**
      * ファイルごとにどちらかの側を採ってマージを終える画面。
@@ -736,6 +785,12 @@ export const documentDiff = {
         offCanvas: "どのページにもないものが {count} 件",
         /** コンポーネントの中の要素はもともと id を持たない。同じコンポーネントのどの実体も内側の id を共有するので、付ければどの配置か分からなくなる。 */
         unplaced: "ページ上に位置を持たないものが {count} 件",
+        /** このバージョンのものとして表示できないアセットも、印と同じ行で言う。空の枠のままにはしない。 */
+        assetsNotShown: {
+            other: "表示していないアセットが {count} 件ある：",
+        },
+        assetsAbsent: "このバージョンにないものが {count} 件",
+        assetsFailed: "読めなかったものが {count} 件",
         notDrawn: "このバージョンのページは描けない",
         emptyGraph: "このグラフにノードがない",
         tooLarge: "このファイルは大きすぎて、ここには描けない",
