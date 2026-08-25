@@ -37,7 +37,7 @@ export type CheckOptions = {
      * Without it the validator cannot tell which event heads that widget carries, and reports every
      * one of them as not allowed here - 150-odd refusals on a project that is fine.
      */
-    resolveWidgetElement?: (owner: BlueprintOwnerRef) => { element: unknown; surfaceId: string } | undefined;
+    resolveWidgetElement?: (owner: BlueprintOwnerRef) => { element: unknown; surfaceId?: string } | undefined;
 };
 
 export type CheckResult = {
@@ -155,6 +155,10 @@ function validationOptions(owner: BlueprintOwnerRef, options: CheckOptions) {
         savedVariables: options.savedVariables,
         widgetElement: widget?.element as UIElement | undefined,
         widgetSurfaceId: widget?.surfaceId,
+        // Told rather than derived from the owner inside the validator, because it is the same flag
+        // the runtime bridge takes (`componentDefinitionMode`): a definition's graph addresses its
+        // own elements and reads its instance's params, and both are refused anywhere else.
+        isComponentDefinitionGraph: owner.kind === "componentWidgetMain",
     };
 }
 

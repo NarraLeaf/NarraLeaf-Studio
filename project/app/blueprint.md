@@ -57,7 +57,7 @@ blueprint.sound.play
 type, which is what decides its event heads. `--all` includes nodes kept for old
 graphs but hidden from the palette. `--json` on any of these.
 
-## Finding a project's surfaces and elements
+## Finding a project's surfaces, components and elements
 
 An owner line needs ids. This prints them, already spelled as owner fields:
 
@@ -68,7 +68,17 @@ node project/app/blueprint.js targets --project D:/path/to/project
 ```
 Title  owner=surfaceMain surface=narraleaf-studio:main-surface
     Root / Title / Quit  [nl.button]  owner=widgetMain surface=narraleaf-studio:main-surface element=281a47c0-…
+
+Save slot  component=d8d996da-…  (slot="1")
+    Save slot / Hit area  [nl.container]  owner=componentWidgetMain component=d8d996da-… element=5d138ead-…
 ```
+
+The component sections come after the surfaces, with each definition's params in brackets. A
+component's elements live in its own table rather than in the document's, so they are the ids a
+`componentWidgetMain` blueprint refers to - and the params are what a `Get Component Param` node
+picks from. **A blueprint on a component definition runs once per instance, with that instance's
+param values**, which is the whole reason to write one: twelve save slots that differ by a string
+are one graph, not twelve.
 
 ## The text format
 
