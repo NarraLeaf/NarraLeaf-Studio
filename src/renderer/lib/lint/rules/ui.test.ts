@@ -6,11 +6,14 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
     BLUEPRINT_NODE_TYPE_PAGE_GO,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import { UI_FRAME_ELEMENT_TYPE } from "@shared/types/ui-editor/frame";
+import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import type { LintContext, LintLocalizationContext } from "../context";
@@ -584,5 +587,233 @@ describe("ui/list-item-field-missing", () => {
             createTestLintContext({ uiDocument: listPage("f-title", null) }),
         );
         expect(findings).toHaveLength(1);
+    });
+});
+
+// ---------------------------------------------------------------------------
+// ui/gesture-answered-twice
+// ---------------------------------------------------------------------------
+
+const ADVANCE: UIInputActionDef = {
+    id: "advance",
+    name: "Advance",
+    bindings: [{ kind: "pointer", gesture: "click" }],
+};
+
+/** One page whose root holds `leaf`, with a vocabulary and the page's own answer to it. */
+function actionPage(input: {
+    leaf: UIElement;
+    ancestor?: UIElement;
+    actions?: Record<string, UIInputActionDef>;
+    enablements?: UISurfaceActionEnablement[];
+}): UIDocument {
+    const { leaf, ancestor } = input;
+    const branch = ancestor ? [{ ...ancestor, childrenIds: [leaf.id] }, leaf] : [leaf];
+    return {
+        surfaces: [
+            {
+                id: MAIN_APP_SURFACE_ID,
+                name: "Main Page",
+                kind: "appSurface",
+                rootElementId: "root",
+                actions: input.enablements ?? [{ actionId: "advance" }],
+            },
+        ],
+        actions: input.actions ?? { advance: ADVANCE },
+        elements: Object.fromEntries(
+            [element({ id: "root", type: "nl.root", childrenIds: [branch[0]!.id] }), ...branch].map(entry => [
+                entry.id,
+                entry,
+            ]),
+        ),
+    } as unknown as UIDocument;
+}
+
+/** A widget whose own blueprint answers one pointer slot. */
+function widgetWithHead(input: { id: string; type: string; name?: string; head: string }): {
+    element: UIElement;
+    blueprints: BlueprintDocument;
+} {
+    return {
+        element: element({ id: input.id, type: input.type, ...(input.name ? { name: input.name } : {}) }),
+        blueprints: blueprintDocument({
+            [widgetMainOwnerKey(MAIN_APP_SURFACE_ID, input.id)]: {
+                nodes: { h: { id: "h", type: input.head } },
+                edges: [],
+            } as unknown as BlueprintGraphIr,
+        }),
+    };
+}
+
+describe("ui/gesture-answered-twice", () => {
+    it("reports a hand-made hit target on a page that answers the same gesture", async () => {
+        const hit = widgetWithHead({
+            id: "hit",
+            type: "nl.container",
+            name: "Hit area",
+            head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
+        });
+
+        const findings = await run(
+            "ui/gesture-answered-twice",
+            createTestLintContext({ uiDocument: actionPage({ leaf: hit.element }), blueprintDocument: hit.blueprints }),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            ruleId: "ui/gesture-answered-twice",
+            messageKey: "lint.rule.uiGestureAnsweredTwice.message",
+            messageParams: { action: "Advance" },
+            location: { kind: "surface", surfaceId: MAIN_APP_SURFACE_ID, elementName: "Hit area" },
+            target: { kind: "uiSurface", surfaceId: MAIN_APP_SURFACE_ID },
+        });
+    });
+
+    it("reports a widget wired through its behavior record, not only through a graph", async () => {
+        const hit = element({
+            id: "hit",
+            type: "nl.container",
+            behavior: { events: { mouseClick: { kind: "blueprintEvent", eventId: "main" } } },
+        } as unknown as Partial<UIElement> & { id: string; type: string });
+
+        const findings = await run(
+            "ui/gesture-answered-twice",
+            createTestLintContext({ uiDocument: actionPage({ leaf: hit }), blueprintDocument: NO_GRAPHS }),
+        );
+
+        expect(findings).toHaveLength(1);
+    });
+
+    it("matches a wheel head against whichever direction the page is bound to", async () => {
+        const wheel = widgetWithHead({
+            id: "hit",
+            type: "nl.container",
+            head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_WHEEL,
+        });
+        // One head, four gestures: it is handed the deltas and decides the direction itself.
+        for (const gesture of ["wheelUp", "wheelDown", "wheelLeft", "wheelRight"] as const) {
+            const document = actionPage({
+                leaf: wheel.element,
+                actions: { backlog: { id: "backlog", name: "Backlog", bindings: [{ kind: "pointer", gesture }] } },
+                enablements: [{ actionId: "backlog" }],
+            });
+            const findings = await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({ uiDocument: document, blueprintDocument: wheel.blueprints }),
+            );
+            expect(findings, `a wheel head should collide with ${gesture}`).toHaveLength(1);
+        }
+    });
+
+    it("says nothing about a control the action already stands down over", async () => {
+        // The half that works: `overControls: "skip"` reads the widget type, and a Button is a
+        // control by type, so only one of the two ever runs.
+        const button = widgetWithHead({ id: "hit", type: "nl.button", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
+
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({
+                    uiDocument: actionPage({ leaf: button.element }),
+                    blueprintDocument: button.blueprints,
+                }),
+            ),
+        ).toEqual([]);
+    });
+
+    it("says nothing about a widget inside a control", async () => {
+        // The runtime asks the whole chain under the pointer, so a container in a list is covered
+        // by the list. A rule that judged only the widget would report every row of every list.
+        const inner = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
+        const document = actionPage({ leaf: inner.element, ancestor: element({ id: "rows", type: "nl.list" }) });
+
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({ uiDocument: document, blueprintDocument: inner.blueprints }),
+            ),
+        ).toEqual([]);
+    });
+
+    it("says nothing when the page was told to fire over controls anyway", async () => {
+        const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
+        const document = actionPage({
+            leaf: hit.element,
+            enablements: [{ actionId: "advance", overControls: "fire" }],
+        });
+
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({ uiDocument: document, blueprintDocument: hit.blueprints }),
+            ),
+        ).toEqual([]);
+    });
+
+    it("says nothing when the two answer different gestures", async () => {
+        const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
+        // A key binding is not a gesture a pointer can collide with, and a wheel is not a click.
+        for (const bindings of [
+            [{ kind: "key" as const, key: "Escape" }],
+            [{ kind: "pointer" as const, gesture: "wheelDown" as const }],
+        ]) {
+            const document = actionPage({
+                leaf: hit.element,
+                actions: { dismiss: { id: "dismiss", name: "Dismiss", bindings } },
+                enablements: [{ actionId: "dismiss" }],
+            });
+            expect(
+                await run(
+                    "ui/gesture-answered-twice",
+                    createTestLintContext({ uiDocument: document, blueprintDocument: hit.blueprints }),
+                ),
+            ).toEqual([]);
+        }
+    });
+
+    it("says nothing about a page that answers nothing, or an action the project never defined", async () => {
+        const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
+
+        const noAnswers = actionPage({ leaf: hit.element, enablements: [] });
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({ uiDocument: noAnswers, blueprintDocument: hit.blueprints }),
+            ),
+        ).toEqual([]);
+
+        // What a surface pasted in from another project leaves behind: inert at run time, and the
+        // dangling name is reported where the vocabulary is rather than piled on here.
+        const orphan = actionPage({ leaf: hit.element, actions: {}, enablements: [{ actionId: "advance" }] });
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({ uiDocument: orphan, blueprintDocument: hit.blueprints }),
+            ),
+        ).toEqual([]);
+    });
+
+    it("claims nothing about a blueprint it cannot read", async () => {
+        // The polarity that matters: a script module's handlers are functions this sweep cannot
+        // see, and crediting one with answering a click would report every widget carrying one.
+        const scripted = {
+            ownerRecords: {
+                [widgetMainOwnerKey(MAIN_APP_SURFACE_ID, "hit")]: {
+                    activeBlueprintId: "bpS",
+                    privateBlueprintIds: ["bpS"],
+                },
+            },
+            blueprints: { bpS: { id: "bpS", name: "Hit area", program: { kind: "script", source: "" } } },
+        } as unknown as BlueprintDocument;
+
+        expect(
+            await run(
+                "ui/gesture-answered-twice",
+                createTestLintContext({
+                    uiDocument: actionPage({ leaf: element({ id: "hit", type: "nl.container" }) }),
+                    blueprintDocument: scripted,
+                }),
+            ),
+        ).toEqual([]);
     });
 });

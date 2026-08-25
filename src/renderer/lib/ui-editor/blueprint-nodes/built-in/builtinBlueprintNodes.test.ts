@@ -49,8 +49,6 @@ import {
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_PROPERTY,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_STOP_ANIMATION,
-    BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-    BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
     BLUEPRINT_NODE_TYPE_ELEMENT_BUTTON_SET_POINTER,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_ANIMATE_PROPERTY,
     BLUEPRINT_NODE_TYPE_ELEMENT_FRAME_SET_PAGE,
@@ -226,6 +224,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN,
     BLUEPRINT_NODE_TYPE_APP_OPEN_EXTERNAL,
     BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
@@ -988,8 +987,6 @@ describe("built-in blueprint nodes", () => {
         expect(types.has(BLUEPRINT_NODE_TYPE_PERSISTENT_SET)).toBe(true);
         expect([...types].some(type => type.startsWith("blueprint.persistence."))).toBe(false);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_REF)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_TEXT_GET_TEXT)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_GET_POSITION)).toBe(true);
         expect(types.has(BLUEPRINT_NODE_TYPE_DISPLAYABLE_GET_DISPLAY)).toBe(true);
@@ -1749,6 +1746,102 @@ describe("built-in blueprint nodes", () => {
         const refused: Record<string, unknown> = {};
         await runOpenLink(createPersistenceHostAdapter({}), refused);
         expect(refused).toMatchObject({ failed: "not declared" });
+    });
+
+    describe("Keep Window Open", () => {
+        /**
+         * The shared flag the shell reads after the close dispatch. `stopPropagation` on it is what
+         * turns "close the window" into "leave it alone", which is the whole of what this node does.
+         */
+        function createEventControl() {
+            let stopped = false;
+            return {
+                stopPropagation: () => {
+                    stopped = true;
+                },
+                isPropagationStopped: () => stopped,
+            };
+        }
+
+        // The node touches no host API at all - it writes one flag on the dispatch it is standing in.
+        const hostAdapter: UIHostAdapter = { host: "player" };
+
+        function runKeepWindowOpen(options: {
+            eventName?: string;
+            eventControl?: { stopPropagation(): void; isPropagationStopped(): boolean };
+            locals?: Record<string, unknown>;
+        }) {
+            registerCoreBlueprintNodes();
+            return executeGraph({
+                graph: {
+                    id: "keepWindowOpen",
+                    entries: { main: { start: { nodeId: "keep", port: "in" } } },
+                    nodes: {
+                        keep: { id: "keep", type: BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN, params: {} },
+                        after: {
+                            id: "after",
+                            type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
+                            params: { variableId: "after" },
+                        },
+                        literal: {
+                            id: "literal",
+                            type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
+                            params: { value: "continued" },
+                        },
+                    },
+                    edges: [
+                        { from: { nodeId: "keep", port: "next" }, to: { nodeId: "after", port: "in" } },
+                        { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
+                    ],
+                },
+                entry: { start: { nodeId: "keep", port: "in" } },
+                hostAdapter,
+                eventName: options.eventName,
+                eventControl: options.eventControl,
+                blueprintLocals: options.locals,
+            });
+        }
+
+        it("cancels the close request it is dispatched under, and carries on", async () => {
+            const eventControl = createEventControl();
+            const locals: Record<string, unknown> = {};
+
+            await runKeepWindowOpen({ eventName: "windowCloseRequested", eventControl, locals });
+
+            expect(eventControl.isPropagationStopped()).toBe(true);
+            // Cancelling the close is not the end of the graph: a confirmation dialog goes after it.
+            expect(locals).toMatchObject({ after: "continued" });
+        });
+
+        it("refuses when nothing is asking to close the window", async () => {
+            // No dispatch at all - a macro run by hand, or a graph under the wrong head.
+            await expect(runKeepWindowOpen({})).rejects.toThrow(
+                /Keep Window Open: there is no close request to cancel/,
+            );
+        });
+
+        it("refuses on another dispatch's event control rather than silencing it", async () => {
+            // Every dispatch carries one of these, so the presence of a control proves nothing. A
+            // key press stopped here would stop reaching the game, and the window would still close.
+            const eventControl = createEventControl();
+
+            await expect(runKeepWindowOpen({ eventName: "keyDown", eventControl })).rejects.toThrow(
+                /Keep Window Open: there is no close request to cancel/,
+            );
+            expect(eventControl.isPropagationStopped()).toBe(false);
+        });
+
+        it("is an App node offered only where the close request is dispatched", () => {
+            const def = frameBlueprintNodes.find(node => node.type === BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN);
+
+            expect(def).toBeDefined();
+            expect(def?.displayName).toBe("Keep Window Open");
+            expect(def?.category).toBe("App");
+            expect(def?.isPure).toBe(false);
+            expect(def?.graphKinds).toEqual(["event", "macro"]);
+            expect(def?.scope?.ownerKinds).toEqual(["globalMain", "surfaceMain"]);
+            expect(def?.pins.map(pin => pin.id)).toEqual(["in", "next"]);
+        });
     });
 
     it("executes Start Game as a terminal host API node", async () => {
@@ -3234,156 +3327,8 @@ describe("built-in blueprint nodes", () => {
             },
         ]);
         expect(elementButtonSetPointer?.inspectorParams).toEqual(buttonSetPointer?.inspectorParams);
-        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
-            "in",
-            "next",
-        ]);
-        expect(elementBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)?.pins.map(pin => pin.id)).toEqual([
-            "in",
-            "next",
-        ]);
         expect(elementBlueprintNodes.some(def => def.category === "Element")).toBe(true);
         expect(elementBlueprintNodes.some(def => def.category === "Displayable")).toBe(true);
-    });
-
-    it("continues the active Element event bubble through the runtime", async () => {
-        registerCoreBlueprintNodes();
-
-        const bubbleCalls: Array<{
-            elementId: string;
-            eventName: string;
-            payload?: Record<string, unknown>;
-            options?: Record<string, unknown>;
-        }> = [];
-        const blueprintLocals: Record<string, unknown> = {};
-        const eventPayload = { x: 12, y: 34, button: 0 };
-
-        await executeGraph({
-            graph: {
-                id: "continueEventBubble",
-                entries: { main: { start: { nodeId: "bubble", port: "in" } } },
-                nodes: {
-                    bubble: {
-                        id: "bubble",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    after: {
-                        id: "after",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "afterBubble" },
-                    },
-                    literal: {
-                        id: "literal",
-                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                        params: { value: "continued" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
-                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "bubble", port: "in" } },
-            hostAdapter: {
-                host: "player",
-                blueprintRuntime: {
-                    continueElementEventBubble: async (
-                        elementId: string,
-                        eventName: string,
-                        payload?: Record<string, unknown>,
-                        options?: Record<string, unknown>,
-                    ) => {
-                        bubbleCalls.push({ elementId, eventName, payload, options });
-                        return true;
-                    },
-                },
-            } as unknown as UIHostAdapter,
-            eventName: "mouseClick",
-            eventPayload,
-            executionOwner: { surfaceId: "surface", elementId: "button" },
-            blueprintLocals,
-        });
-
-        expect(bubbleCalls).toEqual([
-            {
-                elementId: "button",
-                eventName: "mouseClick",
-                payload: eventPayload,
-                options: {
-                    listItemScope: undefined,
-                    instanceKey: undefined,
-                    componentId: undefined,
-                },
-            },
-        ]);
-        expect(blueprintLocals.afterBubble).toBe("continued");
-    });
-
-    it("stops the active Element event bubble before a later continue request", async () => {
-        registerCoreBlueprintNodes();
-
-        const bubbleCalls: string[] = [];
-        let stopped = false;
-        const blueprintLocals: Record<string, unknown> = {};
-
-        await executeGraph({
-            graph: {
-                id: "stopEventBubble",
-                entries: { main: { start: { nodeId: "stop", port: "in" } } },
-                nodes: {
-                    stop: {
-                        id: "stop",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    bubble: {
-                        id: "bubble",
-                        type: BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE,
-                        params: {},
-                    },
-                    after: {
-                        id: "after",
-                        type: BLUEPRINT_NODE_TYPE_LOCAL_SET,
-                        params: { variableId: "afterStop" },
-                    },
-                    literal: {
-                        id: "literal",
-                        type: BLUEPRINT_NODE_TYPE_LITERAL_STRING,
-                        params: { value: "continued" },
-                    },
-                },
-                edges: [
-                    { from: { nodeId: "stop", port: "next" }, to: { nodeId: "bubble", port: "in" } },
-                    { from: { nodeId: "bubble", port: "next" }, to: { nodeId: "after", port: "in" } },
-                    { from: { nodeId: "literal", port: "value" }, to: { nodeId: "after", port: "value" } },
-                ],
-            },
-            entry: { start: { nodeId: "stop", port: "in" } },
-            hostAdapter: {
-                host: "player",
-                blueprintRuntime: {
-                    continueElementEventBubble: async (elementId: string) => {
-                        bubbleCalls.push(elementId);
-                        return true;
-                    },
-                },
-            } as unknown as UIHostAdapter,
-            eventName: "mouseClick",
-            eventPayload: { x: 12, y: 34 },
-            eventControl: {
-                stopPropagation: () => {
-                    stopped = true;
-                },
-                isPropagationStopped: () => stopped,
-            },
-            executionOwner: { surfaceId: "surface", elementId: "button" },
-            blueprintLocals,
-        });
-
-        expect(stopped).toBe(true);
-        expect(bubbleCalls).toEqual([]);
-        expect(blueprintLocals.afterStop).toBe("continued");
     });
 
     it("adds Displayable variant and generic property nodes", () => {
@@ -5346,7 +5291,6 @@ describe("built-in blueprint nodes", () => {
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_ENTERING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
-        expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)).toBe(true);
         expect(valuePaletteTypes.has(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)).toBe(true);
@@ -5498,8 +5442,6 @@ describe("built-in blueprint nodes", () => {
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME)?.category).toBe("Game");
         expect(byType.get(BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY)?.category).toBe("Game");
         expect(byType.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(false);
-        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(byType.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_QUIT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_GAME_NEXT)).toBe(false);
         expect(byType.has(BLUEPRINT_NODE_TYPE_PERSISTENT_GET)).toBe(false);
@@ -5576,8 +5518,6 @@ describe("built-in blueprint nodes", () => {
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_GET_PROPS)).toBe(false);
-        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(globalPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_INIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SURFACE_UNMOUNT)).toBe(true);
@@ -5604,8 +5544,6 @@ describe("built-in blueprint nodes", () => {
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(false);
-        expect(surfacePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(true);
@@ -5634,8 +5572,6 @@ describe("built-in blueprint nodes", () => {
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(buttonPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS)).toBe(true);
@@ -5656,8 +5592,6 @@ describe("built-in blueprint nodes", () => {
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_UNMOUNT)).toBe(true);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
-        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(listPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_GET_VALUE)).toBe(true);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_SLIDER_SET_VALUE)).toBe(true);
@@ -5676,8 +5610,6 @@ describe("built-in blueprint nodes", () => {
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK)).toBe(false);
         expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_SCROLL)).toBe(false);
-        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(sliderPaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
 
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_PAGE_EVENT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_EVENT_HEAD_KEY_DOWN)).toBe(true);
@@ -5697,8 +5629,6 @@ describe("built-in blueprint nodes", () => {
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_TRANSITIONING)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_PAGE_QUIT)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_GET_PARAM)).toBe(false);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE)).toBe(true);
-        expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE)).toBe(true);
         expect(framePaletteTypes.has(BLUEPRINT_NODE_TYPE_FRAME_WIDGET_SET_PAGE)).toBe(true);
         const frameSetPageEntry = blueprintNodeRegistry
             .listPaletteEntries({

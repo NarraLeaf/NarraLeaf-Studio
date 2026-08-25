@@ -119,6 +119,7 @@ export type LintRuleId =
     | "ui/component-missing"
     | "ui/frame-target-missing"
     | "ui/list-item-field-missing"
+    | "ui/gesture-answered-twice"
     | "blueprint/save-field-empty"
     | "variables/undeclared"
     | "variables/unused"
