@@ -1,4 +1,6 @@
+import type { LiveCastView } from "@shared/live/cast";
 import type { LiveEffect, LiveOp } from "@shared/live/ops";
+import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
 
@@ -89,7 +91,25 @@ export type LiveInverseReason =
      */
     | "subtree-lost"
     /** The chapters are not the ones the recorded order names, so applying it would drop or duplicate one. */
-    | "chapters-changed";
+    | "chapters-changed"
+    /**
+     * The character record is gone. Somebody deleted it after the operation landed.
+     *
+     * The cast's `row-gone`, and refused for the same reason rather than turned into a creation:
+     * putting back a record somebody else deleted is not undoing an edit, it is making a character.
+     */
+    | "character-gone"
+    /**
+     * There is no verb that takes a creation back, because a session carries no character deletion.
+     *
+     * Deleting a character is not one document's operation: it rewrites every dialogue row in the
+     * project that the character speaks, across every story document, and a session carries one. The
+     * ruling already shipped for the other direction - promoting an unresolved speaker into a
+     * character, which creates a record and rebinds a row - and this is the same seam seen from the
+     * other side. Until an effect can carry operations on several documents at once, a character made
+     * inside a session is taken back by leaving it.
+     */
+    | "delete-unavailable";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -160,7 +180,25 @@ export type LiveBefore =
     /** The story's name. */
     | { op: "rename-story"; name: string }
     /** The chapter order. */
-    | { op: "reorder-chapters"; chapterIds: readonly string[] };
+    | { op: "reorder-chapters"; chapterIds: readonly string[] }
+    /**
+     * The record the character held. An update states the new record and nothing about the old one -
+     * the same shape as `update-block`, one document along.
+     */
+    | { op: "update-character"; character: StoredCharacter }
+    /**
+     * The group as it stood, or null when there was none - a `set` that created one is undone by a
+     * delete, and the record says which of the two it was.
+     */
+    | { op: "set-character-group"; group: CharacterGroup | null }
+    /**
+     * The group itself and who was in it.
+     *
+     * The membership is the half of a deletion that is not recoverable from the group afterwards:
+     * every member was moved out of it, and the group record says nothing about which ones. Undoing
+     * has to put the cast back where it was, not re-create an empty group with the right name.
+     */
+    | { op: "delete-character-group"; group: CharacterGroup; members: readonly string[] };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -173,11 +211,14 @@ export type LiveBefore =
  * place, and a record that pointed into it would describe the state after the operation instead of
  * the state before, which is the one mistake this whole module exists to avoid.
  */
-export function captureBefore(op: LiveOp, document: StoryDocument): LiveBefore | null {
+export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefore | null {
+    const document = sources.story ?? EMPTY_STORY;
+    const cast = sources.cast ?? EMPTY_CAST;
     switch (op.op) {
         case "insert-block":
         case "insert-blocks":
-            // Nothing. The inverse is a delete of rows the effect already names.
+        case "create-character":
+            // Nothing. The inverse is a delete of what the effect already names.
             return null;
 
         case "update-block": {
@@ -289,8 +330,48 @@ export function captureBefore(op: LiveOp, document: StoryDocument): LiveBefore |
 
         case "reorder-chapters":
             return { op: "reorder-chapters", chapterIds: document.chapters.map(chapter => chapter.id) };
+
+        case "update-character": {
+            const record = cast.characters[op.characterId];
+            return record ? { op: "update-character", character: structuredClone(record) } : null;
+        }
+
+        case "set-character-group": {
+            const group = cast.groups[op.groupId];
+            return { op: "set-character-group", group: group ? { ...group } : null };
+        }
+
+        case "delete-character-group": {
+            const group = cast.groups[op.groupId];
+            if (!group) {
+                // Already gone, so the deletion changes nothing and there is nothing to put back.
+                return null;
+            }
+            return {
+                op: "delete-character-group",
+                group: { ...group },
+                members: cast.order.filter(id => cast.characters[id]?.profile.groupId === op.groupId),
+            };
+        }
     }
 }
+
+/**
+ * Where {@link captureBefore} reads from.
+ *
+ * Both documents rather than one, and both optional: a session carries several documents and one
+ * capture call serves all of them, so the caller hands over whatever it holds and the operation
+ * decides which half it needs. Absent is treated as empty rather than as an error, because a caller
+ * with no cast loaded asking about a story operation is an ordinary state and not a mistake.
+ */
+export type LiveBeforeSources = {
+    story?: StoryDocument | null;
+    cast?: LiveCastView | null;
+};
+
+/** Stand-ins for an absent source, so the cases below need no null check of their own. */
+const EMPTY_STORY = { name: "", scenes: {}, chapters: [] } as unknown as StoryDocument;
+const EMPTY_CAST: LiveCastView = { characters: {}, order: [], groups: {} };
 
 /* --------------------------------------------------------------------------- the inverse */
 
@@ -303,8 +384,10 @@ export function captureBefore(op: LiveOp, document: StoryDocument): LiveBefore |
 export type LiveInverseContext = {
     /** This machine's instance id. An effect by anybody else has no inverse here. */
     self: string;
-    /** The document as it stands NOW - after the effect, and after everything that followed it. */
-    document: StoryDocument;
+    /** The story as it stands NOW - after the effect, and after everything that followed it. */
+    document?: StoryDocument | null;
+    /** The cast as it stands NOW, for the operations that are about it. */
+    cast?: LiveCastView | null;
     /** What {@link captureBefore} read before this effect was applied, or null if nothing was kept. */
     before: LiveBefore | null;
 };
@@ -338,7 +421,9 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
         return { impossible: "not-mine" };
     }
 
-    const { before, document } = context;
+    const { before } = context;
+    const document = context.document ?? EMPTY_STORY;
+    const cast = context.cast ?? EMPTY_CAST;
     // The operation as APPLIED, which is not always the one that was asked for - see LiveEffect.op.
     // An insert whose anchor had been deleted landed where that row stood, and the row is now where
     // the effect says it is rather than where its author aimed.
@@ -640,6 +725,61 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                 return { impossible: "chapters-changed" };
             }
             return { op: { op: "reorder-chapters", chapterIds: [...before.chapterIds] } };
+        }
+
+        case "create-character":
+            // Nothing takes it back. See `delete-unavailable`, which is a statement about the
+            // vocabulary rather than about this document: the record is right there and deletable the
+            // moment the session ends.
+            return { impossible: "delete-unavailable" };
+
+        case "update-character": {
+            if (!before || before.op !== "update-character") {
+                return { impossible: "no-record" };
+            }
+            if (!cast.characters[op.characterId]) {
+                // Refused rather than turned back into a creation. Putting a record back that
+                // somebody else deleted is not undoing an edit, it is making a character - and the
+                // author asked for neither.
+                return { impossible: "character-gone" };
+            }
+            return {
+                op: {
+                    op: "update-character",
+                    characterId: op.characterId,
+                    character: structuredClone(before.character),
+                },
+            };
+        }
+
+        case "set-character-group": {
+            if (!before || before.op !== "set-character-group") {
+                return { impossible: "no-record" };
+            }
+            if (before.group === null) {
+                // There was no group, so the operation created one and taking it back is removing it.
+                return { op: { op: "delete-character-group", groupId: op.groupId } };
+            }
+            return { op: { op: "set-character-group", groupId: op.groupId, group: { ...before.group } } };
+        }
+
+        case "delete-character-group": {
+            if (!before || before.op !== "delete-character-group") {
+                return { impossible: "no-record" };
+            }
+            // The membership travels with the restoration, as one operation: a group put back empty
+            // is a group with the right name and the cast still scattered, and the author would have
+            // to re-assign every member by hand. Members that have since been deleted are dropped by
+            // the applier rather than refused here - the group is still the group it was, minus
+            // somebody nobody has.
+            return {
+                op: {
+                    op: "set-character-group",
+                    groupId: op.groupId,
+                    group: { ...before.group },
+                    members: [...before.members],
+                },
+            };
         }
     }
 }

@@ -1,13 +1,13 @@
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import { storyDocumentSpec } from "@shared/documents/specs";
 import type { LiveDerived } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
+import { CharacterService } from "../core/CharacterService";
 import { VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
@@ -120,6 +120,17 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimRow(storyId, blockId, holding);
     }
 
+    /**
+     * Say that this window is editing one character record, or that it has stopped.
+     *
+     * The cast's door beside the story's, and the same bargain: silent outside a session, so the
+     * panel calls it without asking whether there is one. There is no document id to pass because
+     * there is one cast per project.
+     */
+    public claimCharacter(characterId: string, holding: boolean): void {
+        this.session?.claimCharacter(characterId, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;
@@ -133,6 +144,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
 
     private buildDeps(ctx: WorkspaceContext): LiveSessionDeps {
         const story = (): StoryService => ctx.services.get<StoryService>(Services.Story);
+        const characters = (): CharacterService => ctx.services.get<CharacterService>(Services.Character);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
 
@@ -163,6 +175,11 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 },
                 applyOp: (storyId, op) => story().applyLiveOp(storyId, op),
                 adoptDerived: derived => this.adoptDerived(ctx, derived),
+            },
+            cast: {
+                setSink: sink => characters().setOperationSink(sink),
+                view: () => characters().castView(),
+                applyOp: op => characters().applyLiveOp(op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,
@@ -206,9 +223,6 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                         && historyScopeParts(scopeId)[0] === storyId);
                 },
             },
-            // Through the document spec rather than spelled out here, so this cannot fall behind the
-            // path `StoryService` actually writes to. The write boundary compares the two.
-            storyDocumentPath: storyId => storyDocumentSpec.pathFor({ storyId }),
             now: () => Date.now(),
             schedule: (delayMs, run) => {
                 const timer = setTimeout(run, delayMs);

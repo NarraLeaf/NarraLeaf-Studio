@@ -124,6 +124,49 @@ describe("SplitComparisonView width", () => {
     });
 });
 
+describe("SplitComparisonView selection", () => {
+    /**
+     * A row is a control only where the tab can say what it is about.
+     *
+     * The resolver is the whole seam: a document kind with no element behind its rows answers null
+     * for every one of them and the halves stay text, which is the difference between a comparison an
+     * author can inspect and one full of buttons that do nothing.
+     */
+    it("leaves every row as text when nothing answers for it", () => {
+        const { container } = view(FIVE);
+        expect(container.querySelectorAll("[data-split-select]").length).toBe(0);
+    });
+
+    it("makes the rows one half can answer for pressable, and reports which is selected", () => {
+        const selected: string[] = [];
+        const { container } = render(
+            <SplitComparisonView
+                entry={entryOf(FIVE)}
+                name="Chapter One"
+                directory="story"
+                baseLabel="#3"
+                headLabel="#7"
+                rowAction={(row, half) => (row.change.path[0] === "a"
+                    ? {
+                        onSelect: () => selected.push(`${half}:${row.change.path[0]}`),
+                        selected: half === "base",
+                        label: `inspect ${row.change.path[0]}`,
+                    }
+                    : null)}
+            />,
+        );
+
+        const buttons = [...container.querySelectorAll<HTMLButtonElement>("[data-split-select]")];
+        // One per half: the change is on both sides, and each half selects its own version of it.
+        expect(buttons.map(button => button.getAttribute("aria-label")))
+            .toEqual(["inspect a", "inspect a"]);
+        expect(buttons.map(button => button.getAttribute("aria-pressed"))).toEqual(["true", "false"]);
+
+        fireEvent.click(buttons[1]);
+        expect(selected).toEqual(["head:a"]);
+    });
+});
+
 describe("SplitComparisonView halves", () => {
     it("gives each half the full height and a scroller of its own", () => {
         const { container } = view(FIVE);

@@ -1,10 +1,16 @@
 import {
     CLAIMED_OPS,
-    opBlockIds,
-    opSceneId,
+    characterClaimKey,
+    opBelongsTo,
+    opClaimKeys,
+    opDigestScope,
     type LiveBlockTarget,
     type LiveCatchUp,
+    type LiveClaim,
+    type LiveClaimKey,
     type LiveDerived,
+    type LiveDigestScope,
+    type LiveDocument,
     type LiveEffect,
     type LiveIntent,
     type LiveMessage,
@@ -12,10 +18,11 @@ import {
     type LiveOpKind,
     type LiveRefusal,
     type LiveRefusalReason,
+    storyRowClaimKey,
     type LiveResync,
-    type LiveRowClaim,
 } from "@shared/live/ops";
-import { sceneDigest } from "@shared/live/sceneDigest";
+import { liveSessionCarries } from "@shared/live/sharedDocuments";
+import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
 import { DeletedPositions, resolveInsertTarget } from "./deletedPositions";
@@ -35,10 +42,37 @@ export type LiveOutbound = LiveEffect | LiveRefusal | LiveCatchUp;
 export type LiveHostDeps = {
     /** This machine's instance id, used as the author of the host's own edits. */
     self: string;
-    /** The story this session is about. An intent naming another one is not in this session. */
+    /**
+     * The story this session was opened on.
+     *
+     * Which documents that makes the session responsible for is `@shared/live/sharedDocuments`'
+     * answer, not a list assembled here: an intent about a document this session does not carry is
+     * refused, and the set it is compared against has to be the same one the write boundary uses.
+     */
     story: StoryId;
     /** The scene as it stands right now, or null when the story has no such scene. */
     readScene(sceneId: StorySceneId): StoryScene | null;
+    /**
+     * The character record as it stands right now, or null when the cast has no such member.
+     *
+     * The cast's answer to {@link readScene}, and asked for the same two reasons: an operation naming
+     * a record that is gone is refused rather than allowed to create one, and an author's half-typed
+     * panel is theirs to keep.
+     */
+    readCharacter(characterId: string): StoredCharacter | null;
+    /**
+     * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
+     * compute one.
+     *
+     * Injected rather than computed here because the unit differs per document - a scene, a character
+     * record, the cast's shape - and knowing how to read each of them is exactly what the pure rules
+     * are not allowed to know. What they do decide is *which* unit an effect is about, which is
+     * `opDigestScope`, and that decision is shared with the guest so both sides fingerprint the same
+     * thing.
+     *
+     * Null is "nothing was compared", never "they agree": see `LiveDivergenceGuard`.
+     */
+    digestOf(scope: LiveDigestScope): string | null;
     /**
      * Perform one operation on the document.
      *
@@ -56,13 +90,13 @@ export type LiveHostDeps = {
      */
     isMember?(instance: string): boolean;
     /**
-     * The host's record of who is writing which row. One is built when none is given, which is the
+     * The host's record of who is writing what. One is built when none is given, which is the
      * ordinary case - the claim store is the host's own memory and nothing outside a session has a
      * use for it. Injecting one is how a caller sets the clock a claim lapses against.
      */
     claims?: LiveClaimStore;
     /**
-     * Who holds this row against this sender, or null when the sender may write it.
+     * Who holds this claim against this sender, or null when the sender may write it.
      *
      * Consulted only for the operations in `CLAIMED_OPS`. Absent is the ordinary case: the answer
      * then comes from the host's own {@link claims} store, which says yes to everything while
@@ -72,11 +106,11 @@ export type LiveHostDeps = {
      * mystery. Comparing the holder against the sender is the answerer's business, since it is the
      * only thing that knows which accounts an instance belongs to.
      */
-    claimBlocking?(blockId: StoryBlockId, by: string): string | null;
+    claimBlocking?(key: LiveClaimKey, by: string): string | null;
     /**
      * The account behind an instance, or null when this host cannot say.
      *
-     * Asked when an instance takes a row, because a claim is recorded against a PERSON: a refusal
+     * Asked when an instance takes something, because a claim is recorded against a PERSON: a refusal
      * names one, and an instance id means nothing at all to whoever reads it. Nothing composes it -
      * the room's own roster is the only thing that knows which account a window signed in as.
      *
@@ -107,6 +141,10 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-entry-scene": true,
     "rename-story": true,
     "reorder-chapters": true,
+    "create-character": true,
+    "update-character": true,
+    "set-character-group": true,
+    "delete-character-group": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -161,12 +199,12 @@ export class LiveHost {
                 return this.intent(message, from);
             case "resync":
                 return this.catchUp(message);
-            case "row-claim":
+            case "claim":
                 // Recorded, and answered with nothing. The set that results is broadcast from the
-                // store's revision moving rather than from here, so ONE path covers a row taken, a
-                // row given back, a row that lapsed and a row forgotten because it was deleted -
-                // and a set is never sent twice for one change.
-                this.rowClaim(message, from);
+                // store's revision moving rather than from here, so ONE path covers a claim taken,
+                // one given back, one that lapsed and one forgotten because what it held was
+                // deleted - and a set is never sent twice for one change.
+                this.claim(message, from);
                 return null;
             case "effect":
             case "refusal":
@@ -190,27 +228,31 @@ export class LiveHost {
      * No client id, because nobody is waiting for a receipt - which is exactly what an absent
      * `clientId` on an effect means.
      */
-    public applyLocal(op: LiveOp, derived?: LiveDerived): LiveEffect | LiveRefusal {
-        return this.perform(op, this.deps.self, undefined, derived);
+    public applyLocal(op: LiveOp, document: LiveDocument, derived?: LiveDerived): LiveEffect | LiveRefusal {
+        if (!liveSessionCarries(this.deps.story, document) || !opBelongsTo(op, document)) {
+            return this.refuse(undefined, "document-not-shared");
+        }
+        return this.perform(op, this.deps.self, undefined, derived, document);
     }
 
     /**
-     * This window is writing a row, or has stopped. **The host's own box, through the guest's door.**
+     * This window is writing something, or has stopped. **The host's own box, through the guest's
+     * door.**
      *
      * The host is not exempt from the rule it enforces: a row it took without recording it here
      * would be held by nobody as far as the set is concerned, so nothing would refuse a guest
      * writing over the paragraph the host is in the middle of - and no mark would appear on any
      * other screen. Same message, same record, same broadcast.
      */
-    public claimLocal(blockId: StoryBlockId, holding: boolean): void {
-        this.rowClaim({ kind: "row-claim", blockId, holding }, this.deps.self);
+    public claimLocal(key: LiveClaimKey, holding: boolean): void {
+        this.claim({ kind: "claim", key, holding }, this.deps.self);
     }
 
     /**
      * Whatever an instance was writing, released at once.
      *
      * For a window that has left the room, which is the one ending a give-back cannot cover: the
-     * machine that would have sent one is gone. Without it the rows it held stay held until they
+     * machine that would have sent one is gone. Without it the claims it held stay held until they
      * lapse, and a lapse is a safety net measured in a pause in typing rather than in how long
      * somebody has been away.
      */
@@ -231,7 +273,7 @@ export class LiveHost {
     }
 
     private decide(intent: LiveIntent, from: string): LiveReceipt {
-        if (intent.story !== this.deps.story || !this.isMember(from)) {
+        if (!this.isMember(from)) {
             return this.refuse(intent.clientId, "not-in-session");
         }
         if (!isKnownOp(intent.op)) {
@@ -239,7 +281,15 @@ export class LiveHost {
             // one unreadable message must not take the session down with it.
             return this.refuse(intent.clientId, "unknown-op");
         }
-        return this.perform(intent.op, from, intent.clientId, intent.derived);
+        // Two questions, deliberately not one. Whether the session carries that document is a fact
+        // about this room; whether the operation could be about it is a fact about the message, and a
+        // message whose two halves disagree is malformed rather than out of scope. Folding them would
+        // report a build mismatch as "not shared" and send somebody looking in the wrong place.
+        if (!intent.document || !liveSessionCarries(this.deps.story, intent.document)
+            || !opBelongsTo(intent.op, intent.document)) {
+            return this.refuse(intent.clientId, "document-not-shared");
+        }
+        return this.perform(intent.op, from, intent.clientId, intent.derived, intent.document);
     }
 
     /**
@@ -248,7 +298,13 @@ export class LiveHost {
      * The sequence number is taken *after* the change lands, so an applier that throws leaves no gap
      * in an order that promises a gap means a lost message.
      */
-    private perform(op: LiveOp, by: string, clientId: string | undefined, derived?: LiveDerived): LiveEffect | LiveRefusal {
+    private perform(
+        op: LiveOp,
+        by: string,
+        clientId: string | undefined,
+        derived: LiveDerived | undefined,
+        document: LiveDocument,
+    ): LiveEffect | LiveRefusal {
         const planned = this.plan(op, by);
         if ("refuse" in planned) {
             return this.refuse(clientId, planned.refuse, planned.heldBy);
@@ -266,7 +322,7 @@ export class LiveHost {
         this.deps.applyOp(applied);
         if (applied.op === "delete-block") {
             // Nobody is writing a row that is gone.
-            this.claims.forgetRow(applied.blockId);
+            this.claims.forget(storyRowClaimKey(applied.blockId));
         }
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
@@ -277,16 +333,17 @@ export class LiveHost {
             kind: "effect",
             by,
             seq: this.deps.nextSeq(),
+            document,
             op: applied,
         };
         if (clientId !== undefined) {
             effect.clientId = clientId;
         }
-        const digestOf = digestSceneId(applied);
-        if (digestOf !== null) {
-            const scene = this.deps.readScene(digestOf);
-            if (scene) {
-                effect.sceneDigest = sceneDigest(scene);
+        const scope = opDigestScope(applied);
+        if (scope !== null) {
+            const hash = this.deps.digestOf(scope);
+            if (hash !== null) {
+                effect.digest = { scope, hash };
             }
         }
         if (derived) {
@@ -478,6 +535,31 @@ export class LiveHost {
                 }
                 return this.claimed(op, by) ?? { op };
             }
+
+            case "create-character":
+                // Not checked against a record already there, and not claimed. The id was minted by
+                // whoever built the record, so two of them colliding is a uuid collision rather than
+                // a race; a *retry* of one create is answered by the receipts, which is where every
+                // "did this already happen" question belongs. Refusing here would need a reason for a
+                // case nobody can produce, and a reason nobody can reach is a reason nobody maintains.
+                return { op };
+
+            case "update-character": {
+                if (!this.deps.readCharacter(op.characterId)) {
+                    // ⚠ Says the record is gone. It never says the author's typing is: the panel is
+                    // full of their own work and it is theirs to keep, exactly as `row-gone` is
+                    // forbidden from being read as licence to clear a box.
+                    return { refuse: "character-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-character-group":
+            case "delete-character-group":
+                // Also last-writer-wins, and deliberately tolerant of a group that is already gone:
+                // the second of two deletions changes nothing, and refusing it would report a
+                // conflict where there is only agreement.
+                return { op };
         }
     }
 
@@ -501,19 +583,24 @@ export class LiveHost {
      * governs and what is last-writer-wins is drawn in one place - the vocabulary the whole session
      * shares - and cannot come to mean two different things on two machines.
      *
-     * **Every row the operation names, and one held row refuses all of them.** A batch is one
+     * **Every claim the operation names, and one held one refuses all of them.** A batch is one
      * gesture: applying the rows nobody holds and dropping the rest would produce a document that is
      * neither what the author asked for nor what it was before, and the author would be told a row
      * was claimed while seeing most of their edit land anyway.
+     *
+     * ⚠ **This is called from the cases of {@link plan}, one by one, and not from a single door.**
+     * A verb added to `CLAIMED_OPS` whose case forgets `this.claimed(op, by) ??` is not checked at
+     * all, and nothing anywhere says so - the operation simply applies over somebody's draft. There
+     * is a test that walks every claimed verb for that reason.
      */
     private claimed(op: LiveOp, by: string): LivePlan | null {
         if (!CLAIMED_OPS.has(op.op)) {
             return null;
         }
-        for (const blockId of opBlockIds(op)) {
+        for (const key of opClaimKeys(op)) {
             const heldBy = this.deps.claimBlocking
-                ? this.deps.claimBlocking(blockId, by)
-                : this.claims.blocking(blockId, by);
+                ? this.deps.claimBlocking(key, by)
+                : this.claims.blocking(key, by);
             if (heldBy !== null) {
                 return { refuse: "row-claimed", heldBy };
             }
@@ -522,19 +609,24 @@ export class LiveHost {
     }
 
     /**
-     * Record that an instance is writing a row, or that it has stopped.
+     * Record that an instance is writing something, or that it has stopped.
      *
      * The one place a claim is created or dropped by somebody asking, whichever half of the session
-     * asked - see {@link claimLocal}. A row somebody else holds is simply not taken: the asker is
+     * asked - see {@link claimLocal}. Something somebody else holds is simply not taken: the asker is
      * told by the set it already has, which names the holder, and there is nothing to send it that
      * it does not already know.
+     *
+     * **It does not check what the key is over.** A key names a row or a character record and this
+     * store holds either; validating it against the document would be a second place that has to know
+     * every kind of claim, and the worst a key for nothing can do is put a name over something nobody
+     * in the room is looking at.
      */
-    private rowClaim(message: LiveRowClaim, from: string): void {
+    private claim(message: LiveClaim, from: string): void {
         if (!this.isMember(from)) {
             return;
         }
         if (!message.holding) {
-            this.claims.release(message.blockId, from);
+            this.claims.release(message.key, from);
             return;
         }
         const account = this.deps.accountOf?.(from) ?? null;
@@ -542,7 +634,7 @@ export class LiveHost {
             // Nothing rather than a claim held by an id nobody would recognise. See `accountOf`.
             return;
         }
-        this.claims.claim(message.blockId, { instance: from, account });
+        this.claims.claim(message.key, { instance: from, account });
     }
 
     private catchUp(resync: LiveResync): LiveCatchUp {
@@ -565,17 +657,6 @@ export class LiveHost {
     private isMember(instance: string): boolean {
         return this.deps.isMember ? this.deps.isMember(instance) : true;
     }
-}
-
-/**
- * The scene an effect's digest is taken from, or null when the operation is about the story.
- *
- * Everything here is `opSceneId` except `set-entry-scene`, which names a scene it does not change:
- * an effect about the story as a whole carries no digest, and one that carried an unchanged scene's
- * fingerprint would invite a guest to read agreement into a comparison that proves nothing.
- */
-function digestSceneId(op: LiveOp): StorySceneId | null {
-    return op.op === "set-entry-scene" ? null : opSceneId(op);
 }
 
 /**
