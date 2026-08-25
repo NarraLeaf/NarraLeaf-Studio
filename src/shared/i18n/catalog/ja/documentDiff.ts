@@ -70,6 +70,7 @@ export const documentDiff = {
 
         assetSets: "アセットセット",
         assets: "アセット",
+        folders: "アセットフォルダー",
         audioTracks: "オーディオトラック",
         brandColors: "ブランドの色",
         brandFonts: "既定のフォント",

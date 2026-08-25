@@ -81,13 +81,11 @@ export function useDragAndDrop({
     // deliberately left alone and only the drop targets stop lighting up.
     const freeze = useFreezeGuard();
     /**
-     * The one drop a live session still allows: filing rows this project already has in a folder it
-     * already has.
+     * The asset library's own guard: filing rows, moving folders, and importing from the desktop.
      *
-     * Everything else this hook can drop writes bytes (an import from the desktop, a set's files) or
-     * the folder tree (moving a folder under another), and neither travels between the people in a
-     * session. Scoped to the metadata shards, so it is live inside one and frozen by every other kind
-     * of freeze exactly as {@link freeze} is.
+     * All three write the library and a session carries all three, so they share one answer. What
+     * still reads {@link freeze} is the asset SET drop beside them, which writes a different document
+     * that has no verbs.
      */
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
     const [draggedItem, setDraggedItem] = useState<DraggedItemState | null>(null);
@@ -235,12 +233,6 @@ export function useDragAndDrop({
             }
 
             if (draggedItem.isGroup) {
-                // A folder move writes the folder tree, which no session carries.
-                if (freeze.frozen) {
-                    setDragOver(false);
-                    setDropTargetId(null);
-                    return;
-                }
                 const group = draggedItem.item as AssetGroup;
                 const targetGroupId = targetGroup?.id;
                 if (
