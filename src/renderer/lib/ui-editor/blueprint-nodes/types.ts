@@ -243,6 +243,21 @@ export type BlueprintNodeDef = {
     };
     /** Pure nodes have no side effects; used for validation hints */
     isPure: boolean;
+    /**
+     * Opt in to Blueprint Value graphs - the per-property value providers behind a widget's
+     * `valueBindings`.
+     *
+     * Only meaningful on a node the host did not define. The built-in catalogue is admitted there by
+     * review instead (see `isBlueprintNodeAllowedInBlueprintValueGraph`), and there is no way to
+     * review a plugin's node the same way - `isPure` on one is the plugin's own word - so a plugin
+     * declares for itself and what the value runtime already does is the real limit. It is executed
+     * like any other node, its capability-gated domains are absent while the editor previews it, and
+     * a graph that never reaches Return Value leaves the binding on whatever it resolved last. The
+     * sharpest of those limits: the runtime records the Element and property reads it resolves and
+     * reruns the binding when those change, and it cannot see what a plugin node read - so a binding
+     * built on one refreshes on the host's dependencies, never on the plugin's.
+     */
+    allowInBlueprintValueGraph?: boolean;
     /** Palette-only guard for nodes that read the active List item template scope. */
     requiresListItemContext?: boolean;
     /** Latent/async execution (delay, host awaits) - disallowed in function graphs */

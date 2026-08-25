@@ -17,6 +17,8 @@ import {
 } from "@shared/types/blueprint/graph";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import { createExplicitBlueprintVariableRef } from "@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs";
+import { defineBlueprintNode } from "@/lib/ui-editor/blueprint-nodes/defineBlueprintNode";
+import { behaviorNodeRegistry } from "@/lib/ui-editor/behavior-graph";
 import { evaluateBlueprintValue, validateBlueprintValueGraphSafe } from "./BlueprintValueEvaluator";
 
 function returnGraph(value: string): BlueprintGraphIr {
@@ -337,5 +339,91 @@ describe("Blueprint Value evaluator", () => {
             /not allowed in Blueprint Value/,
         );
         expect(setTextCalls).toBe(0);
+    });
+});
+
+/**
+ * The built-in catalogue is admitted to Blueprint Value by review - a list of node types and
+ * categories the host vouches for. A plugin's node can never be on that list and cannot be reviewed
+ * the same way, so it declares `allowInBlueprintValueGraph` for itself and the value runtime's own
+ * behaviour is what actually constrains it.
+ */
+describe("Blueprint Value and nodes the host did not define", () => {
+    function pluginValueGraph(type: string): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT, params: {} },
+                plugin: { id: "plugin", type, params: {} },
+                ret: { id: "ret", type: BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE, params: {} },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "plugin", port: "in" } },
+                { from: { nodeId: "plugin", port: "next" }, to: { nodeId: "ret", port: "in" } },
+                { from: { nodeId: "plugin", port: "label" }, to: { nodeId: "ret", port: "value" } },
+            ],
+        };
+    }
+
+    function pluginNode(type: string, allow: boolean, label: string): void {
+        defineBlueprintNode({
+            type,
+            displayName: "Get Label",
+            category: "Acme",
+            graphKinds: ["event"],
+            isPure: false,
+            ...(allow ? { allowInBlueprintValueGraph: true } : {}),
+            pins: [
+                { id: "in", kind: "input", semantic: "exec", label: "In" },
+                { id: "next", kind: "output", semantic: "exec", label: "Next" },
+                { id: "label", kind: "output", semantic: "data", valueType: "string", label: "Label" },
+            ],
+            execute: () => ({ nextPort: "next", outputValues: { label } }),
+        });
+    }
+
+    it("runs one that declares the door and returns what it published", async () => {
+        pluginNode("acme.value.declared", true, "from-plugin");
+        const graph = pluginValueGraph("acme.value.declared");
+
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(0);
+        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
+            returned: true,
+            value: "from-plugin",
+        });
+    });
+
+    it("refuses one that does not declare it, before it can run", async () => {
+        pluginNode("acme.value.undeclared", false, "should-not-run");
+        const graph = pluginValueGraph("acme.value.undeclared");
+
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
+        await expect(evalValue(valueDocument(graph))).rejects.toThrow(/not allowed in Blueprint Value/);
+    });
+
+    /**
+     * The shipped-game shape. A runtime plugin entry registers type/displayName/execute and no pins,
+     * so there is no definition to read a declaration off - only the behaviour registry knows the
+     * node at all. Rejecting it as an unknown type would shut the door the editor opened.
+     */
+    it("lets through a node the host knows only as an execute binding", async () => {
+        behaviorNodeRegistry.register({
+            type: "acme.runtime.getLabel",
+            displayName: "Get Label",
+            execute: () => ({ nextPort: "next", outputValues: { label: "from-runtime" } }),
+        }, { quietOverwrite: true });
+        const graph = pluginValueGraph("acme.runtime.getLabel");
+
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(0);
+        await expect(evalValue(valueDocument(graph))).resolves.toMatchObject({
+            returned: true,
+            value: "from-runtime",
+        });
+    });
+
+    it("still reports a node type nothing knows", () => {
+        const graph = pluginValueGraph("acme.nothing.knows.this");
+
+        expect(validateBlueprintValueGraphSafe(graph)).toHaveLength(1);
+        expect(validateBlueprintValueGraphSafe(graph)[0]).toMatch(/unknown type/);
     });
 });
