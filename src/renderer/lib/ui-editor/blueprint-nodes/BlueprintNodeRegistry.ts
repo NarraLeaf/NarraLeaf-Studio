@@ -267,6 +267,7 @@ export function isBlueprintNodeAllowedInGraphContext(
 
 class BlueprintNodeDefinitionsRegistry {
     private readonly byType = new Map<string, BlueprintNodeDef>();
+    private readonly builtInTypes = new Set<string>();
 
     public register(def: BlueprintNodeDef, options?: { replaceExisting?: boolean }): void {
         if (this.byType.has(def.type) && !options?.replaceExisting) {
@@ -287,6 +288,27 @@ class BlueprintNodeDefinitionsRegistry {
         for (const d of defs) {
             this.register(d, options);
         }
+    }
+
+    /**
+     * Record the node types that ship with the host. Called from
+     * `registerCoreBlueprintNodes()`, which owns the built-in list.
+     *
+     * The distinction is load-bearing for data pin resolution: a built-in has to register its
+     * output ports in `built-in/graphParamResolvers.ts` to be readable downstream, and a registry
+     * sweep enforces that it does, while a node the host did not define resolves its outputs from
+     * what its `execute()` published. Membership rather than absence-from-the-map, because in a
+     * shipped game a runtime plugin's nodes never reach this registry at all.
+     */
+    public markBuiltIn(types: readonly string[]): void {
+        for (const type of types) {
+            this.builtInTypes.add(type);
+        }
+    }
+
+    /** Whether this node type ships with the host, as opposed to coming from a plugin. */
+    public isBuiltIn(type: string): boolean {
+        return this.builtInTypes.has(type);
     }
 
     public get(type: string): BlueprintNodeDef | undefined {
