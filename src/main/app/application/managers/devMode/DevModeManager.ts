@@ -411,9 +411,9 @@ export class DevModeManager {
                 // `packaging` stays off, so this folds the variant and plans no scene drop.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
                 // Read per rebuild like the variant, and for the same reason: an author switching a
-                // DLC off expects the next reload to be without it. Absent when nothing is switched
-                // off, which carries every story the project has - what Dev Mode always did.
-                ...(runDlc ? { includedDlc: runDlc } : {}),
+                // DLC on expects the next reload to have it. Always stated, empty included - a Dev
+                // Mode run is the game a player bought until the author says which extras to add.
+                includedDlc: runDlc,
                 onNotice: message => this.emitWorkspaceConsoleLog(session, {
                     level: "info",
                     source: "Dev Mode",
