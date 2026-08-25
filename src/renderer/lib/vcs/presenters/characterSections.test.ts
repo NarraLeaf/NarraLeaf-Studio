@@ -179,23 +179,43 @@ describe("nameCharacterFields", () => {
         expect(row.subject).toBe("Alice");
     });
 
-    it("leaves a field the editor has no word for exactly as the document stores it", () => {
-        const stored = leaf(["characters", "c-alice", "nicknames"], "documentDiff.characters.profileField", {
-            field: "nicknames",
+    it("names a field the panel draws without ever labelling", () => {
+        const [row] = nameCharacterFields(
+            [leaf(["characters", "c-alice", "nicknames"], "documentDiff.characters.profileField", {
+                field: "nicknames",
+            })],
+            t,
+        );
+
+        expect(row.label.params?.field).toBe("<documentDiff.characters.fields.nicknames>");
+    });
+
+    it("leaves a field Studio has no surface for exactly as the document stores it", () => {
+        const stored = leaf(["characters", "c-alice", "attributes"], "documentDiff.characters.profileField", {
+            field: "attributes",
         });
 
         const [row] = nameCharacterFields([stored], t);
 
-        // Unchanged, and the same object: a word invented here would read to the author as the
-        // panel's own.
+        // Unchanged, and the same object. A character's attributes and a puppet's options are bags a
+        // plugin or an import writes through, and Studio draws neither: the stored name is the only
+        // name anyone able to reach them has.
         expect(row).toBe(stored);
+        expect(CHARACTER_FIELD_NAME_KEY.attributes).toBeUndefined();
+        expect(CHARACTER_FIELD_NAME_KEY.options).toBeUndefined();
     });
 
-    it("names no field the character editor does not", () => {
-        // Every key must be one the panel already draws. A key that only exists for this pane is a
-        // second vocabulary for the same thing, which is the drift the reuse rule exists to stop.
+    it("names no field from a word the product does not already draw", () => {
+        // Either the panel's own label, or one of the words this comparison holds for the fields the
+        // panel draws without labelling. Anywhere else is a second vocabulary for the same thing,
+        // which is the drift the reuse rule exists to stop.
         for (const key of Object.values(CHARACTER_FIELD_NAME_KEY)) {
-            expect(key.startsWith("characters.") || key.startsWith("common."), key).toBe(true);
+            expect(
+                key.startsWith("characters.")
+                    || key.startsWith("common.")
+                    || key.startsWith("documentDiff.characters.fields."),
+                key,
+            ).toBe(true);
         }
     });
 });
