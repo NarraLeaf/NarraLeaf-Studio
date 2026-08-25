@@ -231,7 +231,7 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.call", functionId: "navigation.setFullscreen" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.setFullscreen" });
                 },
-                getWindowScaleOptions: () => {
+                getWindowScaleOptions: async () => {
                     input.debug.emit({ type: "function.call", functionId: "navigation.getWindowScaleOptions" });
                     input.debug.emit({ type: "function.return", functionId: "navigation.getWindowScaleOptions" });
                     return [];

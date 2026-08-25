@@ -737,6 +737,15 @@ export type GameRuntimePreloadBridge = {
     getWindowScale(): Promise<number>;
     setWindowScale(scale: number): Promise<void>;
     /**
+     * The sizes worth offering the player, measured against the display the window is on.
+     *
+     * The shell's answer rather than the project's: which multiples of the design size fit depends
+     * on the screen in front of the player, and only the running game can see it. Empty on a shell
+     * with no window of its own to size, which is what a configuration screen draws no size row
+     * from - see {@link capabilities}.`windowScale`.
+     */
+    getWindowScaleOptions(): Promise<number[]>;
+    /**
      * The same size, in pixels.
      *
      * Beside the multiple rather than instead of it: a multiple is what keeps the stage on whole

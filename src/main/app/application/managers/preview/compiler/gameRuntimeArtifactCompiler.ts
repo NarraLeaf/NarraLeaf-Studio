@@ -618,14 +618,11 @@ export async function compileGameRuntimeArtifact(
             target,
         });
 
-        // What this payload can say about DLC: the ones whose stories are in it. Derived here
-        // rather than taken from the request, so the answer follows the content rather than the
-        // intent - see the field on the pack below.
-        const installedDlc = [...new Set(
-            (bundle.storyLibrary?.index.stories ?? [])
-                .map(story => story.dlcId?.trim())
-                .filter((id): id is string => Boolean(id)),
-)];
+        // What this payload can say about DLC, as the assembler stated it - the one place that
+        // decided. Absent there means "every DLC the project has", which no packaged build ever
+        // is: every production compile names a selection, so this is empty on a base build and
+        // holds one id on a DLC build.
+        const installedDlc = [...(bundle.installedDlc ?? [])];
 
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
@@ -678,13 +675,10 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
-            // The DLC whose content is in this payload, read off the stories it actually carries
-            // rather than off what was asked for - they are the same answer, and deriving it means a
-            // story dropped for any other reason cannot leave its DLC claiming to be here.
+            // The DLC whose content is in this payload.
             //
             // Empty on the ordinary build, which is the point: a base build states nothing about
-            // what else exists to buy. Dev Mode carries every story, so it states every DLC - which
-            // is what an author testing there wants, because they are looking at the whole game.
+            // what else exists to buy. A DLC build holds the one it is for.
             //
             // The runtime adds to this the DLC it finds beside the game (`installedDlcIds`). The two
             // writers state the same thing about different halves: what shipped inside, and what was

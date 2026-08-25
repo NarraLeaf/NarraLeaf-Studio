@@ -29,6 +29,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_HISTORY_RESTORE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_QUIT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_PAGE_QUIT,
@@ -246,11 +247,21 @@ describe("the questions the starter template asks before it takes something away
             const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
             assertPrompt(source, confirm, "Return to the title screen? Unsaved progress is lost.", "Return to title");
 
-            // Both ways out reach the same Go Page: opened from the title, nothing is lost, so the
-            // false branch is the old wiring untouched rather than a second copy of it.
+            // The two ways out are genuinely different acts, and each has to be the right one.
+            //
+            // Answering yes ends the playthrough: `Quit Game` tears the session down and lands on
+            // the title. `Go Page` here would leave the story running underneath - music still
+            // playing, the title screen drawn as one more overlay over it - and the next New Game
+            // would start a second run alongside the first.
+            const quit = step(confirm.id, "button_1_pressed", BLUEPRINT_NODE_TYPE_GAME_QUIT);
+            expect(quit.params?.surfaceId).toBe("narraleaf-studio:main-surface");
+
+            // Opened from the title with no game running, there is nothing to quit: the way back is
+            // to empty the page stack, whose root IS the title. `Go Page` naming the title would
+            // push a second copy of it on top of the page the player is standing on.
             const go = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_GO);
-            expect(go.params?.surfaceId).toBe("narraleaf-studio:main-surface");
-            expect(leadsTo(confirm.id, "button_1_pressed", go.id)).toBe(true);
+            expect(go.params?.surfaceId ?? "").toBe("");
+            expect(leadsTo(confirm.id, "button_1_pressed", go.id)).toBe(false);
         },
     );
 

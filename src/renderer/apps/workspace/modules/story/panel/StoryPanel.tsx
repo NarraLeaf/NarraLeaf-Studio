@@ -161,7 +161,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             const next: Record<string, string[]> = {};
             Object.entries(saved.chapterOpenItemsByStoryId).forEach(([storyId, chapterIds]) => {
                 if (typeof storyId === "string" && storyId && Array.isArray(chapterIds)) {
-                    next[storyId] = chapterIds.filter(id => typeof id === "string" && id.length > 0);
+                    const ids = chapterIds.filter(id => typeof id === "string" && id.length > 0);
+                    // An entry that names no chapter is not restored, so the story comes back to the
+                    // expanded default rather than to an outline with nothing under any heading.
+                    // Collapsing every chapter still holds for as long as the panel is open; it just
+                    // is not a state worth carrying across sessions, and a stored empty list is also
+                    // what older builds wrote when a story switch mixed two documents up.
+                    if (ids.length > 0) {
+                        next[storyId] = ids;
+                    }
                 }
             });
             setChapterOpenItemsByStoryId(next);
@@ -251,8 +259,19 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         };
     }, [storyService, selectedStoryId, uiService]);
 
+    /**
+     * A story the panel has not shown before opens with every chapter expanded: an outline that
+     * hides its own scenes is a list of chapter names, and nobody picked that.
+     *
+     * Guarded on the document belonging to the selected story, because it does not while a switch
+     * is in flight - `document` still holds the story being left until the new one finishes
+     * loading. Without the guard this effect read the outgoing story's chapter ids, stored them
+     * under the incoming story's id, and then, when the real document arrived, filtered that list
+     * against chapters it shared none of and settled on the empty set. Every switch landed on a
+     * fully collapsed outline, and the empty set was persisted, so it stayed that way.
+     */
     useEffect(() => {
-        if (!document || !selectedStoryId) {
+        if (!document || !selectedStoryId || document.id !== selectedStoryId) {
             return;
         }
         setChapterOpenItemsByStoryId(prev => {
@@ -697,7 +716,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [buildSceneContextMenu, showMenu, withDeveloperRows]);
 
-    const chapterOpenItems = selectedStoryId ? chapterOpenItemsByStoryId[selectedStoryId] ?? [] : [];
+    // The same default as the effect above, applied a render earlier so the first paint after a
+    // switch is already expanded instead of expanding a frame later. A deliberately emptied outline
+    // is a stored `[]` and survives this, since only a missing entry falls back.
+    const chapterOpenItems = selectedStoryId && document?.id === selectedStoryId
+        ? chapterOpenItemsByStoryId[selectedStoryId] ?? document.chapters.map(chapter => chapter.id)
+        : [];
 
     const handleRootOpenChange = useCallback((nextOpenItems: string[]) => {
         setRootOpenItems(filterStoryRootOpenItems(nextOpenItems));

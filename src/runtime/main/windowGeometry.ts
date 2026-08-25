@@ -3,6 +3,7 @@ import path from "path";
 import {
     nearestWindowScaleStep,
     WINDOW_SCALE_DESIGN,
+    WINDOW_SCALE_STEPS,
     type WindowConfiguration,
     type WindowScaleStep,
 } from "@shared/types/appWindow";
@@ -87,11 +88,28 @@ export function fitInside(box: WindowBox, workArea: WindowBox): WindowBox {
 }
 
 /**
+ * The steps that fit, for a configuration screen to offer.
+ *
+ * Answered against the player's own display rather than declared by the project, which cannot know
+ * what screen the game will be played on: 200% is the right offer on a 4K monitor and nonsense on a
+ * laptop, and a list that offered it anyway would be a row of sizes that do nothing.
+ */
+export function fittingWindowScales(design: WindowBox, room: WindowBox): WindowScaleStep[] {
+    const fitting = WINDOW_SCALE_STEPS.filter(step => (
+        design.width * step <= room.width && design.height * step <= room.height
+    ));
+    // Never nothing: a screen too small for even the smallest step still has a window on it, and a
+    // configuration screen with an empty list would look like the feature is missing rather than
+    // like the display is small.
+    return fitting.length > 0 ? [...fitting] : [WINDOW_SCALE_STEPS[0]!];
+}
+
+/**
  * The size to open at on a screen this game has never been opened on.
  *
- * The largest offered step that fits, which on a screen at least as large as the project is the
- * design size itself. When nothing fits - a 1080p project on a small laptop, with every step above
- * it - the smallest step is taken and then fitted, so the window is at least a whole one.
+ * The largest step that fits and does not enlarge the art: a game opens at the size it was drawn
+ * at, or at the largest whole fraction of it the screen has room for. Upscaling is something a
+ * player asks for, never something a first launch decides.
  */
 export function pickInitialScale(
     design: WindowBox,
@@ -107,6 +125,10 @@ export function pickInitialScale(
     }
     return chosen ?? offered[0]!;
 }
+
+/** The steps a first launch may choose between: the design size and the fractions below it. */
+export const WINDOW_LAUNCH_SCALE_STEPS: readonly WindowScaleStep[] =
+    WINDOW_SCALE_STEPS.filter(step => step <= WINDOW_SCALE_DESIGN);
 
 /** Whether a window at this rectangle would still be reachable on one of these displays. */
 export function isOnADisplay(
@@ -166,7 +188,7 @@ export function resolveWindowGeometry(input: {
     const room = roomForStage(input.workArea, input.chrome);
     const base = remembered
         ? { width: remembered.width, height: remembered.height }
-        : scaledDesign(input.design, pickInitialScale(input.design, input.config.scaleSteps, room));
+        : scaledDesign(input.design, pickInitialScale(input.design, WINDOW_LAUNCH_SCALE_STEPS, room));
     const size = fitInside(base, room);
     const geometry: ResolvedWindowGeometry = {
         ...size,
@@ -210,7 +232,7 @@ export function scaledDesign(design: WindowBox, scale: number): WindowBox {
 export function currentWindowScale(
     design: WindowBox,
     content: WindowBox,
-    steps: readonly WindowScaleStep[],
+    steps: readonly WindowScaleStep[] = WINDOW_SCALE_STEPS,
 ): WindowScaleStep {
     if (design.width <= 0) {
         return WINDOW_SCALE_DESIGN;
@@ -256,24 +278,39 @@ export function readWindowGeometry(userDataDir: string): WindowGeometryRecord | 
  * Write the geometry, synchronously.
  *
  * The moment worth recording is the window closing, which is also the last moment this process has:
- * an asynchronous write issued there is one the quit does not wait for. Written through a temporary
- * file so a quit interrupted mid-write leaves the previous answer rather than a truncated one.
+ * an asynchronous write issued there is one the quit does not wait for.
+ *
+ * ## Why this does not write through a temporary file
+ *
+ * It did, and on an ordinary Windows profile it never worked: MEASURED on a packaged game, the
+ * rename of `window.json.tmp` onto `window.json` - two names in the same directory - failed with
+ * `EXDEV: cross-device link not permitted`, because `%APPDATA%` there is a redirected folder and
+ * the filter driver behind it refuses the operation. The file simply never appeared, and every
+ * launch opened as if it were the first.
+ *
+ * Writing straight to the file costs the atomicity the rename was for, and that costs nothing
+ * here: the payload is under a hundred bytes, and a torn one is refused by
+ * {@link normalizeWindowGeometryRecord} - which reads as "nothing remembered", the same state a
+ * first launch is in. A guarantee that does not survive contact with the platform is worth less
+ * than a write that lands.
  */
-export function writeWindowGeometry(userDataDir: string, record: WindowGeometryRecord): void {
+export function writeWindowGeometry(
+    userDataDir: string,
+    record: WindowGeometryRecord,
+    log?: (message: string) => void,
+): void {
     const target = windowGeometryPath(userDataDir);
-    const temporary = `${target}.tmp`;
     try {
         fsSync.mkdirSync(path.dirname(target), { recursive: true });
-        fsSync.writeFileSync(temporary, JSON.stringify(record), "utf-8");
-        fsSync.renameSync(temporary, target);
-    } catch {
+        fsSync.writeFileSync(target, JSON.stringify(record), "utf-8");
+    } catch (error) {
         // Where the window was is worth nothing against failing to close, so this degrades to
         // "next launch opens like a first one" rather than throwing on the way out.
-        try {
-            fsSync.rmSync(temporary, { force: true });
-        } catch {
-            // Nothing left to do about a temporary file on a disk that is refusing writes.
-        }
+        //
+        // It says so, though. Swallowing the reason is what made the EXDEV above take a packaged
+        // run to find: a window that quietly stops being remembered looks exactly like a feature
+        // that was never built.
+        log?.(`could not remember the window: ${error instanceof Error ? error.message : String(error)}`);
     }
 }
 

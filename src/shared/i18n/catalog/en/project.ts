@@ -495,10 +495,6 @@ export const project = {
     // decision that is the same for all of them. What the rate costs is the `screenEffects` help
     // topic, reached by the `?` on this heading.
     window: {
-        sizesTitle: "Window sizes",
-        sizesDescription: "The sizes the game offers the player, as multiples of the design size. It opens at the largest one that fits their screen.",
-        sizeOption: "{percent}%",
-        sizeDimensions: "{width} × {height}",
         resizableTitle: "Resizable window",
         resizableDescription: "The player may drag the window to a size of their own. The stage keeps its shape inside it.",
         rememberTitle: "Remember the window",
