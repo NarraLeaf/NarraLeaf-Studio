@@ -8,55 +8,57 @@ import { readProjectDlcFromDir } from "./dlcFile";
  * The DLC half of `runVariant.ts`, and it follows that module in every structural decision: the
  * choice is a machine-level habit bucketed by project, read here rather than carried on the launch
  * request, and no IPC surface changes. See that file for why the choice does not belong in
- * `.nlproj` - a collaborator's Dev Mode must not quietly lose content they never switched off.
+ * `.nlproj` - a collaborator's Dev Mode must not quietly become a run they never configured.
  *
- * # Why the setting stores what is OFF
+ * # None of them, until the author says otherwise
  *
- * The default has to be "all of them": Dev Mode is the preview an author trusts, and it has always
- * carried every story the project has. Storing the *active* set would break that the moment an
- * author creates a DLC after saving a selection - the new one is absent from the stored list, so it
- * would arrive switched off, and the only sign would be content missing from a run nobody
- * configured. Storing what is off inverts that: a new DLC is on, an unknown id is nothing, and
- * emptying the set is the same state as never having chosen.
+ * The setting stores what is ON, and the default is therefore an empty run: the base game, with no
+ * DLC beside it. That is what a player has when they buy the game, so it is the state an author is
+ * shipping and the one they most need to be looking at - and it is the only one in which a forgotten
+ * `Is DLC Installed` guard is visible, because the entrance is there and the story behind it is not.
+ *
+ * The cost is the mirror of the other direction's: a DLC created after the choice arrives switched
+ * off. Which is the default anyway, so nothing is withheld that the author was not already running
+ * without.
  *
  * Comments in English per project convention.
  */
-export const RUN_DLC_OFF_SETTINGS_KEY = "ui.runDlcOffByProject";
+export const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
 
 /** Reader for the global settings store, so this stays testable without an app. */
 export type RunDlcSettingsReader = { get(key: string): unknown };
 
 /**
- * The DLC ids a run of `projectPath` should carry, or null for "every one it has".
+ * The DLC ids a run of `projectPath` should carry.
  *
- * Null is the answer to every kind of absence - no setting, an empty off-set, an unreadable DLC
- * document - because null is what the assembly reads as "carry everything", and a run that cannot
- * resolve the author's choice must show them the whole game rather than a guess.
+ * Always a list, never null: a run always has an answer, and stating it - even empty - is what keeps
+ * the assembly from falling back to "every DLC the project has", which no run of a game a player
+ * would recognise ever is.
  *
- * A non-null answer is the project's DLC minus the ones switched off, computed here rather than
- * stored, so a DLC created since the choice was made is included and a deleted one leaves nothing
- * behind.
+ * Every kind of absence answers the empty list: no setting, an unreadable DLC document, a stored id
+ * that names nothing any more. Absence and "none picked" are one state here, unlike the variant next
+ * door, because the default IS none.
+ *
+ * Intersected with what the project actually has rather than returned as stored, so a deleted DLC
+ * leaves nothing behind for the assembly to look for.
  */
 export async function resolveRunDlc(
     settings: RunDlcSettingsReader,
     projectPath: string,
-): Promise<string[] | null> {
-    const stored = settings.get(RUN_DLC_OFF_SETTINGS_KEY);
-    if (!stored || typeof stored !== "object" || Array.isArray(stored)) {
-        return null;
-    }
-    const raw = (stored as Record<string, unknown>)[normalizeProjectPath(projectPath)];
-    const off = new Set(
+): Promise<string[]> {
+    const stored = settings.get(RUN_DLC_ON_SETTINGS_KEY);
+    const record = stored && typeof stored === "object" && !Array.isArray(stored)
+        ? stored as Record<string, unknown>
+        : {};
+    const raw = record[normalizeProjectPath(projectPath)];
+    const on = new Set(
         (Array.isArray(raw) ? raw : [])
             .filter((id): id is string => typeof id === "string" && Boolean(id.trim()))
             .map(id => id.trim()),
     );
-    if (off.size === 0) {
-        return null;
+    if (on.size === 0) {
+        return [];
     }
     const dlcs = await readProjectDlcFromDir(projectPath).catch(() => [] as ProjectDlc[]);
-    const active = dlcs.filter(dlc => !off.has(dlc.id)).map(dlc => dlc.id);
-    // Every one of them switched off is a real answer - "run as a player who bought none" - and it
-    // has to survive as an empty list rather than collapsing into "carry everything".
-    return active.length === dlcs.length ? null : active;
+    return dlcs.filter(dlc => on.has(dlc.id)).map(dlc => dlc.id);
 }

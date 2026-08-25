@@ -326,8 +326,8 @@ export class PreviewManager {
                 // folds the variant without planning what a package would leave out.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
                 // Which DLC this run has installed, from the same machine setting the variant comes
-                // from. Absent carries every one the project has, which is what a preview always did.
-                ...(runDlc ? { includedDlc: runDlc } : {}),
+                // from. Empty until the author ticks one, so a preview is the base game by default.
+                includedDlc: runDlc,
                 encryptionKey,
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that

@@ -488,9 +488,10 @@ export class GameTestManager {
                 // the three launch surfaces keep the shapes they had. `packaging` stays off - this
                 // folds the variant without planning what a package would leave out.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
-                // And which DLC it has installed, from the same setting. A walkthrough test that
-                // ran with content the author had switched off would pass on a game nobody ships.
-                ...(runDlc ? { includedDlc: runDlc } : {}),
+                // And which DLC it has installed, from the same setting. A walkthrough test that ran
+                // with content the author had not ticked would pass on a game nobody ships - and the
+                // default, none, is the package every player starts from.
+                includedDlc: runDlc,
                 runtimePlugins: pluginSelection.selected,
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.

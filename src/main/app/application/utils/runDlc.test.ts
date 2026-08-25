@@ -5,15 +5,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { DLC_SCHEMA_VERSION } from "@shared/types/dlc";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
-import { resolveRunDlc, RUN_DLC_OFF_SETTINGS_KEY } from "./runDlc";
+import { resolveRunDlc, RUN_DLC_ON_SETTINGS_KEY } from "./runDlc";
 
 /**
  * Which DLC a run of a project has installed, read from the machine's own settings.
  *
- * Two things are defended here. Every kind of absence answers null - "carry them all" - because the
- * other direction is a run that silently withholds content from an author who never asked it to. And
- * the setting stores what is OFF, so a DLC created after the choice was made arrives switched on
- * rather than missing.
+ * The default is none, and that is the whole shape of this: a run is the game a player bought until
+ * the author ticks an extra. So every kind of absence answers the empty list rather than the whole
+ * project, and the answer is always a list - never "say nothing", which the assembly would read as
+ * "every DLC there is".
  */
 
 let projectPath: string;
@@ -39,51 +39,50 @@ async function writeDlc(ids: string[]): Promise<void> {
 }
 
 function settings(value: unknown) {
-    return { get: (key: string) => (key === RUN_DLC_OFF_SETTINGS_KEY ? value : undefined) };
+    return { get: (key: string) => (key === RUN_DLC_ON_SETTINGS_KEY ? value : undefined) };
 }
 
-function offFor(ids: string[]) {
+function onFor(ids: string[]) {
     return settings({ [normalizeProjectPath(projectPath)]: ids });
 }
 
 describe("resolveRunDlc", () => {
-    it("answers the ones left on", async () => {
+    it("answers the ones ticked", async () => {
         await writeDlc(["summer", "winter", "voices"]);
-        expect(await resolveRunDlc(offFor(["winter"]), projectPath)).toEqual(["summer", "voices"]);
+        expect(await resolveRunDlc(onFor(["summer", "voices"]), projectPath)).toEqual(["summer", "voices"]);
     });
 
-    it("answers an empty list when every one is off, because that is a real run", async () => {
-        await writeDlc(["summer", "winter"]);
-        // "As a player who bought none" has to survive as an empty list rather than collapsing into
-        // "carry everything", which is the opposite run.
-        expect(await resolveRunDlc(offFor(["summer", "winter"]), projectPath)).toEqual([]);
-    });
-
-    it("carries a DLC created since the choice was made", async () => {
-        await writeDlc(["summer", "winter", "autumn"]);
-        // `autumn` is not in the stored off-set, so it is on. The other storage direction would have
-        // it silently absent from a run nobody configured that way.
-        expect(await resolveRunDlc(offFor(["winter"]), projectPath)).toEqual(["summer", "autumn"]);
-    });
-
-    it("carries everything for every kind of absence", async () => {
+    it("answers none for every kind of absence", async () => {
         await writeDlc(["summer"]);
-        expect(await resolveRunDlc(settings(undefined), projectPath)).toBeNull();
-        expect(await resolveRunDlc(settings("nonsense"), projectPath)).toBeNull();
-        expect(await resolveRunDlc(settings({}), projectPath)).toBeNull();
-        expect(await resolveRunDlc(offFor([]), projectPath)).toBeNull();
-        // An id no DLC answers to - one that was deleted - leaves nothing switched off.
-        expect(await resolveRunDlc(offFor(["gone"]), projectPath)).toBeNull();
+        // A run with nothing ticked is the game a player buys, which is the state an author ships -
+        // and the only one where a forgotten guard shows itself.
+        expect(await resolveRunDlc(settings(undefined), projectPath)).toEqual([]);
+        expect(await resolveRunDlc(settings("nonsense"), projectPath)).toEqual([]);
+        expect(await resolveRunDlc(settings({}), projectPath)).toEqual([]);
+        expect(await resolveRunDlc(onFor([]), projectPath)).toEqual([]);
     });
 
-    it("carries everything when the DLC document cannot be read", async () => {
+    it("leaves a DLC created since the choice was made switched off", async () => {
+        await writeDlc(["summer", "autumn"]);
+        // The cost of this direction, and it is the harmless one: off is the default anyway, so
+        // nothing is withheld that the author was not already running without.
+        expect(await resolveRunDlc(onFor(["summer"]), projectPath)).toEqual(["summer"]);
+    });
+
+    it("drops an id the project no longer has", async () => {
+        await writeDlc(["summer"]);
+        // Intersected with what exists, so a deleted DLC leaves nothing for the assembly to look for.
+        expect(await resolveRunDlc(onFor(["summer", "gone"]), projectPath)).toEqual(["summer"]);
+    });
+
+    it("answers none when the DLC document cannot be read", async () => {
         await fs.writeFile(path.join(projectPath, "editor", "dlc.json"), "{ not json", "utf-8");
-        expect(await resolveRunDlc(offFor(["summer"]), projectPath)).toBeNull();
+        expect(await resolveRunDlc(onFor(["summer"]), projectPath)).toEqual([]);
     });
 
     it("buckets by a comparison key, so two spellings of one path are one project", async () => {
         await writeDlc(["summer", "winter"]);
         const other = projectPath.replace(/\\/g, "/");
-        expect(await resolveRunDlc(offFor(["winter"]), other)).toEqual(["summer"]);
+        expect(await resolveRunDlc(onFor(["winter"]), other)).toEqual(["winter"]);
     });
 });
