@@ -2586,8 +2586,9 @@ export class VcsManager extends Manager {
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
+            let cloned: { branch: string; fileCount: number };
             try {
-                const cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
+                cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
                     {
                         ...globals,
                         // Online, so the account id if this installation has signed in to the
@@ -2597,7 +2598,6 @@ export class VcsManager extends Manager {
                     { repositoryUrl, onProgress: options.onProgress },
                 ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
-                return { root, ...cloned };
             } catch (error) {
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
@@ -2616,6 +2616,39 @@ export class VcsManager extends Manager {
                     this.app.logger.warn("[Vcs] Failed to release after clone", root, error);
                 });
             }
+
+            /*
+             * Record the address the copy came from.
+             *
+             * Lore writes a `remote_url` of its own during the clone and it is the ORIGIN alone -
+             * the repository name is stripped on the way in. Studio's own reader wants the whole
+             * address, the one {@link setRemote} writes, so a clone that left Lore's spelling in
+             * place answered `getRemote` with null: the project reads as belonging to no server,
+             * `getServerSession` finds nothing to match it against, and every Send and Get after
+             * it fails at `withServerSession` with `No token stored` - a sentence that blames the
+             * credentials for an address that was never written down. Measured: the person who
+             * joins a project could never send anything back.
+             *
+             * Only the address, not {@link setRemote}'s second half: this repository was just
+             * cloned FROM that server, so it is registered there by construction and there is
+             * nothing to register again.
+             *
+             * Written once the repository is released, for the reason `setRemote` closes the
+             * session first - the backend reads this file when a store is opened.
+             *
+             * A failure here is logged rather than thrown. The clone itself worked and its files
+             * are on disk; turning that into "the clone failed" would leave the author with a
+             * destination folder that is no longer empty and a wizard that will not retry into it.
+             * The project opens, and the server can be set from the version rail.
+             */
+            await backend.writeRemote(root, repositoryUrl).catch((error: unknown) => {
+                this.app.logger.warn(
+                    "[Vcs] Cloned", root, "but could not record its server:",
+                    error instanceof Error ? error.message : String(error),
+                );
+            });
+
+            return { root, ...cloned };
         });
     }
 
