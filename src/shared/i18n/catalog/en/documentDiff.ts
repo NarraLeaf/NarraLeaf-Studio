@@ -179,6 +179,34 @@ export const documentDiff = {
         avatarChanged: "Dialog avatar {key}",
         groupAdded: "Group added",
         groupRemoved: "Group removed",
+        /**
+         * Words for the fields the character editor shows but never labels.
+         *
+         * Every other field the comparison reports is answered with the key the panel the author
+         * edits it in already uses - see `CHARACTER_FIELD_NAME_KEY`. These six have no such key to
+         * borrow: the cast list prints a character's nicknames under their name with no caption,
+         * group membership is set by moving a row rather than by filling a field, and the canvas,
+         * the avatar axes, the PSD a stack was imported from and the state a puppet rests in are
+         * each reached through a button or a bare control. So each is named from the vocabulary
+         * those controls already use ("Set canvas", "Avatar varies with this axis", "Import PSD")
+         * rather than coined here.
+         *
+         * They sit here rather than in `characters.*` because this is the surface that draws them:
+         * a label under the panel's own namespace that no panel renders would be taken for the
+         * panel's word the next time someone looks for one, and there would then be two of them.
+         *
+         * `attributes` and `options` are deliberately absent. Studio has no surface for either -
+         * both are bags a plugin or an import writes through - so their rows keep the stored name,
+         * which is the only name anyone able to reach them has.
+         */
+        fields: {
+            nicknames: "Nicknames",
+            group: "Group",
+            canvas: "Canvas",
+            avatarAxes: "Avatar axes",
+            psd: "PSD",
+            puppetDefaultState: "Default state",
+        },
         groupRenamed: "Group renamed",
     },
     /**
