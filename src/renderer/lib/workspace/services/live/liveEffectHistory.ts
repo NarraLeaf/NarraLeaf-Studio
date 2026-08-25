@@ -1,3 +1,4 @@
+import type { LiveAssetRecord } from "@shared/live/ops";
 import { inverseOf, type LiveBefore } from "@/lib/live/inverse";
 import type { LiveCastView } from "@shared/live/cast";
 import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
@@ -96,7 +97,13 @@ export class LiveEffectHistory {
      */
     public plan(
         direction: LiveStepDirection,
-        context: { self: string; document: StoryDocument; cast: LiveCastView },
+        context: {
+            self: string;
+            document: StoryDocument;
+            cast: LiveCastView;
+            /** One asset shard as it stands now, for the steps that are about the library. */
+            assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+        },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
         if (index < 0) {
@@ -110,6 +117,7 @@ export class LiveEffectHistory {
             self: context.self,
             document: context.document,
             cast: context.cast,
+            assets: context.assets,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {

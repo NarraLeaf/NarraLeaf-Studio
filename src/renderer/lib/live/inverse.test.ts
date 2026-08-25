@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAssetOp,
+    LiveAssetRecord,
     LiveCharacterOp,
     LiveEffect,
     LiveLocalizationOp,
@@ -1101,5 +1103,126 @@ describe("undoing what this window did to a language", () => {
         };
         expect(asOp(inverseOf(effect, { self: SELF, before })))
             .toEqual({ op: "set-take", locale: JA, unitId: "text-a", unit: { assetId: "clip-1", sourceHash: "h", status: "linked" } });
+    });
+});
+
+/* ------------------------------------------------------------------------ the asset library */
+
+/** Apply one asset operation to a shard, the way the service does. */
+function applyAssets(records: Record<string, LiveAssetRecord>, op: LiveAssetOp): void {
+    if (op.op === "update-asset") {
+        records[op.assetId] = { ...op.record };
+        return;
+    }
+    for (const move of op.moves) {
+        const record = records[move.assetId];
+        if (!record) {
+            continue;
+        }
+        if (move.groupId === null) {
+            delete (record as Record<string, unknown>).groupId;
+        } else {
+            (record as Record<string, unknown>).groupId = move.groupId;
+        }
+    }
+}
+
+function assetRecord(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
+    return { id, type: "image", name, hash: `hash-${id}`, tags: [], description: "", ...(groupId ? { groupId } : {}) };
+}
+
+/** Capture, apply, and answer the effect - the library half of {@link perform}, one document along. */
+function performAsset(records: Record<string, LiveAssetRecord>, op: LiveAssetOp, by = SELF): Done {
+    const before = captureBefore(op, { assets: type => (type === "image" ? records : null) });
+    applyAssets(records, op);
+    return {
+        effect: { kind: "effect", by, seq: ++seq, document: { doc: "assets", assetType: "image" }, op },
+        before,
+    };
+}
+
+function invertAsset(records: Record<string, LiveAssetRecord>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, assets: type => (type === "image" ? records : null) });
+}
+
+describe("undoing what this window did to the asset library", () => {
+    it("puts the record back to what it held", () => {
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1", "room.png") };
+        const done = performAsset(records, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: assetRecord("a1", "hall.jpg"),
+        });
+        expect(records.a1.name).toBe("hall.jpg");
+
+        applyAssets(records, asOp(invertAsset(records, done)) as LiveAssetOp);
+        expect(records.a1.name).toBe("room.png");
+    });
+
+    it("refuses when somebody deleted the file after the edit landed", () => {
+        // Putting the record back would be a row in the browser with nothing under it - the cast's
+        // answer to the same question, one document along.
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1", "room.png") };
+        const done = performAsset(records, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: assetRecord("a1", "hall.jpg"),
+        });
+        delete records.a1;
+
+        expect(invertAsset(records, done)).toEqual({ impossible: "asset-gone" });
+    });
+
+    it("puts every row of a drag back where IT came from, not where they all went", () => {
+        // ⚠ The whole reason the operation carries a destination per row. A drag collects assets
+        // that were in different folders, and an undo that filed them all in one place would be a
+        // rearrangement nobody asked for wearing the word "undo".
+        const records: Record<string, LiveAssetRecord> = {
+            a1: assetRecord("a1", "a1.png", "chapter-1"),
+            a2: assetRecord("a2"),
+        };
+        const done = performAsset(records, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+        });
+        expect([records.a1.groupId, records.a2.groupId]).toEqual(["chapter-2", "chapter-2"]);
+
+        const back = asOp(invertAsset(records, done)) as LiveAssetOp;
+        expect(back).toEqual({
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-1" }, { assetId: "a2", groupId: null }],
+        });
+        applyAssets(records, back);
+        expect(records.a1.groupId).toBe("chapter-1");
+        expect(records.a2.groupId).toBeUndefined();
+    });
+
+    it("refuses a drag whose rows are not all still there, rather than putting half of it back", () => {
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1"), a2: assetRecord("a2") };
+        const done = performAsset(records, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+        });
+        delete records.a2;
+
+        expect(invertAsset(records, done)).toEqual({ impossible: "asset-gone" });
+    });
+
+    it("keeps nothing for a shard this window does not hold, and answers `no-record`", () => {
+        const done: Done = {
+            effect: {
+                kind: "effect",
+                by: SELF,
+                seq: ++seq,
+                document: { doc: "assets", assetType: "font" },
+                op: { op: "update-asset", assetType: "font", assetId: "f1", record: assetRecord("f1") },
+            },
+            before: captureBefore(
+                { op: "update-asset", assetType: "font", assetId: "f1", record: assetRecord("f1") },
+                { assets: () => null },
+            ),
+        };
+        expect(done.before).toBeNull();
+        expect(inverseOf(done.effect, { self: SELF, before: done.before, assets: () => null }))
+            .toEqual({ impossible: "no-record" });
     });
 });

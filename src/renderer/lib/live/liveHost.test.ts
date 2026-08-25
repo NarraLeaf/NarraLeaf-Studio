@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { assetsDigest } from "@shared/live/assets";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
     CLAIMED_OPS,
+    assetClaimKey,
     characterClaimKey,
     opClaimKeys,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAssetRecord,
     type LiveDocument,
     type LiveEffect,
     type LiveIntent,
@@ -81,12 +84,22 @@ type World = {
     /** The libraries this session carries, by language. */
     translations: Record<string, Record<string, LocalizationUnit>>;
     takes: Record<string, Record<string, VoiceUnit>>;
+    /** The asset metadata shards this session carries, by type. */
+    assets: Record<string, Record<string, LiveAssetRecord>>;
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
 
 /** The languages every host in these tests carries libraries for. */
 const LOCALES = { translations: ["ja"], voice: ["ja"] };
+
+/** The asset shards every host in these tests carries. */
+const ASSET_TYPES = ["image", "audio"];
+
+/** An asset record with nothing on it but what addresses it and what an edit can move. */
+function asset(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
+    return { id, type: "image", name, hash: `hash-${id}`, tags: [], description: "", ...(groupId ? { groupId } : {}) };
+}
 
 /** A translation with nothing on it but what a comparison needs. */
 function translation(target: string): LocalizationUnit {
@@ -125,6 +138,8 @@ function makeWorld(options: {
     translations?: Record<string, LocalizationUnit>;
     /** The Japanese voice takes this host starts with. */
     takes?: Record<string, VoiceUnit>;
+    /** The image records this host starts with. */
+    assets?: Record<string, LiveAssetRecord>;
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -147,6 +162,7 @@ function makeWorld(options: {
     }
     const translations: World["translations"] = { ja: { ...(options.translations ?? {}) } };
     const takes: World["takes"] = { ja: { ...(options.takes ?? {}) } };
+    const assets: World["assets"] = { image: { ...(options.assets ?? {}) }, audio: {} };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -156,13 +172,16 @@ function makeWorld(options: {
         cast,
         translations,
         takes,
+        assets,
         applied,
         host: new LiveHost({
             self: "host",
             stories: [STORY],
             locales: LOCALES,
+            assetTypes: ASSET_TYPES,
             readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
+            hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
             digestOf: scope => {
                 if (scope.of === "scene") {
                     const scene = scenes[scope.sceneId];
@@ -177,11 +196,14 @@ function makeWorld(options: {
                 if (scope.of === "takes") {
                     return takesDigest(takes[scope.locale] ?? null);
                 }
+                if (scope.of === "assets") {
+                    return assetsDigest(assets[scope.assetType] ?? null);
+                }
                 return castDigest(cast);
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, translations, takes, op);
+                apply(scenes, story, cast, translations, takes, assets, op);
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -207,9 +229,26 @@ function apply(
     cast: World["cast"],
     translations: World["translations"],
     takes: World["takes"],
+    assets: World["assets"],
     op: LiveOp,
 ): void {
     switch (op.op) {
+        case "update-asset":
+            assets[op.assetType][op.assetId] = structuredClone(op.record) as LiveAssetRecord;
+            return;
+        case "move-assets":
+            for (const move of op.moves) {
+                const record = assets[op.assetType][move.assetId];
+                if (!record) {
+                    continue;
+                }
+                if (move.groupId === null) {
+                    delete (record as Record<string, unknown>).groupId;
+                } else {
+                    (record as Record<string, unknown>).groupId = move.groupId;
+                }
+            }
+            return;
         case "set-translation":
             writeLibrary(translations[op.locale], [{ unitId: op.unitId, unit: op.unit }]);
             return;
@@ -346,6 +385,8 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "localization", locale: (op as { locale: string }).locale };
         case "voice":
             return { doc: "voice", locale: (op as { locale: string }).locale };
+        case "assets":
+            return { doc: "assets", assetType: (op as { assetType: string }).assetType };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -942,13 +983,14 @@ describe("the claim check", () => {
                 locale: "ja",
                 units: [{ unitId: "text-b", unit: translation("遅いよ。") }],
             },
+            "update-asset": { op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1", "hall.png") },
         };
         expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
 
         for (const [kind, op] of Object.entries(samples)) {
             // Held by somebody else, on every key the operation names.
             const claims = Object.fromEntries(opClaimKeys(op).map(key => [key, "guest-2"]));
-            const world = makeWorld({ claims, cast: [record("c1", "Ada")] });
+            const world = makeWorld({ claims, cast: [record("c1", "Ada")], assets: { a1: asset("a1") } });
             const refusal = asRefusal(send(world, op, "guest-1"));
             expect(refusal.reason, kind).toBe("row-claimed");
             expect(world.applied, kind).toHaveLength(0);
@@ -1348,5 +1390,111 @@ describe("the host's own edits", () => {
 
         expect(effect.op.op === "insert-block" && effect.op.target).toEqual({ parentId: null, beforeBlockId: "c" });
         expect(order(world.scenes.s1)).toEqual(["a", "new", "c"]);
+    });
+});
+
+/**
+ * The asset library's half of the vocabulary, at the host.
+ *
+ * Two verbs and two refusals, and what the cases below are really about is the second one: a record
+ * that is gone is a file somebody deleted, and the author on the other end has an inspector full of
+ * their own typing that this must never be read as licence to clear.
+ */
+describe("the asset library a session carries", () => {
+    it("replaces one record whole, because a record's fields hold each other up", () => {
+        const world = makeWorld({ assets: { a1: asset("a1", "room.png") } });
+
+        const effect = asEffect(send(world, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1", "hall.jpg"),
+        }));
+
+        expect(effect.seq).toBe(1);
+        expect(world.assets.image.a1?.name).toBe("hall.jpg");
+        expect(effect.digests?.[0]?.scope).toEqual({ of: "assets", assetType: "image" });
+    });
+
+    it("refuses an update whose record is gone, and says the record is gone", () => {
+        // ⚠ It says nothing about the panel. An update that created what it could not find would put
+        // a record back after somebody deleted the file, leaving a row with no bytes under it.
+        const world = makeWorld();
+
+        const refusal = asRefusal(send(world, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1"),
+        }));
+
+        expect(refusal.reason).toBe("asset-gone");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("files a whole selection as one operation, each row in its own folder", () => {
+        const world = makeWorld({ assets: { a1: asset("a1", "a1.png", "old"), a2: asset("a2") } });
+
+        asEffect(send(world, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: null }],
+        }));
+
+        expect(world.assets.image.a1?.groupId).toBe("chapter-2");
+        expect(world.assets.image.a2?.groupId).toBeUndefined();
+        expect(world.applied).toHaveLength(1);
+    });
+
+    it("refuses a whole drag when one row is gone, rather than filing the rest", () => {
+        // Half a drag is an arrangement the author never asked for, sitting in everybody's library
+        // with nothing on any screen saying the other half was refused.
+        const world = makeWorld({ assets: { a1: asset("a1") } });
+
+        const refusal = asRefusal(send(world, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "gone", groupId: null }],
+        }));
+
+        expect(refusal.reason).toBe("asset-gone");
+        expect(world.assets.image.a1?.groupId).toBeUndefined();
+    });
+
+    it("does not claim a drag, and does claim a record", () => {
+        const world = makeWorld({
+            assets: { a1: asset("a1"), a2: asset("a2") },
+            claims: { [assetClaimKey("a1")]: "guest-2" },
+        });
+
+        // Filing is a drag: the loser loses a drag, which is cheaper than asking to hold a row.
+        expect(asEffect(send(world, {
+            op: "move-assets", assetType: "image", moves: [{ assetId: "a1", groupId: "x" }],
+        }, "guest-1")).seq).toBe(1);
+        // Editing the record is a paragraph somebody may be halfway through writing.
+        expect(asRefusal(send(world, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1", "mine.png"),
+        }, "guest-1")).reason).toBe("row-claimed");
+    });
+
+    it("refuses a record aimed at the wrong shard, which nothing else would ever report", () => {
+        // A record written into a sibling type's shard is a file the browser no longer draws
+        // anywhere, sitting in a document whose own digest agrees with itself.
+        const world = makeWorld({ assets: { a1: asset("a1") } });
+
+        const refusal = asRefusal(world.host.receive({
+            kind: "intent",
+            clientId: "c-mismatched",
+            document: { doc: "assets", assetType: "audio" },
+            op: { op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1") },
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("document-not-shared");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("refuses a shard this session does not carry at all", () => {
+        const world = makeWorld({ assets: { a1: asset("a1") } });
+
+        expect(asRefusal(world.host.receive({
+            kind: "intent",
+            clientId: "c-unknown-shard",
+            document: { doc: "assets", assetType: "font" },
+            op: { op: "update-asset", assetType: "font", assetId: "f1", record: asset("f1") },
+        }, "guest-1")).reason).toBe("document-not-shared");
     });
 });
