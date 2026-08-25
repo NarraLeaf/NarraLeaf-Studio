@@ -1,3 +1,4 @@
+import os from "os";
 import { SCREEN_EFFECT_THREAD_CHOICES } from "@shared/constants/screenEffects";
 import { describe, expect, it } from "vitest";
 import type { WeatherBakeSpec } from "@shared/weather/model";
@@ -20,6 +21,16 @@ import {
  */
 
 const SPEC: WeatherBakeSpec = { ref: { seed: "snow" }, width: 64, height: 36, fps: 30, frames: 10 };
+
+/**
+ * What this machine will give a bake: one thread per two cores, because a thread drawing needs a
+ * core to spare beside the encoder writing.
+ *
+ * Written out rather than assumed. A count asserted flat below passes on the workstation it was
+ * written on and fails on a four-core runner, which is a fact about the runner rather than about
+ * the clamp under test.
+ */
+const MACHINE_SHARE = Math.max(1, Math.floor(os.cpus().length / 2));
 
 /** Threads that answer only when the test says so, and remember everything they were asked. */
 function fakeThreads() {
@@ -169,17 +180,17 @@ describe("how many threads a bake asks for", () => {
         // The settings row offers a small number of stops, but the clip does not: one 4K thread
         // carries a 166 MB accumulator, and a choice made on a 1080p project follows the author to
         // the next one. So an explicit count is clamped exactly as the automatic one is.
-        expect(resolveWeatherRenderThreads(SPEC, 3, {})).toBe(3);
+        expect(resolveWeatherRenderThreads(SPEC, 3, {})).toBe(Math.min(3, MACHINE_SHARE));
         // One survives every clamp, on every machine: it is the floor the pool already had.
         expect(resolveWeatherRenderThreads(SPEC, 1, {})).toBe(1);
-        expect(resolveWeatherRenderThreads({ ...SPEC, frames: 2 }, 4, {})).toBe(2);
+        expect(resolveWeatherRenderThreads({ ...SPEC, frames: 2 }, 4, {})).toBe(Math.min(2, MACHINE_SHARE));
         // Reverse control: without the clamp this would answer 4 rather than the machine's share.
         expect(resolveWeatherRenderThreads(SPEC, 4, {})).toBeLessThanOrEqual(4);
     });
 
     it("reads the machine when the author asked for auto", () => {
         expect(resolveWeatherRenderThreads(SPEC, null, {}))
-            .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
     });
 
     it("lets an operator pin the count, which is how the threads were measured at all", () => {
@@ -187,8 +198,8 @@ describe("how many threads a bake asks for", () => {
         expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "3" })).toBe(3);
         // Nonsense is ignored rather than obeyed: this is a measuring knob, not a way to wedge a bake.
         expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "0" }))
-            .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
         expect(resolveWeatherRenderThreads(SPEC, null, { NLS_WEATHER_BAKE_THREADS: "lots" }))
-            .toBe(weatherRenderThreadCount(SPEC, require("os").cpus().length));
+            .toBe(weatherRenderThreadCount(SPEC, os.cpus().length));
     });
 });
