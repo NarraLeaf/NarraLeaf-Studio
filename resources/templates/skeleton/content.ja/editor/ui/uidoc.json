@@ -51,7 +51,19 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss",
+          "addBindings": [
+            {
+              "kind": "pointer",
+              "gesture": "wheelDown"
+            }
+          ],
+          "overControls": "fire"
+        }
+      ]
     },
     {
       "id": "9a048bdd-8d00-4505-9ab5-832af57ef182",
@@ -76,7 +88,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "afa4f872-ce72-4456-a86b-a8edc1594316",
@@ -101,7 +118,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "2334bffd-671e-42f4-a1f5-b652b585b92a",
@@ -151,7 +173,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
@@ -176,7 +203,12 @@
           "exitDurationSeconds": 0.22,
           "exitBlocking": false
         }
-      }
+      },
+      "actions": [
+        {
+          "actionId": "dismiss"
+        }
+      ]
     },
     {
       "id": "a656476f-829e-4b6f-94f9-87ad486a68d1",
@@ -212,7 +244,15 @@
       "mount": {
         "kind": "slot",
         "slotId": "dialog"
-      }
+      },
+      "actions": [
+        {
+          "actionId": "advance"
+        },
+        {
+          "actionId": "backlog"
+        }
+      ]
     },
     {
       "id": "f772ffc3-f108-40b9-a217-4fc652fb68d2",
@@ -45503,7 +45543,6 @@
       "name": "Root",
       "parentId": null,
       "childrenIds": [
-        "6f476541-9b16-45f7-a3d9-3e6702697334",
         "10012a54-2d93-40d8-8c4b-be7c5f24ba91"
       ],
       "layout": {
@@ -64020,377 +64059,6 @@
         }
       }
     },
-    "6f476541-9b16-45f7-a3d9-3e6702697334": {
-      "id": "6f476541-9b16-45f7-a3d9-3e6702697334",
-      "type": "nl.container",
-      "name": "送りエリア",
-      "parentId": "3f75130c-73bb-428a-a7b5-388e32d231e5",
-      "childrenIds": [],
-      "layout": {
-        "x": 0,
-        "y": 0,
-        "width": 1920,
-        "height": 720,
-        "visible": true,
-        "opacity": 1
-      },
-      "props": {
-        "layoutKind": "free",
-        "stackDirection": "vertical",
-        "stackGap": 8,
-        "stackPaddingTop": 0,
-        "stackPaddingRight": 0,
-        "stackPaddingBottom": 0,
-        "stackPaddingLeft": 0,
-        "stackAlignItems": "stretch",
-        "stackJustifyContent": "start",
-        "scrollAxis": "y",
-        "backgroundColor": "transparent",
-        "borderRadius": 0,
-        "borderRadiusTL": 0,
-        "borderRadiusTR": 0,
-        "borderRadiusBL": 0,
-        "borderRadiusBR": 0,
-        "borderRadiusLinked": true,
-        "borderColor": "nlbrand:container.border",
-        "borderWidth": 0,
-        "borderStyle": "none",
-        "backgroundImage": "",
-        "backgroundFit": "cover",
-        "fillType": "color",
-        "fillVisible": false,
-        "fillOpacity": 1,
-        "strokeVisible": true,
-        "strokeOpacity": 1,
-        "strokeAlign": "center",
-        "strokeSide": "all",
-        "borderJoin": "miter",
-        "cornerAdvanced": false,
-        "clipContent": false,
-        "transformOffsetX": 0,
-        "transformOffsetY": 0,
-        "transformScale": 1,
-        "transformRotation": 0,
-        "transformOpacity": 1,
-        "appearance": {
-          "defaultVariantId": "default",
-          "variants": [
-            {
-              "id": "default",
-              "name": "デフォルト",
-              "propertyGroups": [
-                {
-                  "key": "backgroundColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "transparent"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadius",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusTR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBL",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusBR",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderRadiusLinked",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "borderColor",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "nlbrand:container.border"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderWidth",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "borderStyle",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "none"
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundImage",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "backgroundFit",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "cover"
-                    }
-                  ]
-                },
-                {
-                  "key": "imageFill",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "fillType",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "color"
-                    }
-                  ]
-                },
-                {
-                  "key": "fillVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "fillOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeVisible",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": true
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeAlign",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "center"
-                    }
-                  ]
-                },
-                {
-                  "key": "strokeSide",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "all"
-                    }
-                  ]
-                },
-                {
-                  "key": "borderJoin",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": "miter"
-                    }
-                  ]
-                },
-                {
-                  "key": "cornerAdvanced",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": false
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetX",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOffsetY",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformScale",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "transformRotation",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "transformOpacity",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 1
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBackgroundBlur",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": 0
-                    }
-                  ]
-                },
-                {
-                  "key": "effectShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectInnerShadow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectBlend",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": ""
-                    }
-                  ]
-                },
-                {
-                  "key": "effectGlow",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                },
-                {
-                  "key": "effectFilter",
-                  "rows": [
-                    {
-                      "conditions": null,
-                      "value": null
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        }
-      }
-    },
     "387326a1-5514-4ee2-9d73-48fbe03de0b8": {
       "id": "387326a1-5514-4ee2-9d73-48fbe03de0b8",
       "type": "nl.container",
@@ -82494,6 +82162,38 @@
         },
         "localizationKey": "menu.scenes"
       }
+    }
+  },
+  "actions": {
+    "advance": {
+      "id": "advance",
+      "name": "送る",
+      "bindings": [
+        {
+          "kind": "pointer",
+          "gesture": "click"
+        }
+      ]
+    },
+    "backlog": {
+      "id": "backlog",
+      "name": "バックログ",
+      "bindings": [
+        {
+          "kind": "pointer",
+          "gesture": "wheelUp"
+        }
+      ]
+    },
+    "dismiss": {
+      "id": "dismiss",
+      "name": "閉じる",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Escape"
+        }
+      ]
     }
   },
   "meta": {
