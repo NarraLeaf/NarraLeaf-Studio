@@ -1,4 +1,5 @@
 import {
+    useCallback,
     useEffect,
     useMemo,
     useRef,
@@ -8,7 +9,7 @@ import {
     type SetStateAction,
 } from "react";
 import { Maximize2 } from "lucide-react";
-import type { DocumentDiffEntry } from "@shared/documents/diff";
+import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
 import type { TranslationKey, Translator } from "@shared/i18n";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { uiGraphsSpec } from "@shared/documents/specs/uiGraphs";
@@ -21,6 +22,7 @@ import {
     resolveBlueprintLabel,
     resolveBlueprintNodeTitle,
 } from "@/apps/workspace/modules/blueprint-lite/blueprintNodeI18n";
+import type { RowReveal } from "../DocumentChangeList";
 import { sidesOfEntry } from "./entrySides";
 import {
     canvasReadFailure,
@@ -30,6 +32,7 @@ import {
     MaskLegend,
     UnmarkedNote,
     useCanvasWidth,
+    type CanvasSelection,
 } from "./canvasShell";
 import { CHANGE_MASK_CLASS, CHANGE_MASK_STROKE } from "./changeMask";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
@@ -45,10 +48,12 @@ import {
 } from "./graphDiffPlan";
 import {
     FITTED_GRAPH_NAV,
+    frameGraphNavOn,
     graphNavBox,
     graphNavZoomFactor,
     isFittedGraphNav,
     panGraphNav,
+    readableGraphNavZoom,
     zoomGraphNavAt,
     type GraphNav,
 } from "./graphCanvasNav";
@@ -133,7 +138,17 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
         : plan.defaultGraphKey;
     const option = plan.graphs.find(entryOption => entryOption.key === graphKey) ?? null;
 
-    const [selected, setSelected] = useState<number | null>(null);
+    /**
+     * The change the author singled out, and which way they reached it.
+     *
+     * A mark and a row ask opposite questions of one selection, and the answers differ: a mark asks
+     * what changed on this node, which is answered by narrowing the list to that row; a row asks
+     * where the change is, which is answered by moving the canvas onto it. Narrowing there would
+     * take away the rows being stepped through, so which way it arrived has to be remembered - it
+     * cannot be worked out afterwards from the index alone.
+     */
+    const [selection, setSelection] = useState<CanvasSelection | null>(null);
+    const selected = selection?.index ?? null;
     const [frame, onFrame] = useCanvasWidth();
     // One transform for the pair. Held here rather than in either column, because a pan that moved
     // one side alone would break the one thing two columns are for.
@@ -143,6 +158,21 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
         () => plan.masks.filter(mask => mask.graphKey === graphKey),
         [plan.masks, graphKey],
     );
+
+    // Which drawn mark each row of the list belongs to, so a row can send the canvas to it. A leaf
+    // under a change is entered as well as the change itself: the row an author reads is "moved on
+    // the canvas", and the mark is on its parent. Anything not in here - a change on another graph,
+    // one that belongs to no node - has nowhere to send them, and its row stays text.
+    const revealable = useMemo(() => {
+        const byChange = new Map<DocumentChange, GraphMask>();
+        for (const mask of masks) {
+            byChange.set(mask.change, mask);
+            for (const child of mask.change.children ?? []) {
+                byChange.set(child, mask);
+            }
+        }
+        return byChange;
+    }, [masks]);
 
     const baseGraph = graphKey ? plan.baseGraphs.get(graphKey) ?? null : null;
     const headGraph = graphKey ? plan.headGraphs.get(graphKey) ?? null : null;
@@ -172,12 +202,60 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
     const unplaced = masks.filter(mask => !placeable(mask, baseGraph, headGraph)).length;
     const failure = canvasReadFailure(base, head);
 
+    /**
+     * Go and look at one change: single it out, and bring what it is about into the middle.
+     *
+     * Two rules decide how close, and they pull against each other. Close enough to read, or the
+     * author is put back where they started looking at a coloured speck - and one who has already
+     * magnified past that picked their own magnification, which stepping to the next change must
+     * not undo. But never so close that what is being shown does not fit: a node that was dragged
+     * occupies two places in one picture, and a frame holding one of them answers a question nobody
+     * asked. Fitting wins where they disagree, because the reading threshold is a preference and
+     * half an answer is a wrong one.
+     *
+     * The floor is the fitted view. Every box here is part of a graph that fits whole at zoom 1, so
+     * this can only ever be a way in.
+     */
+    const revealMask = useCallback((mask: GraphMask) => {
+        setSelection({ index: mask.index, from: "row" });
+        const box = graphMaskBox(mask, baseGraph, headGraph, shapes, viewport);
+        if (!box) {
+            return;
+        }
+        const frameBox = { width: viewport.width * viewport.scale, height: viewport.height * viewport.scale };
+        const fits = Math.min(
+            box.width > 0 ? frameBox.width / box.width : Number.POSITIVE_INFINITY,
+            box.height > 0 ? frameBox.height / box.height : Number.POSITIVE_INFINITY,
+        );
+        const readable = readableGraphNavZoom(viewport.scale);
+        setNav(current => frameGraphNavOn(
+            box,
+            frameBox,
+            Math.max(1, Math.min(Math.max(current.zoom, readable), fits)),
+        ));
+    }, [baseGraph, headGraph, shapes, viewport]);
+
+    const reveal = useMemo<RowReveal>(() => ({
+        can: candidate => revealable.has(candidate),
+        go: candidate => {
+            const mask = revealable.get(candidate);
+            if (mask) {
+                revealMask(mask);
+            }
+        },
+        label: t("documentDiff.canvas.markLabel"),
+    }), [revealable, revealMask, t]);
+
     return (
         <CanvasShell
             entry={entry}
             change={change}
-            selected={selected === null ? null : changes[selected] ?? null}
-            onClearSelection={() => setSelected(null)}
+            selected={selection?.from === "mark" ? changes[selection.index] ?? null : null}
+            onClearSelection={() => setSelection(null)}
+            reveal={reveal}
+            // Only for a selection that came from a row. A mark's selection has narrowed the list to
+            // its one row already, and a fill under the only row on screen says nothing.
+            activeChange={selection?.from === "row" ? changes[selection.index] ?? null : null}
             controls={(plan.graphs.length > 1 || option) && (
                 <>
                     {plan.graphs.length > 1 && (
@@ -187,7 +265,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                             value={graphKey ?? ""}
                             onChange={value => {
                                 setChosenGraph(String(value));
-                                setSelected(null);
+                                setSelection(null);
                                 // Another graph is another picture, and the pan that framed a node
                                 // of this one frames nothing of that one.
                                 setNav(FITTED_GRAPH_NAV);
@@ -246,7 +324,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                                     onNav={setNav}
                                     masks={masks.filter(mask => mask.onBase)}
                                     selected={selected}
-                                    onSelect={setSelected}
+                                    onSelect={index => setSelection({ index, from: "mark" })}
                                 />
                             </VersionedAssetsProvider>
                         )}
@@ -261,7 +339,7 @@ export function UIGraphsChangeDetail({ entry, change, sides }: ChangePresenterPr
                                     onNav={setNav}
                                     masks={masks.filter(mask => mask.onHead)}
                                     selected={selected}
-                                    onSelect={setSelected}
+                                    onSelect={index => setSelection({ index, from: "mark" })}
                                 />
                             </VersionedAssetsProvider>
                         )}
@@ -292,6 +370,84 @@ function placeable(mask: GraphMask, base: GraphFacts | null, head: GraphFacts | 
         case "edge":
             return sides.some(graph => graph.edges.some(edge => edge.key === target.edgeKey));
     }
+}
+
+/** A rectangle of the fitted picture. */
+interface Box {
+    readonly left: number;
+    readonly top: number;
+    readonly width: number;
+    readonly height: number;
+}
+
+/** The smallest box holding all of them, or null when there are none. */
+function boxUnion(boxes: readonly Box[]): Box | null {
+    if (boxes.length === 0) {
+        return null;
+    }
+    const left = Math.min(...boxes.map(box => box.left));
+    const top = Math.min(...boxes.map(box => box.top));
+    return {
+        left,
+        top,
+        width: Math.max(...boxes.map(box => box.left + box.width)) - left,
+        height: Math.max(...boxes.map(box => box.top + box.height)) - top,
+    };
+}
+
+/**
+ * Everything one mark stands for, in the fitted picture's units, over BOTH versions at once.
+ *
+ * Both, and that is the whole subtlety: the two columns share one transform, so a node that was
+ * dragged is at two different places in that one picture. Framing the newer one alone centres the
+ * card in the right-hand column and pushes the left-hand column's copy out of the frame - and
+ * `there on one side, absent on the other` is what an ADDED node looks like. The author asked where
+ * it moved and would have been shown something that reads as a different answer.
+ *
+ * An edge is framed on the two cards it joins rather than on the wire, because a wire's midpoint on
+ * a long curve can sit over a third node entirely - and which connection changed is only legible
+ * with both of its ends on screen.
+ *
+ * `null` for a mark with nowhere to go: a change to the graph itself wears the frame rather than a
+ * card, and one whose node is in neither graph is already counted as unplaced.
+ */
+function graphMaskBox(
+    mask: GraphMask,
+    base: GraphFacts | null,
+    head: GraphFacts | null,
+    shapes: ReturnType<typeof graphNodeShapes>,
+    viewport: GraphViewport,
+): Box | null {
+    const sides = [mask.onHead ? head : null, mask.onBase ? base : null].filter(
+        (graph): graph is GraphFacts => graph !== null,
+    );
+    const target = mask.target;
+    if (target.kind === "graph") {
+        return null;
+    }
+
+    const boxOf = (graph: GraphFacts, nodeId: string): Box | null => {
+        const node = graph.nodes.find(candidate => candidate.id === nodeId);
+        return node ? graphNodeBox(node, viewport, graphShapeOf(shapes, node)) : null;
+    };
+
+    const found: Box[] = [];
+    for (const graph of sides) {
+        if (target.kind === "node") {
+            const box = boxOf(graph, target.nodeId);
+            if (box) {
+                found.push(box);
+            }
+            continue;
+        }
+        const edge = graph.edges.find(candidate => candidate.key === target.edgeKey);
+        const from = edge ? boxOf(graph, edge.from) : null;
+        const to = edge ? boxOf(graph, edge.to) : null;
+        if (from && to) {
+            found.push(from, to);
+        }
+    }
+    return boxUnion(found);
 }
 
 /* ---------------------------------------------------------------------------------------- */
