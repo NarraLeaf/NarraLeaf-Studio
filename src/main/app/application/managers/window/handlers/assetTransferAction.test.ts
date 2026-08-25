@@ -105,6 +105,7 @@ beforeEach(async () => {
         getUserDataDir: () => path.join(tempDir, "user-data"),
         getBuiltInPluginsDir: () => path.join(tempDir, "app", "dist", "builtin-plugins"),
         logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
+        hasExperimentalCondition: () => false,
     } as any);
 });
 

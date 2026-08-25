@@ -1,7 +1,6 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import pathModule from "path";
-import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
@@ -12,6 +11,7 @@ import type { FileDetails, FileStat, FileEntry } from "@shared/utils/fs";
 import { Fs } from "@shared/utils/fs";
 import { WRITE_BATCH_MAX_ENTRIES } from "@shared/utils/writeBatchFrame";
 import { splitFileEntry } from "@shared/utils/fileEntry";
+import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import {
     authorizeActorCapabilityRequest,
@@ -93,7 +93,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                         ];
                     }
 
-                    const result = await dialog.showOpenDialog(window.win, dialogOptions);
+                    const result = await showOpenDialog(window, dialogOptions);
                     if (result.canceled) {
                         return this.success({ ok: true, data: [] });
                     }
@@ -135,7 +135,7 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                         ];
                     }
 
-                    const result = await dialog.showSaveDialog(window.win, dialogOptions);
+                    const result = await showSaveDialog(window, dialogOptions);
                     if (result.canceled || !result.filePath) {
                         return this.success({ ok: true, data: null });
                     }

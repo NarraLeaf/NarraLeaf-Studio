@@ -1,8 +1,8 @@
 import { LAYER_FILE_EXTENSION } from "@narraleaf/encryption";
-import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { openPayload } from "../../build/patchPayload";
+import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -68,7 +68,7 @@ export class GameBuildSelectOutputDirHandler extends IPCHandler<IPCEventType.gam
         { defaultPath }: IPCEvents[IPCEventType.gameBuildSelectOutputDir]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildSelectOutputDir]["response"]>> {
         return this.tryUse(async () => {
-            const result = await dialog.showOpenDialog(window.win, {
+            const result = await showOpenDialog(window, {
                 title: "Select build output folder",
                 buttonLabel: "Select folder",
                 properties: ["openDirectory", "createDirectory"],
@@ -113,7 +113,7 @@ export class GameBuildSelectPatchFileHandler extends IPCHandler<IPCEventType.gam
         { defaultPath }: IPCEvents[IPCEventType.gameBuildSelectPatchFile]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildSelectPatchFile]["response"]>> {
         return this.tryUse(async () => {
-            const result = await dialog.showSaveDialog(window.win, {
+            const result = await showSaveDialog(window, {
                 title: "Save patch",
                 buttonLabel: "Save patch",
                 // The suffix is two extensions deep on purpose, so the filter has
@@ -145,7 +145,7 @@ export class GameBuildSelectPatchBaselineHandler extends IPCHandler<IPCEventType
         { defaultPath }: IPCEvents[IPCEventType.gameBuildSelectPatchBaseline]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.gameBuildSelectPatchBaseline]["response"]>> {
         return this.tryUse(async () => {
-            const result = await dialog.showOpenDialog(window.win, {
+            const result = await showOpenDialog(window, {
                 title: "Select the build this patch is for",
                 buttonLabel: "Select folder",
                 properties: ["openDirectory"],
