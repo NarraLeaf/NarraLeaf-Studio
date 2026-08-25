@@ -13,10 +13,10 @@ import {
     normalizeUISurfaceInputMode,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
-import { stopsAtLane } from "@/lib/ui-editor/runtime/input/inputLaneWalk";
 import {
     hitsConsumeInput,
     resolveSurfaceInputActionHits,
+    stopsAtLane,
     type UIInputSignal,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
