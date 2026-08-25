@@ -396,7 +396,7 @@ export const workspace = {
         livePendingOne: "1 项修改正在等待主持方",
         livePendingMany: "{count} 项修改正在等待主持方",
         // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间保存故事、角色、译文与配音，以及此项目对资产的描述；其余内容是当前的，且为只读",
+        liveFrozenWhat: "会话期间保存故事、角色、译文与配音，以及整个资产库（含文件本身）；其余内容是当前的，且为只读",
         liveUnavailableHere: "实时会话期间不可用",
         // 别人正在写的行，集中在一处读，不必逐行去找标记。
         liveClaimsLabel: "正在被编辑的行",

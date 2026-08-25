@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { Badge } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { cn } from "@/lib/utils/cn";
 import type { MediaAssetSupportRecord } from "@/lib/workspace/services/media/mediaAssetSupport";
 
@@ -32,7 +33,7 @@ export function AssetSupportBadge({
     className?: string;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
 
     const handleClick = useCallback((event: React.MouseEvent) => {
         // The row underneath selects on click, and a mark that selected the row *and* opened a
