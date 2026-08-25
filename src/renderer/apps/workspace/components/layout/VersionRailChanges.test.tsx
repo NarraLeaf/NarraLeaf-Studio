@@ -28,7 +28,12 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const workspace = vi.hoisted(() => ({ context: {} as never }));
-vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => workspace }));
+// Both spellings: the rail names its rows through the comparison's naming layer, which reads the
+// workspace optionally so it can also be mounted where there is not a whole one.
+vi.mock("@/apps/workspace/context", () => ({
+    useWorkspace: () => workspace,
+    useOptionalWorkspace: () => workspace,
+}));
 
 const openTab = vi.hoisted(() => vi.fn());
 vi.mock("@/apps/workspace/modules/vcs-changes/openVcsChangesTab", () => ({
