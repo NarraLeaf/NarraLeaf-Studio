@@ -294,6 +294,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * Drained asynchronously and deliberately behind the records: see {@link AssetBlobPort}.
      */
     private readonly payloadQueue: AssetPayloadWork[] = [];
+    /**
+     * Work that cannot be done yet because its slices have not all arrived.
+     *
+     * ⚠ **Held apart from the queue rather than pushed back onto it.** A drain that requeued an item
+     * it could not do would spin the queue at full speed until the bytes landed - a busy loop for as
+     * long as a transfer takes. Nothing here retries on a timer either: {@link resumePayloads} is
+     * called when a slice arrives, which is the only moment the answer can have changed.
+     */
+    private readonly waitingPayloads: AssetPayloadWork[] = [];
     private payloadDraining = false;
     /**
      * Where each deleted asset's file went in THIS machine's trash, by asset id.
@@ -954,16 +963,23 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const local = this.getLocalAssetsManager();
         switch (work.do) {
             case "write": {
+                const still: LiveAssetBytePart[] = [];
                 for (const part of work.parts) {
                     const bytes = this.blobPort?.take(part) ?? null;
                     if (!bytes) {
-                        // Not there yet, or short. Ask for what is missing and come back to it - the
-                        // only repair this channel has, and the reason nothing here retries on a timer.
+                        // Not here yet, or short of a slice. Ask for what is missing and set the rest
+                        // of this file aside - the only repair this channel has.
                         this.blobPort?.request(part);
-                        this.payloadQueue.push(work);
-                        return;
+                        still.push(part);
+                        continue;
                     }
                     await this.writePayloadFile(this.payloadPathFor(work.assetId, part.path), bytes);
+                }
+                if (still.length > 0) {
+                    // The parts that did land are on disk; only the rest is waited for, so a bundle
+                    // of forty files does not start again from the first one every time.
+                    this.waitingPayloads.push({ ...work, parts: still });
+                    return;
                 }
                 await this.clearThumbnailCache(work.assetId);
                 this.events.emit("updated", this.liveRecord(work.assetType, work.assetId) as Asset);
@@ -988,6 +1004,21 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 return;
             }
         }
+    }
+
+    /**
+     * Try the files that were waiting for slices again.
+     *
+     * Called when a slice arrives, because that is the only moment the answer can have changed -
+     * there is no timer here and there must not be one: a transfer that is never completed would
+     * otherwise be a machine asking for it for the rest of the session.
+     */
+    public resumePayloads(): void {
+        if (this.waitingPayloads.length === 0) {
+            return;
+        }
+        this.payloadQueue.push(...this.waitingPayloads.splice(0, this.waitingPayloads.length));
+        void this.drainPayloadQueue();
     }
 
     /** Put one file down, making the shard directory first. */

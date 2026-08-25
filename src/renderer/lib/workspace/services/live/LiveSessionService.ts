@@ -243,6 +243,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 shardTypes: () => assets().shardTypes(),
                 records: assetType => assets().recordsOf(assetType),
                 hasRecord: (assetType, assetId) => assets().recordOf(assetType, assetId) !== null,
+                resumePayloads: () => assets().resumePayloads(),
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),

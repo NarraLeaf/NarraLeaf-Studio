@@ -1447,7 +1447,11 @@ export class LiveSession {
      */
     private onBlobMessage(session: ActiveSession, message: LiveBlobChunk | LiveBlobNeeded): void {
         if (message.kind === "blob") {
-            session.blobsIn.accept(message);
+            if (session.blobsIn.accept(message)) {
+                // A slice landing is the only moment a file that was waiting for one can become
+                // writable, so it is the only moment the library is asked to try again.
+                this.deps.assets.resumePayloads();
+            }
             return;
         }
         if (message.by === session.self) {
