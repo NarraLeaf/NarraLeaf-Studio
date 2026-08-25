@@ -1,4 +1,5 @@
 import type { SharedBlueprintAsset } from "@shared/types/blueprint/document";
+import type { LiveAssetOp, LiveAssetRecord } from "@shared/live/ops";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -68,6 +69,76 @@ type AssetGroupsRestorePlan = {
     groupOrder: string[];
 };
 
+/**
+ * Somewhere an asset record edit can go instead of into the library.
+ *
+ * **The seam a live session hangs the asset library off, and the reason the asset browser needs no
+ * live-session code.** The shape is `StoryOpSink`'s and `LocalizationOpSink`'s, and the bargain is
+ * the same: with a sink installed an edit becomes an operation and the shard is not touched; the row
+ * moves when the operation comes back as somebody's effect and {@link AssetsService.applyLiveOp}
+ * applies it. Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * ⚠ **An installed sink also means "a session is running", and that is load-bearing rather than
+ * incidental.** The gestures that move a file - importing, replacing, duplicating, deleting, and the
+ * folder cascade that deletes in bulk - are refused while it is there. They have to be refused here,
+ * in the service, rather than left to the write boundary: the boundary leaves the metadata shard
+ * writable, so an import whose byte write was silently refused would go on to write a record for a
+ * file that does not exist, on one machine, with nothing carrying it to anybody else.
+ */
+export type AssetOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the library must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveAssetOp): boolean;
+};
+
+/**
+ * Put a record back exactly as it was, in place.
+ *
+ * The cast's `Character.adopt` trick, one document along and for the same reason: an edit is applied
+ * to the live record so the sink can be handed the record as it WOULD have been written, and then
+ * undone before anything has looked. Object identity is preserved because the asset browser and the
+ * inspector hold the record itself, and a replacement would leave them drawing a detached copy.
+ *
+ * Keys the edit added are removed rather than set to `undefined`: `undefined` and absent read the
+ * same in TypeScript and are not the same value to a canonical encoder or to a digest.
+ */
+function restoreAssetRecord(target: Record<string, unknown>, snapshot: Record<string, unknown>): void {
+    for (const key of Object.keys(target)) {
+        if (!(key in snapshot)) {
+            delete target[key];
+        }
+    }
+    Object.assign(target, cloneRecord(snapshot));
+}
+
+/** A detached copy of one record. Structured, because a record is plain JSON by construction. */
+function cloneRecord<T>(record: T): T {
+    return JSON.parse(JSON.stringify(record)) as T;
+}
+
+/**
+ * File a record in a folder, or at the section root.
+ *
+ * `null` deletes the key rather than assigning `undefined`, for the reason `setAssetExtension` gives:
+ * the two read the same in TypeScript and are not the same value to a canonical encoder.
+ */
+function setAssetGroup(record: Asset<AssetType, AssetSource>, groupId: string | null): void {
+    if (groupId === null) {
+        delete record.groupId;
+        return;
+    }
+    record.groupId = groupId;
+}
+
+/** Whether a string names an asset type this build has. What a message from another Studio needs. */
+function isAssetType(value: string): value is AssetType {
+    return (Object.values(AssetType) as string[]).includes(value);
+}
+
 interface AssetsEvents {
     deleted: Asset<AssetType, AssetSource>;
     updated: Asset<AssetType, AssetSource>;
@@ -98,6 +169,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * Asset lock manager
      */
     private readonly lockManager = new AssetLockManager();
+
+    /** Where record edits go instead of into the shard, when something else owns them. */
+    private opSink: AssetOpSink | null = null;
 
     /**
      * Event emitter for asset-level changes (added, deleted, updated)
@@ -175,6 +249,162 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         if (this.batchDepth === 0 && !this.assetsMetadataInitializing) {
             void this.flushPendingWrites();
         }
+    }
+
+    /* ------------------------------------------------------------ the live-session seam */
+
+    /** Send asset record edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: AssetOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * One record has been edited in place: hand it over if something else owns it, or save it.
+     *
+     * **The one point every record edit passes through**, which is what makes the vocabulary's unit
+     * honest: `markDirty` names only the type, and the finest thing that can be stated truthfully
+     * there is a whole shard - which is the whole-document last-writer-wins the design refuses. Every
+     * mutator that knows which record it changed comes here instead, and what it states is one
+     * record.
+     *
+     * ⚠ **The record is edited first and put back if the sink takes it**, which is the cast's
+     * `Character.adopt` shape: the sink must be handed the record as it WOULD have been written, not
+     * the patch that was asked for, because a patch states an intention that every machine would then
+     * resolve against its own copy. Nothing sees the intermediate state - this whole call is
+     * synchronous, and the `updated` event that wakes the panels is on the other branch.
+     *
+     * Answers whether the sink took it, for a caller that has more to do either way.
+     */
+    public recordChanged(
+        record: Asset<AssetType, AssetSource>,
+        previous: Asset<AssetType, AssetSource>,
+    ): boolean {
+        const taken = this.opSink?.handle({
+            op: "update-asset",
+            assetType: record.type,
+            assetId: record.id,
+            record: cloneRecord(record) as LiveAssetRecord,
+        }) === true;
+        if (taken) {
+            restoreAssetRecord(record as unknown as Record<string, unknown>, previous as unknown as Record<string, unknown>);
+            return true;
+        }
+        this.markDirty(record.type);
+        this.events.emit("updated", record);
+        return false;
+    }
+
+    /**
+     * Every asset type whose shard this window holds.
+     *
+     * What a session carries and what the write boundary leaves writable - one set, from one call,
+     * for the reason `LocalizationService.loadAllDocuments` answers with what it read. Empty before
+     * the library is up, which is a window that cannot be in a session either.
+     */
+    public shardTypes(): readonly string[] {
+        return this.assetsMetadataManager ? Object.values(AssetType) : [];
+    }
+
+    /**
+     * One type's records as they stand, or null when this window does not hold them.
+     *
+     * What the digest is taken over. A string rather than an {@link AssetType} because it arrives
+     * from another Studio, which may name a type this build has never heard of.
+     */
+    public recordsOf(assetType: string): Readonly<Record<string, Asset<AssetType, AssetSource>>> | null {
+        if (!this.assetsMetadataManager || !isAssetType(assetType)) {
+            return null;
+        }
+        return this.assetsMetadataManager.getAssets()[assetType] as Record<string, Asset<AssetType, AssetSource>>;
+    }
+
+    /** One record as it stands, or null when there is none. What the host's `asset-gone` asks. */
+    public recordOf(assetType: string, assetId: string): Asset<AssetType, AssetSource> | null {
+        return this.recordsOf(assetType)?.[assetId] ?? null;
+    }
+
+    /**
+     * Apply one operation to the library, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the browser is
+     * finally allowed to move.
+     *
+     * ⚠ **A record this window does not hold is a no-op rather than a throw**, exactly as an unheld
+     * language is in `LocalizationService`. An applier runs inside the host reading a message, and one
+     * that threw would take the session down over one row; the divergence guard catches it instead, on
+     * this very effect, because the shard's digest is a value rather than a missing answer.
+     */
+    public applyLiveOp(op: LiveAssetOp): void {
+        switch (op.op) {
+            case "update-asset": {
+                const record = this.recordOf(op.assetType, op.assetId);
+                if (!record) {
+                    console.warn(`[AssetsService] no record ${op.assetId} in ${op.assetType}; effect not applied`);
+                    return;
+                }
+                // In place, so the panel and the inspector holding this record redraw rather than
+                // going on drawing a copy nothing writes to any more.
+                restoreAssetRecord(
+                    record as unknown as Record<string, unknown>,
+                    op.record as unknown as Record<string, unknown>,
+                );
+                this.markDirty(record.type);
+                this.events.emit("updated", record);
+                return;
+            }
+            case "move-assets": {
+                const records = this.recordsOf(op.assetType);
+                if (!records) {
+                    console.warn(`[AssetsService] no shard for ${op.assetType}; effect not applied`);
+                    return;
+                }
+                const moved: Asset<AssetType, AssetSource>[] = [];
+                for (const move of op.moves) {
+                    const record = records[move.assetId];
+                    if (!record) {
+                        console.warn(`[AssetsService] no record ${move.assetId} in ${op.assetType}; row not filed`);
+                        continue;
+                    }
+                    setAssetGroup(record, move.groupId);
+                    moved.push(record);
+                }
+                if (moved.length === 0) {
+                    return;
+                }
+                // One dirty mark for the whole gesture, then one event per row: the shard is written
+                // once, and the browser redraws the rows that actually moved.
+                this.markDirty(moved[0].type);
+                for (const record of moved) {
+                    this.events.emit("updated", record);
+                }
+                return;
+            }
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
+                // other machine in the room and not on this one, and nothing says so until a digest
+                // disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live asset operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /**
+     * The answer every gesture that would add, replace or remove a file gives while a session is
+     * running, or null when there is none.
+     *
+     * ⚠ **In the service rather than only in the panel, and rather than at the write boundary.** The
+     * boundary leaves the metadata shard writable, so an import whose byte write it silently refused
+     * would carry on and write a perfectly well-formed record for a file that is not there - on this
+     * machine, and on no other. The panel greys these controls too, but a greyed control is a promise
+     * every surface has to remember to keep, and this is the one place that cannot forget.
+     */
+    private refuseInLiveSession(): { success: false; error: string } | null {
+        return this.opSink === null ? null : {
+            success: false,
+            error: "A live session carries what the project says about a file, never the file: "
+                + "assets cannot be imported, replaced, duplicated or deleted until it ends.",
+        };
     }
 
     /**
@@ -420,7 +650,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     public async importLocalAssets<T extends AssetType>(type: T): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        return this.getLocalAssetsManager().importLocalAssets(type);
+        return this.refuseInLiveSession() ?? this.getLocalAssetsManager().importLocalAssets(type);
     }
 
     public async importRemoteAsset(
@@ -428,7 +658,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         url: string,
         groupId?: string,
     ): Promise<RequestStatus<Asset<AssetType, AssetSource.Remote>>> {
-        return this.getRemoteAssetsManager().importRemoteAsset(category, url, groupId);
+        return this.refuseInLiveSession()
+            ?? this.getRemoteAssetsManager().importRemoteAsset(category, url, groupId);
     }
 
     /**
@@ -443,6 +674,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     public async refreshRemoteAsset<T extends AssetType>(
         asset: Asset<T, AssetSource.Remote>,
     ): Promise<RequestStatus<{ asset: Asset<T, AssetSource>; changed: boolean }>> {
+        // A refresh replaces bytes when the server has newer ones, which is the same gesture as a
+        // replace as far as a session is concerned.
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         const refreshed = await this.getRemoteAssetsManager().refresh(asset);
         if (!refreshed.success || !refreshed.data) {
             return { success: false, error: refreshed.error };
@@ -637,7 +874,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         name: string,
         parentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().createGroup(category, name, parentGroupId);
+        // ⚠ Refused for a different reason from the byte gestures beside it: the folder shard is a
+        // document with no verb, so a folder made here would exist on this machine and nowhere else.
+        // Refused in the service rather than at the boundary because the manager mutates its map
+        // before it writes, and a refused write answers `ok` - the folder would appear on screen.
+        return this.refuseFolderChangeInLiveSession()
+            ?? this.getGroupAssetsManager().createGroup(category, name, parentGroupId);
     }
 
     /**
@@ -653,6 +895,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         recursive: boolean = false,
         options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
+        // A folder delete is an asset delete in bulk - it takes the files inside it - so it is
+        // refused for the reason a single one is, and not because folders have no verb.
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         const groupManager = this.getGroupAssetsManager();
         const blocked = await this.findDeleteBlocker(groupManager.collectGroupAssets(category, groupId, recursive), options);
         if (blocked) {
@@ -669,7 +917,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         groupId: string,
         newName: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().renameGroup(category, groupId, newName);
+        return this.refuseFolderChangeInLiveSession()
+            ?? this.getGroupAssetsManager().renameGroup(category, groupId, newName);
     }
 
     public async moveGroupToParent(
@@ -677,14 +926,97 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId);
+        return this.refuseFolderChangeInLiveSession()
+            ?? this.getGroupAssetsManager().moveGroupToParent(category, groupId, newParentGroupId);
     }
 
     public async moveAssetToGroup<T extends AssetType>(
         asset: Asset<T>,
         groupId?: string
     ): Promise<RequestStatus<void>> {
-        return this.getGroupAssetsManager().moveAssetToGroup(asset, groupId);
+        return this.moveAssetsToGroup([asset as Asset<AssetType, AssetSource>], groupId);
+    }
+
+    /**
+     * File any number of assets in one folder, as ONE gesture.
+     *
+     * **The batch is the point, and it exists for the story's `move-blocks` reason.** Dragging a
+     * multi-selection into a folder is one thing the author did; sent as one operation per row it
+     * would draw a half-filed library on every other screen in a session and cost a press per row to
+     * take back. The loop that used to live in three call sites is here instead, so every one of them
+     * states the gesture the same way.
+     *
+     * ⚠ **One operation per asset TYPE, because a message names one document.** A selection under
+     * Media may hold audio and video, whose records live in two shards; each shard's share is stated
+     * whole. Outside a session the split is invisible - both shards are written either way.
+     *
+     * Whole or not at all: every target is checked before a single record moves, so a drag onto a
+     * folder that has just been deleted leaves the selection where it was rather than half-filed.
+     */
+    public async moveAssetsToGroup(
+        assets: readonly Asset<AssetType, AssetSource>[],
+        groupId?: string
+    ): Promise<RequestStatus<void>> {
+        const manager = this.getGroupAssetsManager();
+        for (const asset of assets) {
+            const rejected = manager.checkMoveTarget(asset, groupId);
+            if (rejected) {
+                return { success: false, error: rejected };
+            }
+        }
+
+        const byType = new Map<AssetType, Asset<AssetType, AssetSource>[]>();
+        for (const asset of assets) {
+            const bucket = byType.get(asset.type);
+            if (bucket) {
+                bucket.push(asset);
+            } else {
+                byType.set(asset.type, [asset]);
+            }
+        }
+
+        for (const [type, bucket] of byType) {
+            const moves = bucket.map(asset => ({ assetId: asset.id, groupId: groupId ?? null }));
+            if (this.opSink?.handle({ op: "move-assets", assetType: type, moves })) {
+                continue;
+            }
+            const records = this.recordsOf(type);
+            if (!records) {
+                return { success: false, error: `Assets metadata not initialized: ${type}` };
+            }
+            for (const move of moves) {
+                const record = records[move.assetId];
+                if (!record) {
+                    return { success: false, error: `Asset not found: ${move.assetId}` };
+                }
+                setAssetGroup(record, move.groupId);
+            }
+            this.markDirty(type);
+            for (const move of moves) {
+                const record = records[move.assetId];
+                if (record) {
+                    this.events.emit("updated", record);
+                }
+            }
+        }
+
+        return { success: true, data: void 0 };
+    }
+
+    /**
+     * The answer a folder gesture gives while a session is running, or null when there is none.
+     *
+     * Separate from {@link refuseInLiveSession} because the reason is different and the author is
+     * owed the right one: nothing about a folder moves bytes. `assets/assets.groups.<category>.json`
+     * is simply a document with no verb, the half of the invariant `editor/localization/keys.json` is
+     * on - a document is writable during a session exactly when the session can carry its changes.
+     */
+    private refuseFolderChangeInLiveSession(): { success: false; error: string } | null {
+        return this.opSink === null ? null : {
+            success: false,
+            error: "Asset folders are not shared by a live session, so they cannot be created, "
+                + "renamed or moved until it ends.",
+        };
     }
 
     public async duplicateGroup(
@@ -692,7 +1024,9 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         groupId: string,
         newParentGroupId?: string
     ): Promise<RequestStatus<AssetGroup>> {
-        return this.getGroupAssetsManager().duplicateGroup(category, groupId, newParentGroupId);
+        // Copies every file inside the folder, so it is a byte gesture as well as a folder one.
+        return this.refuseInLiveSession()
+            ?? this.getGroupAssetsManager().duplicateGroup(category, groupId, newParentGroupId);
     }
 
     // Metadata management APIs
@@ -784,6 +1118,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         asset: Asset<T, AssetSource>,
         options?: AssetDeleteOptions,
     ): Promise<RequestStatus<void>> {
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         const blocked = await this.findDeleteBlocker([asset], options);
         if (blocked) {
             return { success: false, error: blocked };
@@ -1053,6 +1391,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         asset: Asset<T, AssetSource>,
         sourcePath: string,
     ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         if (asset.source !== AssetSource.Local) {
             return { success: false, error: "Replacing the contents of a remote asset is not supported" };
         }
@@ -1102,6 +1444,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         text: string,
         encoding: FsTextEncoding,
     ): Promise<RequestStatus<Asset<T, AssetSource>>> {
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         if (asset.source !== AssetSource.Local) {
             return { success: false, error: "Editing the contents of a remote asset is not supported" };
         }
@@ -1144,7 +1490,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         groupId?: string,
         options?: CreateLocalAssetFromBytesOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        return this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId, options);
+        return this.refuseInLiveSession()
+            ?? this.getLocalAssetsManager().createLocalAssetFromBytes(type, name, bytes, groupId, options);
     }
 
     /**
@@ -1159,13 +1506,18 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         sourceDir: string,
         options?: CreateLocalBundleAssetOptions,
     ): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
-        return this.getLocalAssetsManager().createLocalBundleAssetFromDirectory(type, sourceDir, options);
+        return this.refuseInLiveSession()
+            ?? this.getLocalAssetsManager().createLocalBundleAssetFromDirectory(type, sourceDir, options);
     }
 
     /**
      * Duplicate an existing asset, returning the new asset metadata.
      */
     public async duplicateAsset<T extends AssetType>(asset: Asset<T, AssetSource>): Promise<RequestStatus<Asset<T, AssetSource.Local>>> {
+        const refused = this.refuseInLiveSession();
+        if (refused) {
+            return refused;
+        }
         if (asset.source !== AssetSource.Local) {
             return { success: false, error: "Duplicating remote assets is not supported" };
         }
@@ -1177,7 +1529,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         paths: string[],
         options?: ImportFromPathsOptions,
     ): Promise<RequestStatus<RequestStatus<Asset<T, AssetSource.Local>>[]>> {
-        return this.getLocalAssetsManager().importFromPaths(type, paths, options);
+        return this.refuseInLiveSession()
+            ?? this.getLocalAssetsManager().importFromPaths(type, paths, options);
     }
 
     /**
