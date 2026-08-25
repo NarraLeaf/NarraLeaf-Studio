@@ -1063,6 +1063,29 @@ export class LocalAssetsManager {
     }
 
     /** Where an asset's bytes live. Public so the undo trash can move them aside and back. */
+    /**
+     * Copy one asset's file onto another asset's id.
+     *
+     * What duplicating does with the bytes, split out so a live session's applier can do the same
+     * thing without going through the record-minting half of {@link duplicateAsset} - every machine
+     * in the room already holds the source file, and none of them has to be told what is in it.
+     */
+    public async copyPayload(fromAssetId: string, toAssetId: string, type: AssetType): Promise<boolean> {
+        const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const srcPath = this.getLocalAssetPath(fromAssetId);
+        const destPath = this.getLocalAssetPath(toAssetId);
+        const isBundle = isBundleAssetType(type);
+
+        const ensured = await filesystem.createDir(dirname(destPath));
+        if (!ensured.ok) {
+            return false;
+        }
+        const copied = isBundle
+            ? await appPrivilegedFacade.fs.copyDir(srcPath, destPath)
+            : await appPrivilegedFacade.fs.copyFile(srcPath, destPath);
+        return copied.success && copied.data.ok;
+    }
+
     public getLocalAssetPath(name: string): string {
         return this.getContext().project.resolve(ProjectNameConvention.AssetsDataShard(name));
     }

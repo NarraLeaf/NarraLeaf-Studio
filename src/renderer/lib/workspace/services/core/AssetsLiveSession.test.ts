@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { LiveAssetOp } from "@shared/live/ops";
+import type { LiveAssetFolderOp, LiveAssetOp } from "@shared/live/ops";
 import { AssetsService, type AssetOpSink } from "./AssetsService";
 import { AssetsMetadataManager } from "../assets/mgr/AssetsMetadataManager";
 import { GroupAssetsManager } from "../assets/mgr/GroupAssetsManager";
@@ -101,7 +101,7 @@ function createHarness(assets: Asset<AssetType, AssetSource.Local>[], groups: As
     (service as unknown as Record<string, unknown>).assetsMetadataManager = metadataManager;
     (service as unknown as Record<string, unknown>).groupAssetsManager = groupAssetsManager;
 
-    const stated: LiveAssetOp[] = [];
+    const stated: (LiveAssetOp | LiveAssetFolderOp)[] = [];
     const updated: string[] = [];
     service.getEvents().on("updated", record => updated.push(record.id));
     const sink: AssetOpSink = {

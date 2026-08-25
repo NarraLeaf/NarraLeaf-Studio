@@ -129,6 +129,12 @@ export const story = {
         // The asset library's answer to the same thing, and it says the same nothing about the
         // inspector: what the author typed into it is theirs and stays where it is.
         refusedAssetGone: "That asset is gone. The change was not applied.",
+        // Not a race: asset ids are minted by whoever built the record, so one already in use is a
+        // retry that escaped or a build that mints them differently. Never applied - writing over a
+        // record under its own id is the one way an import destroys a file that was already there.
+        refusedAssetIdTaken: "That asset already exists here. Nothing was imported.",
+        // The author was asked about the folders inside it before anything was removed, and said no.
+        refusedFolderNotEmpty: "That folder has folders in it. Nothing was deleted.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
@@ -155,6 +161,10 @@ export const story = {
         // Deleting an asset is not something a session can do, so this is the file having gone
         // before the session started or after it ended - not a step somebody took inside one.
         undoAssetGone: "That asset is gone.",
+        // The same answer replacing an asset's contents has always given, in a session or out of
+        // one: the bytes that were there are not kept, so there is nothing to point the record back
+        // at.
+        undoContentReplaced: "Replacing a file cannot be taken back.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

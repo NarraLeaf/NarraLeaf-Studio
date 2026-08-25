@@ -67,6 +67,8 @@ export type LiveHostDeps = {
      * holds. Both go to the same table.
      */
     assetTypes?: readonly string[];
+    /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
+    assetCategories?: readonly string[];
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -86,6 +88,14 @@ export type LiveHostDeps = {
      * invite a later reader to plan against a copy instead of against the document.
      */
     hasAsset(assetType: string, assetId: string): boolean;
+    /**
+     * One section's folder records as they stand, or null when this machine does not hold them.
+     *
+     * The whole map rather than one folder, because the question the host asks is about the shape of
+     * the tree - whether the folder being deleted has folders under it - and that is not knowable
+     * from one record.
+     */
+    readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
     /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
@@ -183,6 +193,12 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-takes": true,
     "update-asset": true,
     "move-assets": true,
+    "create-assets": true,
+    "replace-asset-content": true,
+    "delete-assets": true,
+    "set-asset-folder": true,
+    "delete-asset-folder": true,
+    "restore-asset-folder": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -251,6 +267,12 @@ export class LiveHost {
                 // Things the host itself says. One arriving here is this host's own message coming
                 // back off the topic - every participant receives its own - and there is nothing to
                 // do about it and nothing to say.
+                return null;
+            case "blob":
+            case "blob-needed":
+                // Bytes in flight. The host has no more to do with them than anybody else: a slice
+                // changes no document and takes no sequence number, and the machine that holds the
+                // file answers a request for the ones it is short of. See `LiveBlobChunk`.
                 return null;
         }
     }
@@ -658,6 +680,62 @@ export class LiveHost {
                 }
                 return { op };
             }
+
+            case "create-assets": {
+                // ⚠ The ids were minted by whoever built the records, so one already here is not a
+                // race - it is a retry that escaped the receipts, or a build that mints them
+                // differently. Refused rather than applied: writing over an existing record under
+                // its own id is the one way an import destroys a file that was already there.
+                for (const create of op.creates) {
+                    const id = create.record.id;
+                    if (typeof id !== "string" || this.deps.hasAsset(op.assetType, id)) {
+                        return { refuse: "asset-id-taken" };
+                    }
+                }
+                // Nothing here asks whether the bytes have arrived. See `LiveRefusalReason`.
+                return { op };
+            }
+
+            case "replace-asset-content": {
+                if (!this.deps.hasAsset(op.assetType, op.assetId)) {
+                    return { refuse: "asset-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "delete-assets": {
+                // Whole or not at all, then the claims - the rule every batch follows. Half a
+                // deletion is a library nobody produced, and the author would be told one row was
+                // taken while watching the rest of it disappear.
+                for (const assetId of op.assetIds) {
+                    if (!this.deps.hasAsset(op.assetType, assetId)) {
+                        return { refuse: "asset-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-asset-folder":
+            case "restore-asset-folder":
+                // Last-writer-wins, with `set-character-group`: a folder is four fields and none of
+                // them is drafted anywhere, so there is nothing a race can destroy.
+                return { op };
+
+            case "delete-asset-folder": {
+                const folders = this.deps.readAssetFolders(op.category);
+                if (!folders || !folders[op.folderId]) {
+                    // Deliberately tolerant of a folder that is already gone, with
+                    // `delete-character-group`: the second of two deletions changes nothing, and
+                    // refusing it would report a conflict where there is only agreement.
+                    return { op };
+                }
+                if (!op.recursive && hasChildFolder(folders, op.folderId)) {
+                    // ⚠ The author was asked "this folder has folders in it" before anything was
+                    // removed, and said no. Applying it anyway would take them regardless.
+                    return { refuse: "folder-not-empty" };
+                }
+                return { op };
+            }
         }
     }
 
@@ -763,8 +841,17 @@ export class LiveHost {
             document,
             this.deps.locales ?? NO_LIVE_LOCALES,
             this.deps.assetTypes ?? [],
+            this.deps.assetCategories ?? [],
         );
     }
+}
+
+/** Whether any folder in this section names `folderId` as its parent. */
+function hasChildFolder(
+    folders: Readonly<Record<string, { parentGroupId?: unknown }>>,
+    folderId: string,
+): boolean {
+    return Object.values(folders).some(folder => folder.parentGroupId === folderId);
 }
 
 /**

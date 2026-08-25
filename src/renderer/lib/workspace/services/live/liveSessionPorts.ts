@@ -2,6 +2,8 @@ import type { TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAssetFolder,
+    LiveAssetFolderOp,
     LiveAssetOp,
     LiveAssetRecord,
     LiveCharacterOp,
@@ -16,7 +18,7 @@ import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { VoiceUnit } from "@shared/types/voice";
-import type { AssetOpSink } from "../core/AssetsService";
+import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
@@ -198,8 +200,11 @@ export type LiveCastPort = {
  * or delete one for as long as a sink is installed, which is why no port method offers it.
  */
 export type LiveAssetsPort = {
-    /** Where record edits go instead of into the shard, or null to take them back. */
-    setSink(sink: AssetOpSink | null): void;
+    /**
+     * Where asset edits go instead of into the library, and where the files they name come from.
+     * Null takes both back.
+     */
+    setSink(sink: AssetOpSink | null, blobs: AssetBlobPort | null): void;
     /** Every asset type whose shard this window holds. Empty before the library is up. */
     shardTypes(): readonly string[];
     /** One type's records as they stand, or null when this window does not hold them. */
@@ -212,8 +217,22 @@ export type LiveAssetsPort = {
      * copy rather than against the document.
      */
     hasRecord(assetType: string, assetId: string): boolean;
-    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
-    applyOp(op: LiveAssetOp): void;
+    /** Every section whose folders this window holds. */
+    folderCategories(): readonly string[];
+    /** One section's folders as they stand, or null when this window does not hold them. */
+    folders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Synchronous even though it is about files**, and that is the whole shape of the design:
+     * what it applies is RECORDS, and the files that go with them are queued and put down afterwards.
+     * An applier that awaited a disk write would make the host's "one operation at a time, nothing
+     * interleaves" promise into an ordering problem.
+     *
+     * Answers every unit it changed beyond the one the operation names - the asset shards a folder
+     * deletion emptied - because derived work is what has to be fingerprinted rather than assumed.
+     */
+    applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
 };
 
 /** The five things a session asks of version control. */
