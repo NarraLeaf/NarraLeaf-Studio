@@ -182,16 +182,28 @@ export const documentDiff = {
         groupRenamed: "Group renamed",
     },
     /**
-     * One translation unit, as a three-way merge reads it.
+     * Tier 1, one language's translation library - the document whose whole content is text.
      *
-     * Emitted only by `merge3` - this format has no semantic diff yet - and there is no `subject`
-     * beside them: a unit id is a story text id or a `key:`/`char:` handle, never a word the author
-     * typed. What identifies the row for them is the two translations drawn underneath it.
+     * The comparison and the three-way merge share the first three. Nothing here names the unit and
+     * nothing can: a unit id is a story text id or a `key:`/`char:`/`scene:` handle, never a word
+     * the author typed. What identifies a row is the translation itself, drawn beside the label as
+     * the value pair - which is why `changed` says only that a line was translated again and leaves
+     * the two texts to the pair.
+     *
+     * The four status lines state what the unit now is, in the translation table's own four words,
+     * rather than pairing the two identifiers the file keeps them under.
      */
     localization: {
         added: "Translation added",
         removed: "Translation removed",
         changed: "Translation changed",
+        note: "Note changed",
+        /** The translation did not change; the line it was written from is a different line now. */
+        source: "Written against a different source line",
+        statusUntranslated: "Now untranslated",
+        statusMachine: "Now a machine translation",
+        statusTranslated: "Now translated",
+        statusReviewed: "Now reviewed",
     },
     /**
      * Tier 1, the interface document: Surfaces and the elements on them.

@@ -130,11 +130,28 @@ export const documentDiff = {
         groupRemoved: "删除分组",
         groupRenamed: "分组改名",
     },
-    /** 只有 merge3 会用到；这个格式还没有语义 diff，行旁边也不放 subject（单元 id 不是作者写的字）。 */
+    /**
+     * 某一种语言的译文库：整份文档的内容就是文字本身。
+     *
+     * 前三条由版本对比和三方合并共用。这里没有一条会点名具体是哪一条译文，也点不了：
+     * 单元 id 是故事文本 id，或者 `key:`／`char:`／`scene:` 这样的句柄，都不是作者写下的字。
+     * 认出一行靠的是译文本身，它作为值对画在标签旁边；所以 changed 只说这行重译过，
+     * 改动前后的两段文字交给值对。
+     *
+     * 四条状态说的是这条译文现在处于什么状态，用的是译文表格里那四个词，
+     * 而不是把文件里存的两个标识符对起来。
+     */
     localization: {
         added: "新增译文",
         removed: "删除译文",
         changed: "译文改动",
+        note: "备注改动",
+        /** 译文本身没变，但当初对照的那一行原文变了。 */
+        source: "所对照的原文行已不同",
+        statusUntranslated: "改为未翻译",
+        statusMachine: "改为机翻",
+        statusTranslated: "改为已翻译",
+        statusReviewed: "改为已校对",
     },
     /**
      * 界面文档：界面与界面上的元素。
