@@ -49,7 +49,7 @@ export type LiveGuestDeps = {
      * out of the copier's memory, which nobody else has, so the effect is the only place they exist
      * on this machine and the guest decides nothing about them.
      */
-    applyOp(op: LiveOp, derived?: LiveDerived): void;
+    applyOp(op: LiveOp, document: LiveDocument, derived?: LiveDerived): void;
     /** Put one message on the wire. Whether it arrives is not this class's business. */
     send(message: LiveGuestOutbound): void;
     /**
@@ -80,7 +80,7 @@ export type LiveGuestDeps = {
      * way, because a class that cannot tell which copy is wrong is in no position to act on the fact
      * that they differ.
      */
-    onDigest?(effect: LiveEffect, digest: string | null): void;
+    onDigest?(effect: LiveEffect, compute: (scope: LiveDigestScope) => string | null): void;
     /**
      * The host said no. Carries the intent that was refused when it was still outstanding, so the
      * interface can name the row rather than the key.
@@ -329,7 +329,7 @@ export class LiveGuest {
         // The operation as the effect carries it, which is not always the one that was asked for: an
         // insert whose anchor row had just been deleted still lands where that row was, and the
         // effect names the position the host actually used. A guest applies what it is told.
-        this.deps.applyOp(effect.op, effect.derived);
+        this.deps.applyOp(effect.op, effect.document, effect.derived);
         this.lastApplied = effect.seq;
         this.reportDigest(effect);
     }
@@ -349,16 +349,18 @@ export class LiveGuest {
      * Hand the divergence guard the effect and what this machine makes of the same unit after
      * applying it. Skipped when nobody is watching, since the digest is real work per effect.
      *
-     * ⚠ **The scope comes from the effect, not from this machine's reading of the operation.** The
+     * ⚠ **The scopes come from the effect, not from this machine's reading of the operation.** The
      * two agree today, and they have to keep agreeing for the comparison to mean anything - so the
-     * value that travelled is the one used, and an effect from a build that fingerprints something
-     * else reports `unproven` rather than a disagreement about which unit was measured.
+     * values that travelled are the ones used, and an effect from a build that fingerprints something
+     * else reports `unproven` rather than a disagreement about which unit was measured. It is also
+     * what lets an effect fingerprint work it derived rather than carried: this machine is asked about
+     * the units the host actually touched.
      */
     private reportDigest(effect: LiveEffect): void {
-        if (!this.deps.onDigest || effect.digest === undefined) {
+        if (!this.deps.onDigest || effect.digests === undefined || effect.digests.length === 0) {
             return;
         }
-        this.deps.onDigest(effect, this.deps.digestOf?.(effect.digest.scope) ?? null);
+        this.deps.onDigest(effect, scope => this.deps.digestOf?.(scope) ?? null);
     }
 
     /* ------------------------------------------------------------- the re-send */

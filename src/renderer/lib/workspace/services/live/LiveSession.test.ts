@@ -1,10 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { charactersSpec, storyDocumentSpec } from "@shared/documents/specs";
+import {
+    charactersSpec,
+    localizationDocumentSpec,
+    storyDocumentSpec,
+    voiceDocumentSpec,
+} from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
 import type { LiveCastView } from "@shared/live/cast";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
-import { characterClaimKey, storyRowClaimKey, type LiveCharacterOp, type LiveDerived } from "@shared/live/ops";
+import {
+    characterClaimKey,
+    storyRowClaimKey,
+    translationClaimKey,
+    type LiveCharacterOp,
+    type LiveDerived,
+    type LiveEffect,
+    type LiveLocalizationOp,
+    type LiveVoiceOp,
+} from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
@@ -240,6 +256,15 @@ function seed(service: StoryService): { storyId: StoryId; sceneId: StorySceneId 
     return { storyId: entry.id, sceneId };
 }
 
+/**
+ * The languages every window in these tests holds libraries for.
+ *
+ * One is enough to state the rule, and stating it needs one: a session carries the languages a
+ * machine actually READ, so the freeze's writable set and the host's own table have to be built from
+ * the same answer rather than from the project's configuration.
+ */
+const CARRIED_LOCALES = { translations: ["ja"], voice: ["ja"] } as const;
+
 /* -------------------------------------------------------------------------- a window */
 
 type Window = {
@@ -267,6 +292,12 @@ type Window = {
     /** The cast this window holds, and where its edits go while a session is running. */
     cast: LiveCastView & { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
     castSink: CharacterOpSink | null;
+    /** The translation libraries this window holds, by language, and where its edits go. */
+    translations: Record<string, Record<string, LocalizationUnit>>;
+    translationSink: { handle(op: LiveLocalizationOp): boolean } | null;
+    /** The voice libraries this window holds, by language, and where its edits go. */
+    takes: Record<string, Record<string, VoiceUnit>>;
+    takeSink: { handle(op: LiveVoiceOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
@@ -284,6 +315,10 @@ function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
             return;
         case "update-character":
             cast.characters[op.characterId] = structuredClone(op.character);
+            return;
+        case "delete-character":
+            delete cast.characters[op.characterId];
+            cast.order = cast.order.filter(id => id !== op.characterId);
             return;
         case "set-character-group":
             cast.groups[op.groupId] = { ...op.group };
@@ -305,6 +340,38 @@ function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
     }
 }
 
+/** The translation applier a window uses when an effect arrives. As small as the library's own. */
+function applyTranslationOp(libraries: Window["translations"], op: LiveLocalizationOp): void {
+    const units = libraries[op.locale];
+    if (!units) {
+        return;
+    }
+    const entries = op.op === "set-translation" ? [{ unitId: op.unitId, unit: op.unit }] : op.units;
+    for (const entry of entries) {
+        if (entry.unit === null) {
+            delete units[entry.unitId];
+        } else {
+            units[entry.unitId] = { ...entry.unit };
+        }
+    }
+}
+
+/** The voice applier, the translations' mirror. */
+function applyTakeOp(libraries: Window["takes"], op: LiveVoiceOp): void {
+    const units = libraries[op.locale];
+    if (!units) {
+        return;
+    }
+    const entries = op.op === "set-take" ? [{ unitId: op.unitId, unit: op.unit }] : op.units;
+    for (const entry of entries) {
+        if (entry.unit === null) {
+            delete units[entry.unitId];
+        } else {
+            units[entry.unitId] = { ...entry.unit };
+        }
+    }
+}
+
 function createWindow(world: World, instance: string): Window {
     const { service, history } = createStoryService();
     const ids = seed(service);
@@ -323,6 +390,10 @@ function createWindow(world: World, instance: string): Window {
         hasRepository: true,
         cast: { characters: {}, order: [], groups: {} },
         castSink: null,
+        translations: { ja: {} },
+        translationSink: null,
+        takes: { ja: {} },
+        takeSink: null,
         clock: 0,
         timers: [],
     };
@@ -336,6 +407,14 @@ function createWindow(world: World, instance: string): Window {
         rooms: () => createRooms(world, instance, calls),
         story: {
             setSink: sink => service.setOperationSink(sink),
+            listStories: () => service.listStories().map(entry => entry.id),
+            loadAll: async () => {
+                for (const entry of service.listStories()) {
+                    await service.loadStory(entry.id);
+                }
+                return service.listStories().map(entry => entry.id);
+            },
+            rowsSpokenBy: () => [],
             document: storyId => {
                 try {
                     return service.getStoryDocument(storyId);
@@ -344,7 +423,11 @@ function createWindow(world: World, instance: string): Window {
                 }
             },
             applyOp: (storyId, op) => service.applyLiveOp(storyId, op),
-            adoptDerived: derived => calls.push(`derived:${Object.keys(derived.translations ?? {}).join(",")}`),
+            adoptDerived: derived => {
+                const locales = Object.keys(derived.translations ?? {});
+                calls.push(`derived:${locales.join(",")}`);
+                return locales.map(locale => ({ of: "translations" as const, locale }));
+            },
         },
         cast: {
             setSink: sink => {
@@ -354,6 +437,29 @@ function createWindow(world: World, instance: string): Window {
             applyOp: op => {
                 calls.push(`cast:${op.op}`);
                 applyCastOp(window.cast, op);
+                return [];
+            },
+        },
+        localization: {
+            setSink: sink => {
+                window.translationSink = sink;
+            },
+            loadAll: async () => Object.keys(window.translations),
+            units: locale => window.translations[locale] ?? null,
+            applyOp: op => {
+                calls.push(`translations:${op.op}`);
+                applyTranslationOp(window.translations, op);
+            },
+        },
+        voice: {
+            setSink: sink => {
+                window.takeSink = sink;
+            },
+            loadAll: async () => Object.keys(window.takes),
+            units: locale => window.takes[locale] ?? null,
+            applyOp: op => {
+                calls.push(`takes:${op.op}`);
+                applyTakeOp(window.takes, op);
             },
         },
         version: {
@@ -591,7 +697,9 @@ describe("a live session", () => {
 
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
-            expect(guest.freeze.armed?.writable).toEqual(liveSessionWritablePaths(other.id));
+            expect(guest.freeze.armed?.writable).toEqual(
+                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES),
+            );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
 
@@ -654,11 +762,13 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.storyId),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
                 charactersSpec.pathFor(),
+                localizationDocumentSpec.pathFor({ locale: "ja" }),
+                voiceDocumentSpec.pathFor({ locale: "ja" }),
             ]);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
@@ -699,10 +809,10 @@ describe("a live session", () => {
                 seq: 1,
                 document: { doc: "story", storyId: guest.storyId },
                 op: { op: "rename-scene", sceneId: guest.sceneId, name: "Elsewhere" },
-                digest: {
-                    scope: { of: "scene", sceneId: guest.sceneId },
+                digests: [{
+                    scope: { of: "scene", storyId: guest.storyId, sceneId: guest.sceneId },
                     hash: "a-digest-nobody-computed",
-                },
+                }],
             }, "instance-host");
             await drain(world.bus);
             expect(guest.freeze.armed).toBeNull();
@@ -854,14 +964,34 @@ describe("a live session", () => {
             expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
         });
 
-        it("says why a creation cannot be taken back inside a session", async () => {
+        it("takes a creation back by deleting the record it made", async () => {
             await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // A deletion is a shared operation like any other, so the record goes everywhere it went.
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
+        });
+
+        it("carries a deletion to the other machine", async () => {
+            await openRoom();
+            await joinRoom();
             edit(host, { op: "create-character", character: record("c1", "Ada") });
             await drain(world.bus);
 
-            expect(host.session.undo()).toBe(false);
-            expect(host.session.getView().undoRefusal).toBe("delete-unavailable");
-            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+            edit(guest, { op: "delete-character", characterId: "c1" });
+            // Nothing is applied optimistically: the record is still there until the effect arrives.
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            await drain(world.bus);
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
         });
 
         it("refuses a record too large to travel, rather than sending half of it", async () => {
@@ -1022,6 +1152,107 @@ describe("a live session", () => {
             expect(textOf(host, "p")).toBe("p");
             expect(host.calls).toContain("derived:ja");
             expect(guest.calls).toContain("derived:ja");
+        });
+    });
+
+    describe("the translation and voice libraries", () => {
+        function translation(target: string): LocalizationUnit {
+            return { target, sourceHash: "h", status: "translated" };
+        }
+
+        it("carries a translation from one window to the other, and applies nothing optimistically", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.translationSink?.handle({
+                op: "set-translation", locale: "ja", unitId: "text-a", unit: translation("遅いよ。"),
+            });
+            // The table moves when the effect answering the intent arrives, not when the translator
+            // left the field - the same bargain every gesture on this seam makes.
+            expect(guest.translations.ja["text-a"]).toBeUndefined();
+
+            await drain(world.bus);
+            expect(host.translations.ja["text-a"]?.target).toBe("遅いよ。");
+            expect(guest.translations.ja["text-a"]?.target).toBe("遅いよ。");
+        });
+
+        it("carries a take the same way, with no claim anywhere in it", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.takeSink?.handle({
+                op: "set-take", locale: "ja", unitId: "text-a", unit: { assetId: "clip-1", sourceHash: "h", status: "linked" },
+            });
+            await drain(world.bus);
+
+            expect(host.takes.ja["text-a"]?.assetId).toBe("clip-1");
+            expect(guest.takes.ja["text-a"]?.assetId).toBe("clip-1");
+            expect(host.session.getView().claims).toEqual({});
+        });
+
+        it("refuses an entry the other window is inside, and says who has it", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.session.claimTranslation("ja", "text-a", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({ [translationClaimKey("ja", "text-a")]: "instance-guest" });
+
+            host.translationSink?.handle({
+                op: "set-translation", locale: "ja", unitId: "text-a", unit: translation("over the top"),
+            });
+            await drain(world.bus);
+
+            expect(host.translations.ja["text-a"]).toBeUndefined();
+            expect(host.session.getView().lastRefusal)
+                .toMatchObject({ reason: "row-claimed", op: "set-translation", heldBy: "instance-guest" });
+        });
+
+        it("takes one back with the inverse, and nothing else with it", async () => {
+            await openRoom();
+            await joinRoom();
+            guest.translationSink?.handle({
+                op: "set-translation", locale: "ja", unitId: "text-a", unit: translation("first"),
+            });
+            await drain(world.bus);
+            guest.translationSink?.handle({
+                op: "set-translation", locale: "ja", unitId: "text-a", unit: translation("second"),
+            });
+            await drain(world.bus);
+            expect(host.translations.ja["text-a"]?.target).toBe("second");
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+            expect(host.translations.ja["text-a"]?.target).toBe("first");
+            expect(guest.translations.ja["text-a"]?.target).toBe("first");
+
+            // And once more, back to the line having no translation at all.
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+            expect(host.translations.ja["text-a"]).toBeUndefined();
+        });
+
+        it("fingerprints the libraries a paste derives entries into", async () => {
+            // ⚠ Derived work is exactly the work that has to be checked rather than assumed: every
+            // machine writes these entries for itself, and one that wrote half of them has to be
+            // caught by this effect rather than by nothing.
+            await openRoom();
+            await joinRoom();
+            const derived: LiveDerived = {
+                translations: { ja: { "text-p": { target: "こんにちは", sourceHash: "h1", status: "translated" } } },
+            };
+
+            world.bus.said.length = 0;
+            guest.story.insertBlocks(guest.storyId, guest.sceneId, [{ block: note("p"), target: { parentId: null } }], derived);
+            await drain(world.bus);
+
+            const effect = world.bus.said
+                .filter((payload): payload is LiveEffect => (payload as LiveEffect).kind === "effect")
+                .find(one => one.op.op === "insert-blocks");
+            expect(effect?.digests?.some(digest => digest.scope.of === "translations" && digest.scope.locale === "ja"))
+                .toBe(true);
+            // And the scene the rows landed in is still fingerprinted: a derivation is reported
+            // alongside what the operation named, never instead of it.
+            expect(effect?.digests?.some(digest => digest.scope.of === "scene")).toBe(true);
         });
     });
 

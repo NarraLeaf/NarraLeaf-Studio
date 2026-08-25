@@ -122,7 +122,9 @@ function makeWorld(options: { blocks?: StoryBlockId[]; withDigest?: boolean } = 
         now: clock.now,
         schedule: clock.schedule,
         digestOf: scope => (scope.of === "scene" && scope.sceneId === scene.id ? sceneDigest(scene) : null),
-        onDigest: options.withDigest ? (effect, digest) => digests.push({ effect, digest }) : undefined,
+        onDigest: options.withDigest
+            ? (effect, compute) => digests.push({ effect, digest: compute(SCENE) })
+            : undefined,
         onRefusal: (refusal, intent) => refusals.push({ refusal, intent }),
     });
     return { guest, scene, applied, sent, digests, refusals, clock };
@@ -161,6 +163,7 @@ function rename(name: string): LiveOp {
 }
 
 const DOCUMENT: LiveDocument = { doc: "story", storyId: STORY };
+const SCENE = { of: "scene", storyId: STORY, sceneId: "s1" } as const;
 
 function effect(seq: number, op: LiveOp, extra: Partial<LiveEffect> = {}): LiveEffect {
     return { kind: "effect", by: "host", seq, document: DOCUMENT, op, ...extra };
@@ -475,14 +478,14 @@ describe("the divergence seam", () => {
         const applied = insert("x");
         const arrived = effect(1, applied, {
             by: "guest-2",
-            digest: { scope: { of: "scene", sceneId: "s1" }, hash: "whatever-the-host-made-of-it" },
+            digests: [{ scope: SCENE, hash: "whatever-the-host-made-of-it" }],
         });
         world.guest.receive(arrived);
 
         expect(world.digests).toEqual([{ effect: arrived, digest: sceneDigest(world.scene) }]);
         // The digests disagree, and the guest carries on regardless: what to do about that belongs
         // to whoever supplied the seam.
-        expect(world.digests[0].digest).not.toBe(arrived.digest?.hash);
+        expect(world.digests[0].digest).not.toBe(arrived.digests?.[0].hash);
         expect(order(world.scene)).toEqual(["a", "b", "c", "x"]);
         expect(world.guest.appliedSeq).toBe(1);
     });

@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
+import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
+    CLAIMED_OPS,
     characterClaimKey,
+    opClaimKeys,
     opDocumentKind,
     storyRowClaimKey,
+    translationClaimKey,
     type LiveDocument,
     type LiveEffect,
     type LiveIntent,
@@ -14,6 +18,8 @@ import {
     type LiveRefusalReason,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { LocalizationUnit } from "@shared/types/localization";
+import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
     StoryBlockId,
@@ -72,9 +78,25 @@ type World = {
     story: { name: string; entrySceneId: StorySceneId | null; chapterIds: readonly string[] };
     /** The cast, the second document a session carries. Mutated by the applier below. */
     cast: { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
+    /** The libraries this session carries, by language. */
+    translations: Record<string, Record<string, LocalizationUnit>>;
+    takes: Record<string, Record<string, VoiceUnit>>;
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
+
+/** The languages every host in these tests carries libraries for. */
+const LOCALES = { translations: ["ja"], voice: ["ja"] };
+
+/** A translation with nothing on it but what a comparison needs. */
+function translation(target: string): LocalizationUnit {
+    return { target, sourceHash: "h", status: "translated" };
+}
+
+/** A take with nothing on it but what a comparison needs. */
+function take(assetId: string): VoiceUnit {
+    return { assetId, sourceHash: "h", status: "linked" };
+}
 
 /** A character record with nothing on it but what addresses it. */
 function record(id: string, name = id): StoredCharacter {
@@ -99,6 +121,10 @@ function makeWorld(options: {
     claims?: Record<string, string>;
     /** The cast this host starts with. Empty when a test is only about the story. */
     cast?: StoredCharacter[];
+    /** The Japanese translations this host starts with. */
+    translations?: Record<string, LocalizationUnit>;
+    /** The Japanese voice takes this host starts with. */
+    takes?: Record<string, VoiceUnit>;
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -119,6 +145,8 @@ function makeWorld(options: {
         cast.characters[member.profile.id] = member;
         cast.order.push(member.profile.id);
     }
+    const translations: World["translations"] = { ja: { ...(options.translations ?? {}) } };
+    const takes: World["takes"] = { ja: { ...(options.takes ?? {}) } };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -126,11 +154,14 @@ function makeWorld(options: {
         scenes,
         story,
         cast,
+        translations,
+        takes,
         applied,
         host: new LiveHost({
             self: "host",
-            story: STORY,
-            readScene: id => scenes[id] ?? null,
+            stories: [STORY],
+            locales: LOCALES,
+            readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             digestOf: scope => {
                 if (scope.of === "scene") {
@@ -140,11 +171,17 @@ function makeWorld(options: {
                 if (scope.of === "character") {
                     return characterRecordDigest(characterAt(cast, scope.characterId));
                 }
+                if (scope.of === "translations") {
+                    return translationsDigest(translations[scope.locale] ?? null);
+                }
+                if (scope.of === "takes") {
+                    return takesDigest(takes[scope.locale] ?? null);
+                }
                 return castDigest(cast);
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, op);
+                apply(scenes, story, cast, translations, takes, op);
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -168,9 +205,23 @@ function apply(
     scenes: Record<StorySceneId, StoryScene>,
     story: World["story"],
     cast: World["cast"],
+    translations: World["translations"],
+    takes: World["takes"],
     op: LiveOp,
 ): void {
     switch (op.op) {
+        case "set-translation":
+            writeLibrary(translations[op.locale], [{ unitId: op.unitId, unit: op.unit }]);
+            return;
+        case "set-translations":
+            writeLibrary(translations[op.locale], op.units);
+            return;
+        case "set-take":
+            writeLibrary(takes[op.locale], [{ unitId: op.unitId, unit: op.unit }]);
+            return;
+        case "set-takes":
+            writeLibrary(takes[op.locale], op.units);
+            return;
         case "create-character":
             cast.characters[op.character.profile.id] = structuredClone(op.character);
             if (!cast.order.includes(op.character.profile.id)) {
@@ -257,6 +308,20 @@ function apply(
     }
 }
 
+/** One library applier for both kinds: a null entry removes, anything else replaces. */
+function writeLibrary<T>(units: Record<string, T> | undefined, entries: readonly { unitId: string; unit: T | null }[]): void {
+    if (!units) {
+        return;
+    }
+    for (const entry of entries) {
+        if (entry.unit === null) {
+            delete units[entry.unitId];
+        } else {
+            units[entry.unitId] = entry.unit;
+        }
+    }
+}
+
 let nextClientId = 0;
 
 function intent(op: LiveOp, clientId: string = `c${++nextClientId}`): LiveIntent {
@@ -272,7 +337,18 @@ function intent(op: LiveOp, clientId: string = `c${++nextClientId}`): LiveIntent
  */
 function documentOf(op: LiveOp): LiveDocument {
     const kind = op === null || typeof op !== "object" ? undefined : opDocumentKind(op);
-    return kind === "characters" ? { doc: "characters" } : { doc: "story", storyId: STORY };
+    switch (kind) {
+        case "characters":
+            return { doc: "characters" };
+        // Read off the operation, which is the only way the address and the verb can be guaranteed
+        // to agree - and what `opAddresses` checks on arrival.
+        case "localization":
+            return { doc: "localization", locale: (op as { locale: string }).locale };
+        case "voice":
+            return { doc: "voice", locale: (op as { locale: string }).locale };
+        default:
+            return { doc: "story", storyId: STORY };
+    }
 }
 
 function send(world: World, op: LiveOp, from = "guest-1"): LiveOutbound | null {
@@ -697,9 +773,9 @@ describe("a batch, which is one gesture", () => {
             ],
         }));
 
-        expect(inside.digest?.hash).toBe(afterInside);
+        expect(inside.digests?.[0].hash).toBe(afterInside);
         // Nothing dishonest to send: a digest names one scene, and this operation changed two.
-        expect(across.digest?.hash).toBeUndefined();
+        expect(across.digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -745,18 +821,18 @@ describe("the digest an effect carries", () => {
     it("is the scene after applying, and changes when the scene does", () => {
         const world = makeWorld();
         const first = asEffect(send(world, { op: "delete-block", sceneId: "s1", blockId: "b" }));
-        expect(first.digest?.hash).toBe(sceneDigest(world.scenes.s1));
+        expect(first.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
 
         const second = asEffect(send(world, { op: "rename-scene", sceneId: "s1", name: "Corridor" }));
-        expect(second.digest?.hash).toBe(sceneDigest(world.scenes.s1));
-        expect(second.digest?.hash).not.toBe(first.digest?.hash);
+        expect(second.digests?.[0].hash).toBe(sceneDigest(world.scenes.s1));
+        expect(second.digests?.[0].hash).not.toBe(first.digests?.[0].hash);
     });
 
     it("is absent from the operations that are about the story rather than a scene", () => {
         const world = makeWorld();
-        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).digest?.hash).toBeUndefined();
-        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).digest?.hash).toBeUndefined();
-        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).digest?.hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "rename-story", name: "Rain" })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "reorder-chapters", chapterIds: ["c2", "c1"] })).digests?.[0].hash).toBeUndefined();
+        expect(asEffect(send(world, { op: "set-entry-scene", sceneId: "s1" })).digests?.[0].hash).toBeUndefined();
     });
 });
 
@@ -844,6 +920,144 @@ describe("the claim check", () => {
         const world = makeWorld({ claims: { [storyRowClaimKey("b")]: "guest-2" } });
         expect(asEffect(send(world, { op: "move-block", sceneId: "s1", blockId: "b", target: { parentId: null, beforeBlockId: "a" } }, "guest-1")).seq).toBe(1);
     });
+
+    /**
+     * ⚠ **The check lives in each case of `plan`, not at one door.** A verb added to `CLAIMED_OPS`
+     * whose case forgets `this.claimed(op, by) ??` is not checked at all, and nothing anywhere says
+     * so - the operation simply applies over the paragraph somebody was writing. This walks every
+     * claimed verb so that adding one without its check fails here rather than in a session.
+     */
+    it("is reached from every claimed verb, because the check lives in each case", () => {
+        const samples: Record<string, LiveOp> = {
+            "update-block": { op: "update-block", sceneId: "s1", blockId: "b", payload: note("b", "x").payload },
+            "update-blocks": { op: "update-blocks", edits: [{ sceneId: "s1", blockId: "b", payload: note("b", "x").payload }] },
+            "delete-block": { op: "delete-block", sceneId: "s1", blockId: "b" },
+            "delete-blocks": { op: "delete-blocks", sceneId: "s1", blockIds: ["b"] },
+            "set-block-disabled": { op: "set-block-disabled", sceneId: "s1", blockId: "b", disabled: true },
+            "update-character": { op: "update-character", characterId: "c1", character: record("c1", "Ada") },
+            "delete-character": { op: "delete-character", characterId: "c1" },
+            "set-translation": { op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("遅いよ。") },
+            "set-translations": {
+                op: "set-translations",
+                locale: "ja",
+                units: [{ unitId: "text-b", unit: translation("遅いよ。") }],
+            },
+        };
+        expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
+
+        for (const [kind, op] of Object.entries(samples)) {
+            // Held by somebody else, on every key the operation names.
+            const claims = Object.fromEntries(opClaimKeys(op).map(key => [key, "guest-2"]));
+            const world = makeWorld({ claims, cast: [record("c1", "Ada")] });
+            const refusal = asRefusal(send(world, op, "guest-1"));
+            expect(refusal.reason, kind).toBe("row-claimed");
+            expect(world.applied, kind).toHaveLength(0);
+        }
+    });
+});
+
+describe("the translation and voice libraries a session carries", () => {
+    it("writes one entry, and removes it when the translator clears the box", () => {
+        // Absence is a value in this document rather than a state to be found missing: an entry
+        // holding an empty string is what an untranslated line already looks like, so there is one
+        // verb and `null` is one of its answers.
+        const world = makeWorld();
+        expect(asEffect(send(world, {
+            op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("遅いよ。"),
+        })).seq).toBe(1);
+        expect(world.translations.ja["text-b"]?.target).toBe("遅いよ。");
+
+        send(world, { op: "set-translation", locale: "ja", unitId: "text-b", unit: null });
+        expect(world.translations.ja["text-b"]).toBeUndefined();
+    });
+
+    it("writes an import as one operation, because an import is one gesture", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "set-translations",
+            locale: "ja",
+            units: [
+                { unitId: "text-a", unit: translation("早いね。") },
+                { unitId: "text-b", unit: translation("遅いよ。") },
+            ],
+        }));
+
+        expect(effect.seq).toBe(1);
+        expect(world.applied).toHaveLength(1);
+        expect(Object.keys(world.translations.ja).sort()).toEqual(["text-a", "text-b"]);
+    });
+
+    it("refuses an entry somebody else is translating, and lets its holder write it", () => {
+        const world = makeWorld({ claims: { [translationClaimKey("ja", "text-b")]: "guest-2" } });
+        const refusal = asRefusal(send(world, {
+            op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("mine"),
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("row-claimed");
+        expect(refusal.heldBy).toBe("guest-2");
+        expect(asEffect(send(world, {
+            op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("hers"),
+        }, "guest-2")).seq).toBe(1);
+    });
+
+    it("refuses a whole import when one of its entries is held", () => {
+        // Half an import is a library nobody produced, and the translator whose file it was would be
+        // told a line was taken while watching the rest of it land.
+        const world = makeWorld({ claims: { [translationClaimKey("ja", "text-b")]: "guest-2" } });
+        const refusal = asRefusal(send(world, {
+            op: "set-translations",
+            locale: "ja",
+            units: [{ unitId: "text-a", unit: translation("a") }, { unitId: "text-b", unit: translation("b") }],
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("row-claimed");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("does not claim a take, so two directors race and the loser loses a note", () => {
+        const world = makeWorld({ claims: { [translationClaimKey("ja", "text-b")]: "guest-2" } });
+        expect(asEffect(send(world, {
+            op: "set-take", locale: "ja", unitId: "text-b", unit: take("clip-1"),
+        }, "guest-1")).seq).toBe(1);
+        expect(world.takes.ja["text-b"]?.assetId).toBe("clip-1");
+    });
+
+    it("fingerprints the language the operation names", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("遅いよ。"),
+        }));
+
+        expect(effect.digests).toEqual([
+            { scope: { of: "translations", locale: "ja" }, hash: translationsDigest(world.translations.ja) },
+        ]);
+    });
+
+    it("refuses a message whose language disagrees with the operation's", () => {
+        // Two spellings of one fact are two chances to be wrong, and the wrong one writes a Japanese
+        // line into the French file - a translation nobody made, in a document whose digest agrees
+        // with itself.
+        const world = makeWorld();
+        const refusal = asRefusal(world.host.receive({
+            kind: "intent",
+            clientId: "mismatched",
+            document: { doc: "localization", locale: "fr" },
+            op: { op: "set-translation", locale: "ja", unitId: "text-b", unit: translation("遅いよ。") },
+        }, "guest-1"));
+
+        expect(refusal.reason).toBe("document-not-shared");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("refuses a language this session does not carry", () => {
+        const world = makeWorld();
+        const refusal = asRefusal(send(world, {
+            op: "set-translation", locale: "fr", unitId: "text-b", unit: translation("Trop tard."),
+        }));
+
+        expect(refusal.reason).toBe("document-not-shared");
+        expect(world.applied).toHaveLength(0);
+    });
 });
 
 describe("the cast, the second document a session carries", () => {
@@ -855,10 +1069,10 @@ describe("the cast, the second document a session carries", () => {
         // Not claimed and not checked against what is already there: the id was minted by whoever
         // built the record, so two of them colliding is a uuid collision rather than a race, and a
         // *retry* of one creation is what the receipts answer.
-        expect(effect.digest).toEqual({
+        expect(effect.digests).toEqual([{
             scope: { of: "character", characterId: "c1" },
             hash: characterRecordDigest(characterAt(world.cast, "c1")),
-        });
+        }]);
     });
 
     it("refuses an update naming a record that is gone, and never turns it into a creation", () => {
@@ -917,7 +1131,7 @@ describe("the cast, the second document a session carries", () => {
         expect(world.cast.characters.c1?.profile.groupId).toBe("g1");
         // The cast's shape rather than any one record: a group deletion moves members out, and no
         // update is sent for any of them.
-        expect(effect.digest).toEqual({ scope: { of: "cast" }, hash: castDigest(world.cast) });
+        expect(effect.digests).toEqual([{ scope: { of: "cast" }, hash: castDigest(world.cast) }]);
     });
 
     it("takes a second deletion of one group as agreement rather than a conflict", () => {

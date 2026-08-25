@@ -1,7 +1,7 @@
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import type { LiveDerived } from "@shared/live/ops";
+import type { LiveDerived, LiveDigestScope } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
@@ -13,6 +13,7 @@ import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
 import { LocalizationService } from "../localization/LocalizationService";
+import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
@@ -131,6 +132,17 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimCharacter(characterId, holding);
     }
 
+    /**
+     * Say that this window is writing one translation, or that it has stopped.
+     *
+     * The third door beside the row's and the record's, and the same bargain: silent outside a
+     * session, so the table calls it without asking whether there is one. The language is part of
+     * the address because the same line has an entry in every one of them.
+     */
+    public claimTranslation(locale: string, unitId: string, holding: boolean): void {
+        this.session?.claimTranslation(locale, unitId, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;
@@ -145,6 +157,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
     private buildDeps(ctx: WorkspaceContext): LiveSessionDeps {
         const story = (): StoryService => ctx.services.get<StoryService>(Services.Story);
         const characters = (): CharacterService => ctx.services.get<CharacterService>(Services.Character);
+        const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
+        const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
 
@@ -164,6 +178,23 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             rooms: remoteOrigin => createTeamLiveRooms(remoteOrigin),
             story: {
                 setSink: sink => story().setOperationSink(sink),
+                listStories: () => story().listStories().map(entry => entry.id),
+                loadAll: async () => {
+                    const loaded: StoryId[] = [];
+                    for (const entry of story().listStories()) {
+                        try {
+                            await story().loadStory(entry.id);
+                            loaded.push(entry.id);
+                        } catch (error) {
+                            // Skipped rather than fatal, for the reason the speaker sweep skips one: a
+                            // session refused because an unrelated story is corrupt would be worse than
+                            // one that leaves that story out of what it carries.
+                            console.warn(`[live] could not read story ${entry.id} for the session:`, error);
+                        }
+                    }
+                    return loaded;
+                },
+                rowsSpokenBy: characterId => rowsSpokenBy(story(), characterId),
                 document: storyId => {
                     try {
                         return story().getStoryDocument(storyId);
@@ -180,6 +211,18 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 setSink: sink => characters().setOperationSink(sink),
                 view: () => characters().castView(),
                 applyOp: op => characters().applyLiveOp(op),
+            },
+            localization: {
+                setSink: sink => localization().setOperationSink(sink),
+                loadAll: () => localization().loadAllDocuments(),
+                units: locale => localization().unitsOf(locale),
+                applyOp: op => localization().applyLiveOp(op),
+            },
+            voice: {
+                setSink: sink => voice().setOperationSink(sink),
+                loadAll: () => voice().loadAllDocuments(),
+                units: locale => voice().unitsOf(locale),
+                applyOp: op => voice().applyLiveOp(op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,
@@ -267,10 +310,26 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
      * entries every machine that had it open has, for good and with nothing anywhere saying so,
      * which is precisely the divergence carrying the entries exists to prevent.
      */
-    private adoptDerived(ctx: WorkspaceContext, derived: LiveDerived): void {
+    private adoptDerived(ctx: WorkspaceContext, derived: LiveDerived): readonly LiveDigestScope[] {
         const projectPath = ctx.project.getConfig().projectPath;
         const plans = planLiveDerived(derived);
         const later: (() => Promise<void>)[] = [];
+        /**
+         * Every library this derivation lands in, for the effect's digests.
+         *
+         * ⚠ **Named from the PLAN rather than from what was written**, and the difference is the
+         * whole point. A library this window has not opened yet is adopted on its own afterwards -
+         * loading is asynchronous and this is not - so a list of what has already landed would leave
+         * exactly that language unfingerprinted, which is the half that went missing unnoticed once
+         * before. Naming it here says "this effect changes the Japanese library"; the digest is then
+         * computed after the synchronous part, and a machine that never finished the rest disagrees
+         * with the room and leaves.
+         */
+        const touched = [
+            ...plans.translations.writes.map((write): LiveDigestScope =>
+                ({ of: "translations", locale: write.locale })),
+            ...plans.voice.writes.map((write): LiveDigestScope => ({ of: "takes", locale: write.locale })),
+        ];
         const release = holdDerivedProjectWrites(projectPath);
         try {
             const localization = ctx.services.get<LocalizationService>(Services.Localization);
@@ -309,6 +368,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 console.warn("[LiveSession] opening a library to adopt what an effect derived failed", error);
             });
         }
+        return touched;
     }
 
     /** Run one write inside the window a session's freeze leaves open for derived entries. */

@@ -153,7 +153,7 @@ describe("what a live session tells the author", () => {
                 closed: false,
                 divergence: {
                     seq: 4,
-                    scope: { of: "scene", sceneId: "scene-1" as StorySceneId },
+                    scope: { of: "scene", storyId: "story-1", sceneId: "scene-1" as StorySceneId },
                     expected: "aaa",
                     computed: "bbb",
                 },

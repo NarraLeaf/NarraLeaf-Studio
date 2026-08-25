@@ -148,7 +148,7 @@ export const story = {
         undoCharacterGone: "That character is gone.",
         // Making a character can be taken back only outside a session: deleting one rewrites the
         // dialogue rows that speak it, across every story in the project, and a session carries one.
-        undoDeleteUnavailable: "A character cannot be removed inside a live session.",
+        undoCharacterRestored: "That character is in the cast again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

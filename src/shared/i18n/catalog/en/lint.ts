@@ -210,6 +210,7 @@ export const lint = {
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
             messageDlc: "Names a DLC the project does not have",
+            messageInputAction: "Names an input action the project does not declare",
         },
         blueprintElementRefMissing: {
             title: "Missing widget",
@@ -271,6 +272,11 @@ export const lint = {
             title: "Missing item field",
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
+        uiGestureAnsweredTwice: {
+            title: "Gesture answered twice",
+            description: "A widget with a pointer handler of its own, on a page whose action answers the same gesture",
+            message: "{action} on this page answers the same gesture this widget does, so both run",
         },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",

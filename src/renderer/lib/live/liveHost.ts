@@ -1,6 +1,7 @@
 import {
     CLAIMED_OPS,
     characterClaimKey,
+    opAddresses,
     opBelongsTo,
     opClaimKeys,
     opDigestScope,
@@ -9,6 +10,7 @@ import {
     type LiveClaim,
     type LiveClaimKey,
     type LiveDerived,
+    type LiveDigest,
     type LiveDigestScope,
     type LiveDocument,
     type LiveEffect,
@@ -21,7 +23,7 @@ import {
     storyRowClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries } from "@shared/live/sharedDocuments";
+import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -43,15 +45,23 @@ export type LiveHostDeps = {
     /** This machine's instance id, used as the author of the host's own edits. */
     self: string;
     /**
-     * The story this session was opened on.
+     * The story documents this session carries.
      *
      * Which documents that makes the session responsible for is `@shared/live/sharedDocuments`'
      * answer, not a list assembled here: an intent about a document this session does not carry is
      * refused, and the set it is compared against has to be the same one the write boundary uses.
      */
-    story: StoryId;
-    /** The scene as it stands right now, or null when the story has no such scene. */
-    readScene(sceneId: StorySceneId): StoryScene | null;
+    stories: readonly StoryId[];
+    /**
+     * The languages whose libraries this session carries.
+     *
+     * Beside {@link stories} rather than folded into it because the two are settled differently: the
+     * stories are the project's, and these are the ones this machine actually managed to read on the
+     * way in. Both go to the same table.
+     */
+    locales?: LiveSessionLocales;
+    /** The scene as it stands right now, or null when that story has no such scene. */
+    readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
      * The character record as it stands right now, or null when the cast has no such member.
      *
@@ -80,8 +90,13 @@ export type LiveHostDeps = {
      * interleave between two operations if applying one never yields. An asynchronous applier would
      * let a second intent start while the first was half done, and the order the host reports would
      * stop being the order it applied things in.
+     *
+     * **What it returns is every unit it changed BEYOND the one the operation names.** Deleting a
+     * character rewrites the dialogue rows that spoke it, in any story, and that work is derived on
+     * each machine rather than sent - so it is precisely the work that has to be fingerprinted rather
+     * than assumed. Naming those scenes here is what puts them in {@link LiveEffect.digests}.
      */
-    applyOp(op: LiveOp): void;
+    applyOp(op: LiveOp, document: LiveDocument, derived?: LiveDerived): readonly LiveDigestScope[] | void;
     /** The next number in the host's application order. Called once per effect, after it is applied. */
     nextSeq(): number;
     /**
@@ -143,8 +158,13 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "reorder-chapters": true,
     "create-character": true,
     "update-character": true,
+    "delete-character": true,
     "set-character-group": true,
     "delete-character-group": true,
+    "set-translation": true,
+    "set-translations": true,
+    "set-take": true,
+    "set-takes": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -229,7 +249,7 @@ export class LiveHost {
      * `clientId` on an effect means.
      */
     public applyLocal(op: LiveOp, document: LiveDocument, derived?: LiveDerived): LiveEffect | LiveRefusal {
-        if (!liveSessionCarries(this.deps.story, document) || !opBelongsTo(op, document)) {
+        if (!this.carries(document) || !opBelongsTo(op, document) || !opAddresses(op, document)) {
             return this.refuse(undefined, "document-not-shared");
         }
         return this.perform(op, this.deps.self, undefined, derived, document);
@@ -285,8 +305,8 @@ export class LiveHost {
         // about this room; whether the operation could be about it is a fact about the message, and a
         // message whose two halves disagree is malformed rather than out of scope. Folding them would
         // report a build mismatch as "not shared" and send somebody looking in the wrong place.
-        if (!intent.document || !liveSessionCarries(this.deps.story, intent.document)
-            || !opBelongsTo(intent.op, intent.document)) {
+        if (!intent.document || !this.carries(intent.document)
+            || !opBelongsTo(intent.op, intent.document) || !opAddresses(intent.op, intent.document)) {
             return this.refuse(intent.clientId, "document-not-shared");
         }
         return this.perform(intent.op, from, intent.clientId, intent.derived, intent.document);
@@ -305,7 +325,7 @@ export class LiveHost {
         derived: LiveDerived | undefined,
         document: LiveDocument,
     ): LiveEffect | LiveRefusal {
-        const planned = this.plan(op, by);
+        const planned = this.plan(op, document, by);
         if ("refuse" in planned) {
             return this.refuse(clientId, planned.refuse, planned.heldBy);
         }
@@ -314,15 +334,20 @@ export class LiveHost {
         if (applied.op === "delete-block") {
             // Before the delete, while the rows are still there to be read. Afterwards there is
             // nowhere left to learn where they sat.
-            const scene = this.deps.readScene(applied.sceneId);
+            const scene = this.deps.readScene(storyOf(document), applied.sceneId);
             if (scene) {
                 this.positions.remember(scene, applied.blockId);
             }
         }
-        this.deps.applyOp(applied);
+        const alsoTouched = this.deps.applyOp(applied, document, derived) ?? [];
         if (applied.op === "delete-block") {
             // Nobody is writing a row that is gone.
             this.claims.forget(storyRowClaimKey(applied.blockId));
+        }
+        if (applied.op === "delete-character") {
+            // Nor a record that is gone. The story rows it spoke keep their words under a bare name;
+            // what nobody is doing any more is editing the record.
+            this.claims.forget(characterClaimKey(applied.characterId));
         }
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
@@ -339,12 +364,19 @@ export class LiveHost {
         if (clientId !== undefined) {
             effect.clientId = clientId;
         }
-        const scope = opDigestScope(applied);
-        if (scope !== null) {
+        // The unit the operation names, then everything the applier says it also changed. A machine
+        // that derived the second set differently is caught by this message rather than by a later
+        // one that happens to reach the same scene.
+        const named = opDigestScope(applied, storyOf(document));
+        const digests: LiveDigest[] = [];
+        for (const scope of named === null ? alsoTouched : [named, ...alsoTouched]) {
             const hash = this.deps.digestOf(scope);
             if (hash !== null) {
-                effect.digest = { scope, hash };
+                digests.push({ scope, hash });
             }
+        }
+        if (digests.length > 0) {
+            effect.digests = digests;
         }
         if (derived) {
             // Carried through untouched. Translations and voice takes that came with a paste are
@@ -362,7 +394,8 @@ export class LiveHost {
      * The switch is exhaustive over the vocabulary and has no default, so a verb added to it fails
      * to compile here until somebody has said what the host does about it.
      */
-    private plan(op: LiveOp, by: string): LivePlan {
+    private plan(op: LiveOp, document: LiveDocument, by: string): LivePlan {
+        const storyId = storyOf(document);
         switch (op.op) {
             case "rename-story":
             case "reorder-chapters":
@@ -371,21 +404,21 @@ export class LiveHost {
                 return { op };
 
             case "set-entry-scene": {
-                if (op.sceneId !== null && !this.deps.readScene(op.sceneId)) {
+                if (op.sceneId !== null && !this.deps.readScene(storyId, op.sceneId)) {
                     return { refuse: "scene-gone" };
                 }
                 return { op };
             }
 
             case "rename-scene": {
-                if (!this.deps.readScene(op.sceneId)) {
+                if (!this.deps.readScene(storyId, op.sceneId)) {
                     return { refuse: "scene-gone" };
                 }
                 return { op };
             }
 
             case "insert-block": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -401,7 +434,7 @@ export class LiveHost {
             }
 
             case "insert-blocks": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -432,7 +465,7 @@ export class LiveHost {
             }
 
             case "delete-blocks": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -454,7 +487,7 @@ export class LiveHost {
             }
 
             case "move-block": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -477,7 +510,7 @@ export class LiveHost {
             }
 
             case "move-blocks": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -510,7 +543,7 @@ export class LiveHost {
                 // refuses the lot: a replace that wrote nine rows of ten would leave the tenth
                 // holding the text the author asked to be rid of, and no report of it anywhere.
                 for (const edit of op.edits) {
-                    const scene = this.deps.readScene(edit.sceneId);
+                    const scene = this.deps.readScene(storyId, edit.sceneId);
                     if (!scene) {
                         return { refuse: "scene-gone" };
                     }
@@ -525,7 +558,7 @@ export class LiveHost {
             case "update-block":
             case "delete-block":
             case "set-block-disabled": {
-                const scene = this.deps.readScene(op.sceneId);
+                const scene = this.deps.readScene(storyId, op.sceneId);
                 if (!scene) {
                     return { refuse: "scene-gone" };
                 }
@@ -544,7 +577,8 @@ export class LiveHost {
                 // case nobody can produce, and a reason nobody can reach is a reason nobody maintains.
                 return { op };
 
-            case "update-character": {
+            case "update-character":
+            case "delete-character": {
                 if (!this.deps.readCharacter(op.characterId)) {
                     // ⚠ Says the record is gone. It never says the author's typing is: the panel is
                     // full of their own work and it is theirs to keep, exactly as `row-gone` is
@@ -559,6 +593,27 @@ export class LiveHost {
                 // Also last-writer-wins, and deliberately tolerant of a group that is already gone:
                 // the second of two deletions changes nothing, and refusing it would report a
                 // conflict where there is only agreement.
+                return { op };
+
+            case "set-translation":
+            case "set-translations":
+                // ⚠ The claim check, and nothing else. There is deliberately no "entry is gone"
+                // refusal to pair with `row-gone`: in this document absence is a value rather than a
+                // state to be found missing, so an operation that names an entry nobody has is a
+                // translator writing the first one - which is the ordinary case, not a race. What
+                // CAN be raced is a line somebody is halfway through translating, and that is
+                // exactly what the claim covers.
+                //
+                // The locale is not checked here either. Whether this session speaks for that
+                // language was settled before `plan` was reached, by the same table the write
+                // boundary reads - see `carries` and `opAddresses`.
+                return this.claimed(op, by) ?? { op };
+
+            case "set-take":
+            case "set-takes":
+                // Last-writer-wins, and unclaimed: a take is dropped on a row and approved with a
+                // button, and the one drafted thing on it is a short direction note. See
+                // `CLAIMED_OPS` for the test both answers come from.
                 return { op };
         }
     }
@@ -657,6 +712,22 @@ export class LiveHost {
     private isMember(instance: string): boolean {
         return this.deps.isMember ? this.deps.isMember(instance) : true;
     }
+
+    /** Whether this session speaks for a document, asked of the one table both halves read. */
+    private carries(document: LiveDocument): boolean {
+        return liveSessionCarries(this.deps.stories, document, this.deps.locales ?? NO_LIVE_LOCALES);
+    }
+}
+
+/**
+ * The story an operation is about, or a placeholder for one about the cast.
+ *
+ * Cast operations reach story documents - a deletion rewrites the rows that spoke the character -
+ * but they are not *about* one, so nothing here has a story to name. The appliers that do the
+ * reaching find their own documents; what this answers is the story a scene address belongs to.
+ */
+function storyOf(document: LiveDocument): StoryId {
+    return document.doc === "story" ? document.storyId : ("" as StoryId);
 }
 
 /**
