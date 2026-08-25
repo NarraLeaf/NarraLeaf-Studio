@@ -143,9 +143,11 @@ describe("the operation vocabulary", () => {
         // its author is mid-paragraph takes the paragraph; renaming a scene under somebody takes a
         // word. The first is worth the ceremony of a claim and the second is not.
         expect([...CLAIMED_OPS].sort()).toEqual([
+            "delete-assets",
             "delete-block",
             "delete-blocks",
             "delete-character",
+            "replace-asset-content",
             "set-block-disabled",
             "set-translation",
             "set-translations",
@@ -154,7 +156,7 @@ describe("the operation vocabulary", () => {
             "update-blocks",
             "update-character",
         ]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets"] as const) {
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
     });

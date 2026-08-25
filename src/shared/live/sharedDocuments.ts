@@ -1,4 +1,5 @@
 import {
+    assetGroupsSpec,
     assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
@@ -51,19 +52,20 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * so there is no later moment at which one could be fetched - and carrying it would be the same
  * silent divergence one step removed. The caller passes what it loaded; see `LiveLocalizationPort`.
  *
- * **The asset library's metadata shards join them, and only those.** A session carries what the
- * author says about a file; the file itself travels through version control, so `assets/content/`
- * stays refused and so do the gestures that would write it - see `LiveAssetOp`. The folder shard
- * (`assets/assets.groups.<category>.json`) and the row-order shard beside it are NOT here for the
- * keys registry's reason: neither has a verb.
+ * **The asset library joins them whole: its records, its folders and its files.** That last one is
+ * the departure, and it is worth saying plainly because everything else here is a document the
+ * repository stores and this is not: `assets/content/` is BYTES, and no operation carries them. They
+ * reach the room sliced up beside the operation stream (`LiveBlobChunk`) or, far more often, are
+ * already on every machine and are copied there - see `LiveAssetBytes`. The path is writable so that
+ * an applier can put them down; nothing else writes there, because every gesture that would has been
+ * turned into an operation.
  *
- * ⚠ The row-order shard is the absence with a consequence worth naming. `AssetsService.markDirty`
- * queues it beside the metadata shard on every record edit, so a session would announce a refused
- * write on every rename - a "your work is not being saved" notice about a file that did not change.
- * The answer is not to make it writable but to stop the write happening: `AssetOrderManager.write`
- * now returns without touching the disk when the document it is asked to write is the one it already
- * holds, which is true of every write a session can produce - nothing in the vocabulary adds a row,
- * removes one or renames a folder, so the order cannot move.
+ * ⚠ **The row-order shard is here too, and it is the one entry no operation is about.**
+ * `AssetsService.markDirty` queues it beside the metadata shard on every edit, and a session that
+ * left it refused would announce work-not-saved on writes that are only the browser's row order
+ * catching up with a creation. It is derived - every machine recomputes it from the records and
+ * folders it has just applied - and it is deliberately NOT a `LiveDocument`, so no message can be
+ * addressed to it.
  *
  * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
  * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
@@ -95,6 +97,55 @@ export type LiveSessionAssetTypes = readonly string[];
 export const NO_LIVE_ASSET_TYPES: LiveSessionAssetTypes = [];
 
 /**
+ * The sections whose folders a session carries.
+ *
+ * Beside the types rather than derived from them, because the two are different axes: a section holds
+ * one or two types, and which is which is the asset browser's table rather than this module's. The
+ * caller passes both.
+ */
+export type LiveSessionAssetCategories = readonly string[];
+
+/** No folder shards at all. */
+export const NO_LIVE_ASSET_CATEGORIES: LiveSessionAssetCategories = [];
+
+/**
+ * Every path a session leaves writable that no operation is ever about.
+ *
+ * Two kinds of file, and neither is a `LiveDocument`:
+ *
+ *  - **the asset payloads** (`assets/content/`), which are bytes an applier puts down rather than a
+ *    document anybody addresses;
+ *  - **the row-order shards**, which every machine recomputes from what it has just applied.
+ *
+ * ⚠ Held apart from {@link liveSessionDocuments} on purpose. The invariant that file states is about
+ * documents the vocabulary can carry, and widening it to cover these would make "writable" and
+ * "addressable" the same set again - which is exactly how a path becomes writable while the host
+ * refuses every operation about it.
+ */
+function liveSessionDerivedPaths(assetCategories: LiveSessionAssetCategories): readonly string[] {
+    if (assetCategories.length === 0) {
+        return [];
+    }
+    return [
+        ASSET_PAYLOAD_ROOT,
+        ...assetCategories.map(category => ASSET_ORDER_PATH_FOR(category)),
+    ];
+}
+
+/**
+ * Where an asset's bytes live, as a directory the write boundary matches by prefix.
+ *
+ * ⚠ **The one path in this module not taken from a document spec, because there is no document
+ * there.** A payload is not a format anything parses - it is a png, an mp3, a directory of a model's
+ * files - so the registry has nothing to say about it and never will. Spelled once, beside the reason
+ * it is needed, and pinned to `ProjectNameConvention.AssetsContent` by a test.
+ */
+export const ASSET_PAYLOAD_ROOT = "assets/content";
+
+/** The row-order shard of one section. Pinned to `ProjectNameConvention.AssetsOrderShard` by a test. */
+const ASSET_ORDER_PATH_FOR = (category: string): string => `assets/assets.order.${category}.json`;
+
+/**
  * The documents a session carries: every story in the project, the cast, and each language's two
  * libraries.
  *
@@ -105,6 +156,7 @@ export function liveSessionDocuments(
     storyIds: readonly StoryId[],
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
+    assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
 ): readonly LiveDocument[] {
     return [
         ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
@@ -112,6 +164,7 @@ export function liveSessionDocuments(
         ...locales.translations.map((locale): LiveDocument => ({ doc: "localization", locale })),
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
+        ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
     ];
 }
 
@@ -135,6 +188,8 @@ export function liveDocumentPath(document: LiveDocument): string {
             return voiceDocumentSpec.pathFor({ locale: document.locale });
         case "assets":
             return assetsMetadataSpec.pathFor({ type: document.assetType });
+        case "asset-groups":
+            return assetGroupsSpec.pathFor({ category: document.category });
     }
 }
 
@@ -148,8 +203,12 @@ export function liveSessionWritablePaths(
     storyIds: readonly StoryId[],
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
+    assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
 ): readonly string[] {
-    return liveSessionDocuments(storyIds, locales, assetTypes).map(liveDocumentPath);
+    return [
+        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories).map(liveDocumentPath),
+        ...liveSessionDerivedPaths(assetCategories),
+    ];
 }
 
 /**
@@ -165,7 +224,8 @@ export function liveSessionCarries(
     document: LiveDocument,
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
+    assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
 ): boolean {
-    return liveSessionDocuments(storyIds, locales, assetTypes)
+    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories)
         .some(carried => sameLiveDocument(carried, document));
 }
