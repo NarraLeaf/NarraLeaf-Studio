@@ -2,6 +2,7 @@ import { RotateCcw, X } from "lucide-react";
 import { basename } from "@shared/utils/path";
 import { Progress } from "@/lib/components/elements/Progress";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import type { ImportQueueState } from "../state/useImportQueue";
 
@@ -30,7 +31,7 @@ export function ImportQueueStrip({
     onDismiss: () => void;
 }) {
     const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
 
     if (!state.running && state.failures.length === 0) {
         return null;

@@ -5,6 +5,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { Services } from "@/lib/workspace/services/services";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
@@ -55,7 +56,7 @@ export function MediaConvertAssetDialog({
     const { context } = useWorkspace();
     // Re-checked at the moment of the write as well as on the button: this dialog is a
     // conversation, and a working-tree re-read can begin while it is on screen.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const frozenRef = useRef(freeze.frozen);
     frozenRef.current = freeze.frozen;
 
