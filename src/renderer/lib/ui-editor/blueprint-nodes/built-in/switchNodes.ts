@@ -3,6 +3,7 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_GET_CHECKED,
     BLUEPRINT_NODE_TYPE_ELEMENT_SWITCH_SET_CHECKED,
@@ -114,8 +115,7 @@ function runtimeSwitchRef(ctx: Parameters<BlueprintNodeDef["execute"]>[0], targe
         if (ref.elementType !== SWITCH_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError("Switch node requires an nl.switch element", ctx.node.id);
         }
-        const currentSurfaceId = ctx.executionOwner?.surfaceId;
-        if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+        if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError("Switch node can only target the current Surface", ctx.node.id);
         }
         return { api, elementId: ref.elementId };
