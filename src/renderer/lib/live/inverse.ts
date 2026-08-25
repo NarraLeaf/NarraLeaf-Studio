@@ -1,5 +1,5 @@
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveDialogueRowRef, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LiveAssetRecord, LiveDialogueRowRef, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -102,7 +102,15 @@ export type LiveInverseReason =
      */
     | "character-gone"
     /** The record this delete removed is in the cast again, so there is nothing left to put back. */
-    | "character-restored";
+    | "character-restored"
+    /**
+     * The asset record is gone. Somebody deleted the file after the operation landed.
+     *
+     * The library's `row-gone`, refused rather than turned into a creation for the cast's reason:
+     * putting back a record whose bytes have been deleted is not undoing an edit, it is inventing a
+     * row in the browser with nothing under it.
+     */
+    | "asset-gone";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -219,7 +227,20 @@ export type LiveBefore =
     /** The take the line held, or null when there was none. The translation's mirror. */
     | { op: "set-take"; unit: VoiceUnit | null }
     /** What every take of a batch held, one per entry the batch named. */
-    | { op: "set-takes"; units: readonly { unitId: string; unit: VoiceUnit | null }[] };
+    | { op: "set-takes"; units: readonly { unitId: string; unit: VoiceUnit | null }[] }
+    /**
+     * The record the asset held. `update-block`'s shape three documents along: an update states the
+     * new record and nothing about the old one.
+     */
+    | { op: "update-asset"; record: LiveAssetRecord }
+    /**
+     * Which folder every asset of a batch was in, one entry per asset the batch named.
+     *
+     * The whole of why the operation carries a destination per row rather than one for all of them:
+     * a drag collects assets that were in different folders, and an inverse that filed them all in
+     * one place would be a rearrangement nobody asked for wearing the word "undo".
+     */
+    | { op: "move-assets"; moves: readonly { assetId: string; groupId: string | null }[] };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -435,7 +456,37 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
                 members: cast.order.filter(id => cast.characters[id]?.profile.groupId === op.groupId),
             };
         }
+
+        case "update-asset": {
+            const record = sources.assets?.(op.assetType)?.[op.assetId];
+            // Null covers both "this machine does not hold that shard" and "no such record": neither
+            // gives an inverse anything to put back, and the undo answers `no-record` either way.
+            return record ? { op: "update-asset", record: structuredClone(record) } : null;
+        }
+
+        case "move-assets": {
+            const records = sources.assets?.(op.assetType) ?? null;
+            if (records === null) {
+                return null;
+            }
+            return {
+                op: "move-assets",
+                moves: op.moves.map(move => ({
+                    assetId: move.assetId,
+                    // A record already gone is recorded as being at the section root rather than
+                    // dropped: the batch is answered whole, and an entry missing from the record
+                    // would make the two lists disagree about which row is which.
+                    groupId: readGroupId(records[move.assetId]),
+                })),
+            };
+        }
     }
+}
+
+/** Which folder a record says it is in, or null for the section root and for no record at all. */
+function readGroupId(record: LiveAssetRecord | undefined): string | null {
+    const groupId = record?.groupId;
+    return typeof groupId === "string" ? groupId : null;
 }
 
 /**
@@ -467,6 +518,13 @@ export type LiveBeforeSources = {
     translations?(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
     /** One language's voice takes as they stand, or null when this machine does not hold them. */
     takes?(locale: string): Readonly<Record<string, VoiceUnit>> | null;
+    /**
+     * One asset type's records as they stand, or null when this machine does not hold that shard.
+     *
+     * A reader rather than a map, for the libraries' reason: which shard an operation is about is
+     * stated inside the operation, and this is called before the switch that reads it.
+     */
+    assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
 };
 
 /** Stand-ins for an absent source, so the cases below need no null check of their own. */
@@ -488,6 +546,8 @@ export type LiveInverseContext = {
     document?: StoryDocument | null;
     /** The cast as it stands NOW, for the operations that are about it. */
     cast?: LiveCastView | null;
+    /** One asset type's records as they stand NOW, for the operations that are about the library. */
+    assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
     /** What {@link captureBefore} read before this effect was applied, or null if nothing was kept. */
     before: LiveBefore | null;
 };
@@ -948,6 +1008,50 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                         unitId: entry.unitId,
                         unit: entry.unit === null ? null : { ...entry.unit },
                     })),
+                },
+            };
+        }
+
+        case "update-asset": {
+            if (!before || before.op !== "update-asset") {
+                return { impossible: "no-record" };
+            }
+            if (!context.assets?.(op.assetType)?.[op.assetId]) {
+                // Somebody deleted the file after the edit landed. Putting the record back would be
+                // a row in the browser with no bytes under it.
+                return { impossible: "asset-gone" };
+            }
+            return {
+                op: {
+                    op: "update-asset",
+                    assetType: op.assetType,
+                    assetId: op.assetId,
+                    record: structuredClone(before.record),
+                },
+            };
+        }
+
+        case "move-assets": {
+            if (!before || before.op !== "move-assets" || before.moves.length !== op.moves.length) {
+                return { impossible: "no-record" };
+            }
+            const records = context.assets?.(op.assetType) ?? null;
+            if (records === null) {
+                return { impossible: "no-record" };
+            }
+            // Whole or not at all, the rule every batch follows: a drag put back for the rows that
+            // survive and not for the rest is an arrangement neither the author nor anybody else
+            // produced, and nothing on screen would say half of it was skipped.
+            for (const move of before.moves) {
+                if (!records[move.assetId]) {
+                    return { impossible: "asset-gone" };
+                }
+            }
+            return {
+                op: {
+                    op: "move-assets",
+                    assetType: op.assetType,
+                    moves: before.moves.map(move => ({ assetId: move.assetId, groupId: move.groupId })),
                 },
             };
         }

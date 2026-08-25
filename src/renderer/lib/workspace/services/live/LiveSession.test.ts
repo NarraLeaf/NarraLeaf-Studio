@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
@@ -11,11 +12,13 @@ import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import {
     characterClaimKey,
     storyRowClaimKey,
+    assetClaimKey,
     translationClaimKey,
     type LiveCharacterOp,
     type LiveDerived,
     type LiveEffect,
     type LiveLocalizationOp,
+    type LiveAssetOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
@@ -264,6 +267,8 @@ function seed(service: StoryService): { storyId: StoryId; sceneId: StorySceneId 
  * the same answer rather than from the project's configuration.
  */
 const CARRIED_LOCALES = { translations: ["ja"], voice: ["ja"] } as const;
+/** The asset shards every window in these tests holds. */
+const CARRIED_ASSET_TYPES = ["image"];
 
 /* -------------------------------------------------------------------------- a window */
 
@@ -298,6 +303,9 @@ type Window = {
     /** The voice libraries this window holds, by language, and where its edits go. */
     takes: Record<string, Record<string, VoiceUnit>>;
     takeSink: { handle(op: LiveVoiceOp): boolean } | null;
+    /** The asset metadata shards this window holds, by type, and where its record edits go. */
+    assets: Record<string, Record<string, Record<string, unknown>>>;
+    assetSink: { handle(op: LiveAssetOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
@@ -372,6 +380,28 @@ function applyTakeOp(libraries: Window["takes"], op: LiveVoiceOp): void {
     }
 }
 
+function applyAssetOp(shards: Window["assets"], op: LiveAssetOp): void {
+    const records = shards[op.assetType];
+    if (!records) {
+        return;
+    }
+    if (op.op === "update-asset") {
+        records[op.assetId] = { ...op.record } as Record<string, unknown>;
+        return;
+    }
+    for (const move of op.moves) {
+        const record = records[move.assetId];
+        if (!record) {
+            continue;
+        }
+        if (move.groupId === null) {
+            delete record.groupId;
+        } else {
+            record.groupId = move.groupId;
+        }
+    }
+}
+
 function createWindow(world: World, instance: string): Window {
     const { service, history } = createStoryService();
     const ids = seed(service);
@@ -394,6 +424,8 @@ function createWindow(world: World, instance: string): Window {
         translationSink: null,
         takes: { ja: {} },
         takeSink: null,
+        assets: { image: {} },
+        assetSink: null,
         clock: 0,
         timers: [],
     };
@@ -460,6 +492,18 @@ function createWindow(world: World, instance: string): Window {
             applyOp: op => {
                 calls.push(`takes:${op.op}`);
                 applyTakeOp(window.takes, op);
+            },
+        },
+        assets: {
+            setSink: sink => {
+                window.assetSink = sink;
+            },
+            shardTypes: () => Object.keys(window.assets),
+            records: assetType => window.assets[assetType] ?? null,
+            hasRecord: (assetType, assetId) => window.assets[assetType]?.[assetId] !== undefined,
+            applyOp: op => {
+                calls.push(`assets:${op.op}`);
+                applyAssetOp(window.assets, op);
             },
         },
         version: {
@@ -698,7 +742,7 @@ describe("a live session", () => {
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
             expect(guest.freeze.armed?.writable).toEqual(
-                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES),
+                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES),
             );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
@@ -762,14 +806,18 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
                 charactersSpec.pathFor(),
                 localizationDocumentSpec.pathFor({ locale: "ja" }),
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
+                assetsMetadataSpec.pathFor({ type: "image" }),
             ]);
+            // ⚠ And nothing under `assets/content`, which is where a file's bytes live: a session
+            // carries what the project says about an asset and never the asset.
+            expect(host.freeze.armed?.writable.some(path => path.startsWith("assets/content"))).toBe(false);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
             expect(host.forgotten).toEqual([host.storyId]);
@@ -1152,6 +1200,115 @@ describe("a live session", () => {
             expect(textOf(host, "p")).toBe("p");
             expect(host.calls).toContain("derived:ja");
             expect(guest.calls).toContain("derived:ja");
+        });
+    });
+
+
+    describe("the asset library", () => {
+        function record(id: string, name = `${id}.png`, groupId?: string): Record<string, unknown> {
+            return { id, type: "image", name, hash: `hash-${id}`, tags: [], description: "", ...(groupId ? { groupId } : {}) };
+        }
+
+        function seedAssets(): void {
+            for (const window of [host, guest]) {
+                window.assets.image = { a1: record("a1", "room.png"), a2: record("a2") };
+            }
+        }
+
+        it("carries a record edit from one window to the other, and applies nothing optimistically", async () => {
+            await openRoom();
+            await joinRoom();
+            seedAssets();
+
+            guest.assetSink?.handle({
+                op: "update-asset", assetType: "image", assetId: "a1", record: record("a1", "hall.jpg"),
+            });
+            // The row moves when the effect answering the intent arrives, not when the inspector's
+            // field was blurred - the same bargain every gesture on this seam makes.
+            expect(guest.assets.image.a1.name).toBe("room.png");
+
+            await drain(world.bus);
+            expect(host.assets.image.a1.name).toBe("hall.jpg");
+            expect(guest.assets.image.a1.name).toBe("hall.jpg");
+        });
+
+        it("carries a whole drag as one operation, with no claim anywhere in it", async () => {
+            await openRoom();
+            await joinRoom();
+            seedAssets();
+
+            guest.assetSink?.handle({
+                op: "move-assets",
+                assetType: "image",
+                moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+            });
+            await drain(world.bus);
+
+            expect(host.assets.image.a1.groupId).toBe("chapter-2");
+            expect(host.assets.image.a2.groupId).toBe("chapter-2");
+            expect(host.session.getView().claims).toEqual({});
+            expect(host.calls.filter(call => call === "assets:move-assets")).toHaveLength(1);
+        });
+
+        it("refuses a record the other window is inside, and says who has it", async () => {
+            await openRoom();
+            await joinRoom();
+            seedAssets();
+            guest.session.claimAsset("a1", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({ [assetClaimKey("a1")]: "instance-guest" });
+
+            host.assetSink?.handle({
+                op: "update-asset", assetType: "image", assetId: "a1", record: record("a1", "over the top.png"),
+            });
+            await drain(world.bus);
+
+            expect(host.assets.image.a1.name).toBe("room.png");
+            expect(host.session.getView().lastRefusal)
+                .toMatchObject({ reason: "row-claimed", op: "update-asset", heldBy: "instance-guest" });
+        });
+
+        it("takes a drag back in one press, each row to the folder it came from", async () => {
+            await openRoom();
+            await joinRoom();
+            seedAssets();
+            host.assets.image.a1 = record("a1", "room.png", "chapter-1");
+            guest.assets.image.a1 = record("a1", "room.png", "chapter-1");
+
+            guest.assetSink?.handle({
+                op: "move-assets",
+                assetType: "image",
+                moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+            });
+            await drain(world.bus);
+            expect(host.assets.image.a1.groupId).toBe("chapter-2");
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // ⚠ Each row back where IT was, not where they all went.
+            expect(host.assets.image.a1.groupId).toBe("chapter-1");
+            expect(host.assets.image.a2.groupId).toBeUndefined();
+            expect(guest.assets.image.a1.groupId).toBe("chapter-1");
+        });
+
+        it("fingerprints the shard it changed, so a machine that applied it differently is caught", async () => {
+            await openRoom();
+            await joinRoom();
+            seedAssets();
+
+            world.bus.said.length = 0;
+            guest.assetSink?.handle({
+                op: "update-asset", assetType: "image", assetId: "a1", record: record("a1", "hall.jpg"),
+            });
+            await drain(world.bus);
+
+            const effect = world.bus.said
+                .filter((payload): payload is LiveEffect => (payload as LiveEffect).kind === "effect")
+                .find(one => one.op.op === "update-asset");
+            expect(effect?.digests).toEqual([
+                { scope: { of: "assets", assetType: "image" }, hash: expect.any(String) },
+            ]);
         });
     });
 

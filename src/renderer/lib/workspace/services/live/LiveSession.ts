@@ -8,16 +8,19 @@ import {
 } from "@/lib/live";
 import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
+import { assetsDigest } from "@shared/live/assets";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import { liveSessionWritablePaths, type LiveSessionLocales } from "@shared/live/sharedDocuments";
 import {
+    assetClaimKey,
     characterClaimKey,
     isLiveMessage,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAssetOp,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
@@ -94,6 +97,12 @@ type ActiveSession = {
      * than by what the project declares, because a library not in memory is one no effect can reach.
      */
     locales: LiveSessionLocales;
+    /**
+     * The asset types whose metadata shards this session carries, settled on the way in with the
+     * rest. Read rather than declared, again: a shard the library never loaded is one no effect can
+     * be applied to.
+     */
+    assetTypes: readonly string[];
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -401,6 +410,22 @@ export class LiveSession {
     }
 
     /**
+     * This window is editing one asset record, or has stopped.
+     *
+     * The library's door beside the row's, the record's and the translation's, and held for the same
+     * span: while the inspector has the asset open, not while somebody's fingers are moving. Its name
+     * and description are `TextField`s, which keep a draft in their own state until the field is
+     * blurred and re-sync from their props the moment somebody else's edit arrives - so a claim that
+     * lapsed on a pause would let that edit take the sentence with it.
+     *
+     * No asset type, because an id is unique across the whole library. ⚠ There is deliberately no
+     * counterpart for filing an asset in a folder - see `CLAIMED_OPS`.
+     */
+    public claimAsset(assetId: string, holding: boolean): void {
+        this.claim(assetClaimKey(assetId), holding);
+    }
+
+    /**
      * Take or give back one claim, whichever kind it is.
      *
      * The one path for both, so the host's record and the broadcast that follows it cannot come to
@@ -519,7 +544,12 @@ export class LiveSession {
             this.patch({ undoRefusal: "no-record" });
             return false;
         }
-        const plan = session.effects.plan(direction, { self: session.self, document, cast });
+        const plan = session.effects.plan(direction, {
+            self: session.self,
+            document,
+            cast,
+            assets: assetType => this.deps.assets.records(assetType),
+        });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
             return false;
@@ -575,12 +605,15 @@ export class LiveSession {
             translations: await this.deps.localization.loadAll(),
             voice: await this.deps.voice.loadAll(),
         };
+        // Nothing to read: an asset shard is loaded as the workspace starts rather than when a panel
+        // opens it, so this only asks which ones are there.
+        const assetTypes = this.deps.assets.shardTypes();
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes),
         });
 
         const session: ActiveSession = {
@@ -591,6 +624,7 @@ export class LiveSession {
             storyId: input.storyId,
             stories,
             locales,
+            assetTypes,
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -619,8 +653,10 @@ export class LiveSession {
                 self: input.self,
                 stories,
                 locales,
+                assetTypes,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
+                hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -674,6 +710,7 @@ export class LiveSession {
         this.deps.cast.setSink(this.castSinkFor(session));
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
+        this.deps.assets.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -703,6 +740,7 @@ export class LiveSession {
         this.deps.cast.setSink(null);
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
+        this.deps.assets.setSink(null);
         session.stopListening();
         session.stopWatching();
         session.claimSweep?.();
@@ -868,6 +906,7 @@ export class LiveSession {
             cast: this.deps.cast.view(),
             translations: locale => this.deps.localization.units(locale),
             takes: locale => this.deps.voice.units(locale),
+            assets: assetType => this.deps.assets.records(assetType),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -883,6 +922,9 @@ export class LiveSession {
                 break;
             case "voice":
                 this.deps.voice.applyOp(op as LiveVoiceOp);
+                break;
+            case "assets":
+                this.deps.assets.applyOp(op as LiveAssetOp);
                 break;
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
@@ -927,6 +969,10 @@ export class LiveSession {
                 return { doc: "localization", locale: (op as LiveLocalizationOp).locale };
             case "voice":
                 return { doc: "voice", locale: (op as LiveVoiceOp).locale };
+            // Reads its own type off the operation, exactly as a library operation reads its locale,
+            // and for the same reason: the two spellings of "which document" can then never disagree.
+            case "assets":
+                return { doc: "assets", assetType: (op as LiveAssetOp).assetType };
             case "story":
                 return { doc: "story", storyId: session.storyId };
         }
@@ -963,6 +1009,11 @@ export class LiveSession {
                 return translationsDigest(this.deps.localization.units(scope.locale));
             case "takes":
                 return takesDigest(this.deps.voice.units(scope.locale));
+            // A shard nobody holds hashes to a value too, for the libraries' reason: every one of
+            // them is in memory before a session can start, so arriving here without one means this
+            // machine failed at something.
+            case "assets":
+                return assetsDigest(this.deps.assets.records(scope.assetType));
         }
     }
 
@@ -986,7 +1037,8 @@ export class LiveSession {
      */
     private tooLarge(op: LiveOp): boolean {
         if (op.op !== "create-character" && op.op !== "update-character"
-            && op.op !== "set-translations" && op.op !== "set-takes") {
+            && op.op !== "set-translations" && op.op !== "set-takes"
+            && op.op !== "update-asset" && op.op !== "move-assets") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1183,14 +1235,14 @@ export class LiveSession {
     /**
      * Where translation and voice edits go while this session is running.
      *
-     * **One sink for both libraries**, which is the only place in this file two documents share one,
-     * and they share it because the decision is identical: neither has a document id this window has
-     * to be holding for the operation to be about it - the operation names its own language - so
-     * there is nothing left for the two to differ about. Two copies of these ten lines would be two
-     * places to remember the size check.
+     * **One sink for the two libraries and the asset shards**, which is the only place in this file
+     * documents share one, and they share it because the decision is identical: none of them has a
+     * document id this window has to be holding for the operation to be about it - the operation
+     * names its own language, or its own asset type - so there is nothing left for them to differ
+     * about. Three copies of these ten lines would be three places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveVoiceOp): boolean;
+        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp): boolean;
     } {
         return {
             handle: (op): boolean => {

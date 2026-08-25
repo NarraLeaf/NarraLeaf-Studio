@@ -2,6 +2,8 @@ import type { TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAssetOp,
+    LiveAssetRecord,
     LiveCharacterOp,
     LiveDerived,
     LiveDialogueRowRef,
@@ -14,6 +16,7 @@ import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { VoiceUnit } from "@shared/types/voice";
+import type { AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
@@ -182,6 +185,37 @@ export type LiveCastPort = {
     applyOp(op: LiveCharacterOp): readonly LiveDigestScope[];
 };
 
+/**
+ * The asset library's metadata, one shard per asset type.
+ *
+ * Four methods where the libraries have four, and one of them is not a promise: an asset shard is
+ * read as the workspace starts rather than when a panel opens it, so there is nothing for a session
+ * to load on the way in. What it answers instead is which shards it holds - the same one set that
+ * becomes what the session carries and what the write boundary leaves writable.
+ *
+ * ⚠ **Nothing here reaches the bytes**, and that is the whole shape of the document. A session
+ * carries what the project says about a file; `AssetsService` refuses to import, replace, duplicate
+ * or delete one for as long as a sink is installed, which is why no port method offers it.
+ */
+export type LiveAssetsPort = {
+    /** Where record edits go instead of into the shard, or null to take them back. */
+    setSink(sink: AssetOpSink | null): void;
+    /** Every asset type whose shard this window holds. Empty before the library is up. */
+    shardTypes(): readonly string[];
+    /** One type's records as they stand, or null when this window does not hold them. */
+    records(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+    /**
+     * Whether one record is there.
+     *
+     * A boolean where the cast's port answers with the record, because presence is the whole of what
+     * the host asks - and a record handed over here would invite a later reader to plan against a
+     * copy rather than against the document.
+     */
+    hasRecord(assetType: string, assetId: string): boolean;
+    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
+    applyOp(op: LiveAssetOp): void;
+};
+
 /** The five things a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
@@ -236,6 +270,7 @@ export type LiveSessionDeps = {
     cast: LiveCastPort;
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
+    assets: LiveAssetsPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;

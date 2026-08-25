@@ -126,6 +126,9 @@ export const story = {
         // The cast's answer to a line that has gone. Says the character is gone and nothing about
         // the panel: what the author typed into it is theirs and stays where it is.
         refusedCharacterGone: "That character is gone. The change was not applied.",
+        // The asset library's answer to the same thing, and it says the same nothing about the
+        // inspector: what the author typed into it is theirs and stays where it is.
+        refusedAssetGone: "That asset is gone. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
@@ -149,6 +152,9 @@ export const story = {
         // Making a character can be taken back only outside a session: deleting one rewrites the
         // dialogue rows that speak it, across every story in the project, and a session carries one.
         undoCharacterRestored: "That character is in the cast again.",
+        // Deleting an asset is not something a session can do, so this is the file having gone
+        // before the session started or after it ended - not a step somebody took inside one.
+        undoAssetGone: "That asset is gone.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
