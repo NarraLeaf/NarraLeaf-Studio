@@ -148,7 +148,7 @@ describe("changePathAttribute", () => {
 });
 
 describe("opensAsSplitComparison", () => {
-    it("offers a tab for the three kinds an editor exists for, and for nothing else", () => {
+    it("offers a tab for the four kinds an editor exists for, and for nothing else", () => {
         const entry = (documentKind?: string) => ({
             path: "x",
             kind: "changed" as const,
@@ -158,6 +158,11 @@ describe("opensAsSplitComparison", () => {
         expect(opensAsSplitComparison(entry("story"))).toBe(true);
         expect(opensAsSplitComparison(entry("ui-document"))).toBe(true);
         expect(opensAsSplitComparison(entry("ui-graphs"))).toBe(true);
+        // The whole content of this one is the author's text, and a 320px rail quotes eighty
+        // characters of each side of it.
+        expect(opensAsSplitComparison(entry("localization"))).toBe(true);
+        // Not the named-key registry beside it: that holds source texts nobody translates in a tab.
+        expect(opensAsSplitComparison(entry("localization-keys"))).toBe(false);
         expect(opensAsSplitComparison(entry("brand"))).toBe(false);
         expect(opensAsSplitComparison(entry("assets-metadata"))).toBe(false);
         expect(opensAsSplitComparison(entry(undefined))).toBe(false);
