@@ -1,6 +1,7 @@
 import {registerDocumentSpec} from "../registry";
 import {AnyDocumentSpec} from "../types";
 import {appTagsSpec} from "./appTags";
+import {assetGroupsSpec} from "./assetGroups";
 import {assetSetsSpec} from "./assetSets";
 import {assetsMetadataSpec} from "./assetsMetadata";
 import {audioTracksSpec} from "./audioTracks";
@@ -20,6 +21,12 @@ import {voiceDocumentSpec} from "./voice";
 
 export {APP_TAGS_DOCUMENT_PATH, appTagsSpec} from "./appTags";
 export {ASSET_SETS_DOCUMENT_PATH, assetSetsSpec} from "./assetSets";
+export {
+    ASSET_GROUPS_DOCUMENT_PATH,
+    assetGroupsSpec,
+    type AssetGroupEntry,
+    type AssetGroupsShard,
+} from "./assetGroups";
 export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
 export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
 export {SAVE_SCHEMA_DOCUMENT_PATH, saveSchemaSpec} from "./saveSchema";
@@ -75,6 +82,7 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     charactersSpec,
     storyDocumentSpec,
     assetsMetadataSpec,
+    assetGroupsSpec,
     uiDocumentSpec,
     uiGraphsSpec,
 ];
