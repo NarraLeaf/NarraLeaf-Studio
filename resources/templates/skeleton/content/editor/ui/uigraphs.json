@@ -142,14 +142,14 @@
             "events": {
               "36146c4d-8eb7-4aef-bf5f-e9c13a6a420c": {
                 "id": "36146c4d-8eb7-4aef-bf5f-e9c13a6a420c",
-                "name": "Layer 1",
+                "name": "Close the log",
                 "graph": {
                   "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.keyUp",
+                    "head": {
+                      "id": "head",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "key": "Escape"
+                        "actionId": "dismiss"
                       },
                       "meta": {
                         "editorLayout": {
@@ -158,203 +158,11 @@
                         }
                       }
                     },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.page.back",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nClear": {
-                      "id": "nClear",
-                      "type": "blueprint.page.clear",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 140,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "nClear",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nClear",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "96b3c1f4-79b6-426a-8fc3-e34b72045dde": {
-        "id": "96b3c1f4-79b6-426a-8fc3-e34b72045dde",
-        "name": "Backlog",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "ccd57b37-cc28-465e-8e13-e002e9f8dbe2"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "820eda09-364c-4f70-a897-340eb4eca1b1",
-              "539527a5-84fc-4114-8b85-403709c4441b"
-            ],
-            "events": {
-              "820eda09-364c-4f70-a897-340eb4eca1b1": {
-                "id": "820eda09-364c-4f70-a897-340eb4eca1b1",
-                "name": "Let the opening scroll settle",
-                "graph": {
-                  "nodes": {
-                    "init": {
-                      "id": "init",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "settle": {
-                      "id": "settle",
-                      "type": "blueprint.flow.delay",
+                    "byKey": {
+                      "id": "byKey",
+                      "type": "blueprint.string.equals",
                       "params": {
-                        "duration": 0.4,
-                        "__inlineLiteralPins": [
-                          "duration"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "ready": {
-                      "id": "ready",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": true
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "set": {
-                      "id": "set",
-                      "type": "blueprint.local.set",
-                      "params": {
-                        "variableId": "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "init",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "settle",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "settle",
-                        "port": "completed"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "ready",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "set",
-                        "port": "value"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "539527a5-84fc-4114-8b85-403709c4441b": {
-                "id": "539527a5-84fc-4114-8b85-403709c4441b",
-                "name": "Wheel down closes the log",
-                "graph": {
-                  "nodes": {
-                    "wheel": {
-                      "id": "wheel",
-                      "type": "blueprint.event.head.mouseWheel",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "down": {
-                      "id": "down",
-                      "type": "blueprint.math.greater",
-                      "params": {
-                        "b": 0,
+                        "b": "key",
                         "__inlineLiteralPins": [
                           "b"
                         ]
@@ -392,38 +200,14 @@
                         }
                       }
                     },
-                    "and1": {
-                      "id": "and1",
-                      "type": "blueprint.boolean.and",
+                    "either": {
+                      "id": "either",
+                      "type": "blueprint.boolean.or",
                       "params": {},
                       "meta": {
                         "editorLayout": {
                           "x": 540,
-                          "y": 280
-                        }
-                      }
-                    },
-                    "settled": {
-                      "id": "settled",
-                      "type": "blueprint.local.get",
-                      "params": {
-                        "variableId": "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 540,
-                          "y": 540
-                        }
-                      }
-                    },
-                    "and2": {
-                      "id": "and2",
-                      "type": "blueprint.boolean.and",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 800,
-                          "y": 400
+                          "y": 300
                         }
                       }
                     },
@@ -433,7 +217,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1060,
+                          "x": 800,
                           "y": 0
                         }
                       }
@@ -444,7 +228,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1320,
+                          "x": 1060,
                           "y": 0
                         }
                       }
@@ -455,7 +239,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1580,
+                          "x": 1320,
                           "y": 0
                         }
                       }
@@ -464,11 +248,11 @@
                   "edges": [
                     {
                       "from": {
-                        "nodeId": "wheel",
-                        "port": "deltaY"
+                        "nodeId": "head",
+                        "port": "source"
                       },
                       "to": {
-                        "nodeId": "down",
+                        "nodeId": "byKey",
                         "port": "a"
                       }
                     },
@@ -484,11 +268,11 @@
                     },
                     {
                       "from": {
-                        "nodeId": "down",
+                        "nodeId": "byKey",
                         "port": "result"
                       },
                       "to": {
-                        "nodeId": "and1",
+                        "nodeId": "either",
                         "port": "a"
                       }
                     },
@@ -498,33 +282,13 @@
                         "port": "atEnd"
                       },
                       "to": {
-                        "nodeId": "and1",
+                        "nodeId": "either",
                         "port": "b"
                       }
                     },
                     {
                       "from": {
-                        "nodeId": "and1",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "and2",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "settled",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "and2",
-                        "port": "b"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "and2",
+                        "nodeId": "either",
                         "port": "result"
                       },
                       "to": {
@@ -534,7 +298,7 @@
                     },
                     {
                       "from": {
-                        "nodeId": "wheel",
+                        "nodeId": "head",
                         "port": "then"
                       },
                       "to": {
@@ -574,14 +338,7 @@
           }
         },
         "members": {
-          "variables": {
-            "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44": {
-              "id": "3c5e7a92-1d4b-42f6-9e08-5b1a7c3d6f44",
-              "name": "settled",
-              "valueType": "boolean",
-              "defaultValue": false
-            }
-          },
+          "variables": {},
           "fields": {},
           "functions": {}
         },
@@ -2056,9 +1813,9 @@
                   "nodes": {
                     "n1": {
                       "id": "n1",
-                      "type": "blueprint.event.head.keyUp",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "key": "Escape"
+                        "actionId": "dismiss"
                       },
                       "meta": {
                         "editorLayout": {
@@ -11051,9 +10808,9 @@
                   "nodes": {
                     "n1": {
                       "id": "n1",
-                      "type": "blueprint.event.head.keyUp",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "key": "Escape"
+                        "actionId": "dismiss"
                       },
                       "meta": {
                         "editorLayout": {
@@ -13251,46 +13008,22 @@
         "program": {
           "kind": "graph",
           "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "9106cccb-ead8-4d40-8dff-0199ba2e887c": {
-        "id": "9106cccb-ead8-4d40-8dff-0199ba2e887c",
-        "name": "Dialogue band",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "3ebaa80a-4d54-4457-ae33-5fccc7d94f5b",
-          "elementId": "10012a54-2d93-40d8-8c4b-be7c5f24ba91"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
             "eventIds": [
-              "66032c62-f198-4bb4-8a3a-c286a7310c08",
-              "870ee559-5d1c-4b41-a91b-45e5750381c9"
+              "e8485fce-2cf6-4eae-9b46-a97604a0be76",
+              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958"
             ],
             "events": {
-              "66032c62-f198-4bb4-8a3a-c286a7310c08": {
-                "id": "66032c62-f198-4bb4-8a3a-c286a7310c08",
-                "name": "Layer 1",
+              "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
+                "id": "e8485fce-2cf6-4eae-9b46-a97604a0be76",
+                "name": "Advance the dialogue",
                 "graph": {
                   "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
+                    "head": {
+                      "id": "head",
+                      "type": "blueprint.event.head.action",
+                      "params": {
+                        "actionId": "advance"
+                      },
                       "meta": {
                         "editorLayout": {
                           "x": 0,
@@ -13298,8 +13031,8 @@
                         }
                       }
                     },
-                    "n2": {
-                      "id": "n2",
+                    "next": {
+                      "id": "next",
                       "type": "blueprint.game.next",
                       "params": {},
                       "meta": {
@@ -13313,11 +13046,11 @@
                   "edges": [
                     {
                       "from": {
-                        "nodeId": "n1",
+                        "nodeId": "head",
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "next",
                         "port": "in"
                       }
                     }
@@ -13327,45 +13060,20 @@
                   }
                 }
               },
-              "870ee559-5d1c-4b41-a91b-45e5750381c9": {
-                "id": "870ee559-5d1c-4b41-a91b-45e5750381c9",
-                "name": "Wheel up opens the log",
+              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958": {
+                "id": "1e7f25a2-3a04-413d-9adc-b24eb1a7c958",
+                "name": "Open the log",
                 "graph": {
                   "nodes": {
-                    "wheel": {
-                      "id": "wheel",
-                      "type": "blueprint.event.head.mouseWheel",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "up": {
-                      "id": "up",
-                      "type": "blueprint.math.less",
+                    "head": {
+                      "id": "head",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "b": 0,
-                        "__inlineLiteralPins": [
-                          "b"
-                        ]
+                        "actionId": "backlog"
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
-                          "y": 180
-                        }
-                      }
-                    },
-                    "br": {
-                      "id": "br",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
+                          "x": 0,
                           "y": 0
                         }
                       }
@@ -13378,7 +13086,7 @@
                       },
                       "meta": {
                         "editorLayout": {
-                          "x": 840,
+                          "x": 280,
                           "y": 0
                         }
                       }
@@ -13387,38 +13095,8 @@
                   "edges": [
                     {
                       "from": {
-                        "nodeId": "wheel",
-                        "port": "deltaY"
-                      },
-                      "to": {
-                        "nodeId": "up",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "up",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "wheel",
+                        "nodeId": "head",
                         "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "br",
-                        "port": "true"
                       },
                       "to": {
                         "nodeId": "go",
@@ -14857,9 +14535,9 @@
                   "nodes": {
                     "n1": {
                       "id": "n1",
-                      "type": "blueprint.event.head.keyUp",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "key": "Escape"
+                        "actionId": "dismiss"
                       },
                       "meta": {
                         "editorLayout": {
@@ -18313,185 +17991,6 @@
                       },
                       "to": {
                         "nodeId": "nAsk",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "d4067feb-7f2c-4fc5-92a6-2471d82512b7": {
-        "id": "d4067feb-7f2c-4fc5-92a6-2471d82512b7",
-        "name": "Advance",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "3ebaa80a-4d54-4457-ae33-5fccc7d94f5b",
-          "elementId": "6f476541-9b16-45f7-a3d9-3e6702697334"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "81f4896c-925f-450a-b43e-dbaf1f75ee48",
-              "c6d0d327-b012-4123-84af-28cd95befa07"
-            ],
-            "events": {
-              "81f4896c-925f-450a-b43e-dbaf1f75ee48": {
-                "id": "81f4896c-925f-450a-b43e-dbaf1f75ee48",
-                "name": "Layer 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.game.next",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "c6d0d327-b012-4123-84af-28cd95befa07": {
-                "id": "c6d0d327-b012-4123-84af-28cd95befa07",
-                "name": "Wheel up opens the log",
-                "graph": {
-                  "nodes": {
-                    "wheel": {
-                      "id": "wheel",
-                      "type": "blueprint.event.head.mouseWheel",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "up": {
-                      "id": "up",
-                      "type": "blueprint.math.less",
-                      "params": {
-                        "b": 0,
-                        "__inlineLiteralPins": [
-                          "b"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 180
-                        }
-                      }
-                    },
-                    "br": {
-                      "id": "br",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "go": {
-                      "id": "go",
-                      "type": "blueprint.page.go",
-                      "params": {
-                        "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "wheel",
-                        "port": "deltaY"
-                      },
-                      "to": {
-                        "nodeId": "up",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "up",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "wheel",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "br",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "go",
                         "port": "in"
                       }
                     }
@@ -44089,9 +43588,9 @@
                   "nodes": {
                     "n1": {
                       "id": "n1",
-                      "type": "blueprint.event.head.keyUp",
+                      "type": "blueprint.event.head.action",
                       "params": {
-                        "key": "Escape"
+                        "actionId": "dismiss"
                       },
                       "meta": {
                         "editorLayout": {
@@ -47638,13 +47137,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:ccd57b37-cc28-465e-8e13-e002e9f8dbe2": {
-        "activeBlueprintId": "96b3c1f4-79b6-426a-8fc3-e34b72045dde",
-        "privateBlueprintIds": [
-          "96b3c1f4-79b6-426a-8fc3-e34b72045dde"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:06eba888-e39e-45ec-9b7f-2b6fde3978a7": {
         "activeBlueprintId": "25975bcf-e233-4bab-a734-38a312976678",
         "privateBlueprintIds": [
@@ -48947,13 +48439,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:3ebaa80a-4d54-4457-ae33-5fccc7d94f5b:10012a54-2d93-40d8-8c4b-be7c5f24ba91": {
-        "activeBlueprintId": "9106cccb-ead8-4d40-8dff-0199ba2e887c",
-        "privateBlueprintIds": [
-          "9106cccb-ead8-4d40-8dff-0199ba2e887c"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:3ebaa80a-4d54-4457-ae33-5fccc7d94f5b:ad874746-8411-41e0-b736-24f75a8647ef": {
         "activeBlueprintId": "5e6b0d38-4bd0-4184-b54d-851fed04f1ce",
         "privateBlueprintIds": [
@@ -49539,13 +49024,6 @@
         "activeBlueprintId": "156b62e7-9766-4e22-8145-8908fd978358",
         "privateBlueprintIds": [
           "156b62e7-9766-4e22-8145-8908fd978358"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:3ebaa80a-4d54-4457-ae33-5fccc7d94f5b:6f476541-9b16-45f7-a3d9-3e6702697334": {
-        "activeBlueprintId": "d4067feb-7f2c-4fc5-92a6-2471d82512b7",
-        "privateBlueprintIds": [
-          "d4067feb-7f2c-4fc5-92a6-2471d82512b7"
         ],
         "initializedFrontend": "visual"
       },
@@ -50352,6 +49830,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-25T00:21:02.549Z"
+    "updatedAt": "2026-08-25T03:40:37.818Z"
   }
 }
