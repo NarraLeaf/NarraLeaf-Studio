@@ -435,10 +435,6 @@ export const project = {
         },
     },
     window: {
-        sizesTitle: "窗口尺寸",
-        sizesDescription: "游戏提供给玩家的尺寸，以设计尺寸的倍数表示。启动时取屏幕放得下的最大一档。",
-        sizeOption: "{percent}%",
-        sizeDimensions: "{width} × {height}",
         resizableTitle: "可调整窗口大小",
         resizableDescription: "玩家可以拖拽窗口改变大小。舞台在窗口内保持自身比例。",
         rememberTitle: "记住窗口",

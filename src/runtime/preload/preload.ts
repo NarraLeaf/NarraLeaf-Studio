@@ -193,6 +193,8 @@ const bridge: GameRuntimePreloadBridge & GameRuntimeTestSignalBridge & GameRunti
     close: () => ipcRenderer.invoke("runtime:close") as Promise<void>,
     restart: () => ipcRenderer.invoke("runtime:restart") as Promise<void>,
     getWindowScale: () => ipcRenderer.invoke("runtime:window:getScale") as Promise<number>,
+    getWindowScaleOptions: () =>
+        ipcRenderer.invoke("runtime:window:getScaleOptions") as Promise<number[]>,
     setWindowScale: (scale: number) =>
         ipcRenderer.invoke("runtime:window:setScale", scale) as Promise<void>,
     getWindowSize: () =>

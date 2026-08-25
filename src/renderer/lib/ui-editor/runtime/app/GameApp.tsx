@@ -2021,9 +2021,27 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCurrentDialogNametag();
         setGameStageVisible(false);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
+        // Everything under the page just opened belonged to the run that has ended: the screens the
+        // player had open over the stage, and the title screen the playthrough started from. They
+        // were hidden while the game held the screen and `clearGameHiddenStudioPages` below is
+        // about to un-hide them, so leaving them there means Back from a fresh title screen walks
+        // into a playthrough that is gone - and each quit stacks another set.
+        navigation.collapseToActive();
+        // A layer belongs to the surface that showed it, and every surface that could still own one
+        // has just been dropped. A confirm left standing over the title screen would be asking
+        // about a game that no longer exists.
+        layerStack.clear();
         setNlrSession(null);
         clearGameHiddenStudioPages();
-    }, [clearCurrentDialogNametag, clearGameHiddenStudioPages, detachTextReadTracker, openSurface, rejectPendingGameStarts]);
+    }, [
+        clearCurrentDialogNametag,
+        clearGameHiddenStudioPages,
+        detachTextReadTracker,
+        layerStack,
+        navigation,
+        openSurface,
+        rejectPendingGameStarts,
+    ]);
 
     /**
      * The story ran out of rows, and this build declares a page to land on.
@@ -2195,6 +2213,22 @@ export function GameApp(props: GameAppProps): ReactNode {
     const loadSave = useCallback(async (id: string): Promise<SaveLoadOutcome> => {
         const liveGame = requireActiveLiveGame("Load Save");
 
+        /**
+         * The engine's page router, told to report the next time it has finished emptying itself -
+         * registered BEFORE the load rather than after it.
+         *
+         * `apply` below calls `router.clear()`, and the router emits its exit-complete from a
+         * microtask. Every `await` between that call and this listener therefore ran the emission
+         * past an empty room: the wait further down never settled, ran its whole deadline, and the
+         * three seconds it spent doing so were three seconds with the stage still hidden and the
+         * screen the player loaded from still on top of it - on every single load. MEASURED against
+         * a load from an in-game save screen.
+         *
+         * Cancelled on every path that does not reach the wait, so a refused load leaves no
+         * listener behind.
+         */
+        const routerExit = liveGame.waitForRouterExit();
+
         // Captured on the way past rather than re-read afterwards: a save record carries a whole
         // serialized playthrough, and reading one twice to look at one number would double the
         // cost of every load.
@@ -2301,14 +2335,19 @@ export function GameApp(props: GameAppProps): ReactNode {
                 host.log(level, message);
                 host.reportIssue?.({ level, message, origin: "session" });
             },
+        }).catch((error: unknown) => {
+            routerExit.cancel();
+            throw error;
         });
         if (outcome.status !== "loaded") {
+            routerExit.cancel();
             return outcome;
         }
         // A relaunch has already entered and revealed its own session (that is what `Start Game`
         // does); the live game this closure captured is the one it replaced. Waiting on it here
         // would wait on a session nobody is driving any more.
         if (outcome.applied !== "save") {
+            routerExit.cancel();
             return outcome;
         }
         // Only here: a load that was refused or rolled back leaves the player on the run they were
@@ -2318,22 +2357,21 @@ export function GameApp(props: GameAppProps): ReactNode {
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
         /**
-         * Let the page the player was on finish leaving before the stage is revealed - but never
-         * wait on one that is not there.
+         * Let the engine's router finish emptying before the stage is revealed.
          *
-         * The wait is for the NEXT exit-complete event, which the load's own `router.clear()`
-         * produces only when a page was open. Every load the product shipped with came from one (a
-         * save screen, a title screen), so the event always arrived. A load taken with the stage
-         * already on screen and nothing over it produces no exit at all, and an unbounded wait then
-         * never returns: the save IS applied and the player is back where they were, while
-         * everything after this line - the reveal, and whatever the caller meant to do next - simply
-         * never happens. MEASURED: resuming after a language restart left the parked save on disk
-         * for exactly this reason, on a run that had otherwise gone perfectly.
+         * The deadline stays, and stays for the reason it was added: an exit that does not arrive
+         * must not strand the caller. An unbounded wait here means the save IS applied and the
+         * player is back where they were, while everything after this line - the reveal, and
+         * whatever the caller meant to do next - simply never happens. MEASURED: resuming after a
+         * language restart left the parked save on disk for exactly this reason, on a run that had
+         * otherwise gone perfectly.
          *
-         * A deadline rather than a check for an open page, because the failure is the same shape
-         * whatever caused it: an exit that does not arrive must not strand the caller.
+         * What changed is where the listener is registered (see `routerExit` above). It used to be
+         * attached here, after the emission had already gone past, so the deadline was not a
+         * fallback - it was the only way out, and every load paid it in full.
          */
-        await withDeadline(liveGame.waitForRouterExit().promise, SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS);
+        await withDeadline(routerExit.promise, SAVE_LOAD_ROUTER_EXIT_TIMEOUT_MS);
+        routerExit.cancel();
         setGameStageVisible(true);
         hideCurrentStudioPagesForGame();
         return outcome;
@@ -2965,7 +3003,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             quitApplication: host.quitApplication,
             getFullscreen: host.getFullscreen,
             setFullscreen: host.setFullscreen,
-            windowScaleOptions: host.windowScaleOptions,
+            getWindowScaleOptions: host.getWindowScaleOptions,
             getWindowScale: host.getWindowScale,
             setWindowScale: host.setWindowScale,
             getWindowSize: host.getWindowSize,
@@ -3174,7 +3212,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
-        host.windowScaleOptions,
+        host.getWindowScaleOptions,
         host.getWindowScale,
         host.setWindowScale,
         host.getWindowSize,
@@ -3353,7 +3391,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onQuitApplication: host.quitApplication,
             onGetFullscreen: host.getFullscreen,
             onSetFullscreen: host.setFullscreen,
-            windowScaleOptions: host.windowScaleOptions,
+            onGetWindowScaleOptions: host.getWindowScaleOptions,
             onGetWindowScale: host.getWindowScale,
             onSetWindowScale: host.setWindowScale,
             onGetWindowSize: host.getWindowSize,
@@ -3500,7 +3538,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
-        host.windowScaleOptions,
+        host.getWindowScaleOptions,
         host.getWindowScale,
         host.setWindowScale,
         host.getWindowSize,
@@ -3779,7 +3817,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onQuitApplication: host.quitApplication,
                     onGetFullscreen: host.getFullscreen,
                     onSetFullscreen: host.setFullscreen,
-                    windowScaleOptions: host.windowScaleOptions,
+                    onGetWindowScaleOptions: host.getWindowScaleOptions,
                     onGetWindowScale: host.getWindowScale,
                     onSetWindowScale: host.setWindowScale,
                     onGetWindowSize: host.getWindowSize,
@@ -3958,7 +3996,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.quitApplication,
         host.getFullscreen,
         host.setFullscreen,
-        host.windowScaleOptions,
+        host.getWindowScaleOptions,
         host.getWindowScale,
         host.setWindowScale,
         host.getWindowSize,

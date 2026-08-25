@@ -52,6 +52,7 @@ import { dlcArtifactFileName } from "@shared/utils/dlcDelivery";
 import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { patchExportBlocker, type PatchExportBlocker } from "./patchExportReadiness";
+import { openProjectPanel } from "../project";
 
 /** What the footer says while each blocker stands. */
 const BLOCKER_MESSAGE_KEYS: Record<PatchExportBlocker, TranslationKey> = {
@@ -512,7 +513,18 @@ export async function openPatchDialog(workspace: Workspace): Promise<void> {
     // Said here rather than left to the export, because it is a thing to go and do
     // rather than a thing that went wrong, and the place to do it is one click away.
     if (!projectService.getDistributionConfiguration()) {
-        uiService.showNotification(translate("build.patch.noKey"), "warning");
+        uiService.showNotification(translate("build.patch.noKey"), "warning", {
+            // Sticky, because the default five seconds is not long enough to read the message and
+            // decide to act on it, and the action is the point of the notification.
+            sticky: true,
+            actions: [{
+                label: translate("build.patch.noKeyAction"),
+                primary: true,
+                // The distribution key is created on the Project page, beside the check a build
+                // runs - not on App, which is about the application the build produces.
+                onClick: () => openProjectPanel(context, { section: "project" }),
+            }],
+        });
         return;
     }
 

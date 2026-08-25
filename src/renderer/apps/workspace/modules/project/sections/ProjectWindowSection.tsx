@@ -5,40 +5,27 @@
  * the application puts on screen, the same way the icons and the player-files directory above it
  * decide what the application is called and where it writes.
  *
- * ## Why the sizes are ticks rather than a number
+ * ## What is deliberately not here
  *
- * A window size is only worth having as a multiple of the size the game was drawn at - the stage is
- * scaled to whatever the window is, so a size that is not a clean multiple is a blurred stage the
- * author cannot see on their own screen. The ladder is therefore fixed and the author's choice is
- * which rungs to offer; the design size itself is always on, because a game with no way back to it
- * is a game whose art can never be seen as it was made.
+ * A list of window sizes was, and it was the wrong place for one. A project cannot know what will
+ * fit the screen a player turns out to have - 200% is right on a 4K monitor and nonsense on a
+ * laptop - and while it existed it was also a limit on what a running game could ask for. The
+ * shipped game answers both questions itself now: the shell measures which multiples of the design
+ * size fit the display in front of the player (the `Get Window Scale Options` node), and a graph
+ * may set any size at all.
  *
- * One rung per line, each carrying the pixels it comes to for THIS project. A multiplier alone is
- * a number an author has to do arithmetic on to picture, and picturing it is the whole decision -
- * whether 150% still fits the screens their players have. The vertical list is also how the rest of
- * Studio asks about membership of a set (see the font locale panel in `ProjectDesignSection`).
- *
- * Dragging is the free half, and deliberately separate: the ticks are what a configuration screen
- * offers, the switch is what the window frame allows. A window dragged off the design ratio
- * letterboxes the stage, the same way a screen of another shape does.
+ * What is left is what only the author can answer: whether the window may be dragged, whether it
+ * comes back where it was, and whether the game starts full-screen.
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { Checkbox, Switch } from "@/lib/components/elements";
-import {
-    normalizeWindowConfiguration,
-    WINDOW_SCALE_STEPS,
-    type WindowConfiguration,
-    type WindowScaleStep,
-} from "@/lib/workspace/project/configuration";
-import { SettingShell, SettingStack } from "./settingRows";
+import { Switch } from "@/lib/components/elements";
+import { normalizeWindowConfiguration, type WindowConfiguration } from "@/lib/workspace/project/configuration";
+import { SettingShell } from "./settingRows";
 import { SettingsGroup } from "../components/SettingsGroup";
 import type { ProjectSectionProps } from "./types";
-
-/** The one step that is always offered, and so is shown ticked and cannot be unticked. */
-const DESIGN_STEP: WindowScaleStep = 1;
 
 export function ProjectWindowSection({
     projectService,
@@ -52,16 +39,6 @@ export function ProjectWindowSection({
         () => normalizeWindowConfiguration(config.app?.window),
     );
     const [saving, setSaving] = useState(false);
-
-    /**
-     * The size the game is drawn at, so each rung can say what it comes to in pixels. Absent on a
-     * project whose resolution has not been settled, where the multiplier stands on its own rather
-     * than beside a made-up number.
-     */
-    const design = useMemo(() => {
-        const resolution = config.metadata?.resolution;
-        return resolution && resolution.width > 0 && resolution.height > 0 ? resolution : null;
-    }, [config.metadata?.resolution]);
 
     const commit = useCallback(async (patch: Partial<WindowConfiguration>) => {
         if (saving) {
@@ -82,48 +59,8 @@ export function ProjectWindowSection({
         }
     }, [onConfigChange, projectService, saving, uiService, windowConfig]);
 
-    const toggleStep = useCallback((step: WindowScaleStep, offered: boolean) => {
-        const next = offered
-            ? [...windowConfig.scaleSteps, step]
-            : windowConfig.scaleSteps.filter(kept => kept !== step);
-        void commit({ scaleSteps: next });
-    }, [commit, windowConfig.scaleSteps]);
-
     return (
         <SettingsGroup title={t("project.group.window")}>
-            <SettingStack
-                title={t("project.window.sizesTitle")}
-                description={t("project.window.sizesDescription")}
-                tooltip={freeze.writes(saving)["data-tip"]}
-            >
-                <div className="grid gap-1.5">
-                    {WINDOW_SCALE_STEPS.map(step => (
-                        <Checkbox
-                            key={step}
-                            className="w-full text-xs"
-                            checked={windowConfig.scaleSteps.includes(step)}
-                            // The design size is not a choice, so its box states the fact rather
-                            // than offering to remove it.
-                            disabled={step === DESIGN_STEP || freeze.writes(saving).disabled}
-                            onCheckedChange={offered => toggleStep(step, offered)}
-                        >
-                            <span className="flex w-full items-center justify-between gap-3">
-                                <span className="text-fg">
-                                    {t("project.window.sizeOption", { percent: String(Math.round(step * 100)) })}
-                                </span>
-                                {design ? (
-                                    <span className="tabular-nums text-2xs text-fg-subtle">
-                                        {t("project.window.sizeDimensions", {
-                                            width: String(Math.round(design.width * step)),
-                                            height: String(Math.round(design.height * step)),
-                                        })}
-                                    </span>
-                                ) : null}
-                            </span>
-                        </Checkbox>
-                    ))}
-                </div>
-            </SettingStack>
             <SettingShell
                 title={t("project.window.resizableTitle")}
                 description={t("project.window.resizableDescription")}
