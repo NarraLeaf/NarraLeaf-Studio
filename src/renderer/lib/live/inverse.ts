@@ -1,5 +1,11 @@
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveAssetRecord, LiveDialogueRowRef, LiveEffect, LiveOp } from "@shared/live/ops";
+import type {
+    LiveAssetFolder,
+    LiveAssetRecord,
+    LiveDialogueRowRef,
+    LiveEffect,
+    LiveOp,
+} from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -110,7 +116,17 @@ export type LiveInverseReason =
      * putting back a record whose bytes have been deleted is not undoing an edit, it is inventing a
      * row in the browser with nothing under it.
      */
-    | "asset-gone";
+    | "asset-gone"
+    /**
+     * The bytes this replaced are gone, so there is nothing to point the record back at.
+     *
+     * **A refusal on purpose, and the same answer replacing has always given.** Replacing an asset's
+     * contents overwrites the file in place; the bytes that were there are not kept, in a session or
+     * out of one, so an "undo" could only put the record's old name and hash back over a file that is
+     * the new one. That is a record describing a file that does not exist - the exact state the
+     * metadata merge refuses to produce.
+     */
+    | "content-replaced";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -240,7 +256,33 @@ export type LiveBefore =
      * a drag collects assets that were in different folders, and an inverse that filed them all in
      * one place would be a rearrangement nobody asked for wearing the word "undo".
      */
-    | { op: "move-assets"; moves: readonly { assetId: string; groupId: string | null }[] };
+    | { op: "move-assets"; moves: readonly { assetId: string; groupId: string | null }[] }
+    /**
+     * The records a deletion removed, whole.
+     *
+     * A deletion names ids: the records are gone from the shard by the time anybody asks, and no
+     * message in the session carries them. ⚠ The bytes are NOT here and must not be - each machine
+     * put its own copy in its own trash, and the creation that undoes this says so rather than
+     * carrying two hundred megabytes back across the room.
+     */
+    | { op: "delete-assets"; records: readonly LiveAssetRecord[] }
+    /**
+     * The folder as it stood, or null when there was none - a `set` that created one is undone by a
+     * delete, and the record says which of the two it was. `set-character-group`'s shape.
+     */
+    | { op: "set-asset-folder"; folder: LiveAssetFolder | null }
+    /**
+     * Everything a folder deletion destroyed: the folders it took, and the records that were in them.
+     *
+     * The half that is not recoverable afterwards. Going down, the cascade is derived - every machine
+     * can ask which folders are below this one. Coming back up it cannot be: they are gone, and so
+     * are the records that named them.
+     */
+    | {
+          op: "delete-asset-folder";
+          folders: readonly LiveAssetFolder[];
+          assets: readonly { assetType: string; record: LiveAssetRecord }[];
+      };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -480,7 +522,95 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
                 })),
             };
         }
+
+        case "create-assets":
+            // Nothing to keep: what undoes a creation is a deletion of ids the operation itself
+            // names, exactly as an insert's inverse needs nothing kept.
+            return null;
+
+        case "replace-asset-content":
+            // Nothing to keep either, and for the opposite reason: the bytes it overwrote are gone,
+            // so there is nothing an inverse could point the record back at. See `content-replaced`.
+            return null;
+
+        case "delete-assets": {
+            const records = sources.assets?.(op.assetType) ?? null;
+            if (records === null) {
+                return null;
+            }
+            const kept: LiveAssetRecord[] = [];
+            for (const assetId of op.assetIds) {
+                const record = records[assetId];
+                if (record) {
+                    kept.push(structuredClone(record));
+                }
+            }
+            return kept.length === op.assetIds.length ? { op: "delete-assets", records: kept } : null;
+        }
+
+        case "set-asset-folder": {
+            const folders = sources.assetFolders?.(op.category) ?? null;
+            if (folders === null) {
+                return null;
+            }
+            const folder = folders[op.folderId];
+            return { op: "set-asset-folder", folder: folder ? structuredClone(folder) : null };
+        }
+
+        case "delete-asset-folder": {
+            const folders = sources.assetFolders?.(op.category) ?? null;
+            if (folders === null) {
+                return null;
+            }
+            const doomed = folderIdsUnder(folders, op.folderId, op.recursive);
+            if (!folders[op.folderId]) {
+                // Already gone, so the deletion changes nothing and there is nothing to put back.
+                return null;
+            }
+            const assets: { assetType: string; record: LiveAssetRecord }[] = [];
+            for (const [assetType, records] of Object.entries(sources.assetsByType?.(op.category) ?? {})) {
+                for (const record of Object.values(records)) {
+                    const groupId = readGroupId(record);
+                    if (groupId !== null && doomed.has(groupId)) {
+                        assets.push({ assetType, record: structuredClone(record) });
+                    }
+                }
+            }
+            return {
+                op: "delete-asset-folder",
+                folders: [...doomed].map(id => folders[id]).filter(Boolean).map(folder => structuredClone(folder)),
+                assets,
+            };
+        }
+
+        case "restore-asset-folder":
+            // Its own inverse is a deletion of the folder it put back, which needs nothing kept.
+            return null;
     }
+}
+
+/** One folder and, when asked for, every folder below it. The same walk the applier does. */
+function folderIdsUnder(
+    folders: Readonly<Record<string, LiveAssetFolder>>,
+    folderId: string,
+    recursive: boolean,
+): ReadonlySet<string> {
+    const ids = new Set<string>([folderId]);
+    if (!recursive) {
+        return ids;
+    }
+    let grew = true;
+    while (grew) {
+        grew = false;
+        for (const [id, folder] of Object.entries(folders)) {
+            const parent = folder.parentGroupId;
+            if (typeof parent === "string" && ids.has(parent) && !ids.has(id)) {
+                ids.add(id);
+                grew = true;
+            }
+        }
+    }
+    return ids;
 }
 
 /** Which folder a record says it is in, or null for the section root and for no record at all. */
@@ -525,6 +655,16 @@ export type LiveBeforeSources = {
      * stated inside the operation, and this is called before the switch that reads it.
      */
     assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+    /** One section's folders as they stand, or null when this machine does not hold that shard. */
+    assetFolders?(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /**
+     * Every shard of one section, by asset type.
+     *
+     * What a folder deletion has to read, and it is a section rather than a type because that is what
+     * a folder belongs to: Media holds audio and video, and both of them can be inside the folder
+     * being deleted.
+     */
+    assetsByType?(category: string): Readonly<Record<string, Readonly<Record<string, LiveAssetRecord>>>>;
 };
 
 /** Stand-ins for an absent source, so the cases below need no null check of their own. */
@@ -548,6 +688,8 @@ export type LiveInverseContext = {
     cast?: LiveCastView | null;
     /** One asset type's records as they stand NOW, for the operations that are about the library. */
     assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+    /** One section's folders as they stand NOW, for the operations that are about them. */
+    assetFolders?(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
     /** What {@link captureBefore} read before this effect was applied, or null if nothing was kept. */
     before: LiveBefore | null;
 };
@@ -1056,6 +1198,101 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
 
+        case "create-assets": {
+            // What undoes a creation is a deletion of exactly the ids it made. Nothing had to be
+            // kept, and the bytes it wrote go to each machine's own trash on the way out - which is
+            // what makes redoing it free.
+            const ids: string[] = [];
+            for (const create of op.creates) {
+                const id = create.record.id;
+                if (typeof id !== "string") {
+                    return { impossible: "no-record" };
+                }
+                ids.push(id);
+            }
+            return { op: { op: "delete-assets", assetType: op.assetType, assetIds: ids } };
+        }
+
+        case "replace-asset-content":
+            // The bytes it overwrote are gone. See `content-replaced` - this is the answer replacing
+            // has always given, in a session or out of one.
+            return { impossible: "content-replaced" };
+
+        case "delete-assets": {
+            if (!before || before.op !== "delete-assets" || before.records.length !== op.assetIds.length) {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "create-assets",
+                    assetType: op.assetType,
+                    // ⚠ `from: "trash"` and not a transfer. Every machine put its own copy of each
+                    // file in its own trash when it applied the deletion, so putting them back costs
+                    // one message however large they are.
+                    creates: before.records.map(record => ({
+                        record: structuredClone(record),
+                        bytes: { from: "trash" as const },
+                    })),
+                },
+            };
+        }
+
+        case "set-asset-folder": {
+            if (!before || before.op !== "set-asset-folder") {
+                return { impossible: "no-record" };
+            }
+            if (before.folder === null) {
+                // There was no folder, so the operation created one and taking it back is removing
+                // it. Not recursive: it was empty when it was made, and anything put into it since
+                // belongs to whoever put it there.
+                return {
+                    op: {
+                        op: "delete-asset-folder",
+                        category: op.category,
+                        folderId: op.folderId,
+                        recursive: false,
+                    },
+                };
+            }
+            return {
+                op: {
+                    op: "set-asset-folder",
+                    category: op.category,
+                    folderId: op.folderId,
+                    folder: structuredClone(before.folder),
+                },
+            };
+        }
+
+        case "delete-asset-folder": {
+            if (!before || before.op !== "delete-asset-folder") {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "restore-asset-folder",
+                    category: op.category,
+                    folders: before.folders.map(folder => structuredClone(folder)),
+                    assets: before.assets.map(entry => ({
+                        assetType: entry.assetType,
+                        record: structuredClone(entry.record),
+                    })),
+                },
+            };
+        }
+
+        case "restore-asset-folder":
+            // Taking a restoration back removes what it put back, and recursively: it may have
+            // brought a whole tree with it.
+            return {
+                op: {
+                    op: "delete-asset-folder",
+                    category: op.category,
+                    folderId: firstFolderId(op.folders) ?? "",
+                    recursive: true,
+                },
+            };
+
         case "delete-character-group": {
             if (!before || before.op !== "delete-character-group") {
                 return { impossible: "no-record" };
@@ -1075,6 +1312,18 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
     }
+}
+
+/** The outermost folder of a restored tree - the one whose deletion takes the rest with it. */
+function firstFolderId(folders: readonly LiveAssetFolder[]): string | null {
+    const ids = new Set(folders.map(folder => folder.id).filter((id): id is string => typeof id === "string"));
+    for (const folder of folders) {
+        const parent = folder.parentGroupId;
+        if ((typeof parent !== "string" || !ids.has(parent)) && typeof folder.id === "string") {
+            return folder.id;
+        }
+    }
+    return null;
 }
 
 /* ------------------------------------------------------------------------------- reading */

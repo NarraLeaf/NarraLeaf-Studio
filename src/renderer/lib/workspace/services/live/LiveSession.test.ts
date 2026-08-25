@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    assetGroupsSpec,
     assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
@@ -18,6 +19,7 @@ import {
     type LiveDerived,
     type LiveEffect,
     type LiveLocalizationOp,
+    type LiveAssetFolderOp,
     type LiveAssetOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
@@ -269,6 +271,8 @@ function seed(service: StoryService): { storyId: StoryId; sceneId: StorySceneId 
 const CARRIED_LOCALES = { translations: ["ja"], voice: ["ja"] } as const;
 /** The asset shards every window in these tests holds. */
 const CARRIED_ASSET_TYPES = ["image"];
+/** The sections every window in these tests holds folders for. */
+const CARRIED_ASSET_CATEGORIES = ["image"];
 
 /* -------------------------------------------------------------------------- a window */
 
@@ -305,7 +309,7 @@ type Window = {
     takeSink: { handle(op: LiveVoiceOp): boolean } | null;
     /** The asset metadata shards this window holds, by type, and where its record edits go. */
     assets: Record<string, Record<string, Record<string, unknown>>>;
-    assetSink: { handle(op: LiveAssetOp): boolean } | null;
+    assetSink: { handle(op: LiveAssetOp | LiveAssetFolderOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
@@ -380,13 +384,21 @@ function applyTakeOp(libraries: Window["takes"], op: LiveVoiceOp): void {
     }
 }
 
-function applyAssetOp(shards: Window["assets"], op: LiveAssetOp): void {
+function applyAssetOp(shards: Window["assets"], op: LiveAssetOp | LiveAssetFolderOp): void {
+    if (op.op === "set-asset-folder" || op.op === "delete-asset-folder" || op.op === "restore-asset-folder") {
+        // The folder shard is not what this window models; the asset half is what these tests are
+        // about, and a folder operation reaching here is one they simply do not exercise.
+        return;
+    }
     const records = shards[op.assetType];
     if (!records) {
         return;
     }
     if (op.op === "update-asset") {
         records[op.assetId] = { ...op.record } as Record<string, unknown>;
+        return;
+    }
+    if (op.op !== "move-assets") {
         return;
     }
     for (const move of op.moves) {
@@ -501,9 +513,13 @@ function createWindow(world: World, instance: string): Window {
             shardTypes: () => Object.keys(window.assets),
             records: assetType => window.assets[assetType] ?? null,
             hasRecord: (assetType, assetId) => window.assets[assetType]?.[assetId] !== undefined,
+            resumePayloads: () => undefined,
+            folderCategories: () => ["image"],
+            folders: () => ({}),
             applyOp: op => {
                 calls.push(`assets:${op.op}`);
                 applyAssetOp(window.assets, op);
+                return [];
             },
         },
         version: {
@@ -742,7 +758,7 @@ describe("a live session", () => {
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
             expect(guest.freeze.armed?.writable).toEqual(
-                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES),
+                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
             );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
@@ -806,7 +822,7 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
@@ -814,10 +830,13 @@ describe("a live session", () => {
                 localizationDocumentSpec.pathFor({ locale: "ja" }),
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
+                assetGroupsSpec.pathFor({ category: "image" }),
+                // ⚠ And the two the vocabulary is never about: a file's bytes, which an applier puts
+                // down rather than anybody addressing, and the row order, which every machine
+                // recomputes from what it has just applied.
+                "assets/content",
+                "assets/assets.order.image.json",
             ]);
-            // ⚠ And nothing under `assets/content`, which is where a file's bytes live: a session
-            // carries what the project says about an asset and never the asset.
-            expect(host.freeze.armed?.writable.some(path => path.startsWith("assets/content"))).toBe(false);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
             expect(host.forgotten).toEqual([host.storyId]);

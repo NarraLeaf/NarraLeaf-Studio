@@ -5,6 +5,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { AssetSource } from "@/lib/workspace/services/assets/types";
 import { runReplaceAssetContentFlow } from "@/lib/workspace/assets/replaceAssetContentFlow";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../../assets/assetLiveSession";
 import { useWorkspace } from "../../../context";
 
 /**
@@ -14,16 +15,14 @@ import { useWorkspace } from "../../../context";
  * It sits next to the file's own readings (hash, size, dimensions) because that is what it changes:
  * the id, the name, the tags and every reference survive, so nothing below this button moves.
  *
- * ⚠ **Its guard names no document, unlike the fields around it.** Everything else in this inspector
- * writes the metadata shard, which a live session carries; this writes the file's bytes, which no
- * session carries and no freeze allows. Left unguarded it was a button that opened a file picker
- * under a freeze and discarded the answer - and inside a session it would read as offered while
- * `AssetsService` refused it.
+ * ⚠ **Guarded, which it was not before this.** Left unguarded it was a button that opened a file
+ * picker under a freeze and threw the answer away. It names the same scope the fields around it do -
+ * a session carries the whole library, files included - so it greys with them and works with them.
  */
 export function AssetReplaceAction({ asset }: { asset: Asset }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const [busy, setBusy] = useState(false);
 
     const handleReplace = useCallback(async () => {
