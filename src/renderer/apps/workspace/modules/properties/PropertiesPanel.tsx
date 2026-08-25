@@ -23,6 +23,13 @@ import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
+import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
+import {
+    characterDocumentFreezeScope,
+    useCharacterClaimHold,
+    useCharacterClaimOf,
+} from "../characters/characterLiveSession";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -35,9 +42,25 @@ import {
     type SceneEditorContext,
 } from "./schemas";
 import type { UIElementSelection } from "@shared/types/ui-editor/selection";
-import { getUIComponentLink, isLinkedUIComponentElement, type UIElement } from "@shared/types/ui-editor/document";
+import {
+    getUIComponentLink,
+    isLinkedUIComponentElement,
+    type UIDocument,
+    type UIElement,
+} from "@shared/types/ui-editor/document";
 import { assertSelectionHandled } from "@/lib/workspace/services/ui/UIStore";
 import type { SelectionState } from "@/lib/workspace/services/ui/UIStore";
+import {
+    COMPARISON_ELEMENT_SELECTION_TYPE,
+    type ComparisonElementSelection,
+} from "@/lib/vcs/compare/comparisonSelection";
+import { createReadOnlyDocumentService } from "@/lib/vcs/compare/readOnlyDocumentService";
+import { ReadOnlyInspection } from "@/apps/workspace/components/ui/readOnlyInspection";
+import {
+    collectComparisonFieldMarks,
+    ComparisonFieldMarksProvider,
+    describeComparisonValue,
+} from "./framework/fields/comparisonFieldMarks";
 import { createPropertyEditorSchema, defineField } from "./framework";
 import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 
@@ -62,6 +85,7 @@ import type {
     PropertyEditorSchema,
 } from "./framework/types";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
+import type { WorkspaceContext } from "@/lib/workspace/services/services";
 import { UIGraphService } from "@/lib/workspace/services/ui-editor/UIGraphService";
 import { getElementInspector } from "../ui-editor/inspector/registry";
 import type { UIInspectorData } from "../ui-editor/inspector/registry";
@@ -728,6 +752,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     const [activeSceneId, setActiveSceneId] = useState<string | null>(null);
     const [storyMotionSelection, setStoryMotionSelection] = useState<StoryMotionKeyframeSelection | null>(null);
     const [storySelection, setStorySelection] = useState<StoryBlockSelection | null>(null);
+    const [comparisonSelection, setComparisonSelection] = useState<ComparisonElementSelection | null>(null);
     const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
     
     // Track the current thumbnail URL and its associated thumbnailId to avoid revoking URLs still in use
@@ -885,7 +910,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         return { setCandidates: candidates, setAssetsById: byId as ReadonlyMap<string, Asset> };
     }, [assetsService, activeSet, assetLibraryRevision]);
 
-    const panelTitle = storyMotionSelection
+    const panelTitle = comparisonSelection
+        ? comparisonSelection.element.name || comparisonSelection.element.type
+        : storyMotionSelection
         ? t("properties.panel.motionKeyframe")
         : storyScene
         ? storyScene.name
@@ -900,7 +927,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         : activeSet
         ? activeSet.name
         : t("properties.panel.title");
-    const panelSubtitle = storyMotionSelection
+    const panelSubtitle = comparisonSelection
+        ? comparisonSelection.versionLabel
+        : storyMotionSelection
         ? t("properties.panel.storyMotion")
         : storyScene
         ? t("properties.panel.scene")
@@ -950,6 +979,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             let character: Character | null = null;
             let uiSelection: UIElementSelection | null = null;
             let sceneId: string | null = null;
+            // The one subject that arrives whole: an element at a version the workspace no longer
+            // holds, so there is nothing to look it up in. See `comparisonSelection.ts`.
+            let comparison: ComparisonElementSelection | null = null;
 
             switch (selection.type) {
                 case null:
@@ -969,6 +1001,9 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
                 case "character":
                     character = selection.data;
                     break;
+                case COMPARISON_ELEMENT_SELECTION_TYPE:
+                    comparison = selection.data;
+                    break;
                 case "element":
                     uiSelection = selection.data;
                     break;
@@ -987,6 +1022,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             setAssetMetadata(null);
             setUISelection(uiSelection);
             setActiveSceneId(sceneId);
+            setComparisonSelection(comparison);
         };
 
         setSelectionState(store.getSelection());
@@ -1063,6 +1099,18 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             />
         );
     }, [deferredUiSelection, documentService, deferredDocumentVersion, documentVersion, enteredState, t]);
+
+    /**
+     * The rail's half of a version comparison, when one is the subject.
+     *
+     * A component rather than a `useMemo` because it is the one branch of this panel that can be
+     * mounted on its own: everything it draws comes off the selection and the workspace, so a test
+     * can put an element of a past version in front of the real inspector without a project behind
+     * it. See {@link ComparisonElementInspector}.
+     */
+    const comparisonInspectorContent = comparisonSelection
+        ? <ComparisonElementInspector selection={comparisonSelection} context={context ?? null} />
+        : null;
 
     const selectUiCanvasElement = useCallback(
         (surfaceId: string, elementId: string) => {
@@ -1363,6 +1411,11 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         if (storyContent) {
             return storyContent;
         }
+        // Before the live interface branch, because a comparison selection excludes one: the two are
+        // alternatives, and this one carries its own document.
+        if (comparisonInspectorContent) {
+            return comparisonInspectorContent;
+        }
         if (uiInspectorContent) {
             return (
                 <>
@@ -1388,7 +1441,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         // Character editor
         if (activeCharacter && characterContext) {
-            return <PropertyEditor schema={characterSchema} data={characterContext} />;
+            return (
+                <CharacterInspector
+                    characterId={activeCharacter.profile.getId()}
+                    schema={characterSchema}
+                    data={characterContext}
+                />
+            );
         }
 
         // Asset editor
@@ -1420,6 +1479,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
      */
     const isEmpty = !storyContent
         && !storyMotionSelection
+        && !comparisonInspectorContent
         && !uiInspectorContent
         && !activeComponentDefinition
         && !sceneEditorContext
@@ -1464,5 +1524,175 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             {/* Content */}
             <div className="nl-editor-surface flex-1 overflow-y-auto">{renderPropertyEditor()}</div>
         </div>
+    );
+}
+
+/**
+ * The character branch of the inspector, and the two things a live session adds to it.
+ *
+ * **The scope.** Every field in the character schema writes one file - the cast - so this branch can
+ * say which, and a session that leaves the cast writable therefore leaves these fields working. The
+ * panel as a whole cannot say it, because it hosts a different schema per selection; the branch that
+ * knows is the one that declares it, and the branches that say nothing keep the conservative answer.
+ *
+ * **The claim.** The record is held for as long as it is open here, not for as long as somebody is
+ * typing - the text fields keep a draft in their own state until the field is blurred, so an author
+ * who has stopped to think still has half a description that nobody else can see. While somebody
+ * else holds it the fields stand down: the host would refuse the operation anyway, and letting the
+ * author write a paragraph first is exactly the injury the claim exists to prevent.
+ */
+function CharacterInspector({ characterId, schema, data }: {
+    characterId: string;
+    schema: PropertyEditorSchema<CharacterEditorContext>;
+    data: CharacterEditorContext;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useCharacterClaimHold({ service: live, characterId });
+    const heldBy = useCharacterClaimOf(characterId);
+    const writes = useMemo(
+        () => ({ scope: characterDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return (
+        <InspectorWritesProvider value={writes}>
+            <PropertyEditor schema={schema} data={data} />
+        </InspectorWritesProvider>
+    );
+}
+
+/**
+ * Every field in a schema, read-only, at any depth.
+ *
+ * Groups nest, so this walks rather than mapping the top level; `readOnly` is a field-definition
+ * flag the framework already understands, so nothing downstream has to learn a new one.
+ */
+function readOnlySchema<TData>(schema: PropertyEditorSchema<TData>): PropertyEditorSchema<TData> {
+    const mark = (field: FieldDefinition<TData>): FieldDefinition<TData> => {
+        const nested = (field as { fields?: readonly FieldDefinition<TData>[] }).fields;
+        const marked = { ...field, readOnly: true } as FieldDefinition<TData>;
+        // Only the field types that carry children get them back, and the cast is what lets one walk
+        // cover a union whose members do not agree on having any.
+        return Array.isArray(nested)
+            ? ({ ...marked, fields: nested.map(mark) } as unknown as FieldDefinition<TData>)
+            : marked;
+    };
+    // Fields live under the tabs as well as at the top level, and the tabbed ones are where the
+    // position inputs are - missing them is what let them arrive editable the first time.
+    return {
+        ...schema,
+        fields: (schema.fields ?? []).map(mark),
+        ...(schema.tabs ? { tabs: schema.tabs.map(tab => ({ ...tab, fields: (tab.fields ?? []).map(mark) })) } : {}),
+    };
+}
+
+/**
+ * One element of one half of a version comparison, read and not edited.
+ *
+ * **The inspector is version-stateless.** It holds no comparison, reads no revision and asks the
+ * repository for nothing: the selection carries the element and the document it came out of, and
+ * this renders them through exactly the schemas the live path uses. That is what keeps one inspector
+ * rather than two - a second copy of `getElementInspector` for old documents would fall behind every
+ * widget added after it.
+ *
+ * **Read-only twice over, because one of them is not enough.** `ReadOnlyInspection` greys every
+ * control, through the guard the whole property framework already consults - so the fields, the
+ * blueprint entries and the row clamps are all correct without being told that comparisons exist.
+ * That is the affordance. The enforcement is the document service under it, whose every write
+ * throws: the framework's clamp is a `<fieldset disabled>` and does not travel through a portal, so
+ * a picker opened from inside this panel is outside it.
+ *
+ * **An element only one half holds is drawn in full.** A removal is in the older version and nowhere
+ * else, and that is often the whole question. The strip says which version it is and that the other
+ * one does not have it, rather than the panel leaving a blank - the same rule a gap between the two
+ * halves keeps.
+ */
+export function ComparisonElementInspector({
+    selection,
+    context,
+}: {
+    selection: ComparisonElementSelection;
+    context: WorkspaceContext | null;
+}) {
+    const { t } = useTranslation();
+    const { element, document, surfaceId, counterpart, counterpartDocument } = selection;
+
+    const built = useMemo(() => {
+        /**
+         * One half's inspector, whole: the frozen service, the schemas built against it, and the data
+         * those schemas read. Both halves are built the same way, because a schema's getters close
+         * over the service they were built with - see `comparisonFieldMarks`.
+         */
+        const inspectorFor = (
+            subject: UIElement,
+            subjectDocument: UIDocument,
+        ): { schema: PropertyEditorSchema<UIInspectorData>; data: UIInspectorData } => {
+            const service = createReadOnlyDocumentService(subjectDocument, context);
+            const elements = [subject];
+            const layoutSchema = createLayoutInspectorSchema(elements, service, t, surfaceId, {
+                linkedOnly: isLinkedUIComponentElement(subject),
+            });
+            const schema = mergeInspectorWithLayoutSchema(
+                layoutSchema,
+                getElementInspector(subject, service)
+                    ?? createPropertyEditorSchema<UIInspectorData>({
+                        id: `ui-element:${subject.id}`,
+                        title: layoutSchema.title,
+                        fields: [],
+                    }),
+                subject,
+                t,
+            );
+            /**
+             * Read-only stamped onto the schema itself, not left to the freeze guard.
+             *
+             * The guard sets this flag on the field types that honour it and wraps the ones that do
+             * not in a disabled fieldset - but a schema built here can reach the inspector through a
+             * path where the guard has not been consulted, and a field that honours the flag gets no
+             * fieldset to fall back on. That is not theoretical: the position inputs arrived on
+             * screen editable in a comparison, which offers the author a write this view cannot
+             * perform. Stamping it at the source means every field is read-only whatever route it
+             * takes, and the guard's clamp remains the second line rather than the only one.
+             */
+            return { schema: readOnlySchema(schema), data: { element: subject, elements, documentService: service, surfaceId } };
+        };
+
+        const here = inspectorFor(element, document);
+        const there = counterpart && counterpartDocument
+            ? inspectorFor(counterpart, counterpartDocument)
+            : null;
+        const marks = collectComparisonFieldMarks(here, there, value =>
+            t("documentDiff.inspector.differs", {
+                version: selection.counterpartLabel,
+                value: describeComparisonValue(value, t("documentDiff.inspector.noValue")),
+            }),
+        );
+        return { schema: here.schema, data: here.data, marks };
+    }, [element, document, surfaceId, counterpart, counterpartDocument, selection.counterpartLabel, context, t]);
+
+    return (
+        <ReadOnlyInspection>
+            <div
+                data-comparison-strip
+                className="shrink-0 border-b border-edge bg-surface-canvas/60 px-3 py-2 text-2xs text-fg-subtle"
+            >
+                <span className="font-medium text-fg-muted">
+                    {t("documentDiff.inspector.version", { version: selection.versionLabel })}
+                </span>
+                {counterpart === null && (
+                    <span className="ml-2 text-warning">
+                        {t("documentDiff.inspector.onlyHere", { version: selection.counterpartLabel })}
+                    </span>
+                )}
+                <span className="mt-1 block leading-snug">{t("documentDiff.inspector.readOnly")}</span>
+            </div>
+            <ComparisonFieldMarksProvider marks={built.marks}>
+                <PropertyEditor schema={built.schema} data={built.data} />
+            </ComparisonFieldMarksProvider>
+        </ReadOnlyInspection>
     );
 }

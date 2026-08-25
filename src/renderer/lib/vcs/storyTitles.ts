@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Services } from "@/lib/workspace/services/services";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
-import { useWorkspace } from "@/apps/workspace/context";
+import { useOptionalWorkspace } from "@/apps/workspace/context";
 import type { DocumentNameContext } from "./documentName";
 import { NO_DOCUMENT_NAMES } from "./documentName";
 import { comparisonSideKey, type ComparisonSide, type ComparisonSides } from "./presenters/comparisonSide";
@@ -117,11 +117,15 @@ export function mergeStoryTitles(
  * already handles because it is the same context a failed read produces.
  */
 export function useDocumentNames(sides: ComparisonSides | null): DocumentNameContext {
-    const { context } = useWorkspace();
+    // Optional, and guarded on the service set rather than on the context: this hook is mounted by
+    // the version rail as well as by a comparison, and both render in windows - and in tests - that
+    // carry only part of the workspace. A context with no services names nothing, which is the same
+    // answer a failed read gives and one every consumer already handles.
+    const context = useOptionalWorkspace()?.context ?? null;
     const [titles, setTitles] = useState<ReadonlyMap<string, string> | null>(null);
 
     const service = useMemo(
-        () => (context ? context.services.get<VersionControlService>(Services.VersionControl) : null),
+        () => (context?.services ? context.services.get<VersionControlService>(Services.VersionControl) : null),
         [context],
     );
 

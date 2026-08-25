@@ -1,5 +1,5 @@
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveDerived, LiveOp } from "@shared/live/ops";
+import type { LiveDerived, LiveStoryOp } from "@shared/live/ops";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { RendererError } from "@shared/utils/error";
 import {
@@ -109,7 +109,7 @@ export type StoryOpSink = {
      * an effect saying "look this text id up in your own library" would derive nothing anywhere
      * else. Absent for every operation that derives nothing, which is all of them but a paste.
      */
-    handle(storyId: StoryId, op: LiveOp, derived?: LiveDerived): boolean;
+    handle(storyId: StoryId, op: LiveStoryOp, derived?: LiveDerived): boolean;
 };
 
 /** See {@link StoryService.captureStoryStructure}. */
@@ -1805,7 +1805,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * The single place the eleven mutators ask, so "is this story somebody else's to change" has one
      * answer and one spelling. See {@link StoryOpSink}.
      */
-    private handedToSink(storyId: StoryId, op: LiveOp, derived?: LiveDerived): boolean {
+    private handedToSink(storyId: StoryId, op: LiveStoryOp, derived?: LiveDerived): boolean {
         return this.opSink !== null && this.opSink.handle(storyId, op, derived);
     }
 
@@ -1834,7 +1834,7 @@ export class StoryService extends Service<StoryService> implements IStoryService
      * rule the next caller will not have. Inside a session, undo is sending the inverse of one's own
      * last operation instead; see the live layer's `inverseOf`.
      */
-    public applyLiveOp(storyId: StoryId, op: LiveOp): void {
+    public applyLiveOp(storyId: StoryId, op: LiveStoryOp): void {
         this.getHistoryService().withoutRecording(() => {
             switch (op.op) {
                 case "insert-block":

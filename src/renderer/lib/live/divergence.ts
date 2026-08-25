@@ -1,23 +1,29 @@
-import { opSceneId, type LiveEffect } from "@shared/live/ops";
-import type { StorySceneId } from "@shared/types/story";
+import type { LiveDigestScope, LiveEffect } from "@shared/live/ops";
 
 /**
  * Two machines in one session hold different documents, and the decision to leave that follows.
  *
  * Everything on it is here because a caller has to do one of two things with it. Telling the author
- * what happened needs the scene, so the sentence can name where the trouble is rather than gesture
- * at the project; re-fetching state needs the sequence, because that is the point in the host's
- * order this machine's copy stopped being trustworthy and everything a resync could offer after it
- * would be built on the same wrong document. The two digests are on it because they are the only
- * evidence there is: without both, a report of this reads as an assertion nobody can check, and the
- * pair is what a diagnostic bundle carries when somebody comes to ask which copy was wrong.
+ * what happened needs the scope, so the sentence can name where the trouble is - this scene, that
+ * character - rather than gesture at the project; re-fetching state needs the sequence, because that
+ * is the point in the host's order this machine's copy stopped being trustworthy and everything a
+ * resync could offer after it would be built on the same wrong document. The two digests are on it
+ * because they are the only evidence there is: without both, a report of this reads as an assertion
+ * nobody can check, and the pair is what a diagnostic bundle carries when somebody comes to ask which
+ * copy was wrong.
  */
 export type LiveDivergence = {
-    /** The scene the two machines made different things of; null for an effect about the story. */
-    sceneId: StorySceneId | null;
+    /**
+     * The unit the two machines made different things of.
+     *
+     * Read off the effect rather than recomputed from its operation. The digest that disagreed was
+     * taken over a scope the host stated, and naming a different one in the report would send whoever
+     * reads it to the wrong document.
+     */
+    scope: LiveDigestScope;
     /** The host's application order position at which the copies were found to differ. */
     seq: number;
-    /** What the host made of the scene after applying that effect. */
+    /** What the host made of that unit after applying that effect. */
     expected: string;
     /** What this machine made of its own copy after applying the same effect. */
     computed: string;
@@ -27,7 +33,7 @@ export type LiveDivergence = {
  * What {@link LiveDivergenceGuard} makes of one effect.
  *
  * Three answers rather than two, and the third is the point: an effect that carried no digest, or
- * one applied to a scene this machine could not read, is **not evidence of anything**. Folding
+ * one applied to a unit this machine could not read, is **not evidence of anything**. Folding
  * either into "agreed" would let a run of them read as a clean bill of health, and folding them into
  * "diverged" would throw a machine out of a session over a message that said nothing.
  */
@@ -43,7 +49,7 @@ export type LiveDivergenceRuling =
  * The thing that decides whether this machine still agrees with the host, and rules once.
  *
  * Every machine in a session applies the same operations in the same order, so every machine should
- * hold the same scene. A digest that differs from the host's means one of them is wrong and
+ * hold the same document. A digest that differs from the host's means one of them is wrong and
  * **neither can tell which** - there is no vote to take and no third copy to consult. That is the
  * most expensive way the whole design can fail: two documents that differ, each saved into its own
  * version history, with nothing anywhere reporting a problem, and nobody finding out until somebody
@@ -65,33 +71,40 @@ export class LiveDivergenceGuard {
      * other side of it worth having. A later digest that matches proves nothing about the difference
      * already found: it is computed from the same document the first mismatch condemned, so the two
      * copies can agree about the row just edited while a paragraph elsewhere - or a whole other
-     * scene, since a digest covers one scene at a time - stays different forever. Letting that pass
+     * scene, or the cast, since a digest covers one unit at a time - stays different forever. Letting that pass
      * for recovery is exactly the silent failure the ruling exists to prevent, and re-reading or
      * retrying to reach it is a decision nobody at this level is in a position to take.
+     *
+     * ⚠ Set once **across every document a session carries**, not once per document. Two copies that
+     * differ about the cast are two copies, and carrying on with the story because the story still
+     * agrees would write the disagreement into one machine's history and not the other's - the
+     * outcome this class exists for, reached through a door marked "only the characters".
      */
     private ruling: { verdict: "diverged"; divergence: LiveDivergence } | null = null;
 
     /**
-     * Weigh one effect against what this machine made of the scene after applying it.
+     * Weigh one effect against what this machine made of the same unit after applying it.
      *
-     * `computed` is null when the scene could not be read, which is the guest saying it has nothing
-     * to offer rather than saying it disagrees.
+     * `computed` is null when the unit could not be read, which is the guest saying it has nothing
+     * to offer rather than saying it disagrees. ⚠ A **deleted** character record is not that case:
+     * absence is a value the cast's digest can state, so a machine that failed to apply a deletion is
+     * caught rather than excused. See `characterRecordDigest`.
      */
     public check(effect: LiveEffect, computed: string | null): LiveDivergenceRuling {
         if (this.ruling) {
             // Answered, not re-asked. See the field.
             return this.ruling;
         }
-        const expected = effect.sceneDigest;
-        if (expected === undefined || computed === null) {
+        const carried = effect.digest;
+        if (carried === undefined || computed === null) {
             return { verdict: "unproven" };
         }
-        if (expected === computed) {
+        if (carried.hash === computed) {
             return { verdict: "agreed" };
         }
         this.ruling = {
             verdict: "diverged",
-            divergence: { sceneId: opSceneId(effect.op), seq: effect.seq, expected, computed },
+            divergence: { scope: carried.scope, seq: effect.seq, expected: carried.hash, computed },
         };
         return this.ruling;
     }

@@ -1254,7 +1254,11 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
+    createCharacter(
+        name: string,
+        kind?: CharacterAppearanceKind,
+        initial?: { color?: string; groupId?: string },
+    ): Character;
     renameCharacter(id: string, name: string): boolean;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;
@@ -1558,6 +1562,15 @@ interface ILiveSessionService extends IService {
      * session. Silent outside a session and for any other story's rows.
      */
     claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void;
+    /**
+     * Say that this window is editing one character record, or that it has stopped.
+     *
+     * The cast's half of the same seam. Held while the record is open in the properties panel - the
+     * box being open, not the keyboard - because an author who has stopped to think about a
+     * description still has one half typed, and a claim that lapsed on their pause is a claim that
+     * lets somebody else take it.
+     */
+    claimCharacter(characterId: string, holding: boolean): void;
     /**
      * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
      *
