@@ -10,6 +10,15 @@ import {
 } from "../assetOrder";
 import { legacyShardTypesFor, mergeAssetOrderDocuments } from "../assetCategoryShards";
 
+/** Whether two order documents list the same rows in the same places. */
+function sameOrder(left: AssetOrderDocument, right: AssetOrderDocument): boolean {
+    return sameIds(left.assetIds, right.assetIds) && sameIds(left.groupIds, right.groupIds);
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+    return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
 function emptyOrders(): Record<AssetCategory, AssetOrderDocument> {
     const orders = {} as Record<AssetCategory, AssetOrderDocument>;
     for (const category of ASSET_CATEGORY_ORDER) {
@@ -74,8 +83,30 @@ export class AssetOrderManager {
         return Array.from(this.missingCategories);
     }
 
+    /**
+     * Record one category's row order, unless it is already the order on disk.
+     *
+     * ⚠ **The early return is not an optimization, and removing it breaks a live session.**
+     * `AssetsService.markDirty` queues this file beside the metadata shard on every record edit,
+     * because adding or removing an asset moves the order too - but renaming one does not, and
+     * neither does filing it in a folder. A session leaves the metadata shard writable and this file
+     * refused, and a refused write is announced to the author as work that was not saved: without
+     * this, every rename inside a session would raise "could not save" about a file whose content had
+     * not changed. Nothing in the session vocabulary adds a row, removes one or renames a folder, so
+     * inside one this branch is taken every time.
+     *
+     * Outside a session it is worth having anyway: this file is rewritten on every asset mutation and
+     * most of those leave the order exactly as it was.
+     *
+     * The comparison is against what this manager last read or wrote, which is what is on disk - and
+     * a category whose file could not be read is never skipped, because "the same as what I hold" is
+     * not "the same as what is there" when there is nothing there.
+     */
     public async write(category: AssetCategory, assetIds: readonly string[], groupIds: readonly string[]): Promise<FsRequestResult<void>> {
         const document: AssetOrderDocument = { assetIds: [...assetIds], groupIds: [...groupIds] };
+        if (!this.missingCategories.has(category) && sameOrder(this.orders[category], document)) {
+            return { ok: true, data: void 0 };
+        }
         this.orders[category] = document;
 
         const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
