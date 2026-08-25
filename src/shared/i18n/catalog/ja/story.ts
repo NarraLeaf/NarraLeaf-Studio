@@ -120,6 +120,7 @@ export const story = {
         refusedAnchorGone: "移動先の行はもうない。この変更は反映されていない",
         refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
         refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
+        refusedAssetGone: "そのアセットは存在しない。この変更は反映されていない",
         refusedTooLarge: "そのキャラクターは大きすぎてリアルタイムセッションで共有できない。この変更は反映されていない",
         refusedDocumentNotShared: "リアルタイムセッションはそのドキュメントを共有しない。この変更は反映されていない",
         refusedNotInSession: "この端末はもうセッションにいない",
@@ -138,6 +139,7 @@ export const story = {
         undoChaptersChanged: "チャプターがその手順の記録と一致しない",
         undoCharacterGone: "そのキャラクターは存在しない",
         undoCharacterRestored: "そのキャラクターは名簿に戻っている",
+        undoAssetGone: "そのアセットは存在しない",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の

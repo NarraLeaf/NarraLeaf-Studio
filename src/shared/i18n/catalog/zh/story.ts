@@ -110,6 +110,7 @@ export const story = {
         refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
         refusedSceneGone: "该场景已不存在，本次修改未生效",
         refusedCharacterGone: "该角色已不存在，本次修改未生效",
+        refusedAssetGone: "该资产已不存在，本次修改未生效",
         refusedTooLarge: "该角色过大，无法在实时会话中共享，本次修改未生效",
         refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
         refusedNotInSession: "本机已不在该会话中",
@@ -127,6 +128,7 @@ export const story = {
         undoChaptersChanged: "章节与该步骤记录的那一份不一致",
         undoCharacterGone: "该角色已不存在",
         undoCharacterRestored: "该角色已经回到名册中",
+        undoAssetGone: "该资产已不存在",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

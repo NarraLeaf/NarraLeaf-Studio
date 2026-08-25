@@ -12,6 +12,7 @@ import { VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
+import { AssetsService } from "../core/AssetsService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
@@ -158,6 +159,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const story = (): StoryService => ctx.services.get<StoryService>(Services.Story);
         const characters = (): CharacterService => ctx.services.get<CharacterService>(Services.Character);
         const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
+        const assets = (): AssetsService => ctx.services.get<AssetsService>(Services.Assets);
         const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
@@ -223,6 +225,15 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 loadAll: () => voice().loadAllDocuments(),
                 units: locale => voice().unitsOf(locale),
                 applyOp: op => voice().applyLiveOp(op),
+            },
+            assets: {
+                setSink: sink => assets().setOperationSink(sink),
+                // No load step, unlike the two libraries: an asset shard is read as the workspace
+                // starts rather than when a panel opens it, so this only says which ones are there.
+                shardTypes: () => assets().shardTypes(),
+                records: assetType => assets().recordsOf(assetType),
+                hasRecord: (assetType, assetId) => assets().recordOf(assetType, assetId) !== null,
+                applyOp: op => assets().applyLiveOp(op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,

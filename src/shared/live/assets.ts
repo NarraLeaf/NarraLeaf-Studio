@@ -1,5 +1,4 @@
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
-import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
 import { fnv1a64BytesHex } from "@shared/utils/contentHash";
 
 /**
@@ -46,10 +45,16 @@ import { fnv1a64BytesHex } from "@shared/utils/contentHash";
  * `JSON.stringify` writes neither, and that is what is on disk - so hashing them differently would
  * eject a machine from the room over a difference no file can hold. Pruning also keeps this from
  * being the one digest that can throw, which inside an applier would take the session down.
+ *
+ * ## Why the records are `unknown`
+ *
+ * Nothing here reads a field. What a shard holds is the asset service's business, and a shape stated
+ * a second time is a shape that falls behind the first; the renderer passes its own `Asset` interface
+ * and the wire passes `AssetMetadataEntry`, which are one document read two ways.
  */
 
 /** One type's records as they stand, or the fact that this machine does not hold them. */
-export function assetsDigest(records: Readonly<Record<string, AssetMetadataEntry>> | null): string {
+export function assetsDigest(records: Readonly<Record<string, unknown>> | null): string {
     return hash(records === null ? { absent: true } : { records: pruneUndefined(records) });
 }
 
