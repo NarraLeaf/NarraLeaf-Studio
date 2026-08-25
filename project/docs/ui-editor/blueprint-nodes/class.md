@@ -51,6 +51,7 @@ Page分类具有：
 - `Get Page Props` 读取当前 Page props；Global 蓝图不可用
 - `Is Surface Exiting` / `Is Surface Entering` / `Is Surface Transitioning` 读取当前 Surface 进退场状态；可用于 Blueprint Value，Global 蓝图不可用
 - `Quit` 退出当前应用运行时；在 Studio Dev Mode 中停止 Dev Mode 会话，不终止 Studio 主进程
+- `Keep Window Open` 取消玩家发出的窗口关闭请求；只在 `On Window Close Requested` 事件图里有意义，其他地方执行会报蓝图执行错误
 
 ## Game
 
@@ -94,8 +95,6 @@ Text分类具有：
 Element 分类具有：
 - Element Literal 节点
 - Element Flush / Element Click 事件节点
-- `Continue Event Bubble` 在当前 Widget 事件图中把接入的事件继续派发给父元素
-- `Stop Event Bubble` 在当前事件图中标记事件已处理，阻止后续冒泡或背景层键盘响应
 - 所有带 Element/ref 输入的派生控件方法节点
 - Element-targeted Text、Displayable、List、Slider、Image 和通用 Widget Property 节点；其中 Displayable 派生节点包含 `Get Element Display` / `Set Element Display`
 

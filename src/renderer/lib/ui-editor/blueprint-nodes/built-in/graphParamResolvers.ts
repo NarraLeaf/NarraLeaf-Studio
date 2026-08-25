@@ -124,6 +124,8 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
@@ -369,6 +371,7 @@ import {
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
+import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
@@ -1792,6 +1795,34 @@ function resolveLayerMountedNodeOutput(
         return false;
     }
     return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.layers?.isMounted(handle) === true;
+}
+
+/**
+ * `Is Action Held` - whether one of the project's input actions is down right now.
+ *
+ * The router that knows lives on the runtime side of the boundary, so it is asked for structurally
+ * (see {@link BlueprintInputActionHostApi}) rather than through a declared host-API family. A host
+ * that has no input router answers **false** rather than nothing: the pin is a non-nullable boolean,
+ * "nobody is holding anything" is the honest reading in an editor preview with no player at the
+ * keyboard, and `undefined` here would travel silently down every wire that consumes it.
+ */
+function resolveInputActionNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
+        return undefined;
+    }
+    const actionId = String(params[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? "").trim();
+    if (!actionId) {
+        return false;
+    }
+    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
+        | { input?: BlueprintInputActionHostApi }
+        | undefined;
+    return hostApi?.input?.isActionHeld?.(actionId) === true;
 }
 
 /**
@@ -3473,6 +3504,15 @@ function resolveSelfOutput(
     );
     if (layerMountedOutput !== undefined) {
         return layerMountedOutput;
+    }
+    const inputActionOutput = resolveInputActionNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (inputActionOutput !== undefined) {
+        return inputActionOutput;
     }
     const appTagOutput = resolveAppTagNodeOutput(selfNode.type, portId);
     if (appTagOutput !== undefined) {

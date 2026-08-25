@@ -4,7 +4,7 @@
 
 Page 节点用于切换 Page，以及 Page 组件和被嵌入 Page 之间的通信。当前 Page 可以读取自己的 Page props 和 Surface 进退场状态；没有传入 props 时读取 `{}`，读取缺失字段时得到 `null`。顶层 Page 没有父级 Page 组件时，发送事件不会触发父级事件。
 
-`blueprint.page.go` 面向运行时 Page 导航并可传入 Page props；`blueprint.page.getProps` 读取当前 Page props；`blueprint.page.isSurfaceExiting` / `blueprint.page.isSurfaceEntering` / `blueprint.page.isSurfaceTransitioning` 读取当前 Surface 过渡状态；`blueprint.page.quit` 退出当前应用运行时；`blueprint.frame.emit` 面向被嵌入 Page 的通信上下文；`nl.frame` 组件自己的目标 Page 和 params 读写方法记录在 `node.widget.md`。
+`blueprint.page.go` 面向运行时 Page 导航并可传入 Page props；`blueprint.page.getProps` 读取当前 Page props；`blueprint.page.isSurfaceExiting` / `blueprint.page.isSurfaceEntering` / `blueprint.page.isSurfaceTransitioning` 读取当前 Surface 过渡状态；`blueprint.page.quit` 退出当前应用运行时；`blueprint.app.keepWindowOpen` 取消玩家发出的窗口关闭请求；`blueprint.frame.emit` 面向被嵌入 Page 的通信上下文；`nl.frame` 组件自己的目标 Page 和 params 读写方法记录在 `node.widget.md`。
 
 ## Go Page
 
@@ -21,6 +21,16 @@ Page 节点用于切换 Page，以及 Page 组件和被嵌入 Page 之间的通�
 
 通过 Host navigation 请求退出当前应用运行时。在 Studio Dev Mode 中，该节点会停止 Dev Mode 会话并返回 Studio 编辑环境，不会终止 Studio 主进程。它是执行尾节点，没有后续执行出口。
 - `in` - 执行入口
+
+## Keep Window Open
+
+`blueprint.app.keepWindowOpen` - 留住窗口，取消这次关闭
+
+玩家点关闭按钮或按下 Alt+F4 时，主进程会先把关闭挂起、派发 `On Window Close Requested`，等蓝图跑完再真正关窗；除非有人取消。这个节点就是那个取消。想在退出前问一句「真的要退出吗」，就先执行它把窗口留住，再弹出自己的确认页面，玩家确认后调用 `Quit Application`。
+
+它只做这一件事：不会吞掉按键，不会阻止 Page 或叠层关闭，也不会影响元素事件的派发。窗口关闭请求之外没有任何可取消的东西，所以在别的派发里执行会抛出蓝图执行错误，而不是静默通过——静默通过的图看起来和能用的图一模一样。可用于 Global 与 Surface 蓝图。
+- `in` - 执行入口
+- `next` - 执行出口；取消关闭不是终点，后面通常接确认页面
 
 ## Get Page Props
 

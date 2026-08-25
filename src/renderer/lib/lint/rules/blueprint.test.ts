@@ -7,6 +7,8 @@ import {
     BLUEPRINT_NODE_PARAM_FN_NAME,
     BLUEPRINT_NODE_PARAM_FN_REF,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
     BLUEPRINT_NODE_TYPE_FN_CALL,
@@ -100,6 +102,15 @@ function uiDocumentWithSurfaces(...surfaceIds: string[]): UIDocument {
     return {
         surfaces: surfaceIds.map(id => ({ id, kind: "appSurface" })),
         elements: {},
+    } as unknown as UIDocument;
+}
+
+/** A UI document declaring exactly the input actions named, keyed as the vocabulary is. */
+function uiDocumentWithActions(...actionIds: string[]): UIDocument {
+    return {
+        surfaces: [],
+        elements: {},
+        actions: Object.fromEntries(actionIds.map(id => [id, { id, name: id, bindings: [] }])),
     } as unknown as UIDocument;
 }
 
@@ -335,6 +346,44 @@ describe("blueprint/reference-missing", () => {
             createTestLintContext({
                 blueprintDocument: documentWithGraphs({ events: { onBoot: graph("summer") } }),
                 dlcs,
+            }),
+        );
+        expect(present).toEqual([]);
+    });
+
+    it("reports an input action the project no longer declares, and says nothing about one it does", async () => {
+        // An `On Action` head naming a deleted action is silent twice over: nothing raises that name
+        // any more, and on the canvas it looks exactly like a head waiting for its gesture.
+        const graph = (actionId: string): BlueprintGraphIr => ({
+            nodes: {
+                head: {
+                    id: "head",
+                    type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
+                    params: { [BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID]: actionId },
+                },
+                log: { id: "log", type: BLUEPRINT_NODE_TYPE_LOG, params: {} },
+            },
+            edges: [{ from: { nodeId: "head", port: "then" }, to: { nodeId: "log", port: "in" } }],
+        });
+
+        const missing = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onAction: graph("dismiss") } }),
+                uiDocument: uiDocumentWithActions("advance"),
+            }),
+        );
+        expect(missing).toHaveLength(1);
+        expect(missing[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintReferenceMissing.messageInputAction",
+            location: { kind: "blueprint", nodeId: "head" },
+        });
+
+        const present = await run(
+            "blueprint/reference-missing",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onAction: graph("advance") } }),
+                uiDocument: uiDocumentWithActions("advance"),
             }),
         );
         expect(present).toEqual([]);

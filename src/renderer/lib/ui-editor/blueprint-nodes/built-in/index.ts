@@ -18,6 +18,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { pointerBlueprintNodes } from "./pointerNodes";
+import { inputActionBlueprintNodes } from "./inputActionNodes";
 import { gameBlueprintNodes } from "./gameNodes";
 import { layerBlueprintNodes } from "./layerNodes";
 import { listBlueprintNodes } from "./listNodes";
@@ -57,6 +58,7 @@ export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { pointerBlueprintNodes } from "./pointerNodes";
+export { inputActionBlueprintNodes, BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE } from "./inputActionNodes";
 export { gameBlueprintNodes } from "./gameNodes";
 export { layerBlueprintNodes } from "./layerNodes";
 export { listBlueprintNodes } from "./listNodes";
@@ -90,6 +92,7 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
     ...pointerBlueprintNodes,
+    ...inputActionBlueprintNodes,
     ...layerBlueprintNodes,
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
