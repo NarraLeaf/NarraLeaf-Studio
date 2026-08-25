@@ -421,17 +421,29 @@ export function InlineTargetEditor(props: {
     caret: number | null;
     placeholder: string;
     ariaLabel: string;
+    /** The document this field writes, as the project-relative path the freeze policy takes. */
+    freezeScope?: string;
+    /** Who else is translating this line, or null. The field does not open while somebody is. */
+    heldBy?: string | null;
     onEdit: (caret: number | null) => void;
     onStopEdit: () => void;
     onTargetChange: (target: string) => void;
 }) {
+    const { t } = useTranslation();
     const field = useRef<TranslationFieldHandle | null>(null);
     const tokens = useMemo(() => translationTokens(props.target), [props.target]);
     const placed = useMemo(() => placedTags(tokens), [tokens]);
     // A frozen workspace shows the translation and refuses the edit, the same bargain the plain box
     // beside it makes: browsing a past version is the point, and an edit taken and then thrown away
-    // on thaw is worse than one never taken.
-    const freeze = useFreezeGuard();
+    // on thaw is worse than one never taken. A line somebody else is inside is the same shape of
+    // "no" arriving from a room rather than from a version: the words stay readable and the field
+    // does not open.
+    const freeze = useFreezeGuard(props.freezeScope);
+    const held = props.heldBy ?? null;
+    const shut = freeze.frozen || held !== null;
+    const shutReason = freeze.frozen
+        ? freeze.reason
+        : held === null ? undefined : t("workspace.localization.live.entryClaimed", { name: held });
 
     /**
      * ⚠ `preventDefault` is what makes the field open at all. The press swaps this element for the
@@ -460,9 +472,9 @@ export function InlineTargetEditor(props: {
                 role="button"
                 tabIndex={0}
                 aria-label={props.ariaLabel}
-                onMouseDown={freeze.frozen ? undefined : openAtPointer}
-                onKeyDown={freeze.frozen ? undefined : openFromKeyboard}
-                data-tip={freeze.frozen ? freeze.reason : undefined}
+                onMouseDown={shut ? undefined : openAtPointer}
+                onKeyDown={shut ? undefined : openFromKeyboard}
+                data-tip={shutReason}
             >
                 {tokens.length > 0
                     ? <InlineTokens tokens={tokens} sourceRuns={props.sourceRuns} className="whitespace-pre-wrap" />

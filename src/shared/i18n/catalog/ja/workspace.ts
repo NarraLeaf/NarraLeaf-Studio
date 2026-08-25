@@ -111,6 +111,9 @@ export const workspace = {
             statusReviewed: "確認済み",
             statusStale: "要確認",
         },
+        live: {
+            entryClaimed: "{name} がこの行を翻訳している",
+        },
     },
     voice: {
         panel: {

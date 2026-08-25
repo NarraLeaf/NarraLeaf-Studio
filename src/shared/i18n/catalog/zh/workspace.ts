@@ -107,6 +107,9 @@ export const workspace = {
             statusReviewed: "已校对",
             statusStale: "待复查",
         },
+        live: {
+            entryClaimed: "{name} 正在翻译该行",
+        },
     },
     voice: {
         panel: {

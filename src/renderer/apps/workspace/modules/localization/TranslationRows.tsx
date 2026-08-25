@@ -15,6 +15,12 @@ import { Check, Plus, Trash2, TriangleAlert, Undo2 } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import type { LocalizationUnitState } from "@/lib/workspace/services/localization/localizationModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import {
+    localizationKeysFreezeScope,
+    TranslationClaimMark,
+    translationDocumentFreezeScope,
+    useTranslationClaim,
+} from "./localizationLiveSession";
 
 /** Minimal row shape both modes render; the tab supplies story/UI/key rows alike. */
 export type TranslationTableRow = {
@@ -86,16 +92,30 @@ function AutosizeTextarea(props: {
     value: string;
     placeholder?: string;
     ariaLabel?: string;
+    /**
+     * The document this box writes, as the project-relative path the freeze policy takes.
+     *
+     * ⚠ **The two boxes this renders write different documents**, which stopped being a distinction
+     * without a difference the day a live session carried one of them: a translation goes into
+     * `editor/localization/<locale>.json`, which a session leaves writable, and a named key's source
+     * text goes into the key registry, which it does not. A guard with no scope is frozen by any
+     * freeze at all - the correct default everywhere that cannot name its document, and the wrong
+     * answer for the box a translator is meant to be typing into.
+     */
+    freezeScope?: string;
+    /** Who else is inside this line, or null. Read-only for as long as somebody is. */
+    heldBy?: string | null;
     onChange: (value: string) => void;
     onFocus?: () => void;
     onBlur?: () => void;
 }) {
-    // Both boxes this renders - the translation and a named key's source text - rewrite the
-    // localization document. `readOnly` rather than `disabled`, the same bargain the story-variable
-    // rows make: the text is exactly what a reader of a past version came to see, and a disabled
-    // textarea is dimmed past reading. Unguarded, a frozen project took the edit, showed it in the
-    // row, and threw it away on thaw.
-    const freeze = useFreezeGuard();
+    const { t } = useTranslation();
+    // `readOnly` rather than `disabled`, the same bargain the story-variable rows make: the text is
+    // exactly what a reader of a past version came to see, and a disabled textarea is dimmed past
+    // reading. Unguarded, a frozen project took the edit, showed it in the row, and threw it away on
+    // thaw.
+    const freeze = useFreezeGuard(props.freezeScope);
+    const held = props.heldBy ?? null;
     const textareaRef = useRef<HTMLTextAreaElement | null>(null);
 
     // Auto-size on mount and whenever the value changes (filter/mode switches
@@ -122,8 +142,10 @@ function AutosizeTextarea(props: {
             onChange={event => props.onChange(event.target.value)}
             onFocus={props.onFocus}
             onBlur={props.onBlur}
-            readOnly={freeze.frozen}
-            data-tip={freeze.frozen ? freeze.reason : undefined}
+            readOnly={freeze.frozen || held !== null}
+            data-tip={freeze.frozen
+                ? freeze.reason
+                : held === null ? undefined : t("workspace.localization.live.entryClaimed", { name: held })}
             className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
         />
     );
@@ -141,6 +163,14 @@ export type InlineEditing = {
     caret: number | null;
     onEdit: (unitId: string, caret: number | null) => void;
     onStopEdit: () => void;
+    /**
+     * A plain box - a line with no tags - taking or releasing the caret.
+     *
+     * Only a live session reads it, to hold the line while somebody is inside it. Optional because
+     * the rows render outside one too, and a table that had to be told about sessions to draw a
+     * translation would be the coupling this seam exists to avoid.
+     */
+    onFocusUnit?: (unitId: string | null) => void;
 };
 
 /**
@@ -155,12 +185,29 @@ export type InlineEditing = {
  */
 function TargetEditor(props: {
     row: TranslationTableRow;
+    /** The language this table is for. What the freeze scope and the claim are addressed by. */
+    locale: string;
     target: string;
     editing?: InlineEditing;
+    /** Who else is translating this line, or null. */
+    heldBy: string | null;
     onTargetChange: (row: TranslationTableRow, target: string) => void;
 }) {
     const { t } = useTranslation();
     const [focused, setFocused] = useState(false);
+    const scope = translationDocumentFreezeScope(props.locale);
+
+    /**
+     * Tell the tab which line has the field open, so the session can hold it.
+     *
+     * The inline field reports through `editing`, which the tab already reads; the plain box has
+     * only its own focus, and this is what lifts it. Both matter: a claim asserted for one shape of
+     * row and not the other is a line somebody can be written over while they are inside it.
+     */
+    const holdFor = (open: boolean) => {
+        setFocused(open);
+        props.editing?.onFocusUnit?.(open ? props.row.unitId : null);
+    };
 
     if (props.row.sourceRuns && props.editing) {
         const editing = props.editing;
@@ -173,6 +220,8 @@ function TargetEditor(props: {
                 caret={editing.caret}
                 placeholder={t("workspace.localization.table.targetPlaceholder")}
                 ariaLabel={t("workspace.localization.table.targetColumn")}
+                freezeScope={scope}
+                heldBy={props.heldBy}
                 onEdit={caret => editing.onEdit(props.row.unitId, caret)}
                 onStopEdit={editing.onStopEdit}
                 onTargetChange={target => props.onTargetChange(props.row, target)}
@@ -186,9 +235,11 @@ function TargetEditor(props: {
                 value={props.target}
                 placeholder={t("workspace.localization.table.targetPlaceholder")}
                 ariaLabel={t("workspace.localization.table.targetColumn")}
+                freezeScope={scope}
+                heldBy={props.heldBy}
                 onChange={value => props.onTargetChange(props.row, value)}
-                onFocus={() => setFocused(true)}
-                onBlur={() => setFocused(false)}
+                onFocus={() => holdFor(true)}
+                onBlur={() => holdFor(false)}
             />
             {focused && props.row.interpolationCount > 0 ? (
                 <div className="px-2 text-2xs leading-relaxed text-fg-subtle">
@@ -223,6 +274,8 @@ function SourceText({ row }: { row: TranslationTableRow }) {
  */
 export function TranslateRow(props: {
     row: TranslationTableRow;
+    /** The language this table is for. */
+    locale: string;
     speaker: string;
     state: LocalizationUnitState;
     target: string;
@@ -233,17 +286,21 @@ export function TranslateRow(props: {
     onRemove?: (row: TranslationTableRow) => void;
 }) {
     const { t } = useTranslation();
-    // Removing a key deletes it from the localization document. The row itself, its source text and
-    // its translation stay readable - browsing a past version is the point - so only the trash is off.
-    const freeze = useFreezeGuard();
+    // Removing a key, and editing a key's source text, write the KEY REGISTRY rather than this
+    // language's translations - a document a live session does not carry - so they are scoped to it
+    // and stay off while the translations beside them stay live. The row itself and its translation
+    // stay readable either way: browsing a past version is the point.
+    const freeze = useFreezeGuard(localizationKeysFreezeScope());
+    const heldBy = useTranslationClaim(props.row.unitId);
     const sourceEditable = props.row.editableSource === true && !!props.onSourceChange;
     const removable = props.row.editableSource === true && !!props.onRemove;
 
     return (
         <div className="group relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
             <StateIndicator state={props.state} />
-            <div className="col-start-1 row-start-1 truncate px-2 text-2xs text-fg-subtle">
-                <span className="select-text">{props.speaker}</span>
+            <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 truncate px-2 text-2xs text-fg-subtle">
+                <span className="select-text truncate">{props.speaker}</span>
+                {heldBy ? <TranslationClaimMark account={heldBy} /> : null}
             </div>
             {sourceEditable ? (
                 <div className="col-start-1 row-start-2 min-w-0">
@@ -251,6 +308,7 @@ export function TranslateRow(props: {
                         value={props.row.sourceText}
                         placeholder={t("workspace.localization.table.keySourcePlaceholder")}
                         ariaLabel={t("workspace.localization.table.sourceColumn")}
+                        freezeScope={localizationKeysFreezeScope()}
                         onChange={value => props.onSourceChange?.(props.row, value)}
                     />
                 </div>
@@ -260,7 +318,14 @@ export function TranslateRow(props: {
                 </div>
             )}
             <div className="col-start-2 row-start-2 min-w-0">
-                <TargetEditor row={props.row} target={props.target} editing={props.editing} onTargetChange={props.onTargetChange} />
+                <TargetEditor
+                    row={props.row}
+                    locale={props.locale}
+                    target={props.target}
+                    editing={props.editing}
+                    heldBy={heldBy}
+                    onTargetChange={props.onTargetChange}
+                />
             </div>
             {removable ? (
                 <button
@@ -283,6 +348,8 @@ export function TranslateRow(props: {
  */
 export function ReviewRow(props: {
     row: TranslationTableRow;
+    /** The language this table is for. */
+    locale: string;
     speaker: string;
     state: LocalizationUnitState;
     target: string;
@@ -292,9 +359,17 @@ export function ReviewRow(props: {
     onReturn: (row: TranslationTableRow) => void;
 }) {
     const { t } = useTranslation();
-    // Approving and returning both restate the unit in the localization document, so both are off
-    // while frozen - each keeping its own reason when the row's state is already why it is disabled.
-    const freeze = useFreezeGuard();
+    // Approving and returning both restate the unit in THIS language's translations, so both are
+    // scoped to it: a live session leaves that document writable, and a guard with no scope would
+    // grey out a reviewer's two buttons inside a session that was carrying their edits perfectly
+    // well. Each keeps its own reason when the row's state is already why it is disabled.
+    const freeze = useFreezeGuard(translationDocumentFreezeScope(props.locale));
+    const heldBy = useTranslationClaim(props.row.unitId);
+    // ⚠ Approving and returning restate the entry, so they are refused for a line somebody else is
+    // inside exactly as typing into it is. Greyed with the holder's name rather than left live and
+    // refused: an action taken and then thrown away is the failure the freeze guard exists to remove,
+    // and a claim is the same shape of "no".
+    const held = heldBy === null ? null : t("workspace.localization.live.entryClaimed", { name: heldBy });
     const { row, speaker, state, target } = props;
     const canApprove = state !== "reviewed" && state !== "untranslated";
     const canReturn = state === "reviewed" || state === "stale" || state === "machine";
@@ -302,10 +377,11 @@ export function ReviewRow(props: {
     return (
         <div className="relative grid grid-cols-2 gap-x-6 gap-y-0.5 border-b border-edge-subtle px-4 py-3 hover:bg-fill-subtle">
             <StateIndicator state={state} />
-            <div className="col-start-1 row-start-1 flex min-w-0 items-baseline gap-2 px-2">
+            <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-2 px-2">
                 <span className="select-text truncate text-2xs text-fg-subtle">{speaker}</span>
                 <span aria-hidden className="text-2xs text-fg-subtle">·</span>
                 <span className="shrink-0 text-2xs text-fg-muted">{t(stateLabelKey(state))}</span>
+                {heldBy ? <TranslationClaimMark account={heldBy} /> : null}
             </div>
             <div className="col-start-1 row-start-2 min-w-0 cursor-text select-text whitespace-pre-wrap rounded-md border border-transparent px-2 py-1.5 text-sm leading-relaxed text-fg">
                 {row.sourceText}
@@ -317,13 +393,20 @@ export function ReviewRow(props: {
                         {t("workspace.localization.table.staleHint")}
                     </div>
                 ) : null}
-                <TargetEditor row={row} target={target} editing={props.editing} onTargetChange={props.onTargetChange} />
+                <TargetEditor
+                    row={row}
+                    locale={props.locale}
+                    target={target}
+                    editing={props.editing}
+                    heldBy={heldBy}
+                    onTargetChange={props.onTargetChange}
+                />
                 <div className="flex items-center gap-1.5">
                     <button
                         type="button"
                         onClick={() => props.onApprove(row)}
                         className="inline-flex h-6 items-center gap-1.5 rounded-md bg-success/15 px-2.5 text-xs font-medium text-success transition-colors hover:bg-success/25 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-success/15"
-                        {...freeze.writes(!canApprove, t("workspace.localization.table.markReviewed"))}
+                        {...freeze.writes(!canApprove || held !== null, held ?? t("workspace.localization.table.markReviewed"))}
                     >
                         <Check className="h-3.5 w-3.5" />
                         {t("workspace.localization.table.reviewApprove")}
@@ -332,7 +415,7 @@ export function ReviewRow(props: {
                         type="button"
                         onClick={() => props.onReturn(row)}
                         className="inline-flex h-6 items-center gap-1.5 rounded-md bg-fill px-2.5 text-xs font-medium text-fg-muted transition-colors hover:bg-fill-strong hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-fill disabled:hover:text-fg-muted"
-                        {...freeze.writes(!canReturn, t("workspace.localization.table.unmarkReviewed"))}
+                        {...freeze.writes(!canReturn || held !== null, held ?? t("workspace.localization.table.unmarkReviewed"))}
                     >
                         <Undo2 className="h-3.5 w-3.5" />
                         {t("workspace.localization.table.reviewReturn")}
@@ -359,7 +442,9 @@ export function AddKeyRow(props: { onSubmit: (name: string, sourceText: string) 
     // milestone exists to remove - and again at the submit, because the opener only decides whether the
     // form appears. A row already expanded when the freeze arrives keeps both its Enter keys and its
     // tick, and neither of them consults the button that is no longer on screen.
-    const freeze = useFreezeGuard();
+    // Scoped to the key registry, which a live session does NOT carry: declaring a UI string has no
+    // verb, so it stays off for the length of a session while the translations beside it stay live.
+    const freeze = useFreezeGuard(localizationKeysFreezeScope());
     const [expanded, setExpanded] = useState(false);
     const [nameDraft, setNameDraft] = useState("");
     const [sourceDraft, setSourceDraft] = useState("");

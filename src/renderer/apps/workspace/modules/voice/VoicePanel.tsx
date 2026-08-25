@@ -14,12 +14,17 @@ import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, Switch, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
 
 /**
- * The voice locale menu rows that keep working while frozen: the two exports.
+ * The voice locale menu rows that keep working under ANY freeze: the two exports.
  *
  * They write a CSV to a path the author picks, which is outside the project - the freeze is about the
- * project, not about the author's desktop. Import and Remove Language write the project and are off.
+ * project, not about the author's desktop. Importing audio and Remove Language write documents no
+ * freeze exempts and are off.
+ *
+ * ⚠ Folding a recording script back in is not here and is not always off either: it writes one
+ * language's takes, which a live session leaves writable. See where this is used.
  */
 const FREEZE_READ_ONLY_VOICE_MENU_IDS: ReadonlySet<string> = new Set(["export-script", "export-pickup"]);
 import { useRegistry } from "../../registry";
@@ -78,9 +83,19 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
-    // Adding and removing a voice language, and importing audio, write the project. Auditioning,
-    // switching locale and exporting a recording script do not.
+    // Adding and removing a voice language write `.nlproj`, and importing audio writes the asset
+    // library; no partial freeze exempts either. Auditioning, switching locale and exporting a
+    // recording script write nothing at all.
     const freeze = useFreezeGuard();
+    const [localeMenu, setLocaleMenu] = useState<LocaleMenuState | null>(null);
+    /**
+     * Folding a recording script back in, which writes ONE language's takes and nothing else.
+     *
+     * Its own guard because a live session carries that document. ⚠ **Importing AUDIO is not here**,
+     * and the line between them is what each one writes rather than what it is called: audio lands
+     * in the asset library, which a session does not carry, so that row stays off under any freeze.
+     */
+    const scriptFreeze = useFreezeGuard(localeMenu ? voiceDocumentFreezeScope(localeMenu.code) : undefined);
 
     const voiceService = useMemo(
         () => (context && isInitialized ? context.services.get<VoiceService>(Services.Voice) : null),
@@ -103,8 +118,6 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
     const [rows, setRows] = useState<PanelRow[]>([]);
     const [progressByLocale, setProgressByLocale] = useState<Record<string, VoiceProgress>>({});
     const [refreshTick, setRefreshTick] = useState(0);
-
-    const [localeMenu, setLocaleMenu] = useState<LocaleMenuState | null>(null);
 
     // Add-language inline form (collapsed by default; the panel shows no idle inputs).
     const [addingLocale, setAddingLocale] = useState(false);
@@ -426,7 +439,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
      * worse than one that never opened.
      */
     const handleImportScript = useCallback(async (code: string) => {
-        if (!voiceService || !context || freeze.frozen) {
+        if (!voiceService || !context || scriptFreeze.frozen) {
             return;
         }
         try {
@@ -451,7 +464,7 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [voiceService, context, freeze.frozen, uiService, t]);
+    }, [voiceService, context, scriptFreeze.frozen, uiService, t]);
 
     /**
      * Take a booth's folder of clips into the library and link each one to the line it belongs to.
@@ -545,8 +558,18 @@ export function VoicePanel({ panelId }: PanelComponentProps) {
         ];
     }, [localeMenu, handleExportScript, handleImportAudio, handleImportScript, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
-        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_VOICE_MENU_IDS, freeze.reason),
-        [freeze, localeMenuItems],
+        () => freezeContextMenuRows(
+            localeMenuItems,
+            freeze.frozen,
+            // The script import keeps working while THIS language's takes are writable, which is what
+            // a live session leaves them. Named the way the helper insists on: what keeps working,
+            // never what is switched off.
+            scriptFreeze.frozen
+                ? FREEZE_READ_ONLY_VOICE_MENU_IDS
+                : new Set([...FREEZE_READ_ONLY_VOICE_MENU_IDS, "import-script"]),
+            freeze.reason,
+        ),
+        [freeze, scriptFreeze.frozen, localeMenuItems],
     );
 
     const locales = config?.voicedLocales ?? [];

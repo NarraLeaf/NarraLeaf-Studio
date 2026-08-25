@@ -46,7 +46,9 @@ import { useUIDocumentRevision } from "@/lib/ui-editor/hooks/useUIDocumentRevisi
 import { isValidLocalizationKeyName, type LocalizationDocument } from "@shared/types/localization";
 import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
+import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
+import { TranslationClaimsProvider, useTranslationClaimHold } from "./localizationLiveSession";
 import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
@@ -120,6 +122,10 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         () => (context && isInitialized ? context.services.get<UIDocumentService>(Services.UIDocument) : null),
         [context, isInitialized],
     );
+    const liveService = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
     const uiDocumentRevision = useUIDocumentRevision(uiDocumentService);
 
     const [stories, setStories] = useState<StoryLibraryEntry[]>([]);
@@ -148,6 +154,14 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
      * them would pay for all of it while only one can ever hold the caret.
      */
     const [inlineEdit, setInlineEdit] = useState<{ unitId: string; caret: number | null } | null>(null);
+    /**
+     * The line whose plain box holds the caret, for the rows that have no inline field.
+     *
+     * Beside {@link inlineEdit} rather than folded into it: that one carries where the caret went in
+     * and drives which row is drawn as a field, and a plain box needs neither. What both feed is the
+     * claim - a session holds the line somebody is inside, whichever shape of row it is.
+     */
+    const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -523,7 +537,20 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
         caret: inlineEdit?.caret ?? null,
         onEdit: (unitId, caret) => setInlineEdit({ unitId, caret }),
         onStopEdit: () => setInlineEdit(null),
+        onFocusUnit: setFocusedUnitId,
     }), [inlineEdit]);
+
+    /**
+     * Hold the line this table has open, so nobody in the room writes over it.
+     *
+     * Two ways a line can be open and both count: the inline field, for a line that carries tags,
+     * and the plain box for everything else. A claim asserted for one shape and not the other is a
+     * line somebody can be written over while they are inside it - and the claim is what the write
+     * boundary's refusal is built on, so it has to be true of every row.
+     *
+     * Silent outside a session.
+     */
+    useTranslationClaimHold({ service: liveService, locale, unitId: inlineEdit?.unitId ?? focusedUnitId });
 
     const handleTargetChange = useCallback((row: TranslationTableRow, target: string) => {
         localizationService?.updateUnit(locale, row.unitId, row.sourceText, { target });
@@ -615,6 +642,10 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
     const reviewQueueEmpty = mode === "review" && reviewFilter === "unreviewed" && rows.length > 0 && visibleRows.length === 0;
 
     return (
+        // One subscription for the whole table rather than one per row: a session publishes on every
+        // operation anybody in the room applies, and three hundred rows reading the service would
+        // re-render on every remote keystroke.
+        <TranslationClaimsProvider locale={locale}>
         <div className="flex h-full min-h-0 flex-col bg-surface">
             <div className="flex items-center gap-3 border-b border-edge px-4 py-2">
                 <div className="flex min-w-0 items-center gap-2">
@@ -728,6 +759,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                     ) : mode === "review" ? (
                                         <ReviewRow
                                             row={entry.row}
+                                            locale={locale}
                                             speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
@@ -739,6 +771,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                     ) : (
                                         <TranslateRow
                                             row={entry.row}
+                                            locale={locale}
                                             speaker={entry.row.speaker}
                                             state={state}
                                             target={target}
@@ -755,6 +788,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                 )}
             </div>
         </div>
+        </TranslationClaimsProvider>
     );
 }
 
