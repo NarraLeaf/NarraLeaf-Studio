@@ -92,6 +92,9 @@ export interface GraphEdgeFacts {
     readonly key: string;
     readonly from: string;
     readonly to: string;
+    /** The pins the wire joins, kept apart from the key so a drawing can end on them. */
+    readonly fromPort: string;
+    readonly toPort: string;
 }
 
 export interface GraphFacts {
@@ -312,12 +315,16 @@ function graphFacts(
         if (fromNode === null || toNode === null) {
             continue;
         }
+        const fromPort = text(from?.port);
+        const toPort = text(to?.port);
         edges.push({
             // Built exactly as the spec builds it, because it is the key a change is addressed by
             // and a wire the two spell differently is a wire that can never be marked.
-            key: `${fromNode}:${text(from?.port)}->${toNode}:${text(to?.port)}`,
+            key: `${fromNode}:${fromPort}->${toNode}:${toPort}`,
             from: fromNode,
             to: toNode,
+            fromPort,
+            toPort,
         });
     }
 
@@ -346,9 +353,28 @@ function finiteOr(value: unknown, fallback: number): number {
 // Geometry
 // ---------------------------------------------------------------------------
 
-/** A node card, in graph coordinates. Fixed, because this is a picture of a graph, not the editor. */
+/**
+ * The card a node falls back to when nothing is known about its type, in graph coordinates.
+ *
+ * Every other node is sized from its own pins by `graphNodeShape.ts`. This is what is left when
+ * the catalogue cannot be reached: a plain box with a title in it, which is what the whole canvas
+ * used to be.
+ */
 export const GRAPH_NODE_WIDTH = 168;
 export const GRAPH_NODE_HEIGHT = 40;
+
+/** How big one card is, in graph coordinates. */
+export interface GraphNodeSize {
+    readonly width: number;
+    readonly height: number;
+}
+
+const GRAPH_NODE_FALLBACK_SIZE: GraphNodeSize = { width: GRAPH_NODE_WIDTH, height: GRAPH_NODE_HEIGHT };
+
+/** The size of a card whose shape the caller has not worked out. */
+function fallbackSize(): GraphNodeSize {
+    return GRAPH_NODE_FALLBACK_SIZE;
+}
 
 /** Space around the outermost cards, so a node at the edge is not cut in half by the frame. */
 const GRAPH_VIEWPORT_PADDING = 24;
@@ -370,10 +396,15 @@ export interface GraphViewport {
  * and an author comparing them would read that as a change. One box taken from both sides means a
  * node at the same coordinates is at the same place in both columns - and a node that really did
  * move is the only thing that appears to.
+ *
+ * `sizeOf` answers how big each card is, because a node's height follows its pin count and the box
+ * has to hold the tallest of them. It is handed in rather than computed, so the catalogue this
+ * pane must survive without stays outside the arithmetic.
  */
 export function sharedGraphViewport(
     sides: readonly (readonly GraphNodeFacts[])[],
     frame: { readonly width: number; readonly height: number },
+    sizeOf: (node: GraphNodeFacts) => GraphNodeSize = fallbackSize,
 ): GraphViewport {
     const nodes = sides.flat();
     if (nodes.length === 0) {
@@ -382,8 +413,8 @@ export function sharedGraphViewport(
 
     const left = Math.min(...nodes.map(node => node.x)) - GRAPH_VIEWPORT_PADDING;
     const top = Math.min(...nodes.map(node => node.y)) - GRAPH_VIEWPORT_PADDING;
-    const right = Math.max(...nodes.map(node => node.x + GRAPH_NODE_WIDTH)) + GRAPH_VIEWPORT_PADDING;
-    const bottom = Math.max(...nodes.map(node => node.y + GRAPH_NODE_HEIGHT)) + GRAPH_VIEWPORT_PADDING;
+    const right = Math.max(...nodes.map(node => node.x + sizeOf(node).width)) + GRAPH_VIEWPORT_PADDING;
+    const bottom = Math.max(...nodes.map(node => node.y + sizeOf(node).height)) + GRAPH_VIEWPORT_PADDING;
 
     const width = right - left;
     const height = bottom - top;
@@ -394,16 +425,17 @@ export function sharedGraphViewport(
     return { x: left, y: top, width, height, scale };
 }
 
-/** One node's box on screen, given the viewport both columns share. */
+/** One node's box on screen, given the viewport both columns share and how big its card is. */
 export function graphNodeBox(
     node: GraphNodeFacts,
     viewport: GraphViewport,
+    size: GraphNodeSize = GRAPH_NODE_FALLBACK_SIZE,
 ): { left: number; top: number; width: number; height: number } {
     return {
         left: (node.x - viewport.x) * viewport.scale,
         top: (node.y - viewport.y) * viewport.scale,
-        width: GRAPH_NODE_WIDTH * viewport.scale,
-        height: GRAPH_NODE_HEIGHT * viewport.scale,
+        width: size.width * viewport.scale,
+        height: size.height * viewport.scale,
     };
 }
 
