@@ -415,8 +415,8 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the story it is about.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the story it is about.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the story it is about and the cast.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the story it is about and the cast.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -436,7 +436,7 @@ export const workspace = {
         livePendingOne: "1 change is waiting for the host.",
         livePendingMany: "{count} changes are waiting for the host.",
         // What the session takes, said once rather than discovered one control at a time.
-        liveFrozenWhat: "Only the session's story is saved. Everything else in this project is current and read-only until the session ends.",
+        liveFrozenWhat: "Only the session's story and the cast are saved. Everything else in this project is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -679,7 +679,7 @@ export const workspace = {
             // A live session saves its own story and refuses the rest, so the title above
             // would be false about the file the author is most likely typing into.
             frozenTitleSession: "That file is not being saved",
-            frozenDetailSession: "A live session is open. Only its story is saved; leave the session to change anything else.",
+            frozenDetailSession: "A live session is open. Only its story and the cast are saved; leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
