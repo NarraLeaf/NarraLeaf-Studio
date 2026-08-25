@@ -314,41 +314,40 @@ export class GroupAssetsManager {
         };
     }
 
+    /**
+     * Whether one asset may be filed in this folder, as the message saying it may not.
+     *
+     * Split out of the move itself so that a multi-selection can be checked whole before a single
+     * record changes - see {@link AssetsService.moveAssetsToGroup}. Half a drag is an arrangement the
+     * author never asked for, and the half that landed would look exactly like the whole of it.
+     *
+     * The category is the asset's own, which is what refuses a cross-category move: an mp3 may join
+     * any folder under Media, and no folder anywhere else.
+     */
+    public checkMoveTarget<T extends AssetType>(asset: Asset<T>, groupId?: string): string | null {
+        this.assertGroups();
+        const category = categoryOfAssetType(asset.type);
+        if (groupId && !this.assetsGroups[category][groupId]) {
+            return `Group not found: ${groupId}`;
+        }
+        if (!this.assetsService.getAssetsMetadataManager().getAssets()[asset.type][asset.id]) {
+            return `Asset not found: ${asset.id}`;
+        }
+        return null;
+    }
+
+    /**
+     * File one asset in a folder.
+     *
+     * A thin front on {@link AssetsService.moveAssetsToGroup}, which is where filing actually
+     * happens: one asset is a selection of one, and having two paths would mean a live session heard
+     * about one of them - the batch verb is stated there.
+     */
     public async moveAssetToGroup<T extends AssetType>(
         asset: Asset<T>,
         groupId?: string
     ): Promise<RequestStatus<void>> {
-        this.assertGroups();
-
-        // Verify group exists if provided. The category is the asset's own, which is what refuses a
-        // cross-category move: an mp3 may join any folder under Media, and no folder anywhere else.
-        const category = categoryOfAssetType(asset.type);
-        if (groupId && !this.assetsGroups![category][groupId]) {
-            return {
-                success: false,
-                error: `Group not found: ${groupId}`,
-            };
-        }
-
-        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
-        if (!existingAsset) {
-            return {
-                success: false,
-                error: `Asset not found: ${asset.id}`,
-            };
-        }
-
-        existingAsset.groupId = groupId;
-        this.assetsService.markDirty(asset.type);
-
-        // Emit update event so UI can react
-        this.assetsService.getEvents().emit("updated", existingAsset);
-
-        return {
-            success: true,
-            data: void 0,
-        };
+        return this.assetsService.moveAssetsToGroup([asset as Asset<AssetType, AssetSource>], groupId);
     }
 
     /**
