@@ -333,6 +333,11 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/** Nobody is at the keyboard in these tests, so nothing is being held down. */
+const NO_HELD_INPUT_HOST: BlueprintHostApiRuntime["input"] = {
+    isActionHeld: () => false,
+};
+
 /** No host in these tests owns a window, so no cursor can be moved from one. */
 const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
     moveTo: async () => ({ outcome: "unsupported", error: "no window" }),
@@ -466,6 +471,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
@@ -635,6 +641,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
@@ -835,6 +842,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
