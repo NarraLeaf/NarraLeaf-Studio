@@ -41,6 +41,7 @@ type BlueprintNodeGraphContextDef = Pick<
     | "graphKinds"
     | "isPure"
     | "isLatent"
+    | "allowInBlueprintValueGraph"
     | "role"
     | "scope"
     | "magicElementTarget"
@@ -98,6 +99,14 @@ function resolveAllowedWidgetEventHeadTypesForPalette(ctx: BlueprintPaletteConte
 }
 
 export function isBlueprintNodeAllowedInBlueprintValueGraph(def: BlueprintNodeGraphContextDef): boolean {
+    // A node the host did not define answers for itself. Everything below this line is a review of
+    // the built-in catalogue - which nodes are safe to re-run every time a binding's dependencies
+    // change - and a plugin's node cannot be reviewed that way, nor could it ever be on the category
+    // list at the end. So it declares the door open and the value runtime's own behaviour is what
+    // constrains it; `allowInBlueprintValueGraph` documents which parts of that behaviour bite.
+    if (!blueprintNodeRegistry.isBuiltIn(def.type)) {
+        return def.allowInBlueprintValueGraph === true;
+    }
     if (def.role === "eventHead") {
         return def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_INIT || def.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_FLUSH;
     }
