@@ -1,5 +1,6 @@
 import { getInterface } from "@/lib/app/bridge";
 import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
+import type { LiveAssetBytePart, LiveAssetBytes } from "@shared/live/ops";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import { Services, WorkspaceContext } from "../../services";
@@ -427,6 +428,12 @@ export class LocalAssetsManager {
             ...(groupId ? { groupId } : {}),
         };
 
+        if (await this.assetsService.offerCreatedAsset(asset, this.carryOwnFile())) {
+            // A live session has it. The bytes are on this machine's disk already and the record is
+            // filed when the effect comes back - see `AssetsService.offerCreatedAsset`.
+            return { success: true, data: asset };
+        }
+
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
         (metadata[type] as Record<string, Asset<T>>)[id] = asset;
 
@@ -615,6 +622,14 @@ export class LocalAssetsManager {
         };
 
         // Save metadata
+        if (await this.assetsService.offerCreatedAsset(
+            newAsset as Asset<AssetType, AssetSource>,
+            // ⚠ Not a transfer. Every machine in the room already holds the file this is a copy of,
+            // so duplicating a two-hundred-megabyte video costs one small message.
+            { from: "asset", assetId: asset.id },
+        )) {
+            return { success: true, data: newAsset as Asset<T, AssetSource.Local> };
+        }
         (metadata[asset.type] as Record<string, Asset<T>>)[newId] = newAsset as Asset<T>;
         this.assetsService.markDirty(asset.type);
 
@@ -885,6 +900,15 @@ export class LocalAssetsManager {
             ...(detection.entry ? { extras: { modelEntry: detection.entry } } : {}),
         };
 
+        if (await this.assetsService.offerCreatedAsset(
+            asset as Asset<AssetType, AssetSource>,
+            // A bundle is a directory, so it is one transfer per file in it - which is the whole
+            // reason `LiveAssetBytePart` carries a path at all.
+            { from: "transfer", parts: listing.data.files.map(file => this.carryBundleFile(file)) },
+        )) {
+            return { success: true, data: asset };
+        }
+
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
         (metadata[type] as Record<string, Asset<T>>)[id] = asset;
 
@@ -1002,6 +1026,10 @@ export class LocalAssetsManager {
             }
         }
 
+        if (await this.assetsService.offerCreatedAsset(asset as Asset<AssetType, AssetSource>, this.carryOwnFile())) {
+            return { success: true, data: asset };
+        }
+
         // update assets metadata
         record[id] = asset;
 
@@ -1084,6 +1112,25 @@ export class LocalAssetsManager {
             ? await appPrivilegedFacade.fs.copyDir(srcPath, destPath)
             : await appPrivilegedFacade.fs.copyFile(srcPath, destPath);
         return copied.success && copied.data.ok;
+    }
+
+    /**
+     * One file to carry: the asset's own payload.
+     *
+     * The size and the fingerprint are filled in by the service when it reads the file back - it is
+     * the one that knows whether the file is too large for a session to carry, and it must not be
+     * told twice.
+     */
+    private carryOwnFile(): LiveAssetBytes {
+        return {
+            from: "transfer",
+            parts: [{ path: null, transferId: this.assetsService.mintTransferId(), size: 0, digest: "" }],
+        };
+    }
+
+    /** One file inside a bundle, by its bundle-relative path. */
+    private carryBundleFile(path: string): LiveAssetBytePart {
+        return { path, transferId: this.assetsService.mintTransferId(), size: 0, digest: "" };
     }
 
     public getLocalAssetPath(name: string): string {

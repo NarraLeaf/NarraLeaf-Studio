@@ -104,6 +104,15 @@ export class RemoteAssetsManager {
             ...(groupId ? { groupId } : {}),
         };
 
+        if (await this.assetsService.offerCreatedAsset(asset, {
+            // The snapshot is a file on this machine like any other by the time it gets here: a
+            // remote asset is a PINNED reference, and nobody else is going to fetch the URL.
+            from: "transfer",
+            parts: [{ path: null, transferId: this.assetsService.mintTransferId(), size: 0, digest: "" }],
+        })) {
+            return { success: true, data: asset };
+        }
+
         const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
         (metadata[type] as Record<string, Asset<AssetType, AssetSource>>)[id] = asset;
         this.assetsService.markDirty(type);
