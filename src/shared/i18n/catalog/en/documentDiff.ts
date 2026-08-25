@@ -80,6 +80,7 @@ export const documentDiff = {
         dlc: "DLC",
         assetSets: "Asset sets",
         assets: "Assets",
+        folders: "Asset folders",
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */
         brandColors: "Brand colors",

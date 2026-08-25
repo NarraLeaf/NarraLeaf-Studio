@@ -237,12 +237,14 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 applyOp: op => voice().applyLiveOp(op),
             },
             assets: {
-                setSink: sink => assets().setOperationSink(sink),
+                setSink: (sink, blobs) => assets().setOperationSink(sink, blobs),
                 // No load step, unlike the two libraries: an asset shard is read as the workspace
                 // starts rather than when a panel opens it, so this only says which ones are there.
                 shardTypes: () => assets().shardTypes(),
                 records: assetType => assets().recordsOf(assetType),
                 hasRecord: (assetType, assetId) => assets().recordOf(assetType, assetId) !== null,
+                folderCategories: () => assets().folderCategories(),
+                folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
             },
             version: {

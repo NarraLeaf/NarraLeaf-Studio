@@ -1114,6 +1114,9 @@ function applyAssets(records: Record<string, LiveAssetRecord>, op: LiveAssetOp):
         records[op.assetId] = { ...op.record };
         return;
     }
+    if (op.op !== "move-assets") {
+        return;
+    }
     for (const move of op.moves) {
         const record = records[move.assetId];
         if (!record) {
