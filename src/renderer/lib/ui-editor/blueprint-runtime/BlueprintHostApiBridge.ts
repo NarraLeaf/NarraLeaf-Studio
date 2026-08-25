@@ -61,6 +61,11 @@ import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/l
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import {
+    buildUIWidgetAddress,
+    readUIWidgetAddress,
+    readUIWidgetAddressElementId,
+} from "@shared/types/ui-editor/widgetAddress";
+import {
     findUISurfaceActionEnablement,
     readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
@@ -136,6 +141,16 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
+    /**
+     * Widget props this drawing has written over the authored ones.
+     *
+     * The other fields here are single facts about a widget; this one is the widget's own property
+     * bag, and it is here rather than written onto the element record for the reason the whole patch
+     * exists: the record is the *document*, shared by every drawing of it. Writing text onto a
+     * component's element made all six placements of that component show the sixth one's text, and
+     * it also meant a running game was quietly editing the file the author saved.
+     */
+    props?: Record<string, unknown>;
     display?: boolean;
     visible?: boolean;
     enabled?: boolean;
@@ -1030,7 +1045,16 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onStorageDurability?: () => Promise<GameStorageDurability>;
 };
 
-function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
+/**
+ * The element record behind a widget address.
+ *
+ * Takes an address rather than an element id because that is what every caller has: a running graph
+ * addresses a *drawing* (see `widgetAddress.ts`), and the document knows only elements. Splitting
+ * here rather than in each of the thirty-odd host API methods keeps the two ideas apart at exactly
+ * one seam - past this point everything is talking about the document, where drawings do not exist.
+ */
+function readDocumentElement(document: UIDocument, address: string): UIElement | undefined {
+    const elementId = readUIWidgetAddressElementId(address);
     const element = document.elements[elementId];
     if (element) {
         return element;
@@ -1300,8 +1324,28 @@ function jsonEquals(a: unknown, b: unknown): boolean {
     }
 }
 
-function readTextProperties(document: UIDocument, elementId: string): BlueprintTextProperties {
-    const el = assertTextElement(document, elementId);
+/**
+ * An element as one drawing of it currently is: the authored record under this drawing's overrides.
+ *
+ * Every widget reader takes the override map for this reason. Reading the record alone answers what
+ * the author saved, which stopped being the answer the moment a graph wrote anything - and made
+ * every "did this actually change?" guard compare against the wrong value.
+ */
+function withWidgetPropOverride(
+    element: UIElement,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): UIElement {
+    const props = overrides.get(address)?.props;
+    return props ? { ...element, props: { ...(element.props ?? {}), ...props } } : element;
+}
+
+function readTextProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintTextProperties {
+    const el = withWidgetPropOverride(assertTextElement(document, address), overrides, address);
     const p = getTextProps(el);
     return {
         text: p.text,
@@ -1629,8 +1673,12 @@ function patchButtonDefaultCursorAppearance(
     return changed ? { ...model, variants } : model;
 }
 
-function readButtonProperties(document: UIDocument, elementId: string): BlueprintButtonProperties {
-    const p = getButtonProps(assertButtonElement(document, elementId));
+function readButtonProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintButtonProperties {
+    const p = getButtonProps(withWidgetPropOverride(assertButtonElement(document, address), overrides, address));
     const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
     return {
         label: p.label,
@@ -1638,12 +1686,21 @@ function readButtonProperties(document: UIDocument, elementId: string): Blueprin
     };
 }
 
-function readContainerProperties(document: UIDocument, elementId: string): BlueprintContainerProperties {
-    return { clipContent: getContainerProps(assertContainerElement(document, elementId)).clipContent };
+function readContainerProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintContainerProperties {
+    const el = withWidgetPropOverride(assertContainerElement(document, address), overrides, address);
+    return { clipContent: getContainerProps(el).clipContent };
 }
 
-function readImageProperties(document: UIDocument, elementId: string): BlueprintImageProperties {
-    const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
+function readImageProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintImageProperties {
+    const p = getImageWidgetRectangleProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
     const fill = p.imageFill ?? null;
     const assetId = fill?.assetId?.trim() || null;
     return {
@@ -2360,6 +2417,38 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         widgetRuntimeStore.notifyRuntimePatchesChanged(options);
     };
 
+    /**
+     * The props this drawing is working with: what the author wrote, under what the graph has since
+     * written over it.
+     *
+     * Every widget read and every widget write goes through this. Reading the authored props alone
+     * would make a second write to the same property recompute from the original value - "set the
+     * text, then append to it" would append to what the author typed - and it would make the change
+     * checks that guard each setter compare against the wrong thing and skip the write.
+     */
+    const effectiveProps = (address: string, element: UIElement): Record<string, unknown> => {
+        const override = runtimePatches.get(address)?.props;
+        return override ? { ...(element.props ?? {}), ...override } : (element.props ?? {});
+    };
+
+    /** The element as this drawing currently sees it. Never the record the document holds. */
+    const effectiveElement = (address: string, element: UIElement): UIElement => {
+        const override = runtimePatches.get(address)?.props;
+        return override ? { ...element, props: { ...(element.props ?? {}), ...override } } : element;
+    };
+
+    /**
+     * Write props for one drawing.
+     *
+     * Takes the whole next bag rather than a delta, because that is what each setter already
+     * computes - and the merge below keeps the properties this write did not mention.
+     */
+    const writeWidgetProps = (address: string, props: Record<string, unknown>) => {
+        const previous = runtimePatches.get(address) ?? {};
+        runtimePatches.set(address, { ...previous, props: { ...(previous.props ?? {}), ...props } });
+        emitWidgetPatch(address, { props });
+    };
+
     const scheduleElementFlush = (elementId: string) => {
         if (!onElementFlush) {
             return;
@@ -2382,10 +2471,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 if (!target) {
                     continue;
                 }
-                void onElementFlush(id, {
+                // Named to the graphs listening for it, so the element rather than the drawing:
+                // `On Element Flush` heads pick themselves by element id, and a head cannot be
+                // written against one row of a list or one placement of a component.
+                const flushedElementId = readUIWidgetAddressElementId(id);
+                void onElementFlush(flushedElementId, {
                     element: {
                         surfaceId: activeSurfaceId,
-                        elementId: id,
+                        elementId: flushedElementId,
                         elementType: target.type,
                     },
                 });
@@ -2873,7 +2966,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getTextProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readTextProperties(document, elementId);
+                    return readTextProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2882,17 +2975,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.setTextProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const current = readTextProperties(document, elementId);
+                    const current = readTextProperties(document, runtimePatches, elementId);
                     const el = assertTextElement(document, elementId);
                     const normalized = normalizeTextPatch(current, patch);
                     if (!textPatchChanges(current, normalized)) {
                         return;
                     }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        ...normalized,
-                    };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), ...normalized });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2902,7 +2991,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getButtonProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readButtonProperties(document, elementId);
+                    return readButtonProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2912,7 +3001,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertButtonElement(document, elementId);
-                    const current = readButtonProperties(document, elementId);
+                    const current = readButtonProperties(document, runtimePatches, elementId);
                     const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, "label");
                     const hasCursorPatch = Object.prototype.hasOwnProperty.call(patch, "cursor");
                     const nextLabel = hasLabelPatch ? normalizeString(patch.label, current.label) : current.label;
@@ -2936,8 +3025,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!changed) {
                         return;
                     }
-                    el.props = nextProps;
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, nextProps);
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2947,7 +3035,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getContainerProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readContainerProperties(document, elementId);
+                    return readContainerProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2957,13 +3045,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertContainerElement(document, elementId);
-                    const current = readContainerProperties(document, elementId);
+                    const current = readContainerProperties(document, runtimePatches, elementId);
                     const clipContent = patch.clipContent === undefined ? current.clipContent : patch.clipContent === true;
                     if (clipContent === current.clipContent) {
                         return;
                     }
-                    el.props = { ...(el.props ?? {}), clipContent };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), clipContent });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2973,7 +3060,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getImageProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readImageProperties(document, elementId);
+                    return readImageProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2983,7 +3070,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertImageElement(document, elementId);
-                    const current = readImageProperties(document, elementId);
+                    const current = readImageProperties(document, runtimePatches, elementId);
                     const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
                     const assetId = hasAssetPatch
                         ? normalizeBlueprintImageAssetValue(patch.asset)?.assetId ?? null
@@ -3016,8 +3103,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                         nextProps = buildImageFillPropsUpdate(el, nextFill);
                     }
-                    el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...nextProps, imageFlipX: flipX, imageFlipY: flipY });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3247,7 +3333,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // and the two want different things from the author.
                     requireDocumentElement(document, elementId, "measuredRect");
                     return measureElementSurfaceRect(
-                        elementId,
+                        readUIWidgetAddressElementId(elementId),
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     )?.rect ?? null;
                 } finally {
@@ -3500,11 +3586,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
                         return;
                     }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        targetSurfaceId,
-                        params,
-                    };
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), targetSurfaceId, params });
                     const nextPatch: DevModeWidgetRuntimePatch = {
                         ...(runtimePatches.get(elementId) ?? {}),
                         frame: {
@@ -4451,7 +4533,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     requireDocumentElement(document, elementId, "movePointerToElement");
                     const measured = measureElementSurfaceRect(
-                        elementId,
+                        readUIWidgetAddressElementId(elementId),
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     );
                     if (!measured) {

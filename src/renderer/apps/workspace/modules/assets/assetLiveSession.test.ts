@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { assetsMetadataSpec } from "@shared/documents/specs";
+import { assetGroupsSpec, assetsMetadataSpec } from "@shared/documents/specs";
 import { freezeAllowsWrite } from "@/lib/app/writeFreeze";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import { assetClaimKey } from "@shared/live/ops";
-import { AssetType } from "@/lib/workspace/services/assets/assetTypes";
+import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { assetLibraryFreezeScope, othersAssetClaims } from "./assetLiveSession";
 
@@ -16,13 +16,27 @@ import { assetLibraryFreezeScope, othersAssetClaims } from "./assetLiveSession";
  * a dead control in a workspace that was told it could keep working.
  */
 describe("the scope the asset panel names", () => {
-    it("is every metadata shard, and exactly the paths a session declares writable", () => {
-        // The cast is in that set unconditionally - one per project - so the comparison is against
-        // the asset half of it.
-        const carried = liveSessionWritablePaths([], { translations: [], voice: [] }, Object.values(AssetType))
-            .filter(path => path.includes("assets.metadata."));
-        expect([...assetLibraryFreezeScope()].sort()).toEqual([...carried].sort());
-        expect(carried).toHaveLength(Object.values(AssetType).length);
+    it("is exactly what a session leaves writable for the library, and no more", () => {
+        // The two halves of one policy held against each other. A surface that offers an edit the
+        // gate then refuses is the "quietly discarding everything" failure with an encouraging cursor
+        // on it; a surface greyed over a write the gate would have allowed is a dead control.
+        const carried = liveSessionWritablePaths(
+            [],
+            { translations: [], voice: [] },
+            Object.values(AssetType),
+            ASSET_CATEGORY_ORDER,
+        ).filter(path => path.startsWith("assets/"));
+        // The row-order shards are the one thing a session leaves writable that this panel never
+        // names: nothing anybody presses writes them, and `AssetOrderManager` puts them right when
+        // the records move.
+        const named = new Set(assetLibraryFreezeScope());
+        for (const path of carried) {
+            if (path.includes("assets.order.")) {
+                expect(named.has(path)).toBe(false);
+                continue;
+            }
+            expect(named.has(path)).toBe(true);
+        }
     });
 
     it("is allowed by a session carrying the library, and refused by one that is not", () => {
@@ -40,18 +54,24 @@ describe("the scope the asset panel names", () => {
         expect(writable.some(path => freezeAllowsWrite(storyOnly, path))).toBe(false);
     });
 
-    it("names the shards through the document spec, so a shard that moves takes it along", () => {
+    it("names the shards through their document specs, so a shard that moves takes it along", () => {
         expect(assetLibraryFreezeScope()).toContain(assetsMetadataSpec.pathFor({ type: AssetType.Image }));
+        expect(assetLibraryFreezeScope()).toContain(assetGroupsSpec.pathFor({ category: "media" }));
     });
 
-    it("names nothing under assets/content, which is where a file's bytes live", () => {
-        // The rule the whole document rests on: a session carries what the project says about an
-        // asset and never the asset.
-        expect(assetLibraryFreezeScope().some(path => path.startsWith("assets/content"))).toBe(false);
-    });
-
-    it("names no folder shard, because a folder has no verb", () => {
-        expect(assetLibraryFreezeScope().some(path => path.includes("assets.groups."))).toBe(false);
+    it("names the payload root, and covers a file several directories inside it", () => {
+        // ⚠ The one path here with no document spec, because a payload is not a format anything
+        // parses. `freezeAllowsWrite` takes an entry as standing for everything under it, which is
+        // what makes one directory cover every file.
+        expect(assetLibraryFreezeScope()).toContain("assets/content");
+        const carrying = {
+            kind: "live-session",
+            session: "room-1",
+            writable: assetLibraryFreezeScope(),
+        } as const;
+        expect(freezeAllowsWrite(carrying, "assets/content/ab/cd/ef-1234.png")).toBe(true);
+        // And not a sibling that merely starts with the same letters.
+        expect(freezeAllowsWrite(carrying, "assets/contentious.json")).toBe(false);
     });
 });
 

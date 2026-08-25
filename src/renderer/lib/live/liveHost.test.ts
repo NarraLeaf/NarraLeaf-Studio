@@ -11,6 +11,7 @@ import {
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAssetFolder,
     type LiveAssetRecord,
     type LiveDocument,
     type LiveEffect,
@@ -86,6 +87,8 @@ type World = {
     takes: Record<string, Record<string, VoiceUnit>>;
     /** The asset metadata shards this session carries, by type. */
     assets: Record<string, Record<string, LiveAssetRecord>>;
+    /** The folder shards this session carries, by section. */
+    folders: Record<string, Record<string, LiveAssetFolder>>;
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
@@ -95,6 +98,9 @@ const LOCALES = { translations: ["ja"], voice: ["ja"] };
 
 /** The asset shards every host in these tests carries. */
 const ASSET_TYPES = ["image", "audio"];
+
+/** The sections every host in these tests carries folders for. */
+const ASSET_CATEGORIES = ["image", "media"];
 
 /** An asset record with nothing on it but what addresses it and what an edit can move. */
 function asset(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
@@ -140,6 +146,8 @@ function makeWorld(options: {
     takes?: Record<string, VoiceUnit>;
     /** The image records this host starts with. */
     assets?: Record<string, LiveAssetRecord>;
+    /** The image folders this host starts with. */
+    folders?: Record<string, LiveAssetFolder>;
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -163,6 +171,7 @@ function makeWorld(options: {
     const translations: World["translations"] = { ja: { ...(options.translations ?? {}) } };
     const takes: World["takes"] = { ja: { ...(options.takes ?? {}) } };
     const assets: World["assets"] = { image: { ...(options.assets ?? {}) }, audio: {} };
+    const folders: World["folders"] = { image: { ...(options.folders ?? {}) }, media: {} };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -173,6 +182,7 @@ function makeWorld(options: {
         translations,
         takes,
         assets,
+        folders,
         applied,
         host: new LiveHost({
             self: "host",
@@ -182,6 +192,8 @@ function makeWorld(options: {
             readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
+            assetCategories: ASSET_CATEGORIES,
+            readAssetFolders: category => folders[category] ?? null,
             digestOf: scope => {
                 if (scope.of === "scene") {
                     const scene = scenes[scope.sceneId];
@@ -199,11 +211,14 @@ function makeWorld(options: {
                 if (scope.of === "assets") {
                     return assetsDigest(assets[scope.assetType] ?? null);
                 }
+                if (scope.of === "asset-groups") {
+                    return assetsDigest(folders[scope.category] ?? null);
+                }
                 return castDigest(cast);
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, translations, takes, assets, op);
+                apply(scenes, story, cast, translations, takes, assets, folders, op);
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -230,9 +245,34 @@ function apply(
     translations: World["translations"],
     takes: World["takes"],
     assets: World["assets"],
+    folders: World["folders"],
     op: LiveOp,
 ): void {
     switch (op.op) {
+        case "create-assets":
+            for (const create of op.creates) {
+                assets[op.assetType][String(create.record.id)] = structuredClone(create.record) as LiveAssetRecord;
+            }
+            return;
+        case "replace-asset-content":
+            assets[op.assetType][op.assetId] = structuredClone(op.record) as LiveAssetRecord;
+            return;
+        case "delete-assets":
+            for (const assetId of op.assetIds) {
+                delete assets[op.assetType][assetId];
+            }
+            return;
+        case "set-asset-folder":
+            folders[op.category][op.folderId] = structuredClone(op.folder) as LiveAssetFolder;
+            return;
+        case "delete-asset-folder":
+            delete folders[op.category][op.folderId];
+            return;
+        case "restore-asset-folder":
+            for (const folder of op.folders) {
+                folders[op.category][String(folder.id)] = structuredClone(folder) as LiveAssetFolder;
+            }
+            return;
         case "update-asset":
             assets[op.assetType][op.assetId] = structuredClone(op.record) as LiveAssetRecord;
             return;
@@ -387,6 +427,8 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "voice", locale: (op as { locale: string }).locale };
         case "assets":
             return { doc: "assets", assetType: (op as { assetType: string }).assetType };
+        case "asset-groups":
+            return { doc: "asset-groups", category: (op as { category: string }).category };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -984,6 +1026,14 @@ describe("the claim check", () => {
                 units: [{ unitId: "text-b", unit: translation("遅いよ。") }],
             },
             "update-asset": { op: "update-asset", assetType: "image", assetId: "a1", record: asset("a1", "hall.png") },
+            "replace-asset-content": {
+                op: "replace-asset-content",
+                assetType: "image",
+                assetId: "a1",
+                record: asset("a1", "hall.png"),
+                bytes: { from: "trash" },
+            },
+            "delete-assets": { op: "delete-assets", assetType: "image", assetIds: ["a1"] },
         };
         expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
 

@@ -1,12 +1,12 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Fs } from "@shared/utils/fs";
 import { FileStat, FileEntry, FileDetails, DirectorySizeResult } from "@shared/utils/fs";
 import { splitFileEntry } from "@shared/utils/fileEntry";
 import { FsRejectErrorCode, FsRequestResult } from "@shared/types/os";
-import { dialog } from "electron";
 import { getRuntimeGrantPolicy } from "../permissions";
 
 function unauthorizedPathResult<T>(fsPath: string): FsRequestResult<T> {
@@ -511,7 +511,7 @@ export class FsSelectFileHandler extends IPCHandler<IPCEventType.fsSelectFile> {
                 ];
             }
 
-            const result = await dialog.showOpenDialog(window.win, dialogOptions);
+            const result = await showOpenDialog(window, dialogOptions);
 
             if (result.canceled) {
                 return this.success({
@@ -558,7 +558,7 @@ export class FsSelectDirectoryHandler extends IPCHandler<IPCEventType.fsSelectDi
                 securityScopedBookmarks: true,
             };
 
-            const result = await dialog.showOpenDialog(window.win, dialogOptions);
+            const result = await showOpenDialog(window, dialogOptions);
 
             if (result.canceled) {
                 return this.success({

@@ -359,7 +359,17 @@ export function freezeAllowsWrite(reason: WorkspaceFreezeReason, projectRelative
             // folding it would widen an exclusion list. Here it is one file named twice - once by
             // the write, once by the session - and on Windows those really are the same file.
             const target = fold(canonical(projectRelativePath));
-            return reason.writable.some((writable) => fold(canonical(writable)) === target);
+            return reason.writable.some((writable) => {
+                const allowed = fold(canonical(writable));
+                // ⚠ **An entry stands for itself and for everything under it.** Every entry used to
+                // be one document, and comparing whole paths was the same question either way; a
+                // session that carries the asset library also leaves `assets/content` writable, and
+                // an asset's bytes live several directories down inside it. A file entry has nothing
+                // under it, so this is exactly as strict for the documents it always was strict for -
+                // and it is a prefix at a separator, never a string prefix, so `assets/contentious`
+                // is not inside `assets/content`.
+                return target === allowed || target.startsWith(`${allowed}/`);
+            });
         }
     }
 }

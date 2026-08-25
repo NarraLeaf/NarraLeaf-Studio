@@ -93,6 +93,8 @@ export class StorageManager extends Manager {
     /** Asset manifests offered for a cross-window paste; see {@link recordAssetTransferOffer}. */
     private assetTransferOffers = new Map<string, AssetTransferOffer>();
     private namespaces = new Map<string, StorageNamespaceInfo>();
+    /** `mode:path` pairs already reported by {@link allowUnscopedFileAccess}, so each is logged once. */
+    private unscopedFileAccessSeen = new Set<string>();
     
     constructor(app: BaseApp) {
         super(app);
@@ -256,7 +258,48 @@ export class StorageManager extends Manager {
                 return true;
             }
         }
-        return false;
+        return this.allowUnscopedFileAccess(window, target, mode);
+    }
+
+    /**
+     * The experimental `unscoped-file-access` escape hatch: nothing granted this path, and the mode
+     * says to allow it anyway.
+     *
+     * It exists so a scripted run can put a file somewhere and have the window read it back without
+     * first walking a picker to mint the grant. It is the most abusable thing in the experimental
+     * registry, because what it produces is a Studio that reaches paths the shipped one refuses -
+     * and an acceptance run that leans on it is testing a product nobody has. Two things keep that
+     * visible rather than silent:
+     *
+     * - It is reached only after the real policy has already said no, so a launch with the flag on
+     *   behaves identically for every path a grant covers. The flag changes what happens to the
+     *   refusals, and nothing else.
+     * - Every distinct path it lets through is named in the log the first time. That line is the
+     *   record of what the run would have been refused without the flag, and the answer to "did
+     *   this pass on its own merits" is whether the paths it touched appear there.
+     *
+     * Protected storage is not included. Authorization, signing credentials and the plugin
+     * directories are refused before this is reached (see {@link getProtectedStorageRoots}), and a
+     * test flag is not a reason for a renderer to reach a sealed private key. Plugin permissions
+     * are untouched for the same reason: they are checked separately, against what the author
+     * installed the plugin with, and widening them would make a plugin look capable of things it
+     * was never granted.
+     */
+    private allowUnscopedFileAccess(window: AppWindow, target: string, mode: FileSystemAccessMode): boolean {
+        if (!this.app.hasExperimentalCondition("unscoped-file-access")) {
+            return false;
+        }
+
+        const seen = `${mode}:${target}`;
+        if (!this.unscopedFileAccessSeen.has(seen)) {
+            this.unscopedFileAccessSeen.add(seen);
+            this.app.logger.warn(
+                `[Experimental] unscoped-file-access allowed ${mode} on ${target} for the `
+                + `${window.getWindowType()} window. Nothing granted that path; Studio as shipped `
+                + "refuses it.",
+            );
+        }
+        return true;
     }
 
     public async isPathProtected(fsPath: string): Promise<boolean> {

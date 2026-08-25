@@ -1342,14 +1342,15 @@ export type LiveRefusalReason =
      */
     | "asset-id-taken"
     /**
-     * The bytes never arrived, so the record was not written.
+     * A folder with folders inside it, and the author did not ask for those to go too.
      *
-     * The failure a channel that can drop a message produces, and it is deliberately loud: a record
-     * filed without its file is a row in the browser that draws nothing and builds into nothing, and
-     * the author who dragged the file in is the only person who still has it.
+     * ⚠ There is deliberately no refusal for "the bytes have not arrived". The host decides about
+     * records, and whether a particular machine has a file yet is that machine's own business: the
+     * slices are still in flight when the operation is stated, so a host that waited for them would
+     * refuse almost every import. A machine short of a file asks for it (`LiveBlobNeeded`) and the
+     * library reports an unresolved reference until it lands - which is a state it already has, for
+     * assets that arrived by every other route.
      */
-    | "asset-bytes-missing"
-    /** A folder with folders inside it, and the author did not ask for those to go too. */
     | "folder-not-empty"
     /**
      * The operation will not fit in one payload.
