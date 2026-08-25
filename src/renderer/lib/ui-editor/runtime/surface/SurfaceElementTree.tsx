@@ -11,6 +11,7 @@ import {
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
 import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -30,6 +31,7 @@ import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownW
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 import {
     useWidgetRuntimeStateStore,
+    WidgetRuntimeInstanceProvider,
     WidgetRuntimeScopeProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
@@ -759,15 +761,26 @@ function NestedSurfaceInstance(props: {
     );
 }
 
-function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, DevModeWidgetRuntimePatch>): UIElement {
-    const patch = patches[element.id];
+/**
+ * The element as this drawing of it currently is.
+ *
+ * Looked up by address rather than by element id: one element is drawn once per list row and once
+ * per component placement, and a patch found by id alone would be every drawing's patch. That is
+ * what made six placements of one component all show the sixth one's text.
+ */
+function applyWidgetRuntimePatches(
+    element: UIElement,
+    patches: Record<string, DevModeWidgetRuntimePatch>,
+    instanceKey?: string,
+): UIElement {
+    const patch = patches[buildUIWidgetAddress(element.id, instanceKey)];
     if (!patch) {
         return element;
     }
     const next: UIElement = {
         ...element,
         layout: { ...element.layout },
-        props: { ...(element.props ?? {}) },
+        props: { ...(element.props ?? {}), ...(patch.props ?? {}) },
     };
     if (patch.visible !== undefined) {
         next.layout.visible = patch.visible;
@@ -916,6 +929,12 @@ function renderLinkedComponentInstanceContent(input: {
         pointerEvents: "none",
     };
     return (
+        // The placement is announced to everything below it, the way a list announces a row. Without
+        // it the *read* side of widget runtime state keys by the template - so pointing at one
+        // placement lights up all of them, and a value one placement wrote is read back by its
+        // siblings. The write side has been addressing the placement since widget addresses existed;
+        // this is the other half of the same pairing.
+        <WidgetRuntimeInstanceProvider instance={{ key: componentInstanceKey, selected: false }}>
         <div style={viewportStyle}>
             <div style={contentStyle}>
                 {renderElementTree(
@@ -943,6 +962,7 @@ function renderLinkedComponentInstanceContent(input: {
                 )}
             </div>
         </div>
+        </WidgetRuntimeInstanceProvider>
     );
 }
 
@@ -972,8 +992,8 @@ function renderElementTree(
     animationPlan: SurfaceAnimationPlan | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
-    const runtimePatch = widgetRuntimePatches?.[element.id];
-    const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
+    const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
+    const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {}, instanceKey);
     const bound =
         blueprintBindingContext != null
             ? mergeElementWithBlueprintBindings(

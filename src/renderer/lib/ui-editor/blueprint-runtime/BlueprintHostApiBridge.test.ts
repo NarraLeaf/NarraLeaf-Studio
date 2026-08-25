@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
+import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement } from "@shared/types/ui-editor/document";
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
@@ -132,11 +132,23 @@ function createDocument(): UIDocument {
     };
 }
 
-function resolvedImageAssetId(document: UIDocument): string | null {
-    const image = document.elements.image;
-    if (!image) {
+/**
+ * The element as the screen would draw it: the authored record under whatever the host has written.
+ *
+ * The host does not write onto the document - it cannot, since one element is drawn once per list
+ * row and once per component placement, and the record is shared by all of them. So a test that
+ * wants to see a write has to look where the write went.
+ */
+function drawnElement(document: UIDocument, elementId: string, patches: Record<string, DevModeWidgetRuntimePatch>): UIElement {
+    const element = document.elements[elementId]!;
+    return { ...element, props: { ...(element.props ?? {}), ...(patches[elementId]?.props ?? {}) } };
+}
+
+function resolvedImageAssetId(document: UIDocument, patches: Record<string, DevModeWidgetRuntimePatch>): string | null {
+    if (!document.elements.image) {
         return null;
     }
+    const image = drawnElement(document, "image", patches);
     const appearance = (image.props as { appearance?: AppearanceModel | null } | undefined)?.appearance;
     return resolveImageRectangleLike(image, appearance, {
         signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
@@ -540,13 +552,20 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
 
     it("writes Button pointer changes through the default appearance cursor", async () => {
         const document = createDocument();
-        const hostApi = createHostApi({ document });
+        const patches: Record<string, DevModeWidgetRuntimePatch> = {};
+        const hostApi = createHostApi({
+            document,
+            onWidgetPatch: (elementId, patch) => {
+                patches[elementId] = { ...(patches[elementId] ?? {}), ...patch };
+            },
+        });
+        const authored = (document.elements.button!.props as { appearance: AppearanceModel }).appearance;
 
         expect(hostApi.widget.getButtonProperties("button").cursor).toBe("auto");
 
         await hostApi.widget.setButtonProperties("button", { cursor: "crosshair" });
 
-        const button = document.elements.button!;
+        const button = drawnElement(document, "button", patches);
         const appearance = (button.props as { appearance: AppearanceModel }).appearance;
         const cursorGroup = appearance.variants[0]?.propertyGroups.find(group => group.key === "cursor");
         expect(hostApi.widget.getButtonProperties("button").cursor).toBe("crosshair");
@@ -554,11 +573,26 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         expect(resolveButtonVisualProps(button, appearance, {
             signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
         }).cursor).toBe("crosshair");
+        // The authored record is left exactly as the author saved it. A running game editing the
+        // project file is what writing onto the document amounted to.
+        expect(authored.variants[0]?.propertyGroups.find(group => group.key === "cursor")?.rows[0]?.value)
+            .not.toBe("crosshair");
     });
 
     it("reads and writes ImageAsset values while accepting legacy assetId patches", async () => {
         const document = createDocument();
-        const hostApi = createHostApi({ document });
+        const patches: Record<string, DevModeWidgetRuntimePatch> = {};
+        const hostApi = createHostApi({
+            document,
+            onWidgetPatch: (elementId, patch) => {
+                patches[elementId] = {
+                    ...(patches[elementId] ?? {}),
+                    ...patch,
+                    props: { ...(patches[elementId]?.props ?? {}), ...(patch.props ?? {}) },
+                };
+            },
+        });
+        const authoredFill = { ...(document.elements.image!.props!.imageFill as Record<string, unknown>) };
 
         expect(hostApi.widget.getImageProperties("image").asset).toEqual({
             kind: "imageAsset",
@@ -574,8 +608,9 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         await hostApi.widget.setImageProperties("image", {
             asset: { kind: "imageAsset", assetId: "new-image" },
         });
-        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBe("new-image");
-        expect(resolvedImageAssetId(document)).toBe("new-image");
+        expect((drawnElement(document, "image", patches).props?.imageFill as Record<string, unknown>).assetId)
+            .toBe("new-image");
+        expect(resolvedImageAssetId(document, patches)).toBe("new-image");
 
         await hostApi.widget.setImageProperties("image", {
             fitMode: "contain",
@@ -583,12 +618,13 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
             flipX: true,
             flipY: true,
         });
-        expect(document.elements.image?.props?.imageFill).toMatchObject({
+        const drawn = drawnElement(document, "image", patches);
+        expect(drawn.props?.imageFill).toMatchObject({
             mode: "contain",
             cropPlacement: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
         });
-        expect(document.elements.image?.props?.imageFlipX).toBe(true);
-        expect(document.elements.image?.props?.imageFlipY).toBe(true);
+        expect(drawn.props?.imageFlipX).toBe(true);
+        expect(drawn.props?.imageFlipY).toBe(true);
         expect(hostApi.widget.getImageProperties("image")).toMatchObject({
             fitMode: "contain",
             cropRect: { leftPct: 5, topPct: 6, widthPct: 70, heightPct: 80 },
@@ -597,15 +633,18 @@ describe("createDevModeBlueprintHostApi frame scope", () => {
         });
 
         await hostApi.widget.setImageProperties("image", { asset: null });
-        expect((document.elements.image?.props?.imageFill as Record<string, unknown>).assetId).toBeNull();
-        expect(resolvedImageAssetId(document)).toBeNull();
+        expect((drawnElement(document, "image", patches).props?.imageFill as Record<string, unknown>).assetId)
+            .toBeNull();
+        expect(resolvedImageAssetId(document, patches)).toBeNull();
 
         await hostApi.widget.setImageProperties("image", { assetId: "legacy-image" });
         expect(hostApi.widget.getImageProperties("image").asset).toEqual({
             kind: "imageAsset",
             assetId: "legacy-image",
         });
-        expect(resolvedImageAssetId(document)).toBe("legacy-image");
+        expect(resolvedImageAssetId(document, patches)).toBe("legacy-image");
+        // Nothing of any of that reached the authored record.
+        expect(document.elements.image!.props!.imageFill).toEqual(authoredFill);
     });
 
     it("supports Image appearance variant overrides", async () => {
