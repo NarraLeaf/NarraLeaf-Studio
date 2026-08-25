@@ -369,6 +369,44 @@ execute: async ctx => {
 
 编辑器本身没有游戏可读，因此节点在 Studio 内预览执行时 `ctx.game` 上的门控域全部缺席，节点必须能降级运行。
 
+### 数据输出引脚
+
+节点用 `execute()` 返回值里的 `outputValues` 发布自己声明的数据输出引脚，下游节点照常用连线读：
+
+```ts
+execute: async ctx => {
+  const rows = await loadRows(ctx);
+  return { nextPort: "next", outputValues: { entries: rows, count: rows.length } };
+},
+```
+
+⚠ **`isPure: true` 的节点做不到这件事。** pure 节点没有 exec 引脚，宓主的执行器永远走不到它，
+`execute()` 根本不会被调用；pure 节点的输出由宓主自己的数据解析器产出，而那条链只认识内建节点类型。
+**产值节点一律写成 `isPure: false` 加 exec 引脚**，内建 Gallery 插件就是这么做的。
+
+### 控件属性的值绑定（Blueprint Value 图）
+
+插件节点默认不在值绑定的调色板里，但可以**自己声明**进去：
+
+```ts
+{
+  type: `${PLUGIN_ID}.getLabel`,
+  isPure: false,
+  allowInBlueprintValueGraph: true,
+  // ...
+}
+```
+
+内建节点能不能进那张表是宓主**逐个审核**出来的，而插件节点没法这么审
+（你写的 `isPure` 只是你自己的说法），所以它改成你声明、**真正的限制由值运行时目前的行为决定**：
+
+- 节点像在任何其他图里一样被**执行**，异步也可以；
+- 编辑器预览值绑定时 `ctx.game` 上的门控域全部缺席，节点必须能降级；
+- 图没走到 `Return Value` 时，绑定保留上一次解析出的值；
+- ⚠ **最卡人的一条**：值绑定靠「解析数据引脚时记下的 Element / 属性读取」来决定什么时候重跑，
+  而它看不见插件节点读了什么。**建在插件节点上的绑定只会因宓主的依赖刷新，不会因你的。**
+  需要跟随插件自己的数据变化时，用事件图 + `Set List Content` 这类写入节点，别用值绑定。
+
 ## 构建要求
 
 如果用 TypeScript 或 React 编写插件，把源码按 target 打包为独立的 ESM 入口。Studio 会提供 `narraleaf-studio/plugin`、`narraleaf-studio/runtime` 和 React host runtime；这些包必须 external，避免把第二份 React 打进插件。

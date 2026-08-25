@@ -109,6 +109,9 @@ export const story = {
         refusedRowGone: "该行已不存在，本次修改未生效",
         refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
         refusedSceneGone: "该场景已不存在，本次修改未生效",
+        refusedCharacterGone: "该角色已不存在，本次修改未生效",
+        refusedTooLarge: "该角色过大，无法在实时会话中共享，本次修改未生效",
+        refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
         refusedNotInSession: "本机已不在该会话中",
         refusedUnknownOp: "该会话没有接受这次修改",
         // 上一次撤销或重做没有发出任何内容的原因，每一条点名让该步骤无法回退的状态。
@@ -122,6 +125,8 @@ export const story = {
         undoContainerFilled: "该区块中现在已有其他行",
         undoSubtreeLost: "其中原有的行无法恢复",
         undoChaptersChanged: "章节与该步骤记录的那一份不一致",
+        undoCharacterGone: "该角色已不存在",
+        undoCharacterRestored: "该角色已经回到名册中",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

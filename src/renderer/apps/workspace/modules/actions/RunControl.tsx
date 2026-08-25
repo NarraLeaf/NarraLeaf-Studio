@@ -67,13 +67,13 @@ const RUN_MODE_SETTINGS_KEY = "ui.runMode";
  */
 const RUN_VARIANT_SETTINGS_KEY = "ui.runVariantByProject";
 /**
- * Which of this project's DLC this machine runs it WITHOUT, bucketed by project.
+ * Which of this project's DLC this machine runs it WITH, bucketed by project.
  *
- * The off set rather than the on set, and `runDlc.ts` on the main process side - which reads this
- * very key - has the reasoning: storing what is on would make a DLC created after the choice
- * arrive switched off, and the only sign would be content missing from a run nobody configured.
+ * None of them until an author ticks one: a run is the game a player bought, which is the state
+ * being shipped and the only one where a forgotten `Is DLC Installed` guard shows itself. The
+ * reasoning is on `runDlc.ts`, which reads this very key on the main process side.
  */
-const RUN_DLC_OFF_SETTINGS_KEY = "ui.runDlcOffByProject";
+const RUN_DLC_ON_SETTINGS_KEY = "ui.runDlcOnByProject";
 const RUN_MODES: readonly RunMode[] = ["devMode", "preview"];
 /**
  * The catalog id the stop chord lives under, shared by the three commands that can be the thing it
@@ -161,8 +161,8 @@ export function RunControl() {
     const [variantId, setVariantId] = useState<string | null>(null);
     const [dlcOpen, setDlcOpen] = useState(false);
     const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
-    /** The ids switched off, as the setting stores them. Unknown ids are harmless and left alone. */
-    const [dlcOff, setDlcOff] = useState<readonly string[]>([]);
+    /** The ids ticked on, as the setting stores them. An id the project lost is left alone here. */
+    const [dlcOn, setDlcOn] = useState<readonly string[]>([]);
 
     // The variant list folds away with the menu that holds it. It has to be tied to the menu closing
     // rather than to the gestures that close it: the bar puts this menu away too - when a sibling
@@ -212,7 +212,7 @@ export function RunControl() {
         return dlc.onDlcChanged(setDlcs);
     }, [context]);
 
-    // Which ones are switched off, from the same store the main process reads.
+    // Which ones are ticked on, from the same store the main process reads.
     useEffect(() => {
         if (!context) {
             return;
@@ -224,14 +224,14 @@ export function RunControl() {
                 ? value as Record<string, unknown>
                 : {};
             const stored = record[projectKey];
-            setDlcOff(
+            setDlcOn(
                 (Array.isArray(stored) ? stored : [])
                     .filter((id): id is string => typeof id === "string" && Boolean(id.trim())),
             );
         };
-        read(settings.getSync(RUN_DLC_OFF_SETTINGS_KEY));
+        read(settings.getSync(RUN_DLC_ON_SETTINGS_KEY));
         const token = getInterface().app.state.onGlobalStateChanged?.(change => {
-            if (change.key === RUN_DLC_OFF_SETTINGS_KEY) {
+            if (change.key === RUN_DLC_ON_SETTINGS_KEY) {
                 read(change.value);
             }
         });
@@ -745,11 +745,11 @@ export function RunControl() {
      * How many of this project's DLC a run has, and how many it could.
      *
      * Counted against the project's own list rather than against the stored set, so an id left over
-     * from a deleted DLC does not make the row claim something is missing.
+     * from a deleted DLC cannot make the row claim something is on that is not there.
      */
     const activeDlcCount = useMemo(
-        () => dlcs.filter(dlc => !dlcOff.includes(dlc.id)).length,
-        [dlcOff, dlcs],
+        () => dlcs.filter(dlc => dlcOn.includes(dlc.id)).length,
+        [dlcOn, dlcs],
     );
 
     const toggleDlc = useCallback((id: string): void => {
@@ -758,23 +758,23 @@ export function RunControl() {
         }
         const settings = context.services.get<GlobalSettingsService>(Services.GlobalSettings);
         const projectKey = normalizeProjectPath(context.project.getConfig()?.projectPath ?? "");
-        const current = settings.getSync(RUN_DLC_OFF_SETTINGS_KEY);
+        const current = settings.getSync(RUN_DLC_ON_SETTINGS_KEY);
         const record: Record<string, unknown> = current && typeof current === "object" && !Array.isArray(current)
             ? { ...current as Record<string, unknown> }
             : {};
-        const next = dlcOff.includes(id) ? dlcOff.filter(entry => entry !== id) : [...dlcOff, id];
+        const next = dlcOn.includes(id) ? dlcOn.filter(entry => entry !== id) : [...dlcOn, id];
         if (next.length > 0) {
             record[projectKey] = next;
         } else {
-            // Deleted rather than stored as an empty list, so "runs with all of them" and "never
+            // Deleted rather than stored as an empty list, so "runs with none of them" and "never
             // chose" are one state - the same rule the variant choice follows.
             delete record[projectKey];
         }
-        void settings.set(RUN_DLC_OFF_SETTINGS_KEY, record);
-        setDlcOff(next);
-        // The menu stays open, unlike the variant rows: switching several off is one decision made in
+        void settings.set(RUN_DLC_ON_SETTINGS_KEY, record);
+        setDlcOn(next);
+        // The menu stays open, unlike the variant rows: ticking several on is one decision made in
         // several clicks, and closing after each would make the author reopen it every time.
-    }, [context, dlcOff]);
+    }, [context, dlcOn]);
 
     // A test owns the face while it runs: showing "Dev Mode" over a Stop square would name the wrong
     // thing to stop.
@@ -782,31 +782,16 @@ export function RunControl() {
     // The variant rides on the face whenever it is not the whole game. "Dev Mode is the preview you
     // can trust at any moment" only holds while it cannot quietly have become something else, and a
     // setting one click deep in a menu is quiet.
-    /**
-     * What rides on the face, after the mode's own name.
-     *
-     * The variant whenever it is not the whole game, and the DLC count whenever some are switched
-     * off. Both for one reason: "Dev Mode is the preview you can trust at any moment" only holds
-     * while it cannot quietly have become something else, and a setting one click deep in a menu
-     * is quiet. Content missing because a DLC is off looks exactly like content that was never
-     * written, and this is the only place that says otherwise.
-     *
-     * Nothing when every DLC is on, which is the default and needs no announcing.
-     */
-    const runSuffix = useMemo(() => {
-        const parts: string[] = [];
-        if (selectedVariant) {
-            parts.push(selectedVariant.name);
-        }
-        if (dlcs.length > 0 && activeDlcCount < dlcs.length) {
-            parts.push(t("actions.run.dlcCount", { active: activeDlcCount, total: dlcs.length }));
-        }
-        return parts;
-    }, [activeDlcCount, dlcs.length, selectedVariant, t]);
-
+    //
+    // The DLC selection deliberately does NOT ride here. It is a set rather than a name, so the
+    // only thing it could add is a count - and a count is not what the face is for: the face says
+    // what this run IS, and every run is the game with whatever the author asked for beside it.
+    // The menu row states the count where it can be read against the list it counts.
     const runLabel = testActive
         ? t("test.statusBar.label")
-        : [t(meta.labelKey), ...runSuffix].join(" · ");
+        : selectedVariant
+            ? `${t(meta.labelKey)} · ${selectedVariant.name}`
+            : t(meta.labelKey);
 
     return (
         <div className="relative flex items-center" ref={menuRef}>
@@ -954,8 +939,9 @@ export function RunControl() {
                             are not the same question: a build is one variant, and has any number of
                             DLC beside it. Only where the project ships some.
 
-                            Multi-select, so the row states a count rather than a name: "2 of 3" is
-                            the only summary of a set that does not grow with it. */}
+                            Multi-select, so the row states a count rather than a name: "1 of 3" is
+                            the only summary of a set that does not grow with it. None are on until an
+                            author ticks one - a run is the game a player bought. */}
                         {dlcs.length > 0 && (
                             <>
                                 <div className="my-1 mx-2 h-px bg-fill-strong" />
@@ -982,7 +968,7 @@ export function RunControl() {
                                     </span>
                                 </button>
                                 {dlcOpen && dlcs.map(dlc => {
-                                    const active = !dlcOff.includes(dlc.id);
+                                    const active = dlcOn.includes(dlc.id);
                                     return (
                                         <button
                                             key={dlc.id}

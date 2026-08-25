@@ -58,10 +58,10 @@ import { bitmapMediaType } from "./bitmapPreview";
  * {@link VERSIONED_ASSET_LIMITS}.
  */
 
-/** How much of a version's library one column may pull and hold. */
 /** Separates the two halves of a cache key. Not a NUL - see the note at its use site. */
 const KEY_SEPARATOR = "\u0001";
 
+/** How much of a version's library one column may pull and hold, and how fast. */
 export interface VersionedAssetLimits {
     /**
      * The largest single file that will be drawn.
@@ -74,9 +74,19 @@ export interface VersionedAssetLimits {
     /**
      * How many bytes this column's cache holds before the oldest reads are dropped.
      *
-     * 32 MiB per column, so a pair costs 64 MiB at worst, in a window that is also running the
-     * author's project. Dropping an entry only forgets it: a blob already on screen belongs to the
-     * hook that minted its object URL and is revoked by that hook, not by this cache.
+     * 32 MiB per column, so a pair of columns costs 64 MiB at worst, in a window that is also
+     * running the author's project.
+     *
+     * The size comes from what a page actually spends. The starter project every new project is cut
+     * from ships five background images totalling 1.4 MiB, and a whole library - audio included -
+     * of 8.6 MiB; a page of an interface draws a handful of those, so an ordinary comparison spends
+     * single-digit megabytes per column and never reaches this at all. It is also two of the largest
+     * single file {@link maxBytesPerAsset} admits, which is the smallest figure that cannot thrash:
+     * a cache too small to hold two of the biggest thing it accepts would drop one widget's picture
+     * to read the next widget's, and read it again on the next render.
+     *
+     * Dropping an entry only forgets it: a blob already on screen belongs to the hook that minted
+     * its object URL and is revoked by that hook, not by this cache.
      */
     readonly maxRetainedBytes: number;
     /**

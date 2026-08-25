@@ -1,5 +1,7 @@
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { charactersSpec } from "@shared/documents/specs";
+import type { LiveCastView } from "@shared/live/cast";
+import type { LiveCharacterOp, LiveDigestScope } from "@shared/live/ops";
 import type { DocumentCorruptError } from "@shared/documents/types";
 import type { CharacterStoreDocument } from "@shared/characters/characterStoreModel";
 import type { TranslationKey } from "@shared/i18n";
@@ -16,6 +18,7 @@ import {
     planCharacterSpeakerFallback,
     revertCharacterSpeakerFallback,
 } from "../story/characterSpeakerFallback";
+import { rebindRows, sweepSpeakerName } from "../story/characterSweepLive";
 import type { StoryService } from "../story/StoryService";
 import { UuidService } from "./UuidService";
 import { AssetsService } from "./AssetsService";
@@ -46,6 +49,39 @@ import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
  *    where `JSON.stringify` silently dropped it, so every optional field on the way out has to be
  *    absent rather than cleared - see the spreads in `CharacterProfile.toJSON`.
  */
+/**
+ * Somewhere a cast edit can go instead of into the store.
+ *
+ * **The seam a live session hangs the cast off, and the reason the character panels need no
+ * live-session code.** The shape is `StoryOpSink`'s, and it is the same bargain: with a sink
+ * installed, an edit becomes an operation and the store is not touched; the panel changes when the
+ * operation comes back as somebody's effect and {@link CharacterService.applyLiveOp} applies it.
+ * Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * ⚠ **Where it differs from the story's seam is the thing to understand before changing either.**
+ * `StoryService` asks the sink *before* mutating, because every story gesture arrives at one of
+ * eleven mutators. A character's fields are changed by around eighty setters on `CharacterProfile`
+ * and `CharacterAppearance`, objects the panels hold directly, and this service hears about them only
+ * through `character.setOnChange` - which fires *after* the object has already moved. So for those,
+ * the record is read out of the mutated object, handed over as an operation, and the previous record
+ * is put straight back with {@link Character.adopt}, all inside one synchronous handler and before
+ * anything has been told. React never sees the intermediate state, which is what makes it an
+ * interception rather than an optimistic apply followed by a rollback.
+ *
+ * One method, for the reason the story's sink has one: there are exactly two outcomes, and a second
+ * method would be a second way to spell one of them. `false` is the ordinary answer outside a
+ * session, and the service then does exactly what it does with no sink at all.
+ */
+export type CharacterOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the store must not be touched. False means this edit is not the
+     * sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveCharacterOp): boolean;
+};
+
 export class CharacterService extends Service<CharacterService> implements ICharacterService {
     private readonly characters: Record<string, Character> = {};
     private readonly characterOrder: string[] = [];
@@ -65,6 +101,30 @@ export class CharacterService extends Service<CharacterService> implements IChar
      */
     private unreadable: DocumentCorruptError | null = null;
     private listeners: Set<() => void> = new Set();
+    /** Where cast edits go instead of into the store, when something else owns them. */
+    private opSink: CharacterOpSink | null = null;
+    /**
+     * The last record every character was known to hold, by id.
+     *
+     * Two jobs, and both of them need a copy taken at a moment nothing else records. It is what a
+     * `update-character` operation is built *against* - the record to put back once the operation has
+     * been handed over - and it is refreshed by every arriving effect, so the next interception starts
+     * from what the room agreed rather than from what this machine last typed.
+     *
+     * Kept only while a sink is installed. Outside a session it would be a second copy of the whole
+     * cast, maintained for nobody.
+     */
+    private readonly lastKnown = new Map<string, StoredCharacter>();
+    /**
+     * True while an arriving operation is being applied.
+     *
+     * The applier writes through the same setters an author does, so without this every effect would
+     * be handed straight back to the sink as a new operation - a loop, and one that would send the
+     * whole room a second copy of its own edit. The story service does not need one because its
+     * applier calls private methods that never consult the sink; the cast's applier has no such
+     * private path, because the eighty setters *are* the write surface.
+     */
+    private applying = false;
 
     protected async init(ctx: WorkspaceContext, depend: (services: Service[]) => Promise<void>): Promise<void> {
         const filesystemService = ctx.services.get<FileSystemService>(Services.FileSystem);
@@ -84,10 +144,43 @@ export class CharacterService extends Service<CharacterService> implements IChar
         return this.characterOrder.map(id => this.characters[id]).filter(Boolean);
     }
 
-    public createCharacter(name: string, kind: CharacterAppearanceKind = "preset"): Character {
+    /**
+     * Add a character to the cast.
+     *
+     * `initial` is there so that "make a character called X, in this colour, in that group" is **one**
+     * gesture. It used to be three - create, then set the colour on the returned object, then assign
+     * the group - which cost three saves and three history entries outside a session, and does not
+     * work at all inside one: a guest's create is an intent, so the object it gets back is the record
+     * it asked for rather than a member of the cast, and setting a field on it would write to nothing.
+     *
+     * ⚠ **Inside a session the returned character is not in the cast yet.** It arrives when the
+     * effect does, like a story row on Enter. A caller that needs the real one asks
+     * {@link getCharacter} for it by id, and accepts that the answer may be undefined for one round
+     * trip.
+     */
+    public createCharacter(
+        name: string,
+        kind: CharacterAppearanceKind = "preset",
+        initial?: { color?: string; groupId?: string },
+    ): Character {
         const id = this.getUuidService().generate();
         const profile = CharacterProfile.create(id, name, kind);
-        const character = Character.fromJSON({ profile: profile.toJSON() });
+        if (initial?.color !== undefined) {
+            profile.setColor(initial.color);
+        }
+        if (initial?.groupId !== undefined) {
+            profile.setGroupId(initial.groupId);
+        }
+        const record: StoredCharacter = { profile: profile.toJSON() };
+        // Asked before anything is registered, which is the shape the story service's mutators use
+        // and the one to prefer wherever it is available: nothing has been created, so there is
+        // nothing to put back. The returned character is the one that arrives with the effect - see
+        // {@link applyLiveOp} - and callers that need it immediately are the reason this still hands
+        // back an object rather than nothing.
+        if (this.handedToSink({ op: "create-character", character: record })) {
+            return Character.fromJSON(record);
+        }
+        const character = Character.fromJSON(record);
         this.registerCharacter(character);
         this.markDirty();
         this.emitChange();
@@ -135,6 +228,18 @@ export class CharacterService extends Service<CharacterService> implements IChar
         const character = this.characters[id];
         if (!character) {
             return false;
+        }
+        if (this.handedToSink({ op: "delete-character", characterId: id })) {
+            // ⚠ **The sweep below does not run here, and that is the point.** Deleting a character
+            // rewrites every dialogue row in the PROJECT that it speaks, across every story document,
+            // and inside a session each machine derives those rows for itself from the one effect -
+            // see `characterSweepLive`. Running it here as well would write the same rows twice on
+            // this machine and once everywhere else.
+            //
+            // Nor is a history entry pushed. Inside a session undo is sending the inverse of one's own
+            // operation, and an entry here would offer a second undo that writes straight to this
+            // machine's store - a local edit no effect carries.
+            return true;
         }
 
         const stored = character.toJSON();
@@ -222,6 +327,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
             createdAt: now,
             updatedAt: now,
         };
+        // The timestamps travel inside the operation rather than being stamped by each applier, which
+        // is what lets the cast digest hash them: every machine writes the numbers this one minted.
+        if (this.handedToSink({ op: "set-character-group", groupId: group.id, group })) {
+            return group;
+        }
         this.registerGroup(group);
         this.markDirty();
         this.emitChange();
@@ -234,8 +344,12 @@ export class CharacterService extends Service<CharacterService> implements IChar
         if (!group) {
             return false;
         }
-        group.name = name;
-        group.updatedAt = Date.now();
+        const renamed: CharacterGroup = { ...group, name, updatedAt: Date.now() };
+        if (this.handedToSink({ op: "set-character-group", groupId: id, group: renamed })) {
+            return true;
+        }
+        group.name = renamed.name;
+        group.updatedAt = renamed.updatedAt;
         this.markDirty();
         this.emitChange();
         void this.flush();
@@ -258,6 +372,13 @@ export class CharacterService extends Service<CharacterService> implements IChar
         const memberIds = this.listCharactersByGroup(id).map(character => character.profile.getId());
         const stored: CharacterGroup = { ...group };
 
+        // Handed over before the history entry below is pushed, not after. Inside a session undo is
+        // sending the inverse of one's own operation, and an entry here would offer a second undo
+        // that writes straight to this machine's store - a local edit no effect carries, which is the
+        // divergence the whole design is built to make impossible.
+        if (this.handedToSink({ op: "delete-character-group", groupId: id })) {
+            return true;
+        }
         this.removeGroup(id, memberIds);
 
         this.getHistoryService().pushCommand(projectHistoryScope(), {
@@ -522,12 +643,220 @@ export class CharacterService extends Service<CharacterService> implements IChar
             }
         }
         character.setOnChange(() => {
+            if (this.interceptChange(id, character)) {
+                return;
+            }
             this.markDirty();
             this.emitChange();
         });
         character.setOnAssetChange((oldAssetId, newAssetId) => {
             this.updateAssetLock(id, oldAssetId, newAssetId);
         });
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /**
+     * Send cast edits somewhere else, or take them back. Null restores the ordinary behaviour exactly.
+     *
+     * Installing one takes a snapshot of every record, because the first interception has to have
+     * something to put back; removing one drops them, because outside a session they are a second
+     * copy of the cast maintained for nobody.
+     */
+    public setOperationSink(sink: CharacterOpSink | null): void {
+        this.opSink = sink;
+        this.lastKnown.clear();
+        if (!sink) {
+            return;
+        }
+        for (const id of this.characterOrder) {
+            const character = this.characters[id];
+            if (character) {
+                this.lastKnown.set(id, character.toJSON());
+            }
+        }
+    }
+
+    /** The cast as a live session reads it: records by id, the order, and the groups. */
+    public castView(): LiveCastView {
+        const characters: Record<string, StoredCharacter> = {};
+        for (const id of this.characterOrder) {
+            const character = this.characters[id];
+            if (character) {
+                characters[id] = character.toJSON();
+            }
+        }
+        return { characters, order: [...this.characterOrder], groups: this.groups };
+    }
+
+    /**
+     * Apply one operation to the store, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the panel is
+     * finally allowed to move. Everything it does goes through the same registration, locking and
+     * dirty-marking an ordinary edit does - a store that changed without them is a cast the panel
+     * never redraws and the disk never receives - and {@link applying} is what stops the setters it
+     * uses from handing the change straight back as a second operation.
+     *
+     * **Nothing here enters this author's undo stack.** An effect is somebody's edit landing on this
+     * machine, and an undo that offered to take it back would be offering to delete a stranger's
+     * character. Inside a session, undo is sending the inverse of one's own last operation instead.
+     */
+    public applyLiveOp(op: LiveCharacterOp): readonly LiveDigestScope[] {
+        let touched: readonly LiveDigestScope[] = [];
+        this.applying = true;
+        try {
+            this.getHistoryService().withoutRecording(() => {
+                touched = this.applyOperation(op);
+            });
+        } finally {
+            this.applying = false;
+        }
+        this.markDirty();
+        this.emitChange();
+        return touched;
+    }
+
+    private applyOperation(op: LiveCharacterOp): readonly LiveDigestScope[] {
+        switch (op.op) {
+            case "create-character": {
+                const record = structuredClone(op.character) as StoredCharacter;
+                const existing = this.characters[record.profile.id];
+                if (existing) {
+                    // A creation for a record already here is this machine's own operation coming
+                    // back, or a retry the receipts did not cover. Adopting rather than registering a
+                    // second object keeps the panels' subscriptions alive and cannot produce two
+                    // members under one id.
+                    existing.adopt(record);
+                } else {
+                    const character = Character.fromJSON(record);
+                    this.registerCharacter(character);
+                    this.lockCharacterAssets(character);
+                }
+                this.lastKnown.set(record.profile.id, record);
+                // Present only on the creation that undoes a deletion, and it carries the rows rather
+                // than finding them: they hold a bare name now, and a name is not an identifier.
+                return op.rebind ? rebindRows(this.getStoryService(), op.rebind, record.profile.id) : [];
+            }
+
+            case "update-character": {
+                const character = this.characters[op.characterId];
+                if (!character) {
+                    // The host refuses an update naming a record it cannot find, so reaching this is
+                    // this machine having missed the creation. Silently creating the record would
+                    // hide that; the digest on the next effect is what reports it.
+                    return [];
+                }
+                const record = structuredClone(op.character) as StoredCharacter;
+                const before = character.profile.getThumbnail();
+                character.adopt(record);
+                this.updateAssetLock(op.characterId, before, character.profile.getThumbnail());
+                this.lastKnown.set(op.characterId, record);
+                return [];
+            }
+
+            case "delete-character": {
+                const character = this.characters[op.characterId];
+                if (!character) {
+                    // The host refuses a deletion naming a record it cannot find, so reaching this is
+                    // this machine having missed the creation. The digest reports it.
+                    return [];
+                }
+                // The name is read before the record goes, because it is what every line the character
+                // spoke falls back to - and the whole point of the sweep is that a player reads those
+                // lines exactly as before.
+                const speakerName = character.profile.getName();
+                this.removeCharacter(op.characterId, character, character.profile.getThumbnail() ?? undefined);
+                this.lastKnown.delete(op.characterId);
+                return sweepSpeakerName(this.getStoryService(), op.characterId, speakerName);
+            }
+
+            case "set-character-group": {
+                this.registerGroup({ ...op.group });
+                if (op.members) {
+                    // Present only when the membership is part of the same gesture, which is what
+                    // putting a deleted group back is. Every named member that is still here joins;
+                    // one that has gone since is dropped rather than refused, because the group is
+                    // still the group it was minus somebody nobody has.
+                    for (const memberId of op.members) {
+                        this.characters[memberId]?.profile.setGroupId(op.groupId);
+                    }
+                }
+                this.refreshLastKnown();
+                return [];
+            }
+
+            case "delete-character-group": {
+                for (const character of this.listCharacter()) {
+                    if (character.profile.getGroupId() === op.groupId) {
+                        character.profile.setGroupId(undefined);
+                    }
+                }
+                delete this.groups[op.groupId];
+                this.refreshLastKnown();
+                return [];
+            }
+
+            default: {
+                // The vocabulary is exhaustive here and this is what says so. The callback returns
+                // void, so a verb nobody applied would be a SILENT no-op: the effect lands on every
+                // other machine in the room and does nothing on this one, which the digest catches
+                // one message too late.
+                const unapplied: never = op;
+                throw new Error(`No applier for live cast operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /**
+     * Hand one operation to the sink, if there is one that wants it.
+     *
+     * The single place the cast's own mutators ask, so "is this edit somebody else's to make" has one
+     * answer and one spelling. Never asked while {@link applying}: an arriving effect writes through
+     * the same setters, and handing that back would send the room a second copy of its own edit.
+     */
+    private handedToSink(op: LiveCharacterOp): boolean {
+        return !this.applying && this.opSink !== null && this.opSink.handle(op);
+    }
+
+    /**
+     * Turn a mutated record into an operation and put the record back.
+     *
+     * The interception the eighty setters need, and the whole of why it is safe: `Character` calls
+     * this before it notifies any of its own subscribers, so the mutated state is never rendered.
+     * What the panel shows next is the previous record - the row does not move until the effect
+     * arrives - which is the same behaviour a story row has, reached a different way.
+     *
+     * Returns true when the change has been handed over and must not be saved.
+     */
+    private interceptChange(id: string, character: Character): boolean {
+        const next = character.toJSON();
+        if (!this.handedToSink({ op: "update-character", characterId: id, character: next })) {
+            if (this.opSink) {
+                // Declined - not this sink's document - so the edit stands and becomes the baseline
+                // the next interception measures against.
+                this.lastKnown.set(id, next);
+            }
+            return false;
+        }
+        const previous = this.lastKnown.get(id);
+        if (previous) {
+            character.adopt(previous);
+        }
+        return true;
+    }
+
+    /** Re-read every record, after an operation that could have touched more than one of them. */
+    private refreshLastKnown(): void {
+        if (!this.opSink) {
+            return;
+        }
+        for (const id of this.characterOrder) {
+            const character = this.characters[id];
+            if (character) {
+                this.lastKnown.set(id, character.toJSON());
+            }
+        }
     }
 
     private markDirty(): void {

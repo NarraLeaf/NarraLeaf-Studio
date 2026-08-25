@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { LiveOp } from "@shared/live/ops";
+import type { LiveStoryOp } from "@shared/live/ops";
 import type { StoryDocument, StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
@@ -99,8 +99,8 @@ async function seed(service: StoryService) {
 }
 
 /** A sink that takes everything it is handed and remembers it. */
-function takingSink(): StoryOpSink & { ops: { storyId: StoryId; op: LiveOp }[] } {
-    const ops: { storyId: StoryId; op: LiveOp }[] = [];
+function takingSink(): StoryOpSink & { ops: { storyId: StoryId; op: LiveStoryOp }[] } {
+    const ops: { storyId: StoryId; op: LiveStoryOp }[] = [];
     return {
         ops,
         handle(storyId, op) {
@@ -223,7 +223,7 @@ describe("a story service whose sink takes the edit", () => {
     it("does exactly what it always did for a story the sink declines", async () => {
         const { service } = harness;
         const ids = await seed(service);
-        const seen: LiveOp[] = [];
+        const seen: LiveStoryOp[] = [];
         service.setOperationSink({
             handle(_storyId, op) {
                 seen.push(op);
@@ -278,7 +278,7 @@ describe("applying an operation that arrived", () => {
         const { storyId, sceneId, otherSceneId, chapterIds } = ids;
         service.setOperationSink(takingSink());
 
-        const ops: LiveOp[] = [
+        const ops: LiveStoryOp[] = [
             { op: "insert-block", sceneId, block: note("d"), target: { parentId: null, beforeBlockId: "a" } },
             { op: "update-block", sceneId, blockId: "a", payload: note("a", "one").payload },
             {

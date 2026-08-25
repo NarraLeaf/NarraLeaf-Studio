@@ -3,6 +3,7 @@ import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { freezeAllowsWrite, type WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
+import { useReadOnlyInspection } from "./readOnlyInspection";
 
 /**
  * What a control inside an editor renders as while the workspace is frozen.
@@ -230,11 +231,20 @@ export function isFreezeBlocking(freeze: WorkspaceFreezeReason | null, scope?: s
  *
  * `reason` is deliberately unaffected by the scope: it is the sentence a greyed control shows, and
  * a control that is live has nothing to show it on.
+ *
+ * **Two ways to be read-only, and they are not the same fact.** A freeze is a state of the project;
+ * an inspection (`readOnlyInspection`) is a state of this part of the window - a panel drawing a
+ * version that has already happened. Either switches every control off. The inspection's reason wins
+ * where both apply, because it is the nearer cause and the one that is still true after a thaw, and
+ * because telling an author their project is frozen while they read an old version would be false.
  */
 export function useFreezeGuard(scope?: string): FreezeGuard {
     const freeze = useWorkspaceFreeze();
+    const inspecting = useReadOnlyInspection();
     const { t } = useTranslation();
-    const reason = t("workspace.shell.freeze.unavailable");
-    const frozen = isFreezeBlocking(freeze, scope);
+    const reason = inspecting
+        ? t("documentDiff.inspector.readOnly")
+        : t("workspace.shell.freeze.unavailable");
+    const frozen = inspecting || isFreezeBlocking(freeze, scope);
     return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason]);
 }

@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import type {
-    LiveCatchUp,
-    LiveEffect,
-    LiveIntent,
-    LiveOp,
-    LiveRefusal,
-    LiveRefusalReason,
+import {
+    storyRowClaimKey,
+    type LiveCatchUp,
+    type LiveDocument,
+    type LiveEffect,
+    type LiveIntent,
+    type LiveOp,
+    type LiveRefusal,
+    type LiveRefusalReason,
 } from "@shared/live/ops";
 import type {
     StoryBlockId,
@@ -112,7 +114,6 @@ function makeWorld(options: { blocks?: StoryBlockId[]; withDigest?: boolean } = 
 
     const guest = new LiveGuest({
         self: SELF,
-        story: STORY,
         applyOp: op => {
             applied.push(op);
             apply(scene, op);
@@ -120,8 +121,10 @@ function makeWorld(options: { blocks?: StoryBlockId[]; withDigest?: boolean } = 
         send: message => sent.push(message),
         now: clock.now,
         schedule: clock.schedule,
-        readScene: id => (id === scene.id ? scene : null),
-        onDigest: options.withDigest ? (effect, digest) => digests.push({ effect, digest }) : undefined,
+        digestOf: scope => (scope.of === "scene" && scope.sceneId === scene.id ? sceneDigest(scene) : null),
+        onDigest: options.withDigest
+            ? (effect, compute) => digests.push({ effect, digest: compute(SCENE) })
+            : undefined,
         onRefusal: (refusal, intent) => refusals.push({ refusal, intent }),
     });
     return { guest, scene, applied, sent, digests, refusals, clock };
@@ -159,8 +162,11 @@ function rename(name: string): LiveOp {
     return { op: "rename-scene", sceneId: "s1", name };
 }
 
+const DOCUMENT: LiveDocument = { doc: "story", storyId: STORY };
+const SCENE = { of: "scene", storyId: STORY, sceneId: "s1" } as const;
+
 function effect(seq: number, op: LiveOp, extra: Partial<LiveEffect> = {}): LiveEffect {
-    return { kind: "effect", by: "host", seq, op, ...extra };
+    return { kind: "effect", by: "host", seq, document: DOCUMENT, op, ...extra };
 }
 
 function refusal(clientId: string, reason: LiveRefusalReason = "row-claimed"): LiveRefusal {
@@ -181,7 +187,7 @@ function intents(world: World): LiveIntent[] {
 describe("a guest that has asked for something", () => {
     it("sends the intent and changes nothing until the answer arrives", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(insert("x", "b"));
+        const intent = world.guest.intend(insert("x", "b"), DOCUMENT);
 
         expect(intents(world)).toEqual([intent]);
         expect(world.applied).toEqual([]);
@@ -194,13 +200,13 @@ describe("a guest that has asked for something", () => {
         expect(world.guest.pending).toEqual([]);
     });
 
-    it("mints a key for every intent and stamps the session's story on it", () => {
+    it("mints a key for every intent and stamps the document it is about on it", () => {
         const world = makeWorld();
-        const first = world.guest.intend(rename("One"));
-        const second = world.guest.intend(rename("Two"));
+        const first = world.guest.intend(rename("One"), DOCUMENT);
+        const second = world.guest.intend(rename("Two"), DOCUMENT);
 
         expect(first.clientId).not.toBe(second.clientId);
-        expect(first.story).toBe(STORY);
+        expect(first.document).toEqual(DOCUMENT);
         expect(world.guest.pending).toEqual([first, second]);
     });
 
@@ -208,7 +214,7 @@ describe("a guest that has asked for something", () => {
         const world = makeWorld();
         // The anchor row was deleted a moment ago, so the host landed the insert somewhere else and
         // said so. What the guest applies is the host's target, never its own.
-        const intent = world.guest.intend(insert("x", "b"));
+        const intent = world.guest.intend(insert("x", "b"), DOCUMENT);
         const landed = insert("x", "c");
         world.guest.receive(effect(1, landed, { clientId: intent.clientId, by: SELF }));
 
@@ -229,7 +235,7 @@ describe("a guest that has asked for something", () => {
 describe("an intent that goes unanswered", () => {
     it("is sent again unchanged, with the same key, once the wait is long enough", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(rename("One"));
+        const intent = world.guest.intend(rename("One"), DOCUMENT);
 
         world.clock.advance(DEFAULT_RESEND_AFTER_MS - 1);
         expect(intents(world)).toHaveLength(1);
@@ -243,7 +249,7 @@ describe("an intent that goes unanswered", () => {
 
     it("keeps going while the silence lasts, then settles on the answer without applying twice", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(insert("x"));
+        const intent = world.guest.intend(insert("x"), DOCUMENT);
 
         world.clock.advance(DEFAULT_RESEND_AFTER_MS * 3);
         expect(intents(world)).toHaveLength(4);
@@ -261,7 +267,7 @@ describe("an intent that goes unanswered", () => {
 
     it("stops the clock once nothing is outstanding", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(rename("One"));
+        const intent = world.guest.intend(rename("One"), DOCUMENT);
         world.guest.receive(effect(1, intent.op, { clientId: intent.clientId, by: SELF }));
 
         expect(world.clock.armed).toBe(0);
@@ -271,9 +277,9 @@ describe("an intent that goes unanswered", () => {
 
     it("re-sends only the one that is overdue", () => {
         const world = makeWorld();
-        const first = world.guest.intend(rename("One"));
+        const first = world.guest.intend(rename("One"), DOCUMENT);
         world.clock.advance(DEFAULT_RESEND_AFTER_MS - 100);
-        const second = world.guest.intend(rename("Two"));
+        const second = world.guest.intend(rename("Two"), DOCUMENT);
         world.clock.advance(100);
 
         expect(intents(world)).toEqual([first, second, first]);
@@ -281,7 +287,7 @@ describe("an intent that goes unanswered", () => {
 
     it("gives up its timer when the session closes", () => {
         const world = makeWorld();
-        world.guest.intend(rename("One"));
+        world.guest.intend(rename("One"), DOCUMENT);
         world.guest.close();
 
         world.clock.advance(DEFAULT_RESEND_AFTER_MS * 2);
@@ -293,7 +299,7 @@ describe("an intent that goes unanswered", () => {
 describe("a refusal", () => {
     it("settles the intent, applies nothing, and says so", () => {
         const world = makeWorld();
-        const intent = world.guest.intend({ op: "update-block", sceneId: "s1", blockId: "a", payload: note("a", "typed").payload });
+        const intent = world.guest.intend({ op: "update-block", sceneId: "s1", blockId: "a", payload: note("a", "typed").payload }, DOCUMENT);
         const no = refusal(intent.clientId);
         world.guest.receive(no);
 
@@ -307,7 +313,7 @@ describe("a refusal", () => {
 
     it("is ignored when it answers somebody else's intent", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(rename("One"));
+        const intent = world.guest.intend(rename("One"), DOCUMENT);
         world.guest.receive(refusal("guest-2:1"));
 
         expect(world.refusals).toEqual([]);
@@ -364,7 +370,7 @@ describe("a gap in the sequence", () => {
 
     it("settles an intent the catch-up answers, and applies the operation the effect carries", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(insert("x", "b"));
+        const intent = world.guest.intend(insert("x", "b"), DOCUMENT);
         world.guest.receive(effect(2, rename("Two"), { by: "guest-2" }));
 
         const landed = insert("x", "c");
@@ -413,31 +419,31 @@ describe("what a guest ignores", () => {
 
     it("ignores its own messages coming back off the topic", () => {
         const world = makeWorld();
-        const intent = world.guest.intend(rename("One"));
+        const intent = world.guest.intend(rename("One"), DOCUMENT);
         world.guest.receive(intent);
         world.guest.receive({ kind: "resync", by: SELF, after: 0 });
-        world.guest.receive({ kind: "row-claim", blockId: "a", holding: true });
+        world.guest.receive({ kind: "claim", key: storyRowClaimKey("a"), holding: true });
 
         expect(world.applied).toEqual([]);
         expect(world.guest.pending).toEqual([intent]);
         // Nothing a guest can hear makes a row its own. Only the host holds a claim, and what a
         // guest learns about one arrives as a `claims` set and in no other way.
-        expect(world.guest.claimedRows).toEqual({});
+        expect(world.guest.claimed).toEqual({});
     });
 
     it("asks for a row and holds nothing until the set says so", () => {
         const world = makeWorld();
-        world.guest.claimRow("a", true);
+        world.guest.claim(storyRowClaimKey("a"), true);
 
-        expect(world.sent).toEqual([{ kind: "row-claim", blockId: "a", holding: true }]);
+        expect(world.sent).toEqual([{ kind: "claim", key: storyRowClaimKey("a"), holding: true }]);
         // No optimism: the ask changes nothing here, and the row is somebody else's until the host
         // broadcasts a set that names this author on it.
-        expect(world.guest.claimedRows).toEqual({});
+        expect(world.guest.claimed).toEqual({});
 
-        world.guest.claimRow("a", false);
+        world.guest.claim(storyRowClaimKey("a"), false);
         expect(world.sent).toEqual([
-            { kind: "row-claim", blockId: "a", holding: true },
-            { kind: "row-claim", blockId: "a", holding: false },
+            { kind: "claim", key: storyRowClaimKey("a"), holding: true },
+            { kind: "claim", key: storyRowClaimKey("a"), holding: false },
         ]);
     });
 
@@ -445,14 +451,14 @@ describe("what a guest ignores", () => {
         const world = makeWorld();
         world.guest.receive({ kind: "claims", seq: 2, held: { a: "Ada" } });
 
-        expect(world.guest.claimedRows).toEqual({ a: "Ada" });
+        expect(world.guest.claimed).toEqual({ a: "Ada" });
         expect(world.applied).toEqual([]);
 
         // Whole snapshots, so the newest one is the truth and an older one overtaking it is not.
         world.guest.receive({ kind: "claims", seq: 3, held: { b: "Bo" } });
-        expect(world.guest.claimedRows).toEqual({ b: "Bo" });
+        expect(world.guest.claimed).toEqual({ b: "Bo" });
         world.guest.receive({ kind: "claims", seq: 1, held: { a: "Ada" } });
-        expect(world.guest.claimedRows).toEqual({ b: "Bo" });
+        expect(world.guest.claimed).toEqual({ b: "Bo" });
     });
 
     it("ignores anything it cannot read", () => {
@@ -470,13 +476,16 @@ describe("the divergence seam", () => {
     it("gets the effect and the digest this machine computed, and decides nothing", () => {
         const world = makeWorld({ withDigest: true });
         const applied = insert("x");
-        const arrived = effect(1, applied, { by: "guest-2", sceneDigest: "whatever-the-host-made-of-it" });
+        const arrived = effect(1, applied, {
+            by: "guest-2",
+            digests: [{ scope: SCENE, hash: "whatever-the-host-made-of-it" }],
+        });
         world.guest.receive(arrived);
 
         expect(world.digests).toEqual([{ effect: arrived, digest: sceneDigest(world.scene) }]);
         // The digests disagree, and the guest carries on regardless: what to do about that belongs
         // to whoever supplied the seam.
-        expect(world.digests[0].digest).not.toBe(arrived.sceneDigest);
+        expect(world.digests[0].digest).not.toBe(arrived.digests?.[0].hash);
         expect(order(world.scene)).toEqual(["a", "b", "c", "x"]);
         expect(world.guest.appliedSeq).toBe(1);
     });

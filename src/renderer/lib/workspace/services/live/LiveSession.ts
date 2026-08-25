@@ -8,19 +8,32 @@ import {
 } from "@/lib/live";
 import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
+import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
+import { sceneDigest } from "@shared/live/sceneDigest";
+import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import {
+    characterClaimKey,
     isLiveMessage,
+    opDocumentKind,
+    storyRowClaimKey,
+    type LiveCharacterOp,
+    type LiveClaimKey,
     type LiveDerived,
+    type LiveDigestScope,
+    type LiveDocument,
     type LiveEffect,
     type LiveMessage,
     type LiveOp,
     type LiveRefusal,
     type LiveResync,
+    type LiveStoryOp,
 } from "@shared/live/ops";
+import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { CharacterOpSink } from "../core/CharacterService";
 import type { StoryOpSink } from "../story/StoryService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
 import { decideLiveRole, planLiveJoin } from "./liveEntry";
@@ -63,6 +76,14 @@ type ActiveSession = {
     project: LiveProjectIdentity;
     role: LiveSessionRole;
     storyId: StoryId;
+    /**
+     * Every story document this session carries, settled on the way in.
+     *
+     * Read once rather than asked for per operation, because it is what the host compares an
+     * incoming document against - and a set that grew mid-session would start accepting operations
+     * about a document nobody else has.
+     */
+    stories: readonly StoryId[];
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -330,19 +351,48 @@ export class LiveSession {
      * is about are this author's own to write.
      */
     public claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void {
+        if (this.active && this.active.storyId !== storyId) {
+            return;
+        }
+        this.claim(storyRowClaimKey(blockId), holding);
+    }
+
+    /**
+     * This window is editing one character record, or has stopped.
+     *
+     * The cast's door, beside the story's. Held while the record is open in the properties panel -
+     * the box being open, not the keyboard - for the reason the row's claim is: an author who has
+     * stopped to think about a sentence still has a description half typed, and a claim that lapsed
+     * on their pause is a claim that lets somebody else take it.
+     *
+     * There is no story id to check, because there is one cast per project: a session either carries
+     * it or the window is not in a session.
+     */
+    public claimCharacter(characterId: string, holding: boolean): void {
+        this.claim(characterClaimKey(characterId), holding);
+    }
+
+    /**
+     * Take or give back one claim, whichever kind it is.
+     *
+     * The one path for both, so the host's record and the broadcast that follows it cannot come to
+     * differ between them. Silent outside a session: what this window is editing on its own is its
+     * own business.
+     */
+    private claim(key: LiveClaimKey, holding: boolean): void {
         const session = this.active;
-        if (!session || session.storyId !== storyId) {
+        if (!session) {
             return;
         }
         if (session.host) {
-            session.host.claimLocal(blockId, holding);
+            session.host.claimLocal(key, holding);
             this.broadcastClaims(session);
             this.publish(session, {});
             return;
         }
-        // Nothing is written here and nothing on screen moves. A guest holds the row when a set
-        // arrives naming it, and never because it asked.
-        session.guest?.claimRow(blockId, holding);
+        // Nothing is written here and nothing on screen moves. A guest holds it when a set arrives
+        // naming it, and never because it asked.
+        session.guest?.claim(key, holding);
     }
 
     /**
@@ -433,12 +483,15 @@ export class LiveSession {
             return false;
         }
         const document = this.deps.story.document(session.storyId);
+        const cast = this.deps.cast.view();
         if (!document) {
-            // The story is not held here any more, so nothing can be read to invert against.
+            // The story is not held here any more, so nothing can be read to invert against. The cast
+            // always is - it is one document per project and the workspace has it loaded - so there is
+            // no matching guard for it.
             this.patch({ undoRefusal: "no-record" });
             return false;
         }
-        const plan = session.effects.plan(direction, { self: session.self, document });
+        const plan = session.effects.plan(direction, { self: session.self, document, cast });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
             return false;
@@ -458,7 +511,7 @@ export class LiveSession {
         if (!guest) {
             return false;
         }
-        const intent = guest.intend(plan.op, plan.derived);
+        const intent = guest.intend(plan.op, this.documentOf(session, plan.op), plan.derived);
         // Settled when the effect answering it comes back, never on sending: the host may refuse,
         // and a cursor that had already moved would leave the author one press further back than
         // the document is.
@@ -483,9 +536,16 @@ export class LiveSession {
         // put the scene back as it was before anybody else joined.
         this.deps.history.forgetStoryScenes(input.storyId);
         // Flushes what is owed first, then refuses everything but this session's story document.
+        // Every story into memory before anything is frozen or applied. A machine that never opened
+        // one could not apply a sweep that reaches it, and appliers are synchronous - there is no
+        // later moment at which a document could be fetched. See `LiveStoryPort.loadAll`.
+        const stories = await this.deps.story.loadAll();
         await this.deps.freeze.arm({
             session: input.room.id,
-            writable: [this.deps.storyDocumentPath(input.storyId)],
+            // From the one table that also decides what the host will carry, never assembled here.
+            // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
+            // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
+            writable: liveSessionWritablePaths(stories),
         });
 
         const session: ActiveSession = {
@@ -494,6 +554,7 @@ export class LiveSession {
             project: input.project,
             role,
             storyId: input.storyId,
+            stories,
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -520,9 +581,11 @@ export class LiveSession {
                 // the one that decides a refusal must be the one a test can move.
                 claims: new LiveClaimStore({ now: () => this.deps.now() }),
                 self: input.self,
-                story: input.storyId,
-                readScene: sceneId => this.readScene(session, sceneId),
-                applyOp: op => this.applyOp(session, op),
+                stories,
+                readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
+                readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
+                digestOf: scope => this.digestOf(scope),
+                applyOp: (op, document) => this.applyOp(session, op, document),
                 nextSeq: () => (session.seq += 1),
                 // The room's own roster, which is the only thing that knows which account a window
                 // signed in as. Read through `session.room` rather than captured, so a claim taken
@@ -540,14 +603,13 @@ export class LiveSession {
             session.guard = new LiveDivergenceGuard();
             session.guest = new LiveGuest({
                 self: input.self,
-                story: input.storyId,
-                applyOp: (op, derived) => this.applyOp(session, op, derived),
+                applyOp: (op, document, derived) => this.applyOp(session, op, document, derived),
                 send: message => session.rooms.say(session.room.id, message),
                 now: () => this.deps.now(),
                 schedule: (delayMs, run) => this.deps.schedule(delayMs, run),
-                readScene: sceneId => this.readScene(session, sceneId),
-                onDigest: (effect, digest) => {
-                    const ruling = session.guard?.check(effect, digest);
+                digestOf: scope => this.digestOf(scope),
+                onDigest: (effect, compute) => {
+                    const ruling = session.guard?.check(effect, compute);
                     if (ruling && ruling.verdict === "diverged") {
                         // Recorded rather than acted on: this runs inside the guest's own apply
                         // loop, and leaving from underneath it would tear the session down while a
@@ -569,6 +631,7 @@ export class LiveSession {
         session.stopWatching = input.rooms.watch(input.project.repositoryId, event =>
             this.onRoomEvent(session, event));
         this.deps.story.setSink(this.sinkFor(session));
+        this.deps.cast.setSink(this.castSinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -595,6 +658,7 @@ export class LiveSession {
         // First, so nothing the author does next can become an intent for a room this window is on
         // its way out of.
         this.deps.story.setSink(null);
+        this.deps.cast.setSink(null);
         session.stopListening();
         session.stopWatching();
         session.claimSweep?.();
@@ -748,10 +812,29 @@ export class LiveSession {
      * "immediately before applying" a single moment rather than a rule every call site has to
      * remember: what an operation is about to overwrite is knowable here and nowhere later.
      */
-    private applyOp(session: ActiveSession, op: LiveOp, derived?: LiveDerived): void {
-        const document = this.deps.story.document(session.storyId);
-        session.pendingBefore = document ? captureBefore(op, document) : null;
-        this.deps.story.applyOp(session.storyId, op);
+    private applyOp(
+        session: ActiveSession,
+        op: LiveOp,
+        document: LiveDocument,
+        derived?: LiveDerived,
+    ): readonly LiveDigestScope[] {
+        // Read from both documents, whichever this operation is about. One call rather than a switch,
+        // because "what was here immediately before" is one question and answering it in two places
+        // would be two moments, only one of which is the right one.
+        session.pendingBefore = captureBefore(op, {
+            story: this.deps.story.document(document.doc === "story" ? document.storyId : session.storyId),
+            cast: this.deps.cast.view(),
+            // The rows a deletion is about to un-speak, read while they still say whose they are.
+            // Only this window needs them - they are what ITS undo would have to put back - so they
+            // are read here rather than carried on the effect.
+            ...(op.op === "delete-character" ? { spoke: this.deps.story.rowsSpokenBy(op.characterId) } : {}),
+        });
+        let touched: readonly LiveDigestScope[] = [];
+        if (document.doc === "characters") {
+            touched = this.deps.cast.applyOp(op as LiveCharacterOp);
+        } else {
+            this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
+        }
         this.rememberDerived(session, op, derived);
         if (derived) {
             this.deps.story.adoptDerived(derived);
@@ -765,6 +848,64 @@ export class LiveSession {
             this.record(session, mine, session.pendingBefore);
             session.pendingBefore = null;
         }
+        return touched;
+    }
+
+    /**
+     * The address of the document an operation is about, for the message that carries it.
+     *
+     * Derived from the verb rather than passed in, so the two can never disagree: the host refuses a
+     * message whose operation could not be about the document it names, and the only way to be sure
+     * this window never sends one is to have one place build it.
+     */
+    private documentOf(session: ActiveSession, op: LiveOp): LiveDocument {
+        return opDocumentKind(op) === "characters"
+            ? { doc: "characters" }
+            : { doc: "story", storyId: session.storyId };
+    }
+
+    /**
+     * The fingerprint of one unit as this window now holds it, or null when it cannot be read.
+     *
+     * The one place a digest is computed, for both roles: the host stamps the effect it broadcasts
+     * and a guest computes the same thing over its own copy, and two implementations would report
+     * disagreements that were only two spellings of one document.
+     *
+     * Null is "nothing was compared", never "they agree" - which is why a missing scene answers null
+     * and a missing character record does not. Absence is a value the cast's digest can state, so a
+     * machine that failed to apply a creation is caught rather than excused; a scene this window does
+     * not hold is a window that has nothing to say.
+     */
+    private digestOf(scope: LiveDigestScope): string | null {
+        switch (scope.of) {
+            case "scene": {
+                const scene = this.deps.story.document(scope.storyId)?.scenes[scope.sceneId] ?? null;
+                return scene ? sceneDigest(scene) : null;
+            }
+            case "character":
+                return characterRecordDigest(characterAt(this.deps.cast.view(), scope.characterId));
+            case "cast":
+                return castDigest(this.deps.cast.view());
+        }
+    }
+
+    /**
+     * Whether one operation is too big to travel, and therefore must not be applied anywhere.
+     *
+     * **Checked here rather than in the rules**, because this is the only layer that knows how a
+     * message is encoded, and checked *before* the host applies its own operation rather than when the
+     * send fails: a host that applied an operation it then could not broadcast would hold a document
+     * nobody else has, which is the divergence the digest exists to catch and the one thing worth
+     * spending a JSON encode per operation to prevent.
+     *
+     * Only a character record can reach the cap - a story operation is a line of prose and a few ids -
+     * so the encode is confined to the verbs that carry a whole record.
+     */
+    private tooLarge(op: LiveOp): boolean {
+        if (op.op !== "create-character" && op.op !== "update-character") {
+            return false;
+        }
+        return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
     }
 
     /** The host's own edit: applied, recorded as this window's, and broadcast. */
@@ -778,7 +919,13 @@ export class LiveSession {
         if (!host) {
             throw new Error("hostApply on a session this window is a guest of");
         }
-        const answer = host.applyLocal(op, derived);
+        if (this.tooLarge(op)) {
+            const refusal: LiveRefusal = { kind: "refusal", clientId: "", reason: "too-large" };
+            session.pendingBefore = null;
+            this.noteRefusal(session, refusal, op.op);
+            return refusal;
+        }
+        const answer = host.applyLocal(op, this.documentOf(session, op), derived);
         if (answer.kind === "refusal") {
             session.pendingBefore = null;
             this.noteRefusal(session, answer, op.op);
@@ -903,7 +1050,43 @@ export class LiveSession {
                     this.hostApply(session, op, derived);
                     return true;
                 }
-                session.guest?.intend(op, derived);
+                session.guest?.intend(op, { doc: "story", storyId }, derived);
+                this.publish(session, {});
+                // True even when the intent is refused later, and even for a session with neither
+                // half built: what must never happen is this window changing a shared document on
+                // its own initiative.
+                return true;
+            },
+        };
+    }
+
+    /**
+     * Where cast edits go while this session is running.
+     *
+     * The story sink's twin, and deliberately the same three lines of decision: a host applies its own
+     * operation and broadcasts the effect, a guest sends an intent and changes nothing. What differs
+     * is only that there is no document id to check - one cast per project.
+     */
+    private castSinkFor(session: ActiveSession): CharacterOpSink {
+        return {
+            handle: (op): boolean => {
+                if (this.active !== session) {
+                    // A session that has ended: the caller carries on exactly as it would with no
+                    // sink at all.
+                    return false;
+                }
+                if (session.host) {
+                    this.hostApply(session, op, undefined);
+                    return true;
+                }
+                if (this.tooLarge(op)) {
+                    // Refused here rather than sent and dropped by the transport. A guest whose intent
+                    // never leaves would sit waiting for a receipt that cannot come, re-sending it
+                    // every three seconds for the rest of the session.
+                    this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
+                    return true;
+                }
+                session.guest?.intend(op, { doc: "characters" });
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on
@@ -976,7 +1159,7 @@ export class LiveSession {
             appliedSeq: session.host ? session.seq : session.guest?.appliedSeq ?? 0,
             pendingIntents: session.guest?.pending.length ?? 0,
             waitingForCatchUp: session.guest?.waitingForCatchUp ?? false,
-            claims: session.host ? session.host.claims.snapshot().held : session.guest?.claimedRows ?? {},
+            claims: session.host ? session.host.claims.snapshot().held : session.guest?.claimed ?? {},
             canUndo: session.effects.canUndo,
             canRedo: session.effects.canRedo,
             ...extra,

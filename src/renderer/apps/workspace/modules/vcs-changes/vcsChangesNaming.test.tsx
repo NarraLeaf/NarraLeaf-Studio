@@ -30,8 +30,11 @@ const vcs = vi.hoisted(() => ({
     })),
 }));
 
+// Both spellings: the tab names itself through the comparison's naming layer, which reads the
+// workspace optionally so it can also be mounted where there is not a whole one.
 vi.mock("@/apps/workspace/context", () => ({
     useWorkspace: () => ({ context: { services: { get: () => vcs } } }),
+    useOptionalWorkspace: () => ({ context: { services: { get: () => vcs } } }),
 }));
 
 const diff = vi.hoisted(() => ({

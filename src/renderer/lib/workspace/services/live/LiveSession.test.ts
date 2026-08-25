@@ -1,13 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { storyDocumentSpec } from "@shared/documents/specs";
+import { charactersSpec, storyDocumentSpec } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
-import type { LiveDerived } from "@shared/live/ops";
+import type { LiveCastView } from "@shared/live/cast";
+import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
+import { characterClaimKey, storyRowClaimKey, type LiveCharacterOp, type LiveDerived } from "@shared/live/ops";
+import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import { HistoryService } from "../history/HistoryService";
 import { storySceneHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
+import type { CharacterOpSink } from "../core/CharacterService";
 import { StoryService } from "../story/StoryService";
 import { LiveSession } from "./LiveSession";
 import type { LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
@@ -260,11 +264,50 @@ type Window = {
     forgotten: string[];
     instance: string | null;
     hasRepository: boolean;
+    /** The cast this window holds, and where its edits go while a session is running. */
+    cast: LiveCastView & { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
+    castSink: CharacterOpSink | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
     timers: { delayMs: number; run: () => void; cancelled: boolean }[];
 };
+
+/** The cast applier a window uses when an effect arrives. As small as the store's own. */
+function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
+    switch (op.op) {
+        case "create-character":
+            cast.characters[op.character.profile.id] = structuredClone(op.character);
+            if (!cast.order.includes(op.character.profile.id)) {
+                cast.order.push(op.character.profile.id);
+            }
+            return;
+        case "update-character":
+            cast.characters[op.characterId] = structuredClone(op.character);
+            return;
+        case "delete-character":
+            delete cast.characters[op.characterId];
+            cast.order = cast.order.filter(id => id !== op.characterId);
+            return;
+        case "set-character-group":
+            cast.groups[op.groupId] = { ...op.group };
+            for (const memberId of op.members ?? []) {
+                const member = cast.characters[memberId];
+                if (member) {
+                    member.profile.groupId = op.groupId;
+                }
+            }
+            return;
+        case "delete-character-group":
+            delete cast.groups[op.groupId];
+            for (const member of Object.values<StoredCharacter>(cast.characters)) {
+                if (member.profile.groupId === op.groupId) {
+                    delete member.profile.groupId;
+                }
+            }
+            return;
+    }
+}
 
 function createWindow(world: World, instance: string): Window {
     const { service, history } = createStoryService();
@@ -282,6 +325,8 @@ function createWindow(world: World, instance: string): Window {
         forgotten: [],
         instance,
         hasRepository: true,
+        cast: { characters: {}, order: [], groups: {} },
+        castSink: null,
         clock: 0,
         timers: [],
     };
@@ -295,6 +340,14 @@ function createWindow(world: World, instance: string): Window {
         rooms: () => createRooms(world, instance, calls),
         story: {
             setSink: sink => service.setOperationSink(sink),
+            listStories: () => service.listStories().map(entry => entry.id),
+            loadAll: async () => {
+                for (const entry of service.listStories()) {
+                    await service.loadStory(entry.id);
+                }
+                return service.listStories().map(entry => entry.id);
+            },
+            rowsSpokenBy: () => [],
             document: storyId => {
                 try {
                     return service.getStoryDocument(storyId);
@@ -304,6 +357,17 @@ function createWindow(world: World, instance: string): Window {
             },
             applyOp: (storyId, op) => service.applyLiveOp(storyId, op),
             adoptDerived: derived => calls.push(`derived:${Object.keys(derived.translations ?? {}).join(",")}`),
+        },
+        cast: {
+            setSink: sink => {
+                window.castSink = sink;
+            },
+            view: () => window.cast,
+            applyOp: op => {
+                calls.push(`cast:${op.op}`);
+                applyCastOp(window.cast, op);
+                return [];
+            },
         },
         version: {
             checkpoint: async () => {
@@ -351,7 +415,6 @@ function createWindow(world: World, instance: string): Window {
         history: {
             forgetStoryScenes: storyId => window.forgotten.push(storyId),
         },
-        storyDocumentPath: storyId => storyDocumentSpec.pathFor({ storyId }),
         now: () => window.clock,
         // Recorded and never run of its own accord: a live timer here would only be a way for a
         // test to outlive itself. A test that is about one calls `fireTimers`.
@@ -541,9 +604,8 @@ describe("a live session", () => {
 
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
-            expect(guest.freeze.armed?.writable).toEqual([
-                storyDocumentSpec.pathFor({ storyId: other.id }),
-            ]);
+            expect(guest.freeze.armed?.writable).toEqual(liveSessionWritablePaths(guest.story.listStories().map(e => e.id)));
+            expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
 
         it("refuses a room that does not say which document it is about", async () => {
@@ -598,12 +660,19 @@ describe("a live session", () => {
     });
 
     describe("the freeze around it", () => {
-        it("is armed on entry with the session and the story document, and nothing else", async () => {
+        it("is armed on entry with the session and every document it carries, and nothing else", async () => {
             await openRoom();
+            // Straight from the table the host also decides "is this document mine to change" from.
+            // A path the boundary allows that the vocabulary cannot carry is an edit that lands here
+            // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: [storyDocumentSpec.pathFor({ storyId: host.storyId })],
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id)),
             });
+            expect(host.freeze.armed?.writable).toEqual([
+                storyDocumentSpec.pathFor({ storyId: host.storyId }),
+                charactersSpec.pathFor(),
+            ]);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
             expect(host.forgotten).toEqual([host.storyId]);
@@ -641,8 +710,12 @@ describe("a live session", () => {
                 kind: "effect",
                 by: "instance-host",
                 seq: 1,
+                document: { doc: "story", storyId: guest.storyId },
                 op: { op: "rename-scene", sceneId: guest.sceneId, name: "Elsewhere" },
-                sceneDigest: "a-digest-nobody-computed",
+                digests: [{
+                    scope: { of: "scene", storyId: guest.storyId, sceneId: guest.sceneId },
+                    hash: "a-digest-nobody-computed",
+                }],
             }, "instance-host");
             await drain(world.bus);
             expect(guest.freeze.armed).toBeNull();
@@ -693,6 +766,150 @@ describe("a live session", () => {
             host.story.renameScene(other.id, document.chapters[0].sceneIds[0], "Renamed on its own");
             expect(host.story.getStoryDocument(other.id).scenes[document.chapters[0].sceneIds[0]].name)
                 .toBe("Renamed on its own");
+        });
+    });
+
+    describe("the cast, the second document in the room", () => {
+        /** A record as small as one of these tests needs it. */
+        function record(id: string, name = id): StoredCharacter {
+            return {
+                profile: {
+                    id,
+                    name,
+                    description: "",
+                    tags: [],
+                    attributes: {},
+                    thumbnail: null,
+                    nicknames: [],
+                    appearance: { kind: "preset", poses: [], defaultPoseId: null },
+                },
+            };
+        }
+
+        /** What a panel does: hand the sink an operation and let the room decide. */
+        function edit(window: Window, op: LiveCharacterOp): void {
+            window.castSink?.handle(op);
+        }
+
+        it("carries a creation from one window to the other", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(guest, { op: "create-character", character: record("c1", "Ada") });
+            // Nothing is applied optimistically here either: the record appears when the effect
+            // answering the intent arrives, and not when the gesture was made.
+            expect(guest.cast.characters.c1).toBeUndefined();
+
+            await drain(world.bus);
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+        });
+
+        it("applies and broadcasts at once when the host is the one editing", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+
+            await drain(world.bus);
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+        });
+
+        it("holds a record for its editor and refuses everybody else's write to it", async () => {
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+
+            guest.session.claimCharacter("c1", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({ [characterClaimKey("c1")]: "instance-guest" });
+
+            edit(host, { op: "update-character", characterId: "c1", character: record("c1", "Taken") });
+            await drain(world.bus);
+
+            // The refusal names a person, and the record the guest is inside is untouched.
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+            expect(host.session.getView().lastRefusal?.reason).toBe("row-claimed");
+        });
+
+        it("keeps the story's claims and the cast's apart, though both are uuids", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.session.claimRow(guest.storyId, "a", true);
+            guest.session.claimCharacter("a", true);
+            await drain(world.bus);
+
+            // An unprefixed set would have let one document's claim answer for the other's, and
+            // nothing would have compared the two to notice.
+            expect(host.session.getView().claims).toEqual({
+                [storyRowClaimKey("a")]: "instance-guest",
+                [characterClaimKey("a")]: "instance-guest",
+            });
+        });
+
+        it("takes a cast edit back by sending its inverse, like any other operation", async () => {
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            edit(guest, { op: "update-character", characterId: "c1", character: record("c1", "Ada Lovelace") });
+            await drain(world.bus);
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada Lovelace");
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // The inverse carries the whole previous record, so both copies are back where they were.
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada");
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+        });
+
+        it("takes a creation back by deleting the record it made", async () => {
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            // A deletion is a shared operation like any other, so the record goes everywhere it went.
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
+        });
+
+        it("carries a deletion to the other machine", async () => {
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+
+            edit(guest, { op: "delete-character", characterId: "c1" });
+            // Nothing is applied optimistically: the record is still there until the effect arrives.
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada");
+
+            await drain(world.bus);
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(guest.cast.characters.c1).toBeUndefined();
+        });
+
+        it("refuses a record too large to travel, rather than sending half of it", async () => {
+            await openRoom();
+            const enormous = record("c1", "Ada");
+            // Bigger than one `live.say` on its own. Refused by name and said out loud: half a
+            // record is a record nobody wrote, and a change that appears to have been made and
+            // reached nobody is worse than one that was refused.
+            enormous.profile.description = "x".repeat(20_000);
+
+            edit(host, { op: "create-character", character: enormous });
+            await drain(world.bus);
+
+            expect(host.cast.characters.c1).toBeUndefined();
+            expect(host.session.getView().lastRefusal?.reason).toBe("too-large");
         });
     });
 
@@ -852,8 +1069,8 @@ describe("a live session", () => {
             expect(guest.session.getView().claims).toEqual({});
             await drain(world.bus);
 
-            expect(host.session.getView().claims).toEqual({ b: "instance-guest" });
-            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
         });
 
         it("puts the host's own row in the set, through the same door as a guest's", async () => {
@@ -865,8 +1082,8 @@ describe("a live session", () => {
             host.session.claimRow(host.storyId, "a", true);
             await drain(world.bus);
 
-            expect(host.session.getView().claims).toEqual({ a: "instance-host" });
-            expect(guest.session.getView().claims).toEqual({ a: "instance-host" });
+            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
         });
 
         it("takes the row out of the set when it is given back", async () => {
@@ -914,7 +1131,7 @@ describe("a live session", () => {
             await joinRoom();
             guest.session.claimRow(guest.storyId, "b", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
 
             // Nobody says anything and nobody asks for anything; the deadline simply passes.
             host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
@@ -938,7 +1155,7 @@ describe("a live session", () => {
 
             guest.session.claimRow(guest.storyId, "c", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ c: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("c")]: "instance-guest" });
 
             host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
             fireTimers(host);
@@ -961,7 +1178,7 @@ describe("a live session", () => {
                 await drain(world.bus);
             }
             expect(countClaimsMessages(world) - said).toBe(0);
-            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
         });
 
         it("stops sweeping once the session is over", async () => {
@@ -1020,7 +1237,7 @@ describe("a live session", () => {
             await joinRoom();
             guest.session.claimRow(guest.storyId, "b", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ b: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
 
             await guest.session.leave();
             expect(guest.session.getView().claims).toEqual({});
@@ -1038,7 +1255,7 @@ describe("a live session", () => {
             host.session.claimRow(host.storyId, "a", true);
             await joinRoom();
 
-            expect(guest.session.getView().claims).toEqual({ a: "instance-host" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
         });
 
         it("says nothing about a scene of any other story", async () => {
