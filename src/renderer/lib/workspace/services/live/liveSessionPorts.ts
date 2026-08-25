@@ -217,6 +217,13 @@ export type LiveAssetsPort = {
      * copy rather than against the document.
      */
     hasRecord(assetType: string, assetId: string): boolean;
+    /**
+     * Try the files that were waiting for slices again.
+     *
+     * Called when a slice arrives. There is no timer behind it and there must not be one: a transfer
+     * nobody ever completes would otherwise be a machine asking for it for the rest of the session.
+     */
+    resumePayloads(): void;
     /** Every section whose folders this window holds. */
     folderCategories(): readonly string[];
     /** One section's folders as they stand, or null when this window does not hold them. */

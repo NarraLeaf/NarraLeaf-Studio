@@ -513,6 +513,7 @@ function createWindow(world: World, instance: string): Window {
             shardTypes: () => Object.keys(window.assets),
             records: assetType => window.assets[assetType] ?? null,
             hasRecord: (assetType, assetId) => window.assets[assetType]?.[assetId] !== undefined,
+            resumePayloads: () => undefined,
             folderCategories: () => ["image"],
             folders: () => ({}),
             applyOp: op => {
