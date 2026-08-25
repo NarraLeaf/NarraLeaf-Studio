@@ -24,9 +24,23 @@ const lore = vi.hoisted(() => {
         calls,
         /** How many more times `cloneInto` reports that the backend holds no session. */
         missing: { count: 0 },
+        /** What `writeRemote` was handed, and whether it is allowed to succeed. */
+        wrote: [] as Array<{ root: string; url: string | null }>,
+        writeFails: { value: false },
         signIn: vi.fn(async () => ({ authUrl: "", remoteOrigin: "", account: {}, signedInAt: 0 })),
         backend: {
-            releaseRepository: async () => undefined,
+            releaseRepository: async () => {
+                calls.push("release");
+                return undefined;
+            },
+            writeRemote: async (root: string, url: string | null) => {
+                calls.push("writeRemote");
+                if (lore.writeFails.value) {
+                    throw new Error("EACCES: config.toml is read-only");
+                }
+                lore.wrote.push({ root, url });
+                return undefined;
+            },
             cloneInto: async () => {
                 calls.push("clone");
                 if (lore.missing.count > 0) {
@@ -82,6 +96,8 @@ function fakeApp(sessions: unknown[] = [SESSION]): BaseApp {
 beforeEach(() => {
     lore.calls.length = 0;
     lore.missing.count = 0;
+    lore.wrote.length = 0;
+    lore.writeFails.value = false;
     lore.signIn.mockReset().mockResolvedValue({
         authUrl: "", remoteOrigin: "", account: {}, signedInAt: 0,
     });
@@ -95,7 +111,7 @@ describe("cloning against a backend that has lost its session", () => {
         const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
 
         expect(cloned.fileCount).toBe(12);
-        expect(lore.calls).toEqual(["clone", "signIn", "clone"]);
+        expect(lore.calls).toEqual(["clone", "signIn", "clone", "release", "writeRemote"]);
         // The token goes to the server the copy is coming from, on the address the session
         // recorded - not to a repository, which is a store this does not touch.
         expect(lore.signIn).toHaveBeenCalledWith(
@@ -109,7 +125,7 @@ describe("cloning against a backend that has lost its session", () => {
 
         await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
             .rejects.toThrow(/No token stored/);
-        expect(lore.calls).toEqual(["clone", "signIn", "clone"]);
+        expect(lore.calls).toEqual(["clone", "signIn", "clone", "release"]);
     });
 
     it("does not sign in for a server this installation has no session for", async () => {
@@ -117,7 +133,7 @@ describe("cloning against a backend that has lost its session", () => {
 
         await expect(new VcsManager(fakeApp([])).cloneRepository(REMOTE, DESTINATION))
             .rejects.toThrow(/No token stored/);
-        expect(lore.calls).toEqual(["clone"]);
+        expect(lore.calls).toEqual(["clone", "release"]);
     });
 
     it("does not sign in where the token cannot be unsealed on this machine", async () => {
@@ -126,7 +142,7 @@ describe("cloning against a backend that has lost its session", () => {
 
         await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
             .rejects.toThrow(/No token stored/);
-        expect(lore.calls).toEqual(["clone"]);
+        expect(lore.calls).toEqual(["clone", "release"]);
     });
 
     it("reports a sign-in that was itself refused as the failure the caller already had", async () => {
@@ -137,7 +153,7 @@ describe("cloning against a backend that has lost its session", () => {
             // The clone's own sentence, not the sign-in's: what the author asked for was a
             // copy, and the recovery attempt is not a thing they know happened.
             .rejects.toThrow(/No token stored/);
-        expect(lore.calls).toEqual(["clone", "signIn"]);
+        expect(lore.calls).toEqual(["clone", "signIn", "release"]);
     });
 
     /**
@@ -158,9 +174,53 @@ describe("cloning against a backend that has lost its session", () => {
         try {
             await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
                 .rejects.toThrow(/Not authorized/);
-            expect(lore.calls).toEqual(["clone"]);
+            expect(lore.calls).toEqual(["clone", "release"]);
         } finally {
             backend.cloneInto = original;
         }
+    });
+});
+
+/**
+ * What a copy remembers about where it came from.
+ *
+ * Lore writes a `remote_url` of its own during a clone and it is the origin with the repository
+ * name stripped off, which Studio's own reader does not accept - so a clone that left it alone
+ * produced a project belonging to no server, and the first Send after it failed with the sentence
+ * this whole file is about, blaming the credentials for an address nobody had written down.
+ */
+describe("the address a clone came from", () => {
+    it("is written into the copy, whole, once nothing is holding the repository", async () => {
+        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
+
+        expect(cloned.fileCount).toBe(12);
+        expect(lore.wrote).toHaveLength(1);
+        // The whole address, not the origin Lore keeps: the name is the half that says which
+        // repository on that server this copy is.
+        expect(lore.wrote[0]!.url).toBe(REMOTE);
+        expect(lore.wrote[0]!.root.replace(/\\/g, "/")).toContain("driftwood");
+        // After the release, for the reason `setRemote` closes the session first: the backend
+        // reads this file when it opens a store.
+        expect(lore.calls.indexOf("writeRemote")).toBeGreaterThan(lore.calls.indexOf("release"));
+    });
+
+    it("is not written for a clone that failed, which has no copy to write it into", async () => {
+        lore.missing.count = 5;
+
+        await expect(new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION))
+            .rejects.toThrow(/No token stored/);
+        expect(lore.wrote).toHaveLength(0);
+    });
+
+    it("does not turn a clone that worked into one that failed", async () => {
+        lore.writeFails.value = true;
+
+        // The files are on disk. Reporting a failure would leave the author with a destination
+        // that is no longer empty and a wizard that will not clone into it again; the project
+        // opens, and the server can still be set from the version rail.
+        const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
+
+        expect(cloned.fileCount).toBe(12);
+        expect(lore.wrote).toHaveLength(0);
     });
 });
