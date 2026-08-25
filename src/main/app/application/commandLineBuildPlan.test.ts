@@ -1,11 +1,22 @@
+import path from "path";
 import { describe, expect, it } from "vitest";
 import type { ExperimentalState } from "@shared/types/experimental";
 import { planCommandLineBuild, resolveCommandLineBuildExperimental } from "./commandLineBuildPlan";
 import type { BuildCommandLineOptions, ExperimentalCommandLineOptions } from "./commandLine";
 
+/**
+ * The plan joins and resolves output paths with `path`, so it answers in whichever spelling the
+ * host uses. Fixtures and expectations are built the same way rather than written out: a Windows
+ * path hard-coded here is a relative name on a Linux runner, and the assertion then measures the
+ * runner rather than the plan.
+ */
+const ROOT = path.sep === "\\" ? "D:\\" : "/";
+const PROJECT = path.join(ROOT, "games", "demo");
+const WORKING_DIRECTORY = path.join(ROOT, "jobs", "42");
+
 const BASE: BuildCommandLineOptions = {
     requested: true,
-    selector: "D:\\games\\demo",
+    selector: PROJECT,
     variantId: null,
     platform: null,
     format: null,
@@ -19,10 +30,10 @@ const BASE: BuildCommandLineOptions = {
 function plan(options: Partial<BuildCommandLineOptions>, host: "windows" | "macos" | "linux" = "windows") {
     return planCommandLineBuild({
         options: { ...BASE, ...options },
-        projectPath: "D:\\games\\demo",
+        projectPath: PROJECT,
         hostPlatform: host,
         hostArch: "x64",
-        workingDirectory: "D:\\jobs\\42",
+        workingDirectory: WORKING_DIRECTORY,
     });
 }
 
@@ -59,19 +70,19 @@ describe("planCommandLineBuild", () => {
     it("defaults the output folder to the project's dist", () => {
         const result = plan({});
 
-        expect(result.ok && result.plan.outputDir).toBe("D:\\games\\demo\\dist");
+        expect(result.ok && result.plan.outputDir).toBe(path.join(PROJECT, "dist"));
     });
 
     it("resolves a relative output folder against the working directory, not the project", () => {
         const result = plan({ outputDir: "out" });
 
-        expect(result.ok && result.plan.outputDir).toBe("D:\\jobs\\42\\out");
+        expect(result.ok && result.plan.outputDir).toBe(path.join(WORKING_DIRECTORY, "out"));
     });
 
     it("resolves a relative report path the same way", () => {
-        const result = plan({ reportPath: "out\\report.json" });
+        const result = plan({ reportPath: path.join("out", "report.json") });
 
-        expect(result.ok && result.plan.reportPath).toBe("D:\\jobs\\42\\out\\report.json");
+        expect(result.ok && result.plan.reportPath).toBe(path.join(WORKING_DIRECTORY, "out", "report.json"));
     });
 
     it("refuses a platform this host cannot build for", () => {

@@ -222,8 +222,10 @@ describe("routing a surface paste", () => {
         const payload = copyDialogueSurface();
 
         expect(isUiPasteFromAnotherProject(payload, "D:/projects/other")).toBe(true);
-        // The same directory spelled differently is the same project.
-        expect(isUiPasteFromAnotherProject(payload, "D:\\projects\\demo\\")).toBe(false);
+        // The same directory spelled differently is the same project. A trailing separator is the
+        // spelling every host folds; slash direction and case are Windows rules, and belong to the
+        // identity key's own tests where the platform can be named.
+        expect(isUiPasteFromAnotherProject(payload, "D:/projects/demo/")).toBe(false);
     });
 
     it("reads a payload with no stamp as this project's own", () => {
