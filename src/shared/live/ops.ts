@@ -1,3 +1,4 @@
+import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
 import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
@@ -323,6 +324,83 @@ export type LiveVoiceOp =
 export type LiveAssetRecord = AssetMetadataEntry;
 
 /**
+ * One folder of one section of the asset browser, as it travels.
+ *
+ * The shape the document registry reads off disk, for {@link LiveAssetRecord}'s reason: the renderer's
+ * `AssetGroup` lives under `renderer/lib` and cannot be imported here.
+ */
+export type LiveAssetFolder = AssetGroupEntry;
+
+/* ---------------------------------------------------------------- an asset's bytes */
+
+/**
+ * Where the bytes behind a record come from when that record arrives.
+ *
+ * **The whole of how a session can add a file at all**, and the three answers are not three
+ * conveniences - they are the three ways bytes can already be somewhere. Only the first of them
+ * moves anything over the wire, and getting that split right is what keeps a duplicate and an undo
+ * free no matter how large the file is.
+ *
+ *  - **`transfer`** - the bytes exist on ONE machine and nowhere else: a file the author dragged in
+ *    from the desktop, or a replacement picked from a file dialog. They are sliced and sent beside
+ *    the operation - see {@link LiveBlobChunk} - because there is no other channel that carries them
+ *    and no revision anybody else could fetch them from.
+ *  - **`asset`** - the bytes are a copy of a file every machine already holds. What duplicating is.
+ *    Sending them would be sending a room something it can produce for itself, which is the same
+ *    test a deleted character's sweep passes: *can everybody else reach the same answer from the
+ *    same effect?*
+ *  - **`trash`** - the bytes are in each machine's own trash, where its own applier put them when it
+ *    applied the deletion this is undoing. Per-machine on purpose: the trash is under `.nlstudio/`,
+ *    which no repository stores and no session shares, and every machine trashed its own copy of the
+ *    same file. Undoing a deletion of a 200 MB video therefore costs one small message.
+ */
+export type LiveAssetBytes =
+    /** Sliced and sent. See {@link LiveBlobChunk}. */
+    | { from: "transfer"; parts: readonly LiveAssetBytePart[] }
+    /** Copied from a file every machine already holds. What a duplicate is. */
+    | { from: "asset"; assetId: string }
+    /** Taken back out of each machine's own trash. What undoing a deletion is. */
+    | { from: "trash" };
+
+/**
+ * One file on its way to the room.
+ *
+ * **A list rather than a single blob, because a model bundle is a directory.** A bundle's manifest
+ * names its siblings by relative path, so it cannot be flattened into one file and cannot be
+ * rewritten without Studio learning every model format there is - the same reason the asset type
+ * exists at all. So the unit that travels is a file, and an asset is one or more of them.
+ */
+export type LiveAssetBytePart = {
+    /**
+     * Null for the asset's own file; a bundle-relative path for one file inside a directory asset.
+     *
+     * ⚠ Receivers must refuse a path that climbs out of the bundle. It arrives from another Studio,
+     * and a path is the one field here that decides where bytes land.
+     */
+    path: string | null;
+    /** What the slices carrying this file say they belong to. Minted by the sender. */
+    transferId: string;
+    /** How many bytes there are, so a receiver knows when it has them all. */
+    size: number;
+    /**
+     * What those bytes must hash to, over `@shared/utils/contentHash`.
+     *
+     * Not the record's own `hash`, which is whatever the filesystem computed on the sending machine:
+     * this one is computed from the bytes actually put on the wire and checked against the bytes
+     * actually taken off it. The channel can drop a message - that is what `LiveEffect.seq` gaps are
+     * about - and a file assembled from slices with one missing is a file that looks fine until
+     * somebody opens it.
+     */
+    digest: string;
+};
+
+/** One asset a creation makes: the record as it will be filed, and where its bytes come from. */
+export type LiveAssetCreate = {
+    record: LiveAssetRecord;
+    bytes: LiveAssetBytes;
+};
+
+/**
  * Everything that can be done to one asset type's metadata shard.
  *
  * **Two verbs, and the pair is the story's `update-block` / `move-block` one document along** - the
@@ -380,6 +458,106 @@ export type LiveAssetOp =
           op: "move-assets";
           assetType: string;
           moves: readonly { assetId: string; groupId: string | null }[];
+      }
+    /**
+     * Add assets to the library, as ONE operation.
+     *
+     * **One verb for importing, duplicating and putting a deletion back**, which reads like three
+     * gestures and is one statement: a record appears, and its bytes come from somewhere. Where they
+     * come from is {@link LiveAssetBytes}, and it is the only thing that differs between the three.
+     * Splitting them into three verbs would put the same "file this record, write these bytes,
+     * announce the row" sequence in three places, and the day one of them learnt something the other
+     * two would not have.
+     *
+     * The record travels whole and is written verbatim, ⚠ **including its name**. The library
+     * resolves a colliding display name by appending a number, and a machine that re-resolved would
+     * pick a different one - two libraries holding the same asset under two names, from one message.
+     * The machine that minted the record is the one that decided.
+     *
+     * **Unclaimed**: the ids were minted by whoever built the records, so two of them colliding is a
+     * uuid collision rather than a race, and a retry is answered by the receipts.
+     *
+     * ⚠ One asset type, for `move-assets`' reason: a message names one document. A directory import
+     * is already bucketed per type before it reaches the library.
+     */
+    | { op: "create-assets"; assetType: string; creates: readonly LiveAssetCreate[] }
+    /**
+     * Point one record at different bytes.
+     *
+     * Separate from `create-assets` because the id survives: every reference in every story,
+     * blueprint and interface document goes on resolving, which is the whole reason an author reaches
+     * for replace rather than delete-and-import. The record travels too, because replacing rewrites
+     * `hash`, and `ext` and the display name with it.
+     *
+     * **Claimed**, with `update-asset`: it writes the record, and the loser of that race is somebody
+     * with a half-typed description in the inspector.
+     */
+    | { op: "replace-asset-content"; assetType: string; assetId: string; record: LiveAssetRecord; bytes: LiveAssetBytes }
+    /**
+     * Remove assets and their files, as ONE operation.
+     *
+     * ⚠ **The bytes are not carried anywhere and no machine is told where to put them.** Every
+     * machine holds its own copy of the same file and moves it to its own trash, which is derived
+     * work of exactly the kind the criterion allows: everybody reaches the same answer from the same
+     * effect. It is also what makes undoing a deletion cost one message rather than a re-upload.
+     *
+     * **Claimed**, with `delete-block` and `delete-character`: deleting a record somebody has open
+     * takes the paragraph they were writing about it.
+     */
+    | { op: "delete-assets"; assetType: string; assetIds: readonly string[] };
+
+/**
+ * Everything that can be done to one section's folders.
+ *
+ * A document of its own - `assets/assets.groups.<category>.json` - and therefore its own verbs,
+ * because a message names one document and a folder is not filed in any type's shard. The pairing
+ * with the records beside it is the story's: **which folder an asset is in lives on the asset**
+ * (`move-assets` writes it), and **what folders exist lives here**.
+ *
+ * None of these is claimed, for `set-character-group`'s reason: a folder is four fields and none of
+ * them is drafted anywhere, so there is no half-typed paragraph for a race to overwrite.
+ */
+export type LiveAssetFolderOp =
+    /**
+     * Add or replace one folder.
+     *
+     * One verb for creating, renaming and re-parenting, again with `set-character-group`: the three
+     * write the same record and the split that exists for assets - create versus update - is there to
+     * stop a resurrection overwriting a draft, which a folder does not have.
+     */
+    | { op: "set-asset-folder"; category: string; folderId: string; folder: LiveAssetFolder }
+    /**
+     * Remove one folder, and everything filed under it.
+     *
+     * **One operation for something that empties two documents**, and the second document's share is
+     * DERIVED rather than carried - the same shape as deleting a character and letting every machine
+     * rewrite the rows that spoke it. Which folders are below this one, and which assets are in them,
+     * is a question about documents the room already agrees on; sending them would be a second
+     * statement of something every receiver can compute.
+     *
+     * ⚠ What the cascade touched is fingerprinted rather than taken on trust: the applier reports
+     * every shard it emptied and each is digested into {@link LiveEffect.digests}, so a machine that
+     * swept differently is caught on this message rather than on some later one.
+     *
+     * `recursive` is the author's answer to "this folder has folders in it", asked before anything is
+     * removed. False against a folder with children is refused rather than partly applied.
+     */
+    | { op: "delete-asset-folder"; category: string; folderId: string; recursive: boolean }
+    /**
+     * Put a deleted folder back, with everything that was in it.
+     *
+     * ⚠ **Reachable only as the inverse of `delete-asset-folder`**, the way `create-character`'s
+     * `rebind` is only reachable as the inverse of a deletion. It carries what the deletion's own
+     * cascade destroyed and no machine can work out afterwards: the folder records, and the asset
+     * records that were filed under them. The bytes are not here - each machine takes its own back
+     * out of its own trash, which is the same asymmetry `LiveAssetBytes` is built on.
+     */
+    | {
+          op: "restore-asset-folder";
+          category: string;
+          folders: readonly LiveAssetFolder[];
+          /** The records, by the shard each belongs to. Their bytes come from each machine's trash. */
+          assets: readonly { assetType: string; record: LiveAssetRecord }[];
       };
 
 /**
@@ -389,7 +567,13 @@ export type LiveAssetOp =
  * nesting would make each of them switch twice. Which document a verb belongs to is
  * {@link opDocumentKind}'s answer, and it is a property of the verb rather than of the message.
  */
-export type LiveOp = LiveStoryOp | LiveCharacterOp | LiveLocalizationOp | LiveVoiceOp | LiveAssetOp;
+export type LiveOp =
+    | LiveStoryOp
+    | LiveCharacterOp
+    | LiveLocalizationOp
+    | LiveVoiceOp
+    | LiveAssetOp
+    | LiveAssetFolderOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -428,7 +612,16 @@ export type LiveDocument =
      * named the category would be a message about two documents at once. The panel's own gestures
      * are grouped by type before they are stated - see `move-assets`.
      */
-    | { doc: "assets"; assetType: string };
+    | { doc: "assets"; assetType: string }
+    /**
+     * One section's folders - `assets/assets.groups.<category>.json`.
+     *
+     * Parameterised by CATEGORY where the records beside it are parameterised by type, and the two
+     * are not the same axis: a folder under Media holds audio and video alike, so it cannot belong to
+     * either type's shard. That asymmetry is the asset browser's own, and following it here keeps one
+     * spelling of "which document" rather than two.
+     */
+    | { doc: "asset-groups"; category: string };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -468,7 +661,14 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
             return "voice";
         case "update-asset":
         case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
             return "assets";
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return "asset-groups";
     }
 }
 
@@ -508,7 +708,17 @@ export function opAddresses(op: LiveOp, document: LiveDocument): boolean {
         // the browser no longer draws anywhere, in a shard whose digest agrees with itself.
         case "update-asset":
         case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
             return document.doc === "assets" && document.assetType === op.assetType;
+        // A folder operation names its section for the same reason, and it matters more here: a
+        // folder record written into a sibling section's shard is a folder the browser draws under
+        // a heading whose files can never be filed in it.
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return document.doc === "asset-groups" && document.category === op.category;
         default:
             return true;
     }
@@ -527,6 +737,8 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "voice" && right.locale === left.locale;
         case "assets":
             return right.doc === "assets" && right.assetType === left.assetType;
+        case "asset-groups":
+            return right.doc === "asset-groups" && right.category === left.category;
     }
 }
 
@@ -543,6 +755,8 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `voice ${document.locale}`;
         case "assets":
             return `assets ${document.assetType}`;
+        case "asset-groups":
+            return `asset folders ${document.category}`;
     }
 }
 
@@ -604,6 +818,8 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "set-translation",
     "set-translations",
     "update-asset",
+    "replace-asset-content",
+    "delete-assets",
 ]);
 
 /**
@@ -811,10 +1027,22 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // Not claimed - see {@link CLAIMED_OPS}.
             return [];
         case "update-asset":
+        case "replace-asset-content":
             return [assetClaimKey(op.assetId)];
+        case "delete-assets":
+            // Every record, and one held record refuses the whole gesture - the rule every batch
+            // follows. Half a delete is a library nobody produced.
+            return op.assetIds.map(assetClaimKey);
         case "move-assets":
             // Not claimed either, with `move-blocks`: filing rearranges the library without touching
             // a word anybody wrote. See {@link CLAIMED_OPS}.
+            return [];
+        case "create-assets":
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
+            // layer behind it. See {@link CLAIMED_OPS}.
             return [];
     }
 }
@@ -866,7 +1094,14 @@ export type LiveDigestScope =
      * per-record digest would not fit in the message, and a shard of short records about files is a
      * small document beside a story.
      */
-    | { of: "assets"; assetType: string };
+    | { of: "assets"; assetType: string }
+    /**
+     * One section's folders, whole.
+     *
+     * The asset shard's counterpart, and whole for the same two reasons - a folder deletion reaches
+     * across every folder below it, and a section's folder list is a handful of four-field records.
+     */
+    | { of: "asset-groups"; category: string };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -918,7 +1153,17 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
             return { of: "takes", locale: op.locale };
         case "update-asset":
         case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
             return { of: "assets", assetType: op.assetType };
+        // ⚠ A folder deletion empties asset shards too, and none of them is named here. The applier
+        // reports those and they reach {@link LiveEffect.digests} beside this one - derived work is
+        // exactly the work that has to be fingerprinted rather than assumed.
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return { of: "asset-groups", category: op.category };
     }
 }
 
@@ -937,6 +1182,8 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "takes" && right.locale === left.locale;
         case "assets":
             return right.of === "assets" && right.assetType === left.assetType;
+        case "asset-groups":
+            return right.of === "asset-groups" && right.category === left.category;
     }
 }
 
@@ -1086,6 +1333,25 @@ export type LiveRefusalReason =
      */
     | "asset-gone"
     /**
+     * An id a creation names is already in this library.
+     *
+     * Not a race - the ids are uuids minted by whoever built the record - so this is a retry that
+     * escaped the receipts, or a message from a build that mints them differently. Refused rather
+     * than applied, because writing over an existing record's bytes under its own id is the one way
+     * an import can destroy a file that was already there.
+     */
+    | "asset-id-taken"
+    /**
+     * The bytes never arrived, so the record was not written.
+     *
+     * The failure a channel that can drop a message produces, and it is deliberately loud: a record
+     * filed without its file is a row in the browser that draws nothing and builds into nothing, and
+     * the author who dragged the file in is the only person who still has it.
+     */
+    | "asset-bytes-missing"
+    /** A folder with folders inside it, and the author did not ask for those to go too. */
+    | "folder-not-empty"
+    /**
      * The operation will not fit in one payload.
      *
      * A whole character record travels in `update-character`, and a layered character with a PSD
@@ -1187,6 +1453,79 @@ export type LiveCatchUp = {
     effects: readonly LiveEffect[];
 };
 
+/* ------------------------------------------------------------------ bytes in flight */
+
+/**
+ * How much of a file one message carries.
+ *
+ * Derived from the payload cap rather than chosen: one `live.say` is capped at
+ * `TEAM_LIVE_PAYLOAD_LIMIT` (16 KiB), base64 costs four bytes for every three, and the envelope
+ * around the data - the kind, a uuid, two numbers - is a couple of hundred more. 12000 leaves room
+ * for all of it and stays a round number in the logs.
+ *
+ * ⚠ Raising it does not make transfers faster; it makes them fail. The cap is the server's.
+ */
+export const LIVE_BLOB_CHUNK_BYTES = 12000;
+
+/**
+ * The largest file a session will carry.
+ *
+ * **A limit worth stating rather than a limit worth hiding.** At {@link LIVE_BLOB_CHUNK_BYTES} a
+ * message, 32 MiB is about 2800 messages - a few seconds on the sort of link a room runs over, and
+ * already far past what an image, a piece of music, a font or a script weighs. What it does not
+ * cover is video, and an author who drops a 400 MB file into a live session is told so by name
+ * rather than left watching a progress bar that will not finish.
+ *
+ * The escape is the one every other size limit here has: end the session, import, and open it again -
+ * the bulk of a project reaches the room through version control, and this channel carries only what
+ * has happened since.
+ */
+export const LIVE_BLOB_MAX_BYTES = 32 * 1024 * 1024;
+
+/**
+ * One slice of a file, on its way to the room.
+ *
+ * **Not an operation, and that distinction is the whole design.** An operation changes a document and
+ * is applied by the host in an order everybody follows; a slice changes nothing. It travels beside
+ * the operation stream rather than through it, which is what keeps a forty-megabyte import from
+ * stopping everybody else's typing for the length of the transfer.
+ *
+ * Sent by whoever holds the file - the host and a guest alike - because the server delivers a room's
+ * messages to the whole room. Nothing is applied when the last slice lands: the bytes wait until the
+ * operation naming their transfer is applied, and are dropped if it never is.
+ */
+export type LiveBlobChunk = {
+    kind: "blob";
+    /** What this belongs to. Minted by the sender; named by {@link LiveAssetBytePart}. */
+    transferId: string;
+    /** Which slice, counting from zero. */
+    index: number;
+    /** How many there are, so a receiver knows what it is waiting for. */
+    total: number;
+    /** The slice, base64. */
+    data: string;
+};
+
+/**
+ * A machine saying a transfer did not arrive whole, and which parts it is missing.
+ *
+ * The repair for the one thing this channel does not promise. It is the same bargain
+ * {@link LiveResync} makes about effects, one layer down: nothing is retransmitted on a timer, and
+ * nothing is acknowledged - a receiver that finds itself short says exactly what it is short of, and
+ * the machine that has the file sends those slices again.
+ *
+ * Addressed to the room rather than to the sender, for {@link LiveCatchUp}'s reason: a message
+ * reaches whoever is listening, and the holder recognises its own transfer.
+ */
+export type LiveBlobNeeded = {
+    kind: "blob-needed";
+    /** The instance asking. */
+    by: string;
+    transferId: string;
+    /** The slices it does not have. Empty means it has none of them. */
+    missing: readonly number[];
+};
+
 /** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
@@ -1195,7 +1534,9 @@ export type LiveMessage =
     | LiveClaims
     | LiveClaim
     | LiveResync
-    | LiveCatchUp;
+    | LiveCatchUp
+    | LiveBlobChunk
+    | LiveBlobNeeded;
 
 /**
  * Whether a value is a message this build understands.
@@ -1216,5 +1557,7 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "claims"
         || kind === "claim"
         || kind === "resync"
-        || kind === "catch-up";
+        || kind === "catch-up"
+        || kind === "blob"
+        || kind === "blob-needed";
 }
