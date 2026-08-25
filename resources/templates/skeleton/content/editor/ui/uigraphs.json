@@ -1109,7 +1109,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -1168,6 +1179,16 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
                         "port": "next"
                       },
                       "to": {
@@ -1240,12 +1261,25 @@
                       "id": "n2",
                       "type": "blueprint.page.go",
                       "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
+                        "surfaceId": ""
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 900,
                           "y": 0
+                        }
+                      }
+                    },
+                    "nQuit": {
+                      "id": "nQuit",
+                      "type": "blueprint.game.quit",
+                      "params": {
+                        "surfaceId": "narraleaf-studio:main-surface"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": -180
                         }
                       }
                     },
@@ -1417,7 +1451,7 @@
                         "port": "button_1_pressed"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nQuit",
                         "port": "in"
                       }
                     },
@@ -3377,7 +3411,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 560,
+                          "x": 1120,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 840,
                           "y": 0
                         }
                       }
@@ -3436,6 +3481,16 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
                         "port": "next"
                       },
                       "to": {
@@ -3508,12 +3563,25 @@
                       "id": "n2",
                       "type": "blueprint.page.go",
                       "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
+                        "surfaceId": ""
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 1180,
                           "y": 0
+                        }
+                      }
+                    },
+                    "nQuit": {
+                      "id": "nQuit",
+                      "type": "blueprint.game.quit",
+                      "params": {
+                        "surfaceId": "narraleaf-studio:main-surface"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1180,
+                          "y": -180
                         }
                       }
                     },
@@ -3685,7 +3753,7 @@
                         "port": "button_1_pressed"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nQuit",
                         "port": "in"
                       }
                     },
@@ -11578,7 +11646,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -11637,6 +11716,16 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
                         "port": "next"
                       },
                       "to": {
@@ -11709,12 +11798,25 @@
                       "id": "n2",
                       "type": "blueprint.page.go",
                       "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
+                        "surfaceId": ""
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 900,
                           "y": 0
+                        }
+                      }
+                    },
+                    "nQuit": {
+                      "id": "nQuit",
+                      "type": "blueprint.game.quit",
+                      "params": {
+                        "surfaceId": "narraleaf-studio:main-surface"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": -180
                         }
                       }
                     },
@@ -11886,7 +11988,7 @@
                         "port": "button_1_pressed"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nQuit",
                         "port": "in"
                       }
                     },
@@ -15350,7 +15452,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -15409,6 +15522,16 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
                         "port": "next"
                       },
                       "to": {
@@ -15481,12 +15604,25 @@
                       "id": "n2",
                       "type": "blueprint.page.go",
                       "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
+                        "surfaceId": ""
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 900,
                           "y": 0
+                        }
+                      }
+                    },
+                    "nQuit": {
+                      "id": "nQuit",
+                      "type": "blueprint.game.quit",
+                      "params": {
+                        "surfaceId": "narraleaf-studio:main-surface"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": -180
                         }
                       }
                     },
@@ -15658,7 +15794,7 @@
                         "port": "button_1_pressed"
                       },
                       "to": {
-                        "nodeId": "n2",
+                        "nodeId": "nQuit",
                         "port": "in"
                       }
                     },
@@ -43942,8 +44078,79 @@
         "program": {
           "kind": "graph",
           "graphs": {
-            "eventIds": [],
-            "events": {},
+            "eventIds": [
+              "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19"
+            ],
+            "events": {
+              "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19": {
+                "id": "6f1c4b02-3a8d-4e57-9d21-0c7a5be84f19",
+                "name": "Layer 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.keyUp",
+                      "params": {
+                        "key": "Escape"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 140,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.page.back",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
             "functionIds": [],
             "functions": {}
           }
@@ -44046,7 +44253,18 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
+                          "x": 840,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nClear": {
+                      "id": "nClear",
+                      "type": "blueprint.page.clear",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
                           "y": 0
                         }
                       }
@@ -44105,6 +44323,16 @@
                     {
                       "from": {
                         "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nClear",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nClear",
                         "port": "next"
                       },
                       "to": {
@@ -50124,6 +50352,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-24T03:07:22.899Z"
+    "updatedAt": "2026-08-25T00:21:02.549Z"
   }
 }
