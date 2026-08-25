@@ -84,6 +84,8 @@ export type UIHostAdapterBlueprintRuntime = {
         callerComponentId?: string;
         /** That instance's resolved params, which the fn body runs with. */
         callerComponentParams?: Record<string, string>;
+        /** Which drawing the call came from, so the body's widget writes land on it. */
+        callerInstanceKey?: string;
         signal?: AbortSignal;
         callerExecutionId?: string;
     }) => Promise<{ returns: Record<string, unknown> }>;

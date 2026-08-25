@@ -178,6 +178,7 @@ export const fnBlueprintNodes: BlueprintNodeDef[] = [
                 callerSurfaceId: ctx.executionOwner?.surfaceId,
                 callerComponentId: ctx.executionOwner?.componentId,
                 callerComponentParams: ctx.executionOwner?.componentParams,
+                callerInstanceKey: ctx.instanceKey,
                 signal: ctx.signal,
                 callerExecutionId: ctx.trace?.executionId,
             });
