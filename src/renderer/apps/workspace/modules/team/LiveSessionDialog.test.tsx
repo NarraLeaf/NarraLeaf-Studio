@@ -379,7 +379,12 @@ describe("how a session that ended reads", () => {
                 cause: "diverged",
                 sessionId: "room-1",
                 closed: false,
-                divergence: { seq: 4, sceneId: "scene-1" as StorySceneId, expected: "aaa", computed: "bbb" },
+                divergence: {
+                    seq: 4,
+                    scope: { of: "scene", sceneId: "scene-1" as StorySceneId },
+                    expected: "aaa",
+                    computed: "bbb",
+                },
             },
         };
         draw();

@@ -47,7 +47,7 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         id: "live-session-freeze",
         flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}live-session-freeze`,
         summary: "The command palette can freeze the workspace the way a live session does, leaving "
-            + "the open story writable and everything else read-only.",
+            + "the open story and the cast writable and everything else read-only.",
     },
 ];
 

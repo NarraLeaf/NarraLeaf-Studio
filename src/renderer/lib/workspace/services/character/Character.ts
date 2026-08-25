@@ -26,6 +26,18 @@ export class Character {
         };
     }
 
+    /**
+     * Take on another record's whole content, **without telling anybody**. See
+     * {@link CharacterProfile.adopt}.
+     *
+     * The identity of this object does not change, which is the point: a live session applies an
+     * arriving record onto the instance the panels are already holding, and reverts a local edit the
+     * same way. Both would break if a record were a new object.
+     */
+    public adopt(config: CharacterConfig): void {
+        this.profile.adopt(config.profile);
+    }
+
     public setOnChange(handler: (() => void) | null): void {
         this.onChange = handler;
     }

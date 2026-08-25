@@ -23,6 +23,7 @@ import type { FontAssetFieldDefinition, ImageFillFieldDefinition } from "../type
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { needsStructuralReadOnly } from "./fieldReadOnlyStrategy";
+import { useInspectorWrites } from "./inspectorWrites";
 
 interface FieldRendererProps<TData> {
     field: FieldDefinition<TData>;
@@ -70,10 +71,20 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
      * `readOnly` is honoured by the text, number, input-group and colour fields; the field types that
      * ignore it are the remaining gap, not a second design.
      */
-    const freeze = useFreezeGuard();
+    const writes = useInspectorWrites();
+    const freeze = useFreezeGuard(writes.scope);
+    /**
+     * Two reasons a field stands down, and they are not the same thing.
+     *
+     * A freeze is the write boundary refusing the bytes; a claim is somebody else being inside this
+     * record in a live session, where the document IS writable and the host would refuse the
+     * operation. Both end in the same place - the author must not be able to type a paragraph and be
+     * told afterwards - so they are collapsed here rather than in each field.
+     */
+    const writable = !freeze.frozen && writes.heldBy === undefined;
     const field = useMemo(
-        () => (freeze.frozen ? ({ ...definition, readOnly: true } as FieldDefinition<TData>) : definition),
-        [definition, freeze.frozen],
+        () => (writable ? definition : ({ ...definition, readOnly: true } as FieldDefinition<TData>)),
+        [definition, writable],
     );
 
     // Check if field should be hidden
@@ -90,7 +101,7 @@ function FieldRendererInner<TData>({ field: definition, data, onSaving }: FieldR
     }
 
     const rendered = renderFieldBody(field, data, onSaving);
-    if (!freeze.frozen || !needsStructuralReadOnly(field)) {
+    if (writable || !needsStructuralReadOnly(field)) {
         return rendered;
     }
     /**

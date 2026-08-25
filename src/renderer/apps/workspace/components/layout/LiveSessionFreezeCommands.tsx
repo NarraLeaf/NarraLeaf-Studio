@@ -8,14 +8,15 @@ import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import { NotificationType } from "@/lib/workspace/services/ui/types";
 import { hasExperimentalCondition } from "@shared/types/experimental";
 import { experimentalState } from "@/lib/experimental";
+import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import { storyDocumentFreezeScope } from "../../modules/story/scene-editor/storySceneReadOnly";
 import { useWorkspace } from "../../context";
 
 /**
  * Put this workspace into the freeze a live session arms, without a session.
  *
- * A live session leaves one story document writable and refuses the rest of what the repository
- * stores. That is a large change to how the whole workspace behaves, and everything about it is
+ * A live session leaves the documents it can carry writable and refuses the rest of what the
+ * repository stores. That is a large change to how the whole workspace behaves, and everything about it is
  * observable on one machine - which panels are inert, which controls still read, whether the game
  * still builds - while the part that needs a server, a second person and a room is none of it. So
  * the two are separated here: this arms the state, and a person looks at it.
@@ -27,9 +28,10 @@ import { useWorkspace } from "../../context";
  *
  *     yarn dev --experimental --x-live-session-freeze
  *
- * The writable document is the project's default story. There is no picker: a session's document is
- * decided by whoever opens the session, never chosen from a list, and a picker here would be the
- * wrong shape to then find in the way.
+ * The session is the project's default story, and the writable set is whatever a real session on it
+ * would leave writable - read from the same table the host decides with, never assembled here. There
+ * is no picker: a session's story is decided by whoever opens the session, never chosen from a list,
+ * and a picker here would be the wrong shape to then find in the way.
  */
 export function LiveSessionFreezeCommands() {
     const { context } = useWorkspace();
@@ -82,7 +84,7 @@ export function LiveSessionFreezeCommands() {
                 run: async () => {
                     const storyId = sessionStoryId();
                     const scope = storyDocumentFreezeScope(storyId ?? undefined);
-                    if (!scope) {
+                    if (!scope || !storyId) {
                         // Reachable between the palette reading `when` and the entry being run.
                         notify(
                             "This project has no story",
@@ -96,12 +98,12 @@ export function LiveSessionFreezeCommands() {
                         // value that looked like one would be a lie the next reader has to check.
                         session: "experimental",
                         kind: "live-session",
-                        writable: [scope],
+                        writable: liveSessionWritablePaths(storyId),
                     });
                     notify(
                         "Frozen as a live session",
-                        `Only ${scope} may be written. Everything else the repository stores is read-only, `
-                        + "and building, previewing and testing keep working.",
+                        `Only ${liveSessionWritablePaths(storyId).join(", ")} may be written. Everything else `
+                        + "the repository stores is read-only, and building, previewing and testing keep working.",
                     );
                 },
             },

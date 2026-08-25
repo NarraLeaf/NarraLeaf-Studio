@@ -1,6 +1,23 @@
 import { describe, expect, it } from "vitest";
+import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
-import { CLAIMED_OPS, isLiveMessage, opBlockId, opBlockIds, opSceneId, type LiveOp } from "./ops";
+import {
+    CLAIMED_OPS,
+    characterClaimKey,
+    isLiveMessage,
+    opBelongsTo,
+    opBlockId,
+    opBlockIds,
+    opClaimKeys,
+    opDigestScope,
+    opDocumentKind,
+    opSceneId,
+    sameLiveDocument,
+    storyRowClaimKey,
+    type LiveCharacterOp,
+    type LiveOp,
+    type LiveStoryOp,
+} from "./ops";
 import { sceneDigest } from "./sceneDigest";
 
 const BLOCK: StoryBlock = {
@@ -8,8 +25,23 @@ const BLOCK: StoryBlock = {
     payload: { kind: "dialogue", speaker: { kind: "temp", name: "Aoi" }, text: "You're late." },
 } as unknown as StoryBlock;
 
-/** One of each operation, so the helpers below are exercised over the whole vocabulary. */
-const EVERY_OP: LiveOp[] = [
+const RECORD: StoredCharacter = {
+    profile: {
+        id: "char-1",
+        name: "Aoi",
+        description: "",
+        tags: [],
+        attributes: {},
+        thumbnail: null,
+        nicknames: [],
+        appearance: { kind: "preset", poses: [], defaultPoseId: null },
+    },
+};
+
+const GROUP: CharacterGroup = { id: "g1", name: "Cast", createdAt: 1, updatedAt: 1 };
+
+/** One of each story operation, so the helpers below are exercised over the whole story vocabulary. */
+const EVERY_STORY_OP: LiveStoryOp[] = [
     { op: "insert-block", sceneId: "s1", block: BLOCK, target: { parentId: null } },
     { op: "update-block", sceneId: "s1", blockId: "block-1", payload: BLOCK.payload },
     { op: "update-blocks", edits: [{ sceneId: "s1", blockId: "block-1", payload: BLOCK.payload }] },
@@ -23,12 +55,22 @@ const EVERY_OP: LiveOp[] = [
     { op: "reorder-chapters", chapterIds: ["c2", "c1"] },
 ];
 
+/** The same for the cast. */
+const EVERY_CHARACTER_OP: LiveCharacterOp[] = [
+    { op: "create-character", character: RECORD },
+    { op: "update-character", characterId: "char-1", character: RECORD },
+    { op: "set-character-group", groupId: "g1", group: GROUP },
+    { op: "delete-character-group", groupId: "g1" },
+];
+
+const EVERY_OP: LiveOp[] = [...EVERY_STORY_OP, ...EVERY_CHARACTER_OP];
+
 describe("the operation vocabulary", () => {
     it("answers a block for every operation that is about one, and null for the rest", () => {
         // Both helpers are exhaustive switches with no default: an operation added later fails to
         // compile here until somebody has said what it is about, which is what stops a new verb
         // silently escaping the claim rules below.
-        const byOp = new Map(EVERY_OP.map(op => [op.op, opBlockId(op)]));
+        const byOp = new Map(EVERY_STORY_OP.map(op => [op.op, opBlockId(op)]));
         expect(byOp.get("insert-block")).toBe("block-1");
         expect(byOp.get("update-block")).toBe("block-1");
         expect(byOp.get("delete-block")).toBe("block-1");
@@ -44,20 +86,20 @@ describe("the operation vocabulary", () => {
         // The answer feeds a lookup of ONE claim. A batch that named one of its rows here would be
         // checked against that row and let the rest through - half a gesture applied, which is the
         // one outcome batching exists to prevent.
-        const byOp = new Map(EVERY_OP.map(op => [op.op, opBlockId(op)]));
+        const byOp = new Map(EVERY_STORY_OP.map(op => [op.op, opBlockId(op)]));
         expect(byOp.get("update-blocks")).toBeNull();
         expect(byOp.get("move-blocks")).toBeNull();
     });
 
     it("names every row a batch touches, which is what a claim check has to ask", () => {
-        const edits: LiveOp = {
+        const edits: LiveStoryOp = {
             op: "update-blocks",
             edits: [
                 { sceneId: "s1", blockId: "block-1", payload: BLOCK.payload },
                 { sceneId: "s2", blockId: "block-2", payload: BLOCK.payload },
             ],
         };
-        const moves: LiveOp = {
+        const moves: LiveStoryOp = {
             op: "move-blocks",
             sceneId: "s1",
             moves: [
@@ -74,7 +116,7 @@ describe("the operation vocabulary", () => {
     });
 
     it("answers a scene for the operations that live inside one", () => {
-        const byOp = new Map(EVERY_OP.map(op => [op.op, opSceneId(op)]));
+        const byOp = new Map(EVERY_STORY_OP.map(op => [op.op, opSceneId(op)]));
         for (const kind of ["insert-block", "update-block", "update-blocks", "delete-block", "move-block", "move-blocks", "set-block-disabled", "rename-scene"] as const) {
             expect(byOp.get(kind)).toBe("s1");
         }
@@ -96,9 +138,26 @@ describe("the operation vocabulary", () => {
         // The line between the two is what a loser loses. Editing, deleting or disabling a row while
         // its author is mid-paragraph takes the paragraph; renaming a scene under somebody takes a
         // word. The first is worth the ceremony of a claim and the second is not.
-        expect([...CLAIMED_OPS].sort())
-            .toEqual(["delete-block", "delete-blocks", "set-block-disabled", "update-block", "update-blocks"]);
+        expect([...CLAIMED_OPS].sort()).toEqual([
+            "delete-block",
+            "delete-blocks",
+            "set-block-disabled",
+            "update-block",
+            "update-blocks",
+            "update-character",
+        ]);
         for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks"] as const) {
+            expect(CLAIMED_OPS.has(kind)).toBe(false);
+        }
+    });
+
+    it("claims a character record, and does not claim the cast's order or its groups", () => {
+        // The test is whether the interface holds a draft of it. A character's description
+        // accumulates in the properties panel until the field is blurred, and an arriving edit to the
+        // same character would wipe it mid-sentence - the row's own reason, in another panel.
+        // Rearranging the cast is a drag, and a drag costs one gesture to repeat.
+        expect(CLAIMED_OPS.has("update-character")).toBe(true);
+        for (const kind of ["create-character", "set-character-group", "delete-character-group"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
     });
@@ -117,7 +176,7 @@ describe("the operation vocabulary", () => {
         // The question a claim check asks is a set for a batch, and `opBlockId` cannot answer it:
         // a batch that named one of its rows there would have that row checked and the rest let
         // through, which is the half-applied gesture batching exists to prevent.
-        const inserts: LiveOp = {
+        const inserts: LiveStoryOp = {
             op: "insert-blocks",
             sceneId: "s1",
             inserts: [
@@ -125,7 +184,7 @@ describe("the operation vocabulary", () => {
                 { block: { ...BLOCK, id: "block-2" }, target: { parentId: "block-1" } },
             ],
         };
-        const deletes: LiveOp = { op: "delete-blocks", sceneId: "s1", blockIds: ["block-1", "block-2"] };
+        const deletes: LiveStoryOp = { op: "delete-blocks", sceneId: "s1", blockIds: ["block-1", "block-2"] };
         expect(opBlockIds(inserts)).toEqual(["block-1", "block-2"]);
         expect(opBlockIds(deletes)).toEqual(["block-1", "block-2"]);
         expect(opBlockId(inserts)).toBeNull();
@@ -139,16 +198,96 @@ describe("the operation vocabulary", () => {
         // A row's fields hold each other up: a different speaker changes how the prose parses and
         // which translation entry the line belongs to. Two people editing "different fields" of one
         // row are editing one row.
-        const text: LiveOp = { op: "update-block", sceneId: "s1", blockId: "block-1", payload: BLOCK.payload };
-        const disabled: LiveOp = { op: "set-block-disabled", sceneId: "s1", blockId: "block-1", disabled: true };
+        const text: LiveStoryOp = { op: "update-block", sceneId: "s1", blockId: "block-1", payload: BLOCK.payload };
+        const disabled: LiveStoryOp = { op: "set-block-disabled", sceneId: "s1", blockId: "block-1", disabled: true };
         expect(CLAIMED_OPS.has(text.op) && CLAIMED_OPS.has(disabled.op)).toBe(true);
         expect(opBlockId(text)).toBe(opBlockId(disabled));
     });
 });
 
+describe("document addressing", () => {
+    it("answers a document kind for every verb, so no operation can travel unaddressed", () => {
+        // An exhaustive switch with no default: a verb added later fails to compile until somebody
+        // has said which document it changes. Without that, an operation would reach whichever
+        // document the receiver happened to have open.
+        const byOp = new Map(EVERY_OP.map(op => [op.op, opDocumentKind(op)]));
+        for (const op of EVERY_STORY_OP) {
+            expect(byOp.get(op.op)).toBe("story");
+        }
+        for (const op of EVERY_CHARACTER_OP) {
+            expect(byOp.get(op.op)).toBe("characters");
+        }
+    });
+
+    it("refuses a pair whose operation could not be about the document it names", () => {
+        // The message carries both, so the two can disagree - a story operation addressed at the cast
+        // would otherwise write a scene's worth of rows into a character store.
+        expect(opBelongsTo({ op: "rename-story", name: "Skeleton" }, { doc: "story", storyId: "s" })).toBe(true);
+        expect(opBelongsTo({ op: "rename-story", name: "Skeleton" }, { doc: "characters" })).toBe(false);
+        expect(opBelongsTo({ op: "delete-character-group", groupId: "g" }, { doc: "characters" })).toBe(true);
+        expect(opBelongsTo({ op: "delete-character-group", groupId: "g" }, { doc: "story", storyId: "s" })).toBe(false);
+    });
+
+    it("tells two story documents apart, because a project has many", () => {
+        expect(sameLiveDocument({ doc: "story", storyId: "a" }, { doc: "story", storyId: "a" })).toBe(true);
+        expect(sameLiveDocument({ doc: "story", storyId: "a" }, { doc: "story", storyId: "b" })).toBe(false);
+        expect(sameLiveDocument({ doc: "characters" }, { doc: "characters" })).toBe(true);
+        expect(sameLiveDocument({ doc: "story", storyId: "a" }, { doc: "characters" })).toBe(false);
+    });
+});
+
+describe("claim keys", () => {
+    it("keeps a row and a character apart even when their ids are equal", () => {
+        // Both are uuids, so an unprefixed map would let one document's claim answer for the other's -
+        // silently, because there would be nothing to compare.
+        expect(storyRowClaimKey("x")).not.toBe(characterClaimKey("x"));
+    });
+
+    it("names every claim an operation needs, so one held part refuses the whole gesture", () => {
+        expect(opClaimKeys({ op: "delete-blocks", sceneId: "s1", blockIds: ["b1", "b2"] }))
+            .toEqual([storyRowClaimKey("b1"), storyRowClaimKey("b2")]);
+        expect(opClaimKeys({ op: "update-character", characterId: "char-1", character: RECORD }))
+            .toEqual([characterClaimKey("char-1")]);
+        // A creation names the record it is about, so two people cannot mint one character twice, and
+        // the cast-level verbs claim nothing at all.
+        expect(opClaimKeys({ op: "create-character", character: RECORD })).toEqual([characterClaimKey("char-1")]);
+        expect(opClaimKeys({ op: "set-character-group", groupId: "g1", group: GROUP })).toEqual([]);
+        expect(opClaimKeys({ op: "rename-story", name: "Skeleton" })).toEqual([]);
+    });
+});
+
+describe("digest scopes", () => {
+    it("fingerprints the unit the operation names, never the document", () => {
+        // A per-document digest would re-encode a whole story on every committed line; this
+        // repository has measured that at 133 ms of the renderer's thread for a 15.4 MB document.
+        expect(opDigestScope({ op: "update-block", sceneId: "s1", blockId: "b1", payload: BLOCK.payload }))
+            .toEqual({ of: "scene", sceneId: "s1" });
+        expect(opDigestScope({ op: "update-character", characterId: "char-1", character: RECORD }))
+            .toEqual({ of: "character", characterId: "char-1" });
+        expect(opDigestScope({ op: "set-character-group", groupId: "g1", group: GROUP })).toEqual({ of: "cast" });
+        expect(opDigestScope({ op: "delete-character-group", groupId: "g1" })).toEqual({ of: "cast" });
+    });
+
+    it("has no scope for the operations no unit covers, which is not the same as agreeing", () => {
+        // `set-entry-scene` names a scene it does not change, and a digest of it would fingerprint
+        // something the operation cannot have altered. The guard rules `unproven` on these.
+        expect(opDigestScope({ op: "set-entry-scene", sceneId: "s1" })).toBeNull();
+        expect(opDigestScope({ op: "rename-story", name: "Skeleton" })).toBeNull();
+        expect(opDigestScope({ op: "reorder-chapters", chapterIds: ["c1"] })).toBeNull();
+        // And a batch across two scenes has no single scene to fingerprint.
+        expect(opDigestScope({
+            op: "update-blocks",
+            edits: [
+                { sceneId: "s1", blockId: "b1", payload: BLOCK.payload },
+                { sceneId: "s2", blockId: "b2", payload: BLOCK.payload },
+            ],
+        })).toBeNull();
+    });
+});
+
 describe("isLiveMessage", () => {
     it("recognises every kind a machine in a session can send", () => {
-        const kinds = ["intent", "effect", "refusal", "claims", "row-claim", "resync", "catch-up"];
+        const kinds = ["intent", "effect", "refusal", "claims", "claim", "resync", "catch-up"];
         for (const kind of kinds) {
             expect(isLiveMessage({ kind })).toBe(true);
         }

@@ -23,6 +23,13 @@ import { AssetData } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset } from "@/lib/workspace/services/assets/types";
 import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
+import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
+import {
+    characterDocumentFreezeScope,
+    useCharacterClaimHold,
+    useCharacterClaimOf,
+} from "../characters/characterLiveSession";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
@@ -1434,7 +1441,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         // Character editor
         if (activeCharacter && characterContext) {
-            return <PropertyEditor schema={characterSchema} data={characterContext} />;
+            return (
+                <CharacterInspector
+                    characterId={activeCharacter.profile.getId()}
+                    schema={characterSchema}
+                    data={characterContext}
+                />
+            );
         }
 
         // Asset editor
@@ -1514,6 +1527,43 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
     );
 }
 
+/**
+ * The character branch of the inspector, and the two things a live session adds to it.
+ *
+ * **The scope.** Every field in the character schema writes one file - the cast - so this branch can
+ * say which, and a session that leaves the cast writable therefore leaves these fields working. The
+ * panel as a whole cannot say it, because it hosts a different schema per selection; the branch that
+ * knows is the one that declares it, and the branches that say nothing keep the conservative answer.
+ *
+ * **The claim.** The record is held for as long as it is open here, not for as long as somebody is
+ * typing - the text fields keep a draft in their own state until the field is blurred, so an author
+ * who has stopped to think still has half a description that nobody else can see. While somebody
+ * else holds it the fields stand down: the host would refuse the operation anyway, and letting the
+ * author write a paragraph first is exactly the injury the claim exists to prevent.
+ */
+function CharacterInspector({ characterId, schema, data }: {
+    characterId: string;
+    schema: PropertyEditorSchema<CharacterEditorContext>;
+    data: CharacterEditorContext;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useCharacterClaimHold({ service: live, characterId });
+    const heldBy = useCharacterClaimOf(characterId);
+    const writes = useMemo(
+        () => ({ scope: characterDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return (
+        <InspectorWritesProvider value={writes}>
+            <PropertyEditor schema={schema} data={data} />
+        </InspectorWritesProvider>
+    );
+}
 
 /**
  * Every field in a schema, read-only, at any depth.
