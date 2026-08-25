@@ -1467,3 +1467,219 @@ describe("UIDocumentService template import: multi-surface templates", () => {
         expect(ids).not.toContain("tpl-pane");
     });
 });
+
+describe("UIDocumentService input actions", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
+    it("mints a vocabulary entry with no bindings of its own", () => {
+        const { service } = createHarness();
+
+        const action = service.createInputAction("  Advance  ");
+
+        expect(action).toMatchObject({ name: "Advance", bindings: [] });
+        expect(service.getInputActions()[action!.id]).toEqual(action);
+        // A default guessed here would wire a gesture into every interface at once.
+        expect(action!.bindings).toEqual([]);
+    });
+
+    it("refuses a nameless action", () => {
+        const { service } = createHarness();
+
+        expect(service.createInputAction("   ")).toBeNull();
+        expect(service.getInputActions()).toEqual({});
+    });
+
+    it("renames and rebinds an entry in place, so surfaces keep answering it", () => {
+        const { service } = createHarness();
+        const action = service.createInputAction("Advance")!;
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+        service.setSurfaceActionEnabled(surfaceId, action.id, true);
+
+        service.renameInputAction(action.id, "Next line");
+        service.setInputActionBindings(action.id, [
+            { kind: "pointer", gesture: "click" },
+            { kind: "key", key: "esc" },
+        ]);
+
+        expect(service.getInputActions()[action.id]).toEqual({
+            id: action.id,
+            name: "Next line",
+            // Stored the way the On Key heads spell it, not the way it was typed.
+            bindings: [{ kind: "pointer", gesture: "click" }, { kind: "key", key: "Escape" }],
+        });
+        expect(service.getDocument().surfaces[0]!.actions).toEqual([{ actionId: action.id }]);
+    });
+
+    it("clears every surface's answer when the action is deleted", () => {
+        const { service } = createHarness();
+        const advance = service.createInputAction("Advance")!;
+        const skip = service.createInputAction("Skip")!;
+        const first = service.getDocument().surfaces[0]!.id;
+        const second = service.createSurface({ kind: "appSurface", host: "app", name: "Settings" }).id;
+        for (const surfaceId of [first, second]) {
+            service.setSurfaceActionEnabled(surfaceId, advance.id, true);
+            service.setSurfaceActionEnabled(surfaceId, skip.id, true);
+        }
+
+        service.deleteInputAction(advance.id);
+
+        const document = service.getDocument();
+        expect(document.actions).toEqual({ [skip.id]: skip });
+        for (const surface of document.surfaces) {
+            expect(surface.actions).toEqual([{ actionId: skip.id }]);
+        }
+    });
+
+    it("records the deletion and its pruning as one document mutation", () => {
+        const { service } = createHarness();
+        const action = service.createInputAction("Advance")!;
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+        service.setSurfaceActionEnabled(surfaceId, action.id, true);
+        // A surface left answering an action nothing defines must never be observable, not even
+        // between two change events.
+        const seen: { actions: string[]; enablements: string[] }[] = [];
+        const stop = service.onDocumentChanged(document => {
+            seen.push({
+                actions: Object.keys(document.actions ?? {}),
+                enablements: (document.surfaces[0]!.actions ?? []).map(entry => entry.actionId),
+            });
+        });
+
+        service.deleteInputAction(action.id);
+        stop();
+
+        expect(seen).toEqual([{ actions: [], enablements: [] }]);
+    });
+
+    it("drops a surface's record when it stops answering, rather than flagging it off", () => {
+        const { service } = createHarness();
+        const action = service.createInputAction("Advance")!;
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+
+        service.setSurfaceActionEnabled(surfaceId, action.id, true);
+        service.updateSurfaceActionEnablement(surfaceId, action.id, {
+            consume: false,
+            overControls: "fire",
+            addBindings: [{ kind: "pointer", gesture: "click" }],
+        });
+        expect(service.getDocument().surfaces[0]!.actions).toEqual([
+            {
+                actionId: action.id,
+                consume: false,
+                overControls: "fire",
+                addBindings: [{ kind: "pointer", gesture: "click" }],
+            },
+        ]);
+
+        service.setSurfaceActionEnabled(surfaceId, action.id, false);
+
+        expect(service.getDocument().surfaces[0]!.actions).toBeUndefined();
+    });
+
+    it("clears an override by patching the key to undefined, and keeps an empty one", () => {
+        const { service } = createHarness();
+        const action = service.createInputAction("Advance")!;
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+        service.setSurfaceActionEnabled(surfaceId, action.id, true);
+
+        service.updateSurfaceActionEnablement(surfaceId, action.id, { overrideBindings: [] });
+        expect(service.getDocument().surfaces[0]!.actions?.[0]).toEqual({
+            actionId: action.id,
+            overrideBindings: [],
+        });
+
+        service.updateSurfaceActionEnablement(surfaceId, action.id, { overrideBindings: undefined });
+        expect(service.getDocument().surfaces[0]!.actions?.[0]).toEqual({ actionId: action.id });
+    });
+
+    it("stores the surface mode and records it in that surface's undo stack", () => {
+        const { service, historyCalls } = createHarness({ withHistory: true });
+        const surfaceId = service.getDocument().surfaces[0]!.id;
+
+        service.setSurfaceInputMode(surfaceId, "pass");
+
+        expect(service.getDocument().surfaces[0]!.input).toBe("pass");
+        expect(historyCalls).toContainEqual({ surfaceId, mergeKey: `surface:${surfaceId}:input` });
+    });
+});
+
+describe("UIDocumentService input model normalization", () => {
+    beforeEach(() => {
+        vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+        vi.clearAllTimers();
+        vi.useRealTimers();
+    });
+
+    function migrate(service: UIDocumentService, document: UIDocument): UIDocument {
+        return (service as any).migrateIfNeeded(document) as UIDocument;
+    }
+
+    it("loads a document written before the input model with sensible defaults", () => {
+        const { service, initialDocument } = createHarness();
+        const legacy: UIDocument = JSON.parse(JSON.stringify(initialDocument));
+
+        const loaded = migrate(service, legacy);
+
+        expect(loaded.actions).toBeUndefined();
+        for (const surface of loaded.surfaces) {
+            expect(surface.input).toBeUndefined();
+            expect(surface.actions).toBeUndefined();
+        }
+    });
+
+    it("round-trips a vocabulary and a surface's answers unchanged", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = {
+            ...JSON.parse(JSON.stringify(initialDocument)),
+            actions: {
+                advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }] },
+            },
+        };
+        stored.surfaces[0]!.input = "pass";
+        stored.surfaces[0]!.actions = [
+            {
+                actionId: "advance",
+                addBindings: [{ kind: "key", key: "Space" }],
+                consume: false,
+                overControls: "fire",
+            },
+        ];
+        const before = JSON.stringify(stored);
+
+        const loaded = migrate(service, JSON.parse(before) as UIDocument);
+
+        expect(JSON.stringify(loaded)).toBe(before);
+    });
+
+    it("repairs a stored vocabulary this build cannot read as written", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = {
+            ...JSON.parse(JSON.stringify(initialDocument)),
+            actions: {
+                // Key and id have drifted apart; the key is what surfaces store, so it wins.
+                advance: { id: "renamed", name: "Advance", bindings: [{ kind: "key", key: "esc" }] },
+                broken: { name: "No id", bindings: [] },
+            } as any,
+        };
+        stored.surfaces[0]!.input = "nonsense" as any;
+        stored.surfaces[0]!.actions = [{ actionId: "advance" }, { actionId: "" }] as any;
+
+        const loaded = migrate(service, stored);
+
+        expect(loaded.actions).toEqual({
+            advance: { id: "advance", name: "Advance", bindings: [{ kind: "key", key: "Escape" }] },
+        });
+        expect(loaded.surfaces[0]!.input).toBe("capture");
+        expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: "advance" }]);
+    });
+});

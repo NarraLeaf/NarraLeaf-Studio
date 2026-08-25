@@ -48,6 +48,42 @@ export const uiEditor = {
         page: "Page {index}",
         gameUi: "{slot} UI",
         component: "Component {index}",
+        inputAction: "Action {index}",
+    },
+    // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
+    // interface answers the ones it wants, so the same six words are read in the library panel and
+    // again in the interface's own Input section.
+    inputActions: {
+        title: "Input Actions",
+        create: "Create action",
+        createTitle: "Create Input Action",
+        rename: "Rename…",
+        delete: "Delete action",
+        deleteConfirm: "Delete {name}?",
+        deleteDetail: {
+            one: "{count} interface answers this action and will stop answering it.",
+            other: "{count} interfaces answer this action and will stop answering it.",
+        },
+        actionOptions: "Action options",
+        empty: "Name a gesture here, then let each interface answer it.",
+        noMatches: "No matches.",
+        answered: {
+            one: "{count} interface",
+            other: "{count} interfaces",
+        },
+        noBindings: "No bindings",
+        addBinding: "Add binding",
+        addKey: "Key…",
+        removeBinding: "Remove {binding}",
+        gesture: {
+            click: "Click",
+            doubleClick: "Double click",
+            rightClick: "Right click",
+            wheelUp: "Wheel up",
+            wheelDown: "Wheel down",
+            wheelLeft: "Wheel left",
+            wheelRight: "Wheel right",
+        },
     },
     createDialog: {
         slotIntro: "Choose where this Game UI belongs during gameplay.",
