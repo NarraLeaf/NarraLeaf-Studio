@@ -3,8 +3,10 @@ import type { CharacterGroup, StoredCharacter } from "@shared/types/character/mo
 import type { StoryBlock, StoryScene } from "@shared/types/story";
 import {
     CLAIMED_OPS,
+    assetClaimKey,
     characterClaimKey,
     isLiveMessage,
+    opAddresses,
     opBelongsTo,
     opBlockId,
     opBlockIds,
@@ -14,6 +16,7 @@ import {
     opSceneId,
     sameLiveDocument,
     storyRowClaimKey,
+    type LiveAssetOp,
     type LiveCharacterOp,
     type LiveOp,
     type LiveStoryOp,
@@ -146,11 +149,12 @@ describe("the operation vocabulary", () => {
             "set-block-disabled",
             "set-translation",
             "set-translations",
+            "update-asset",
             "update-block",
             "update-blocks",
             "update-character",
         ]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks"] as const) {
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
     });
@@ -367,5 +371,62 @@ describe("sceneDigest", () => {
         // It travels with each operation down a channel with a payload cap, so its size is part of
         // the contract rather than an implementation detail.
         expect(sceneDigest(scene({ b1: { id: "b1" } }))).toMatch(/^[0-9a-f]{16}$/);
+    });
+});
+
+/**
+ * The asset library's half of the vocabulary.
+ *
+ * What these guard is the one thing an asset operation can do that no other can: write a record into
+ * a sibling type's shard. Every other document a session carries is addressed by something the
+ * operation cannot state wrongly - a story operation names no story at all - while these name their
+ * own type twice, once on the message and once inside the verb.
+ */
+describe("the asset operations", () => {
+    const UPDATE: LiveAssetOp = {
+        op: "update-asset",
+        assetType: "image",
+        assetId: "asset-1",
+        record: { id: "asset-1", type: "image", name: "classroom.png" },
+    };
+    const MOVE: LiveAssetOp = {
+        op: "move-assets",
+        assetType: "audio",
+        moves: [{ assetId: "asset-2", groupId: "group-1" }, { assetId: "asset-3", groupId: null }],
+    };
+
+    it("belongs to the asset library and fingerprints the shard it names", () => {
+        expect(opDocumentKind(UPDATE)).toBe("assets");
+        expect(opDocumentKind(MOVE)).toBe("assets");
+        expect(opDigestScope(UPDATE, "story-1" as never)).toEqual({ of: "assets", assetType: "image" });
+        expect(opDigestScope(MOVE, "story-1" as never)).toEqual({ of: "assets", assetType: "audio" });
+    });
+
+    it("refuses a message whose type disagrees with the one inside the operation", () => {
+        // ⚠ The failure this catches has no other symptom. A record written into a sibling type's
+        // shard is a file the browser no longer draws anywhere, sitting in a document whose own
+        // digest agrees with itself.
+        expect(opBelongsTo(UPDATE, { doc: "assets", assetType: "audio" })).toBe(true);
+        expect(opAddresses(UPDATE, { doc: "assets", assetType: "audio" })).toBe(false);
+        expect(opAddresses(UPDATE, { doc: "assets", assetType: "image" })).toBe(true);
+        expect(opAddresses(MOVE, { doc: "assets", assetType: "audio" })).toBe(true);
+    });
+
+    it("claims a record and not a drag, which is the story's own split", () => {
+        expect(opClaimKeys(UPDATE)).toEqual([assetClaimKey("asset-1")]);
+        expect(opClaimKeys(MOVE)).toEqual([]);
+    });
+
+    it("keys a claim by the id alone, because an id is unique across the whole library", () => {
+        // Unlike a translation, whose locale is in the key: the same line has an entry in every
+        // language, and two translators are not in each other's way. An asset is one record.
+        expect(assetClaimKey("asset-1")).not.toBe(characterClaimKey("asset-1"));
+        expect(assetClaimKey("asset-1")).not.toBe(storyRowClaimKey("asset-1"));
+    });
+
+    it("tells two shards apart, and one shard from itself", () => {
+        expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "assets", assetType: "image" })).toBe(true);
+        expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "assets", assetType: "audio" })).toBe(false);
+        expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "characters" })).toBe(false);
     });
 });
