@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
     clampGraphNavZoom,
     FITTED_GRAPH_NAV,
+    frameGraphNavOn,
     GRAPH_NAV_MAX_SCALE,
     GRAPH_NAV_MIN_SCALE,
     graphNavBox,
@@ -9,6 +10,7 @@ import {
     graphNavZoomFactor,
     isFittedGraphNav,
     panGraphNav,
+    readableGraphNavZoom,
     zoomGraphNavAt,
     type GraphNav,
 } from "./graphCanvasNav";
@@ -172,5 +174,78 @@ describe("a point of the frame, in the graph's own coordinates", () => {
 
         expect(VIEWPORT.x + fitted.x / VIEWPORT.scale).toBeCloseTo(NODES[1]!.x, 8);
         expect(VIEWPORT.y + fitted.y / VIEWPORT.scale).toBeCloseTo(NODES[1]!.y, 8);
+    });
+});
+
+describe("coming back to a readable size", () => {
+    it("cancels the fitted scale, so a card is drawn at the size it was laid out in", () => {
+        expect(readableGraphNavZoom(0.25)).toBeCloseTo(4, 6);
+        expect(0.25 * readableGraphNavZoom(0.25)).toBeCloseTo(1, 6);
+        expect(0.05 * readableGraphNavZoom(0.05)).toBeCloseTo(1, 6);
+    });
+
+    it("asks for nothing on a graph that already fits at its own size", () => {
+        expect(readableGraphNavZoom(1)).toBe(1);
+    });
+
+    it("stays inside the band, so reading is never a way past the ceiling", () => {
+        const fitted = 0.02;
+        const zoom = readableGraphNavZoom(fitted);
+        expect(fitted * zoom).toBeLessThanOrEqual(GRAPH_NAV_MAX_SCALE);
+        expect(fitted * zoom).toBeGreaterThanOrEqual(GRAPH_NAV_MIN_SCALE);
+    });
+
+    it("answers 1 for a scale that is not a number, rather than an infinity", () => {
+        expect(readableGraphNavZoom(0)).toBe(1);
+        expect(readableGraphNavZoom(Number.NaN)).toBe(1);
+    });
+});
+
+describe("moving onto one card", () => {
+    const FRAME = { width: 400, height: 300 };
+    const CARD = { left: 1000, top: 500, width: 120, height: 60 };
+
+    it("puts the middle of the box in the middle of the frame", () => {
+        const nav = frameGraphNavOn(CARD, FRAME, 1);
+        const drawn = graphNavBox(CARD, nav);
+
+        expect(drawn.left + drawn.width / 2).toBeCloseTo(FRAME.width / 2, 6);
+        expect(drawn.top + drawn.height / 2).toBeCloseTo(FRAME.height / 2, 6);
+    });
+
+    it("still does, at whatever zoom it was handed", () => {
+        for (const zoom of [0.4, 1, 2.5]) {
+            const drawn = graphNavBox(CARD, frameGraphNavOn(CARD, FRAME, zoom));
+            expect(drawn.left + drawn.width / 2).toBeCloseTo(FRAME.width / 2, 6);
+            expect(drawn.top + drawn.height / 2).toBeCloseTo(FRAME.height / 2, 6);
+        }
+    });
+
+    it("keeps the zoom it was given, so the caller decides what close enough means", () => {
+        expect(frameGraphNavOn(CARD, FRAME, 2.5).zoom).toBe(2.5);
+        // A zoom of nothing would put every card at the same place with no size.
+        expect(frameGraphNavOn(CARD, FRAME, 0).zoom).toBe(1);
+        expect(frameGraphNavOn(CARD, FRAME, Number.NaN).zoom).toBe(1);
+    });
+
+    it("is not the fitted view, so the way back stays offered", () => {
+        expect(isFittedGraphNav(frameGraphNavOn(CARD, FRAME, 1))).toBe(false);
+    });
+
+    it("moves both columns onto a node that sits at the same coordinates in each", () => {
+        const nodes: GraphNodeFacts[] = [
+            { id: "a", type: "t", x: 0, y: 0 },
+            { id: "b", type: "t", x: 2000, y: 400 },
+        ];
+        const viewport = sharedGraphViewport([nodes, nodes], { width: 400, height: 300 });
+        const box = graphNodeBox(nodes[1]!, viewport);
+        const frame = { width: viewport.width * viewport.scale, height: viewport.height * viewport.scale };
+        const nav = frameGraphNavOn(box, frame, readableGraphNavZoom(viewport.scale));
+
+        // One transform, one viewport: the box computed once is centred, and there is nothing
+        // per-column left for the two sides to disagree about.
+        const drawn = graphNavBox(box, nav);
+        expect(drawn.left + drawn.width / 2).toBeCloseTo(frame.width / 2, 6);
+        expect(drawn.top + drawn.height / 2).toBeCloseTo(frame.height / 2, 6);
     });
 });

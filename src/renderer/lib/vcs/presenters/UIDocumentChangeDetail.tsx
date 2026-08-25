@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { DocumentDiffEntry } from "@shared/documents/diff";
+import type { DocumentChange, DocumentDiffEntry } from "@shared/documents/diff";
 import type { TranslationKey } from "@shared/i18n";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import { uiDocumentSpec } from "@shared/documents/specs/uiDocument";
@@ -11,6 +11,7 @@ import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRenderer
 import { BuiltinElementRenderers } from "@/lib/ui-editor/runtime/builtin";
 import { createEditorHostAdapter } from "@/lib/ui-editor/runtime/hostAdapters/editorHostAdapter";
 import { GameSurfaceRenderer } from "@/lib/ui-editor/runtime/surface/GameSurfaceRenderer";
+import type { RowReveal } from "../DocumentChangeList";
 import { sidesOfEntry } from "./entrySides";
 import {
     canvasReadFailure,
@@ -20,6 +21,7 @@ import {
     MaskLegend,
     UnmarkedNote,
     useCanvasWidth,
+    type CanvasSelection,
 } from "./canvasShell";
 import { CHANGE_MASK_CLASS } from "./changeMask";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
@@ -95,8 +97,16 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
         : plan.defaultSurfaceId;
     const surface = plan.surfaces.find(option => option.id === surfaceId) ?? null;
 
-    /** Which change a mark was clicked on, as an index into `entry.diff.changes`. */
-    const [selected, setSelected] = useState<number | null>(null);
+    /**
+     * The change singled out, as an index into `entry.diff.changes`, and how it was reached.
+     *
+     * The blueprint canvas next door holds the same pair for the same reason: a mark asks what
+     * changed here and is answered by narrowing the list to that row, and a row asks where this is
+     * and is answered by pointing at it on the page. There is no pan here to move - a page is drawn
+     * whole - so pointing at it is the whole of the answer.
+     */
+    const [selection, setSelection] = useState<CanvasSelection | null>(null);
+    const selected = selection?.index ?? null;
 
     const [frame, onFrame] = useCanvasWidth();
     const masks = useMemo(
@@ -130,6 +140,36 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
         return new Set([...unplacedBase, ...unplacedHead].filter(index => here.has(index)));
     }, [unplacedBase, unplacedHead, masks, surface]);
 
+    // Which mark each row of the list belongs to. A leaf under a change is entered as well as the
+    // change itself, because the row an author reads is "moved under its parent" and the mark is on
+    // the element above it.
+    const revealable = useMemo(() => {
+        const byChange = new Map<DocumentChange, number>();
+        for (const mask of masks) {
+            byChange.set(mask.change, mask.index);
+            for (const child of mask.change.children ?? []) {
+                byChange.set(child, mask.index);
+            }
+        }
+        return byChange;
+    }, [masks]);
+
+    const reveal = useMemo<RowReveal>(() => ({
+        // A mark the page had no handle on is drawn nowhere, so its row has nothing to point at -
+        // and it is already counted out loud as unplaced.
+        can: candidate => {
+            const index = revealable.get(candidate);
+            return index !== undefined && !unplaced.has(index);
+        },
+        go: candidate => {
+            const index = revealable.get(candidate);
+            if (index !== undefined) {
+                setSelection({ index, from: "row" });
+            }
+        },
+        label: t("documentDiff.canvas.markLabel"),
+    }), [revealable, unplaced, t]);
+
     const columns = (surface?.inBase ? 1 : 0) + (surface?.inHead ? 1 : 0);
     const scale = sharedSurfaceScale(
         [surface?.baseSize ?? null, surface?.headSize ?? null],
@@ -146,8 +186,12 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
         <CanvasShell
             entry={entry}
             change={change}
-            selected={selected === null ? null : changes[selected] ?? null}
-            onClearSelection={() => setSelected(null)}
+            selected={selection?.from === "mark" ? changes[selection.index] ?? null : null}
+            onClearSelection={() => setSelection(null)}
+            reveal={reveal}
+            // Only for a selection that came from a row: a mark has narrowed the list to its own
+            // row already, and a fill under the only row on screen says nothing.
+            activeChange={selection?.from === "row" ? changes[selection.index] ?? null : null}
             controls={plan.surfaces.length > 1 && (
                 <Select
                     size="sm"
@@ -155,7 +199,7 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
                     value={surfaceId ?? ""}
                     onChange={value => {
                         setChosenSurface(String(value));
-                        setSelected(null);
+                        setSelection(null);
                     }}
                     options={plan.surfaces.map(option => ({
                         value: option.id,
@@ -193,7 +237,7 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
                                     scale={scale}
                                     masks={baseMasks}
                                     selected={selected}
-                                    onSelect={setSelected}
+                                    onSelect={index => setSelection({ index, from: "mark" })}
                                     onUnplaced={setUnplacedBase}
                                 />
                             </VersionedAssetsProvider>
@@ -208,7 +252,7 @@ export function UIDocumentChangeDetail({ entry, change, sides }: ChangePresenter
                                     scale={scale}
                                     masks={headMasks}
                                     selected={selected}
-                                    onSelect={setSelected}
+                                    onSelect={index => setSelection({ index, from: "mark" })}
                                     onUnplaced={setUnplacedHead}
                                 />
                             </VersionedAssetsProvider>
