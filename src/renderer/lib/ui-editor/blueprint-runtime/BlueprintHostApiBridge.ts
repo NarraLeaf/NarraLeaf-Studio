@@ -60,6 +60,17 @@ import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
+import {
+    findUISurfaceActionEnablement,
+    readUISurfaceActionOverControls,
+    resolveSurfaceActionBindings,
+} from "@shared/types/ui-editor/inputAction";
+import {
+    getSharedInputHoldTracker,
+    isInputBindingHeld,
+} from "@/lib/ui-editor/runtime/input/inputHoldState";
+import { hitChainHasOperableElement } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { readSurfaceHitChain } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
@@ -643,6 +654,22 @@ export type BlueprintHostApiRuntime = {
      */
     network: {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
+    };
+    /**
+     * What the player is holding down, for `Is Action Held`.
+     *
+     * The read side of input routing, and the only part of it a graph can ask about rather than be
+     * told about. Everything else in the input model is a dispatch - an action fires, a head runs -
+     * and none of that can answer "while the gesture is down", because a fired event leaves nothing
+     * behind that says whether the hand is still there.
+     *
+     * Structural rather than a declared family in `@shared/types/blueprint/hostApi`, matching how
+     * `Is Action Held` reaches for it (see `BlueprintInputActionHostApi`): the contract there names
+     * capabilities a host may or may not implement, and this one is answered by the window every
+     * host already has.
+     */
+    input: {
+        isActionHeld: (actionId: string) => boolean;
     };
     /**
      * Moving the player's real cursor, for the Move Mouse family.
@@ -2157,6 +2184,55 @@ function normalizeGamePreferenceValue(
         default:
             throw new Error(`${operation}: ${key} is not supported`);
     }
+}
+
+/**
+ * `Is Action Held` - whether the player is holding a gesture this surface reads as this action.
+ *
+ * Resolved through the surface rather than off the vocabulary alone, because the surface is what
+ * says how the action is raised here: `overrideBindings` replaces the project's set, `addBindings`
+ * extends it, and a surface that overrides an action with nothing has said that gesture is not its
+ * business - which reads as never held, exactly as it fires nothing. A surface that says nothing
+ * about the action falls back to the project's bindings, which is the same answer
+ * `resolveSurfaceActionBindings` gives the dispatch path for the same input.
+ *
+ * `overControls` is honoured for a pointer hold the way it is for a pointer press: a panel-wide
+ * "hold to advance" must not run while the player is holding the Back button down. It is asked of
+ * where the press *landed* rather than of where the pointer is now, because it is one press
+ * throughout however far it has since been dragged.
+ */
+function readInputActionHeld(document: UIDocument, surfaceId: string, actionId: string): boolean {
+    const trimmedId = actionId.trim();
+    const def = trimmedId ? document.actions?.[trimmedId] : undefined;
+    if (!def) {
+        return false;
+    }
+    const surface = document.surfaces.find(entry => entry.id === surfaceId);
+    const enablement = findUISurfaceActionEnablement(surface?.actions, trimmedId);
+    const bindings = resolveSurfaceActionBindings(def, enablement);
+    if (bindings.length === 0) {
+        return false;
+    }
+    const tracker = getSharedInputHoldTracker();
+    const held = tracker.read();
+    const standsDownOverControls = readUISurfaceActionOverControls(enablement) === "skip";
+    return bindings.some(binding => {
+        if (!isInputBindingHeld(binding, held)) {
+            return false;
+        }
+        if (binding.kind !== "pointer" || !standsDownOverControls) {
+            return true;
+        }
+        const chain = readSurfaceHitChain({
+            document,
+            target: tracker.readPressTarget(binding.gesture),
+            // Every surface rather than only the one asking: a press that landed on a control
+            // belongs to that control wherever it was drawn, and a panel behind it has no better
+            // claim on the gesture than the panel in front of it does.
+            surfaceRoot: null,
+        });
+        return !hitChainHasOperableElement(chain);
+    });
 }
 
 /**
@@ -4350,6 +4426,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onNetworkFetch(request);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        input: {
+            isActionHeld: (actionId: string) => {
+                const cap = "input.isActionHeld";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readInputActionHeld(document, activeSurfaceId, String(actionId ?? ""));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

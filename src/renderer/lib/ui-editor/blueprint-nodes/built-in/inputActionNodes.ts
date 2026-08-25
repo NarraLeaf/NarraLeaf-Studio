@@ -78,8 +78,12 @@ export function listBlueprintInputActionOptions(input: {
  */
 export type BlueprintInputActionHostApi = {
     /**
-     * Whether a binding of this action is being held down right now - a bound key or button is
-     * pressed, on a surface that answers the action.
+     * Whether the player is holding a gesture that raises this action right now.
+     *
+     * The bindings are the ones the asking surface resolves - its own when it overrides or extends
+     * the project's, the project's otherwise - so a surface that has taken an action's gestures away
+     * reads it as never held, exactly as it fires nothing. A key or a mouse button can be held; a
+     * wheel notch and a double click cannot, and never answer.
      */
     isActionHeld?: (actionId: string) => boolean;
 };
