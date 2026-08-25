@@ -110,6 +110,11 @@ export const workspace = {
             statusReviewed: "Reviewed",
             statusStale: "To review",
         },
+        live: {
+            // On the mark a line wears while somebody else is translating it. A person is named:
+            // there is no width for a name beside the monogram, and a truncated one names nobody.
+            entryClaimed: "{name} is translating this line",
+        },
     },
     voice: {
         panel: {
