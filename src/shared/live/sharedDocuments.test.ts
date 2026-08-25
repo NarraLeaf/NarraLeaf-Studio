@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+    assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
@@ -17,6 +18,7 @@ import {
 
 const STORY = "story-1";
 const LOCALES: LiveSessionLocales = { translations: ["ja", "fr"], voice: ["ja"] };
+const ASSET_TYPES = ["image", "audio"];
 
 /**
  * The one table two things read: the write boundary, which asks which paths a session leaves
@@ -48,16 +50,26 @@ describe("the documents a session carries", () => {
         ]);
     });
 
+    it("adds the asset library's metadata shards, one per type", () => {
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, ASSET_TYPES)).toEqual([
+            { doc: "characters" },
+            { doc: "assets", assetType: "image" },
+            { doc: "assets", assetType: "audio" },
+        ]);
+    });
+
     it("addresses each one through its own document spec, so a document that moves takes this with it", () => {
         expect(liveDocumentPath({ doc: "story", storyId: STORY })).toBe(storyDocumentSpec.pathFor({ storyId: STORY }));
         expect(liveDocumentPath({ doc: "characters" })).toBe(charactersSpec.pathFor());
         expect(liveDocumentPath({ doc: "localization", locale: "ja" }))
             .toBe(localizationDocumentSpec.pathFor({ locale: "ja" }));
         expect(liveDocumentPath({ doc: "voice", locale: "ja" })).toBe(voiceDocumentSpec.pathFor({ locale: "ja" }));
+        expect(liveDocumentPath({ doc: "assets", assetType: "image" }))
+            .toBe(assetsMetadataSpec.pathFor({ type: "image" }));
     });
 
     it("names paths the repository actually stores, or the freeze would be exempting nothing", () => {
-        for (const path of liveSessionWritablePaths([STORY], LOCALES)) {
+        for (const path of liveSessionWritablePaths([STORY], LOCALES, ASSET_TYPES)) {
             expect(isVersioned(path)).toBe(true);
         }
     });
@@ -84,6 +96,26 @@ describe("the documents a session carries", () => {
         expect(liveSessionCarries([STORY], { doc: "voice", locale: "fr" }, LOCALES)).toBe(false);
     });
 
+    it("carries an asset type by name, so a shard nothing read is not writable", () => {
+        // The locale rule one document along, and it matters for the same reason: a shard this
+        // machine never loaded is one no effect can be applied to, because appliers are synchronous.
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "image" }, LOCALES, ASSET_TYPES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "font" }, LOCALES, ASSET_TYPES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "image" }, LOCALES)).toBe(false);
+    });
+
+    it("leaves the asset bytes, the folder shard and the row order out", () => {
+        // The rule the whole document rests on: a session carries what the author SAYS about a file
+        // and never the file. `assets/content/` is bytes; the folder shard has no verb, exactly as
+        // the named-key registry has none; and the row-order shard is not a document any operation
+        // is about - `AssetOrderManager` simply stops writing it when nothing moved.
+        const paths = liveSessionWritablePaths([STORY], LOCALES, ASSET_TYPES);
+        expect(paths.some(path => path.startsWith("assets/content"))).toBe(false);
+        expect(paths.some(path => path.includes("assets.groups."))).toBe(false);
+        expect(paths.some(path => path.includes("assets.order."))).toBe(false);
+        expect(paths.filter(path => path.includes("assets.metadata."))).toHaveLength(2);
+    });
+
     it("has a writable path for every document kind the vocabulary can carry, and no others", () => {
         // The invariant, stated as a test: a document is writable during a session exactly when the
         // session can carry its changes. A verb whose document is not here would be an operation the
@@ -94,14 +126,15 @@ describe("the documents a session carries", () => {
             { op: "create-character", character: { profile: { id: "c" } } as never },
             { op: "set-translation", locale: "ja", unitId: "t", unit: null },
             { op: "set-take", locale: "ja", unitId: "t", unit: null },
+            { op: "update-asset", assetType: "image", assetId: "a", record: {} },
         ];
         for (const op of verbs) {
             carried.add(opDocumentKind(op));
         }
-        expect([...carried].sort()).toEqual(["characters", "localization", "story", "voice"]);
-        // Two stories, the cast, two translation libraries and one voice library: every document the
-        // vocabulary can carry, and no path for a kind it cannot.
-        expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES)).toHaveLength(6);
+        expect([...carried].sort()).toEqual(["assets", "characters", "localization", "story", "voice"]);
+        // Two stories, the cast, two translation libraries, one voice library and two asset shards:
+        // every document the vocabulary can carry, and no path for a kind it cannot.
+        expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES, ASSET_TYPES)).toHaveLength(8);
     });
 
     it("leaves the named-key registry out, which is the invariant working rather than an omission", () => {

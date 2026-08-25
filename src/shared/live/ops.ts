@@ -1,3 +1,4 @@
+import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -38,9 +39,16 @@ import type {
  * `StoryService`'s mutators take one; for the cast it is a whole character record, because
  * `CharacterService` learns of an edit from a change notification that names the record and nothing
  * else. For a language's translations it is one entry, because `LocalizationService` takes one; same
- * for its voice takes. What is forbidden is the verb that would fit any document - "here is the new
- * file" - which is whole-document last-writer-wins, and the reason a line of prose has a claim on it
- * instead.
+ * for its voice takes. For an asset type's metadata it is one record, because that is what
+ * `AssetsService.recordChanged` is handed. What is forbidden is the verb that would fit any
+ * document - "here is the new file" - which is whole-document last-writer-wins, and the reason a
+ * line of prose has a claim on it instead.
+ *
+ * ⚠ **A document whose changes are BYTES is not shareable at all**, and the asset library is where
+ * that first bites. A session carries what the author says about a file - its name, its folder, its
+ * tags - and never the file: importing, replacing and deleting are refused for the length of a
+ * session, because the bulk of a project travels through version control and this channel carries
+ * only what fits in one message. See {@link LiveAssetOp}.
  *
  * ⚠ **Size.** One `live.say` payload is capped, and a whole document is far larger than the cap.
  * That is not a limitation to work around here - the bulk of a project travels through version
@@ -304,13 +312,84 @@ export type LiveVoiceOp =
     | { op: "set-takes"; locale: string; units: readonly { unitId: string; unit: VoiceUnit | null }[] };
 
 /**
+ * One asset's authored metadata, as it travels.
+ *
+ * The shape the document registry already reads off disk (`AssetMetadataEntry`), rather than the
+ * renderer's own `Asset` interface, and for the reason that module gives for being structural: the
+ * asset model lives under `renderer/lib` and cannot be imported here, and moving it into shared is
+ * the assets service's own migration rather than this one. An index signature keeps a field this
+ * build has not heard of from being dropped on the way through a machine that is a version behind.
+ */
+export type LiveAssetRecord = AssetMetadataEntry;
+
+/**
+ * Everything that can be done to one asset type's metadata shard.
+ *
+ * **Two verbs, and the pair is the story's `update-block` / `move-block` one document along** - the
+ * same split, made by the same test. `AssetsService` learns of a record edit at one point
+ * (`recordChanged`), and the finest thing that can be stated truthfully there is **one record,
+ * whole**: the fields of a record hold each other up, exactly as a character's do - a rename rewrites
+ * `name` and `ext` together, and a replaced file rewrites `hash` and `ext` and `name` together - so a
+ * field-level verb would be a precision the service never produces.
+ *
+ * ⚠ **Nothing here adds an asset, removes one, or replaces its bytes**, and that is a ruling
+ * rather than an omission. Those three move *bytes*, and bytes do not travel on a 16 KB channel: the
+ * library itself reaches a session through version control, and this carries only what the author
+ * says about it. So one sentence covers the whole document: **during a session the asset library can
+ * be organised and described, and nothing can be added, replaced or removed.** `AssetsService`
+ * refuses those gestures for as long as a sink is installed, rather than leaving the write boundary
+ * to catch a record that would have landed on one machine and nowhere else.
+ *
+ * ⚠ **Folders are not here either.** `assets/assets.groups.<category>.json` is a document of
+ * its own with no verbs, so creating and renaming a folder stays frozen for the length of a session
+ * and says so - the same half of the invariant `editor/localization/keys.json` is on. Filing an asset
+ * in a folder that already exists is not affected: that writes the record's `groupId` and nothing
+ * else.
+ */
+export type LiveAssetOp =
+    /**
+     * Replace one asset's record.
+     *
+     * The whole record rather than a patch of it, for `update-block`'s reason: the editing atom is
+     * already a committed field - the inspector's boxes keep a draft in their own state and reach the
+     * document on blur - so a field-level patch would buy precision the interface never produces, and
+     * every receiving machine would have to resolve it against its own copy.
+     *
+     * **Claimed** - see {@link CLAIMED_OPS}. The description box is a draft layer of exactly the kind
+     * the rule is about.
+     */
+    | { op: "update-asset"; assetType: string; assetId: string; record: LiveAssetRecord }
+    /**
+     * File any number of assets, each in its own folder, as ONE operation.
+     *
+     * What a drag of a multi-selection into a folder is, and a batch for `move-blocks`' reason: the
+     * host applies one operation at a time and broadcasts each, so a drag of forty rows sent as forty
+     * operations would draw thirty-nine half-filed libraries on every other screen and cost a press
+     * per row to take back. Each entry carries its own destination so the operation can also be its
+     * own inverse - the assets a drag collects came from different folders.
+     *
+     * **Unclaimed**, again with `move-block`: filing an asset rearranges the library without touching
+     * a word anybody wrote, and the loser of that race loses a drag.
+     *
+     * ⚠ **One asset type, because a message names one document.** A selection under Media may
+     * hold audio and video, which live in two shards; `AssetsService.moveAssetsToGroup` groups the
+     * selection by type and states one operation per shard. Each of those is a complete arrangement
+     * applied whole, and the cost is that a mixed drag takes two presses to undo rather than one.
+     */
+    | {
+          op: "move-assets";
+          assetType: string;
+          moves: readonly { assetId: string; groupId: string | null }[];
+      };
+
+/**
  * Everything a session can be asked to do, whichever document it is about.
  *
  * Flat rather than nested by document, because every consumer of this type switches over `op` and a
  * nesting would make each of them switch twice. Which document a verb belongs to is
  * {@link opDocumentKind}'s answer, and it is a property of the verb rather than of the message.
  */
-export type LiveOp = LiveStoryOp | LiveCharacterOp | LiveLocalizationOp | LiveVoiceOp;
+export type LiveOp = LiveStoryOp | LiveCharacterOp | LiveLocalizationOp | LiveVoiceOp | LiveAssetOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -340,7 +419,16 @@ export type LiveDocument =
      */
     | { doc: "localization"; locale: string }
     /** One language's voice takes - `editor/voice/<locale>.json`. The translations' mirror. */
-    | { doc: "voice"; locale: string };
+    | { doc: "voice"; locale: string }
+    /**
+     * One asset type's metadata shard - `assets/assets.metadata.<type>.json`.
+     *
+     * Parameterised by TYPE rather than by the category the browser draws, because the address is a
+     * file and a category is one or two of them: Media holds audio and video, and a message that
+     * named the category would be a message about two documents at once. The panel's own gestures
+     * are grouped by type before they are stated - see `move-assets`.
+     */
+    | { doc: "assets"; assetType: string };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -378,6 +466,9 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-take":
         case "set-takes":
             return "voice";
+        case "update-asset":
+        case "move-assets":
+            return "assets";
     }
 }
 
@@ -412,6 +503,12 @@ export function opAddresses(op: LiveOp, document: LiveDocument): boolean {
         case "set-take":
         case "set-takes":
             return document.doc === "voice" && document.locale === op.locale;
+        // The asset operations name their type for the library operations' reason: the service they
+        // came from is addressed by it, and a record written into a sibling type's shard is a file
+        // the browser no longer draws anywhere, in a shard whose digest agrees with itself.
+        case "update-asset":
+        case "move-assets":
+            return document.doc === "assets" && document.assetType === op.assetType;
         default:
             return true;
     }
@@ -428,6 +525,8 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "localization" && right.locale === left.locale;
         case "voice":
             return right.doc === "voice" && right.locale === left.locale;
+        case "assets":
+            return right.doc === "assets" && right.assetType === left.assetType;
     }
 }
 
@@ -442,6 +541,8 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `translations ${document.locale}`;
         case "voice":
             return `voice ${document.locale}`;
+        case "assets":
+            return `assets ${document.assetType}`;
     }
 }
 
@@ -485,6 +586,12 @@ export function describeLiveDocument(document: LiveDocument): string {
  * document two people are almost never inside at once.
  *
  * ⚠ That ruling turns over the day a take grows a field somebody writes paragraphs into.
+ *
+ * **An asset record is claimed; filing assets in a folder is not**, and the pair repeats the story's
+ * `update-block` / `move-block` split for the same reason. The inspector's name and description are
+ * `TextField`s, which commit on blur and re-sync from their props: somebody else's edit to the same
+ * record arriving mid-sentence takes the sentence with it, silently, which is the injury this rule
+ * exists to name. A drag into a folder writes `groupId` and touches nothing anybody typed.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
@@ -496,6 +603,7 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "set-block-disabled",
     "set-translation",
     "set-translations",
+    "update-asset",
 ]);
 
 /**
@@ -644,6 +752,19 @@ export function translationClaimKey(locale: string, unitId: string): LiveClaimKe
 }
 
 /**
+ * The claim over one asset record.
+ *
+ * No asset type in the key, unlike the translation's locale, and the difference is what the two
+ * parameters are for. A line has an entry in every language, so a translation key that named only the
+ * unit would put two translators in each other's way; an asset id is minted once and is unique across
+ * the whole library, so the type would be a second way to say something the id already says - and a
+ * second way for two spellings of one claim to fail to cancel out.
+ */
+export function assetClaimKey(assetId: string): LiveClaimKey {
+    return `asset:${assetId}`;
+}
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -689,6 +810,12 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-takes":
             // Not claimed - see {@link CLAIMED_OPS}.
             return [];
+        case "update-asset":
+            return [assetClaimKey(op.assetId)];
+        case "move-assets":
+            // Not claimed either, with `move-blocks`: filing rearranges the library without touching
+            // a word anybody wrote. See {@link CLAIMED_OPS}.
+            return [];
     }
 }
 
@@ -730,7 +857,16 @@ export type LiveDigestScope =
      */
     | { of: "translations"; locale: string }
     /** One language's voice takes, whole. The translations' mirror, for the same two reasons. */
-    | { of: "takes"; locale: string };
+    | { of: "takes"; locale: string }
+    /**
+     * One asset type's metadata shard, whole.
+     *
+     * The third document to be fingerprinted entire, and `@shared/live/assets` gives the same two
+     * reasons the libraries give: filing a multi-selection reaches across records freely, so a
+     * per-record digest would not fit in the message, and a shard of short records about files is a
+     * small document beside a story.
+     */
+    | { of: "assets"; assetType: string };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -780,6 +916,9 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "set-take":
         case "set-takes":
             return { of: "takes", locale: op.locale };
+        case "update-asset":
+        case "move-assets":
+            return { of: "assets", assetType: op.assetType };
     }
 }
 
@@ -796,6 +935,8 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "translations" && right.locale === left.locale;
         case "takes":
             return right.of === "takes" && right.locale === left.locale;
+        case "assets":
+            return right.of === "assets" && right.assetType === left.assetType;
     }
 }
 
@@ -931,6 +1072,19 @@ export type LiveRefusalReason =
      * or because a machine's applier failed on the creation that would have made it.
      */
     | "character-gone"
+    /**
+     * The asset record is gone.
+     *
+     * The library's answer to `row-gone` and to `character-gone`, and it carries the same
+     * instruction: the author's inspector is full of their own typing and it is theirs to keep. An
+     * update that created what it could not find would put back a file's record after somebody
+     * deleted the file, leaving a row in the browser with no bytes under it.
+     *
+     * ⚠ Reachable even though a session carries no deletion verb, for `character-gone`'s reason: the
+     * room opens on a committed revision, and a record can be missing from this shard because the
+     * author who joined never had it.
+     */
+    | "asset-gone"
     /**
      * The operation will not fit in one payload.
      *
