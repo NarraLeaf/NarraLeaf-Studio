@@ -3651,6 +3651,37 @@ function resolveSelfOutput(
     );
 }
 
+/**
+ * The value a node the host did not define published on one of its data output pins.
+ *
+ * `resolveSelfOutput` is a whitelist of built-in node types and their output port ids, and that is
+ * deliberate: it computes most outputs from a node's own inputs, so reading a value back out of one
+ * execution's output store is opt-in per node type, and the registry sweep in
+ * `graphParamResolvers.test.ts` keeps every built-in honest about opting in.
+ *
+ * A plugin's node cannot opt in - the whitelist lives here, in the host - and nothing here can
+ * compute its output either, so what `execute()` published is the only answer that exists. Reading
+ * it is narrow in a way a blanket fallback would not be: the lookup is keyed by this node's own id
+ * and its own port, so it can only ever answer for the node that published, and built-in types are
+ * excluded, so the whitelist stays their only route and the sweep keeps its teeth.
+ *
+ * In a shipped game this is also the only route there could be. A runtime plugin entry registers
+ * `type` / `displayName` / `execute` and no pins at all, so the node has no catalogue there and
+ * `isOutputPort` cannot recognise the pin.
+ */
+function resolveNonBuiltInNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    blueprintLocals: Record<string, unknown> | undefined,
+): unknown {
+    const type = graph.nodes?.[nodeId]?.type;
+    if (!type || blueprintNodeRegistry.isBuiltIn(type)) {
+        return undefined;
+    }
+    return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+}
+
 function isOutputPort(
     graph: DataPinGraph,
     nodeId: string,
@@ -3688,6 +3719,10 @@ export function resolveDataPinValue(
 
     const edge = graph.edges?.find(e => e.to.nodeId === consumerNodeId && e.to.port === consumerPortId);
     if (!edge) {
+        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals);
+        if (nonBuiltInOutput !== undefined) {
+            return nonBuiltInOutput;
+        }
         if (isOutputPort(graph, consumerNodeId, consumerPortId, params)) {
             const selfOutput = resolveSelfOutput(
                 graph,

@@ -375,8 +375,8 @@ export const workspace = {
         liveNobody: "此项目没有进行中的实时会话",
         liveRoomOpen: "{name} 开着一场实时会话",
         // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
-        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除该故事以外的一切",
-        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除该故事以外的一切",
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除该故事与角色以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除该故事与角色以外的一切",
         // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
         liveStory: "故事",
         liveHostedBy: "主持方 {name}",
@@ -393,7 +393,7 @@ export const workspace = {
         livePendingOne: "1 项修改正在等待主持方",
         livePendingMany: "{count} 项修改正在等待主持方",
         // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间只保存该会话的故事，此项目中其余内容是当前的，且为只读",
+        liveFrozenWhat: "会话期间只保存该会话的故事与角色，此项目中其余内容是当前的，且为只读",
         liveUnavailableHere: "实时会话期间不可用",
         // 别人正在写的行，集中在一处读，不必逐行去找标记。
         liveClaimsLabel: "正在被编辑的行",
@@ -621,7 +621,7 @@ export const workspace = {
             // 实时会话只保存自己的那份故事，其余一律拒绝，所以上面那个标题
             // 对作者正在打字的那份文件是假的。
             frozenTitleSession: "该文件不会被保存",
-            frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
+            frozenDetailSession: "实时会话进行中，只有会话的故事与角色会保存；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
