@@ -161,11 +161,16 @@ const shellSealed = isSealedBuildSync(appDir);
  * carries the same marker and stays authoritative - a manifest that claims this while the pack does
  * not is refused by the second gate, which is the one that runs from inside the archive.
  *
- * A sealed build refuses it whichever marker carries it, because this gate - the one that decides
- * in time to matter - can only read the manifest, and a protected build cannot have a text edit
- * standing between a stranger and its decrypted content. See {@link honoursDebuggableMarker}.
+ * The *shipped* form of a sealed build refuses it whichever marker carries it, because this gate -
+ * the one that decides in time to matter - can only read the manifest, and a protected game cannot
+ * have a text edit standing between a stranger and its decrypted content. An app directory run by
+ * hand is not that form and keeps the marker. See {@link honoursDebuggableMarker}.
  */
-const shellDebuggable = honoursDebuggableMarker(shellManifest.debuggable, shellSealed);
+const shellDebuggable = honoursDebuggableMarker({
+    marker: shellManifest.debuggable,
+    sealed: shellSealed,
+    packaged: app.isPackaged,
+});
 
 /*
  * Before anything has had a chance to print. A shipped game keeps its own output to its log file
@@ -764,14 +769,17 @@ function emitTestEvent(event: GameTestEvent): void {
 /**
  * The pack's own `debuggable` marker, as far as it is allowed to mean anything.
  *
- * Sealed builds are excluded here as well as at the pre-ready gate. This one cannot be tampered
- * with - it comes out of the protected store - so the exclusion is not defending against an edit;
- * it keeps the two gates saying the same thing, so that an artifact built before a sealed build
- * stopped carrying the marker does not open DevTools after the earlier gate has already refused
- * the switch that would have been inspected through them.
+ * Put through the same rule as the manifest one. This marker cannot be tampered with - it comes out
+ * of the protected store - so the point is not to defend against an edit; it is that the two gates
+ * have to say the same thing, or a launch could be refused its switch by the first and then be
+ * handed DevTools by the second.
  */
 function packDebuggable(pack: GameRuntimePackV1): boolean {
-    return honoursDebuggableMarker(pack.debuggable === true, shellSealed);
+    return honoursDebuggableMarker({
+        marker: pack.debuggable === true,
+        sealed: shellSealed,
+        packaged: app.isPackaged,
+    });
 }
 
 async function readPack(): Promise<GameRuntimePackV1> {
