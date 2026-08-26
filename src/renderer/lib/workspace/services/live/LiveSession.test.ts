@@ -989,6 +989,10 @@ describe("a live session", () => {
             expect(guest.calls).toContain(`adopt:${host.version.head}`);
             expect(guest.calls).toContain(`open:${host.version.head}`);
             expect(guest.calls).not.toContain("push");
+            // And one merge, which is the one a session asks for on purpose: this window is about
+            // to be the one everybody publishes through, and its own history is one the server has
+            // never seen. Both sides are the same bytes, so it settles without a question.
+            expect(guest.calls).toContain("sync");
             expect(guest.session.getView()).toMatchObject({ phase: "active", role: "host" });
         });
 
