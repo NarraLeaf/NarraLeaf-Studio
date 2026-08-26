@@ -389,7 +389,7 @@ import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
-import { readBlueprintAudioTrackParam } from "./audioTrackParams";
+import { BLUEPRINT_SOUND_PARAM_TRACK, readBlueprintAudioTrackParam } from "./audioTrackParams";
 import {
     readBlueprintDurationStyle,
     readBlueprintRelativeStyle,
@@ -1639,15 +1639,30 @@ function resolveGameNodeOutput(
  * wiring the page.
  */
 function resolveGetTrackVolumeNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
     nodeType: string,
     portId: string,
     params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
     if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME || portId !== "volume") {
         return undefined;
     }
-    const trackId = readBlueprintAudioTrackParam(params);
+    // Wired wins over picked, as everywhere else the pair exists: a settings row placed once per
+    // track reads which track it governs from its own params.
+    const wired = resolveDataPinValue(
+        graph,
+        nodeId,
+        BLUEPRINT_SOUND_PARAM_TRACK,
+        params,
+        blueprintLocals,
+        depth + 1,
+        runtime,
+    );
+    const trackId = (typeof wired === "string" ? wired.trim() : "") || readBlueprintAudioTrackParam(params);
     if (!trackId) {
         return 1;
     }
@@ -3545,9 +3560,13 @@ function resolveSelfOutput(
         return getCharacterOutput;
     }
     const trackVolumeOutput = resolveGetTrackVolumeNodeOutput(
+        graph,
+        nodeId,
         selfNode.type,
         portId,
         selfNode.params ?? {},
+        blueprintLocals,
+        depth,
         runtime,
     );
     if (trackVolumeOutput !== undefined) {

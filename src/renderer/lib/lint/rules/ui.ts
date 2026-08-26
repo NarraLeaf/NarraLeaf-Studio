@@ -371,6 +371,32 @@ function resolveEntrySurfaceId(document: UIDocument): string | undefined {
 }
 
 /**
+ * Pages named by a component instance rather than by the graph that opens them.
+ *
+ * One nav entry placed once per destination reads which page it opens from its own params, so the
+ * `Go Page` inside the definition names nothing and the graph sweep above sees no way in to any of
+ * them. The values are here instead - authored, in the document, one per placement.
+ *
+ * Read the same way the sweep reads a node it does not know: any value that spells a page id counts.
+ * A param's meaning is the definition's business, and the trade this rule already made applies
+ * unchanged - over-counting costs a page it stays quiet about, under-counting costs a warning on a
+ * page that works, which is the failure that gets a rule switched off.
+ */
+function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: ReadonlySet<string>): Set<string> {
+    const opened = new Set<string>();
+    for (const element of Object.values(document.elements ?? {})) {
+        const link = getUIComponentLink(element);
+        for (const value of Object.values(link?.params ?? {})) {
+            const trimmed = value.trim();
+            if (surfaceIds.has(trimmed)) {
+                opened.add(trimmed);
+            }
+        }
+    }
+    return opened;
+}
+
+/**
  * A page a player can never get to.
  *
  * **"Nothing does `Go Page` to it" is not the test.** The start page is entered by name and nothing

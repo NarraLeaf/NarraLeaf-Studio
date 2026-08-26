@@ -57,8 +57,8 @@ function toFullscreenMode(raw: unknown): FullscreenMode {
     return FULLSCREEN_MODES.includes(value as FullscreenMode) ? (value as FullscreenMode) : "toggle";
 }
 
-async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surfaceId: string) {
-    const targetSurfaceId = surfaceId.trim();
+async function goToSurface(ctx: Parameters<BlueprintNodeDef["execute"]>[0], surfaceId: unknown) {
+    const targetSurfaceId = String(surfaceId ?? "").trim();
     await requireHostApi(ctx).navigation.openSurface(targetSurfaceId, readPin(ctx, "props"));
     return { nextPort: undefined };
 }
@@ -74,6 +74,24 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
         isLatent: true,
         pins: [
             execIn,
+            {
+                // Wired wins over picked, the resolution `Start Story` and `Is Scene Visited` already
+                // give the same pair. The picker is what an author reaches for nine times in ten -
+                // it lists the project's own pages and cannot be spelled wrong. The tenth time the
+                // page is not known when the graph is written: one nav entry placed once per
+                // destination reads which page it opens from its own params, and an entry that could
+                // only name a page on the card would have to be copied once per destination.
+                //
+                // Empty stays meaningful either way: `Go Page` with nothing named empties the page
+                // stack, which is how a Title button gets back to a title screen that is the stack's
+                // own root.
+                id: "surfaceId",
+                kind: "input",
+                semantic: "data",
+                valueType: "string",
+                label: "Page",
+                optional: true,
+            },
             {
                 id: "props",
                 kind: "input",
@@ -92,7 +110,7 @@ export const frameBlueprintNodes: BlueprintNodeDef[] = [
                 emptyOptionLabel: "None",
             },
         ],
-        execute: ctx => goToSurface(ctx, String(ctx.params.surfaceId ?? "")),
+        execute: ctx => goToSurface(ctx, readPin(ctx, "surfaceId")),
     },
     {
         // The way back out of a page. Pages are a stack, so the alternative an author reaches for -

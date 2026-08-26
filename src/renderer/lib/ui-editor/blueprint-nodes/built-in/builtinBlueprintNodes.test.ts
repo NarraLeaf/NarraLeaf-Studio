@@ -3254,11 +3254,17 @@ describe("built-in blueprint nodes", () => {
         ]);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
             "in",
+            // Named on the card by a picker and on the pin by whatever computed it, resolved the
+            // way the catalogue resolves every such pair - wired wins. Optional, because the picker
+            // is what an author uses almost always and an unset pin must not read as "no page".
+            "surfaceId",
             "props",
         ]);
-        expect(frameBlueprintNodes
-            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
-            ?.pins.find(pin => pin.id === "props")?.optional).toBe(true);
+        for (const pinId of ["surfaceId", "props"]) {
+            expect(frameBlueprintNodes
+                .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
+                ?.pins.find(pin => pin.id === pinId)?.optional, `${pinId} must be optional`).toBe(true);
+        }
         expect(frameBlueprintNodes
             .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)
             ?.pins.map(pin => pin.id)).toEqual(["isExiting"]);
