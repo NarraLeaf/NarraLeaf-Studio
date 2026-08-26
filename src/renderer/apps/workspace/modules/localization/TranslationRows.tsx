@@ -323,6 +323,9 @@ export function TranslateRow(props: {
             <StateIndicator state={props.state} />
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 truncate px-2 text-2xs text-fg-subtle">
                 <span className="select-text truncate">{props.speaker}</span>
+                {/* Two marks, because the row draws two documents: the source text of a named string
+                    and its translation. Two people can hold one row, one column each. */}
+                {keyHeldBy ? <TranslationClaimMark account={keyHeldBy} tip={keyHeldTip} /> : null}
                 {heldBy ? <TranslationClaimMark account={heldBy} /> : null}
             </div>
             {sourceEditable ? (
