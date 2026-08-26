@@ -488,6 +488,7 @@ export const assets = {
     },
     live: {
         recordClaimed: "{name} 正在编辑该资产",
+        transferring: "该资产已传输 {percent}%",
     },
     newTextFile: {
         title: "新建文本文件",

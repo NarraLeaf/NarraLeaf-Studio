@@ -9,7 +9,7 @@ import type {
     LiveDigestScope,
 } from "@shared/live/ops";
 import { LIVE_BLOB_MAX_BYTES } from "@shared/live/ops";
-import { blobDigest } from "@shared/live/blobs";
+import { blobChunkCount, blobDigest, shouldAskForRepair } from "@shared/live/blobs";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -125,6 +125,31 @@ export type AssetBlobPort = {
     take(part: LiveAssetBytePart): Uint8Array | null;
     /** Ask the room to send the slices this machine is missing. */
     request(part: LiveAssetBytePart): void;
+    /**
+     * How much of one file has landed.
+     *
+     * `slices` is what the author watches arrive. `sent` says the last slice has been seen, which is
+     * what tells a file still in flight from one that is short of a slice: see
+     * {@link LiveBlobInbox.sawLast}.
+     */
+    arrived(part: LiveAssetBytePart): { slices: number; sent: boolean };
+};
+
+/**
+ * One file on its way into this library, as the browser draws it.
+ *
+ * **Both machines have one of these for the same file**, and neither of them is a fiction: the room
+ * relays a message back to whoever said it, so a file being carried in is a file arriving on every
+ * machine in the room including its own. What the author sees is therefore the same thing in the
+ * same place on both screens - the row the file will be, filling up.
+ */
+export type AssetTransfer = {
+    assetId: string;
+    /** Slices in hand, of the whole record. Bundles count every file in them. */
+    slices: number;
+    total: number;
+    /** What the record's files add up to. */
+    bytes: number;
 };
 
 /**
@@ -175,7 +200,19 @@ function setAssetGroup(record: Asset<AssetType, AssetSource>, groupId: string | 
  */
 type AssetPayloadWork =
     /** Bytes that came over the wire, or are still coming. */
-    | { do: "write"; assetType: AssetType; assetId: string; parts: readonly LiveAssetBytePart[] }
+    | {
+        do: "write";
+        assetType: AssetType;
+        assetId: string;
+        /** The files still short of a slice. Shrinks as they land. */
+        parts: readonly LiveAssetBytePart[];
+        /** Every file this record is made of. Never shrinks: it is what progress is measured out of. */
+        whole: readonly LiveAssetBytePart[];
+        /** Slices in hand at the previous attempt. See {@link MAX_BLOB_REPAIRS}. */
+        seen: number;
+        /** How many repairs have been asked for. */
+        asked: number;
+    }
     /** A copy of a file every machine already holds. */
     | { do: "copy"; assetType: AssetType; assetId: string; fromAssetId: string }
     /** Back out of this machine's own trash, where its own applier put it. */
@@ -195,7 +232,9 @@ function payloadWorkForBytes(assetType: string, assetId: string, bytes: LiveAsse
     }
     switch (bytes.from) {
         case "transfer":
-            return [{ do: "write", assetType, assetId, parts: bytes.parts }];
+            // `seen: -1` rather than 0 so the first attempt is never read as a stall: it runs while
+            // the sender is still sending, and asking then would have the whole file sent twice.
+            return [{ do: "write", assetType, assetId, parts: bytes.parts, whole: bytes.parts, seen: -1, asked: 0 }];
         case "asset":
             return [{ do: "copy", assetType, assetId, fromAssetId: bytes.assetId }];
         case "trash":
@@ -249,9 +288,20 @@ interface AssetsEvents {
     updated: Asset<AssetType, AssetSource>;
     /** A category's folder tree changed. Categories, not types: that is what a folder belongs to. */
     groupsUpdated: { category: AssetCategory; groupId?: string };
+    /** Which files are on their way in has changed, or one of them has got further. */
+    transfers: readonly AssetTransfer[];
 }
 
 const THUMBNAIL_DIMENSION = 160;
+
+/**
+ * How often the browser is told a transfer has got further.
+ *
+ * Slices land as fast as the network delivers them - thousands a second for a large file - and a
+ * redraw per slice would spend the whole transfer re-rendering the library. The bar moves in steps
+ * of this length instead, which is below what reads as lag and far above the cost of drawing it.
+ */
+const TRANSFER_NOTICE_MS = 120;
 
 export class AssetsService extends Service<AssetsService> implements IAssetService {
     private assetsMetadataManager: AssetsMetadataManager | null = null;
@@ -304,6 +354,17 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      */
     private readonly waitingPayloads: AssetPayloadWork[] = [];
     private payloadDraining = false;
+    /**
+     * The files that are on their way here, by asset id.
+     *
+     * ⚠ **Kept apart from the queue rather than read off it.** A piece of work is out of both lists
+     * while it is being tried, and a browser reading the queue would draw the row losing its bar and
+     * getting it back on every slice. Entered when the work is queued and removed when the last of
+     * its files is on disk, so what is drawn is the state of the file rather than the state of a list.
+     */
+    private readonly transferring = new Map<string, AssetPayloadWork & { do: "write" }>();
+    /** When the browser was last told about progress. See {@link TRANSFER_NOTICE_MS}. */
+    private transfersNotifiedAt = 0;
     /**
      * Where each deleted asset's file went in THIS machine's trash, by asset id.
      *
@@ -416,6 +477,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         this.blobPort = sink === null ? null : blobs;
         if (sink === null) {
             this.pendingCreations = null;
+            // Nothing is going to arrive now: the inbox those slices were coming into is cleared with
+            // the session. What is on disk stays; what was still coming is over.
+            this.waitingPayloads.length = 0;
+            if (this.transferring.size > 0) {
+                this.transferring.clear();
+                this.notifyTransfers(true);
+            }
         }
     }
 
@@ -925,8 +993,71 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         if (work.length === 0) {
             return;
         }
+        for (const item of work) {
+            if (item.do === "write") {
+                this.transferring.set(item.assetId, item);
+            }
+        }
         this.payloadQueue.push(...work);
+        this.notifyTransfers(true);
         void this.drainPayloadQueue();
+    }
+
+    /* ------------------------------------------------------- what is on its way here */
+
+    /**
+     * The files arriving right now, in no particular order.
+     *
+     * Empty outside a session and for every gesture that moves no bytes, which is most of them: a
+     * duplicate, a deletion and taking a deletion back are each one small message.
+     */
+    public transfers(): readonly AssetTransfer[] {
+        const out: AssetTransfer[] = [];
+        for (const work of this.transferring.values()) {
+            let total = 0;
+            let bytes = 0;
+            for (const part of work.whole) {
+                total += blobChunkCount(part.size);
+                bytes += part.size;
+            }
+            out.push({ assetId: work.assetId, slices: this.slicesInHand(work), total, bytes });
+        }
+        return out;
+    }
+
+    /**
+     * How many slices of one record are here, counting the files already written as whole.
+     *
+     * ⚠ **A file that has been taken out of the inbox reads as zero there**, which is right for the
+     * inbox and wrong for a bar: taking is what completes a file, so counting only what is still in
+     * the inbox would make a bundle's bar fall back every time one of its files finished.
+     */
+    private slicesInHand(work: AssetPayloadWork & { do: "write" }): number {
+        const outstanding = new Set(work.parts.map(part => part.transferId));
+        let slices = 0;
+        for (const part of work.whole) {
+            const count = blobChunkCount(part.size);
+            slices += outstanding.has(part.transferId)
+                ? Math.min(this.blobPort?.arrived(part).slices ?? 0, count)
+                : count;
+        }
+        return slices;
+    }
+
+    /**
+     * Tell the browser what is arriving, at most every {@link TRANSFER_NOTICE_MS}.
+     *
+     * `now` for the two moments the interval must not swallow: a transfer appearing, and the last one
+     * finishing. A bar that arrives late reads as a slow start; a bar that never clears reads as a
+     * file that never arrived.
+     */
+    private notifyTransfers(now: boolean): void {
+        const at = Date.now();
+        if (!now && at - this.transfersNotifiedAt < TRANSFER_NOTICE_MS) {
+            return;
+        }
+        this.transfersNotifiedAt = at;
+        this.events.emit("transfers", this.transfers());
     }
 
     /**
@@ -952,6 +1083,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                     // reference report already tells the author about. It must never take the drain
                     // - or the session - with it.
                     console.warn(`[AssetsService] payload work failed (${work.do} ${work.assetId})`, error);
+                    if (work.do === "write") {
+                        // Nothing is going to finish this one, so nothing should go on drawing it as
+                        // arriving. A bar that never clears is read as a file that never came.
+                        this.transferring.delete(work.assetId);
+                        this.notifyTransfers(true);
+                    }
                 }
             }
         } finally {
@@ -964,23 +1101,54 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         switch (work.do) {
             case "write": {
                 const still: LiveAssetBytePart[] = [];
+                // Read before anything is taken, because taking empties the inbox: what is wanted
+                // here is how far this record had got when the attempt began.
+                const held = this.slicesInHand(work);
+                const short: LiveAssetBytePart[] = [];
                 for (const part of work.parts) {
                     const bytes = this.blobPort?.take(part) ?? null;
                     if (!bytes) {
-                        // Not here yet, or short of a slice. Ask for what is missing and set the rest
-                        // of this file aside - the only repair this channel has.
-                        this.blobPort?.request(part);
                         still.push(part);
+                        if (this.blobPort?.arrived(part).sent) {
+                            // Every slice was sent and this file is still short of one, so one was
+                            // lost. The only case worth a repair, and the only one that gets one
+                            // while the slices are still flowing.
+                            short.push(part);
+                        }
                         continue;
                     }
                     await this.writePayloadFile(this.payloadPathFor(work.assetId, part.path), bytes);
                 }
                 if (still.length > 0) {
+                    // ⚠ Asked for only at the two moments it is worth asking at. See
+                    // {@link shouldAskForRepair} - asking on every slice is what a small test file
+                    // will not show and a real one turns into a room that carries nothing else.
+                    const repair = shouldAskForRepair({
+                        have: held,
+                        seen: work.seen,
+                        sent: short.length > 0,
+                        asked: work.asked,
+                    });
+                    if (repair) {
+                        for (const part of (short.length > 0 ? short : still)) {
+                            this.blobPort?.request(part);
+                        }
+                    }
                     // The parts that did land are on disk; only the rest is waited for, so a bundle
                     // of forty files does not start again from the first one every time.
-                    this.waitingPayloads.push({ ...work, parts: still });
+                    const waiting = {
+                        ...work,
+                        parts: still,
+                        seen: held,
+                        asked: repair ? work.asked + 1 : work.asked,
+                    };
+                    this.waitingPayloads.push(waiting);
+                    this.transferring.set(work.assetId, waiting);
+                    this.notifyTransfers(false);
                     return;
                 }
+                this.transferring.delete(work.assetId);
+                this.notifyTransfers(true);
                 await this.clearThumbnailCache(work.assetId);
                 this.events.emit("updated", this.liveRecord(work.assetType, work.assetId) as Asset);
                 return;

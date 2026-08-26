@@ -105,6 +105,7 @@ function Harness({ onRender, library = [] }: { onRender?: () => void; library?: 
         mediaSupport: new Map(),
         handleConvertMedia: () => undefined,
         assetClaims: {},
+        assetTransfers: {},
     };
 
     return (
