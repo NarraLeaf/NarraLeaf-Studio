@@ -1,5 +1,5 @@
 /**
- * The whole of the Team protocol's IPC, and it is five handlers.
+ * The whole of the Team protocol's IPC: five handlers for what is said, and one for bytes.
  *
  * Not five per feature - five altogether, however many features the protocol grows. A
  * call names a method the server declared it serves and carries whatever that method
@@ -16,10 +16,19 @@
  * The window is passed through to the manager because **a subscription belongs to a
  * window**, not to Studio: two windows may be looking at different projects on the same
  * server, and the last one to stop looking is what ends a subscription.
+ *
+ * The sixth is {@link TeamTransferHandler}, and it is here because a file is the one thing
+ * a call cannot carry - see the note on `IPCEventType.teamTransfer`. It is also the only
+ * one of the six that reads a path, so it is the only one with anything to check: a path
+ * it is given must be inside the project this window has open, which is the same boundary
+ * every other file the window touches is held to.
  */
+import path from "node:path";
+
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEvents, IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import type { TeamCallOutcome, TeamConnection, TeamSubscribeOutcome } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -107,4 +116,73 @@ export class TeamUnsubscribeHandler extends IPCHandler<IPCEventType.teamUnsubscr
         return this.tryUse(async () =>
             window.app.getTeamManager().unsubscribe(window, remoteOrigin, topic));
     }
+}
+
+/**
+ * Move a file between this project and a server.
+ *
+ * ⚠ **The path is checked here rather than trusted.** Every other file this window reaches
+ * goes through a grant that holds it to the project it has open; this one does not, because
+ * the reading and the writing happen in the main process. So the same boundary is applied
+ * by hand: a source or a destination outside the window's own project is refused, and a
+ * window with no project - a launcher, a wizard - has no project to be inside and is
+ * refused everything.
+ */
+export class TeamTransferHandler extends IPCHandler<IPCEventType.teamTransfer> {
+    readonly name = IPCEventType.teamTransfer;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        request: IPCEvents[IPCEventType.teamTransfer]["data"],
+    ): Promise<RequestStatus<TeamTransferOutcome>> {
+        return this.tryUse(async () => {
+            const named = fileNamedBy(request);
+            if (named !== null && !withinProject(window, named)) {
+                return {
+                    ok: false,
+                    problem: {
+                        kind: "unavailable",
+                        detail: "that file is not in the project this window has open",
+                    },
+                } satisfies TeamTransferOutcome;
+            }
+            return window.app.getTeamManager().transfer(request);
+        });
+    }
+}
+
+/** The file a request is about, or null for one that is about no file. */
+export function fileNamedBy(request: TeamTransferRequest): string | null {
+    if (request.action === "offer") {
+        return request.source;
+    }
+    if (request.action === "collect") {
+        return request.destination;
+    }
+    return null;
+}
+
+/**
+ * Whether a path is inside a project directory.
+ *
+ * ⚠ **Resolved on both sides before comparing, and compared at a separator.** `…/lantern-house`
+ * must not read as inside `…/lantern`, and `…/lantern/../secrets` must not read as inside it
+ * either - this is the only check standing between a window and a file the main process would
+ * otherwise happily read or write on its behalf.
+ *
+ * Undefined for a window with no project: a launcher has no project to be inside, so nothing is.
+ */
+export function fileIsInProject(projectPath: string | undefined, file: string): boolean {
+    if (projectPath === undefined || projectPath === "") {
+        return false;
+    }
+    const root = path.resolve(projectPath);
+    const resolved = path.resolve(file);
+    return resolved === root || resolved.startsWith(root.endsWith(path.sep) ? root : root + path.sep);
+}
+
+function withinProject(window: AppWindow, file: string): boolean {
+    const props = window.getProps() as { projectPath?: string } | undefined;
+    return fileIsInProject(props?.projectPath, file);
 }

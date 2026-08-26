@@ -364,12 +364,6 @@ export class LiveHost {
                 // back off the topic - every participant receives its own - and there is nothing to
                 // do about it and nothing to say.
                 return null;
-            case "blob":
-            case "blob-needed":
-                // Bytes in flight. The host has no more to do with them than anybody else: a slice
-                // changes no document and takes no sequence number, and the machine that holds the
-                // file answers a request for the ones it is short of. See `LiveBlobChunk`.
-                return null;
             case "handover":
                 // About the room rather than about the document, so it is settled before a message
                 // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one

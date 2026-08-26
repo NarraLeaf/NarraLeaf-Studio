@@ -55,6 +55,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
@@ -671,6 +672,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** A session opened, dropped, or was refused. Sent to every window. */
         onConnectionChanged: (handler: (payload: { connection: TeamConnection }) => void) =>
             ipcClient.onMessage(IPCEventType.teamConnectionChanged, handler),
+        /**
+         * Move a file between this project and a server, or ask how far one has got.
+         *
+         * ⚠ Names a path; never carries a byte. The reading, the writing and the connection all
+         * happen in the main process - see `@shared/types/teamTransfer`.
+         */
+        transfer: (request: TeamTransferRequest) =>
+            ipcClient.invoke(IPCEventType.teamTransfer, request) as Promise<RequestStatus<TeamTransferOutcome>>,
     },
 
     gameBuild: {

@@ -65,8 +65,8 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * **The asset library joins them whole: its records, its folders and its files.** That last one is
  * the departure, and it is worth saying plainly because everything else here is a document the
  * repository stores and this is not: `assets/content/` is BYTES, and no operation carries them. They
- * reach the room sliced up beside the operation stream (`LiveBlobChunk`) or, far more often, are
- * already on every machine and are copied there - see `LiveAssetBytes`. The path is writable so that
+ * reach the room over their own request to the server, beside the operation stream, or - far more
+ * often - are already on every machine and are copied there; see `LiveAssetBytes`. The path is writable so that
  * an applier can put them down; nothing else writes there, because every gesture that would has been
  * turned into an operation.
  *

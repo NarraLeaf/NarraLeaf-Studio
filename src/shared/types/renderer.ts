@@ -88,6 +88,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
@@ -997,6 +998,13 @@ export interface RendererPreloadedInterface {
         onEvent(handler: (message: TeamEventMessage) => void): AppEventToken;
         /** A session opened, dropped, or was refused. Sent to every window. */
         onConnectionChanged(handler: (payload: { connection: TeamConnection }) => void): AppEventToken;
+        /**
+         * Move a file between this project and a server, or ask how far one has got.
+         *
+         * ⚠ Names a path; never carries a byte. The reading, the writing and the connection all
+         * happen in the main process - see `@shared/types/teamTransfer`.
+         */
+        transfer(request: TeamTransferRequest): Promise<RequestStatus<TeamTransferOutcome>>;
     };
 
     gameBuild: {
