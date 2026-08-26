@@ -70,6 +70,11 @@ export const CONTAINER_ANIMATABLE_KEYS: readonly ContainerAppearancePropertyKey[
 ];
 
 export const BUTTON_ANIMATABLE_KEYS: readonly ButtonAppearancePropertyKey[] = [
+    // The three of the label's five that have something to tween through; `fontWeight` and
+    // `fontAssetId` step, the same way `nl.text` treats its own.
+    "fontSize",
+    "color",
+    "lineHeight",
     "backgroundColor",
     "fillOpacity",
     "fillVisible",
