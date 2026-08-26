@@ -248,27 +248,6 @@ export function inputBindingReachesDevice(binding: UIInputBinding, device: UIInp
 }
 
 /**
- * The devices a surface can be reached on for one action, once it has answered it.
- *
- * The union over the bindings that actually apply here - so an override that drops the keyboard
- * binding drops the keyboard from the answer, and an addition that brings in a long press brings in
- * touch. This is what an author panel draws its device markings from: "this interface answers this
- * action, and here is who can reach it."
- */
-export function resolveSurfaceActionDevices(
-    def: Pick<UIInputActionDef, "bindings"> | null | undefined,
-    enablement?: UISurfaceActionEnablement | null,
-): ReadonlySet<UIInputActionSource> {
-    const devices = new Set<UIInputActionSource>();
-    for (const binding of resolveSurfaceActionBindings(def, enablement)) {
-        for (const device of inputBindingDevices(binding)) {
-            devices.add(device);
-        }
-    }
-    return devices;
-}
-
-/**
  * Whether the player operates elements of this type directly.
  *
  * This is the question `overControls: "skip"` asks. A panel-wide "click advances" must not fire

@@ -16,7 +16,6 @@ import {
     readUISurfaceActionConsume,
     readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
-    resolveSurfaceActionDevices,
     type UIInputActionDef,
     type UIInputBinding,
     type UIInputPointerGesture,
@@ -212,34 +211,6 @@ describe("inputBindingDevices", () => {
         expect(inputBindingReachesDevice(click, "key")).toBe(false);
         expect(inputBindingReachesDevice(longPress, "pointer")).toBe(false);
         expect(inputBindingReachesDevice(escape, "key")).toBe(true);
-    });
-});
-
-describe("resolveSurfaceActionDevices", () => {
-    function devices(...args: Parameters<typeof resolveSurfaceActionDevices>): UIInputActionSource[] {
-        return [...resolveSurfaceActionDevices(...args)].sort();
-    }
-
-    it("unions the project defaults when the surface says nothing", () => {
-        expect(devices(action([click, escape]))).toEqual(["key", "pointer", "touch"]);
-        expect(devices(action([escape]))).toEqual(["key"]);
-    });
-
-    it("counts the surface's own additions", () => {
-        expect(devices(action([escape]), { actionId: "advance", addBindings: [longPress] })).toEqual([
-            "key",
-            "touch",
-        ]);
-    });
-
-    it("counts only the override when one stands", () => {
-        expect(
-            devices(action([click, escape]), { actionId: "advance", overrideBindings: [rightClick] }),
-        ).toEqual(["pointer"]);
-    });
-
-    it("reads an override present but empty as reachable from nowhere", () => {
-        expect(devices(action([click, escape]), { actionId: "advance", overrideBindings: [] })).toEqual([]);
     });
 });
 
