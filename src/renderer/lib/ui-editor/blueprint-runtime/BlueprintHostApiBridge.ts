@@ -77,6 +77,7 @@ import {
     getSharedInputHoldTracker,
     isInputBindingHeld,
 } from "@/lib/ui-editor/runtime/input/inputHoldState";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
 import { hitChainHasOperableElement } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { readSurfaceHitChain } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
@@ -691,20 +692,27 @@ export type BlueprintHostApiRuntime = {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
     /**
-     * What the player is holding down, for `Is Action Held`.
+     * The read side of input routing, for `Is Action Held` and `Get Input Device`.
      *
-     * The read side of input routing, and the only part of it a graph can ask about rather than be
-     * told about. Everything else in the input model is a dispatch - an action fires, a head runs -
-     * and none of that can answer "while the gesture is down", because a fired event leaves nothing
-     * behind that says whether the hand is still there.
+     * The only part of the input model a graph can ask about rather than be told about. Everything
+     * else in it is a dispatch - an action fires, a head runs - and none of that can answer "while
+     * the gesture is down" or "with which hand", because a fired event leaves nothing behind that
+     * says whether the hand is still there or what it was.
      *
      * Structural rather than a declared family in `@shared/types/blueprint/hostApi`, matching how
-     * `Is Action Held` reaches for it (see `BlueprintInputActionHostApi`): the contract there names
-     * capabilities a host may or may not implement, and this one is answered by the window every
-     * host already has.
+     * both nodes reach for it (see `BlueprintInputActionHostApi`): the contract there names
+     * capabilities a host may or may not implement, and these are answered by the window every host
+     * already has.
      */
     input: {
         isActionHeld: (actionId: string) => boolean;
+        /**
+         * Which device the player is using at this moment.
+         *
+         * One of the four values the `On Action` head's `source` pin carries, typed as a plain
+         * string so a graph compares both against the same literals.
+         */
+        getDevice: () => string;
     };
     /**
      * Moving the player's real cursor, for the Move Mouse family.
@@ -4576,6 +4584,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     return readInputActionHeld(document, activeSurfaceId, String(actionId ?? ""));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDevice: () => {
+                const cap = "input.getDevice";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readCurrentInputDevice();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

@@ -49,6 +49,16 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION = "blueprint.event.head.actio
 export const BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID = "actionId" as const;
 /** Reads whether one of the project's input actions is currently held down. */
 export const BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD = "blueprint.input.isActionHeld" as const;
+/**
+ * Reads which device the player is using at this moment.
+ *
+ * The same value domain as the `source` pin on the `On Action` head, so a graph compares both the
+ * same way. It exists so a prompt can name the gesture the player will actually make - "click" on a
+ * desktop and "tap" on a phone are different instructions, not different translations of one - and
+ * it gives the device only. What to say about it is the author's sentence to write, in the game's
+ * own languages, which are not Studio's.
+ */
+export const BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE = "blueprint.input.getDevice" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
