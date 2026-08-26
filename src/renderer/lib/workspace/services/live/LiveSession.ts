@@ -13,15 +13,22 @@ import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
+import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import { liveSessionWritablePaths, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionWritablePaths,
+    type LiveSessionLocales,
+    type LiveSessionRegistries,
+} from "@shared/live/sharedDocuments";
 import {
     assetClaimKey,
     characterClaimKey,
     isLiveMessage,
+    localizationKeyClaimKey,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    variableClaimKey,
     type LiveAssetBytePart,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -34,12 +41,14 @@ import {
     type LiveDigestScope,
     type LiveDocument,
     type LiveEffect,
+    type LiveLocalizationKeyOp,
     type LiveLocalizationOp,
     type LiveMessage,
     type LiveOp,
     type LiveRefusal,
     type LiveResync,
     type LiveStoryOp,
+    type LiveVariableOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
@@ -117,6 +126,12 @@ type ActiveSession = {
     assetTypes: readonly string[];
     /** The sections whose folders this session carries, settled on the way in with the rest. */
     assetCategories: readonly string[];
+    /**
+     * Which of the two project-level registries this session carries, settled on the way in with the
+     * rest - and by what this machine could actually READ, for the libraries' reason: a registry that
+     * would not parse is one no effect can be applied to.
+     */
+    registries: LiveSessionRegistries;
     /**
      * Slices that have arrived and are waiting for the operation naming them.
      *
@@ -499,6 +514,32 @@ export class LiveSession {
     }
 
     /**
+     * This window is editing one variable registry entry, or has stopped.
+     *
+     * The registry's door beside the row's, the record's, the translation's and the asset's, and held
+     * for the same span: while the row is open in front of somebody, not while their fingers are
+     * moving. The panel's name and default boxes are controlled inputs that write on every keystroke,
+     * so with a session installed the box's value IS the document - and an edit to the same entry
+     * arriving mid-word lands under the author's cursor and takes what they had typed.
+     *
+     * No project id and no scope, because there is one registry per project.
+     */
+    public claimVariable(variableId: string, holding: boolean): void {
+        this.claim(variableClaimKey(variableId), holding);
+    }
+
+    /**
+     * This window is editing one named string, or has stopped.
+     *
+     * The key registry's door, beside the translation's - and they are held together on a named-key
+     * row, one for the source text and one for each language's box beside it. Addressed by NAME
+     * because the registry is.
+     */
+    public claimLocalizationKey(name: string, holding: boolean): void {
+        this.claim(localizationKeyClaimKey(name), holding);
+    }
+
+    /**
      * Take or give back one claim, whichever kind it is.
      *
      * The one path for both, so the host's record and the broadcast that follows it cannot come to
@@ -623,6 +664,8 @@ export class LiveSession {
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -683,12 +726,20 @@ export class LiveSession {
         // opens it, so this only asks which ones are there.
         const assetTypes = this.deps.assets.shardTypes();
         const assetCategories = this.deps.assets.folderCategories();
+        // The two project-level registries, and the same rule the libraries follow: what this machine
+        // could READ is what the session carries. The variable registry survives a file it could not
+        // parse - the service keeps an empty stand-in so the project still opens - so "is it there"
+        // is not the question; "is what is in memory the file on disk" is.
+        const registries: LiveSessionRegistries = {
+            variables: this.deps.variables.readable(),
+            localizationKeys: await this.deps.localization.loadKeys(),
+        };
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories, registries),
         });
 
         const session: ActiveSession = {
@@ -701,6 +752,7 @@ export class LiveSession {
             locales,
             assetTypes,
             assetCategories,
+            registries,
             blobsIn: new LiveBlobInbox(),
             blobsOut: new Map(),
             blobsDropped: new Set(),
@@ -734,8 +786,10 @@ export class LiveSession {
                 locales,
                 assetTypes,
                 assetCategories,
+                registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
+                hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
                 digestOf: scope => this.digestOf(scope),
@@ -792,6 +846,7 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        this.deps.variables.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -822,6 +877,7 @@ export class LiveSession {
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
+        this.deps.variables.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
         session.blobsDropped.clear();
@@ -1000,6 +1056,8 @@ export class LiveSession {
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
             assetsByType: category => this.assetsOfCategory(category),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1022,6 +1080,14 @@ export class LiveSession {
                 break;
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
+                break;
+            case "variables":
+                this.deps.variables.applyOp(op as LiveVariableOp);
+                break;
+            // The named-string registry is applied by the service that owns the translations beside
+            // it - one service, two documents, and they stay two everywhere it matters.
+            case "localization-keys":
+                this.deps.localization.applyOp(op as LiveLocalizationKeyOp);
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1071,6 +1137,11 @@ export class LiveSession {
                 return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
+            // One per project, so the verb is the whole address - with the cast.
+            case "variables":
+                return { doc: "variables" };
+            case "localization-keys":
+                return { doc: "localization-keys" };
         }
     }
 
@@ -1112,6 +1183,13 @@ export class LiveSession {
                 return assetsDigest(this.deps.assets.records(scope.assetType));
             case "asset-groups":
                 return assetGroupsDigest(this.deps.assets.folders(scope.category));
+            // ⚠ An entry that is not there hashes to a value rather than to nothing, the way a
+            // missing character record does: taking a variable back out is an operation like any
+            // other, and the machine that failed to apply it has to be caught rather than excused.
+            case "variable":
+                return variableEntryDigest(this.deps.variables.entry(scope.variableId));
+            case "localization-key":
+                return localizationKeyDigest(this.deps.localization.keys()?.[scope.name] ?? null);
         }
     }
 
@@ -1138,7 +1216,8 @@ export class LiveSession {
             && op.op !== "set-translations" && op.op !== "set-takes"
             && op.op !== "update-asset" && op.op !== "move-assets"
             && op.op !== "create-assets" && op.op !== "replace-asset-content"
-            && op.op !== "delete-assets" && op.op !== "restore-asset-folder") {
+            && op.op !== "delete-assets" && op.op !== "restore-asset-folder"
+            && op.op !== "set-key") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1335,14 +1414,15 @@ export class LiveSession {
     /**
      * Where translation and voice edits go while this session is running.
      *
-     * **One sink for the two libraries and the asset shards**, which is the only place in this file
-     * documents share one, and they share it because the decision is identical: none of them has a
-     * document id this window has to be holding for the operation to be about it - the operation
-     * names its own language, or its own asset type - so there is nothing left for them to differ
-     * about. Three copies of these ten lines would be three places to remember the size check.
+     * **One sink for the two libraries, the asset shards and the two project-level registries**,
+     * which is the only place in this file documents share one, and they share it because the
+     * decision is identical: none of them has a document id this window has to be holding for the
+     * operation to be about it - the operation names its own language, or its own asset type, or is
+     * about the single registry there is - so there is nothing left for them to differ about. Five
+     * copies of these ten lines would be five places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp): boolean;
+        handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp | LiveVariableOp): boolean;
     } {
         return {
             handle: (op): boolean => {

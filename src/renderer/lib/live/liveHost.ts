@@ -1,6 +1,7 @@
 import {
     CLAIMED_OPS,
     characterClaimKey,
+    localizationKeyClaimKey,
     opAddresses,
     opBelongsTo,
     opClaimKeys,
@@ -21,9 +22,16 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    variableClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionCarries,
+    NO_LIVE_LOCALES,
+    NO_LIVE_REGISTRIES,
+    type LiveSessionLocales,
+    type LiveSessionRegistries,
+} from "@shared/live/sharedDocuments";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -69,6 +77,22 @@ export type LiveHostDeps = {
     assetTypes?: readonly string[];
     /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
     assetCategories?: readonly string[];
+    /**
+     * Which of the two project-level registries this session carries.
+     *
+     * Booleans rather than a list, because neither is parameterised - and read rather than assumed,
+     * for {@link locales}' reason: a registry this machine could not parse is one no operation can be
+     * applied to.
+     */
+    registries?: LiveSessionRegistries;
+    /**
+     * Whether one variable registry entry is there right now.
+     *
+     * The registry's answer to {@link readCharacter}, and a boolean for `hasAsset`'s reason: presence
+     * is the whole of what is asked, and handing the entry over would invite a later reader to plan
+     * against a copy instead of against the document.
+     */
+    hasVariable(variableId: string): boolean;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -199,6 +223,11 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
+    "create-variable": true,
+    "update-variable": true,
+    "delete-variable": true,
+    "set-key": true,
+    "remove-key": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -389,7 +418,16 @@ export class LiveHost {
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
         }
-        // There is deliberately no asset counterpart to those two. A session carries no verb that
+        if (applied.op === "delete-variable") {
+            // Nobody is inside a registry row that is gone.
+            this.claims.forget(variableClaimKey(applied.variableId));
+        }
+        if (applied.op === "remove-key") {
+            // Nor a named string that is gone. Its translations stay where they are, but the row
+            // that held the source text is not there for anybody to be inside any more.
+            this.claims.forget(localizationKeyClaimKey(applied.name));
+        }
+        // There is deliberately no asset counterpart to those. A session carries no verb that
         // removes an asset record, so a claim on one can only ever be given back or lapse.
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
@@ -736,6 +774,39 @@ export class LiveHost {
                 }
                 return { op };
             }
+
+            case "create-variable":
+                // Not checked against an entry already there, and not claimed, with
+                // `create-character`: the id was minted by whoever built the entry, so a collision is
+                // a uuid collision rather than a race, and a retry is answered by the receipts.
+                return { op };
+
+            case "update-variable":
+            case "delete-variable": {
+                if (!this.deps.hasVariable(op.variableId)) {
+                    // ⚠ Says the entry is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would put back a variable somebody removed, leaving every
+                    // blueprint node that used to name it still empty.
+                    return { refuse: "variable-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-key":
+                // ⚠ The claim check and nothing else, with `set-translation`. There is no "key is
+                // gone" refusal to pair with `row-gone`, because this verb is the service's own
+                // create-or-replace: an operation naming a key nobody has is an author declaring a
+                // string, which is the ordinary case rather than a race. What CAN be raced is the
+                // source text somebody is halfway through, and that is what the claim covers.
+                return this.claimed(op, by) ?? { op };
+
+            case "remove-key":
+                // Claimed, with `delete-character`: taking away the row somebody is inside takes the
+                // sentence they were writing. Deliberately tolerant of a key that is already gone,
+                // with `delete-character-group` - the second of two removals changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return this.claimed(op, by) ?? { op };
         }
     }
 
@@ -842,6 +913,7 @@ export class LiveHost {
             this.deps.locales ?? NO_LIVE_LOCALES,
             this.deps.assetTypes ?? [],
             this.deps.assetCategories ?? [],
+            this.deps.registries ?? NO_LIVE_REGISTRIES,
         );
     }
 }

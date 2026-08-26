@@ -114,6 +114,9 @@ export const workspace = {
             // On the mark a line wears while somebody else is translating it. A person is named:
             // there is no width for a name beside the monogram, and a truncated one names nobody.
             entryClaimed: "{name} is translating this line",
+            // The source column of a named-key row is a different document from the translation
+            // beside it, so it names a different act. Both can be held at once, by two people.
+            keyClaimed: "{name} is editing this string",
         },
     },
     voice: {

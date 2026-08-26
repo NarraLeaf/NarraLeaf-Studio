@@ -129,6 +129,9 @@ export const story = {
         // The asset library's answer to the same thing, and it says the same nothing about the
         // inspector: what the author typed into it is theirs and stays where it is.
         refusedAssetGone: "That asset is gone. The change was not applied.",
+        // The variable registry's answer to the same thing. Says nothing about the row the author is
+        // typing in: what is in it is theirs and stays where it is.
+        refusedVariableGone: "That variable is gone. The change was not applied.",
         // Not a race: asset ids are minted by whoever built the record, so one already in use is a
         // retry that escaped or a build that mints them differently. Never applied - writing over a
         // record under its own id is the one way an import destroys a file that was already there.
@@ -165,6 +168,9 @@ export const story = {
         // one: the bytes that were there are not kept, so there is nothing to point the record back
         // at.
         undoContentReplaced: "Replacing a file cannot be taken back.",
+        undoVariableGone: "That variable is gone.",
+        undoVariableRestored: "That variable is in the registry again.",
+        undoKeyRestored: "That string is declared again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

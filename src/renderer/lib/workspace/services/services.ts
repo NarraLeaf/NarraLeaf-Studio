@@ -540,8 +540,10 @@ interface IVariableRegistryService extends IService {
     setEntryValueType(id: string, valueType: StoryVariableValueType): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
     setEntryDescription(id: string, description: string | undefined): void;
-    deleteEntry(id: string): void;
-    replaceRegistry(registry: VariableRegistry): void;
+    /** False when a live session owns this registry - see `VariableRegistryService.canDeleteEntry`. */
+    canDeleteEntry(): boolean;
+    deleteEntry(id: string): boolean;
+    replaceRegistry(registry: VariableRegistry): boolean;
 }
 
 /**
@@ -1578,6 +1580,15 @@ interface ILiveSessionService extends IService {
      * lets somebody else take it.
      */
     claimCharacter(characterId: string, holding: boolean): void;
+    /**
+     * Say that this window is editing one variable registry entry, or that it has stopped.
+     *
+     * The registry's half of the same seam, held for the same span. One registry per project, so
+     * there is no document to name.
+     */
+    claimVariable(variableId: string, holding: boolean): void;
+    /** Say that this window is editing one named string, or that it has stopped. Addressed by name. */
+    claimLocalizationKey(name: string, holding: boolean): void;
     /**
      * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
      *

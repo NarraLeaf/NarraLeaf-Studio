@@ -113,6 +113,7 @@ export const workspace = {
         },
         live: {
             entryClaimed: "{name} がこの行を翻訳している",
+            keyClaimed: "{name} がこの文字列を編集している",
         },
     },
     voice: {

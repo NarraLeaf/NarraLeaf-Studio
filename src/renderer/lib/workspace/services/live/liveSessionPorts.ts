@@ -10,18 +10,22 @@ import type {
     LiveDerived,
     LiveDialogueRowRef,
     LiveDigestScope,
+    LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveStoryOp,
+    LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { VariableOpSink } from "../variables/VariableRegistryService";
 import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
@@ -152,8 +156,43 @@ export type LiveLocalizationPort = {
     loadAll(): Promise<readonly string[]>;
     /** One language's entries as they stand, or null when this window does not hold them. */
     units(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
+    /**
+     * Read the named-string registry, and say whether this window holds it.
+     *
+     * ⚠ **A second document on one port**, which no other kind here does, and it is the same service
+     * owning both: `editor/localization/keys.json` holds the source texts the per-language libraries
+     * are translations of. They are addressed apart everywhere it matters - their own `LiveDocument`,
+     * their own digest, their own claim - so what they share is a sink and a port, not an identity.
+     */
+    loadKeys(): Promise<boolean>;
+    /** Every named string as it stands, or null when this window does not hold the registry. */
+    keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
     /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
-    applyOp(op: LiveLocalizationOp): void;
+    applyOp(op: LiveLocalizationOp | LiveLocalizationKeyOp): void;
+};
+
+/**
+ * The project's variable registry - `editor/variables.json`.
+ *
+ * The cast port's shape rather than a library's: there is one registry per project, so nothing here
+ * is parameterised and there is no set of them to load. What it does have that the cast does not is
+ * {@link readable}, because the registry survives a document it could not parse - the service keeps
+ * an empty stand-in so the project still opens, and a session that carried THAT would be applying
+ * operations to a registry with nothing to do with the file on disk.
+ *
+ * ⚠ **Nothing here removes an entry.** Deleting a variable also clears the params of every blueprint
+ * node that named it, and the blueprint document is not a document a session carries -
+ * `VariableRegistryService` refuses the gesture for as long as a sink is installed.
+ */
+export type LiveVariablesPort = {
+    /** Where registry edits go instead of into the registry, or null to take them back. */
+    setSink(sink: VariableOpSink | null): void;
+    /** Whether this window holds a registry it could actually read. */
+    readable(): boolean;
+    /** One entry as it stands, or null when there is none. Read for a digest and for an inverse. */
+    entry(variableId: string): VariableRegistryEntry | null;
+    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
+    applyOp(op: LiveVariableOp): void;
 };
 
 /** One language's voice takes. The translations port's mirror, method for method. */
@@ -297,6 +336,7 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    variables: LiveVariablesPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
