@@ -113,7 +113,6 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  *    the room opens; and renaming the project renames the file, so the writable path would move
  *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
  *
- * ⚠ **The Gallery's catalog is not here either, and it is the same half of the trade for a sharper
  * ⚠ **`variables.json` being writable does not mean every gesture on it travels.** Removing a
  * variable also clears the params of every blueprint node that named it, which is a write to
  * `editor/ui/uigraphs.json` - a document this table does not carry - so the vocabulary has no verb
