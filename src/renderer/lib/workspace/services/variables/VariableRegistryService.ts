@@ -367,10 +367,32 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         });
     }
 
-    public setEntryValueType(id: string, valueType: StoryVariableValueType): void {
+    /**
+     * Retype a variable, and give it the starting value that type calls for.
+     *
+     * ⚠ **Both fields in ONE call, and that is not a convenience.** Retyping is one gesture in the
+     * panel and the two fields hold each other up - a boolean's default is `false`, a number's is 0 -
+     * so stating them apart is stating half an act twice. Inside a live session the two halves would
+     * be two operations, and the second is built from a document the first has not been allowed to
+     * change: it would carry the OLD value type and undo the retype on every machine in the room.
+     * Outside one it merely cost the author two presses of undo for one decision.
+     *
+     * `defaultValue` omitted leaves the default alone, which is what a caller that is only changing
+     * the type means.
+     */
+    public setEntryValueType(
+        id: string,
+        valueType: StoryVariableValueType,
+        defaultValue?: StoryLiteralValue,
+    ): void {
         const entry = this.getEntry(id);
-        if (entry && this.stated({ ...entry, valueType })) {
-            return;
+        if (entry) {
+            const next: VariableRegistryEntry = defaultValue === undefined
+                ? { ...entry, valueType }
+                : { ...entry, valueType, defaultValue };
+            if (this.stated(next)) {
+                return;
+            }
         }
         this.applyRegistryMutation(registry => {
             const target = registry.entries[id];
@@ -378,6 +400,9 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
                 return;
             }
             target.valueType = valueType;
+            if (defaultValue !== undefined) {
+                target.defaultValue = defaultValue;
+            }
         });
     }
 

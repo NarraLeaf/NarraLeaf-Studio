@@ -437,7 +437,14 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
         entry: MergedPersistentEntry,
         edit: {
             rename: (id: string, name: string) => void;
-            retype: (id: string, valueType: StoryVariableValueType) => void;
+            /**
+             * Retype, and write the starting value the new type calls for, as ONE act.
+             *
+             * Not two calls. The two fields hold each other up, and inside a live session two
+             * operations would be built one from the other's unapplied result - the second carrying
+             * the old value type and undoing the retype everywhere.
+             */
+            retype: (id: string, valueType: StoryVariableValueType, defaultValue: StoryLiteralValue) => void;
             setDefault: (id: string, value: StoryLiteralValue) => void;
             remove: (id: string) => void;
         },
@@ -454,10 +461,7 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                 key={entry.storageKey}
                 row={entry}
                 onRename={name => edit.rename(entry.id, name)}
-                onRetype={valueType => {
-                    edit.retype(entry.id, valueType);
-                    edit.setDefault(entry.id, declarationDefaultForType(valueType));
-                }}
+                onRetype={valueType => edit.retype(entry.id, valueType, declarationDefaultForType(valueType))}
                 onDefault={value => edit.setDefault(entry.id, value)}
                 onDelete={() => edit.remove(entry.id)}
                 onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
@@ -475,11 +479,12 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                         renderProjectRow(entry, {
                             rename: (id, name) =>
                                 blueprintService?.renameSavedRegistryVariable(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, name),
-                            retype: (id, valueType) =>
+                            retype: (id, valueType, defaultValue) =>
                                 blueprintService?.setSavedRegistryVariableValueType(
                                     VARIABLE_PANEL_HISTORY_SCOPE_ID,
                                     id,
                                     valueType,
+                                    defaultValue,
                                 ),
                             setDefault: (id, value) =>
                                 blueprintService?.setSavedRegistryVariableDefault(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, value),
@@ -500,11 +505,12 @@ function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariables
                         renderProjectRow(entry, {
                             rename: (id, name) =>
                                 blueprintService?.renamePersistentVariable(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, name),
-                            retype: (id, valueType) =>
+                            retype: (id, valueType, defaultValue) =>
                                 blueprintService?.setPersistentVariableValueType(
                                     VARIABLE_PANEL_HISTORY_SCOPE_ID,
                                     id,
                                     valueType,
+                                    defaultValue,
                                 ),
                             setDefault: (id, value) =>
                                 blueprintService?.setPersistentVariableDefault(VARIABLE_PANEL_HISTORY_SCOPE_ID, id, value),

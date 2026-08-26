@@ -537,7 +537,8 @@ interface IVariableRegistryService extends IService {
         input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string },
     ): VariableRegistryEntry;
     renameEntry(id: string, name: string): void;
-    setEntryValueType(id: string, valueType: StoryVariableValueType): void;
+    /** `defaultValue` omitted leaves the default alone; given, it is written in the same act. */
+    setEntryValueType(id: string, valueType: StoryVariableValueType, defaultValue?: StoryLiteralValue): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
     setEntryDescription(id: string, description: string | undefined): void;
     /** False when a live session owns this registry - see `VariableRegistryService.canDeleteEntry`. */
