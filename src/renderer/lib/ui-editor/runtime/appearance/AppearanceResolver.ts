@@ -37,6 +37,11 @@ import { getTextProps } from "@/lib/ui-editor/widget-modules/builtin/text/helper
 /** Flat button props plus border chrome fields resolved from appearance (not stored on element.props). */
 export type ButtonResolvedVisualProps = Pick<
     ButtonWidgetProps,
+    | "fontAssetId"
+    | "fontSize"
+    | "fontWeight"
+    | "color"
+    | "lineHeight"
     | "backgroundColor"
     | "fillType"
     | "fillOpacity"
@@ -499,6 +504,45 @@ function applyContainerKey(target: RectangleLikeProps, key: ContainerAppearanceP
 
 function applyButtonKey(target: ButtonResolvedVisualProps, key: ButtonAppearancePropertyKey, raw: unknown): void {
     switch (key) {
+        // The label's own type, coerced exactly as `applyTextKey` coerces the same five: a variant
+        // row is authored data and may hold anything, and a button whose weight came back as the
+        // string "yes" would render as unstyled rather than as a defect anyone could see.
+        case "fontAssetId": {
+            if (raw == null || raw === "") {
+                target.fontAssetId = null;
+            } else {
+                target.fontAssetId = String(raw);
+            }
+            break;
+        }
+        case "fontSize": {
+            const n = coerceNumber(raw);
+            if (n !== undefined) {
+                target.fontSize = Math.min(256, Math.max(1, n));
+            }
+            break;
+        }
+        case "fontWeight": {
+            const s = coerceString(raw);
+            if (s === "normal" || s === "bold" || s === "600") {
+                target.fontWeight = s;
+            }
+            break;
+        }
+        case "color": {
+            const s = coerceString(raw);
+            if (s !== undefined) {
+                target.color = s;
+            }
+            break;
+        }
+        case "lineHeight": {
+            const n = coerceNumber(raw);
+            if (n !== undefined && n > 0) {
+                target.lineHeight = n;
+            }
+            break;
+        }
         case "backgroundColor": {
             const s = coerceString(raw);
             if (s !== undefined) {
@@ -1091,6 +1135,11 @@ export function resolveButtonVisualProps(
     const flat = getButtonProps(element);
     const bl = buttonPropsToImageFillBaseline(flat);
     const baseline: ButtonResolvedVisualProps = {
+        fontAssetId: flat.fontAssetId,
+        fontSize: flat.fontSize,
+        fontWeight: flat.fontWeight,
+        color: flat.color,
+        lineHeight: flat.lineHeight,
         backgroundColor: flat.backgroundColor,
         fillType: flat.fillType,
         fillOpacity: flat.fillOpacity,
