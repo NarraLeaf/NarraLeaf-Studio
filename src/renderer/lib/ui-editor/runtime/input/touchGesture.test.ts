@@ -25,6 +25,9 @@ import { getSharedInputHoldTracker, isInputBindingHeld, resetSharedInputHoldTrac
 /** Far enough past the threshold that no rounding decides the answer. */
 const FAR = TOUCH_GESTURE_THRESHOLD_PX + 8;
 
+/** The same, for a finger this stroke is not about. */
+const PAST_THRESHOLD_OTHER = TOUCH_GESTURE_THRESHOLD_PX * 4;
+
 function start(at: { x: number; y: number } = { x: 100, y: 100 }) {
     const recognizer = createTouchStrokeRecognizer();
     recognizer.begin({ clientX: at.x, clientY: at.y });
@@ -176,7 +179,7 @@ describe("the recogniser over a window", () => {
     function touch(
         node: EventTarget,
         type: string,
-        touches: Array<{ clientX: number; clientY: number }>,
+        touches: Array<{ clientX: number; clientY: number; identifier?: number }>,
         changed = touches,
     ): void {
         const event = new Event(type, { bubbles: true, cancelable: true });
@@ -308,6 +311,28 @@ describe("the recogniser over a window", () => {
 
         touch(node, "touchend", [], [{ clientX: 100, clientY: 100 }]);
         expect(tracker.isTouchStrokeInFlight()).toBe(false);
+    });
+
+    it("follows the finger it started on rather than whichever is listed first", () => {
+        attach();
+        const node = panel();
+        const seen = listen(document.body);
+
+        // A stroke that began on finger 7, with an unrelated finger arriving ahead of it in the
+        // list. Reading index zero would measure the wrong hand's travel - which on a phone looks
+        // like a gesture firing from a movement the player did not make with that finger.
+        touch(node, "touchstart", [{ clientX: 100, clientY: 100, identifier: 7 }]);
+        touch(node, "touchmove", [
+            { clientX: 100, clientY: 100 + PAST_THRESHOLD_OTHER, identifier: 3 },
+            { clientX: 100, clientY: 100, identifier: 7 },
+        ]);
+        expect(seen).toEqual([]);
+
+        touch(node, "touchmove", [
+            { clientX: 100, clientY: 100, identifier: 3 },
+            { clientX: 100, clientY: 100 + FAR, identifier: 7 },
+        ]);
+        expect(seen.map(entry => entry.gesture)).toEqual(["wheelUp"]);
     });
 
     it("reads nothing where there is no window to listen to", () => {

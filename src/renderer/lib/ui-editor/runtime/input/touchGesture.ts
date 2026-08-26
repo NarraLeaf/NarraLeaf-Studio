@@ -253,12 +253,40 @@ export function createTouchStrokeRecognizer(options?: { thresholdPx?: number }):
     };
 }
 
+/**
+ * One finger, as this follows one.
+ *
+ * `identifier` is what makes a stroke about a finger rather than about a position in a list. The
+ * browser's `touches` is every finger currently on the glass in no promised order, so reading index
+ * zero across a stroke follows whichever finger happens to be listed first - which is the tracked
+ * one right up until a second finger lands and one of them lifts. Optional only so a host or a test
+ * double that omits it still works, falling back to the first entry.
+ */
+type TrackedTouch = TouchStrokePoint & { identifier?: number };
+
 /** The part of a `TouchEvent` this reads; a browser's carries far more. */
 type TouchStrokeEvent = {
     target: EventTarget | null;
-    touches: ArrayLike<TouchStrokePoint>;
-    changedTouches: ArrayLike<TouchStrokePoint>;
+    touches: ArrayLike<TrackedTouch>;
+    changedTouches: ArrayLike<TrackedTouch>;
 };
+
+/** The tracked finger in a list of them, or null when it is not among them. */
+function findTrackedTouch(list: ArrayLike<TrackedTouch> | undefined, identifier: number | null): TrackedTouch | null {
+    if (!list || list.length === 0) {
+        return null;
+    }
+    if (identifier === null) {
+        return list[0] ?? null;
+    }
+    for (let index = 0; index < list.length; index += 1) {
+        const candidate = list[index];
+        if (candidate && candidate.identifier === identifier) {
+            return candidate;
+        }
+    }
+    return null;
+}
 
 /** The part of a `Window` this needs. */
 export type UITouchGestureHost = {
@@ -299,6 +327,8 @@ export function createTouchGestureTracker(
     const longPressMs = options?.longPressMs ?? UI_LONG_PRESS_MS;
     const recognizer = createTouchStrokeRecognizer({ thresholdPx: options?.thresholdPx });
     let strokeTarget: EventTarget | null = null;
+    /** Which finger this stroke is, or null for a host that names none. */
+    let strokeTouchId: number | null = null;
     let holdTimer: unknown = null;
 
     const clearHoldTimer = (): void => {
@@ -340,10 +370,12 @@ export function createTouchGestureTracker(
         if (!touch || (touchEvent.touches?.length ?? 0) > 1) {
             recognizer.voidStroke();
             strokeTarget = null;
+            strokeTouchId = null;
             return;
         }
         recognizer.begin({ clientX: touch.clientX, clientY: touch.clientY });
         strokeTarget = touchEvent.target;
+        strokeTouchId = typeof touch.identifier === "number" ? touch.identifier : null;
         if (host) {
             holdTimer = host.setTimeout(() => {
                 holdTimer = null;
@@ -357,7 +389,7 @@ export function createTouchGestureTracker(
 
     const onTouchMove = (event: Event): void => {
         const touchEvent = event as unknown as TouchStrokeEvent;
-        const touch = touchEvent.touches?.[0];
+        const touch = findTrackedTouch(touchEvent.touches, strokeTouchId);
         if (!touch) {
             return;
         }
@@ -379,6 +411,7 @@ export function createTouchGestureTracker(
         clearHoldTimer();
         recognizer.end();
         strokeTarget = null;
+        strokeTouchId = null;
         getSharedInputHoldTracker().releaseGestures();
     };
 
@@ -413,6 +446,7 @@ export function createTouchGestureTracker(
             clearHoldTimer();
             recognizer.reset();
             strokeTarget = null;
+            strokeTouchId = null;
             if (!host) {
                 return;
             }
