@@ -298,6 +298,30 @@ export function isAuthoredName(name: DocumentName): boolean {
 }
 
 /**
+ * A few documents, named, one per line - for a place with room for a short list and no columns.
+ *
+ * The notice a conflicted sync leaves is the caller this exists for, and it exists because that
+ * notice used to print repository paths at an author while the panel it sends them to called the
+ * same files by their titles. One of the two was Studio talking about its own storage, and it was
+ * the one that arrived first.
+ *
+ * The limit is the caller's, and truncation is silent HERE on purpose: this returns lines, and how
+ * to say "and more" belongs to the surface that knows how much room it has. Every caller so far
+ * pairs it with a count of the whole set, so nothing is hidden by the pairing.
+ */
+export function listDocumentNames(
+    paths: readonly string[],
+    context: DocumentNameContext,
+    t: Translator["t"],
+    limit: number,
+): string {
+    return paths
+        .slice(0, limit)
+        .map(path => renderDocumentName(documentNameOf(path, context), t))
+        .join("\n");
+}
+
+/**
  * Run a path matcher that refuses paths it cannot read.
  *
  * `normalizeDocumentPath` throws on an absolute path, a `..` segment or an empty one, and every
