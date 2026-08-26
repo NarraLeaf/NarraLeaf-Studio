@@ -263,6 +263,34 @@ describe("appendRuntimeIssue", () => {
     });
 });
 
+/**
+ * A row that throws leaves the stage frozen on it, and every further attempt to advance throws the
+ * same thing again — so the panel's whole intake is one sentence, arriving over and over. The two
+ * halves the window runs on each report have to survive that between them: locate, then append.
+ */
+describe("a failure repeating on a frozen row", () => {
+    const doc = document("story-a", "Story A", [
+        scene("scene-1", "Corridor", [narration("a", "first"), narration("b", "second")], ["a", "b"]),
+    ]);
+    const failure: GameAppRuntimeIssue = {
+        level: "error",
+        message: "Cannot call scene corridor: it is already on stage.",
+        origin: "playHead",
+        blockId: "b",
+        stack: "RuntimeScriptError\n    at _Scene2.jumpTo",
+    };
+
+    it("stays one entry however many times it is reported", () => {
+        let list: LocatedRuntimeIssue[] = [];
+        for (let index = 0; index < 200; index += 1) {
+            list = appendRuntimeIssue(list, locateRuntimeIssue(bundleWith([doc]), failure, `issue-${index}`));
+        }
+        expect(list).toHaveLength(1);
+        expect(list[0]).toMatchObject({ level: "error", origin: "playHead" });
+        expect(list[0]?.location).toMatchObject({ sceneName: "Corridor", lineNumber: 2 });
+    });
+});
+
 describe("countRuntimeIssues", () => {
     function at(level: LocatedRuntimeIssue["level"], id: string): LocatedRuntimeIssue {
         return { id, level, message: id, origin: "session", location: null };

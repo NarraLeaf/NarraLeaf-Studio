@@ -876,10 +876,13 @@ input[type="radio"]:focus {
 /*
  * Scene flow: the selected line.
  *
- * `!important` because the line paints its stroke inline — the colour carries the conditional dash
- * pattern and the dim state, both of which are per-edge facts a stylesheet cannot know. Selection is
- * the one thing that has to override them, since it is what the Delete key is aimed at: a line the
- * author cannot see they have selected is a line they delete by surprise.
+ * `!important` because the line paints its stroke inline — it carries the conditional dash pattern,
+ * the dim state, and the colour that says the run comes back along this line rather than leaving by
+ * it (`sceneFlowLinePaint`). All three are per-edge facts a stylesheet cannot know. Selection is the
+ * one thing that has to override them, since it is what the Delete key is aimed at: a line the
+ * author cannot see they have selected is a line they delete by surprise. A selected call therefore
+ * goes accent for as long as it is selected, keeping its two arrowheads — which are markers, not the
+ * path — to say what kind of line it is.
  */
 .narraleaf-scene-flow .react-flow__edge.selected .react-flow__edge-path {
     stroke: var(--narraleaf-accent-strong) !important;
