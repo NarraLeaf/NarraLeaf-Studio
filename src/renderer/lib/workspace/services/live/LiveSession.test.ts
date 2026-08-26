@@ -775,6 +775,7 @@ function createWindow(world: World, instance: string): Window {
         },
         history: {
             forgetStoryScenes: storyId => window.forgotten.push(storyId),
+            forgetInterfaceEditors: () => window.forgotten.push("interface"),
         },
         now: () => window.clock,
         // Recorded and never run of its own accord: a live timer here would only be a way for a
@@ -1054,7 +1055,9 @@ describe("a live session", () => {
             ]);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
-            expect(host.forgotten).toEqual([host.storyId]);
+            // Both: the story's scene stacks and every interface stack. Each of them holds a
+            // whole-document snapshot of something only this author ever had.
+            expect(host.forgotten).toEqual([host.storyId, "interface"]);
         });
 
         it("lifts when the author leaves", async () => {
