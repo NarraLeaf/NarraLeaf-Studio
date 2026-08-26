@@ -36,6 +36,9 @@ import { Service } from "../Service";
 import { IAssetService, Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import { FileSystemService } from "./FileSystem";
+import { UIService } from "./UIService";
+import { NotificationType } from "../ui/types";
+import { translate } from "@/lib/i18n";
 import { MagicTagManager, MagicTagTemplate, MagicTagPreview } from "./MagicTagManager";
 import { ProjectService } from "./ProjectService";
 import { UuidService } from "./UuidService";
@@ -529,6 +532,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * ⚠ **Refused before anything is stated when a file is too large to carry**, rather than after
      * the room has watched half of it arrive. The escape is the one every size limit here has, and it
      * is said out loud rather than left to a progress bar that never finishes.
+     *
+     * ❗ **One file being too large refuses that file, not the batch.** An import of forty pictures
+     * with one video among them used to state nothing at all: the whole gesture was abandoned at the
+     * first file over the limit, and because a creation is offered from inside the importer's own
+     * transaction, nothing was left to report it either. The author saw a library that had not
+     * changed and no reason why.
      */
     private async stateCreations(
         creations: readonly { record: Asset<AssetType, AssetSource>; bytes: LiveAssetBytes }[],
@@ -540,12 +549,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
 
         const byType = new Map<AssetType, { record: LiveAssetRecord; bytes: LiveAssetBytes }[]>();
         const blobs = new Map<string, Uint8Array>();
+        const refused: Asset<AssetType, AssetSource>[] = [];
         for (const creation of creations) {
             const carried = await this.readBytesToCarry(creation.record, creation.bytes, blobs);
             if (!carried) {
-                // Said out loud by the caller's own error path; the record is never filed and the
-                // file it wrote is swept with the rest of the orphans.
-                return false;
+                refused.push(creation.record);
+                continue;
             }
             const bucket = byType.get(creation.record.type);
             const entry = { record: creation.record as unknown as LiveAssetRecord, bytes: carried };
@@ -559,7 +568,49 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         for (const [assetType, creates] of byType) {
             sink.handle({ op: "create-assets", assetType, creates }, blobs);
         }
-        return true;
+        if (refused.length > 0) {
+            await this.reportRefusedCreations(refused);
+        }
+        return byType.size > 0;
+    }
+
+    /**
+     * Say which files a session would not carry, and take back the bytes they left behind.
+     *
+     * **Both halves matter.** The record was never filed, so the file under it is one nothing in the
+     * library names: it does not appear in the browser, no reference report mentions it, and it is
+     * still whatever a video weighs. Leaving it is a project that grows by the size of every import
+     * an author tried during a session.
+     */
+    private async reportRefusedCreations(refused: readonly Asset<AssetType, AssetSource>[]): Promise<void> {
+        const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        for (const record of refused) {
+            const path = this.getLocalAssetsManager().getLocalAssetPath(record.id);
+            try {
+                // A bundle is a directory and everything else is a file; asking which costs one call
+                // and guessing wrong leaves the very thing this is here to remove.
+                const directory = await filesystem.isDirExists(path);
+                await (directory.ok && directory.data ? filesystem.deleteDir(path) : filesystem.deleteFile(path));
+            } catch (error) {
+                console.warn("[AssetsService] could not sweep the file of a refused import", error);
+            }
+        }
+        try {
+            this.getContext().services.get<UIService>(Services.UI).notifications.show({
+                type: NotificationType.Warning,
+                message: translate("assets.live.tooLargeTitle"),
+                detail: translate(
+                    refused.length === 1 ? "assets.live.tooLargeDetailOne" : "assets.live.tooLargeDetailMany",
+                    {
+                        name: refused[0].name,
+                        count: String(refused.length),
+                        size: String(Math.floor(LIVE_BLOB_MAX_BYTES / (1024 * 1024))),
+                    },
+                ),
+            });
+        } catch (error) {
+            console.warn(`[AssetsService] could not report a refused import`, error);
+        }
     }
 
     /**
@@ -1105,6 +1156,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 // here is how far this record had got when the attempt began.
                 const held = this.slicesInHand(work);
                 const short: LiveAssetBytePart[] = [];
+                const ready: { part: LiveAssetBytePart; bytes: Uint8Array }[] = [];
+                // ⚠ Taken first and written afterwards. Taking is what empties the inbox, so a file
+                // whose bytes are in hand reads as zero slices from that moment - and writing while
+                // the record still counted it as outstanding made the bar fall back to nothing for
+                // as long as the disk took.
                 for (const part of work.parts) {
                     const bytes = this.blobPort?.take(part) ?? null;
                     if (!bytes) {
@@ -1117,6 +1173,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                         }
                         continue;
                     }
+                    ready.push({ part, bytes });
+                }
+                if (ready.length > 0) {
+                    this.transferring.set(work.assetId, { ...work, parts: still });
+                }
+                for (const { part, bytes } of ready) {
                     await this.writePayloadFile(this.payloadPathFor(work.assetId, part.path), bytes);
                 }
                 if (still.length > 0) {

@@ -138,19 +138,34 @@ describe("what a player may still ask for", () => {
  *
  * The marker exists so a build made from a checkout can be inspected. What makes it worth a test of
  * its own is the half that is *not* about the marker: the gate that decides in time to matter reads
- * a plain file next to the archive, so on a protected build the marker is worth exactly one text
- * edit - and the thing behind that edit is the process holding the decrypted content.
+ * a plain file next to the archive, so on a protected build the marker would otherwise be worth
+ * exactly one text edit - and the thing behind that edit is the process holding the decrypted
+ * content.
+ *
+ * Written as the whole 2x2 because exactly one corner of it refuses, and the value of the rule is
+ * which one.
  */
 describe("the debuggable marker", () => {
-    it("is honoured on an ordinary build, which is what it is for", () => {
-        expect(honoursDebuggableMarker(true, false)).toBe(true);
-        expect(honoursDebuggableMarker(false, false)).toBe(false);
+    const honours = (sealed: boolean, packaged: boolean) =>
+        honoursDebuggableMarker({ marker: true, sealed, packaged });
+
+    it("refuses the shipped form of a protected build, and only that", () => {
+        expect(honours(true, true)).toBe(false);
+
+        // An app directory someone started by hand is not a thing anybody received: whoever holds
+        // it has the main script as plain JavaScript and could delete this check outright, so
+        // refusing here would protect nothing and would cost the one workflow the marker is for.
+        expect(honours(true, false)).toBe(true);
+        // Unprotected builds are unchanged in both forms - this is the condition working as it did.
+        expect(honours(false, true)).toBe(true);
+        expect(honours(false, false)).toBe(true);
     });
 
-    it("is refused on a sealed build, whatever it says", () => {
-        // Both markers go through this - the manifest one before Chromium starts and the pack one
-        // after the store is open - so a protected build has no route to a debugger through either.
-        expect(honoursDebuggableMarker(true, true)).toBe(false);
-        expect(honoursDebuggableMarker(false, true)).toBe(false);
+    it("says no to every build that never asked", () => {
+        for (const sealed of [false, true]) {
+            for (const packaged of [false, true]) {
+                expect(honoursDebuggableMarker({ marker: false, sealed, packaged })).toBe(false);
+            }
+        }
     });
 });

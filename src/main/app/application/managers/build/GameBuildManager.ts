@@ -242,11 +242,17 @@ export { deriveGameAppId };
  * moment a debugger rewrites anything in the archive. It reaches here only from an unpackaged
  * Studio launched with the mode's flags (BaseApp.getExperimentalState), so no build an author makes
  * can be one.
+ *
+ * `sealed` takes that back. A protected game refuses a debugging switch however it is marked, so
+ * there is nothing to attach to the packaged artifact and no reason to give up its tamper-evidence
+ * - and integrity is exactly what makes editing the marker into the archive expensive, which is the
+ * edit this whole area exists to price out.
  */
 export function gameFusesForPlatform(
     platform: GameBuildDesktopPlatform,
     hasSigningIdentity: boolean,
     debuggable = false,
+    sealed = false,
 ): GameBuildWorkerFuses {
     return {
         /*
@@ -271,7 +277,7 @@ export function gameFusesForPlatform(
         enableCookieEncryption: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,
-        enableEmbeddedAsarIntegrityValidation: !debuggable && hasSigningIdentity && platform !== "linux",
+        enableEmbeddedAsarIntegrityValidation: (!debuggable || sealed) && hasSigningIdentity && platform !== "linux",
         onlyLoadAppFromAsar: true,
         grantFileProtocolExtraPrivileges: false,
         resetAdHocDarwinSignature: platform === "macos",
@@ -1968,6 +1974,7 @@ export class GameBuildManager {
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
                     debuggable,
+                    Boolean(encryptionKey),
                 ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -3185,18 +3192,19 @@ export class GameBuildManager {
             return false;
         }
         if (sealed) {
-            // Refused rather than shipped-and-ignored. A sealed build's runtime declines a
-            // debugging switch whatever its markers say (see `honoursDebuggableMarker`), so an
-            // artifact that carried the condition would differ from a production one in exactly one
-            // way - no asar integrity - while delivering nothing the condition exists for.
+            // Half the condition, and the half that is kept is the useful one. A protected game
+            // refuses a debugging switch (see `honoursDebuggableMarker`), so the packaged artifact
+            // is no more inspectable than a production one - which is also why it keeps asar
+            // integrity here rather than giving up the fuse for a capability it will not have.
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: "experimental condition debuggable-build was ignored: this project protects "
-                    + "its assets, and a protected build never accepts a debugging switch. The "
-                    + "artifact ships as an ordinary one, asar integrity included.",
+                message: "experimental condition debuggable-build: this project protects its assets, "
+                    + "so the packaged game still refuses a debugging switch and keeps asar "
+                    + "integrity. Run the built app directory directly to attach to it. Do not "
+                    + "distribute it.",
             });
-            return false;
+            return true;
         }
         this.emit(session, {
             level: "warning",

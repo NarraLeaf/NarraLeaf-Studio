@@ -19,6 +19,7 @@ import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
     buildConflictRows,
     countUndecidedFiles,
+    mergeHeadingKey,
     type MergeChangeChoices,
     type MergeDocumentEntry,
 } from "@/lib/vcs/mergeDecisionView";
@@ -484,8 +485,15 @@ export function VcsResolvePanel() {
                         field holds the AUTHOR'S own tip rather than what came down from the server
                         (docs §4.31) - so putting it beside "the version you got" would attribute
                         the merge to the wrong side. The sides are named per row, where they are
-                        read from the merge's own copies and are right in both origins. */}
-                    {t("documentDiff.resolve.merging")}
+                        read from the merge's own copies and are right in both origins.
+
+                        **It stops claiming a merge once there is not one.** This strip used to say
+                        "the two versions are being merged" unconditionally, so finishing one left
+                        it contradicting the body of its own panel two lines below - which reports,
+                        correctly, that no merge is in progress. Falling back to the panel's own
+                        name asserts nothing, which is also the right answer before the first read
+                        has come back: not knowing yet is not the same as knowing there is none. */}
+                    {t(mergeHeadingKey(state))}
                 </span>
                 <button
                     type="button"

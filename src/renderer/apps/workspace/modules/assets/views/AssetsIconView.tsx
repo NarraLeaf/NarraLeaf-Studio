@@ -11,7 +11,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { AssetSetIconTile } from "../components/AssetSetRow";
-import { AssetTransferSweep } from "../assetLiveSession";
+import { AssetTransferSweep, assetLibraryFreezeScope } from "../assetLiveSession";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { cn } from "@/lib/utils/cn";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
@@ -92,7 +92,9 @@ export function AssetsIconView({
     onGroupPathChange,
 }: AssetsIconViewProps) {
     const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
+    // The library's own scope: the three buttons a section header carries are import, link and new
+    // folder, and a session carries all three. See `assetLibraryFreezeScope`.
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const {
         groups,
         filteredAssets,
@@ -729,7 +731,9 @@ function GroupIconTile({
     onNavigate?: () => void;
 }) {
     const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
+    // Scoped to the library, because what a drop does is file a row, move a folder or import a file
+    // - and a tile that will not light up is a drop the browser never delivers.
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const {
         selectedItems,
         clipboard,
