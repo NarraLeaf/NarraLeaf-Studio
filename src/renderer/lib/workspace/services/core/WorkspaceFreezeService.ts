@@ -8,6 +8,7 @@ import {
 } from "@/lib/app/writeFreeze";
 import { getInterface } from "@/lib/app/bridge";
 import { clearProjectDocumentSource, pushProjectDocumentSource } from "@/lib/app/documentSource";
+import { setMergeConflictReads } from "@/lib/app/mergeConflictReads";
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { Service } from "../Service";
 import { Services, type IWorkspaceFreezeService, type WorkspaceContext } from "../services";
@@ -162,6 +163,50 @@ export class WorkspaceFreezeService extends Service<WorkspaceFreezeService> impl
         this.releaseSource = pushProjectDocumentSource(projectPath, source);
         const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
         return reload.reload("revision", source);
+    }
+
+    /**
+     * Show a merge that left conflicts: freeze, read every file it could not settle as the author's
+     * own side of it, then re-read the project.
+     *
+     * **The state a project opened mid-merge is already in, entered from the other direction.**
+     * `workspaceProjectPreflight` arms these same two latches before the first document is parsed,
+     * because the tree underneath is not one version of the project: the files the merge could not
+     * settle carry all three sides and are not parseable (docs §4.23), so what the editors show is
+     * read out of the merge's own `~mine` copies. A window that MADE the merge - by syncing into
+     * one - has to arrive in the same state, or the merge is a different thing depending on which
+     * window is looking at it. Measured before this existed: the window that had just synced
+     * re-read the marked-up files verbatim, and came up with an empty story panel and a dashboard
+     * reporting no scenes, over a project whose files were all intact.
+     *
+     * The order is {@link showRevision}'s and carries its argument: the latch is armed BEFORE a
+     * byte is read, because once a service holds a document one auto-save timer is all it takes to
+     * write it back - and here that would put pre-merge content over the merge's own result,
+     * settling conflicts nobody chose.
+     *
+     * **Does not flush first**, which is the one place this parts company with {@link freeze}.
+     * Flushing writes what the editors are holding, and by the time a caller reaches here the
+     * working tree has already been rewritten underneath them - so the flush would be the very
+     * write this freeze is being armed to prevent. Those unflushed values are dropped by the
+     * re-read below, which is what becomes of them on every other working-tree rewrite too.
+     */
+    public async showMergeConflicts(conflicts: readonly string[]): Promise<WorkspaceReloadResult> {
+        if (conflicts.length === 0) {
+            // A merge that settled everything leaves nothing unparseable, and its result on disk is
+            // what the closing commit will record - freezing that would take the project away from
+            // an author who has nothing to decide. `prepareForOpenMerge` declines the same case,
+            // and a caller that cannot tell them apart has not asked what the merge left.
+            throw new Error("showMergeConflicts needs the paths the merge left to a human.");
+        }
+        const projectPath = this.projectPath();
+        freezeProjectWrites({ projectPath, reason: { kind: "merge" } });
+        setMergeConflictReads(projectPath, conflicts);
+        // A revision the author happened to be browsing when the merge arrived: the source goes
+        // before the read, for the reason `thaw` gives - otherwise the pass meant to show the merge
+        // would answer out of that revision instead.
+        this.dropSource();
+        const reload = this.getContext().services.get<WorkspaceReloadService>(Services.WorkspaceReload);
+        return reload.reload("restore");
     }
 
     /**
