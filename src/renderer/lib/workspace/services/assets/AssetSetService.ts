@@ -2,6 +2,7 @@ import { loadDocument, saveDocument, type DocumentStorage } from "@shared/docume
 import { assetSetsSpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
 import type { TranslationKey } from "@shared/i18n";
+import type { LiveAssetSetOp } from "@shared/live/ops";
 import { RendererError } from "@shared/utils/error";
 import {
     makeAssetSetAxis,
@@ -28,6 +29,32 @@ import { Service } from "../Service";
 import { Services, WorkspaceContext } from "../services";
 import { EventEmitter } from "../ui/EventEmitter";
 import type { AssetType } from "./assetTypes";
+
+/**
+ * Somewhere an asset set edit can go instead of into the document.
+ *
+ * **The seam a live session hangs the sets off, and the reason the asset panel needs no
+ * live-session code beyond a freeze scope.** The shape is `StoryOpSink`'s and the bargain is the
+ * same: with a sink installed an edit becomes an operation and the document is not touched; the row
+ * moves when the operation comes back as somebody's effect and
+ * {@link AssetSetService.applyLiveOp} applies it. Nothing is applied optimistically, so nothing
+ * ever has to be taken back.
+ *
+ * ⚠ **Asked from the mutators rather than from {@link AssetSetService.applySetMutation}, which
+ * is where every edit really does converge.** That method takes a function over the whole list and
+ * can only say "the sets changed" - which is whole-document last-writer-wins, the one verb the
+ * session vocabulary refuses. The mutators know what they meant, so that is where they say it. It is
+ * `AssetsService.recordChanged`'s answer to the same shape of service.
+ */
+export type AssetSetOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveAssetSetOp): boolean;
+};
 
 type AssetSetServiceEvents = {
     setsChanged: AssetSet[];
@@ -73,6 +100,8 @@ export class AssetSetService extends Service<AssetSetService> {
     private readonly events = new EventEmitter<AssetSetServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Where set edits go instead of into the document, when something else owns them. */
+    private opSink: AssetSetOpSink | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -196,6 +225,17 @@ export class AssetSetService extends Service<AssetSetService> {
 
     /** Replace one set, leaving the others where they are. The shape every field edit uses. */
     public updateSet(id: string, update: (set: AssetSet) => AssetSet, label?: HistoryLabel): void {
+        const existing = this.getSet(id);
+        // The sink is asked with the record as it WOULD have been written, never with the edit that
+        // produced it: an edit states an intention and every machine would resolve it against its
+        // own copy. See {@link AssetSetOpSink}.
+        if (existing && this.opSink?.handle({
+            op: "update-asset-set",
+            setId: id,
+            set: update(structuredClone(existing)),
+        })) {
+            return;
+        }
         this.applySetMutation(
             sets => sets.map(set => (set.id === id ? update(structuredClone(set)) : set)),
             label,
@@ -231,6 +271,10 @@ export class AssetSetService extends Service<AssetSetService> {
             ...(input.groupId ? { groupId: input.groupId } : {}),
             axis: input.axis ? structuredClone(input.axis) : makeAssetSetAxis("release", []),
         };
+        // Appended, which is what `beforeId: null` says.
+        if (this.opSink?.handle({ op: "create-asset-sets", creates: [{ set, beforeId: null }] })) {
+            return set;
+        }
         this.applySetMutation(sets => [...sets, set], assetSetLabel("add", set.name));
         return this.getSet(set.id) ?? set;
     }
@@ -264,6 +308,9 @@ export class AssetSetService extends Service<AssetSetService> {
         if (!existing) {
             return false;
         }
+        if (this.opSink?.handle({ op: "delete-asset-sets", setIds: [id] })) {
+            return true;
+        }
         this.applySetMutation(sets => sets.filter(set => set.id !== id), assetSetLabel("delete", existing.name));
         return true;
     }
@@ -281,6 +328,11 @@ export class AssetSetService extends Service<AssetSetService> {
             return false;
         }
         const subtree = new Set(assetSetSubtree(existing, this.listSets()).map(set => set.id));
+        // Every set the cascade takes, named rather than derived - see {@link LiveAssetSetOp} for
+        // why both directions of a cascade are carried here.
+        if (this.opSink?.handle({ op: "delete-asset-sets", setIds: [...subtree] })) {
+            return true;
+        }
         this.applySetMutation(
             sets => sets.filter(set => !subtree.has(set.id)),
             assetSetLabel("delete", existing.name),
@@ -300,6 +352,11 @@ export class AssetSetService extends Service<AssetSetService> {
         const existing = this.getSet(id);
         if (!existing) {
             return false;
+        }
+        // The same operation a deletion states, because it is the same edit to this document; the
+        // two differ in what the author was told, which is the label and not the wire.
+        if (this.opSink?.handle({ op: "delete-asset-sets", setIds: [id] })) {
+            return true;
         }
         this.applySetMutation(sets => sets.filter(set => set.id !== id), assetSetLabel("dissolve", existing.name));
         return true;
@@ -325,6 +382,14 @@ export class AssetSetService extends Service<AssetSetService> {
         // Dropped back where it already is. Answered as done rather than written, so the gesture
         // does not leave an undo step that changes nothing.
         if (moving.every(set => (set.groupId ?? undefined) === next)) {
+            return true;
+        }
+        if (this.opSink?.handle({
+            op: "move-asset-sets",
+            // Each entry carries its own destination, which is what lets the operation be its own
+            // inverse; here they happen to share one, and undoing will not.
+            moves: moving.map(set => ({ setId: set.id, groupId: next ?? null })),
+        })) {
             return true;
         }
         const subtree = new Set(moving.map(set => set.id));
@@ -395,6 +460,85 @@ export class AssetSetService extends Service<AssetSetService> {
             undo: () => restore(before),
             redo: () => restore(after),
         });
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send set edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: AssetSetOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /** The sets as they stand, or null before this window has read them. What a digest reads. */
+    public setsOrNull(): readonly AssetSet[] | null {
+        return this.document?.sets ?? null;
+    }
+
+    /**
+     * Apply one operation to the sets, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the panel is
+     * finally allowed to move.
+     *
+     * ⚠ **No undo step is pushed here**, for `AudioTrackService.applyLiveOp`'s reason: inside a
+     * session undo sends the inverse of this window's own operation, and an entry on the project
+     * stack would be a whole-document snapshot taken before anybody else joined.
+     */
+    public applyLiveOp(op: LiveAssetSetOp): void {
+        switch (op.op) {
+            case "create-asset-sets":
+                this.commitSets(sets => {
+                    const next = sets.filter(set => !op.creates.some(create => create.set.id === set.id));
+                    for (const create of op.creates) {
+                        const index = create.beforeId === null
+                            ? -1
+                            : next.findIndex(set => set.id === create.beforeId);
+                        next.splice(index < 0 ? next.length : index, 0, structuredClone(create.set));
+                    }
+                    return next;
+                });
+                return;
+            case "update-asset-set":
+                this.commitSets(sets => sets.map(set => (
+                    set.id === op.setId ? { ...structuredClone(op.set), id: op.setId } : set
+                )));
+                return;
+            case "delete-asset-sets": {
+                // Tolerant of a set that is already gone, with `delete-character-group`: the second
+                // of two deletions changes nothing.
+                const doomed = new Set(op.setIds);
+                this.commitSets(sets => sets.filter(set => !doomed.has(set.id)));
+                return;
+            }
+            case "move-asset-sets": {
+                const moves = new Map(op.moves.map(move => [move.setId, move.groupId]));
+                this.commitSets(sets => sets.map(set => {
+                    if (!moves.has(set.id)) {
+                        return set;
+                    }
+                    const groupId = moves.get(set.id) ?? null;
+                    // The key is removed rather than set to undefined: the two read alike in
+                    // TypeScript and are not the same document to a canonical encoder or a digest.
+                    const { groupId: _current, ...rest } = set;
+                    return groupId ? { ...rest, groupId } : rest;
+                }));
+                return;
+            }
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on
+                // every other machine in the room and not on this one, and nothing says so until a
+                // digest disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live asset set operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /** {@link applySetMutation} without the undo step. What an effect being applied goes through. */
+    private commitSets(mutator: (sets: AssetSet[]) => AssetSet[]): void {
+        const document = this.getDocument();
+        this.document = normalizeProjectAssetSets({ ...document, sets: mutator([...document.sets]) });
+        this.commitMutation();
     }
 
     private commitMutation(): void {

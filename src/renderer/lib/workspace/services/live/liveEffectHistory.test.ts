@@ -42,7 +42,13 @@ function makeDocument(): StoryDocument {
 const EMPTY_CAST: LiveCastView = { characters: {}, order: [], groups: {} };
 
 /** No configuration table holds anything, for the tests that are only about the story. */
-const NO_CONFIG = { hasAppTag: () => false, hasDlc: () => false, hasBrandColor: () => false };
+const NO_CONFIG = {
+    hasAppTag: () => false,
+    hasDlc: () => false,
+    hasBrandColor: () => false,
+    audioTracks: () => null,
+    assetSets: () => null,
+};
 
 function effect(seq: number, op: LiveOp, patch: Partial<LiveEffect> = {}): LiveEffect {
     return { kind: "effect", by: SELF, seq, document: { doc: "story", storyId: "story-1" }, op, ...patch };

@@ -225,9 +225,11 @@ describe("SaveStatusService while the workspace is frozen", () => {
         expect(showSticky).toHaveBeenCalledTimes(1);
         const shown = showSticky.mock.calls[0][0] as { message: string; detail: string };
         expect(shown.message).toBe("That file is not being saved");
-        expect(shown.detail).toContain("Only its story and the cast are saved");
+        // Says which file, and that the session is saving what it carries - never that nothing is.
+        expect(shown.detail).toContain("only the documents it carries are saved");
         // "Unfreeze the workspace" names a control a session does not have; the way out is leaving it.
         expect(shown.detail).not.toContain("Unfreeze");
+        expect(shown.detail).toContain("Leave the session");
     });
 
     it("goes on saving the session's own document rather than refusing it", async () => {

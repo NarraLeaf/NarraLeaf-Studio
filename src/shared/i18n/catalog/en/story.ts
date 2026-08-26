@@ -139,6 +139,10 @@ export const story = {
         // the palette. One sentence for the three: the panel in front of the author already says
         // which table it was, and it says the same nothing about what they have typed into it.
         refusedConfigEntryGone: "That entry is no longer in this project. The change was not applied.",
+        // The mixer's answer to a record that has gone, and it says the same nothing about the
+        // panel: what the author typed into it is theirs and stays where it is.
+        refusedTrackGone: "That audio track is gone. The change was not applied.",
+        refusedSetGone: "That asset set is gone. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
@@ -171,6 +175,10 @@ export const story = {
         undoContentReplaced: "Replacing a file cannot be taken back.",
         undoConfigEntryGone: "That entry is no longer in this project.",
         undoConfigEntryRestored: "That entry is back in this project.",
+        undoTrackGone: "That audio track is gone.",
+        undoTrackRestored: "That audio track is in the mixer again.",
+        undoSetGone: "That asset set is gone.",
+        undoSetRestored: "That asset set is declared again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

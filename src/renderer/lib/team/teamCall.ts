@@ -28,10 +28,29 @@ import {
     type TeamThreadKind,
     type TeamThreadStatus,
 } from "@shared/types/team";
-import type { VcsServerMember, VcsServerProject } from "@shared/types/vcs";
+import type {
+    VcsServerMember,
+    VcsServerProject,
+    VcsServerProjectDetail,
+    VcsServerProjectFile,
+    VcsServerProjectHistoryPage,
+    VcsServerRevision,
+} from "@shared/types/vcs";
 
 /** What any of these answers with. */
 export type TeamOutcome<T> = { ok: true; value: T } | { ok: false; problem: TeamProblem };
+
+/**
+ * What a call that changes something and answers nothing hands back.
+ *
+ * These methods - `clients.withdraw`, `live.leave`, `live.close`, `live.say`,
+ * `overlay.drop`, and an `unsubscribe` acknowledgement - carry an empty object on the
+ * wire rather than a value. Success is that object: there is nothing in it to read, and
+ * no caller reads it, but a call that answered is one that happened. Named on its own so
+ * the wrappers below say what they are, rather than each declaring `null` and inviting a
+ * `=== null` the wire would never satisfy.
+ */
+export type TeamAck = Record<string, never>;
 
 /** A shape the server sent that this build cannot read. */
 function unreadable<T>(): TeamOutcome<T> {
@@ -161,32 +180,140 @@ function readList<T>(value: unknown, key: string, one: (item: unknown) => T | nu
 
 /* -------------------------------------------------------------------- projects */
 
+/** One project row a server lists, or null because what arrived was not one. */
+function readServerProject(value: unknown): VcsServerProject | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    const name = text(from, "name");
+    const remote = text(from, "remote");
+    if (id === undefined || name === undefined || remote === undefined) return null;
+    const createdBy = text(from, "createdBy");
+    const history = record(from["history"]);
+    return {
+        id,
+        name,
+        description: typeof from["description"] === "string" ? from["description"] : "",
+        ...(createdBy === undefined ? {} : { createdBy }),
+        createdAt: count(from, "createdAt") ?? 0,
+        remote,
+        // Carried as it arrived, absences included: a field the server left out is a
+        // repository it has not read, which is not the same as a nought.
+        ...(history === null ? {} : { history: history as VcsServerProject["history"] }),
+    } satisfies VcsServerProject;
+}
+
+/**
+ * What the server read inside a project's file, when it could read it.
+ *
+ * **Anything but an explicit `readable: true` is unreadable**, so a shape this build does
+ * not understand errs towards saying nothing rather than towards drawing a scene count the
+ * server did not give. Every other field is carried only where it arrived.
+ */
+function readServerProjectFile(value: unknown): VcsServerProjectFile {
+    const from = record(value);
+    if (from === null || from["readable"] !== true) return { readable: false };
+    const title = text(from, "title");
+    const stageWidth = count(from, "stageWidth");
+    const stageHeight = count(from, "stageHeight");
+    const scenes = count(from, "scenes");
+    const assets = count(from, "assets");
+    const assetBytes = count(from, "assetBytes");
+    return {
+        readable: true,
+        ...(title === undefined ? {} : { title }),
+        ...(stageWidth === undefined ? {} : { stageWidth }),
+        ...(stageHeight === undefined ? {} : { stageHeight }),
+        ...(scenes === undefined ? {} : { scenes }),
+        ...(assets === undefined ? {} : { assets }),
+        ...(assetBytes === undefined ? {} : { assetBytes }),
+    };
+}
+
+/** One revision on a project, or null. Only the id is insisted on. */
+function readServerRevision(value: unknown): VcsServerRevision | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    if (id === undefined) return null;
+    const at = count(from, "at");
+    const by = text(from, "by");
+    const message = text(from, "message");
+    return {
+        id,
+        ...(at === undefined ? {} : { at }),
+        ...(by === undefined ? {} : { by }),
+        ...(message === undefined ? {} : { message }),
+    };
+}
+
 /** Every project on a server, over the session rather than over the REST route. */
 export async function listProjects(remoteOrigin: string): Promise<TeamOutcome<VcsServerProject[]>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.projectsList);
     if (!answered.ok) return answered;
-    const projects = readList(answered.value, "projects", (item) => {
-        const from = record(item);
-        if (from === null) return null;
-        const id = text(from, "id");
-        const name = text(from, "name");
-        const remote = text(from, "remote");
-        if (id === undefined || name === undefined || remote === undefined) return null;
-        const createdBy = text(from, "createdBy");
-        const history = record(from["history"]);
-        return {
-            id,
-            name,
-            description: typeof from["description"] === "string" ? from["description"] : "",
-            ...(createdBy === undefined ? {} : { createdBy }),
-            createdAt: count(from, "createdAt") ?? 0,
-            remote,
-            // Carried as it arrived, absences included: a field the server left out is a
-            // repository it has not read, which is not the same as a nought.
-            ...(history === null ? {} : { history: history as VcsServerProject["history"] }),
-        } satisfies VcsServerProject;
-    });
+    const projects = readList(answered.value, "projects", readServerProject);
     return projects === null ? unreadable() : { ok: true, value: projects };
+}
+
+/**
+ * What one server knows about one project, and what it could read inside it.
+ *
+ * The list already carries the row; this adds the file the server read off the repository,
+ * which on a deployment whose reader is not working is `readable: false` and nothing else -
+ * a complete answer rather than a failure.
+ */
+export async function getProject(
+    remoteOrigin: string,
+    projectId: string,
+): Promise<TeamOutcome<VcsServerProjectDetail>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsGet, { project: projectId });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    if (from === null) return unreadable();
+    const project = readServerProject(from["project"]);
+    if (project === null) return unreadable();
+    return { ok: true, value: { project, file: readServerProjectFile(from["file"]) } };
+}
+
+/**
+ * The latest revisions on a project, newest first.
+ *
+ * **An absent `revisions` is not an empty one.** A server that has not read the repository
+ * leaves the field out, and a project that genuinely has no versions yet sends an empty
+ * list; the two mean different things and both have to reach a reader intact. So an absence
+ * is carried as an absence, never as `[]`.
+ */
+export async function listProjectHistory(
+    remoteOrigin: string,
+    projectId: string,
+    within: { limit?: number; before?: string } = {},
+): Promise<TeamOutcome<VcsServerProjectHistoryPage>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsHistory, { project: projectId, ...within });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    if (from === null) return unreadable();
+    const more = from["more"] === true;
+    const list = from["revisions"];
+    // Absent, not empty: the field is left out for a project the server has not read.
+    if (list === undefined || list === null) return { ok: true, value: { more } };
+    const revisions = readList({ revisions: list }, "revisions", readServerRevision);
+    if (revisions === null) return unreadable();
+    return { ok: true, value: { revisions, more } };
+}
+
+/**
+ * Take one project off a server's list.
+ *
+ * **It removes the listing and nothing else.** The repository, its branches and every
+ * revision in it stay where they are, so a project removed here can be registered again
+ * under the same id and come back whole. Never refused for one that is already gone.
+ */
+export async function forgetProject(
+    remoteOrigin: string,
+    projectId: string,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsForget, { project: projectId });
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Every account on a server, as a name beside a piece of work. */
@@ -379,9 +506,9 @@ export async function announceClient(
 export async function withdrawClient(
     remoteOrigin: string,
     project: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.clientsWithdraw, { project });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Which installations are connected, narrowed to those with one project open. */
@@ -510,18 +637,18 @@ export async function joinLiveSession(
 export async function leaveLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveLeave, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Close one outright, which only the window that opened it may do. */
 export async function closeLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveClose, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /**
@@ -536,9 +663,9 @@ export async function sayInLiveSession(
     remoteOrigin: string,
     session: string,
     payload: unknown,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveSay, { session, payload });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /* -------------------------------------------------------------------- overlay */
@@ -664,7 +791,7 @@ export async function putOverlay(
 export async function dropOverlay(
     remoteOrigin: string,
     id: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayDrop, { id });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
