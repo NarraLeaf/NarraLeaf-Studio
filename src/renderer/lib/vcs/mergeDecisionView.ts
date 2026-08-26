@@ -1,7 +1,12 @@
 import type { DocumentMergeDecision, DocumentMergeSide } from "@shared/documents/diff";
 import { mergeDecisionKey, type DocumentMergeSideName } from "@shared/documents/mergeApply";
 import type { TranslationKey } from "@shared/i18n";
-import type { VcsMergeDocument, VcsMergeDocumentBlocker, VcsMergeSideChoice } from "@shared/types/vcs";
+import type {
+    VcsMergeDocument,
+    VcsMergeDocumentBlocker,
+    VcsMergeSideChoice,
+    VcsMergeState,
+} from "@shared/types/vcs";
 import type { LabelTranslator } from "./documentChangeView";
 import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
 
@@ -395,6 +400,25 @@ function scalarText(value: unknown): string {
  * "there is nothing left to decide here" as the same blank space, and the author's only way to
  * tell them apart would be to finish the merge and look at the file.
  */
+/**
+ * What the resolve panel's strip says about the merge it is showing.
+ *
+ * **A surface may not go on asserting a state it can see has ended.** The strip used to name the
+ * merge unconditionally, so an author who had just finished one was left reading "the two versions
+ * of this project are being merged" directly above the panel's own body reporting - correctly -
+ * that no merge is in progress. One screen, two answers, and the wrong one on top.
+ *
+ * Where there is no merge it falls back to the panel's own name, which asserts nothing. That is
+ * also the right answer BEFORE the first read comes back, and the reason this takes the state
+ * rather than a boolean: `null` is "nobody has asked yet", and collapsing it into "there is none"
+ * would put a claim on screen that is merely likely.
+ */
+export function mergeHeadingKey(state: VcsMergeState | null): TranslationKey {
+    return (state?.inProgress
+        ? "documentDiff.resolve.merging"
+        : "documentDiff.resolve.tab") as TranslationKey;
+}
+
 export function mergeDocumentBlockedKey(blocker: VcsMergeDocumentBlocker): TranslationKey {
     switch (blocker) {
         case "no-spec":
