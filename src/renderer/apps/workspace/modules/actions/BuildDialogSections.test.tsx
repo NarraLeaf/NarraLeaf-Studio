@@ -612,3 +612,10 @@ vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     // document a surface names. Nothing in this dialog names one, so any kind will do.
     useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
 }));
+
+// The plugins page names `editor/app-tags.json`, which a live session carries - so its fields read
+// the claims on it. Outside a workspace there is no session and nothing is claimed, which is what an
+// absent context already means.
+vi.mock("../../context", () => ({
+    useWorkspace: () => ({ context: null, isInitialized: false }),
+}));
