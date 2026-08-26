@@ -43,6 +43,39 @@ export function readUIComponentInstanceElementId(instanceKey: string | undefined
 }
 
 /**
+ * Step one component boundary outwards: the placement, and the key of whatever encloses it.
+ *
+ * An event that has walked to the top of a definition's own tree has not finished - the instance is
+ * a widget on a page, and the container it was placed in is still entitled to hear a click over it.
+ * The definition cannot name that container, but the key already names the element that placed it,
+ * which is where the walk carries on from.
+ *
+ * Returns null when the key names no component, which is how the caller knows the walk really has
+ * reached the top. The innermost segment is the one that goes, so a component inside a component
+ * surfaces one level at a time.
+ */
+export function popUIComponentInstanceKey(
+    instanceKey: string | undefined,
+): { instanceElementId: string; outerKey: string } | null {
+    if (!instanceKey) {
+        return null;
+    }
+    const segments = instanceKey.split(SEPARATOR);
+    for (let i = segments.length - 1; i >= 0; i--) {
+        const segment = segments[i]!;
+        if (!segment.startsWith(SEGMENT_PREFIX)) {
+            continue;
+        }
+        const instanceElementId = segment.slice(SEGMENT_PREFIX.length);
+        if (instanceElementId.length === 0) {
+            return null;
+        }
+        return { instanceElementId, outerKey: segments.slice(0, i).join(SEPARATOR) };
+    }
+    return null;
+}
+
+/**
  * The surface id a component definition's own tree is laid out under.
  *
  * A definition is rendered inside a virtual surface of its own (see `SurfaceElementTree`), because
