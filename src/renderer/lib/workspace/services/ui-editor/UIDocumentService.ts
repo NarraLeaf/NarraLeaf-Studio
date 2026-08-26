@@ -209,6 +209,15 @@ type UIDocumentMutationOptions = {
  *
  * One method, for `StoryOpSink`'s reason: there are exactly two outcomes, and a second method would
  * be a second way to spell one of them.
+ *
+ * ⚠ **A guest's second gesture on one record inside a single round trip supersedes the first**, and
+ * that is a property of every whole-record operation in this vocabulary rather than of this one: a
+ * guest's document does not move until the host answers, so both deltas are computed against the same
+ * state and the later one carries the earlier one's fields as they were. `update-character`,
+ * `update-asset` and `set-translation` all behave this way and always have. What keeps it small here
+ * is that each gesture is self-contained - a drag commits once at its end, and the inspector's text
+ * fields carry their whole draft on every throttled commit - so the two gestures have to be
+ * different KINDS of edit to the same element, made a network round trip apart.
  */
 export type UIOpSink = {
     /**
