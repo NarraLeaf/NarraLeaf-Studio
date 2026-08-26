@@ -1109,6 +1109,25 @@ describe("a live session", () => {
             expect(reloaded.session.getView().session?.id).toBe("room-1");
         });
 
+        it("says nothing to the server when the window itself goes away", async () => {
+            // ⚠ A reload and a goodbye look identical from here, so neither is claimed. Closing the
+            // room on the way out ended the collaboration for everybody every time an author
+            // pressed Ctrl+R; not closing it left a room with nobody able to answer an intent. What
+            // tells the two apart is what happens next - a reload comes back and takes it up again.
+            await openRoom();
+            host.calls.length = 0;
+
+            host.session.dispose();
+            await drain(world.bus);
+
+            expect(host.calls).not.toContain("close");
+            expect(host.calls).not.toContain("checkpoint");
+            expect(world.rooms.size).toBe(1);
+            // And the window itself is out of it: the freeze is lifted and no gesture can become an
+            // intent for a room this page is on its way out of.
+            expect(host.freeze.armed).toBeNull();
+        });
+
         it("does nothing for a window that was in no room", async () => {
             const fresh = createWindow(world, "instance-fresh");
             expect(await fresh.session.resume()).toBe("settled");
