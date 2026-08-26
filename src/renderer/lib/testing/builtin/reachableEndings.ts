@@ -253,6 +253,9 @@ function walkStory(
     const reachedEndingIds = new Set<StoryBlockId>();
     const queue: StorySceneId[] = [];
     const seen = new Set<StorySceneId>();
+    // Scenes something jumps into and expects to come back from. A scene entered this way that runs
+    // out of rows has returned, not stopped, so it is not a place a path runs out.
+    const calledSceneIds = new Set<StorySceneId>();
     const enter = (sceneId: StorySceneId): void => {
         if (seen.has(sceneId) || !story.document.scenes[sceneId]) {
             return;
@@ -268,14 +271,23 @@ function walkStory(
         const sceneId = queue[cursor];
         const scene = story.document.scenes[sceneId];
         const exits = continuations.get(sceneId) ?? [];
-        if (exits.length === 0) {
+        // A call is not a way out - the run comes back and carries on here - so a scene whose only
+        // continuations are calls has nowhere to go once they have returned.
+        const leaves = exits.some(exit => exit.kind !== "call");
+        if (!leaves && !calledSceneIds.has(sceneId)) {
             // Nothing leaves and nothing ends it. A scene with no way out has no arms either - an
             // arm always contributes a continuation of its own - so the row play stops on is the
             // scene's last live one, which is the row `story/dead-end` anchors on too.
             runOuts.push({ scene, ...blockIdOf(lastLiveRootBlock(scene)) });
-            continue;
         }
         for (const exit of exits) {
+            if (exit.kind === "call") {
+                // The called scene is entered, so its endings count and its own run-outs are found;
+                // running out of rows in it is the return, which is what this set records.
+                calledSceneIds.add(exit.target);
+                enter(exit.target);
+                continue;
+            }
             if (exit.kind === "ending") {
                 reachedEndingIds.add(exit.endingId);
                 continue;

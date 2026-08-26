@@ -125,6 +125,11 @@ export const lint = {
             description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
             message: "この行に子ノードがなく、ここでシーンの末尾を越える",
         },
+        storyCallCycle: {
+            title: "循環する呼び出し",
+            description: "戻り付きのジャンプが、その行のあるシーンを呼び出せるシーンに達している",
+            message: "この行が呼び出すシーンから、このシーンが呼び出される",
+        },
         storyUnreachableScene: {
             title: "到達できないシーン",
             description: "開始地点から到達できないシーン",

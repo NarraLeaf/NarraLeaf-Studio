@@ -196,7 +196,18 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // re-parsed as a soft wipe with the default feather of 12 - a hard edge lost to editing the row.
 // The bump is not optional: a v21 Studio meeting `holdMs` ignores it and plays a hold it was not asked
 // for, then writes the document back without it. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 22 as const;
+// v23 gives a jump the choice of coming back: `StoryJumpPayload.returnable`. A returnable jump
+// suspends the scene it leaves instead of unloading it, plays the scene it names, and resumes at the
+// row after itself - the shape every other engine in this genre calls call/return, and the one this
+// story model had no way to write. Until now the only way to reuse a fixed sequence was to copy it
+// into every scene that needed it, because the jump that reached it could not come back and each
+// caller would have needed a branch of its own to be jumped back to.
+// No migration: a v22 document cannot carry the field, and absent reads as `false`, which is the
+// jump it has always been. The bump is not optional, and the reason is what a v22 Studio would
+// *play*: it would ignore the field, compile a plain jump, and run the called scene as the end of
+// the story rather than as a detour - so every row after the jump, in every scene that made one,
+// would silently never run. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 23 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1236,6 +1247,27 @@ export type StoryEndingPage =
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
     transition?: StoryTransitionRef;
+    /**
+     * Come back to the row after this one when the scene it names runs out (schema v23).
+     *
+     * Absent or `false` is the jump this row has always been: the scene it is written in is unloaded
+     * and nothing after the row ever runs. `true` suspends that scene instead - it keeps its stage,
+     * its sprites and its scene-local variables, its background music is paused, and it stops
+     * painting - and the story resumes here when the called scene runs out of rows.
+     *
+     * Written as a flag rather than as a second block kind on purpose. What a row does is decided by
+     * a word the author typed on it and the row prints back, not by the *kind* of thing the target
+     * is - which is the distinction `/goto` and `/jump` are two commands over (see the note on the
+     * `goto` spec). Every reader that only wants to know where the row points reads
+     * `targetSceneId` and is unaffected; the readers that care whether control comes back are the
+     * ones that ask for this.
+     *
+     * Two consequences the engine enforces and the lint rules mirror, both from a suspended scene
+     * being one real scene rather than a saved position: a scene already on the call stack cannot be
+     * called (so `A -> B -> A` throws rather than recursing), and a plain jump taken while a call is
+     * open gives the call up and unloads everything parked behind it.
+     */
+    returnable?: boolean;
 };
 
 export type StoryNotePayload = {

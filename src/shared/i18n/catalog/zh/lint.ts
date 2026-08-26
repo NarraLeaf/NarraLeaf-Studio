@@ -118,6 +118,11 @@ export const lint = {
             description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
             message: "该行没有子节点，执行到此处即越过场景末尾",
         },
+        storyCallCycle: {
+            title: "循环的调用",
+            description: "带返回的跳转所到的场景，能够反过来调用它所在的场景",
+            message: "该行调用的场景能够反过来调用本场景",
+        },
         storyUnreachableScene: {
             title: "无法到达的场景",
             description: "从起始场景出发无法到达",

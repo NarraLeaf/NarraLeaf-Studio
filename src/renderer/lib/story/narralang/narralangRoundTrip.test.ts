@@ -414,6 +414,10 @@ const corpus: Record<string, StoryScene> = {
         { id: "e11", kind: "action", payload: { action: "wait", mode: "click" } },
         { id: "e12", kind: "action", payload: { action: "setBackground", color: "#101018" } },
         { id: "e13", kind: "jump", payload: { targetSceneId: "scene-2", transition: { kind: "dissolve", durationMs: 600 } } },
+        // The returnable jump, alone and beside a transition: the flag is a bare word on the line, so
+        // a script that carries it has to parse back to the same row.
+        { id: "e14", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true } },
+        { id: "e15", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true, transition: { kind: "fadeIn", durationMs: 400 } } },
     ] as never),
 
     "control flow": scene([
