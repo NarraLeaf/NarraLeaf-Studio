@@ -104,12 +104,34 @@ function graphsOf(owner: (blueprint: Blueprint) => boolean): Graph[] {
         .flatMap(blueprint => Object.values(blueprint.program.graphs.events).map(event => event.graph));
 }
 
+/**
+ * The cues the project declares, by the reference a call names.
+ *
+ * A cue is a call to a global function that plays a clip, so "step over the cue" can no longer be a
+ * node-type test - `Call Fn` is also how a save card refreshes itself, and stepping over that would
+ * make this file walk past the thing it is checking.
+ */
+const CUE_FN_REFS: ReadonlySet<string> = new Set(
+    blueprints.flatMap(blueprint =>
+        Object.values(blueprint.program.graphs.events).flatMap(event => {
+            const { nodes, edges } = event.graph;
+            return Object.values(nodes)
+                .filter(head => head.type === "blueprint.fn.head")
+                .filter(head => {
+                    const body = edges.find(edge => edge.from.nodeId === head.id && edge.from.port === "then");
+                    return body ? nodes[body.to.nodeId]?.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY : false;
+                })
+                .map(head => `fn:${blueprint.id}:${head.id}`);
+        }),
+    ),
+);
+
 /** The single node an exec output runs, stepping over a sound cue that decorates the route. */
 function next(graph: Graph, fromId: string, port: string): GraphNode {
     const out = graph.edges.filter(edge => edge.from.nodeId === fromId && edge.from.port === port);
     expect(out, `${fromId}.${port} leads to ${out.length} nodes`).toHaveLength(1);
     const node = graph.nodes[out[0]!.to.nodeId]!;
-    return node.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY ? next(graph, node.id, "next") : node;
+    return CUE_FN_REFS.has(String(node.params?.fnRef ?? "")) ? next(graph, node.id, "next") : node;
 }
 
 function only(graph: Graph, type: string): GraphNode {
