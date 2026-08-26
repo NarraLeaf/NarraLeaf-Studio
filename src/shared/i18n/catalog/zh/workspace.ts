@@ -378,8 +378,8 @@ export const workspace = {
         liveNobody: "此项目没有进行中的实时会话",
         liveRoomOpen: "{name} 开着一场实时会话",
         // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
-        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除该故事与角色以外的一切",
-        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除该故事与角色以外的一切",
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除故事、角色、译文与配音、资产库以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除故事、角色、译文与配音、资产库以外的一切",
         // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
         liveStory: "故事",
         liveHostedBy: "主持方 {name}",
@@ -775,6 +775,7 @@ export const workspace = {
             // 这个界面绝不自己发起。
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
+            commitBeforeSync: "从服务器获取之前先提交版本",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
