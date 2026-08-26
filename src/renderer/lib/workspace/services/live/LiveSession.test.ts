@@ -706,7 +706,12 @@ function createWindow(world: World, instance: string): Window {
         dictionary: {
             setSink: () => undefined,
             document: () => null,
-            applyOp: () => undefined,
+            // Recorded rather than ignored, so that an operation reaching the wrong port shows up.
+            // The document switch these ports hang off is a fallthrough away from applying an
+            // interface delta to the dictionary, and nothing in the type system says so.
+            applyOp: op => {
+                calls.push(`dictionary:${op.op}`);
+            },
         },
         audioTracks: {
             setSink: sink => {
@@ -721,7 +726,9 @@ function createWindow(world: World, instance: string): Window {
         assetSets: {
             setSink: () => undefined,
             sets: () => null,
-            applyOp: () => undefined,
+            applyOp: op => {
+                calls.push(`sets:${op.op}`);
+            },
         },
         version: {
             checkpoint: async () => {
@@ -1180,6 +1187,11 @@ describe("a live session", () => {
             await drain(world.bus);
             expect((host.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
             expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+            // ⚠ And it reached one port. The switch that dispatches by document is a missing
+            // `break` away from handing an interface delta to the dictionary as well, which the
+            // type system cannot see and which a port wired to nothing would not have shown.
+            const appliers = ["story:", "cast:", "translations:", "takes:", "assets:", "dictionary:", "tracks:", "sets:"];
+            expect(host.calls.filter(call => appliers.some(prefix => call.startsWith(prefix)))).toEqual([]);
         });
 
         it("holds an element for its editor and refuses everybody else's write to it", async () => {
