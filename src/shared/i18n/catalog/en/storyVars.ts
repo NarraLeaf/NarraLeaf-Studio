@@ -26,7 +26,7 @@ export const storyVars = {
         // Off for the length of a live session. States what is the case, not why: removing a
         // variable also empties the blueprint nodes that used it, and a session carries the
         // registry without carrying the blueprint.
-        deleteInSession: "Deleting a variable is unavailable during a live session.",
+        deleteInSession: "Unavailable during a live session. End the session to remove this variable.",
     },
     live: {
         // On the mark an entry wears while somebody else has it open. A person is named: there is

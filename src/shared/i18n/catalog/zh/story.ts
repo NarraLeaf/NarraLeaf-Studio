@@ -134,7 +134,7 @@ export const story = {
         undoAssetGone: "该资产已不存在",
         undoContentReplaced: "替换文件无法撤销",
         undoVariableGone: "该变量已不存在",
-        undoVariableRestored: "该变量已重新回到注册表",
+        undoVariableRestored: "该变量已重新存在",
         undoKeyRestored: "该字符串已被重新声明",
     },
     narralang: {

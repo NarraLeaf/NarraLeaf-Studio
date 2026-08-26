@@ -169,7 +169,7 @@ export const story = {
         // at.
         undoContentReplaced: "Replacing a file cannot be taken back.",
         undoVariableGone: "That variable is gone.",
-        undoVariableRestored: "That variable is in the registry again.",
+        undoVariableRestored: "That variable exists again.",
         undoKeyRestored: "That string is declared again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the

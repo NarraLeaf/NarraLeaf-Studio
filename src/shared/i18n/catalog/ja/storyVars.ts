@@ -20,7 +20,7 @@ export const storyVars = {
         defaultPlaceholder: "既定値",
         defaultAria: "既定値",
         delete: "変数を削除",
-        deleteInSession: "ライブセッション中は変数を削除できない。",
+        deleteInSession: "ライブセッション中は使えない。セッションを終了するとこの変数を削除できる。",
     },
     live: {
         entryClaimed: "{name} がこの変数を編集している",
