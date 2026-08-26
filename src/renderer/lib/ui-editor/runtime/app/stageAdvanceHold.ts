@@ -84,3 +84,65 @@ export function holdStageAdvance(hooks: StageAdvanceHoldHooks): StageAdvanceHold
         },
     };
 }
+
+/** One hold at a time, kept in step with the answer rather than with the edges of it. */
+export type StageAdvanceHolder = {
+    /**
+     * Bring the hold in line with whether the stage is covered right now.
+     *
+     * Idempotent in both directions: called with `true` while it is already holding it does
+     * nothing, and called with `false` while it holds nothing does nothing.
+     */
+    sync: (stageCovered: boolean) => void;
+    /** Hand the line back whatever the last answer was. Safe to call twice. */
+    dispose: () => void;
+};
+
+/**
+ * Keep at most one hold, and keep it only while the stage is covered.
+ *
+ * {@link holdStageAdvance} is an edge - taken on the way in, handed back on the way out - and in
+ * `GameApp` both edges are one React effect firing. That makes every half of the answer a single
+ * event, and a single event that does not arrive is permanent: the suspension is on a `Set` inside
+ * the engine's `GameState`, nothing else ever looks at it, and while it is out the stage click, the
+ * advance key and auto-forward all do nothing. MEASURED: opening the in-game Save panel and closing
+ * it again left exactly one suspension out for the rest of the playthrough, with nothing at all
+ * drawn over the stage.
+ *
+ * The holder asks the question again on every commit instead of only when the answer changes, which
+ * fixes both halves of that: a cover that is up while there is no game state yet is held as soon as
+ * there is one, and a stage that is not covered hands the line back on any commit rather than on one
+ * particular edge.
+ *
+ * It cannot let go early. `sync(true)` never releases - the only release is `sync(false)`, which is
+ * the same condition the effect's cleanup ran on - so a page or modal layer that is genuinely over
+ * the stage keeps its suspension for every commit it is up for.
+ *
+ * `takeHold` is a factory rather than the hooks themselves so the caller can bind each hold to the
+ * live game it finds at that moment: a hold retried after a session arrived belongs to that session,
+ * not to the one that was there when the cover went up.
+ */
+export function createStageAdvanceHolder(takeHold: () => StageAdvanceHold): StageAdvanceHolder {
+    let hold: StageAdvanceHold | null = null;
+    const letGo = (): void => {
+        const current = hold;
+        hold = null;
+        current?.release();
+    };
+    return {
+        sync: (stageCovered: boolean): void => {
+            if (!stageCovered) {
+                letGo();
+                return;
+            }
+            if (hold?.held) {
+                return;
+            }
+            // Either nothing has been taken yet, or the last attempt found no game state to hold -
+            // which holds nothing at all and has nothing to wake, so dropping it costs nothing.
+            letGo();
+            hold = takeHold();
+        },
+        dispose: letGo,
+    };
+}

@@ -1,6 +1,8 @@
+import fs from "node:fs/promises";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { isStageCovered } from "./layers/stageOcclusion";
-import { holdStageAdvance } from "./stageAdvanceHold";
+import { createStageAdvanceHolder, holdStageAdvance } from "./stageAdvanceHold";
 
 /**
  * The engine's half, modelled: a suspension set, and a line that moves on a timer.
@@ -201,5 +203,130 @@ describe("holdStageAdvance", () => {
             engine.fireAutoForwardTimer();
             expect(engine.advanced()).toBe(2);
         });
+    });
+});
+
+/**
+ * The holder, which is what `GameApp` drives.
+ *
+ * `holdStageAdvance` on its own is an edge: taken once, handed back once, and the handing back is a
+ * React effect cleanup. That makes both halves of the answer a single event each, and an event that
+ * does not arrive is permanent - MEASURED: the Save panel opened and closed left one suspension out
+ * for the rest of the playthrough, so the stage click, the advance key and auto-forward were all
+ * dead with nothing drawn over the stage. The holder asks the question again on every commit
+ * instead: still covered, still held; not covered, handed back.
+ */
+describe("createStageAdvanceHolder", () => {
+    function makeHolder(engine: ReturnType<typeof makeEngine>, options: {
+        liveUntil?: () => boolean;
+    } = {}) {
+        const rearmAutoForward = vi.fn(() => engine.rearm());
+        const holder = createStageAdvanceHolder(() => holdStageAdvance({
+            suspendAdvance: () => ((options.liveUntil?.() ?? true) ? engine.gameState.suspendAdvance() : null),
+            isSessionCurrent: () => true,
+            isAutoForwardOn: () => engine.autoForwardOn(),
+            rearmAutoForward,
+        }));
+        return { holder, rearmAutoForward };
+    }
+
+    it("hands the line back when the cover goes away", () => {
+        const engine = makeEngine();
+        const { holder } = makeHolder(engine);
+
+        holder.sync(true);
+        expect(engine.suspensionCount()).toBe(1);
+
+        holder.sync(false);
+        expect(engine.suspensionCount()).toBe(0);
+    });
+
+    it("keeps its suspension for as long as the cover is up", () => {
+        const engine = makeEngine();
+        engine.lineEnded();
+        const { holder, rearmAutoForward } = makeHolder(engine);
+
+        // A commit for every frame the settings screen is open. None of them is a release: only an
+        // uncovered stage releases, which is the same condition the effect edge used to be.
+        for (let i = 0; i < 20; i++) {
+            holder.sync(true);
+        }
+
+        expect(engine.suspensionCount()).toBe(1);
+        expect(rearmAutoForward).not.toHaveBeenCalled();
+        engine.fireAutoForwardTimer();
+        expect(engine.advanced()).toBe(0);
+    });
+
+    it("takes the hold on the next commit when there was no game state to hold yet", () => {
+        // The session mounts a beat after the cover goes up: the story is on screen and running
+        // while a page is drawn over it, and an edge that has already passed never comes again.
+        const engine = makeEngine();
+        let gameReady = false;
+        const { holder } = makeHolder(engine, { liveUntil: () => gameReady });
+
+        holder.sync(true);
+        expect(engine.suspensionCount()).toBe(0);
+
+        gameReady = true;
+        holder.sync(true);
+        expect(engine.suspensionCount()).toBe(1);
+
+        holder.sync(false);
+        expect(engine.suspensionCount()).toBe(0);
+    });
+
+    it("never stacks a second suspension on one cover", () => {
+        const engine = makeEngine();
+        const { holder } = makeHolder(engine);
+
+        holder.sync(true);
+        holder.sync(true);
+        holder.sync(true);
+
+        expect(engine.suspensionCount()).toBe(1);
+    });
+
+    it("hands the line back when the holder is thrown away", () => {
+        const engine = makeEngine();
+        engine.lineEnded();
+        const { holder, rearmAutoForward } = makeHolder(engine);
+
+        holder.sync(true);
+        holder.dispose();
+
+        expect(engine.suspensionCount()).toBe(0);
+        expect(rearmAutoForward).toHaveBeenCalledTimes(1);
+        // Twice is the effect cleanup and the unmount arriving in either order.
+        holder.dispose();
+        expect(rearmAutoForward).toHaveBeenCalledTimes(1);
+    });
+});
+
+/**
+ * The holder is worth nothing unless `GameApp` drives it that way, and both halves of "that way"
+ * are one line each that no type or render test can insist on - `GameApp` is not rendered anywhere
+ * in this suite. So this reads the file, the way `failureReporting` reads it for the same reason.
+ */
+describe("GameApp wiring", () => {
+    const APP_FILE = path.join(path.resolve(__dirname), "GameApp.tsx");
+
+    it("reconciles the hold on every commit rather than on the edges of `stageCovered`", async () => {
+        const source = await fs.readFile(APP_FILE, "utf8");
+        expect(source).toContain("createStageAdvanceHolder");
+        const sync = source.indexOf("stageAdvanceHolderRef.current?.sync(stageCovered)");
+        expect(sync).toBeGreaterThan(-1);
+        // No dependency list: an effect keyed on the answer only runs when the answer changes, and
+        // the whole point is to be right on commits where it did not.
+        expect(source.slice(sync, sync + 120)).not.toContain("}, [");
+    });
+
+    it("asks both occlusion readers about the pages this bundle can draw", async () => {
+        const source = await fs.readFile(APP_FILE, "utf8");
+        const calls = [...source.matchAll(/isStageCovered\(\{/g)].map(match => match.index ?? 0);
+        expect(calls.length).toBeGreaterThan(1);
+        for (const at of calls) {
+            expect(source.slice(at, at + 400)).toContain("drawableSurfaceIds");
+        }
     });
 });

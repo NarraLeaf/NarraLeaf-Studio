@@ -26,6 +26,22 @@
  * its - the layer lane's own statement that the player is not interacting with what is underneath.
  * A layer that declares no such thing (a toast, a HUD) leaves the stage exactly as live as it was.
  *
+ * ## Covers count when they are on the screen, not when they are on a stack
+ *
+ * Both lanes hold more than the screen shows. The page lane draws the entry it is settling on (and,
+ * mid-transition, the one leaving) and nothing buried under them; the layer stack holds layers the
+ * host filtered out of the render, which is the whole reason it tracks `unrenderedKeys`. Reading
+ * either stack whole reports a cover that nothing is drawing, and one reader cannot survive that:
+ * the suspension `stageAdvanceHold` takes is handed back when this answer turns false, so an answer
+ * that is true with an empty screen is a story that never advances again. MEASURED: the in-game
+ * Save panel opened and closed left one suspension out on the live `GameState` for the rest of the
+ * playthrough - stage click, advance key and auto-forward all dead - with nothing over the stage.
+ *
+ * So the page half asks the entry the lane is settling on, and the layer half skips a layer whose
+ * page the running bundle does not contain. Whenever the entries a game hid are the prefix they are
+ * built to be, asking the top and asking the whole stack are the same question; they part only once
+ * the stack says something the screen does not, and then the screen is right.
+ *
  * Comments in English per project convention.
  */
 
@@ -34,9 +50,10 @@ export type StageOcclusionPageEntry = {
     key: string;
 };
 
-/** A mounted layer. Only whether it is modal matters here. */
+/** A mounted layer: whether it takes the screen, and which page it would draw to take it. */
 export type StageOcclusionLayer = {
     modal: boolean;
+    surfaceId: string;
 };
 
 export type StageOcclusionInput = {
@@ -48,6 +65,14 @@ export type StageOcclusionInput = {
     gameHiddenKeys: ReadonlySet<string>;
     /** The layers mounted over the page lane, bottom to top. */
     layers: readonly StageOcclusionLayer[];
+    /**
+     * The pages the running bundle can actually draw.
+     *
+     * A layer naming anything else is filtered out of the render and covers nothing. Optional
+     * because a caller that has no bundle to ask (a test, a stack driven with no renderer behind it)
+     * should keep counting every layer, which is what it always did.
+     */
+    drawableSurfaceIds?: ReadonlySet<string> | null;
 };
 
 /**
@@ -73,10 +98,27 @@ export function isStageCovered(input: StageOcclusionInput): boolean {
     if (!input.pagesHiddenForGame) {
         return false;
     }
-    const coveredByPage = input.pageEntries.some(entry => isPageEntryDrawn({
-        entryKey: entry.key,
+    const settling = input.pageEntries[input.pageEntries.length - 1] ?? null;
+    const coveredByPage = settling !== null && isPageEntryDrawn({
+        entryKey: settling.key,
         pagesHiddenForGame: true,
         gameHiddenKeys: input.gameHiddenKeys,
+    });
+    return coveredByPage || input.layers.some(layer => layer.modal && isLayerDrawn({
+        surfaceId: layer.surfaceId,
+        drawableSurfaceIds: input.drawableSurfaceIds,
     }));
-    return coveredByPage || input.layers.some(layer => layer.modal);
+}
+
+/**
+ * Whether the surface stack can put this layer on the screen.
+ *
+ * True when the caller did not say which pages the bundle has: a stack asked about with no renderer
+ * behind it reports every layer it holds, which is what it did before this question existed.
+ */
+export function isLayerDrawn(input: {
+    surfaceId: string;
+    drawableSurfaceIds?: ReadonlySet<string> | null;
+}): boolean {
+    return !input.drawableSurfaceIds || input.drawableSurfaceIds.has(input.surfaceId);
 }
