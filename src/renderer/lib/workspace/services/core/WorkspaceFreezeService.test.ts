@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DocumentSource } from "@shared/documents/documentSource";
 import { getProjectWriteFreeze, thawProjectWrites } from "@/lib/app/writeFreeze";
 import { clearProjectDocumentSource, getProjectDocumentSource } from "@/lib/app/documentSource";
+import { clearMergeConflictReads, mergeConflictReadPath } from "@/lib/app/mergeConflictReads";
 import { BaseFileSystemService } from "./FileSystem";
 import type { WorkspaceReloadResult } from "./WorkspaceReloadService";
 import { WorkspaceFreezeService } from "./WorkspaceFreezeService";
@@ -104,6 +105,9 @@ beforeEach(() => {
 afterEach(() => {
     thawProjectWrites();
     clearProjectDocumentSource();
+    // Module-level like the other two, and a leaked one would redirect the next test's reads at a
+    // sidecar that does not exist.
+    clearMergeConflictReads();
     vi.unstubAllGlobals();
 });
 
@@ -523,6 +527,80 @@ describe("WorkspaceFreezeService", () => {
         await Promise.resolve();
 
         expect(seen).toEqual([{ source: false, frozen: true }]);
+    });
+
+    /**
+     * The entering half of a merge, and the assertion is about ORDER.
+     *
+     * A window that syncs into a merge is looking at files that carry all three sides and do not
+     * parse. Both latches therefore have to be in place before the re-read is asked for - the
+     * substitution so the documents parse at all, the freeze so that what the editors then hold
+     * cannot be saved back over the merge's own result. Recorded from inside the reload rather than
+     * asked afterwards, because "it eventually froze" is exactly what the broken version also did.
+     */
+    it("freezes and substitutes before it re-reads anything", async () => {
+        const service = await createService();
+        const seen: { frozen: string | undefined; substituted: string | null }[] = [];
+        reload.mockImplementationOnce(async () => {
+            seen.push({
+                frozen: getProjectWriteFreeze()?.reason.kind,
+                substituted: mergeConflictReadPath(`${PROJECT}/${STORY_INDEX}`),
+            });
+            return { cause: "restore", origin: { kind: "working-tree" }, reloaded: [], failures: [] };
+        });
+
+        await service.showMergeConflicts([STORY_INDEX]);
+
+        expect(seen).toEqual([{ frozen: "merge", substituted: `${PROJECT}/${STORY_INDEX}~mine` }]);
+        // Still frozen afterwards: the way out of a merge is completing or abandoning it, and a
+        // workspace that unfroze here would be writable over a tree full of conflict markers.
+        expect(service.getReason()).toEqual({ kind: "merge" });
+    });
+
+    /**
+     * A sync can arrive while the author is browsing history, and then the merge has to replace what
+     * they were looking at. The source going first is `thaw`'s argument in a different costume: left
+     * installed, the pass meant to read the merge would answer out of that revision instead.
+     */
+    it("stops a revision answering reads before it shows the merge", async () => {
+        const service = await createService();
+        await service.showRevision(createRevisionSource("rev-1", { [STORY_INDEX]: "from-the-revision" }).source);
+        const seen: boolean[] = [];
+        reload.mockImplementationOnce(async () => {
+            seen.push(getProjectDocumentSource() !== null);
+            return { cause: "restore", origin: { kind: "working-tree" }, reloaded: [], failures: [] };
+        });
+
+        await service.showMergeConflicts([STORY_INDEX]);
+
+        expect(seen).toEqual([false]);
+        expect(getProjectDocumentSource()).toBeNull();
+    });
+
+    /**
+     * Where this parts company with {@link WorkspaceFreezeService.freeze}, which flushes first.
+     *
+     * By the time a caller reaches here the working tree has already been rewritten underneath the
+     * editors, so flushing would write what they are still holding - pre-merge content - over the
+     * merge's own result. That is the write the freeze is being armed to prevent, performed by the
+     * act of arming it.
+     */
+    it("does not flush what the editors are holding over the merge result", async () => {
+        const service = await createService();
+
+        await service.showMergeConflicts([STORY_INDEX]);
+
+        expect(flushAll).not.toHaveBeenCalled();
+    });
+
+    it("refuses an empty list, which is a merge that settled everything", async () => {
+        const service = await createService();
+
+        await expect(service.showMergeConflicts([])).rejects.toThrow(/paths the merge left/);
+        // Nothing armed: that merge's result IS the disk, and freezing it would take the project
+        // away from an author with nothing to decide.
+        expect(service.isFrozen()).toBe(false);
+        expect(mergeConflictReadPath(`${PROJECT}/${STORY_INDEX}`)).toBeNull();
     });
 
     it("refuses a working-tree source, which would freeze the workspace for no visible reason", async () => {

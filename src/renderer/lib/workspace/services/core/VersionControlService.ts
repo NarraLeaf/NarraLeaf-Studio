@@ -834,8 +834,14 @@ export class VersionControlService extends Service<VersionControlService> implem
      *
      * A conflicted sync resolves SUCCESSFULLY carrying `conflicts`. That is not
      * squeamishness: by then the tree is written, so reporting a failure would tell the
-     * author nothing happened while their files say otherwise. The caller shows the list
-     * and says Studio cannot resolve them yet.
+     * author nothing happened while their files say otherwise. The caller shows the list;
+     * resolving them is `getMergeDocument` and {@link completeMerge}.
+     *
+     * **A sync that ends in a merge enters the merge, it does not merely report one.** The
+     * files it could not settle are on disk carrying all three sides and are not parseable,
+     * so the re-read below has to happen behind the same two latches a project opened
+     * mid-merge comes up behind - see `WorkspaceFreezeService.showMergeConflicts`, which is
+     * where the argument lives.
      */
     public async sync(): Promise<VcsSyncResult> {
         const availability = await this.getAvailability();
@@ -859,6 +865,26 @@ export class VersionControlService extends Service<VersionControlService> implem
         if (result.data.alreadyCurrent) return result.data;
 
         this.afterRevision();
+
+        // Asked of the repository rather than read off `result.data`, so that syncing into a merge
+        // and reopening a project that is in one are the same question with the same answer:
+        // `workspaceProjectPreflight` reads exactly this, and a second list assembled from the sync
+        // could only agree with it by coincidence. The sync's own copy is also the more perishable
+        // of the two - it arrives on an event stream that is gone by the next call (docs §4.24)
+        // while this one is recovered from disk.
+        const merge = await this.getMergeState();
+        if (merge?.inProgress && merge.conflicts.length > 0) {
+            // Before the re-read, exactly as `completeMerge` emits before its own: what the merge is
+            // has changed, and the surfaces that draw it must not be reading the old answer while
+            // the documents underneath them are being replaced.
+            this.events.emit("mergeChanged", undefined);
+            // Re-reads for us, and leaves the workspace frozen rather than thawed - so no thaw here.
+            // The freeze is not the revision view's and is not lifted by finishing this call: the
+            // way out is completing or abandoning the merge, both of which clear it below.
+            await freeze.showMergeConflicts(merge.conflicts);
+            return result.data;
+        }
+
         if (freeze.isFrozen()) {
             freeze.thaw();
         } else {
