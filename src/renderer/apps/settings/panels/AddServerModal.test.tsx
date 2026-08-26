@@ -38,7 +38,21 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             probeServer: bridge.probeServer,
             addServer: bridge.addServer,
-            listServerProjects: bridge.listServerProjects,
+        },
+        // The count is asked over the session the just-stored server can open. The per-
+        // origin fake stays where a test sets the answer; this reshapes it into the wire's
+        // shape, and the socket reader keeps only rows with the fields it insists on.
+        team: {
+            call: async (remoteOrigin: string, method: string) => {
+                if (method !== "projects.list") {
+                    return { success: true, data: { ok: false, problem: { kind: "unsupported" } } };
+                }
+                const out = await bridge.listServerProjects(remoteOrigin);
+                if (!out?.success) return { success: true, data: { ok: false, problem: { kind: "offline", detail: "" } } };
+                return out.data.ok
+                    ? { success: true, data: { ok: true, value: { projects: out.data.projects } } }
+                    : { success: true, data: { ok: false, problem: out.data.problem.kind === "no-token" ? { kind: "no-token" } : { kind: "refused", code: "refused", detail: "" } } };
+            },
         },
         app: { promptServerTrust: bridge.promptServerTrust },
     }),
@@ -311,9 +325,12 @@ describe("the closing step", () => {
     }
 
     it("says what was joined, as whom, and how much is on it", async () => {
+        // Whole rows, because the count now comes over the session and the socket reader
+        // keeps only a project that carries the fields everything downstream reads.
+        const proj = (id: string) => ({ id, name: id, description: "", createdAt: 0, remote: `${ORIGIN}/${id}` });
         const joined = await join({
             success: true,
-            data: { ok: true, projects: [{ id: "a" }, { id: "b" }, { id: "c" }] },
+            data: { ok: true, projects: [proj("a"), proj("b"), proj("c")] },
         });
 
         expect(joined.textContent).toContain("Blackwood Studio");
