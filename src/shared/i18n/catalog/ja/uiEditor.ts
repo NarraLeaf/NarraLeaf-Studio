@@ -69,7 +69,6 @@ export const uiEditor = {
         },
         noBindings: "割り当てなし",
         addBinding: "割り当てを追加",
-        addKey: "キー…",
         removeBinding: "{binding} を外す",
         device: {
             pointer: "マウス",

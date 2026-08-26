@@ -67,7 +67,6 @@ export const uiEditor = {
         },
         noBindings: "未绑定",
         addBinding: "添加绑定",
-        addKey: "按键…",
         removeBinding: "移除 {binding}",
         device: {
             pointer: "鼠标",

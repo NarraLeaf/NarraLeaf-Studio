@@ -177,43 +177,46 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
     }, [addBinding, listening]);
 
     /**
-     * The gestures on offer, one group per device.
+     * The gestures on offer, one row per device.
      *
      * Grouped rather than flat so that picking a gesture starts from the device it is for, and so an
      * action bound only to a key shows a touch group with nothing taken in it. A gesture two devices
      * reach is listed under both and adds the same binding from either, because the device is a
      * property of the binding rather than a second thing an author chooses.
+     *
+     * The keyboard row arms key capture instead of opening a submenu. It has one way in rather than
+     * a list to choose from, and binding a key is the commonest thing done here - a submenu holding
+     * a single row would charge the commonest path an extra hover to keep the three rows symmetrical.
      */
     const openAddMenu = (event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
-        const keyItems: ContextMenuItemDef[] = [
-            {
-                id: "key",
-                label: t("uiEditor.inputActions.addKey"),
-                onClick: () => {
-                    hideMenu();
-                    setListening(true);
-                },
-            },
-        ];
         const items: ContextMenuDef = INPUT_BINDING_DEVICES.map(device => {
             const Icon = DEVICE_ICONS[device];
-            return {
+            const row: ContextMenuItemDef = {
                 id: `device:${device}`,
                 label: getInputDeviceLabel(device, t),
                 icon: <Icon className="h-4 w-4" aria-hidden />,
-                submenu:
-                    device === "key"
-                        ? keyItems
-                        : getInputDeviceGestures(device).map(gesture => ({
-                              id: `${device}:${gesture}`,
-                              label: getInputPointerGestureLabel(gesture, t),
-                              disabled: taken.has(`pointer:${gesture}`),
-                              onClick: () => {
-                                  hideMenu();
-                                  addBinding({ kind: "pointer", gesture });
-                              },
-                          })),
+            };
+            if (device === "key") {
+                return {
+                    ...row,
+                    onClick: () => {
+                        hideMenu();
+                        setListening(true);
+                    },
+                };
+            }
+            return {
+                ...row,
+                submenu: getInputDeviceGestures(device).map(gesture => ({
+                    id: `${device}:${gesture}`,
+                    label: getInputPointerGestureLabel(gesture, t),
+                    disabled: taken.has(`pointer:${gesture}`),
+                    onClick: () => {
+                        hideMenu();
+                        addBinding({ kind: "pointer", gesture });
+                    },
+                })),
             };
         });
         setMenuItems(items);

@@ -73,7 +73,6 @@ export const uiEditor = {
         },
         noBindings: "No bindings",
         addBinding: "Add binding",
-        addKey: "Key…",
         removeBinding: "Remove {binding}",
         device: {
             pointer: "Mouse",
