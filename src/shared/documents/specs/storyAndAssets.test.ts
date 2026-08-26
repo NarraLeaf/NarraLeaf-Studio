@@ -51,6 +51,16 @@ function block(id: string, text: string, overrides: Partial<StoryBlock> = {}): S
     } as StoryBlock;
 }
 
+function jump(id: string, targetSceneId: string, returnable?: true): StoryBlock {
+    return {
+        id,
+        kind: "jump",
+        parentId: null,
+        childrenIds: [],
+        payload: {targetSceneId, ...(returnable ? {returnable: true} : {})},
+    } as StoryBlock;
+}
+
 function scene(id: string, name: string, blocks: StoryBlock[]): StoryScene {
     return {
         id,
@@ -222,6 +232,37 @@ describe("story spec: the parse/serialize round trip", () => {
         const raw = story(scene("s1", "Prologue", [block("b1", "hello")]));
         expect(parseStory(STORY_PATH, raw)).toStrictEqual(parseStory(STORY_PATH, raw));
         expect(parseStory(STORY_PATH, raw).meta).toBeUndefined();
+    });
+
+    it("brings a v22 document up without inventing a returnable jump", () => {
+        // v23 is additive: the field could not have been written at v22, and absent has to keep
+        // reading as the plain jump the row has always been. Absent rather than `false`, because the
+        // canonical encoder and the diff both read a key that is there.
+        const parsed = parseStory(STORY_PATH, {
+            ...story(scene("s1", "Prologue", [jump("j1", "s2")])),
+            schemaVersion: 22,
+        });
+
+        expect(parsed.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        expect("returnable" in (parsed.scenes.s1.blocks.j1.payload as object)).toBe(false);
+    });
+
+    it("carries a returnable jump through a write and a read unchanged", () => {
+        // The flag is what makes the row a call, so losing it silently is the whole story after it
+        // never running. Bytes as well as shape: a field that survived the parse but not the encoder
+        // would come back on the next read.
+        const raw = {
+            ...story(scene("s1", "Prologue", [jump("j1", "s2", true), jump("j2", "s2")])),
+            schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        };
+
+        const once = parseStory(STORY_PATH, raw);
+        const twice = roundTrip(once);
+
+        expect(once.scenes.s1.blocks.j1.payload).toMatchObject({ targetSceneId: "s2", returnable: true });
+        expect("returnable" in (once.scenes.s1.blocks.j2.payload as object)).toBe(false);
+        expect(twice).toStrictEqual(once);
+        expect(storyDocumentSpec.serialize(twice)).toBe(storyDocumentSpec.serialize(once));
     });
 
     it("never produces a key holding undefined, whatever the document left out", () => {
