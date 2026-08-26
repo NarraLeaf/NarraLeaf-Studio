@@ -167,6 +167,7 @@ import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displa
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
+import { createPlayHead, type PlayHead } from "./playHead";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -717,9 +718,20 @@ export function GameApp(props: GameAppProps): ReactNode {
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
     // story (action bindings + variable namespace names) for the bridge to read at call time.
     const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
-    const currentActionIdRef = useRef<string | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /**
+     * The play head, holding both the engine's raw action id and the last row it could name.
+     *
+     * Built once and never rebuilt: it reads the binding table through a callback, so a hot reload
+     * that recompiles the story is picked up without the play head being replaced under the
+     * subscriptions that feed it. See `playHead` for why the last NAMED row is the answer rather
+     * than the current action.
+     */
+    const playHead = useMemo<PlayHead>(
+        () => createPlayHead(() => nlrCompiledRef.current?.actionIdBindings ?? []),
+        [],
+    );
     /**
      * The Studio scene the player is in right now, as opposed to the one the story was launched at.
      *
@@ -765,13 +777,7 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Reads the same action↔block table the Dev Mode timeline reads, so a failure lands on exactly
      * the row the play head is showing rather than on a second, differently-derived answer.
      */
-    const playHeadBlockId = useCallback((): string | undefined => {
-        const actionId = currentActionIdRef.current;
-        if (!actionId) {
-            return undefined;
-        }
-        return nlrCompiledRef.current?.actionIdBindings.find(binding => binding.staticId === actionId)?.blockId;
-    }, []);
+    const playHeadBlockId = useCallback((): string | undefined => playHead.blockId(), [playHead]);
     /**
      * Log a failure AND, for hosts that can point into the story, say where it came from.
      *
@@ -939,13 +945,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageWarmupRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
-    }, [bundle.bundleId, host.entrySurfaceId]);
+    }, [bundle.bundleId, host.entrySurfaceId, playHead]);
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
@@ -1895,7 +1901,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             visited: nlrCompiledRef.current?.visitedNamespaceName || null,
             sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
         }),
-        getCurrentActionId: () => currentActionIdRef.current,
+        getCurrentActionId: () => playHead.actionId(),
         subscribeCurrentAction: listener => {
             currentActionListenersRef.current.add(listener);
             return () => {
@@ -2004,7 +2010,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 { forceReinit: true },
             );
         },
-    }), []);
+    }), [playHead]);
 
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
@@ -2021,7 +2027,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrPreferenceTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
@@ -2055,6 +2061,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         layerStack,
         navigation,
         openSurface,
+        playHead,
         rejectPendingGameStarts,
     ]);
 
@@ -3177,7 +3184,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = compiled;
         registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
@@ -3246,6 +3253,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         makeStateAccessors,
         nextInGame,
         openSurface,
+        playHead,
         quitGame,
         rejectPendingGameStarts,
         rendererRegistry,
@@ -4114,7 +4122,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrPreferenceTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
@@ -4138,6 +4146,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
+        playHead,
         rejectPendingGameStarts,
     ]);
 
@@ -4149,7 +4158,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
@@ -4162,7 +4171,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
         pluginHost?.detachSession();
-    }, [clearCurrentDialogState, detachTextReadTracker, nlrSession?.id, pluginHost]);
+    }, [clearCurrentDialogState, detachTextReadTracker, nlrSession?.id, playHead, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -4748,9 +4757,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
-                currentActionIdRef.current = liveGame.getCurrentActionId();
+                playHead.observe(liveGame.getCurrentActionId());
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
-                    currentActionIdRef.current = actionId;
+                    playHead.observe(actionId);
                     currentActionListenersRef.current.forEach(listener => {
                         try {
                             listener(actionId);
