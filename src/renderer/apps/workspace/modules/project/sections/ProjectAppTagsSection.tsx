@@ -567,7 +567,7 @@ function TagItem({
                                 size="sm"
                                 variant="ghost"
                                 onClick={onDelete}
-                                {...freeze.writes(!service || claimed.readOnly)}
+                                {...freeze.writes(!service || claimed.readOnly, claimed["data-tip"])}
                                 className="px-1.5 hover:text-danger"
                                 data-app-tag-delete={tag.id}
                             >
