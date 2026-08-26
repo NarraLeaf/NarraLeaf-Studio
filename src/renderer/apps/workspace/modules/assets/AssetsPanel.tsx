@@ -50,7 +50,7 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
+import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
@@ -167,6 +167,14 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
      * no verbs of its own, so their controls keep {@link freeze} and grey under any freeze at all.
      */
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
+    /**
+     * The asset sets' own guard.
+     *
+     * A third guard rather than a widening of {@link libraryFreeze}, because the sets are a third
+     * document: they were frozen under any freeze at all while they had no verbs, and a session
+     * carries them now. See `assetSetFreezeScope` for why it names the library as well.
+     */
+    const setFreeze = useFreezeGuard(assetSetFreezeScope());
     // One subscription for every row. Empty outside a live session.
     const assetClaims = useAssetClaims();
     const assetTransfers = useAssetTransfers();
@@ -790,7 +798,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         handleCreateSubAssetSet({ set: entry.set, value });
                     },
                 },
-            ], freeze.frozen, new Set<string>(), freeze.reason);
+            ], setFreeze.frozen, new Set<string>(), setFreeze.reason);
         }
         return freezeContextMenuRows([
             {
@@ -822,7 +830,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     void handleDeleteAssetSet(entry);
                 },
             },
-        ], freeze.frozen, new Set<string>(), freeze.reason);
+        ], setFreeze.frozen, new Set<string>(), setFreeze.reason);
     }, [
         setMenuTarget,
         canCreateAssetSet,
@@ -830,7 +838,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         t,
         inputDialog,
         closeAssetSetContextMenu,
-        freeze,
+        setFreeze,
         handleCreateSubAssetSet,
         handleDeleteAssetSet,
         handleDissolveAssetSet,

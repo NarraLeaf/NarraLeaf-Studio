@@ -1,4 +1,4 @@
-import { getInterface } from "@/lib/app/bridge";
+import { forgetProject } from "@/lib/team";
 import type { VcsServerProject } from "@shared/types/vcs";
 
 /**
@@ -23,8 +23,6 @@ export async function forgetServerProject(
     remoteOrigin: string,
     project: VcsServerProject,
 ): Promise<boolean> {
-    const answer = await getInterface().vcs
-        .deleteServerProject(remoteOrigin, project.id)
-        .catch(() => null);
-    return answer !== null && answer.success && answer.data.ok;
+    const answer = await forgetProject(remoteOrigin, project.id);
+    return answer.ok;
 }

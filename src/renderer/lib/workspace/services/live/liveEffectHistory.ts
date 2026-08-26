@@ -1,6 +1,8 @@
 import type { LiveAssetFolder, LiveAssetRecord } from "@shared/live/ops";
 import { inverseOf, type LiveBefore } from "@/lib/live/inverse";
 import type { LiveCastView } from "@shared/live/cast";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { StoryDocument } from "@shared/types/story";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
@@ -105,6 +107,10 @@ export class LiveEffectHistory {
             assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
             /** One section's folders as they stand now, for the steps that are about them. */
             assetFolders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+            /** The mixer as it stands now, for the steps that are about it. */
+            audioTracks(): readonly ProjectAudioTrack[] | null;
+            /** The asset sets as they stand now, for the steps that are about them. */
+            assetSets(): readonly AssetSet[] | null;
         },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
@@ -121,6 +127,8 @@ export class LiveEffectHistory {
             cast: context.cast,
             assets: context.assets,
             assetFolders: context.assetFolders,
+            audioTracks: context.audioTracks,
+            assetSets: context.assetSets,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {
