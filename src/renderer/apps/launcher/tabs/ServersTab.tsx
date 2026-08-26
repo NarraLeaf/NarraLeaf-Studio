@@ -11,6 +11,7 @@ import {
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import {
     ServerRow,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
@@ -221,18 +222,14 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 const answered = await bridge.vcs.refreshServer(chosen).catch(() => null);
                 if (answered?.success) await reload();
             }
-            const result = await bridge.vcs.listServerProjects(chosen).catch(() => null);
+            const result = await listProjects(chosen);
             if (ticket !== latest.current) return;
             setReading(false);
-            if (!result?.success) {
-                setProblem("launcher.servers.problem.unknown");
+            if (!result.ok) {
+                setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            if (!result.data.ok) {
-                setProblem(SERVER_PROBLEM_KEYS[result.data.problem.kind]);
-                return;
-            }
-            setProjects(result.data.projects);
+            setProjects(result.value);
         })();
     }, [chosen, reload]);
 
