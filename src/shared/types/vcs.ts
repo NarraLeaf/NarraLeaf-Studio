@@ -1024,16 +1024,6 @@ export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsPr
     }
 }
 
-/** What a server answered when asked for its projects. */
-export type VcsServerProjectsOutcome =
-    | { ok: true; projects: VcsServerProject[] }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
-/** What a server answered when asked to make one. */
-export type VcsServerProjectOutcome =
-    | { ok: true; project: VcsServerProject }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
 /**
  * How putting a project on to a server ended.
  *
@@ -1081,11 +1071,6 @@ export interface VcsServerMember {
     /** When it was made. Epoch ms; absent from a server that did not say. */
     createdAt?: number;
 }
-
-/** What a server answered when asked who is on it. */
-export type VcsServerMembersOutcome =
-    | { ok: true; members: VcsServerMember[] }
-    | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
  * Why a username and password did not produce a token.
@@ -1140,27 +1125,6 @@ export interface VcsServerProjectDetail {
     file: VcsServerProjectFile;
 }
 
-/** What a server answered when asked about one project. */
-export type VcsServerProjectDetailOutcome =
-    | { ok: true; detail: VcsServerProjectDetail }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
-/**
- * How taking a project off a server ended.
- *
- * **What it removes is the project, not the work.** The server stops listing it and
- * stops answering for it; the repository keeps its store and every revision in it, so a
- * project taken off by mistake is published again under the same repository id and comes
- * back with its history. Nothing here destroys anything an author wrote, and nothing on
- * this side is a way to ask for that.
- *
- * The success carries nothing because there is nothing to carry: what a reader wants
- * afterwards is the list, which is fetched again rather than patched from here.
- */
-export type VcsServerProjectDeleteOutcome =
-    | { ok: true }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
 /**
  * One revision on a server's copy of a project.
  *
@@ -1191,11 +1155,6 @@ export interface VcsServerProjectHistoryPage {
     /** Whether older revisions exist beyond this page. */
     more: boolean;
 }
-
-/** What a server answered when asked for one project's recent versions. */
-export type VcsServerProjectHistoryOutcome =
-    | { ok: true; page: VcsServerProjectHistoryPage }
-    | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
  * The server a project synchronises with, as the author configured it.

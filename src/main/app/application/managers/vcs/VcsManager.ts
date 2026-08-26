@@ -24,11 +24,7 @@ import type {
     VcsRevisionDiffResult,
     VcsRevisionKind,
     VcsServerDescription,
-    VcsServerMembersOutcome,
     VcsServerProbe,
-    VcsServerProjectDeleteOutcome,
-    VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -79,15 +75,7 @@ import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
 // repository id of a project that has not been opened has to be readable without taking
 // the exclusive lock on it.
 import { readRepositoryId } from "./localRepositories";
-import { listServerMembers } from "./serverMembers";
 import { signInWithPassword } from "./serverPassword";
-import {
-    deleteServerProject,
-    getServerProject,
-    listServerProjectHistory,
-    listServerProjects,
-    type ServerProjectsResult,
-} from "./serverProjects";
 import {
     createServerProjectOverSession,
     listServerProjectsOverSession,
@@ -1970,33 +1958,6 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * The projects one server holds.
-     *
-     * Asked of the server rather than remembered, every time: a list kept here
-     * would be a list that is wrong the moment somebody else pushes, and this is
-     * one small request over a connection that is already trusted.
-     */
-    public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjects(credentials);
-    }
-
-    /**
-     * Who has an account on one server.
-     *
-     * **Only asked of a server that advertised `members`.** The gate is in the renderer,
-     * where the decision whether to draw a roster at all is made; a deployment that offers
-     * no such thing is one with no such section, rather than one that answers a question
-     * with a 404 for somebody to put a sentence to.
-     */
-    public async listServerMembers(remoteOrigin: string): Promise<VcsServerMembersOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerMembers(credentials);
-    }
-
-    /**
      * Exchange a username and password for a token, on a server that offers it.
      *
      * **The one server call here that takes an address rather than a `remoteOrigin`**, and
@@ -2025,76 +1986,6 @@ export class VcsManager extends Manager {
             outcome.ok ? "accepted" : outcome.reason,
         );
         return outcome;
-    }
-
-    /**
-     * What one server knows about one of its projects.
-     *
-     * The server's own explanation for not having read a project ends here, in the log:
-     * it is an English sentence naming the internals it was written about, and the whole
-     * point of the coded refusals either side of this line is that nothing like it reaches
-     * a reader.
-     */
-    public async getServerProject(
-        remoteOrigin: string,
-        projectId: string,
-    ): Promise<VcsServerProjectDetailOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-
-        const read = await getServerProject({ ...credentials, projectId });
-        if (!read.ok) return read;
-        if (!read.detail.file.readable && read.reason !== "") {
-            this.app.logger.info(
-                "[Vcs]", remoteOrigin, "has not read", projectId, "-", read.reason,
-            );
-        }
-        return { ok: true, detail: read.detail };
-    }
-
-    /**
-     * Take one project off a server.
-     *
-     * **The project stops being on the server; the repository keeps everything in it.**
-     * Nothing an author wrote is destroyed here, and there is no argument to this that
-     * would destroy any of it: the server drops the project from its list, and the store
-     * behind it is untouched. A project removed by mistake is published again under the
-     * same repository id and comes back with its history.
-     *
-     * Nothing local is touched either. A copy of the project on this machine goes on
-     * opening, and its remote goes on pointing where it pointed - the project is no
-     * longer on the server's list, which is a different thing from being disconnected
-     * from it.
-     */
-    public async deleteServerProject(
-        remoteOrigin: string,
-        projectId: string,
-    ): Promise<VcsServerProjectDeleteOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-
-        const removed = await deleteServerProject({ ...credentials, projectId });
-        this.app.logger.info(
-            "[Vcs]", remoteOrigin, "delete", projectId,
-            removed.ok ? "removed" : removed.problem.kind,
-        );
-        return removed;
-    }
-
-    /** The latest revisions on one of a server's projects, newest first. */
-    public async listServerProjectHistory(
-        remoteOrigin: string,
-        projectId: string,
-        options?: { limit?: number; before?: string },
-    ): Promise<VcsServerProjectHistoryOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjectHistory({
-            ...credentials,
-            projectId,
-            ...(options?.limit === undefined ? {} : { limit: options.limit }),
-            ...(options?.before === undefined ? {} : { before: options.before }),
-        });
     }
 
     /**
