@@ -67,16 +67,42 @@ export function liveEntryFailureSentence(failure: LiveEntryFailure): LiveSentenc
 }
 
 /**
- * What to do about a refusal that pressing the control again cannot get past, or null.
+ * The next thing to do about a refusal, or null where the refusal already says it.
  *
- * One of the fourteen has one. A session cannot be re-based on a newer version, so a tree that has
- * moved past the room's revision can never join it however many times the control is pressed - the
- * two copies have to meet on the server first, and nothing on screen said so.
+ * **A `Record` over the whole union, like the sentences above it, and for a stronger reason.** A
+ * refusal that names a state without naming a way out is a control the author presses again, gets
+ * the same red line from, and stops trusting - and the states this feature can be in are precisely
+ * the ones an author has no way of guessing at. So a new one does not compile until somebody has
+ * decided whether there is anything to do about it.
+ *
+ * Null is a real answer and is used deliberately: where the sentence is already an instruction
+ * ("Record a version to start a live session"), a second line repeating it in other words is noise.
  */
+const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = {
+    // Already in one, and the control the author pressed is the one that leaves it.
+    busy: null,
+    // The freeze's sentence names the state that has to be left, which is the whole remedy.
+    frozen: null,
+    // Both sentences are instructions already.
+    "no-server": null,
+    "no-revision": null,
+    "no-instance": "workspace.shell.team.liveNoInstanceNext",
+    "no-repository": "workspace.shell.team.liveNoRepositoryNext",
+    // "That session is on {project}. Open that project to join it." - the instruction is the whole
+    // sentence, and this window cannot open another project anyway.
+    "clone-required": null,
+    "revision-mismatch": "workspace.shell.team.liveVersionMismatchNext",
+    "merge-conflicts": "workspace.shell.team.liveMergeConflictsNext",
+    "room-gone": "workspace.shell.team.liveRoomGoneNext",
+    // The remedy is on the other machine and the sentence already names it.
+    "room-story-unknown": null,
+    "story-not-here": "workspace.shell.team.liveStoryNotHereNext",
+    refused: "workspace.shell.team.liveRefusedNext",
+    failed: "workspace.shell.team.liveFailedNext",
+};
+
 export function liveEntryFailureRemedy(failure: LiveEntryFailure): TranslationKey | null {
-    return failure.kind === "revision-mismatch"
-        ? "workspace.shell.team.liveVersionMismatchNext"
-        : null;
+    return ENTRY_REMEDIES[failure.kind];
 }
 
 /**
@@ -93,7 +119,18 @@ const SESSION_ENDS: Record<LiveSessionEnd["cause"], TranslationKey | null> = {
     diverged: "workspace.shell.team.liveEndedDiverged",
 };
 
-export function liveEndSentence(end: LiveSessionEnd): TranslationKey | null {
+/**
+ * What the author is told about a session that ended, or null when nothing is.
+ *
+ * `carryingOn` is the one thing that changes what an ending means. A host that hands over or reloads
+ * closes the room, and the room is back within seconds under somebody else - so "the session is
+ * over" would be the wrong half of what happened, and would be followed by the session reappearing
+ * with nothing having explained it.
+ */
+export function liveEndSentence(end: LiveSessionEnd, carryingOn = false): TranslationKey | null {
+    if (carryingOn && end.cause === "host-left") {
+        return "workspace.shell.team.liveEndedHandedOver";
+    }
     return SESSION_ENDS[end.cause];
 }
 

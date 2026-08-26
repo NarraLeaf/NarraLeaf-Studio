@@ -1527,6 +1527,34 @@ export type LiveBlobNeeded = {
     missing: readonly number[];
 };
 
+/* ------------------------------------------------------------------ carrying on */
+
+/**
+ * A host saying the room is about to close and who is expected to open the next one.
+ *
+ * **The room ends; the collaboration does not have to.** A room's authority is the window that
+ * opened it, and the protocol has no verb that moves that authority - so continuing means a new room
+ * on the same story, opened by somebody who is still there. This is the only part of that which
+ * cannot be worked out independently: every window can compute the same successor from the same
+ * roster, but the rosters differ by whatever event has not arrived yet, and two machines opening a
+ * room each is two rooms.
+ *
+ * ⚠ **`revision` is not decoration.** Exactly one machine publishes a session's result and everybody
+ * else takes it - two machines recording the same content is two histories that will not merge - so
+ * the leaving host pushes and names what it pushed, and the successor puts its tree on that version
+ * before opening anything. A successor that published its own copy instead would fork the project
+ * against the host that just left it.
+ */
+export type LiveHandover = {
+    kind: "handover";
+    /** The instance expected to open the next room. */
+    to: string;
+    /** The story the next room is about, so nobody follows a room about something else. */
+    story: string;
+    /** What the leaving host published, and what the next room opens on. */
+    revision?: string;
+};
+
 /** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
@@ -1537,7 +1565,8 @@ export type LiveMessage =
     | LiveResync
     | LiveCatchUp
     | LiveBlobChunk
-    | LiveBlobNeeded;
+    | LiveBlobNeeded
+    | LiveHandover;
 
 /**
  * Whether a value is a message this build understands.
@@ -1560,5 +1589,6 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "resync"
         || kind === "catch-up"
         || kind === "blob"
-        || kind === "blob-needed";
+        || kind === "blob-needed"
+        || kind === "handover";
 }

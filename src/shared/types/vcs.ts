@@ -204,6 +204,16 @@ export const VcsErrorCode = {
     ShuttingDown: "vcs/shutting-down",
     /** A sync was asked for on a tree with changes nobody has recorded yet. */
     UncommittedChanges: "vcs/uncommitted-changes",
+    /**
+     * This branch and the server's have both moved on, so a push would not be a fast-forward.
+     *
+     * The backend's own sentence names the remedy, and for a long time that was the argument for
+     * passing it through - but it names it in English, prefixed with the internal verb that failed
+     * (`branchPush: Branch has diverged, sync to merge remote changes`), and that reached authors
+     * as red text in a Chinese panel. The situation is one this interface has words for, so it is
+     * named here and said in the reader's language like the four above it.
+     */
+    BranchDiverged: "vcs/branch-diverged",
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
@@ -230,7 +240,16 @@ export type VcsCheckpointReason =
      * that writes over files the author has not seen recorded anywhere. It is also the
      * reason a restore is safe to offer at all, which is why the confirmation says so.
      */
-    | "restore";
+    | "restore"
+    /**
+     * A live session is about to put this tree on the version the room is running from.
+     *
+     * Taken for `restore`'s reason and at the same moment - immediately before files the author may
+     * never have recorded are written over - and named separately because the two acts are not the
+     * same one seen twice. Nobody restored anything: the author joined a room, and this is where
+     * whatever they had before that went.
+     */
+    | "live-session";
 
 export interface VcsCommitOptions {
     /** Recorded verbatim on the revision. Empty means the default for the kind. */
@@ -269,7 +288,20 @@ export interface VcsRestoreOptions {
      */
     label?: string;
     identity?: string;
+    /**
+     * What this rewrite is for, which is what the two revisions it records say.
+     *
+     * The mechanics are identical either way - enumerate a version, checkpoint, write the working
+     * tree to match, record the result - and the sentences are not. `Restore version #12` on the
+     * revision a live session recorded would tell a collaborator reading the history that somebody
+     * went back to an old version, when what happened is that they joined a room. Absent means
+     * `restore`, which is what every surface that offers this to an author asks for.
+     */
+    purpose?: VcsRestorePurpose;
 }
+
+/** Why the working tree is being written to match a version. See {@link VcsRestoreOptions.purpose}. */
+export type VcsRestorePurpose = "restore" | "live-session";
 
 /**
  * What a restore did.

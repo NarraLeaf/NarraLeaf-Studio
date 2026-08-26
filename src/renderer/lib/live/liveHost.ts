@@ -274,6 +274,11 @@ export class LiveHost {
                 // changes no document and takes no sequence number, and the machine that holds the
                 // file answers a request for the ones it is short of. See `LiveBlobChunk`.
                 return null;
+            case "handover":
+                // About the room rather than about the document, so it is settled before a message
+                // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one
+                // is reading its own, coming back off the topic.
+                return null;
         }
     }
 

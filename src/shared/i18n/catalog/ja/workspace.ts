@@ -368,17 +368,30 @@ export const workspace = {
         liveNoRepository: "このプロジェクトにバージョン履歴がない",
         liveNoRevision: "バージョンを記録するとライブセッションを開始できる",
         liveCloneRequired: "そのセッションは {project} のもの。参加するにはそのプロジェクトを開く",
-        liveVersionMismatch: "そのセッションは、このプロジェクトが持つものより古いバージョンで開始されている",
-        // 対処方法。セッションは新しいバージョンに基づき直せないため、二つの内容はまず
-        // サーバー上で合流させる。分岐のときと同じく、一行目を長くせず二行目として示す。
-        liveVersionMismatchNext: "この端末の変更をサーバーへ送り、ホストにセッションの開始し直しを依頼する",
+        // 開始のときにしか起きない。参加はルームのバージョンをそのまま取り込むため、
+        // 「届かない内容」というものが無くなった。
+        liveVersionMismatch: "このプロジェクトとサーバーの双方に、相手が持たないバージョンがある",
+        // 分岐のときと同じく、一行目を長くせず二行目として示す。
+        liveVersionMismatchNext: "サーバーからバージョンを取得して差分を処理し、もう一度試す",
         liveRoomGone: "そのセッションはもう開いていない",
+        liveRoomGoneNext: "自分で開始するか、ホストが開き直すのを待つ",
         liveRoomStoryUnknown: "そのセッションはどのストーリーのものか示していない。ホストに Studio の更新を頼む",
         liveStoryNotHere: "そのセッションのストーリーはこのプロジェクトにない",
+        liveStoryNotHereNext: "ホストにそのストーリーをサーバーへ送ってもらい、もう一度試す",
         liveRefused: "そのサーバーはセッションを拒否した",
+        liveRefusedNext: "サーバーが応答するようになってからもう一度試す",
         liveFailed: "ライブセッションを開始できなかった",
+        liveFailedNext: "もう一度試す",
+        liveNoInstanceNext: "そのサーバーとの接続を確認して、もう一度試す",
+        liveNoRepositoryNext: "このプロジェクトでバージョン管理を有効にして、もう一度試す",
+        liveMergeConflictsNext: "マージを終えてから、もう一度試す",
         // 作者が選んだのではない終わり方が二つ。自分で退出したときは何も言わない。
         liveEndedHostLeft: "ホストが退出し、セッションは終了した",
+        // 同じ出来事だが、ルームは戻ってくる。ホストの引き継ぎや再読み込みではルームが
+        // 一度閉じ、数秒後に別の人が開き直す。
+        liveEndedHandedOver: "ホストが退出し、セッションは別の参加者が開き直す",
+        // 待っているあいだ、ルームの行があった場所に出す。
+        liveRejoining: "セッションが開き直されたら自動で参加する",
         // 別れの挨拶ではなく、この端末の内容に起きたこととして書く。セッションが無く
         // なっただけでなく、この端末にあるものは他の人が見ているものではない。
         liveEndedDiverged: "この端末の内容がセッションと一致しなくなり、セッションから退出した",
@@ -811,6 +824,7 @@ export const workspace = {
             nothingToCommit: "前のバージョンから変更はありません",
             closingWithApp: "Studio を終了しています。再起動後にもう一度お試しください",
             commitBeforeSync: "サーバーから取得する前にバージョンを提出してください",
+            branchDiverged: "このプロジェクトとサーバーの両方が変更されています。先にサーバーのバージョンを取得してから送信してください",
             changesUnknown: "未確認",
             noChanges: "変更なし",
             changesCount: "{count} 件が変化",
@@ -861,6 +875,8 @@ export const workspace = {
                 checkpointClose: "プロジェクトを閉じる前のチェックポイント",
                 checkpointBuild: "ビルド前のチェックポイント",
                 checkpointRestore: "復元前のチェックポイント",
+                checkpointLiveSession: "ライブセッション前のチェックポイント",
+                liveSessionMatched: "ライブセッションのバージョンに合わせました",
                 restored: "{version} に戻しました",
             },
             // バージョン管理は必須ではない。macOS Intel と Windows ARM64 向けのネイティブの実装が
