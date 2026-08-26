@@ -1256,6 +1256,25 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
+     * Say that what is arriving has moved, without anything else having happened.
+     *
+     * ❗ **The bands would otherwise only redraw when the payload queue ran.** Everything else that
+     * calls {@link notifyTransfers} is a queue event - work landing, work finishing - and a file
+     * moving is neither: the count lives in the main process and this window learns of it by asking.
+     * Without this a two-hundred-megabyte import draws a band at nought until the moment it is
+     * whole, which is the reading an author gets from a transfer that is not working.
+     *
+     * Announced whether or not the interval has elapsed, because the caller's own interval is what
+     * paces this: it asks no oftener than a band can usefully be redrawn.
+     */
+    public noteTransferProgress(): void {
+        if (this.transferring.size === 0 && (this.blobPort?.inFlight().size ?? 0) === 0) {
+            return;
+        }
+        this.notifyTransfers(true);
+    }
+
+    /**
      * Try the files that were waiting again.
      *
      * Called when what the transport reports has moved, because that is the only moment the answer
