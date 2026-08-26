@@ -405,6 +405,27 @@ function resolveStartStoryTarget(
     return fromPin || (key === "startBlockId" ? "" : String(ctx.params[key] ?? "").trim());
 }
 
+/** Wired pin wins over the Track picker; see trackVolumePin. */
+function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
+    const wired = resolveDataPinValue(
+        ctx.graph,
+        ctx.node.id,
+        BLUEPRINT_SOUND_PARAM_TRACK,
+        ctx.params,
+        ctx.blueprintLocals,
+        0,
+        {
+            hostAdapter: ctx.hostAdapter,
+            eventPayload: ctx.eventPayload,
+            listItemScope: ctx.listItemScope,
+            instanceKey: ctx.instanceKey,
+            executionOwner: ctx.executionOwner,
+        },
+    );
+    const fromPin = typeof wired === "string" ? wired.trim() : "";
+    return fromPin || readBlueprintAudioTrackParam(ctx.params);
+}
+
 function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
     const value = resolveDataPinValue(ctx.graph, ctx.node.id, "id", ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
@@ -636,6 +657,28 @@ const trackVolumeParam = {
     dynamicOptionsSource: BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
 };
 
+/**
+ * The wired half of a track reference, beside the picker that names it on the card.
+ *
+ * Same resolution the rest of the catalogue gives the same pair - wired wins over picked. The
+ * picker lists the project's own tracks and cannot be spelled wrong, which is what an author wants
+ * almost always; the exception is one settings row placed once per track, which reads which track
+ * it governs from its own params and would otherwise have to be copied once per track.
+ *
+ * ⚠ The picker is also what the Audio surface counts references from, and a value arriving through
+ * this pin is not on the node to be counted. It stays countable because the value it arrives from
+ * is authored too: a component instance stores it under this same key, and the Audio surface's
+ * sweep reads the UI document as well as the graphs.
+ */
+const trackVolumePin = {
+    id: BLUEPRINT_SOUND_PARAM_TRACK,
+    kind: "input" as const,
+    semantic: "data" as const,
+    valueType: "string" as const,
+    label: "Track",
+    optional: true,
+};
+
 const trackVolumeKeywords = [
     "game", "preference", "track", "bus", "volume", "audio", "mixer", "channel", "character", "voice", "nlr",
 ];
@@ -652,10 +695,13 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
         // `graphParamResolvers`, and the node type has to be registered there or it reads undefined.
         isPure: true,
         isLatent: false,
-        pins: [{ id: "volume", kind: "output", semantic: "data", valueType: "float", label: "Volume" }],
+        pins: [
+            trackVolumePin,
+            { id: "volume", kind: "output", semantic: "data", valueType: "float", label: "Volume" },
+        ],
         inspectorParams: [trackVolumeParam],
         execute(ctx) {
-            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            const trackId = readTrackVolumeTarget(ctx);
             return {
                 outputValues: {
                     volume: trackId ? requireHostApi(ctx).sound.getTrackVolume(trackId) : 1,
@@ -674,6 +720,7 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
         pins: [
             execIn,
             execNext,
+            trackVolumePin,
             {
                 id: "volume",
                 kind: "input",
@@ -685,7 +732,7 @@ const trackVolumeBlueprintNodes: BlueprintNodeDef[] = [
         ],
         inspectorParams: [trackVolumeParam],
         async execute(ctx) {
-            const trackId = readBlueprintAudioTrackParam(ctx.params);
+            const trackId = readTrackVolumeTarget(ctx);
             if (!trackId) {
                 throw new BlueprintGraphExecutionError("Set Track Volume: pick a track", ctx.node.id);
             }
