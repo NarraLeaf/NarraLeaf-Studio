@@ -46,7 +46,7 @@ const PAST_THRESHOLD = TOUCH_GESTURE_THRESHOLD_PX + 8;
 function fireTouch(
     node: Element,
     type: string,
-    touches: Array<{ clientX: number; clientY: number }>,
+    touches: Array<{ clientX: number; clientY: number; identifier?: number }>,
     changed = touches,
 ): void {
     const event = new Event(type, { bubbles: true, cancelable: true });
@@ -315,8 +315,8 @@ describe("a touch gesture on a lane", () => {
         // A finger travelling up carries the content up, which puts the viewport down: `wheelDown`,
         // the direction `advance` is bound to. Driven through the recogniser rather than around it,
         // so the direction convention is checked where an author would meet it.
-        fireTouch(leafNode!, "touchstart", [{ clientX: 100, clientY: 100 }]);
-        fireTouch(leafNode!, "touchmove", [{ clientX: 100, clientY: 100 - PAST_THRESHOLD }]);
+        fireTouch(leafNode!, "touchstart", [{ clientX: 100, clientY: 100, identifier: 4 }]);
+        fireTouch(leafNode!, "touchmove", [{ clientX: 100, clientY: 100 - PAST_THRESHOLD, identifier: 4 }]);
 
         expect(firedActionIds(dispatchSurfaceInputAction)).toEqual(["advance"]);
     });
@@ -364,6 +364,27 @@ describe("a touch gesture on a lane", () => {
         fireTouchGesture(leafNode!, { gesture: "wheelDown", clientX: 20, clientY: 40 });
 
         expect(onwardsTouch).not.toHaveBeenCalled();
+    });
+
+    /**
+     * The platform's own long press is swallowed at both levels, and this is the level that is easy
+     * to forget. Android turns a held finger into `contextmenu`; iOS does not. An element head left
+     * answering it would make one long press mean two things on one phone and one on the other,
+     * which is the difference an author must never be able to feel.
+     */
+    it("keeps a held finger's context menu away from the element's rightClick head", () => {
+        const { dispatchElementBlueprintEvent, leafNode } = renderSurface({ actions: [{ actionId: "advance" }] });
+        const rightClicks = () =>
+            dispatchElementBlueprintEvent.mock.calls.filter(call => call[1] === "rightClick").length;
+
+        fireTouch(leafNode!, "touchstart", [{ clientX: 100, clientY: 100, identifier: 1 }]);
+        fireEvent.contextMenu(leafNode!);
+        expect(rightClicks()).toBe(0);
+
+        // A mouse's right button, with no finger on the glass, is what `rightClick` has always been.
+        fireTouch(leafNode!, "touchend", [], [{ clientX: 100, clientY: 100, identifier: 1 }]);
+        fireEvent.contextMenu(leafNode!);
+        expect(rightClicks()).toBe(1);
     });
 
     it("reports a tap as touch and a mouse click as pointer", () => {
