@@ -137,6 +137,37 @@ describe("scene commands", () => {
         });
     });
 
+    it("/jump carries no return flag unless the line says so", () => {
+        // The field stays off the payload entirely, so a row written before the flag existed and one
+        // written after it are the same bytes.
+        const block = build("/jump \"Chapter 2\"");
+        expect(block).toMatchObject({ kind: "jump", payload: { targetSceneId: "s1" } });
+        expect(block.kind === "jump" && "returnable" in block.payload).toBe(false);
+    });
+
+    it("/jump takes the return flag bare, spelled out, and under its aliases", () => {
+        for (const source of [
+            "/jump \"Chapter 2\" return",
+            "/jump \"Chapter 2\" return=true",
+            "/jump \"Chapter 2\" call",
+            "/jump \"Chapter 2\" comeback",
+        ]) {
+            expect(build(source), source).toMatchObject({ kind: "jump", payload: { targetSceneId: "s1", returnable: true } });
+        }
+    });
+
+    it("/jump reads return=false as the plain jump, carrying no flag", () => {
+        const block = build("/jump \"Chapter 2\" return=false");
+        expect(block.kind === "jump" && "returnable" in block.payload).toBe(false);
+    });
+
+    it("/jump takes the return flag and a transition on one line", () => {
+        expect(build("/jump \"Chapter 2\" return t=black d=0.6")).toMatchObject({
+            kind: "jump",
+            payload: { targetSceneId: "s1", returnable: true, transition: { kind: "throughColor", durationMs: 600 } },
+        });
+    });
+
     it("/wait defaults to a click and reads seconds as milliseconds", () => {
         expect(build("/wait")).toMatchObject({ payload: { action: "wait", mode: "click" } });
         expect(build("/wait click")).toMatchObject({ payload: { mode: "click" } });

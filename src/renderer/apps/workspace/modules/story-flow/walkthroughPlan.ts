@@ -224,6 +224,10 @@ function replay(cameFrom: Map<StorySceneId, WalkthroughHop>, sceneId: StoryScene
  * ordered so that an unconditional jump beats a branched one: both reach the same scene in one hop,
  * and the unconditional one is the one that cannot be taken away by a variable's value at play time.
  * Everything else keeps the document order the map reads in.
+ *
+ * A returnable jump is here too, and belongs here: this walk answers "how does a run get into that
+ * scene", and a call gets into it. That the run comes back afterwards is what the route does not
+ * need to know - the route ends the moment the scene holding the ending is entered.
  */
 function outgoingHops(
     graph: SceneFlowGraph,

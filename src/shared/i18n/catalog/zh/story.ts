@@ -550,6 +550,7 @@ export const story = {
         waitFor: "秒数或 click",
         fade: "淡入淡出秒数",
         loop: "循环",
+        returnable: "返回",
         vol: "音量",
         volume: "音量",
         rate: "速度",
@@ -1019,7 +1020,7 @@ export const story = {
     pluginActionFallbackDetail: "插件故事动作",
     command: {
         background: { label: "背景", detail: "设置场景背景图片或颜色" },
-        jump: { label: "跳转", detail: "前往另一个场景，当前场景会被卸载" },
+        jump: { label: "跳转", detail: "前往另一个场景，未带「返回」时当前场景会被卸载" },
         wait: { label: "等待", detail: "等待数秒，或等待点击" },
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
         show: { label: "显示", detail: "显示角色或舞台对象" },

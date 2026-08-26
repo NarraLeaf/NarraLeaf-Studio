@@ -29,6 +29,11 @@ export type SceneFlowDrawnLine = {
     conditional: boolean;
     /** Drawn faded: every jump on this line is switched off, so the compiler emits none of them. */
     disabled: boolean;
+    /**
+     * Drawn with an arrow at both ends: every jump on this line comes back, so the run goes to the
+     * target and returns to carry on where it left.
+     */
+    returns: boolean;
     /** The forks that reach this target — what a collapsed line hides. Empty on an arm's own line. */
     branches: SceneFlowBranchLabel[];
 };
@@ -70,6 +75,7 @@ export function residualSceneEdge(
         jumps,
         conditional: jumps.every(jump => jump.conditional),
         disabled: jumps.every(jump => jump.disabled),
+        returns: jumps.every(jump => jump.returnable),
         branches,
     };
 }
@@ -108,6 +114,7 @@ export function buildSceneFlowLines(
             jumps: residual.jumps,
             conditional: residual.conditional,
             disabled: residual.disabled,
+            returns: residual.returns,
             branches: residual.branches,
         });
     }
@@ -124,6 +131,7 @@ export function buildSceneFlowLines(
             // A line leaving an arm only fires when that arm is taken.
             conditional: true,
             disabled: edge.jumps.every(jump => jump.disabled),
+            returns: edge.jumps.every(jump => jump.returnable),
             branches: [],
         });
     }

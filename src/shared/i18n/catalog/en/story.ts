@@ -664,6 +664,7 @@ export const story = {
         // and fall back to it. Listed here so the coverage test can see them.
         fade: "Fade Seconds",
         loop: "Loop",
+        returnable: "Return",
         vol: "Volume",
         volume: "Volume",
         rate: "Speed",
@@ -1174,7 +1175,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene, unloading this one" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one unless Return is set" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },

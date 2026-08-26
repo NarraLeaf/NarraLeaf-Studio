@@ -401,6 +401,13 @@ function SceneFlowCanvasInner({
                 labelShowBg: false,
                 labelStyle: { fill: "rgb(var(--nl-fg-subtle))", fontSize: 10, opacity },
                 markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" },
+                // An arrow at both ends is a line the run comes back along - a returnable jump. It
+                // is a second arrow rather than a second colour or a second dash pattern because the
+                // other two are already spoken for (dashed = conditional, faded = switched off), and
+                // because two arrowheads say the thing itself rather than standing for it.
+                ...(line.returns
+                    ? { markerStart: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" } }
+                    : {}),
                 style: {
                     stroke: "rgb(var(--nl-fg-muted))",
                     strokeWidth: 1.5,
