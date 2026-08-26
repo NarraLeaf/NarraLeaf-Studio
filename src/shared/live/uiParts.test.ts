@@ -155,6 +155,24 @@ describe("the interface document as a delta of records", () => {
         expect(applied).toEqual(after);
     });
 
+    it("creates a component and fills it in the same message", () => {
+        // ⚠ The record has to be written before its tree: a component that has just appeared has
+        // nowhere to put its elements until it is there, and the shell travels without them.
+        const before = document();
+        const after = clone(before);
+        after.components!.push({
+            id: "c2",
+            name: "New",
+            rootElementId: "nr-1",
+            elements: { "nr-1": element("nr-1", null, ["nb-1"]), "nb-1": element("nb-1", "nr-1") },
+        });
+
+        const parts = diffUIParts(before, after)!;
+        const applied = clone(before);
+        applyUIParts(applied, parts);
+        expect(applied).toEqual(after);
+    });
+
     it("carries the whole order of a list whenever the list changed at all", () => {
         // A delta that named only the changed entry would leave "where does a new Surface go" to
         // each machine's own guess.
