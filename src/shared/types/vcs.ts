@@ -15,7 +15,7 @@ import type { DocumentKind } from "../documents/types";
 // The capability vocabulary is one list, advertised identically by a server's discovery
 // document and its session's opening frame. So the names a version-control screen may gate
 // on are the names the socket gates on - see `TeamCapability`, of which this is the alias.
-import type { TeamCapability } from "./team";
+import type { TeamCapability, TeamProblem } from "./team";
 
 /** A revision identifier. Opaque to the renderer; hex at the transport layer. */
 export type RevisionId = string;
@@ -989,6 +989,40 @@ export type VcsServerProjectsProblem =
     | { kind: "unreachable" }
     | { kind: "wrong-repository" }
     | { kind: "unknown" };
+
+/**
+ * The same refusal, whether it came back over the socket or over the REST route.
+ *
+ * The server-project screens read one problem vocabulary - the one they have sentences for
+ * in every language. A session answers in {@link TeamProblem}'s terms instead, so this is
+ * the one place the two are lined up, rather than every caller learning the socket's set.
+ *
+ * The mapping is what each pair actually means, not a lookup invented here. A host that is
+ * not answering is `unreachable`; a token this installation cannot present is `no-token`;
+ * the server declining the account, or saying it is not signed in, is `refused`. Everything
+ * left - a method a server too old to speak does not offer, a coded refusal that is none of
+ * the above, a server Studio has no record of - lands on `unknown`, which is the sentence a
+ * reader is given for "this could not be read" with nothing more specific to act on. The
+ * server's own English detail is kept on `rejected` for a log, never for a screen.
+ */
+export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsProblem {
+    switch (problem.kind) {
+        case "no-token":
+            return { kind: "no-token" };
+        case "offline":
+            return { kind: "unreachable" };
+        case "refused":
+            // The two coded refusals a credential is behind read as one refusal, the way the
+            // REST 401/403 did. Anything else the server coded is its own sentence, kept for
+            // a log on `rejected` and drawn as the general case.
+            return problem.code === "unauthenticated" || problem.code === "refused"
+                ? { kind: "refused" }
+                : { kind: "rejected", detail: problem.detail };
+        case "no-server":
+        case "unsupported":
+            return { kind: "unknown" };
+    }
+}
 
 /** What a server answered when asked for its projects. */
 export type VcsServerProjectsOutcome =
