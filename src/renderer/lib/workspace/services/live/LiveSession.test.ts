@@ -8,19 +8,28 @@ import {
     dictionarySpec,
     localizationDocumentSpec,
     storyDocumentSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
 import type { LiveCastView } from "@shared/live/cast";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
+import { applyUIGraphParts, uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import { applyUIParts, uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import {
     characterClaimKey,
     storyRowClaimKey,
+    uiElementClaimKey,
     assetClaimKey,
     translationClaimKey,
     type LiveCharacterOp,
     type LiveDerived,
     type LiveEffect,
+    type LiveUIGraphOp,
+    type LiveUIOp,
     type LiveLocalizationOp,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -290,6 +299,8 @@ const CARRIED_LOCALES = { translations: ["ja"], voice: ["ja"] } as const;
 const CARRIED_ASSET_TYPES = ["image"];
 /** The sections every window in these tests holds folders for. */
 const CARRIED_ASSET_CATEGORIES = ["image"];
+/** Every window in these tests holds the interface and its blueprints. */
+const CARRIED_INTERFACE = { carried: true };
 
 /* -------------------------------------------------------------------------- a window */
 
@@ -331,6 +342,11 @@ type Window = {
     /** The asset metadata shards this window holds, by type, and where its record edits go. */
     assets: Record<string, Record<string, Record<string, unknown>>>;
     assetSink: { handle(op: LiveAssetOp | LiveAssetFolderOp): boolean } | null;
+    /** The interface this window holds, its blueprints, and where its edits go. */
+    ui: UIDocument;
+    uiGraphs: UIGraphDocument;
+    uiSink: { handle(op: LiveUIOp): boolean } | null;
+    uiGraphSink: { handle(op: LiveUIGraphOp): boolean } | null;
     /** The mixer this window holds, and where its edits go while a session is running. */
     tracks: ProjectAudioTrack[];
     trackSink: { handle(op: LiveAudioTrackOp): boolean } | null;
@@ -339,6 +355,74 @@ type Window = {
     /** Everything this window has asked to have run later, in the order it asked. */
     timers: { delayMs: number; run: () => void; cancelled: boolean }[];
 };
+
+/** A Surface with one root and one child - as much interface as a session decision looks at. */
+function makeUIDocument(): UIDocument {
+    return {
+        schemaVersion: 11,
+        id: "uidoc",
+        name: "Interface",
+        surfaces: [{
+            id: "surface-1",
+            name: "Title",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 1920, height: 1080 },
+            rootElementId: "el-root",
+        }],
+        components: [],
+        elements: {
+            "el-root": {
+                id: "el-root",
+                type: "nl.root",
+                name: "Root",
+                parentId: null,
+                childrenIds: ["el-button"],
+                layout: { x: 0, y: 0, width: 1920, height: 1080 },
+                props: {},
+            },
+            "el-button": {
+                id: "el-button",
+                type: "nl.button",
+                name: "Start",
+                parentId: "el-root",
+                childrenIds: [],
+                layout: { x: 10, y: 10, width: 100, height: 40 },
+                props: {},
+            },
+        },
+    } as unknown as UIDocument;
+}
+
+/** One blueprint with one event graph, which is as much of the canvas as a decision looks at. */
+function makeUIGraphs(): UIGraphDocument {
+    return {
+        schemaVersion: 2,
+        graphs: {},
+        blueprintDocument: {
+            schemaVersion: 10,
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Start",
+                    owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            eventIds: ["ev-1"],
+                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                            functionIds: [],
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        },
+    } as unknown as UIGraphDocument;
+}
 
 /** The mixer applier a window uses when an effect arrives. As small as the service's own. */
 function applyTrackOp(window: Window, op: LiveAudioTrackOp): void {
@@ -513,6 +597,10 @@ function createWindow(world: World, instance: string): Window {
         takeSink: null,
         assets: { image: {} },
         assetSink: null,
+        ui: makeUIDocument(),
+        uiGraphs: makeUIGraphs(),
+        uiSink: null,
+        uiGraphSink: null,
         tracks: [],
         trackSink: null,
         clock: 0,
@@ -599,6 +687,35 @@ function createWindow(world: World, instance: string): Window {
                 return [];
             },
         },
+        ui: {
+            setSink: sink => {
+                window.uiSink = sink?.ui ?? null;
+                window.uiGraphSink = sink?.graphs ?? null;
+            },
+            held: () => true,
+            document: () => window.ui,
+            graphs: () => window.uiGraphs,
+            hasElement: ref => uiHasElement(window.ui, ref),
+            hasBlueprint: blueprintId => uiHasBlueprint(window.uiGraphs, blueprintId),
+            applyOp: op => {
+                calls.push(`ui:${op.op}`);
+                if (op.op === "write-ui") {
+                    const ownersBefore = uiOwningSurfaceIds(window.ui);
+                    applyUIParts(window.ui, op.parts);
+                    const touched = uiPartsTouched(ownersBefore, window.ui, op.parts);
+                    return [
+                        ...touched.surfaces.map(surfaceId => ({ of: "ui-surface", surfaceId }) as const),
+                        ...(touched.shell ? [{ of: "ui-shell" } as const] : []),
+                    ];
+                }
+                applyUIGraphParts(window.uiGraphs, op.parts);
+                const touched = uiGraphPartsTouched(op.parts);
+                return [
+                    ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+                    ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+                ];
+            },
+        },
         // The three small project tables. The dictionary and the asset sets are wired to nothing:
         // no test drives them, and a port that answered with a document nobody wrote would be a
         // fixture pretending to be a service. The mixer is real enough to apply an operation,
@@ -606,7 +723,12 @@ function createWindow(world: World, instance: string): Window {
         dictionary: {
             setSink: () => undefined,
             document: () => null,
-            applyOp: () => undefined,
+            // Recorded rather than ignored, so that an operation reaching the wrong port shows up.
+            // The document switch these ports hang off is a fallthrough away from applying an
+            // interface delta to the dictionary, and nothing in the type system says so.
+            applyOp: op => {
+                calls.push(`dictionary:${op.op}`);
+            },
         },
         audioTracks: {
             setSink: sink => {
@@ -621,7 +743,9 @@ function createWindow(world: World, instance: string): Window {
         assetSets: {
             setSink: () => undefined,
             sets: () => null,
-            applyOp: () => undefined,
+            applyOp: op => {
+                calls.push(`sets:${op.op}`);
+            },
         },
         version: {
             checkpoint: async () => {
@@ -692,6 +816,7 @@ function createWindow(world: World, instance: string): Window {
         },
         history: {
             forgetStoryScenes: storyId => window.forgotten.push(storyId),
+            forgetInterfaceEditors: () => window.forgotten.push("interface"),
         },
         now: () => window.clock,
         // Recorded and never run of its own accord: a live timer here would only be a way for a
@@ -920,7 +1045,7 @@ describe("a live session", () => {
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
             expect(guest.freeze.armed?.writable).toEqual(
-                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES, CARRIED_INTERFACE),
             );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
@@ -1000,7 +1125,7 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES, CARRIED_INTERFACE),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
@@ -1009,6 +1134,8 @@ describe("a live session", () => {
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
                 assetGroupsSpec.pathFor({ category: "image" }),
+                uiDocumentSpec.pathFor(),
+                uiGraphsSpec.pathFor(),
                 // The three project tables, which take no parameter: one of each per project, so a
                 // session carries them whatever else it was opened on.
                 dictionarySpec.pathFor(),
@@ -1022,7 +1149,9 @@ describe("a live session", () => {
             ]);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
-            expect(host.forgotten).toEqual([host.storyId]);
+            // Both: the story's scene stacks and every interface stack. Each of them holds a
+            // whole-document snapshot of something only this author ever had.
+            expect(host.forgotten).toEqual([host.storyId, "interface"]);
         });
 
         it("lifts when the author leaves", async () => {
@@ -1330,6 +1459,138 @@ describe("a live session", () => {
             host.story.renameScene(other.id, document.chapters[0].sceneIds[0], "Renamed on its own");
             expect(host.story.getStoryDocument(other.id).scenes[document.chapters[0].sceneIds[0]].name)
                 .toBe("Renamed on its own");
+        });
+    });
+
+    describe("the interface and the blueprints in the room", () => {
+        /** What the editor does: hand the sink a delta and let the room decide. */
+        function edit(window: Window, op: LiveUIOp): void {
+            window.uiSink?.handle(op);
+        }
+
+        function editGraphs(window: Window, op: LiveUIGraphOp): void {
+            window.uiGraphSink?.handle(op);
+        }
+
+        /** One element, as the diff at the editor's seam would have produced it. */
+        function moved(x: number): unknown {
+            return {
+                id: "el-button",
+                type: "nl.button",
+                name: "Start",
+                parentId: "el-root",
+                childrenIds: [],
+                layout: { x, y: 10, width: 100, height: 40 },
+                props: {},
+            };
+        }
+
+        it("carries an element from one window to the other", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(guest, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            // Nothing is applied optimistically here either: the element moves when the effect
+            // answering the intent arrives, and not when the gesture was made.
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+
+            await drain(world.bus);
+            expect((host.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+            // ⚠ And it reached one port. The switch that dispatches by document is a missing
+            // `break` away from handing an interface delta to the dictionary as well, which the
+            // type system cannot see and which a port wired to nothing would not have shown.
+            const appliers = ["story:", "cast:", "translations:", "takes:", "assets:", "dictionary:", "tracks:", "sets:"];
+            expect(host.calls.filter(call => appliers.some(prefix => call.startsWith(prefix)))).toEqual([]);
+        });
+
+        it("holds an element for its editor and refuses everybody else's write to it", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.session.claimUIElement(null, "el-button", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({
+                [uiElementClaimKey(null, "el-button")]: "instance-guest",
+            });
+
+            edit(host, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(900) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+
+            // The refusal names a person, and the element the guest is inside is untouched.
+            expect(host.session.getView().lastRefusal).toMatchObject({ reason: "row-claimed", op: "write-ui" });
+            expect((host.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+        });
+
+        it("refuses a delta whose element somebody else deleted", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(host, { op: "write-ui", parts: { elements: { "el-button": null } } });
+            await drain(world.bus);
+            expect(guest.ui.elements["el-button"]).toBeUndefined();
+
+            edit(guest, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+
+            expect(guest.session.getView().lastRefusal).toMatchObject({ reason: "ui-element-gone" });
+            expect(host.ui.elements["el-button"]).toBeUndefined();
+        });
+
+        it("carries a blueprint node the same way, on its own document", async () => {
+            await openRoom();
+            await joinRoom();
+
+            editGraphs(guest, {
+                op: "write-ui-graphs",
+                parts: {
+                    graphs: {
+                        "bp-1": {
+                            events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                        },
+                    },
+                },
+                updates: ["bp-1"],
+            });
+            await drain(world.bus);
+
+            for (const window of [host, guest]) {
+                const blueprint = window.uiGraphs.blueprintDocument.blueprints["bp-1"];
+                const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+                expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
+            }
+        });
+
+        it("takes one press of undo to put an element back where it was", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(host, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            for (const window of [host, guest]) {
+                expect((window.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+            }
         });
     });
 

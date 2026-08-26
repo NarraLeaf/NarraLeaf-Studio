@@ -1,5 +1,6 @@
 import { ClipboardPaste, LayoutTemplate, Plus } from "lucide-react";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 type SurfaceActionsProps = {
     onCreate: () => void;
@@ -32,7 +33,7 @@ export function SurfaceActions({
 }: SurfaceActionsProps) {
     // All three write: one creates a surface, one opens the store whose Apply imports a template
     // bundle into the interface document, and one adds a copied interface to it.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     return (
         <div className="px-2 mt-2 space-y-1.5">
             <div className="flex gap-2">

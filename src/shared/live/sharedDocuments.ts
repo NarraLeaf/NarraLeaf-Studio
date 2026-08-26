@@ -7,6 +7,8 @@ import {
     dictionarySpec,
     localizationDocumentSpec,
     storyDocumentSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId } from "@shared/types/story";
@@ -127,6 +129,28 @@ export type LiveSessionAssetCategories = readonly string[];
 export const NO_LIVE_ASSET_CATEGORIES: LiveSessionAssetCategories = [];
 
 /**
+ * Whether a session carries the interface and its blueprints.
+ *
+ * A boolean rather than a list, because both are one document per project - `{ doc: "ui" }` and
+ * `{ doc: "ui-graphs" }` are whole addresses the way the cast's is. Passed in for
+ * {@link LiveSessionLocales}' reason all the same: what a machine holds is what it managed to read,
+ * and a document nothing loaded is one no operation can be applied to.
+ *
+ * ⚠ **The two travel together and there is no shape in which one is carried without the other.**
+ * They are one editing surface pretending to be two files: adding a widget to a Surface writes
+ * `uidoc.json` and then reconciles a private blueprint for it in `uigraphs.json`, in the same
+ * synchronous step. Carrying the interface alone would announce work-not-saved on every element
+ * anybody added; carrying the blueprints alone would be a canvas whose owners never appear.
+ */
+export type LiveSessionInterface = {
+    /** `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`, both or neither. */
+    carried: boolean;
+};
+
+/** Neither interface document - what a caller that has not read them passes. */
+export const NO_LIVE_INTERFACE: LiveSessionInterface = { carried: false };
+
+/**
  * Every path a session leaves writable that no operation is ever about.
  *
  * Two kinds of file, and neither is a `LiveDocument`:
@@ -176,6 +200,7 @@ export function liveSessionDocuments(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
 ): readonly LiveDocument[] {
     return [
         ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
@@ -184,6 +209,10 @@ export function liveSessionDocuments(
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
         ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
+        // Both or neither. See {@link LiveSessionInterface}: the interface and its blueprints are
+        // one editing surface written to two files, and a session that carried one of them would
+        // refuse the writes the other one makes on its behalf.
+        ...(ui.carried ? ([{ doc: "ui" }, { doc: "ui-graphs" }] as LiveDocument[]) : []),
         // Unparameterised with the cast: one of each per project, so there is nothing to expand and
         // nothing a caller could get wrong about which of them a session carries.
         { doc: "dictionary" },
@@ -214,6 +243,10 @@ export function liveDocumentPath(document: LiveDocument): string {
             return assetsMetadataSpec.pathFor({ type: document.assetType });
         case "asset-groups":
             return assetGroupsSpec.pathFor({ category: document.category });
+        case "ui":
+            return uiDocumentSpec.pathFor();
+        case "ui-graphs":
+            return uiGraphsSpec.pathFor();
         case "dictionary":
             return dictionarySpec.pathFor();
         case "audio-tracks":
@@ -234,9 +267,10 @@ export function liveSessionWritablePaths(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
 ): readonly string[] {
     return [
-        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories).map(liveDocumentPath),
+        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, ui).map(liveDocumentPath),
         ...liveSessionDerivedPaths(assetCategories),
     ];
 }
@@ -255,7 +289,8 @@ export function liveSessionCarries(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
 ): boolean {
-    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories)
+    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, ui)
         .some(carried => sameLiveDocument(carried, document));
 }
