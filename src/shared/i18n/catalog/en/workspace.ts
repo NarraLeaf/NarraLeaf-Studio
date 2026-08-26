@@ -420,8 +420,8 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations, the asset library, the build variants, the DLC and the palette.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations, the asset library, the build variants, the DLC and the palette.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations, the asset library, the dictionary, the audio tracks, the asset sets, the build variants, the DLC and the palette.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations, the asset library, the dictionary, the audio tracks, the asset sets, the build variants, the DLC and the palette.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -444,7 +444,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations, the dictionary, the audio tracks, the asset sets and the whole asset library - files included - are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations, the dictionary, the audio tracks, the asset sets, the build variants, the DLC, the palette and the whole asset library - files included - are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
