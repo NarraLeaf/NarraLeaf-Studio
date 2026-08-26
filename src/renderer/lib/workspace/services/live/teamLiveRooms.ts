@@ -54,8 +54,11 @@ export function createTeamLiveRooms(remoteOrigin: string): LiveRooms {
                     return;
                 }
                 // `from` is the instance the SERVER says sent it, never something the payload claims
-                // about itself: an intent carries no author for exactly that reason.
-                onMessage(said.payload, said.from);
+                // about itself: an intent carries no author for exactly that reason. The account
+                // beside it is stamped by the same server on the same message, which is why a
+                // claim can be recorded against a person without waiting for the roster to catch
+                // up - see `LiveRooms.listen`.
+                onMessage(said.payload, said.from, said.account);
             });
             return () => {
                 token.cancel();
