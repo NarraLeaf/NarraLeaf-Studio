@@ -16,9 +16,10 @@ import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { ProjectDictionaryDocument, ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
-import type { LocalizationUnit } from "@shared/types/localization";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
@@ -151,7 +152,29 @@ export type LiveInverseReason =
     /** The asset set is gone. The mixer's `track-gone`, one document along. */
     | "set-gone"
     /** A set this delete removed is declared again, so there is nothing left to put back. */
-    | "set-restored";
+    | "set-restored"
+    /**
+     * The variable registry entry is gone. Somebody removed it after the operation landed.
+     *
+     * The registry's `character-gone`, and refused rather than turned into a creation for the same
+     * reason: putting back an entry somebody else removed is not undoing an edit, it is declaring a
+     * variable - and every blueprint node that used to name it was emptied when it went.
+     */
+    | "variable-gone"
+    /**
+     * The entry this removal took is in the registry again, so there is nothing left to put back.
+     *
+     * The registry's `character-restored`: a redo of the removal, or somebody declaring a variable
+     * under the same id, and creating it again would be a second copy of one entry.
+     */
+    | "variable-restored"
+    /**
+     * The named string this removal took is declared again, so there is nothing left to put back.
+     *
+     * The key registry's `character-restored`: a redo of the removal, or somebody re-declaring the
+     * same name, and re-creating it would overwrite whatever source text they gave it.
+     */
+    | "key-restored";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -370,7 +393,37 @@ export type LiveBefore =
      * a set and the sets drawn inside it need not have been in the same folder, and an inverse that
      * filed them all in one place would be a rearrangement nobody asked for wearing the word "undo".
      */
-    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] };
+    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] }
+    /**
+     * The entry the variable held. `update-character`'s shape one document along: an update states
+     * the new entry and nothing about the old one.
+     */
+    | { op: "update-variable"; entry: VariableRegistryEntry }
+    /**
+     * The entry a removal took, whole.
+     *
+     * Kept even though `delete-variable` is only ever an undo, because an undo can itself be undone:
+     * the redo is a creation, and a creation needs the entry the removal took away.
+     */
+    | { op: "delete-variable"; entry: VariableRegistryEntry }
+    /**
+     * The definition the named string held, or null when there was none.
+     *
+     * Null is a value here rather than "nothing was kept", exactly as it is for a translation: the
+     * one verb both creates and replaces, so a `set-key` that declared a string is undone by taking
+     * it away again - and a record that could not tell "there was no key" from "nothing was kept"
+     * would leave the first declaration of every string impossible to take back.
+     */
+    | { op: "set-key"; definition: LocalizationKeyDefinition | null }
+    /**
+     * The definition a removal took. A removal names a key: it is gone from the registry by the time
+     * anybody asks, and no message in the session carries it.
+     *
+     * ⚠ Nothing about the translations is kept, and nothing needs to be: removing a key leaves every
+     * `key:<name>` entry exactly where it was in every language, so putting the key back finds them
+     * all still there. That is the asymmetry a deleted character has and this does not.
+     */
+    | { op: "remove-key"; definition: LocalizationKeyDefinition };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -392,6 +445,38 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "create-character":
             // Nothing. The inverse is a delete of what the effect already names.
             return null;
+
+        case "create-variable":
+            // Nothing either, and for a reason of its own: a session has no verb that removes a
+            // variable, so a creation has no inverse to keep anything for. See `inverseOf`.
+            return null;
+
+        case "update-variable": {
+            const entry = sources.variables?.(op.variableId) ?? null;
+            return entry ? { op: "update-variable", entry: structuredClone(entry) } : null;
+        }
+
+        case "delete-variable": {
+            const entry = sources.variables?.(op.variableId) ?? null;
+            return entry ? { op: "delete-variable", entry: structuredClone(entry) } : null;
+        }
+
+        case "set-key": {
+            const keys = sources.keys?.() ?? null;
+            // Null is the registry not being held, which is a different fact from the key being
+            // absent: nothing can be read, so nothing is kept and the undo answers `no-record`.
+            if (keys === null) {
+                return null;
+            }
+            const held = keys[op.name];
+            return { op: "set-key", definition: held ? { ...held } : null };
+        }
+
+        case "remove-key": {
+            const held = sources.keys?.()?.[op.name];
+            // Already gone, so the removal changes nothing and there is nothing to put back.
+            return held ? { op: "remove-key", definition: { ...held } } : null;
+        }
 
         case "update-block": {
             const block = blockIn(document, op.sceneId, op.blockId);
@@ -911,6 +996,15 @@ export type LiveBeforeSources = {
     audioTracks?(): readonly ProjectAudioTrack[] | null;
     /** The asset sets as they stand, or null when this window does not hold them. */
     assetSets?(): readonly AssetSet[] | null;
+    /**
+     * One variable registry entry as it stands, or null when there is none.
+     *
+     * A reader rather than a map, with the libraries': which entry an operation is about is stated
+     * inside the operation, and this is called before the switch that reads it.
+     */
+    variables?(variableId: string): VariableRegistryEntry | null;
+    /** Every named string as it stands, or null when this machine does not hold the registry. */
+    keys?(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
 };
 
 /** Stand-ins for an absent source, so the cases below need no null check of their own. */
@@ -940,6 +1034,10 @@ export type LiveInverseContext = {
     audioTracks?(): readonly ProjectAudioTrack[] | null;
     /** The asset sets as they stand NOW, for the operations that are about them. */
     assetSets?(): readonly AssetSet[] | null;
+    /** One variable registry entry as it stands NOW, for the operations that are about it. */
+    variables?(variableId: string): VariableRegistryEntry | null;
+    /** Every named string as it stands NOW, or null when this machine does not hold the registry. */
+    keys?(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
     /** What {@link captureBefore} read before this effect was applied, or null if nothing was kept. */
     before: LiveBefore | null;
 };
@@ -1718,6 +1816,36 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
 
+        case "create-variable": {
+            const id = op.entry.id;
+            if (!context.variables?.(id)) {
+                return { impossible: "variable-gone" };
+            }
+            // ⚠ The one place `delete-variable` is produced. An author's own deletion has to sweep the
+            // blueprint nodes that named the variable and is refused for the length of a session;
+            // this one is safe precisely because the variable was declared inside the session, and
+            // blueprint editing is frozen throughout it, so no node can be pointing at it.
+            return { op: { op: "delete-variable", variableId: id } };
+        }
+
+        case "update-variable": {
+            if (!before || before.op !== "update-variable") {
+                return { impossible: "no-record" };
+            }
+            if (!context.variables?.(op.variableId)) {
+                // Refused rather than turned back into a creation, with `update-character`: putting
+                // back an entry somebody else removed is not undoing an edit.
+                return { impossible: "variable-gone" };
+            }
+            return {
+                op: {
+                    op: "update-variable",
+                    variableId: op.variableId,
+                    entry: structuredClone(before.entry),
+                },
+            };
+        }
+
         case "write-ui-graphs": {
             if (!before || before.op !== "write-ui-graphs") {
                 return { impossible: "no-record" };
@@ -1729,6 +1857,42 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     updates: uiGraphPartsRestored(before.parts),
                 },
             };
+        }
+
+        case "delete-variable": {
+            if (!before || before.op !== "delete-variable") {
+                return { impossible: "no-record" };
+            }
+            if (context.variables?.(op.variableId)) {
+                // Somebody put it back - a redo of this removal, or an undo somewhere else - and
+                // creating it again would be a second copy of one entry under one id.
+                return { impossible: "variable-restored" };
+            }
+            return { op: { op: "create-variable", entry: structuredClone(before.entry) } };
+        }
+
+        case "set-key": {
+            if (!before || before.op !== "set-key") {
+                return { impossible: "no-record" };
+            }
+            if (before.definition === null) {
+                // There was no key, so the operation declared one and taking it back removes it -
+                // the same shape `set-character-group` has, and the reason `null` is a value here.
+                return { op: { op: "remove-key", name: op.name } };
+            }
+            return { op: { op: "set-key", name: op.name, definition: { ...before.definition } } };
+        }
+
+        case "remove-key": {
+            if (!before || before.op !== "remove-key") {
+                return { impossible: "no-record" };
+            }
+            if (context.keys?.()?.[op.name]) {
+                return { impossible: "key-restored" };
+            }
+            // Nothing else has to come back with it: the translations of a removed key were never
+            // taken away. See `LiveBefore`.
+            return { op: { op: "set-key", name: op.name, definition: { ...before.definition } } };
         }
     }
 }
