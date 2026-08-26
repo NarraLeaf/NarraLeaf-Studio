@@ -87,11 +87,15 @@ export type LiveEntryFailure =
      */
     | { kind: "clone-required"; project: string; revision?: string }
     /**
-     * The tree could not be brought to the revision the room opened on - somebody has pushed past
-     * it. Joining anyway would put two machines in one room holding different documents, which is
-     * the one failure the digest guard exists to catch after the fact.
+     * This project's history and the server's have both moved on, and could not be brought together.
+     *
+     * ⚠ **Not reachable from joining any more.** A machine that joins a room ADOPTS the version it
+     * opened on - the room's copy is written over this tree, after a checkpoint - so there is no
+     * such thing as a tree that cannot reach it. What is left is the other half: opening a room
+     * means publishing what this window is holding, and a push refused twice over is a divergence
+     * only a person can settle.
      */
-    | { kind: "revision-mismatch"; expected: string; actual: string | null }
+    | { kind: "revision-mismatch"; revision: string | null }
     /** The sync left files a human has to settle. The merge comes first; the session is not urgent. */
     | { kind: "merge-conflicts"; paths: readonly string[] }
     /** The room named is not open on this project any more. */
@@ -170,6 +174,24 @@ export type LiveSessionView = {
     entryFailure: LiveEntryFailure | null;
     /** How the last session ended, or null when none has. Survives into `idle` so it can be read. */
     ended: LiveSessionEnd | null;
+    /**
+     * The collaboration this window expects to come back, or null.
+     *
+     * **Set while the phase is `idle`, and that is not a contradiction.** A room ends when its host's
+     * window does, and a host that reloaded or handed over is opening another one on the same story
+     * within seconds - so between the two there is a stretch in which this window is in no session,
+     * holds no freeze and is not entering one, and is nevertheless not finished. Without it on
+     * screen the author reads a room that vanished and came back as two unexplained events.
+     */
+    rejoining: LiveRejoining | null;
+};
+
+/** A room this window is waiting to see reopened. See {@link LiveSessionView.rejoining}. */
+export type LiveRejoining = {
+    /** The story the room was about. What the replacement has to be about to be the same one. */
+    storyId: StoryId;
+    /** When the room ended, so a surface can stop saying this once nothing came back. */
+    since: number;
 };
 
 /** A window in no session, and never in one. The state every workspace starts in. */
@@ -191,4 +213,5 @@ export const IDLE_LIVE_SESSION: LiveSessionView = {
     canRedo: false,
     entryFailure: null,
     ended: null,
+    rejoining: null,
 };

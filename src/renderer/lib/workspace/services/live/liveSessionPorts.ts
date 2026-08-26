@@ -345,7 +345,7 @@ export type LiveAssetSetPort = {
     applyOp(op: LiveAssetSetOp): void;
 };
 
-/** The five things a session asks of version control. */
+/** What a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
     checkpoint(): Promise<string | null>;
@@ -353,10 +353,51 @@ export type LiveVersionPort = {
     head(): Promise<string | null>;
     /** Whether the working tree holds anything no revision has. */
     hasUncommittedChanges(): Promise<boolean>;
-    /** Put this branch on the server, so the revision a room opens on is one others can fetch. */
-    push(): Promise<void>;
-    /** Bring the working tree up to the server. `conflicts` is what the merge left to a human. */
+    /**
+     * Put this branch on the server, so the revision a room opens on is one others can fetch.
+     *
+     * Answers `diverged` instead of throwing for the one refusal a session can act on: both sides
+     * have moved on, and the way past it is a sync. Everything else still throws, because nothing
+     * here knows what to do about it.
+     */
+    push(): Promise<{ diverged: boolean }>;
+    /**
+     * Bring the working tree - and this repository's knowledge of the server's revisions - up to
+     * date. `conflicts` is what the merge left to a human.
+     *
+     * ⚠ **It is also the only way to LEARN a revision.** There is no fetch verb: a repository can
+     * only put down a version it holds, and a room's version was pushed by another machine seconds
+     * ago. So entering a room syncs first and adopts second, and the merge in between is a side
+     * effect of the fetch rather than the point of it.
+     */
     sync(): Promise<{ conflicts: readonly string[] }>;
+    /**
+     * Throw the open merge away and put the working tree back to what it was before it started.
+     *
+     * What a session does with a merge it only wanted the fetch from. Everything the merge could
+     * not settle is about to be overwritten by the room's own copy anyway, and a session that
+     * stopped to ask its author to settle a conflict between two copies of one afternoon's work is
+     * the failure this path exists to remove - the checkpoint taken on the way in is where their
+     * side of it went.
+     */
+    abortMerge(): Promise<void>;
+    /**
+     * Put this working tree on the content of one version.
+     *
+     * **The step that makes entering a room free of version work**, and the reason it is an adoption
+     * rather than a merge. Everybody in a room has to be looking at the same document, and a merge
+     * cannot promise that: two machines that applied the same session's effects hold the same story
+     * with two different save timestamps in it, so merging their copies produces a conflict about a
+     * field neither author has ever seen. Adoption has no such case - the room's version is written
+     * over this tree byte for byte - and it is safe to do without asking because the checkpoint
+     * taken first is where whatever was here went.
+     *
+     * ⚠ **It records a revision of its own**, because the backend has no verb that moves a branch
+     * backwards (see `VcsManager.restoreRevision`). What that revision holds is the room's content,
+     * so a machine that adopts and later syncs merges "we changed nothing" against the host's work,
+     * which settles without a question.
+     */
+    adopt(revision: string): Promise<void>;
 };
 
 /** The write latch, as much of it as a session touches. */
@@ -373,6 +414,23 @@ export type LiveFreezePort = {
      * to something else.
      */
     lift(session: string): void;
+};
+
+/**
+ * The one thing about a session that outlives the window it was running in.
+ *
+ * **Deliberately the smallest fact that could not be recovered from anywhere else.** Everything else
+ * a session knows is the server's - who is in a room, what it is about, what it opened on - and
+ * asking the server is always better than remembering. What the server cannot say is that a room
+ * ENDED because a window went away rather than because somebody left: a room belongs to the window
+ * that opened it and the server closes it either way, so from the next launch the two are the same
+ * event. This is the note that tells them apart, and it is thrown away as soon as it has been read.
+ */
+export type LiveMemoryPort = {
+    /** Say this window is hosting a session on this story, or that it is not any more. */
+    remember(hosting: { story: StoryId } | null): void;
+    /** What this window was hosting when it went away, with when, or null. */
+    recall(): Promise<{ story: StoryId; at: number } | null>;
 };
 
 /** The undo stacks, as much of them as a session touches. */
@@ -421,6 +479,7 @@ export type LiveSessionDeps = {
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
+    memory: LiveMemoryPort;
     /**
      * Milliseconds from a source that only moves forward, and a delayed run that can be cancelled.
      *

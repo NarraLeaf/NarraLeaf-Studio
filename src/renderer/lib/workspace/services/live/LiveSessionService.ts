@@ -1,3 +1,4 @@
+import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
@@ -8,11 +9,11 @@ import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
-import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
 import { CharacterService } from "../core/CharacterService";
-import { VersionControlService } from "../core/VersionControlService";
+import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
@@ -50,14 +51,12 @@ import { IDLE_LIVE_SESSION, type LiveEntryFailure, type LiveSessionView } from "
 /**
  * What the checkpoint recorded on the way into a session is labelled.
  *
- * `interval` is not a lie about what happened, only about what triggered it: its message is the
- * bare "Checkpoint", which is exactly what this is. The alternatives say something untrue on a
- * permanent revision that travels to collaborators - the author did not close a project, run a
- * build or restore anything - and a reason of its own would have to be added to
- * `VcsCheckpointReason` and to the message table beside it, which is a change to the shared
- * vocabulary rather than to this feature.
+ * A reason of its own, because the sentence it writes is permanent repository content that a
+ * collaborator reads: the bare "Checkpoint" the timer records says nothing about why a revision
+ * nobody asked for is sitting in front of an afternoon's work, and every other reason says something
+ * untrue - the author did not close a project, run a build or restore anything.
  */
-const LIVE_CHECKPOINT_REASON: VcsCheckpointReason = "interval";
+const LIVE_CHECKPOINT_REASON: VcsCheckpointReason = "live-session";
 
 /**
  * What entering answers before this service has come up.
@@ -80,8 +79,48 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze),
             ctx.services.get<VersionControlService>(Services.VersionControl),
             ctx.services.get<HistoryService>(Services.History),
+            // ⚠ And every document a session CARRIES, which is not the same list as the one it is
+            // driven from. Entering a room reads all of them into memory before anything is frozen
+            // or applied, so a session entered before they are up throws in the middle of entering.
+            // That never happened while the only way in was an author pressing a control - by then
+            // the workspace has been open for a while - and it happens every time now that a
+            // reloaded window takes its own room back up as the workspace starts.
+            ctx.services.get<CharacterService>(Services.Character),
+            ctx.services.get<LocalizationService>(Services.Localization),
+            ctx.services.get<VoiceService>(Services.Voice),
+            ctx.services.get<AssetsService>(Services.Assets),
         ]);
         this.session = new LiveSession(this.buildDeps(ctx));
+        // Not awaited, and that is the point of it: a workspace must open at the same speed whether
+        // or not there is a server to ask, and the answer for nearly every window is "you were in
+        // nothing". What it repairs is the room a reload left behind - see `LiveSession.resume`.
+        void this.takeUpAnyRoom();
+    }
+
+    /**
+     * How long to keep asking whether this window was already in a room, and how often.
+     *
+     * The socket to the server is opened while the workspace is starting, so the first pass runs
+     * before there is anything to ask - and a window that gave up there would go on holding a room
+     * open on the server with nobody able to answer an intent in it. Four tries over half a minute
+     * covers a connection that is slow rather than absent; a connection that is absent answers
+     * `settled` on the first pass and nothing further is asked.
+     */
+    private static readonly RESUME_DELAYS_MS = [0, 2_000, 6_000, 20_000] as const;
+
+    private async takeUpAnyRoom(): Promise<void> {
+        for (const delay of LiveSessionService.RESUME_DELAYS_MS) {
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            if (this.session === null) {
+                // The window closed while this was waiting.
+                return;
+            }
+            if (await this.session.resume() === "settled") {
+                return;
+            }
+        }
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -401,9 +440,29 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     return status !== null && !status.clean;
                 },
                 push: async () => {
-                    await version().push();
+                    try {
+                        await version().push();
+                        return { diverged: false };
+                    } catch (error) {
+                        // The one refusal a session can act on, told apart by the code the main
+                        // process gives it rather than by the backend's English - see
+                        // `VcsBranchDivergedError`. Everything else is somebody else's to explain.
+                        if (error instanceof VcsCallError && error.code === VcsErrorCode.BranchDiverged) {
+                            return { diverged: true };
+                        }
+                        throw error;
+                    }
                 },
                 sync: async () => ({ conflicts: (await version().sync()).conflicts }),
+                abortMerge: async () => {
+                    await version().abortMerge();
+                },
+                adopt: async revision => {
+                    // The same call the version rail's restore makes, said to be for a session:
+                    // what changes is the two sentences the revisions carry, which are permanent
+                    // repository content a collaborator reads. See `VcsRestoreOptions.purpose`.
+                    await version().restoreRevision(revision, { purpose: "live-session" });
+                },
             },
             freeze: {
                 reason: () => freeze().getReason(),
@@ -421,6 +480,42 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                         // something else in the meantime is not this session's to lift.
                         freeze().thaw();
                     }
+                },
+            },
+            memory: {
+                // Keyed by repository id rather than by path, for the reason every other identity in
+                // this feature is: a folder gets renamed and a repository does not. Written through
+                // the whole map because the store holds one value per key, and read defensively
+                // because what is on disk was written by some other version of this.
+                remember: hosting => {
+                    void (async () => {
+                        const project = await this.identity(ctx);
+                        if (project === null) {
+                            return;
+                        }
+                        const held = await this.hostedSessions();
+                        const next = { ...held };
+                        if (hosting === null) {
+                            delete next[project.repositoryId];
+                        } else {
+                            next[project.repositoryId] = { story: hosting.story, at: Date.now() };
+                        }
+                        await getInterface().app.state.setGlobalState("team.hostedLiveSessions", next);
+                    })().catch(error => {
+                        // A note that could not be written is a reload that will not come back to
+                        // its room, and nothing else. Never a reason to refuse a session.
+                        console.warn("[LiveSession] could not record what this window is hosting", error);
+                    });
+                },
+                recall: async () => {
+                    const project = await this.identity(ctx);
+                    if (project === null) {
+                        return null;
+                    }
+                    const held = (await this.hostedSessions())[project.repositoryId];
+                    return held && typeof held.story === "string" && typeof held.at === "number"
+                        ? { story: held.story as StoryId, at: held.at }
+                        : null;
                 },
             },
             history: {
@@ -441,6 +536,13 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 return () => clearTimeout(timer);
             },
         };
+    }
+
+    /** What every window on this machine has recorded about a session it was hosting. */
+    private async hostedSessions(): Promise<Record<string, { story: string; at: number }>> {
+        const answer = await getInterface().app.state.getGlobalState("team.hostedLiveSessions");
+        const held = answer.success ? answer.data.value : null;
+        return held !== null && typeof held === "object" ? held : {};
     }
 
     private async identity(ctx: WorkspaceContext): Promise<LiveProjectIdentity | null> {

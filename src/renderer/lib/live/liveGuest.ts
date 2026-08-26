@@ -211,6 +211,13 @@ export class LiveGuest {
                 // and only the host holds a claim. What a guest knows about claims arrives as a
                 // `claims` set and in no other way.
                 return;
+            case "blob":
+            case "blob-needed":
+            case "handover":
+                // Not about the document. Slices are carried beside the operation stream and a
+                // handover is about the room, and both are settled before a message reaches these
+                // rules at all - see `LiveSession.onMessage`.
+                return;
         }
     }
 
