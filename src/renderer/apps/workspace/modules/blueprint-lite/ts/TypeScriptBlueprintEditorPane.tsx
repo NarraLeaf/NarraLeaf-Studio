@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 
 type Props = {
     code: string;
@@ -23,7 +24,7 @@ type Props = {
  */
 export function TypeScriptBlueprintEditorPane({ code, onChange, debounceMs = 400 }: Props) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const [draft, setDraft] = useState(code);
 
     useEffect(() => {

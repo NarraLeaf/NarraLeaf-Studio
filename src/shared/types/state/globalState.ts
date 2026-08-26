@@ -441,6 +441,21 @@ export interface GlobalStateType extends Record<string, any> {
      * team's server has somewhere to say so.
      */
     "team.machineLabel": string;
+    /**
+     * The live session a window was hosting when it went away, by repository id.
+     *
+     * **The one thing about a session that has to survive a window, and only for a minute.** A room
+     * lives in a server's memory and belongs to the window that opened it, so the moment that window
+     * goes - a reload, a crash, a laptop closing - the server ends it, and everybody in it is told.
+     * Nothing left anywhere else says the collaboration was meant to carry on, so a reload used to
+     * be indistinguishable from a goodbye.
+     *
+     * Written when a window becomes a host and cleared when its author leaves on purpose, so what is
+     * here means "this stopped without anybody asking". `at` is what keeps it from meaning anything
+     * else: a record older than a couple of minutes is a session that ended some time ago, and a
+     * workspace opening on it must not start a room around an author who came back tomorrow.
+     */
+    "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
 }
 
 export type GlobalStateKeys = string;
@@ -511,6 +526,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.
     "team.machineLabel": "",
+    "team.hostedLiveSessions": {},
 };
 
 /**

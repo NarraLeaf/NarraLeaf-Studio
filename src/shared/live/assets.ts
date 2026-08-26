@@ -1,5 +1,6 @@
 import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { fnv1a64BytesHex } from "@shared/utils/contentHash";
+import { pruneUndefined } from "./digestValue";
 
 /**
  * The fingerprint of one asset metadata shard - the library's records for one asset type.
@@ -39,12 +40,9 @@ import { fnv1a64BytesHex } from "@shared/utils/contentHash";
  *
  * ## Why `undefined` is pruned first
  *
- * The canonical encoder rejects an `undefined` property by name, and the asset services still
- * produce them: a record spread through `{ ...asset, ext: undefined }` holds a key whose value is
- * `undefined` where a record parsed off disk simply has no key. Those two are the same document -
- * `JSON.stringify` writes neither, and that is what is on disk - so hashing them differently would
- * eject a machine from the room over a difference no file can hold. Pruning also keeps this from
- * being the one digest that can throw, which inside an applier would take the session down.
+ * See `digestValue`, which every whole-document digest here shares: the asset services really do
+ * produce a record spread through `{ ...asset, ext: undefined }`, and that record is the same
+ * document on disk as one with no such key at all.
  *
  * ## Why the records are `unknown`
  *
@@ -56,28 +54,6 @@ import { fnv1a64BytesHex } from "@shared/utils/contentHash";
 /** One type's records as they stand, or the fact that this machine does not hold them. */
 export function assetsDigest(records: Readonly<Record<string, unknown>> | null): string {
     return hash(records === null ? { absent: true } : { records: pruneUndefined(records) });
-}
-
-/**
- * The same value with every `undefined`-valued property dropped, at any depth.
- *
- * A copy rather than an edit: the input is the live record map the asset panel is drawing, and this
- * runs while an effect is being applied.
- */
-function pruneUndefined(value: unknown): unknown {
-    if (Array.isArray(value)) {
-        return value.map(pruneUndefined);
-    }
-    if (value === null || typeof value !== "object") {
-        return value;
-    }
-    const out: Record<string, unknown> = {};
-    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-        if (entry !== undefined) {
-            out[key] = pruneUndefined(entry);
-        }
-    }
-    return out;
 }
 
 function hash(content: unknown): string {

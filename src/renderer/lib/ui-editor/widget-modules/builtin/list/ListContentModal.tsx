@@ -20,6 +20,7 @@ import {
     type UIStructField,
     type UIStructFieldType,
 } from "@shared/types/ui-editor/struct";
+import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 
 /**
  * Where an author writes what a list is made of.
@@ -45,7 +46,7 @@ export function ListContentModal(props: {
 }): React.ReactNode {
     const { isOpen, onClose, struct, structId, items, onFieldsChange, onItemsChange, generateFieldId } = props;
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(INTERFACE_DOCUMENT_PATHS);
     const fieldsLocked = isBuiltinUIStructId(structId);
     const readOnly = freeze.frozen;
 

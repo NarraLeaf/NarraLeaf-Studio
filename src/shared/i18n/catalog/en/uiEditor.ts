@@ -282,4 +282,11 @@ export const uiEditor = {
             apply: "Could not apply the template.",
         },
     },
+    // A live session leaves both interface documents writable, so the editor is not switched
+    // off. What it gains is a mark saying who else is inside an element.
+    live: {
+        // On the mark an element wears while somebody else has it selected. A person is named:
+        // there is no width for a name beside the monogram, and a truncated one names nobody.
+        elementClaimed: "{name} is editing this element",
+    },
 } as const;

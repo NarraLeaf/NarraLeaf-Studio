@@ -9,6 +9,7 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { InputBindingList } from "./InputBindingList";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 type InputActionLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -44,7 +45,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     const { t, tn } = useTranslation();
     // Browsable while frozen, as the component library is: reading the vocabulary costs nothing,
     // and only creating, renaming, rebinding and deleting are off.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const [open, setOpen] = useState(false);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);
     const { menuState, showMenu, hideMenu } = useContextMenu();
