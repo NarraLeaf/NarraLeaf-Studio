@@ -274,12 +274,21 @@ export type LiveAssetsPort = {
      */
     hasRecord(assetType: string, assetId: string): boolean;
     /**
-     * Try the files that were waiting for slices again.
+     * Try the files that were waiting again.
      *
-     * Called when a slice arrives. There is no timer behind it and there must not be one: a transfer
-     * nobody ever completes would otherwise be a machine asking for it for the rest of the session.
+     * Called when one of them has landed or been given up on, which is the only moment the answer
+     * can have changed. There is no timer behind it and there must not be one: a transfer nobody
+     * ever completes would otherwise be a machine asking about it for the rest of the session.
      */
     resumePayloads(): void;
+    /**
+     * Say that a file on its way has moved, so the browser redraws what is arriving.
+     *
+     * Separate from {@link resumePayloads} because it is a different event: nothing has finished and
+     * nothing can be done about it - a number has changed. The two were one call at first, and the
+     * consequence was a queue that ran once per eighth of a second for the length of an import.
+     */
+    noteTransferProgress(): void;
     /** Every section whose folders this window holds. */
     folderCategories(): readonly string[];
     /** One section's folders as they stand, or null when this window does not hold them. */

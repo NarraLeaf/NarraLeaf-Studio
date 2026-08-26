@@ -431,6 +431,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 records: assetType => assets().recordsOf(assetType),
                 hasRecord: (assetType, assetId) => assets().recordOf(assetType, assetId) !== null,
                 resumePayloads: () => assets().resumePayloads(),
+                noteTransferProgress: () => assets().noteTransferProgress(),
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),

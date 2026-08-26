@@ -750,6 +750,7 @@ function createWindow(world: World, instance: string): Window {
             records: assetType => window.assets[assetType] ?? null,
             hasRecord: (assetType, assetId) => window.assets[assetType]?.[assetId] !== undefined,
             resumePayloads: () => undefined,
+            noteTransferProgress: () => undefined,
             folderCategories: () => ["image"],
             folders: () => ({}),
             applyOp: op => {

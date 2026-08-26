@@ -2243,6 +2243,7 @@ export class LiveSession {
             return;
         }
         let settled = false;
+        let moved = false;
         for (const transfer of transfers) {
             const before = session.blobs.get(transfer.transferId);
             if (before === undefined) {
@@ -2261,9 +2262,16 @@ export class LiveSession {
             settled = settled
                 || (before.state !== transfer.state
                     && (transfer.state === "done" || transfer.state === "failed"));
+            moved = moved || before.bytes !== transfer.bytes;
             before.bytes = transfer.bytes;
             before.total = transfer.total;
             before.state = transfer.state;
+        }
+        if (moved || settled) {
+            // A number changing is not something the library can act on, but it is the whole of what
+            // the row an author is watching is drawn from. Said every time it moves, because this
+            // poll's own interval is what paces the redraw.
+            this.deps.assets.noteTransferProgress();
         }
         if (settled) {
             // A file finishing - or being given up on - is the only moment a payload that was
