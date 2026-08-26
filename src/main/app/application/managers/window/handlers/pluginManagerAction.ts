@@ -1,7 +1,6 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { dialog } from "electron";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { PrivilegedCapability } from "@shared/types/privileged";
@@ -21,6 +20,7 @@ import { satisfiesRange } from "@shared/utils/semver";
 import { readProjectConfigFromDir } from "../../../utils/projectConfigFile";
 import { readPublishedPluginData } from "../../pluginRuntimeData";
 import { authorizeActorCapabilityRequest } from "../actorAuthorization";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -56,7 +56,7 @@ export class PluginInstallLocalHandler extends IPCHandler<IPCEventType.pluginIns
         const denied = ensurePluginInstallCapability(window);
         if (denied) return denied;
 
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Install Plugin",
             properties: ["openDirectory"],
             buttonLabel: "Install Plugin",
