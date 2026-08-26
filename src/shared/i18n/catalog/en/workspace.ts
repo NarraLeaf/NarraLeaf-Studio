@@ -420,8 +420,8 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the story it is about and the cast.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the story it is about and the cast.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -877,6 +877,7 @@ export const workspace = {
             // Refused because the app is closing. Rare, and worth its own sentence: the alternative
             // wording an author would otherwise see names koffi and a worker thread.
             closingWithApp: "Studio is closing. Try again after it restarts.",
+            commitBeforeSync: "Submit a version before getting the server's.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",

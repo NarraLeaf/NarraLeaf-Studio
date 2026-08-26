@@ -1269,6 +1269,8 @@ function describeFailure(thrown: unknown): VersionFailure {
             return { text: translate("workspace.shell.versionControl.unavailable.installation"), tone: "failure" };
         case VcsErrorCode.ShuttingDown:
             return { text: translate("workspace.shell.versionControl.closingWithApp"), tone: "failure" };
+        case VcsErrorCode.UncommittedChanges:
+            return { text: translate("workspace.shell.versionControl.commitBeforeSync"), tone: "failure" };
         // `ProjectPath` deliberately falls through to the raw sentence: it can only be reached
         // through a defect, and that sentence is three lines of diagnosis aimed at whoever has to
         // fix it. Paraphrasing it would throw away the only copy.

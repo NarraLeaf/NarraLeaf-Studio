@@ -282,6 +282,22 @@ export class VcsProjectPathError extends Error {
 }
 
 /**
+ * A sync asked for on a tree that still has changes nobody has recorded.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains: this one reaches an
+ * author, so the renderer has to be able to say it in their language rather than showing this
+ * sentence.
+ */
+export class VcsUncommittedChangesError extends Error {
+    readonly code = VcsErrorCode.UncommittedChanges;
+
+    constructor() {
+        super("Submit a version before syncing: this project has changes that are not recorded yet");
+        this.name = "VcsUncommittedChangesError";
+    }
+}
+
+/**
  * Refused because the app is on its way out, rather than started and abandoned.
  *
  * Not a nicety. Every Lore call is a koffi `async` call, and koffi delivers its result by
@@ -2305,10 +2321,7 @@ export class VcsManager extends Manager {
             // anything has staged it - and a commit is what clears it.
             const pending = await backend.getStatus(globals);
             if (!pending.clean) {
-                throw new Error(
-                    "There are unsubmitted changes in this project. Submit a version before syncing,"
-                    + " so that anything the server sends can be merged onto a recorded state.",
-                );
+                throw new VcsUncommittedChangesError();
             }
 
             const result = await this.withServerSession(
