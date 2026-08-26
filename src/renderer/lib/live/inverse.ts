@@ -6,7 +6,10 @@ import type {
     LiveEffect,
     LiveOp,
 } from "@shared/live/ops";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { ProjectDictionaryDocument, ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -128,6 +131,20 @@ export type LiveInverseReason =
      * metadata merge refuses to produce.
      */
     | "content-replaced"
+    /**
+     * The bus is gone. Somebody deleted it after the operation landed.
+     *
+     * The mixer's `row-gone`, refused rather than turned into a creation for the cast's reason:
+     * putting back a bus somebody else deleted is not undoing an edit, it is making a track - and
+     * every reference that had fallen back to a seeded bus would silently re-point at it.
+     */
+    | "track-gone"
+    /** The bus this delete removed is in the mixer again, so there is nothing left to put back. */
+    | "track-restored"
+    /** The asset set is gone. The mixer's `track-gone`, one document along. */
+    | "set-gone"
+    /** A set this delete removed is declared again, so there is nothing left to put back. */
+    | "set-restored"
     /**
      * The variable registry entry is gone. Somebody removed it after the operation landed.
      *
@@ -306,6 +323,59 @@ export type LiveBefore =
           folders: readonly LiveAssetFolder[];
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
       }
+    /**
+     * The entry that was at the address, or null when there was none.
+     *
+     * The translation's shape, and null is a value here for its reason: in this document "no entry"
+     * is what a word the project does not write looks like, so a set that taught the project its
+     * first spelling of something is undone by putting the nothing back.
+     *
+     * ⚠ The address is the operation's own `term`, which for a rename is where the entry WAS.
+     * Nothing is kept for a rename onto a spelling the project already writes - see
+     * {@link captureBefore} - because one operation names one address and putting two entries back
+     * is not something the vocabulary can state.
+     */
+    | { op: "set-dictionary-entry"; entry: ProjectDictionaryEntry | null }
+    /** Both checks as they stood. The operation states the new pair and nothing about the old one. */
+    | { op: "set-dictionary-options"; options: ProjectDictionaryOptions }
+    /** The record the bus held. `update-block`'s shape, one document along. */
+    | { op: "update-audio-track"; track: ProjectAudioTrack }
+    /**
+     * The bus itself, where it sat, and what fed into it.
+     *
+     * The children are the half that cannot be recovered afterwards, and it is
+     * `delete-character`'s asymmetry exactly. Going down the promotion is derived - every machine
+     * works out which buses fed this one. Coming back up it is not: they now name the deleted bus's
+     * own parent, and so do the buses that always did, so the two are indistinguishable.
+     */
+    | {
+          op: "delete-audio-track";
+          track: ProjectAudioTrack;
+          /** The bus it sat in front of, or null when it was last. */
+          beforeId: string | null;
+          children: readonly string[];
+      }
+    /** Where the bus sat before it moved. A move states its destination only. */
+    | { op: "move-audio-track"; beforeId: string | null }
+    /** The record the set held. `update-audio-track`'s shape, one document along. */
+    | { op: "update-asset-set"; set: AssetSet }
+    /**
+     * Every set a deletion removed, whole, **in the document order they sat in**, each with the
+     * surviving set it sat in front of.
+     *
+     * The anchor skips the sets that went with it, which is what lets them be put back in one pass
+     * from the front: two sets that shared a surviving successor land in front of it in the order
+     * they are restored, which is the order they were in.
+     */
+    | { op: "delete-asset-sets"; sets: readonly { set: AssetSet; beforeId: string | null }[] }
+    /**
+     * Which folder every set of a batch was filed in, one entry per set the batch named.
+     *
+     * The whole of why the operation carries a destination per set rather than one for all of them:
+     * a set and the sets drawn inside it need not have been in the same folder, and an inverse that
+     * filed them all in one place would be a rearrangement nobody asked for wearing the word "undo".
+     */
+    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] }
     /**
      * The entry the variable held. `update-character`'s shape one document along: an update states
      * the new entry and nothing about the old one.
@@ -671,6 +741,108 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "restore-asset-folder":
             // Its own inverse is a deletion of the folder it put back, which needs nothing kept.
             return null;
+
+        case "set-dictionary-entry": {
+            const dictionary = sources.dictionary?.() ?? null;
+            if (dictionary === null) {
+                return null;
+            }
+            const target = op.entry;
+            if (target && target.term !== op.term
+                && dictionary.entries.some(entry => entry.term === target.term)) {
+                // A rename onto a spelling the project already writes. It overwrote a second entry,
+                // and one operation names one address, so nothing here could put both back. Studio
+                // refuses to produce one (`updateEntry` answers false), so this is reachable only
+                // from a machine a version apart - and the honest answer is that nothing was kept.
+                return null;
+            }
+            const existing = dictionary.entries.find(entry => entry.term === op.term);
+            return { op: "set-dictionary-entry", entry: existing ? { ...existing } : null };
+        }
+
+        case "set-dictionary-options": {
+            const dictionary = sources.dictionary?.() ?? null;
+            return dictionary === null
+                ? null
+                : { op: "set-dictionary-options", options: { ...dictionary.options } };
+        }
+
+        case "create-audio-track":
+        case "create-asset-sets":
+            // Nothing. The inverse is a deletion of what the effect already names, exactly as an
+            // insert's is.
+            return null;
+
+        case "update-audio-track": {
+            const track = sources.audioTracks?.()?.find(entry => entry.id === op.trackId);
+            return track ? { op: "update-audio-track", track: structuredClone(track) } : null;
+        }
+
+        case "move-audio-track": {
+            const tracks = sources.audioTracks?.() ?? null;
+            const index = tracks === null ? -1 : tracks.findIndex(entry => entry.id === op.trackId);
+            return index < 0 || tracks === null
+                ? null
+                : { op: "move-audio-track", beforeId: tracks[index + 1]?.id ?? null };
+        }
+
+        case "delete-audio-track": {
+            const tracks = sources.audioTracks?.() ?? null;
+            const index = tracks === null ? -1 : tracks.findIndex(entry => entry.id === op.trackId);
+            if (tracks === null || index < 0) {
+                return null;
+            }
+            return {
+                op: "delete-audio-track",
+                track: structuredClone(tracks[index]!),
+                beforeId: tracks[index + 1]?.id ?? null,
+                // Read before the promotion runs, which is the only moment these buses still say
+                // which one they fed.
+                children: tracks.filter(entry => entry.parentId === op.trackId).map(entry => entry.id),
+            };
+        }
+
+        case "update-asset-set": {
+            const set = sources.assetSets?.()?.find(entry => entry.id === op.setId);
+            return set ? { op: "update-asset-set", set: structuredClone(set) } : null;
+        }
+
+        case "delete-asset-sets": {
+            const sets = sources.assetSets?.() ?? null;
+            if (sets === null) {
+                return null;
+            }
+            const doomed = new Set(op.setIds);
+            const kept: { set: AssetSet; beforeId: string | null }[] = [];
+            for (let index = 0; index < sets.length; index += 1) {
+                const set = sets[index]!;
+                if (!doomed.has(set.id)) {
+                    continue;
+                }
+                kept.push({
+                    set: structuredClone(set),
+                    beforeId: sets.slice(index + 1).find(later => !doomed.has(later.id))?.id ?? null,
+                });
+            }
+            return kept.length > 0 ? { op: "delete-asset-sets", sets: kept } : null;
+        }
+
+        case "move-asset-sets": {
+            const sets = sources.assetSets?.() ?? null;
+            if (sets === null) {
+                return null;
+            }
+            return {
+                op: "move-asset-sets",
+                moves: op.moves.map(move => ({
+                    setId: move.setId,
+                    // A set already gone is recorded as being at the top of its section rather than
+                    // dropped: the batch is answered whole, and an entry missing from the record
+                    // would make the two lists disagree about which row is which.
+                    groupId: sets.find(entry => entry.id === move.setId)?.groupId ?? null,
+                })),
+            };
+        }
     }
 }
 
@@ -696,6 +868,25 @@ function folderIdsUnder(
         }
     }
     return ids;
+}
+
+/**
+ * Whether the mixer holds this bus right now.
+ *
+ * Permissive when the reader is absent, so a caller that has not wired the mixer gets an inverse
+ * that works rather than one that refuses everything - the same bargain `LiveHostDeps` makes.
+ */
+function trackPresent(context: LiveInverseContext, trackId: string): boolean {
+    const tracks = context.audioTracks?.();
+    return tracks === undefined || tracks === null
+        ? true
+        : tracks.some(track => track.id === trackId);
+}
+
+/** Whether the project declares this set right now. {@link trackPresent}'s counterpart. */
+function setPresent(context: LiveInverseContext, setId: string): boolean {
+    const sets = context.assetSets?.();
+    return sets === undefined || sets === null ? true : sets.some(set => set.id === setId);
 }
 
 /** Which folder a record says it is in, or null for the section root and for no record at all. */
@@ -751,6 +942,18 @@ export type LiveBeforeSources = {
      */
     assetsByType?(category: string): Readonly<Record<string, Readonly<Record<string, LiveAssetRecord>>>>;
     /**
+     * The project dictionary as it stands, or null when this window does not hold it.
+     *
+     * A reader rather than the document, with the libraries': this is called before the switch that
+     * decides which of the sources an operation needs, and a document read for every story edit
+     * would be work nothing looks at.
+     */
+    dictionary?(): ProjectDictionaryDocument | null;
+    /** The mixer as it stands, or null when this window does not hold it. */
+    audioTracks?(): readonly ProjectAudioTrack[] | null;
+    /** The asset sets as they stand, or null when this window does not hold them. */
+    assetSets?(): readonly AssetSet[] | null;
+    /**
      * One variable registry entry as it stands, or null when there is none.
      *
      * A reader rather than a map, with the libraries': which entry an operation is about is stated
@@ -784,6 +987,10 @@ export type LiveInverseContext = {
     assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
     /** One section's folders as they stand NOW, for the operations that are about them. */
     assetFolders?(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /** The mixer as it stands NOW, for the operations that are about it. */
+    audioTracks?(): readonly ProjectAudioTrack[] | null;
+    /** The asset sets as they stand NOW, for the operations that are about them. */
+    assetSets?(): readonly AssetSet[] | null;
     /** One variable registry entry as it stands NOW, for the operations that are about it. */
     variables?(variableId: string): VariableRegistryEntry | null;
     /** Every named string as it stands NOW, or null when this machine does not hold the registry. */
@@ -1375,6 +1582,146 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                         assetType: entry.assetType,
                         record: structuredClone(entry.record),
                     })),
+                },
+            };
+        }
+
+        case "set-dictionary-entry": {
+            if (!before || before.op !== "set-dictionary-entry") {
+                return { impossible: "no-record" };
+            }
+            // ⚠ The address of the inverse is where the entry ENDED UP, not where it started -
+            // which for a rename is the new spelling, and for everything else is the same word. One
+            // statement therefore covers all four shapes this verb has: an addition is undone by
+            // removing what it wrote, a removal by putting the record back, an edit by restoring the
+            // record at the same address, and a rename by clearing the new spelling and writing the
+            // old entry, which carries its own old term.
+            return {
+                op: {
+                    op: "set-dictionary-entry",
+                    term: op.entry?.term ?? op.term,
+                    entry: before.entry === null ? null : { ...before.entry },
+                },
+            };
+        }
+
+        case "set-dictionary-options": {
+            if (!before || before.op !== "set-dictionary-options") {
+                return { impossible: "no-record" };
+            }
+            return { op: { op: "set-dictionary-options", options: { ...before.options } } };
+        }
+
+        case "create-audio-track": {
+            if (!trackPresent(context, op.track.id)) {
+                return { impossible: "track-gone" };
+            }
+            return { op: { op: "delete-audio-track", trackId: op.track.id } };
+        }
+
+        case "update-audio-track": {
+            if (!before || before.op !== "update-audio-track") {
+                return { impossible: "no-record" };
+            }
+            if (!trackPresent(context, op.trackId)) {
+                return { impossible: "track-gone" };
+            }
+            return {
+                op: {
+                    op: "update-audio-track",
+                    trackId: op.trackId,
+                    track: structuredClone(before.track),
+                },
+            };
+        }
+
+        case "move-audio-track": {
+            if (!before || before.op !== "move-audio-track") {
+                return { impossible: "no-record" };
+            }
+            if (!trackPresent(context, op.trackId)) {
+                return { impossible: "track-gone" };
+            }
+            return { op: { op: "move-audio-track", trackId: op.trackId, beforeId: before.beforeId } };
+        }
+
+        case "delete-audio-track": {
+            if (!before || before.op !== "delete-audio-track") {
+                return { impossible: "no-record" };
+            }
+            if (trackPresent(context, op.trackId)) {
+                // Somebody put it back, so there is nothing left to restore and doing it anyway
+                // would overwrite whatever they made of it.
+                return { impossible: "track-restored" };
+            }
+            return {
+                op: {
+                    op: "create-audio-track",
+                    track: structuredClone(before.track),
+                    beforeId: before.beforeId,
+                    // The promotion coming home. Carried rather than derived - see `LiveBefore`.
+                    reparent: [...before.children],
+                },
+            };
+        }
+
+        case "create-asset-sets":
+            // What undoes a declaration is a deletion of exactly the sets it made. Nothing had to be
+            // kept, and a set that has since gone is not an error: the deletion is tolerant of it.
+            return {
+                op: {
+                    op: "delete-asset-sets",
+                    setIds: op.creates.map(create => create.set.id),
+                },
+            };
+
+        case "update-asset-set": {
+            if (!before || before.op !== "update-asset-set") {
+                return { impossible: "no-record" };
+            }
+            if (!setPresent(context, op.setId)) {
+                return { impossible: "set-gone" };
+            }
+            return {
+                op: { op: "update-asset-set", setId: op.setId, set: structuredClone(before.set) },
+            };
+        }
+
+        case "delete-asset-sets": {
+            if (!before || before.op !== "delete-asset-sets" || before.sets.length !== op.setIds.length) {
+                return { impossible: "no-record" };
+            }
+            for (const entry of before.sets) {
+                if (setPresent(context, entry.set.id)) {
+                    return { impossible: "set-restored" };
+                }
+            }
+            return {
+                op: {
+                    op: "create-asset-sets",
+                    creates: before.sets.map(entry => ({
+                        set: structuredClone(entry.set),
+                        beforeId: entry.beforeId,
+                    })),
+                },
+            };
+        }
+
+        case "move-asset-sets": {
+            if (!before || before.op !== "move-asset-sets" || before.moves.length !== op.moves.length) {
+                return { impossible: "no-record" };
+            }
+            // Whole or not at all, the rule every batch follows: a drag put back for the rows that
+            // survive and not for the rest is an arrangement neither author produced.
+            for (const move of before.moves) {
+                if (!setPresent(context, move.setId)) {
+                    return { impossible: "set-gone" };
+                }
+            }
+            return {
+                op: {
+                    op: "move-asset-sets",
+                    moves: before.moves.map(move => ({ setId: move.setId, groupId: move.groupId })),
                 },
             };
         }

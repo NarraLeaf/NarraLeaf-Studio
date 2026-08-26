@@ -108,6 +108,8 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "variable-gone": "story.live.refusedVariableGone",
     "asset-id-taken": "story.live.refusedAssetIdTaken",
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
+    "track-gone": "story.live.refusedTrackGone",
+    "set-gone": "story.live.refusedSetGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
@@ -153,6 +155,10 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "key-restored": "story.live.undoKeyRestored",
     "asset-gone": "story.live.undoAssetGone",
     "content-replaced": "story.live.undoContentReplaced",
+    "track-gone": "story.live.undoTrackGone",
+    "track-restored": "story.live.undoTrackRestored",
+    "set-gone": "story.live.undoSetGone",
+    "set-restored": "story.live.undoSetRestored",
 };
 
 export function liveUndoRefusalSentence(reason: LiveUndoRefusalReason): TranslationKey | null {

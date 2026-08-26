@@ -1,5 +1,6 @@
 import https from "https";
 import tls from "tls";
+import { TEAM_PROTOCOL_VERSION } from "@shared/types/team";
 import type { VcsServerDiscovery, VcsServerProbe } from "@shared/types/vcs";
 import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
 
@@ -236,12 +237,15 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
     if (typeof document.protocol !== "number") {
         return "something answered there, and it was not a NarraLeaf Team server";
     }
-    if (document.protocol !== 1) {
+    if (document.protocol !== TEAM_PROTOCOL_VERSION) {
         // One comparison, which is the reason the field is a number: this server speaks a
         // version of the protocol this Studio was not written against, and that is a
-        // different remedy from every other answer here.
+        // different remedy from every other answer here. The version this build speaks is
+        // the one constant both the discovery check and the socket's opening frame read,
+        // so the next bump is a single edit.
         return `that server speaks version ${document.protocol} of the protocol, and this`
-            + " version of Studio speaks 1. Updating Studio is what closes the gap.";
+            + ` version of Studio speaks ${TEAM_PROTOCOL_VERSION}. Updating Studio is what`
+            + " closes the gap.";
     }
 
     const auth = document.auth;
@@ -271,7 +275,7 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
 
     return {
         name: document.name.trim() || auth.url.trim(),
-        protocol: 1,
+        protocol: TEAM_PROTOCOL_VERSION,
         auth: { required: auth.required, url: auth.url.trim() },
         data: { url: data.url.trim() },
         authority: { sha256: authority.sha256.trim() },

@@ -1,7 +1,10 @@
 import {
     assetGroupsSpec,
+    assetSetsSpec,
     assetsMetadataSpec,
+    audioTracksSpec,
     charactersSpec,
+    dictionarySpec,
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
@@ -69,6 +72,13 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * folders it has just applied - and it is deliberately NOT a `LiveDocument`, so no message can be
  * addressed to it.
  *
+ * **Three small project tables join them, and they need nothing from the caller.** The dictionary,
+ * the mixer and the asset sets are one document each per project, exactly as the cast is, so their
+ * addresses are the kind alone. They are here because a session was ruled to be something an author
+ * leaves open: adding a term the spellchecker keeps underlining, or nudging a bus that is too loud,
+ * is a small thing to want in the middle of writing, and a control that is grey for the length of an
+ * afternoon is a control the author works around.
+ *
  * **The two project-level registries join them last**: the variable registry (`editor/variables.json`)
  * and the named-string registry (`editor/localization/keys.json`). Both are one per project, so
  * neither is parameterised - and both are carried only when this machine could actually READ them,
@@ -83,6 +93,14 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * is the same shape the asset library is already in, and it is the safe half of the invariant: the
  * owning service stops what cannot travel, rather than the write boundary allowing an edit that
  * would land on one machine and nowhere else.
+ *
+ * ⚠ **The Gallery's catalog is not here, and it is the harmless half of the trade for a sharp
+ * reason.** It lives in a plugin store (`editor/services/narraleaf.gallery.items.json`) and the only
+ * seam Studio owns is `storage.writeJson`, which is handed the whole catalog. The finest thing that
+ * can be stated at the one point every gallery edit passes through is therefore "here is the new
+ * file" - whole-document last-writer-wins, the one verb this vocabulary refuses. Sharing it needs
+ * the plugin storage API to grow a vocabulary of its own, which is a change to what plugins can say
+ * rather than to what a session carries.
  */
 
 /** The languages a session carries libraries for. Two lists, because the two are configured apart. */
@@ -147,6 +165,7 @@ export const NO_LIVE_REGISTRIES: LiveSessionRegistries = { variables: false, loc
  *
  *  - **the asset payloads** (`assets/content/`), which are bytes an applier puts down rather than a
  *    document anybody addresses;
+/**
  *  - **the row-order shards**, which every machine recomputes from what it has just applied.
  *
  * ⚠ Held apart from {@link liveSessionDocuments} on purpose. The invariant that file states is about
@@ -182,7 +201,8 @@ const ASSET_ORDER_PATH_FOR = (category: string): string => `assets/assets.order.
  * libraries.
  *
  * The cast is not parameterised - there is one per project - which is why it needs nothing from the
- * caller and why a session cannot be opened on "some of" it.
+ * caller and why a session cannot be opened on "some of" it. The dictionary, the mixer and the asset
+ * sets are the same shape, and are here for the same reason.
  */
 export function liveSessionDocuments(
     storyIds: readonly StoryId[],
@@ -198,6 +218,11 @@ export function liveSessionDocuments(
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
         ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
+        // Unparameterised with the cast: one of each per project, so there is nothing to expand and
+        // nothing a caller could get wrong about which of them a session carries.
+        { doc: "dictionary" },
+        { doc: "audio-tracks" },
+        { doc: "asset-sets" },
         ...(registries.variables ? [{ doc: "variables" } as const] : []),
         ...(registries.localizationKeys ? [{ doc: "localization-keys" } as const] : []),
     ];
@@ -225,6 +250,12 @@ export function liveDocumentPath(document: LiveDocument): string {
             return assetsMetadataSpec.pathFor({ type: document.assetType });
         case "asset-groups":
             return assetGroupsSpec.pathFor({ category: document.category });
+        case "dictionary":
+            return dictionarySpec.pathFor();
+        case "audio-tracks":
+            return audioTracksSpec.pathFor();
+        case "asset-sets":
+            return assetSetsSpec.pathFor();
         case "variables":
             return variableRegistrySpec.pathFor();
         case "localization-keys":

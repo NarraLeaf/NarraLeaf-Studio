@@ -4,6 +4,7 @@ import { join } from "@shared/utils/path";
 import { PROJECT_DICTIONARY_SCHEMA_VERSION } from "@shared/types/dictionary";
 import { SPELLCHECK_FOLLOW_PROJECT, SPELLCHECK_LANGUAGE_KEY } from "@shared/types/spellcheck";
 import { Services, type WorkspaceContext } from "../services";
+import type { LiveDictionaryOp } from "@shared/live/ops";
 import { DictionaryService } from "./DictionaryService";
 
 /**
@@ -334,5 +335,63 @@ describe("the session the words are pushed into", () => {
         } finally {
             vi.unstubAllGlobals();
         }
+    });
+});
+
+describe("the live-session seam", () => {
+    it("states the entry an addition would have written, and does not touch the document", async () => {
+        const { service } = await createHarness();
+        const stated: LiveDictionaryOp[] = [];
+        service.setOperationSink({ handle: op => (stated.push(op), true) });
+
+        expect(service.addTerm("Kagurazaka")).toBe(true);
+
+        expect(stated).toEqual([{
+            op: "set-dictionary-entry",
+            term: "Kagurazaka",
+            entry: { term: "Kagurazaka" },
+        }]);
+        expect(service.hasTerm("Kagurazaka")).toBe(false);
+    });
+
+    it("states a rename as one operation, from where the entry is to what it becomes", async () => {
+        const { service } = await createHarness();
+        service.addTerm("Kagurazaka", { reading: "かぐらざか" });
+        const stated: LiveDictionaryOp[] = [];
+        service.setOperationSink({ handle: op => (stated.push(op), true) });
+
+        expect(service.updateEntry("Kagurazaka", { term: "Kagura-zaka" })).toBe(true);
+
+        expect(stated).toEqual([{
+            op: "set-dictionary-entry",
+            term: "Kagurazaka",
+            entry: { term: "Kagura-zaka", reading: "かぐらざか" },
+        }]);
+        expect(service.listTerms()).toEqual(["Kagurazaka"]);
+    });
+
+    it("moves the entry to its new spelling when the effect comes back", async () => {
+        const { service } = await createHarness();
+        service.addTerm("Kagurazaka", { reading: "かぐらざか" });
+        service.setOperationSink({ handle: () => true });
+
+        service.applyLiveOp({
+            op: "set-dictionary-entry",
+            term: "Kagurazaka",
+            entry: { term: "Kagura-zaka", reading: "かぐらざか" },
+        });
+
+        expect(service.listTerms()).toEqual(["Kagura-zaka"]);
+        expect(service.getEntry("Kagura-zaka")?.reading).toBe("かぐらざか");
+    });
+
+    it("removes the entry when the effect carries nothing, which is what no entry means here", async () => {
+        const { service } = await createHarness();
+        service.addTerm("Kagurazaka");
+        service.setOperationSink({ handle: () => true });
+
+        service.applyLiveOp({ op: "set-dictionary-entry", term: "Kagurazaka", entry: null });
+
+        expect(service.listTerms()).toEqual([]);
     });
 });

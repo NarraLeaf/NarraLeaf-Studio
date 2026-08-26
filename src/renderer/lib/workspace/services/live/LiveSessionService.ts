@@ -13,6 +13,9 @@ import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
 import { AssetsService } from "../core/AssetsService";
+import { AssetSetService } from "../assets/AssetSetService";
+import { AudioTrackService } from "../audio/AudioTrackService";
+import { DictionaryService } from "../dictionary/DictionaryService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
@@ -187,6 +190,9 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
         const assets = (): AssetsService => ctx.services.get<AssetsService>(Services.Assets);
         const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
+        const dictionary = (): DictionaryService => ctx.services.get<DictionaryService>(Services.Dictionary);
+        const audioTracks = (): AudioTrackService => ctx.services.get<AudioTrackService>(Services.AudioTracks);
+        const assetSets = (): AssetSetService => ctx.services.get<AssetSetService>(Services.AssetSets);
         const variables = (): VariableRegistryService =>
             ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
@@ -267,6 +273,23 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
+            },
+            // The three project tables. No load step, with the asset shards: all three are read as
+            // the workspace starts rather than when a panel opens them.
+            dictionary: {
+                setSink: sink => dictionary().setOperationSink(sink),
+                document: () => dictionary().documentOrNull(),
+                applyOp: op => dictionary().applyLiveOp(op),
+            },
+            audioTracks: {
+                setSink: sink => audioTracks().setOperationSink(sink),
+                tracks: () => audioTracks().tracksOrNull(),
+                applyOp: op => audioTracks().applyLiveOp(op),
+            },
+            assetSets: {
+                setSink: sink => assetSets().setOperationSink(sink),
+                sets: () => assetSets().setsOrNull(),
+                applyOp: op => assetSets().applyLiveOp(op),
             },
             variables: {
                 setSink: sink => variables().setOperationSink(sink),
