@@ -12,6 +12,10 @@
 // definition of a change for the same renderer to draw.
 import type { DocumentDiffEntry, DocumentMergeDecision } from "../documents/diff";
 import type { DocumentKind } from "../documents/types";
+// The capability vocabulary is one list, advertised identically by a server's discovery
+// document and its session's opening frame. So the names a version-control screen may gate
+// on are the names the socket gates on - see `TeamCapability`, of which this is the alias.
+import type { TeamCapability } from "./team";
 
 /** A revision identifier. Opaque to the renderer; hex at the transport layer. */
 export type RevisionId = string;
@@ -725,29 +729,26 @@ export interface VcsServerDescription {
 }
 
 /**
- * The capability names Studio knows how to use.
+ * The capability names Studio knows how to gate on.
  *
- * **Not the set a server may advertise** - `capabilities` stays `string[]` precisely
- * because a name this Studio does not know is still worth recording. This is the other
- * half: the names a call site is allowed to gate on, so that asking for one is checked
- * against something rather than spelled from memory.
+ * **The same vocabulary the socket uses**, because a server advertises one list in its
+ * discovery document and the same list in its opening frame - so this is {@link
+ * TeamCapability} rather than a second enumeration that could name a thing the wire never
+ * says. `capabilities` on a discovery or a session stays `string[]` precisely because a
+ * name this Studio does not know is still worth recording; this is the other half, the
+ * names a call site is allowed to check against rather than spell from memory.
  *
  * A server that does not advertise one is not asked, and the surface that would have
  * shown the answer is simply not there. That is not a failure and never reads as one:
  * the deployment does not offer it, which is a fact about the server rather than about
  * this machine, and there is nothing for an author to do about it.
+ *
+ * **The project list, one project's detail and the member roster are not on this list.**
+ * They are answered by the session's own methods now, so the surviving thing to gate them
+ * on is `session` - a reachable server always has it. Only what is genuinely optional
+ * across deployments - `project-history`, `password-sign-in` - is a gate that can be off.
  */
-export type VcsServerCapability =
-    /** Lists projects, and makes them. Every server that answers this API at all. */
-    | "projects"
-    /** Answers what it knows about one project, including what it read inside the file. */
-    | "project-detail"
-    /** Answers a project's recent revisions. */
-    | "project-history"
-    /** Answers who has an account on it. */
-    | "members"
-    /** Mints a token from a username and password, rather than only accepting a pasted one. */
-    | "password-sign-in";
+export type VcsServerCapability = TeamCapability;
 
 /**
  * What reaching an address came to, before anything has been added.
