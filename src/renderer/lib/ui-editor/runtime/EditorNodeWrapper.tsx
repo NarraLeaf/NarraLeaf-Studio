@@ -47,6 +47,16 @@ type EditorNodeWrapperProps = {
     element: UIElement;
     layout: UILayout;
     isRoot?: boolean;
+    /**
+     * This root is a component definition's root, not a Surface's.
+     *
+     * A Surface root is click-through by rule: it is the whole screen, and letting it take presses
+     * would put a transparent sheet over the game. A component's root is the opposite - it is one
+     * widget an author placed, often the pressable one itself - and it arrives here as a root only
+     * because the definition is rendered as a tree of its own. Without this the rule meant for the
+     * screen was applied to a button, and a card whose root carried the click answered nothing.
+     */
+    isComponentRoot?: boolean;
     /** Flow children are laid out by a flex parent (`nl.container` stack/scroll or `nl.list`); skip absolute x/y. */
     layoutMode?: EditorNodeLayoutMode;
     styleOverrides?: CSSProperties;
@@ -57,6 +67,15 @@ type EditorNodeWrapperProps = {
     useAppearanceInspectorPreview?: boolean;
     listItemScope?: UIListItemScope | null;
     instanceKey?: string;
+    /**
+     * The component definition this element is authored in, or nothing when it is on a Surface.
+     *
+     * Beside the params rather than derivable from them: what an event needs it for is finding the
+     * blueprint that answers, and a definition that declares no params still has one. Without it a
+     * component's widgets heard nothing - the init lifecycle below was handed the id directly and
+     * worked, while every pointer event looked for a Surface blueprint that does not exist.
+     */
+    componentId?: string;
     /** Resolved params of the component instance this element belongs to; null outside one. */
     componentParams?: Record<string, string> | null;
     children?: React.ReactNode;
@@ -125,6 +144,7 @@ export function EditorNodeWrapper({
     element,
     layout,
     isRoot = false,
+    isComponentRoot = false,
     layoutMode = "absolute",
     styleOverrides,
     hasRuntimeOpacityOverride = false,
@@ -134,6 +154,7 @@ export function EditorNodeWrapper({
     useAppearanceInspectorPreview = false,
     listItemScope,
     instanceKey,
+    componentId,
     componentParams,
     children,
 }: EditorNodeWrapperProps) {
@@ -282,15 +303,16 @@ export function EditorNodeWrapper({
     const componentParamsSig = componentParams ? JSON.stringify(componentParams) : "";
     const eventOptions = useMemo(
         () =>
-            listItemScope || instanceKey || componentParamsSig
+            listItemScope || instanceKey || componentId || componentParamsSig
                 ? {
                       listItemScope: listItemScope ?? null,
                       instanceKey,
+                      componentId,
                       componentParams: componentParams ?? undefined,
                   }
                 : undefined,
         // eslint-disable-next-line react-hooks/exhaustive-deps -- componentParamsSig stands in for componentParams
-        [componentParamsSig, instanceKey, listItemScope],
+        [componentId, componentParamsSig, instanceKey, listItemScope],
     );
 
     const isDirectElementEvent = useCallback(
@@ -302,7 +324,7 @@ export function EditorNodeWrapper({
         if (!widgetRuntimeStore) {
             return undefined;
         }
-        if (!interactive || isRoot || interactionDisabled) {
+        if (!interactive || (isRoot && !isComponentRoot) || interactionDisabled) {
             widgetRuntimeStore.clearHoverIf(runtimeElementKey);
             return undefined;
         }
@@ -320,7 +342,7 @@ export function EditorNodeWrapper({
         }
         const frameId = view.requestAnimationFrame(syncMountedHover);
         return () => view.cancelAnimationFrame(frameId);
-    }, [interactionDisabled, interactive, isRoot, runtimeElementKey, widgetRuntimeStore]);
+    }, [interactionDisabled, interactive, isComponentRoot, isRoot, runtimeElementKey, widgetRuntimeStore]);
 
     const dispatchWidgetEvent = useCallback(
         (
@@ -617,7 +639,7 @@ export function EditorNodeWrapper({
             opacity: motionControlsOpacity ? undefined : effectiveOpacity,
             // A passive surface stays click-through all the way down. Setting it on the shell alone
             // does nothing, because this very line is what takes the clicks back.
-            pointerEvents: isRoot || surfacePassive ? "none" : "auto",
+            pointerEvents: (isRoot && !isComponentRoot) || surfacePassive ? "none" : "auto",
             boxSizing: "border-box",
             display: "flex",
             flexDirection: "column",
@@ -638,6 +660,7 @@ export function EditorNodeWrapper({
     }, [
         effectiveOpacity,
         layout,
+        isComponentRoot,
         isRoot,
         layoutMode,
         motionControlsOpacity,
