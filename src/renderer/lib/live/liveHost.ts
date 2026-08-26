@@ -21,6 +21,7 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    uiElementClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
 import {
@@ -413,6 +414,23 @@ export class LiveHost {
             // Nor a record that is gone. The story rows it spoke keep their words under a bare name;
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
+        }
+        if (applied.op === "write-ui") {
+            // Nor an element that is gone. A delta whose removals somebody else held was refused
+            // before it got here, so what this releases is the deleter's own hold - which would
+            // otherwise sit in the room's set naming an element nobody can select until it lapsed.
+            for (const [elementId, record] of Object.entries(applied.parts.elements ?? {})) {
+                if (record === null) {
+                    this.claims.forget(uiElementClaimKey(null, elementId));
+                }
+            }
+            for (const [componentId, delta] of Object.entries(applied.parts.componentElements ?? {})) {
+                for (const [elementId, record] of Object.entries(delta)) {
+                    if (record === null) {
+                        this.claims.forget(uiElementClaimKey(componentId, elementId));
+                    }
+                }
+            }
         }
         // There is deliberately no asset counterpart to those two. A session carries no verb that
         // removes an asset record, so a claim on one can only ever be given back or lapse.

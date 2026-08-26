@@ -115,6 +115,8 @@ export const story = {
         refusedFolderNotEmpty: "该分组里还有分组，没有删除任何内容",
         refusedUIElementGone: "该元素已不存在，本次修改未生效",
         refusedUIBlueprintGone: "该蓝图已不存在，本次修改未生效",
+        refusedElementClaimed: "{name} 正在编辑该元素，本次修改未生效",
+        refusedNodeClaimed: "{name} 正在编辑该节点，本次修改未生效",
         refusedTooLarge: "本次修改过大，无法在实时会话中共享，未生效",
         refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
         refusedNotInSession: "本机已不在该会话中",
