@@ -509,14 +509,20 @@ export class LiveSession {
      * teardown that left either in place would be a project that refuses to save, or an editor
      * handing gestures to a room nobody is in.
      *
-     * ⚠ **Nothing here reaches the server reliably.** Closing the room is an IPC call made while the
-     * page is being torn down, and a reload does not wait for it - which is why a room this window
-     * opened can outlive the window that opened it. {@link resume} is the other half of that, and it
-     * is why this does not try harder here.
+     * ⚠ **Nothing is said to the server, and that is the decision rather than a shortcoming.** A
+     * window going away is a reload as often as it is a goodbye, and this cannot tell the two
+     * apart - so it says nothing and lets the two things that CAN tell them apart do it. A reload
+     * comes back and takes the room up again ({@link resume}); a window that is really closing
+     * withdraws its client instance, and a room whose host has withdrawn is one the server closes.
+     *
+     * What this used to do was close the room on the way out, on an IPC call the page teardown does
+     * not wait for. When it landed, a reload ended the collaboration for everybody in it; when it
+     * did not, the room outlived the window with nobody able to answer an intent. Neither is what
+     * an author who pressed Ctrl+R meant.
      */
     public dispose(): void {
         this.stopFollowing();
-        void this.end("left");
+        void this.end("left", { silently: true });
     }
 
     /**
@@ -1025,7 +1031,14 @@ export class LiveSession {
         await this.deps.version.adopt(revision);
     }
 
-    private async end(cause: LiveSessionEndCause): Promise<void> {
+    /**
+     * Let go of the running session.
+     *
+     * `silently` is for a window that is going away rather than leaving: nothing is published,
+     * nobody is nominated and the room is neither closed nor left, because whether this is a
+     * goodbye or a reload is not knowable here. See {@link dispose}.
+     */
+    private async end(cause: LiveSessionEndCause, options: { silently?: boolean } = {}): Promise<void> {
         const session = this.active;
         if (!session) {
             return;
@@ -1052,18 +1065,22 @@ export class LiveSession {
         // to explain why, and the publication that follows has to be able to flush what is owed.
         this.deps.freeze.lift(session.room.id);
 
-        const closed = session.role === "host" || cause === "host-left";
+        const silent = options.silently === true;
+        const closed = !silent && (session.role === "host" || cause === "host-left");
         // Before the room is closed, because a handover is addressed into a room that still exists.
-        if (session.role === "host" && cause !== "diverged") {
+        if (!silent && session.role === "host" && cause !== "diverged") {
             await this.handOver(session);
         }
-        const said = session.role === "host"
-            // A host leaving ends the room: it held the only copy that counts, and there is no
-            // authority left for an intent to reach. Closing says so rather than leaving the server
-            // to work it out from the last member walking away. What carries on is a NEW room, not
-            // this one - see {@link handOver}.
-            ? session.rooms.close(session.room.id)
-            : session.rooms.leave(session.room.id);
+        const said = silent
+            // A window on its way out says nothing. See {@link dispose}.
+            ? Promise.resolve()
+            : session.role === "host"
+                // A host leaving ends the room: it held the only copy that counts, and there is no
+                // authority left for an intent to reach. Closing says so rather than leaving the
+                // server to work it out from the last member walking away. What carries on is a NEW
+                // room, not this one - see {@link handOver}.
+                ? session.rooms.close(session.room.id)
+                : session.rooms.leave(session.room.id);
         // Only a window whose room closed under it waits for the replacement. A guest that walked
         // out of a room that is carrying on asked to be out of it, and a machine that left because
         // its copy stopped matching would be rejoining with the copy that was wrong.
