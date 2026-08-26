@@ -1,3 +1,4 @@
+import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
@@ -341,6 +342,42 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     }
                 },
             },
+            memory: {
+                // Keyed by repository id rather than by path, for the reason every other identity in
+                // this feature is: a folder gets renamed and a repository does not. Written through
+                // the whole map because the store holds one value per key, and read defensively
+                // because what is on disk was written by some other version of this.
+                remember: hosting => {
+                    void (async () => {
+                        const project = await this.identity(ctx);
+                        if (project === null) {
+                            return;
+                        }
+                        const held = await this.hostedSessions();
+                        const next = { ...held };
+                        if (hosting === null) {
+                            delete next[project.repositoryId];
+                        } else {
+                            next[project.repositoryId] = { story: hosting.story, at: Date.now() };
+                        }
+                        await getInterface().app.state.setGlobalState("team.hostedLiveSessions", next);
+                    })().catch(error => {
+                        // A note that could not be written is a reload that will not come back to
+                        // its room, and nothing else. Never a reason to refuse a session.
+                        console.warn("[LiveSession] could not record what this window is hosting", error);
+                    });
+                },
+                recall: async () => {
+                    const project = await this.identity(ctx);
+                    if (project === null) {
+                        return null;
+                    }
+                    const held = (await this.hostedSessions())[project.repositoryId];
+                    return held && typeof held.story === "string" && typeof held.at === "number"
+                        ? { story: held.story as StoryId, at: held.at }
+                        : null;
+                },
+            },
             history: {
                 forgetStoryScenes: storyId => {
                     ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
@@ -354,6 +391,13 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 return () => clearTimeout(timer);
             },
         };
+    }
+
+    /** What every window on this machine has recorded about a session it was hosting. */
+    private async hostedSessions(): Promise<Record<string, { story: string; at: number }>> {
+        const answer = await getInterface().app.state.getGlobalState("team.hostedLiveSessions");
+        const held = answer.success ? answer.data.value : null;
+        return held !== null && typeof held === "object" ? held : {};
     }
 
     private async identity(ctx: WorkspaceContext): Promise<LiveProjectIdentity | null> {

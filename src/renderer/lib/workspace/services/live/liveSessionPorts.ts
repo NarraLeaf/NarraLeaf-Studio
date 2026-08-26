@@ -313,6 +313,23 @@ export type LiveFreezePort = {
     lift(session: string): void;
 };
 
+/**
+ * The one thing about a session that outlives the window it was running in.
+ *
+ * **Deliberately the smallest fact that could not be recovered from anywhere else.** Everything else
+ * a session knows is the server's - who is in a room, what it is about, what it opened on - and
+ * asking the server is always better than remembering. What the server cannot say is that a room
+ * ENDED because a window went away rather than because somebody left: a room belongs to the window
+ * that opened it and the server closes it either way, so from the next launch the two are the same
+ * event. This is the note that tells them apart, and it is thrown away as soon as it has been read.
+ */
+export type LiveMemoryPort = {
+    /** Say this window is hosting a session on this story, or that it is not any more. */
+    remember(hosting: { story: StoryId } | null): void;
+    /** What this window was hosting when it went away, with when, or null. */
+    recall(): Promise<{ story: StoryId; at: number } | null>;
+};
+
 /** The undo stacks, as much of them as a session touches. */
 export type LiveHistoryPort = {
     /**
@@ -341,6 +358,7 @@ export type LiveSessionDeps = {
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
+    memory: LiveMemoryPort;
     /**
      * Milliseconds from a source that only moves forward, and a delayed run that can be cancelled.
      *

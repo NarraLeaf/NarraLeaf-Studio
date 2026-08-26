@@ -36,6 +36,7 @@ import type { CharacterOpSink } from "../core/CharacterService";
 import { StoryService } from "../story/StoryService";
 import { LiveSession } from "./LiveSession";
 import type { LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
+import { LIVE_CONTINUATION_MS } from "./liveEntry";
 import { IDLE_LIVE_SESSION } from "./liveSessionView";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
@@ -309,6 +310,8 @@ type Window = {
         armed: { session: string; writable: readonly string[] } | null;
     };
     forgotten: string[];
+    /** What this window recorded about a session it was hosting, as `LiveMemoryPort` keeps it. */
+    hosted: { story: StoryId; at: number } | null;
     instance: string | null;
     hasRepository: boolean;
     /** The cast this window holds, and where its edits go while a session is running. */
@@ -441,6 +444,7 @@ function createWindow(world: World, instance: string): Window {
         version: { head: "rev-1", uncommitted: false, conflicts: [], syncTo: null, divergedPushes: 0 },
         freeze: { reason: null, armed: null },
         forgotten: [],
+        hosted: null,
         instance,
         hasRepository: true,
         cast: { characters: {}, order: [], groups: {} },
@@ -595,6 +599,12 @@ function createWindow(world: World, instance: string): Window {
                     window.freeze.reason = null;
                 }
             },
+        },
+        memory: {
+            remember: hosting => {
+                window.hosted = hosting === null ? null : { story: hosting.story, at: window.clock };
+            },
+            recall: async () => window.hosted,
         },
         history: {
             forgetStoryScenes: storyId => window.forgotten.push(storyId),
@@ -1126,6 +1136,50 @@ describe("a live session", () => {
             // And the window itself is out of it: the freeze is lifted and no gesture can become an
             // intent for a room this page is on its way out of.
             expect(host.freeze.armed).toBeNull();
+        });
+
+        it("opens again what this window was hosting when it went away", async () => {
+            // ⚠ The half of a reload the server cannot help with: a room belongs to the window that
+            // opened it, so a window going away ends it there and then - measured both on a
+            // graceful reload and on one killed outright. From the next launch a reload and a
+            // goodbye look the same, so the one window that knows leaves itself a note.
+            await openRoom();
+            const reloaded = createWindow(world, "instance-host");
+            reloaded.hosted = { story: host.storyId, at: reloaded.clock };
+            world.rooms.clear();
+
+            expect(await reloaded.session.resume()).toBe("settled");
+
+            expect(reloaded.session.getView()).toMatchObject({ phase: "active", role: "host" });
+            expect(world.rooms.size).toBe(1);
+            // And the note is the NEW session's, not the one that was read: it is thrown away as
+            // soon as it is read and written again by entering, so a launch that opened a room is
+            // in exactly the state a launch that was asked for one would be.
+            expect(reloaded.hosted).toMatchObject({ story: host.storyId });
+        });
+
+        it("does not reopen a session that ended some time ago", async () => {
+            const reloaded = createWindow(world, "instance-host");
+            reloaded.hosted = { story: host.storyId, at: -LIVE_CONTINUATION_MS - 1 };
+
+            expect(await reloaded.session.resume()).toBe("settled");
+
+            expect(reloaded.session.getView().phase).toBe("idle");
+            expect(world.rooms.size).toBe(0);
+            expect(reloaded.hosted).toBeNull();
+        });
+
+        it("forgets what it was hosting when the author leaves on purpose", async () => {
+            await openRoom();
+            expect(host.hosted).not.toBeNull();
+            await host.session.leave();
+            expect(host.hosted).toBeNull();
+        });
+
+        it("keeps the note when the window itself goes away", async () => {
+            await openRoom();
+            host.session.dispose();
+            expect(host.hosted).toMatchObject({ story: host.storyId });
         });
 
         it("does nothing for a window that was in no room", async () => {
