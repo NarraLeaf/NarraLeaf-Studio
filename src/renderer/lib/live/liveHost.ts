@@ -220,7 +220,12 @@ export type LiveHostDeps = {
      *
      * Asked when an instance takes something, because a claim is recorded against a PERSON: a refusal
      * names one, and an instance id means nothing at all to whoever reads it. Nothing composes it -
-     * the room's own roster is the only thing that knows which account a window signed in as.
+     * the room's own roster is what knows which account a window signed in as.
+     *
+     * ⚠ **The fallback, not the first answer.** A message relayed by a server carries the sender's
+     * account on it, and that is both fresher and from the same authority - see {@link receive}.
+     * This answers for the host's own claims, which no message carries, and for a transport that
+     * says nothing about who spoke.
      *
      * ⚠ **A claim that cannot name a person is not recorded**, which is why the answer may be null
      * rather than falling back to the instance id. A set carrying ids would name nobody in a
@@ -342,8 +347,12 @@ export class LiveHost {
      *
      * `from` is the instance the transport says sent it, not something the message claims about
      * itself - an intent carries no author for that reason, and the effect's `by` comes from here.
+     *
+     * `sentBy` is the account behind that instance, from the same authority and on the same
+     * message. Optional because only a claim needs it, and absent it falls back to `accountOf` -
+     * see {@link claim} for why being told beats looking it up.
      */
-    public receive(message: LiveMessage, from: string): LiveOutbound | null {
+    public receive(message: LiveMessage, from: string, sentBy?: string): LiveOutbound | null {
         switch (message.kind) {
             case "intent":
                 return this.intent(message, from);
@@ -354,7 +363,7 @@ export class LiveHost {
                 // store's revision moving rather than from here, so ONE path covers a claim taken,
                 // one given back, one that lapsed and one forgotten because what it held was
                 // deleted - and a set is never sent twice for one change.
-                this.claim(message, from);
+                this.claim(message, from, sentBy);
                 return null;
             case "effect":
             case "refusal":
@@ -1091,7 +1100,7 @@ export class LiveHost {
      * every kind of claim, and the worst a key for nothing can do is put a name over something nobody
      * in the room is looking at.
      */
-    private claim(message: LiveClaim, from: string): void {
+    private claim(message: LiveClaim, from: string, sentBy?: string): void {
         if (!this.isMember(from)) {
             return;
         }
@@ -1099,7 +1108,17 @@ export class LiveHost {
             this.claims.release(message.key, from);
             return;
         }
-        const account = this.deps.accountOf?.(from) ?? null;
+        // ⚠ **What the transport was told, before what this window worked out.** Both name the same
+        // authority - the server stamps the instance and the account on every message it relays -
+        // but only one of them is on the message. Looking the sender up in the roster asks a copy
+        // that is a delivery behind: the roster arrives on the project's topic and the claim on the
+        // room's, so a member who joined a moment ago can be writing a row before this window has
+        // been told they are here. That gap used to end here, silently, in the branch below - and
+        // silently is the whole of the injury, because an unclaimed row is one somebody else may
+        // take without ever being refused.
+        const account = (sentBy !== undefined && sentBy !== "" ? sentBy : null)
+            ?? this.deps.accountOf?.(from)
+            ?? null;
         if (account === null) {
             // Nothing rather than a claim held by an id nobody would recognise. See `accountOf`.
             return;

@@ -1127,8 +1127,8 @@ export class LiveSession {
             });
         }
 
-        session.stopListening = input.rooms.listen(input.room.id, (payload, from) =>
-            this.onMessage(session, payload, from));
+        session.stopListening = input.rooms.listen(input.room.id, (payload, from, account) =>
+            this.onMessage(session, payload, from, account));
         session.stopWatching = input.rooms.watch(input.project.repositoryId, event =>
             this.onRoomEvent(session, event));
         this.deps.story.setSink(this.sinkFor(session));
@@ -1500,7 +1500,7 @@ export class LiveSession {
 
     /* -------------------------------------------------------------- the messages */
 
-    private onMessage(session: ActiveSession, payload: unknown, from: string): void {
+    private onMessage(session: ActiveSession, payload: unknown, from: string, account: string): void {
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.
@@ -1518,7 +1518,7 @@ export class LiveSession {
             return;
         }
         if (session.host) {
-            const answer = session.host.receive(payload, from);
+            const answer = session.host.receive(payload, from, account);
             if (answer) {
                 // Nothing is adopted here. The entries a paste carries are written inside
                 // {@link applyOp}, along with everything else that effect changed, because the

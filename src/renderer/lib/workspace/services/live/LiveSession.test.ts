@@ -94,11 +94,29 @@ const REMOTE = "lore://server";
 
 /* --------------------------------------------------------------------------- the room */
 
+/**
+ * The account behind one instance, as the server would answer it.
+ *
+ * ⚠ **Deliberately not the instance id.** The two used to be the same string here, which made the
+ * fixture unable to tell a window from the person at it: an implementation that recorded a claim
+ * against the id instead of the account, or looked one up where it should have read the other,
+ * passed every assertion in this file. A room names people; an instance id is not one.
+ */
+const ACCOUNTS: Readonly<Record<string, string>> = {
+    "instance-host": "alice",
+    "instance-guest": "ben",
+    "instance-third": "cleo",
+};
+
+function accountOf(instance: string): string {
+    return ACCOUNTS[instance] ?? instance;
+}
+
 type Bus = {
     /** Everything any window put on the wire, in order, so traffic can be counted rather than guessed. */
     said: unknown[];
-    say(sessionId: string, payload: unknown, from: string): void;
-    listen(sessionId: string, handler: (payload: unknown, from: string) => void): () => void;
+    say(sessionId: string, payload: unknown, from: string, account: string): void;
+    listen(sessionId: string, handler: (payload: unknown, from: string, account: string) => void): () => void;
     watch(project: string, handler: (event: TeamLiveEvent) => void): () => void;
     announce(project: string, event: TeamLiveEvent): void;
     /** Deliver everything that has been said, and everything saying it causes. */
@@ -106,7 +124,7 @@ type Bus = {
 };
 
 function createBus(): Bus {
-    const rooms = new Map<string, Set<(payload: unknown, from: string) => void>>();
+    const rooms = new Map<string, Set<(payload: unknown, from: string, account: string) => void>>();
     const watchers = new Map<string, Set<(event: TeamLiveEvent) => void>>();
     /**
      * Nothing is delivered inside the call that said it.
@@ -120,13 +138,15 @@ function createBus(): Bus {
     const said: unknown[] = [];
     return {
         said,
-        say(sessionId, payload, from) {
+        say(sessionId, payload, from, account) {
             said.push(payload);
             for (const handler of [...(rooms.get(sessionId) ?? [])]) {
                 // A copy per listener: what travels is the payload of a `live.say`, and a window
                 // never holds the object another window sent.
                 const copy = structuredClone(payload);
-                queue.push(() => handler(copy, from));
+                // The instance AND the account, both stamped by the server on the message, exactly
+                // as `live.say` does - see `readLiveMessage`.
+                queue.push(() => handler(copy, from, account));
             }
         },
         flush() {
@@ -165,6 +185,16 @@ type World = {
     rooms: Map<string, TeamLiveSession>;
     /** How many rooms have ever been opened here. Rooms are numbered, as a server's are. */
     opened: number;
+    /**
+     * Whether a roster change is announced to the windows already in the room.
+     *
+     * ⚠ **A real server publishes it on the PROJECT's topic while a room's messages travel on the
+     * ROOM's**, so the two are separate deliveries and either can be missed - a topic torn down
+     * and put back while somebody joins, a socket that dropped between the two. Turning this off
+     * is how a test says "the host was never told this member arrived", which is the one condition
+     * under which a claim used to be discarded in silence.
+     */
+    rosterEvents: boolean;
 };
 
 function createRooms(world: World, self: string, calls: string[]): LiveRooms {
@@ -181,10 +211,10 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 revision: input.revision,
                 // Carried exactly as the server carries it, because it is what a joiner follows.
                 story: input.story,
-                openedBy: self,
+                openedBy: accountOf(self),
                 openedByInstance: self,
                 openedAt: 0,
-                members: [{ instance: self, account: self, label: self, joinedAt: 0 }],
+                members: [{ instance: self, account: accountOf(self), label: self, joinedAt: 0 }],
                 ...(input.title === undefined ? {} : { title: input.title }),
             };
             world.rooms.set(room.id, room);
@@ -201,13 +231,15 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
             }
             const joined: TeamLiveSession = {
                 ...room,
-                members: [...room.members, { instance: self, account: self, label: self, joinedAt: 1 }],
+                members: [...room.members, { instance: self, account: accountOf(self), label: self, joinedAt: 1 }],
             };
             world.rooms.set(room.id, joined);
-            // The roster reaches the windows already in the room, which is what a server does and
-            // what the host needs: a claim is recorded against the ACCOUNT behind an instance, and
-            // the roster is the only thing that knows which account a window signed in as.
-            world.bus.announce(PROJECT, { kind: "live-changed", session: joined });
+            // The roster reaches the windows already in the room, which is what a server does -
+            // on the project's topic, which is not the topic this room's messages travel on. See
+            // `World.rosterEvents` for why a test is allowed to withhold it.
+            if (world.rosterEvents) {
+                world.bus.announce(PROJECT, { kind: "live-changed", session: joined });
+            }
             return { ok: true, value: joined };
         },
         leave: async sessionId => {
@@ -219,7 +251,9 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                     members: room.members.filter(member => member.instance !== self),
                 };
                 world.rooms.set(sessionId, remaining);
-                world.bus.announce(PROJECT, { kind: "live-changed", session: remaining });
+                if (world.rosterEvents) {
+                    world.bus.announce(PROJECT, { kind: "live-changed", session: remaining });
+                }
             }
             return { ok: true, value: {} };
         },
@@ -229,7 +263,7 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
             world.bus.announce(PROJECT, { kind: "live-closed", session: sessionId });
             return { ok: true, value: {} };
         },
-        say: (sessionId, payload) => world.bus.say(sessionId, payload, self),
+        say: (sessionId, payload) => world.bus.say(sessionId, payload, self, accountOf(self)),
         listen: (sessionId, onMessage) => world.bus.listen(sessionId, onMessage),
         watch: (project, onEvent) => world.bus.watch(project, onEvent),
     };
@@ -1091,7 +1125,7 @@ describe("a live session", () => {
     let guest: Window;
 
     beforeEach(() => {
-        world = { bus: createBus(), rooms: new Map(), opened: 0 };
+        world = { bus: createBus(), rooms: new Map(), opened: 0, rosterEvents: true };
         host = createWindow(world, "instance-host");
         guest = createWindow(world, "instance-guest");
     });
@@ -1441,7 +1475,7 @@ describe("a live session", () => {
                     scope: { of: "scene", storyId: guest.storyId, sceneId: guest.sceneId },
                     hash: "a-digest-nobody-computed",
                 }],
-            }, "instance-host");
+            }, "instance-host", accountOf("instance-host"));
             await drain(world.bus);
             expect(guest.freeze.armed).toBeNull();
             const ended = guest.session.getView().ended;
@@ -1762,7 +1796,7 @@ describe("a live session", () => {
             guest.session.claimUIElement(null, "el-button", true);
             await drain(world.bus);
             expect(host.session.getView().claims).toEqual({
-                [uiElementClaimKey(null, "el-button")]: "instance-guest",
+                [uiElementClaimKey(null, "el-button")]: "ben",
             });
 
             edit(host, {
@@ -1896,7 +1930,7 @@ describe("a live session", () => {
 
             guest.session.claimCharacter("c1", true);
             await drain(world.bus);
-            expect(host.session.getView().claims).toEqual({ [characterClaimKey("c1")]: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [characterClaimKey("c1")]: "ben" });
 
             edit(host, { op: "update-character", characterId: "c1", character: record("c1", "Taken") });
             await drain(world.bus);
@@ -1917,8 +1951,8 @@ describe("a live session", () => {
             // An unprefixed set would have let one document's claim answer for the other's, and
             // nothing would have compared the two to notice.
             expect(host.session.getView().claims).toEqual({
-                [storyRowClaimKey("a")]: "instance-guest",
-                [characterClaimKey("a")]: "instance-guest",
+                [storyRowClaimKey("a")]: "ben",
+                [characterClaimKey("a")]: "ben",
             });
         });
 
@@ -2183,7 +2217,7 @@ describe("a live session", () => {
             seedAssets();
             guest.session.claimAsset("a1", true);
             await drain(world.bus);
-            expect(host.session.getView().claims).toEqual({ [assetClaimKey("a1")]: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [assetClaimKey("a1")]: "ben" });
 
             host.assetSink?.handle({
                 op: "update-asset", assetType: "image", assetId: "a1", record: record("a1", "over the top.png"),
@@ -2192,7 +2226,7 @@ describe("a live session", () => {
 
             expect(host.assets.image.a1.name).toBe("room.png");
             expect(host.session.getView().lastRefusal)
-                .toMatchObject({ reason: "row-claimed", op: "update-asset", heldBy: "instance-guest" });
+                .toMatchObject({ reason: "row-claimed", op: "update-asset", heldBy: "ben" });
         });
 
         it("takes a drag back in one press, each row to the folder it came from", async () => {
@@ -2295,14 +2329,14 @@ describe("a live session", () => {
 
             guest.session.claimVariable("v1", true);
             await drain(world.bus);
-            expect(host.session.getView().claims).toEqual({ [variableClaimKey("v1")]: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [variableClaimKey("v1")]: "ben" });
 
             host.variableSink?.handle({ op: "update-variable", variableId: "v1", entry: variable("v1", "Taken") });
             await drain(world.bus);
 
             expect(host.variables.v1.name).toBe("Gold");
             expect(host.session.getView().lastRefusal)
-                .toMatchObject({ reason: "row-claimed", op: "update-variable", heldBy: "instance-guest" });
+                .toMatchObject({ reason: "row-claimed", op: "update-variable", heldBy: "ben" });
         });
 
         it("refuses a write to a named string somebody else has open", async () => {
@@ -2315,14 +2349,14 @@ describe("a live session", () => {
             guest.session.claimLocalizationKey("menu.start", true);
             await drain(world.bus);
             expect(host.session.getView().claims)
-                .toEqual({ [localizationKeyClaimKey("menu.start")]: "instance-guest" });
+                .toEqual({ [localizationKeyClaimKey("menu.start")]: "ben" });
 
             host.translationSink?.handle({ op: "set-key", name: "menu.start", definition: { sourceText: "Taken" } });
             await drain(world.bus);
 
             expect(host.keys?.["menu.start"]).toEqual({ sourceText: "Start" });
             expect(host.session.getView().lastRefusal)
-                .toMatchObject({ reason: "row-claimed", op: "set-key", heldBy: "instance-guest" });
+                .toMatchObject({ reason: "row-claimed", op: "set-key", heldBy: "ben" });
         });
 
         it("takes a declaration back with a removal, which is the only way that verb is reached", async () => {
@@ -2434,7 +2468,7 @@ describe("a live session", () => {
             await joinRoom();
             guest.session.claimTranslation("ja", "text-a", true);
             await drain(world.bus);
-            expect(host.session.getView().claims).toEqual({ [translationClaimKey("ja", "text-a")]: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [translationClaimKey("ja", "text-a")]: "ben" });
 
             host.translationSink?.handle({
                 op: "set-translation", locale: "ja", unitId: "text-a", unit: translation("over the top"),
@@ -2443,7 +2477,7 @@ describe("a live session", () => {
 
             expect(host.translations.ja["text-a"]).toBeUndefined();
             expect(host.session.getView().lastRefusal)
-                .toMatchObject({ reason: "row-claimed", op: "set-translation", heldBy: "instance-guest" });
+                .toMatchObject({ reason: "row-claimed", op: "set-translation", heldBy: "ben" });
         });
 
         it("takes one back with the inverse, and nothing else with it", async () => {
@@ -2506,8 +2540,86 @@ describe("a live session", () => {
             expect(guest.session.getView().claims).toEqual({});
             await drain(world.bus);
 
-            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
+            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
+        });
+
+        it("names the person, not the window - the two are different strings here for that reason", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            // A set carrying instance ids would name nobody in a refusal, and worse: an editor
+            // compares the holder against its own account to decide which rows are somebody
+            // else's, so an id would make an author's own line read as taken by a stranger.
+            expect(host.session.getView().claims[storyRowClaimKey("b")]).toBe("ben");
+            expect(host.session.getView().claims[storyRowClaimKey("b")]).not.toBe("instance-guest");
+        });
+
+        it("takes a guest's claim though the host has not been told that guest is here", async () => {
+            // ⚠ **Two deliveries, and the claim is not the slower one.** A room's messages arrive
+            // on the room's topic; who is in the room arrives on the project's, as its own event
+            // that this window can be a moment behind on or miss outright - a topic torn down and
+            // put back by something else in the same window, a socket that dropped between the
+            // two. The claim used to be looked up in that copy of the roster and DISCARDED IN
+            // SILENCE when it named nobody, so a guest wrote a row that no other screen marked and
+            // that nothing would refuse anybody else - the whole of the injury a claim exists to
+            // prevent, and nothing anywhere said a word. What the host reads now is the account
+            // the server stamped on the message, beside the instance it already trusts from there.
+            await openRoom();
+            world.rosterEvents = false;
+            await joinRoom();
+            expect(host.session.getView().session?.members.map(member => member.account)).toEqual(["alice"]);
+
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
+        });
+
+        it("gives that same row back, though the host still has not been told", async () => {
+            // A give-back is answered by the instance alone, so it has to keep working under
+            // exactly the condition the take above does - otherwise the repair leaves rows held
+            // for ever by somebody the host cannot name.
+            await openRoom();
+            world.rosterEvents = false;
+            await joinRoom();
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            guest.session.claimRow(guest.storyId, "b", false);
+            await drain(world.bus);
+
+            expect(host.session.getView().claims).toEqual({});
+            expect(guest.session.getView().claims).toEqual({});
+        });
+
+        it("carries one guest's claim to another guest, through the host that recorded it", async () => {
+            // Three in a room: the set is broadcast whole to everybody, so what a second guest sees
+            // is not a second path but the same one - and a room of three is where "everybody but
+            // the sender" and "everybody" stop being the same list.
+            const third = createWindow(world, "instance-third");
+            await openRoom();
+            await joinRoom();
+            third.story.replaceScene(
+                third.storyId,
+                third.sceneId,
+                structuredClone(host.story.getStoryDocument(host.storyId).scenes[host.sceneId]),
+            );
+            expect(await third.session.join({ session: "room-1" })).toBeNull();
+            await drain(world.bus);
+
+            guest.session.claimRow(guest.storyId, "b", true);
+            await drain(world.bus);
+
+            expect(third.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
+
+            guest.session.claimRow(guest.storyId, "b", false);
+            await drain(world.bus);
+            expect(third.session.getView().claims).toEqual({});
         });
 
         it("puts the host's own row in the set, through the same door as a guest's", async () => {
@@ -2519,8 +2631,8 @@ describe("a live session", () => {
             host.session.claimRow(host.storyId, "a", true);
             await drain(world.bus);
 
-            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
+            expect(host.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "alice" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "alice" });
         });
 
         it("takes the row out of the set when it is given back", async () => {
@@ -2568,7 +2680,7 @@ describe("a live session", () => {
             await joinRoom();
             guest.session.claimRow(guest.storyId, "b", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
 
             // Nobody says anything and nobody asks for anything; the deadline simply passes.
             host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
@@ -2592,7 +2704,7 @@ describe("a live session", () => {
 
             guest.session.claimRow(guest.storyId, "c", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("c")]: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("c")]: "ben" });
 
             host.clock += DEFAULT_CLAIM_TIMEOUT_MS + 1;
             fireTimers(host);
@@ -2615,7 +2727,7 @@ describe("a live session", () => {
                 await drain(world.bus);
             }
             expect(countClaimsMessages(world) - said).toBe(0);
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
         });
 
         it("stops sweeping once the session is over", async () => {
@@ -2647,7 +2759,7 @@ describe("a live session", () => {
             expect(host.session.getView().lastRefusal).toEqual({
                 reason: "row-claimed",
                 op: "update-block",
-                heldBy: "instance-guest",
+                heldBy: "ben",
             });
             // And the holder still writes its own line, which is the whole point of holding it.
             guest.story.updateBlock(guest.storyId, guest.sceneId, "b", note("b", "hers").payload);
@@ -2674,7 +2786,7 @@ describe("a live session", () => {
             await joinRoom();
             guest.session.claimRow(guest.storyId, "b", true);
             await drain(world.bus);
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "instance-guest" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("b")]: "ben" });
 
             await guest.session.leave();
             expect(guest.session.getView().claims).toEqual({});
@@ -2692,7 +2804,7 @@ describe("a live session", () => {
             host.session.claimRow(host.storyId, "a", true);
             await joinRoom();
 
-            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "instance-host" });
+            expect(guest.session.getView().claims).toEqual({ [storyRowClaimKey("a")]: "alice" });
         });
 
         it("says nothing about a scene of any other story", async () => {
@@ -2829,7 +2941,7 @@ describe("a live session", () => {
 
             guest.session.claimAppTag("t1", true);
             await drain(world.bus);
-            expect(host.session.getView().claims[appTagClaimKey("t1")]).toBe("instance-guest");
+            expect(host.session.getView().claims[appTagClaimKey("t1")]).toBe("ben");
             expect(host.session.getView().claims[dlcClaimKey("t1")]).toBeUndefined();
             expect(host.session.getView().claims[brandColorClaimKey("t1")]).toBeUndefined();
         });

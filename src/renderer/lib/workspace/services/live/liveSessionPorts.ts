@@ -105,8 +105,15 @@ export type LiveRooms = {
     /**
      * Listen to one room. `from` is the instance the server says sent it, never something the
      * message claims about itself. Returns the unsubscribe.
+     *
+     * `account` is the person behind that instance, and it comes from the same place `from` does:
+     * the server stamps both on every message it relays. It is carried because the alternative was
+     * for the host to look the sender up in its own copy of the roster, which is one delivery
+     * behind - a member whose arrival this window has not been told about yet is a member it cannot
+     * name, and a claim it cannot name is a claim it throws away. An empty string is a server too
+     * old to say, which leaves the roster to answer as before.
      */
-    listen(sessionId: string, onMessage: (payload: unknown, from: string) => void): () => void;
+    listen(sessionId: string, onMessage: (payload: unknown, from: string, account: string) => void): () => void;
     /**
      * Watch a project's rooms opening and closing. Returns the unsubscribe.
      *

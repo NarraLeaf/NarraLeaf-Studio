@@ -229,6 +229,31 @@ describe("who hears an event", () => {
         expect(team.clients[0]?.unsubscribed).toEqual(["projects"]);
     });
 
+    it("keeps a topic one window wanted twice until both askers have let go", async () => {
+        // ⚠ **A window is not one asker.** Two independent parts of the workspace routinely want
+        // the same topic - the Team provider draws a project's rooms from `project:<id>/live` while
+        // a live session watches that same topic for the roster of the room it is in - and the
+        // provider re-subscribes whenever what it drew changed. Counting windows made the
+        // provider's ordinary churn tear the session's watch off the socket: the host stopped
+        // being told who had joined, and a claim from a member its roster could not name was
+        // discarded without a word, while intents went on working. It read exactly like the claim
+        // message itself being lost.
+        const team = harness();
+        const only = window(team, 1);
+
+        await team.manager.subscribe(only as never, SERVER.remoteOrigin, "project:p1/live");
+        await team.manager.subscribe(only as never, SERVER.remoteOrigin, "project:p1/live");
+        await team.manager.unsubscribe(only as never, SERVER.remoteOrigin, "project:p1/live");
+
+        expect(team.clients[0]?.unsubscribed).toEqual([]);
+        // And still delivered, which is the half that actually costs something.
+        team.clients[0]?.push("project:p1/live", { kind: "live-changed" });
+        expect(only.events).toHaveLength(1);
+
+        await team.manager.unsubscribe(only as never, SERVER.remoteOrigin, "project:p1/live");
+        expect(team.clients[0]?.unsubscribed).toEqual(["project:p1/live"]);
+    });
+
     it("lets go of a topic when the window that wanted it was closed rather than tidy", async () => {
         const team = harness();
         const only = window(team, 1);
