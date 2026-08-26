@@ -3,8 +3,9 @@
  *
  * `Is Action Held` asks a question the event path cannot answer. An action *fires*, once, and
  * nothing a fired event leaves behind says whether the gesture that raised it is still down. So the
- * state is kept here instead: the keys and the pointer buttons pressed at this moment, and the rule
- * for reading an action's bindings against them.
+ * state is kept here instead: the keys and the pointer buttons pressed at this moment, the gestures
+ * a recogniser has decided are under way, and the rule for reading an action's bindings against
+ * them.
  *
  * One tracker on the window rather than a listener per host, because a hold is a fact about the
  * player's hands and not about any one surface - two surfaces asking whether `advance` is held must
@@ -27,10 +28,18 @@ export type UIHeldInputs = {
     keys: ReadonlySet<string>;
     /** `PointerEvent.button` numbers. */
     buttons: ReadonlySet<number>;
+    /**
+     * Gestures a recogniser has decided are happening right now.
+     *
+     * For the holds no button can answer for. A long press is not "button 0 is down" - the button is
+     * down from the first millisecond, and the press only becomes a long one half a second later -
+     * so the moment it starts is something only whatever recognised it knows.
+     */
+    gestures: ReadonlySet<UIInputPointerGesture>;
 };
 
 /** Nobody is holding anything - what a host with no window to listen to reads. */
-export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set() };
+export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set(), gestures: new Set() };
 
 /**
  * The button whose press produces a gesture, for the gestures that are a press at all.
@@ -48,6 +57,24 @@ const POINTER_GESTURE_HOLD_BUTTONS: Partial<Record<UIInputPointerGesture, number
 /** Which mouse button holds this gesture, or null when the gesture is not a press. */
 export function pointerGestureHoldButton(gesture: UIInputPointerGesture): number | null {
     return POINTER_GESTURE_HOLD_BUTTONS[gesture] ?? null;
+}
+
+/**
+ * The gestures a recogniser reports as held, rather than a button being down reporting it.
+ *
+ * `longPress` is deliberately absent from {@link POINTER_GESTURE_HOLD_BUTTONS} and here instead. A
+ * long press is a press *plus half a second*, and reading it off button 0 would make it held from
+ * the instant the finger landed - so "hold to hide the dialogue" would hide it on every tap, half a
+ * second before the gesture the author asked for has happened.
+ *
+ * Everything not in this set is refused by {@link UIInputHoldTracker.holdGesture}, so a wheel
+ * direction cannot be made sticky by a recogniser that pushed one through by mistake.
+ */
+const RECOGNIZED_HOLD_GESTURES: ReadonlySet<UIInputPointerGesture> = new Set<UIInputPointerGesture>(["longPress"]);
+
+/** Whether this gesture is one a recogniser can report as being held. */
+export function isRecognizedHoldGesture(gesture: UIInputPointerGesture): boolean {
+    return RECOGNIZED_HOLD_GESTURES.has(gesture);
 }
 
 /**
@@ -77,8 +104,13 @@ function heldKeyboardPayload(key: string, keys: ReadonlySet<string>): BlueprintK
  */
 export function isInputBindingHeld(binding: UIInputBinding, held: UIHeldInputs): boolean {
     if (binding.kind === "pointer") {
+        // A gesture a button answers for is answered by the button, which is the cheaper and older
+        // question. Only the gestures no button can describe fall through to what a recogniser said.
         const button = pointerGestureHoldButton(binding.gesture);
-        return button !== null && held.buttons.has(button);
+        if (button !== null) {
+            return held.buttons.has(button);
+        }
+        return held.gestures.has(binding.gesture);
     }
     for (const key of held.keys) {
         if (blueprintKeyboardBindingMatchesEvent(binding.key, heldKeyboardPayload(key, held.keys))) {
@@ -98,6 +130,15 @@ export type UIInputHoldTracker = {
      * `overControls` is a question about: whether the player put the pointer down on a control.
      */
     readPressTarget(gesture: UIInputPointerGesture): EventTarget | null;
+    /**
+     * A recogniser has decided this gesture is happening, and where it went down.
+     *
+     * Refused for anything {@link isRecognizedHoldGesture} does not name, so the set can only ever
+     * hold gestures that are a state rather than an instant.
+     */
+    holdGesture(gesture: UIInputPointerGesture, target: EventTarget | null): void;
+    /** Every recognised gesture is over - the hand left the glass. */
+    releaseGestures(): void;
     dispose(): void;
 };
 
@@ -113,11 +154,15 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
     const keys = new Set<string>();
     const buttons = new Set<number>();
     const pressTargets = new Map<number, EventTarget | null>();
+    const gestures = new Set<UIInputPointerGesture>();
+    const gestureTargets = new Map<UIInputPointerGesture, EventTarget | null>();
 
     const forgetEverything = (): void => {
         keys.clear();
         buttons.clear();
         pressTargets.clear();
+        gestures.clear();
+        gestureTargets.clear();
     };
 
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -159,6 +204,13 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
 
     // A cancelled pointer names no button (`button` reads -1), so there is nothing to release
     // selectively: the browser has taken the pointer away and none of it is held any more.
+    //
+    // Recognised gestures are deliberately left alone here. The touch recogniser is built on touch
+    // events precisely because a browser raises `pointercancel` while the finger is still on the
+    // glass - the moment it claims a drag for native scrolling is one, and so is the moment a
+    // platform's own long press fires. Clearing a held long press on that signal would release the
+    // gesture exactly when it had just been recognised. `touchend` and `touchcancel` end it instead,
+    // and `blur` catches a hand that left with the window.
     const onPointerCancel = (): void => {
         buttons.clear();
         pressTargets.clear();
@@ -178,10 +230,27 @@ export function createInputHoldTracker(view: Window | null | undefined): UIInput
     }
 
     return {
-        read: () => ({ keys: new Set(keys), buttons: new Set(buttons) }),
+        read: () => ({ keys: new Set(keys), buttons: new Set(buttons), gestures: new Set(gestures) }),
         readPressTarget: gesture => {
+            // Where the press landed, by whichever route this gesture is held: a mouse button knows
+            // its own press target, and a recognised gesture was given one when it was recognised.
+            // `overControls` asks the same question of both.
             const button = pointerGestureHoldButton(gesture);
-            return button === null ? null : pressTargets.get(button) ?? null;
+            if (button !== null) {
+                return pressTargets.get(button) ?? null;
+            }
+            return gestureTargets.get(gesture) ?? null;
+        },
+        holdGesture: (gesture, target) => {
+            if (!isRecognizedHoldGesture(gesture)) {
+                return;
+            }
+            gestures.add(gesture);
+            gestureTargets.set(gesture, target);
+        },
+        releaseGestures: () => {
+            gestures.clear();
+            gestureTargets.clear();
         },
         dispose: () => {
             forgetEverything();

@@ -19,7 +19,7 @@
 
 import { afterEach, describe, expect, it } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument } from "@shared/types/ui-editor/document";
-import type { UIInputBinding } from "@shared/types/ui-editor/inputAction";
+import type { UIInputBinding, UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
 import { WidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateStore";
 import { ScopeStoreBridge } from "@/lib/ui-editor/blueprint-runtime/ScopeStoreBridge";
 import { createDevModeBlueprintHostApi } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
@@ -31,8 +31,8 @@ import {
     type UIHeldInputs,
 } from "./inputHoldState";
 
-function held(keys: string[] = [], buttons: number[] = []): UIHeldInputs {
-    return { keys: new Set(keys), buttons: new Set(buttons) };
+function held(keys: string[] = [], buttons: number[] = [], gestures: UIInputPointerGesture[] = []): UIHeldInputs {
+    return { keys: new Set(keys), buttons: new Set(buttons), gestures: new Set(gestures) };
 }
 
 const KEY = (key: string): UIInputBinding => ({ kind: "key", key });
@@ -64,6 +64,16 @@ describe("one binding against the player's hands", () => {
         // button held down is not a double click in progress, however long it is held.
         expect(isInputBindingHeld({ kind: "pointer", gesture: "wheelDown" }, held([], [0, 1, 2]))).toBe(false);
         expect(isInputBindingHeld({ kind: "pointer", gesture: "doubleClick" }, held([], [0]))).toBe(false);
+    });
+
+    it("holds a long press from what recognised it rather than from the button under it", () => {
+        // The whole reason `longPress` is not in the button table. A finger's press puts button 0
+        // down from the first millisecond, and a long press has not happened yet at that point.
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "longPress" }, held([], [0]))).toBe(false);
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "longPress" }, held([], [0], ["longPress"]))).toBe(true);
+        // And the same press still answers for `click`, which is correct: the main button really is
+        // down. Two gestures being held at once is what a held finger is.
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "click" }, held([], [0], ["longPress"]))).toBe(true);
     });
 });
 
@@ -127,7 +137,7 @@ describe("the tracker over a window", () => {
         // here. A hold that outlived this would never end.
         window.dispatchEvent(new Event("blur"));
 
-        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set() });
+        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set() });
     });
 
     it("forgets the rest of the keyboard when Meta is released", () => {
@@ -156,6 +166,46 @@ describe("the tracker over a window", () => {
         expect(tracker.readPressTarget("click")).toBeNull();
     });
 
+    it("holds a recognised long press from the moment it is recognised until the hand leaves", () => {
+        const tracker = attach();
+        const backdrop = document.createElement("div");
+        document.body.appendChild(backdrop);
+
+        // The finger is down but the press is not a long one yet. This is the half-second an author
+        // must not see "held": "hold to hide the dialogue" firing on every tap is the bug.
+        pointer("pointerdown", 0, backdrop);
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "longPress" }, tracker.read())).toBe(false);
+
+        tracker.holdGesture("longPress", backdrop);
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "longPress" }, tracker.read())).toBe(true);
+        // `overControls` asks the same question of a held gesture that it asks of a press: what was
+        // under the finger when it went down.
+        expect(tracker.readPressTarget("longPress")).toBe(backdrop);
+
+        tracker.releaseGestures();
+        expect(isInputBindingHeld({ kind: "pointer", gesture: "longPress" }, tracker.read())).toBe(false);
+        expect(tracker.readPressTarget("longPress")).toBeNull();
+    });
+
+    it("refuses to hold a gesture that is an instant rather than a state", () => {
+        const tracker = attach();
+
+        tracker.holdGesture("wheelDown", document.body);
+
+        // A wheel direction has no duration to hold. Refused at the door so no recogniser can make
+        // one sticky by pushing it through here.
+        expect(tracker.read().gestures.size).toBe(0);
+    });
+
+    it("forgets a held gesture when the window loses focus", () => {
+        const tracker = attach();
+        tracker.holdGesture("longPress", document.body);
+
+        window.dispatchEvent(new Event("blur"));
+
+        expect(tracker.read().gestures.size).toBe(0);
+    });
+
     it("drops a pointer the browser has taken away", () => {
         const tracker = attach();
 
@@ -177,7 +227,7 @@ describe("the tracker over a window", () => {
 
     it("reads nothing held where there is no window to listen to", () => {
         const tracker = createInputHoldTracker(null);
-        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set() });
+        expect(tracker.read()).toEqual({ keys: new Set(), buttons: new Set(), gestures: new Set() });
         expect(tracker.readPressTarget("click")).toBeNull();
     });
 });
