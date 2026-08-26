@@ -389,6 +389,12 @@ export class BrandService extends Service<BrandService> implements IBrandService
 
     /** Move a colour to sit before `beforeId` in the stored order, or last when that is null. */
     public moveColor(id: string, beforeId: string | null): void {
+        // Answered here rather than inside the mutation, because a drag that changes nothing must
+        // not become a message: an operation nobody can see the effect of is still a step in
+        // everybody's room and a press on this author's undo.
+        if (beforeId === id || !this.getColor(id)) {
+            return;
+        }
         if (this.offer({ op: "move-brand-color", colorId: id, beforeId })) {
             return;
         }
