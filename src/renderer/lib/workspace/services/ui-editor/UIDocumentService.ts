@@ -25,7 +25,7 @@ import {
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
-import { applyUIParts, diffUIParts, type LiveUIParts } from "@shared/live/uiParts";
+import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -1553,7 +1553,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 // operations would cost a broadcast, a sequence number and an undo step each.
                 return;
             }
-            if (this.opSink.handle({ op: "write-ui", parts })) {
+            // ⚠ Which of the records were already here travels with the delta. Nothing in a delta's
+            // shape distinguishes a new element from one somebody deleted while it was being
+            // dragged, and applied blind the second of those puts a deleted element back on every
+            // screen in the room with every machine agreeing about it.
+            const updates = uiPartsUpdates(current, parts);
+            if (this.opSink.handle({ op: "write-ui", parts, ...(updates.length === 0 ? {} : { updates }) })) {
                 return;
             }
         }

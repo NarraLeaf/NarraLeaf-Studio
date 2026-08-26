@@ -19,6 +19,7 @@ import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import {
     characterClaimKey,
     storyRowClaimKey,
+    uiElementClaimKey,
     assetClaimKey,
     translationClaimKey,
     type LiveCharacterOp,
@@ -1048,6 +1049,133 @@ describe("a live session", () => {
             host.story.renameScene(other.id, document.chapters[0].sceneIds[0], "Renamed on its own");
             expect(host.story.getStoryDocument(other.id).scenes[document.chapters[0].sceneIds[0]].name)
                 .toBe("Renamed on its own");
+        });
+    });
+
+    describe("the interface and the blueprints in the room", () => {
+        /** What the editor does: hand the sink a delta and let the room decide. */
+        function edit(window: Window, op: LiveUIOp): void {
+            window.uiSink?.handle(op);
+        }
+
+        function editGraphs(window: Window, op: LiveUIGraphOp): void {
+            window.uiGraphSink?.handle(op);
+        }
+
+        /** One element, as the diff at the editor's seam would have produced it. */
+        function moved(x: number): unknown {
+            return {
+                id: "el-button",
+                type: "nl.button",
+                name: "Start",
+                parentId: "el-root",
+                childrenIds: [],
+                layout: { x, y: 10, width: 100, height: 40 },
+                props: {},
+            };
+        }
+
+        it("carries an element from one window to the other", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(guest, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            // Nothing is applied optimistically here either: the element moves when the effect
+            // answering the intent arrives, and not when the gesture was made.
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+
+            await drain(world.bus);
+            expect((host.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+        });
+
+        it("holds an element for its editor and refuses everybody else's write to it", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.session.claimUIElement(null, "el-button", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({
+                [uiElementClaimKey(null, "el-button")]: "instance-guest",
+            });
+
+            edit(host, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(900) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+
+            // The refusal names a person, and the element the guest is inside is untouched.
+            expect(host.session.getView().lastRefusal).toMatchObject({ reason: "row-claimed", op: "write-ui" });
+            expect((host.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+        });
+
+        it("refuses a delta whose element somebody else deleted", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(host, { op: "write-ui", parts: { elements: { "el-button": null } } });
+            await drain(world.bus);
+            expect(guest.ui.elements["el-button"]).toBeUndefined();
+
+            edit(guest, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+
+            expect(guest.session.getView().lastRefusal).toMatchObject({ reason: "ui-element-gone" });
+            expect(host.ui.elements["el-button"]).toBeUndefined();
+        });
+
+        it("carries a blueprint node the same way, on its own document", async () => {
+            await openRoom();
+            await joinRoom();
+
+            editGraphs(guest, {
+                op: "write-ui-graphs",
+                parts: {
+                    graphs: {
+                        "bp-1": {
+                            events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                        },
+                    },
+                },
+                updates: ["bp-1"],
+            });
+            await drain(world.bus);
+
+            for (const window of [host, guest]) {
+                const blueprint = window.uiGraphs.blueprintDocument.blueprints["bp-1"];
+                const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+                expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
+            }
+        });
+
+        it("takes one press of undo to put an element back where it was", async () => {
+            await openRoom();
+            await joinRoom();
+
+            edit(host, {
+                op: "write-ui",
+                parts: { elements: { "el-button": moved(400) as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            });
+            await drain(world.bus);
+            expect((guest.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            for (const window of [host, guest]) {
+                expect((window.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(10);
+            }
         });
     });
 
