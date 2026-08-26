@@ -1514,6 +1514,13 @@ interface IWorkspaceFreezeService extends IService {
      */
     showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
     /**
+     * Freeze, read the paths a merge could not settle as the author's own side, then re-read.
+     *
+     * The state a project opened mid-merge starts in, for a window that syncs into one instead.
+     * `thaw` is not the way out of it - completing or abandoning the merge is.
+     */
+    showMergeConflicts(conflicts: readonly string[]): Promise<WorkspaceReloadResult>;
+    /**
      * Keep the workspace in its current view - `thaw` refuses - until the returned function runs.
      *
      * For anything that rewrites project files from outside the editors: leaving mid-rewrite re-reads
