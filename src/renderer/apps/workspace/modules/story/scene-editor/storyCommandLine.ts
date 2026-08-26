@@ -1686,6 +1686,12 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                 }),
                 holdArg(payload),
+                // Printed only when it is on, and spelled out as `return=true` the way every bare
+                // flag reads back. A row that has never been flagged prints the line it has always
+                // printed, so an existing project's jumps are untouched by the flag existing.
+                arg("return", payload.returnable ? "true" : undefined, {
+                    apply: next => ({ ...payload, returnable: next === "true" ? true : undefined }),
+                }),
             ],
         };
     }

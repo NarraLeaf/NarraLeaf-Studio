@@ -395,6 +395,7 @@ export const storyInspector = {
     },
     jump: {
         targetScene: "目标场景",
+        returnable: "目标场景结束后返回",
     },
     note: {
         label: "备注",
