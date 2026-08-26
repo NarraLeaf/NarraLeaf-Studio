@@ -344,16 +344,20 @@ export function collectSceneFlowContinuations(
         return gated;
     };
     for (const edge of graph.edges) {
-        const unowned = edge.jumps.filter(jump => !ownedJumpIds.has(jump.blockId));
-        if (unowned.length === 0) {
-            continue;
-        }
         const exit = { edgeId: edge.id, target: edge.target };
         // One pair of scenes, two kinds of row: an edge carrying both a plain jump and a returnable
         // one is both a way out and a call, and each half has to be said separately.
-        if (unowned.some(jump => jump.returnable)) {
+        //
+        // Every jump on the edge, owned or not, unlike the exits below. Ownership decides which arm
+        // a way OUT belongs to, and a call is not one: the run goes to the target and comes back to
+        // the scene whichever arm the row sits under. Reading only the unowned rows here would leave
+        // a call written inside a menu option contributing nothing at all - the arm falls through, so
+        // it never reports the edge either - and every ending in the scene it names would then be
+        // one no walk can reach.
+        if (edge.jumps.some(jump => jump.returnable)) {
             pushInto(callsBySceneId, edge.source, exit);
         }
+        const unowned = edge.jumps.filter(jump => !ownedJumpIds.has(jump.blockId));
         const leaving = unowned.filter(jump => !jump.returnable);
         if (leaving.length === 0) {
             continue;
@@ -641,10 +645,29 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
     // Endings inside a called scene are not claimed unreachable. The route walk does not step into
     // a call, so no route can reach one - which is a limit of the enumeration, not a fact about the
     // story. `reachable-endings` walks calls properly and is the check that answers this question.
+    //
+    // And not only the called scene: everything it goes on to reach is behind the same blind spot.
+    // A plain jump taken out of a called scene gives the call up and carries the run on, so those
+    // scenes are entered for real - the walk simply stopped before it could see them. Closed over
+    // the graph's own edges, so a chain of any length is covered by the one rule.
     const calledSceneIds = new Set<StorySceneId>();
+    const beyondCalls: StorySceneId[] = [];
+    const holdEndingsOf = (sceneId: StorySceneId): void => {
+        if (!calledSceneIds.has(sceneId)) {
+            calledSceneIds.add(sceneId);
+            beyondCalls.push(sceneId);
+        }
+    };
     for (const edge of graph.edges) {
         if (edge.jumps.some(jump => jump.returnable)) {
-            calledSceneIds.add(edge.target);
+            holdEndingsOf(edge.target);
+        }
+    }
+    for (let cursor = 0; cursor < beyondCalls.length; cursor += 1) {
+        for (const edge of graph.edges) {
+            if (edge.source === beyondCalls[cursor]) {
+                holdEndingsOf(edge.target);
+            }
         }
     }
 
