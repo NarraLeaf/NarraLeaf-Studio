@@ -316,6 +316,8 @@ type Window = {
     translationSink: { handle(op: LiveLocalizationOp | LiveLocalizationKeyOp): boolean } | null;
     /** The named strings this window holds, and whether it holds the registry at all. */
     keys: Record<string, LocalizationKeyDefinition> | null;
+    /** Whether this window holds a variable registry it could read. */
+    variablesReadable: boolean;
     /** The variable registry entries this window holds, and where its edits go. */
     variables: Record<string, VariableRegistryEntry>;
     variableSink: { handle(op: LiveVariableOp): boolean } | null;
@@ -473,6 +475,7 @@ function createWindow(world: World, instance: string): Window {
         translationSink: null,
         keys: {},
         variables: {},
+        variablesReadable: true,
         variableSink: null,
         takes: { ja: {} },
         takeSink: null,
@@ -546,7 +549,7 @@ function createWindow(world: World, instance: string): Window {
             setSink: sink => {
                 window.variableSink = sink;
             },
-            readable: () => true,
+            readable: () => window.variablesReadable,
             entry: variableId => window.variables[variableId] ?? null,
             applyOp: op => {
                 calls.push(`variables:${op.op}`);
@@ -1519,6 +1522,26 @@ describe("a live session", () => {
             await drain(world.bus);
             expect(host.keys?.["menu.start"]).toBeUndefined();
             expect(guest.keys?.["menu.start"]).toBeUndefined();
+        });
+
+        it("carries neither registry when this machine could not read them", async () => {
+            // ⚠ The invariant, from the other side: a document is writable during a session exactly
+            // when the session can carry its changes. A registry nothing parsed carries nothing - so
+            // it must stay frozen, and an operation about it must be refused rather than applied into
+            // a stand-in that has nothing to do with the file on disk.
+            host.keys = null;
+            host.variablesReadable = false;
+
+            await openRoom();
+
+            const writable = host.freeze.armed?.writable ?? [];
+            expect(writable).not.toContain("editor/variables.json");
+            expect(writable).not.toContain("editor/localization/keys.json");
+
+            host.variableSink?.handle({ op: "update-variable", variableId: "v1", entry: variable("v1", "Coins") });
+            await drain(world.bus);
+            expect(host.session.getView().lastRefusal)
+                .toMatchObject({ reason: "document-not-shared", op: "update-variable" });
         });
 
         it("fingerprints the entry it changed, so a machine that applied it differently is caught", async () => {
