@@ -81,6 +81,12 @@ const goto = (id: string, targetLabel: string): BlockSpec => ({
     payload: { control: "goto", targetLabel },
 });
 const jump = (id: string, targetSceneId: string): BlockSpec => ({ id, kind: "jump", payload: { targetSceneId } });
+/** A returnable jump: the scene it is in is suspended, and the run comes back to the row after it. */
+const call = (id: string, targetSceneId: string): BlockSpec => ({
+    id,
+    kind: "jump",
+    payload: { targetSceneId, returnable: true },
+});
 const ending = (id: string, name: string): BlockSpec => ({ id, kind: "control", payload: { control: "ending", name } });
 const invalid = (id: string, source: string): BlockSpec => ({ id, kind: "invalid", payload: { source } });
 const choice = (id: string, children: BlockSpec[]): BlockSpec => ({
@@ -696,6 +702,136 @@ describe("story/ending-name-duplicate", () => {
             ctxWith(story("s1", "Main", [scene("sc1", "A", [ending("e1", "True End"), ending("e2", "Bad End")])])),
         );
         expect(findings).toEqual([]);
+    });
+});
+
+// --- story/call-cycle -------------------------------------------------------
+
+describe("story/call-cycle", () => {
+    it("reports the call that closes a loop back into the scene it started in", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2"), narration("b2")]),
+                    scene("sc2", "Interlude", [call("b3", "sc1")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCallCycle.message");
+        // The row the author has to change is the one that closes the loop, not the whole chain.
+        expect(findings[0].location).toMatchObject({ blockId: "b3" });
+    });
+
+    it("reports a scene that calls itself", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [call("b1", "sc1")])])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "b1" });
+    });
+
+    it("says nothing about a loop of plain jumps", () => {
+        // A plain jump unloads what it leaves, so nothing is on a call stack and coming back round is
+        // ordinary looping.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b1", "sc2")]),
+                    scene("sc2", "Interlude", [jump("b2", "sc1")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about two scenes calling the same one", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc3"), jump("b2", "sc2")]),
+                    scene("sc2", "Interlude", [call("b3", "sc3")]),
+                    scene("sc3", "Title card", [narration("b4")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a cycle that exists only through a switched-off row", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Interlude", [{ ...call("b2", "sc1"), disabled: true }]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+// --- story/dead-end and returnable jumps ------------------------------------
+
+describe("story/dead-end reads a returnable jump as staying put", () => {
+    it("reports a scene whose last row is a call and has nothing after it", () => {
+        // The call returns and there is nowhere left to go, so play runs off the end here.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b0", "sc3"), call("b1", "sc2")]),
+                    scene("sc2", "Title card", [narration("b2")]),
+                    scene("sc3", "Chapter 2", [narration("b3")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1", blockId: "b1" });
+    });
+
+    it("says nothing about the called scene running off its own end", () => {
+        // That is the return, and it is the only way a called scene ever finishes.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2"), jump("b2", "sc3")]),
+                    scene("sc2", "Title card", [narration("b3")]),
+                    scene("sc3", "Chapter 2", [narration("b4")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("still reports a scene that leaves on one arm and falls through on the other", () => {
+        // The call in the else arm changes nothing: that arm still runs off the end.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [
+                        jump("b0", "sc2"),
+                        condition("c1", [
+                            branch("br1", "if", [jump("j1", "sc2")]),
+                            branch("br2", "else", [call("j2", "sc2")]),
+                        ]),
+                    ]),
+                    scene("sc2", "Chapter 2", [narration("b2")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1", blockId: "c1" });
     });
 });
 

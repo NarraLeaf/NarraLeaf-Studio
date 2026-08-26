@@ -21,6 +21,7 @@ export const EXPERIMENTAL_CONDITION_IDS = [
     "debuggable-build",
     "live-session-freeze",
     "scripted-file-dialog",
+    "slow-live-transfer",
     "unscoped-file-access",
 ] as const;
 
@@ -57,6 +58,12 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         summary: "No native file or folder picker opens. Each one waits as a request on "
             + "window.__NLS_STUDIO_DIALOG__ in the page that raised it, to be answered with a path "
             + "from the page instead of from a system dialog.",
+    },
+    {
+        id: "slow-live-transfer",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}slow-live-transfer`,
+        summary: "A file carried into a live session goes out slowly enough to watch, so the state "
+            + "between a transfer starting and finishing can be looked at rather than inferred.",
     },
     {
         id: "unscoped-file-access",

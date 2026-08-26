@@ -136,6 +136,15 @@ export type AssetBlobPort = {
      * {@link LiveBlobInbox.sawLast}.
      */
     arrived(part: LiveAssetBytePart): { slices: number; sent: boolean };
+    /**
+     * Stop carrying one file: forget the slices in hand, and stop sending or answering for it.
+     *
+     * **Both ends, from whichever end asks.** A transfer is cancelled by deleting the record it is
+     * for, and that deletion reaches every machine in the room - so the one that is sending learns
+     * about it the same way the ones receiving do, and its send loop stops mid-file rather than
+     * finishing a file nothing will name.
+     */
+    abandon(part: LiveAssetBytePart): void;
 };
 
 /**
@@ -891,6 +900,10 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                     console.warn(`[AssetsService] no shard for ${op.assetType}; effect not applied`);
                     return [];
                 }
+                // ⚠ Before the records go, so the sender stops mid-file. A record deleted while its
+                // file was still arriving would otherwise leave the machine that had it pushing
+                // slices for a row nobody has any more. See `cancelTransfers`.
+                this.abandonTransfers(op.assetIds);
                 for (const assetId of op.assetIds) {
                     const record = records[assetId];
                     if (!record) {
@@ -1249,6 +1262,77 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
         this.payloadQueue.push(...this.waitingPayloads.splice(0, this.waitingPayloads.length));
         void this.drainPayloadQueue();
+    }
+
+    /**
+     * Stop the files that are still arriving for these records, and take the records with them.
+     *
+     * ❗ **Cancelling an arrival is deleting the record**, because on every machine but the sender's
+     * the record is all there is: it was applied the moment the operation reached them and the file
+     * has been following ever since. Stopping only the bytes would leave a row nothing can open, on
+     * every screen in the room, with no way to say what happened to it.
+     *
+     * So the one gesture states the ordinary deletion, and the deletion is what stops the bytes -
+     * on the machine that asked, and on the one that is sending, which finds out the same way
+     * everybody else does. It is offered only while a file is arriving, which is also why it does
+     * not ask: nothing an author made is being thrown away, and a file that has not arrived is one
+     * nothing in the project can be pointing at yet.
+     */
+    public cancelTransfers(assetIds: readonly string[]): void {
+        if (!this.opSink) {
+            return;
+        }
+        const byType = new Map<AssetType, string[]>();
+        for (const assetId of assetIds) {
+            const work = this.transferring.get(assetId);
+            if (!work) {
+                // Finished between the menu opening and the row being pressed. Nothing to stop, and
+                // deleting it here would turn a cancel into a delete of a file that did arrive.
+                continue;
+            }
+            const bucket = byType.get(work.assetType);
+            if (bucket) {
+                bucket.push(assetId);
+            } else {
+                byType.set(work.assetType, [assetId]);
+            }
+        }
+        for (const [assetType, ids] of byType) {
+            this.opSink.handle({ op: "delete-assets", assetType, assetIds: ids });
+        }
+    }
+
+    /**
+     * Forget everything that was still coming for these records.
+     *
+     * Called from the deletion's own applier, so it runs on every machine including the sender's -
+     * see {@link cancelTransfers}. Safe for records with nothing in flight, which is almost all of
+     * them.
+     */
+    private abandonTransfers(assetIds: readonly string[]): void {
+        let dropped = false;
+        for (const assetId of assetIds) {
+            const work = this.transferring.get(assetId);
+            if (!work) {
+                continue;
+            }
+            for (const part of work.whole) {
+                this.blobPort?.abandon(part);
+            }
+            this.transferring.delete(assetId);
+            dropped = true;
+        }
+        if (!dropped) {
+            return;
+        }
+        const ids = new Set(assetIds);
+        for (let at = this.waitingPayloads.length - 1; at >= 0; at -= 1) {
+            const work = this.waitingPayloads[at];
+            if (work.do === "write" && ids.has(work.assetId)) {
+                this.waitingPayloads.splice(at, 1);
+            }
+        }
+        this.notifyTransfers(true);
     }
 
     /** Put one file down, making the shard directory first. */

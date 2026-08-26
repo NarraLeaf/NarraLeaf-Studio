@@ -588,6 +588,7 @@ export const story = {
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
         loop: "ループ",
+        returnable: "戻り",
         vol: "音量",
         volume: "音量",
         rate: "速度",
@@ -1075,7 +1076,7 @@ export const story = {
      */
     command: {
         background: { label: "背景", detail: "シーンの背景画像か背景色を決める" },
-        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは解放される" },
+        jump: { label: "ジャンプ", detail: "別のシーンへ移る。「戻り」がなければいまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
         show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },

@@ -124,6 +124,7 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
@@ -153,6 +154,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -1576,6 +1580,20 @@ function resolveGameNodeOutput(
             runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
         );
     }
+    // The three line-scoped readers, node-type gated for the same reason: `text` is one of the most
+    // common port ids in the catalogue, and gating only the one that needs it would leave a rule
+    // whose exception nobody would remember on the next addition.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING && portId === "isWaiting") {
+        // No host, or no line on screen, is "not waiting" rather than `undefined`: the pin is a
+        // non-nullable boolean, and an indicator bound to it must lay out before any game exists.
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isDialogWaiting() === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT && portId === "text") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getDialogText() ?? "";
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR && portId === "isNarrator") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNarrator() === true;
+    }
     // Keyed by node type as well as port, because the two playtime readers publish the same shape:
     // matching on the port alone would give whichever ran first to both.
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME) {
@@ -1826,13 +1844,18 @@ function resolveLayerMountedNodeOutput(
 }
 
 /**
- * `Is Action Held` - whether one of the project's input actions is down right now.
+ * The `Input` family's pure reads - `Is Action Held` and `Get Input Device`.
  *
  * The router that knows lives on the runtime side of the boundary, so it is asked for structurally
  * (see {@link BlueprintInputActionHostApi}) rather than through a declared host-API family. A host
- * that has no input router answers **false** rather than nothing: the pin is a non-nullable boolean,
- * "nobody is holding anything" is the honest reading in an editor preview with no player at the
- * keyboard, and `undefined` here would travel silently down every wire that consumes it.
+ * that has no input router answers with the family's neutral reading rather than nothing, because
+ * `undefined` here would travel silently down every wire that consumes it.
+ *
+ * For `Is Action Held` that reading is **false**: the pin is a non-nullable boolean, and "nobody is
+ * holding anything" is honest in an editor preview with no player at the keyboard. For
+ * `Get Input Device` it is **"pointer"**, which is the same answer the device tracker itself gives
+ * on a machine with no coarse pointer before the player has touched anything - so an author never
+ * has to write a separate arm for "the device could not be read".
  */
 function resolveInputActionNodeOutput(
     nodeType: string,
@@ -1840,6 +1863,13 @@ function resolveInputActionNodeOutput(
     params: Record<string, unknown>,
     runtime?: DataPinResolveRuntime,
 ): unknown {
+    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
+        | { input?: BlueprintInputActionHostApi }
+        | undefined;
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE && portId === "device") {
+        const device = hostApi?.input?.getDevice?.();
+        return device ? String(device) : "pointer";
+    }
     if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
         return undefined;
     }
@@ -1847,9 +1877,6 @@ function resolveInputActionNodeOutput(
     if (!actionId) {
         return false;
     }
-    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
-        | { input?: BlueprintInputActionHostApi }
-        | undefined;
     return hostApi?.input?.isActionHeld?.(actionId) === true;
 }
 
@@ -3576,6 +3603,9 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME ||

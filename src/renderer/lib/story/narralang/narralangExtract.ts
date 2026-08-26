@@ -1261,6 +1261,9 @@ function jumpShape(ctx: NarralangExtractContext, block: StoryBlock, payload: Sto
         verb: "jump",
         slots: {
             scene: asName(name ?? ""),
+            // Printed only when it is on: a row that never carried the flag prints the line it always
+            // printed, so an existing script round-trips byte for byte.
+            returns: payload.returnable ? asWord("return") : undefined,
             ...transitionSlots(ctx, block.id, payload.transition, "scene"),
         },
     };

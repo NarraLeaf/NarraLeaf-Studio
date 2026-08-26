@@ -445,6 +445,7 @@ export const storyInspector = {
 
     jump: {
         targetScene: "Target scene",
+        returnable: "Return after the target scene",
     },
 
     note: {

@@ -64,7 +64,7 @@ export const NARRALANG_WORDS = [
     // Placement, audio buses, stage singletons.
     "left", "center", "right", "bgm", "sound", "background", "backgroundLayer", "stageLayer",
     // Standalone modifiers and video fit.
-    "loop", "once", "muted", "autoFit", "async", "click", "cover", "contain", "fill",
+    "loop", "once", "muted", "autoFit", "async", "click", "return", "cover", "contain", "fill",
 ] as const satisfies readonly NarralangWord[];
 
 /** Fails the build when a word joins the type without joining the list above. */

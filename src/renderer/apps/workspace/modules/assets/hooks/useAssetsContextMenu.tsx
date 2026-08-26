@@ -27,7 +27,7 @@ import { useContextMenu } from "@/lib/components/elements/ContextMenu";
 import { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { AssetCategory } from "@/lib/workspace/services/assets/assetTypes";
 import { Asset, AssetGroup } from "@/lib/workspace/services/assets/types";
-import { contextMenuActsOnSelection, type ContextMenuTargetState } from "../state/assetActionTargets";
+import { contextMenuActsOnSelection, contextMenuTargetIsArriving, type ContextMenuTargetState } from "../state/assetActionTargets";
 import { ClipboardState } from "../state/useClipboard";
 
 export interface UseAssetsContextMenuParams {
@@ -84,6 +84,10 @@ export interface UseAssetsContextMenuParams {
     canCreateAssetSet?: boolean;
     /** How the developer section reports a copied identifier. `UIService.showNotification`. */
     notify?: (message: string, type: "success" | "error") => void;
+    /** How far each file that is still arriving has got, by asset id. Empty when none is. */
+    assetTransfers?: Readonly<Record<string, number>>;
+    /** Stops an arrival and takes its record with it. See `AssetsService.cancelTransfers`. */
+    handleCancelTransfer?: (assetId: string) => void;
 }
 
 export function useAssetsContextMenu({
@@ -112,6 +116,8 @@ export function useAssetsContextMenu({
     handleCreateAssetSet,
     canCreateAssetSet,
     notify,
+    assetTransfers,
+    handleCancelTransfer,
 }: UseAssetsContextMenuParams) {
     const { t, tn } = useTranslation();
     // ⚠ Scoped to the whole asset library, so a live session leaves every row here working. Every
@@ -141,6 +147,23 @@ export function useAssetsContextMenu({
     const contextMenu: ContextMenuDef = useMemo(() => {
         if (!contextMenuTarget) {
             return [];
+        }
+
+        // ❗ **One row while the file is still arriving, and nothing else.** Every other command
+        // here is about a file: exporting it, copying it, swapping its bytes, renaming the thing it
+        // is. None of them has anything to act on yet, and offering them on a row whose file is
+        // halfway across the room is offering work that would be done to nothing. What an author
+        // wants at that moment is to stop it.
+        if (handleCancelTransfer && contextMenuTargetIsArriving(contextMenuTarget, assetTransfers ?? {})) {
+            const asset = contextMenuTarget.item as Asset;
+            return [{
+                id: "cancel-transfer",
+                label: t("assets.menu.cancelTransfer"),
+                onClick: () => {
+                    handleCancelTransfer(asset.id);
+                    closeContextMenu();
+                },
+            }];
         }
 
         const items: ContextMenuDef = [];
@@ -411,7 +434,7 @@ export function useAssetsContextMenu({
         );
 
         return freezeContextMenuRows(withDeveloperRows, freeze.frozen, FREEZE_READ_ONLY_ASSET_MENU_IDS, freeze.reason);
-    }, [canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
+    }, [assetTransfers, handleCancelTransfer, canConvertMedia, canCreateAssetSet, clipboard, closeContextMenu, contextMenuTarget, freeze, handleCopy, handleConvertMedia, handleCut, handleDelete, handleExport, handleImportToGroup, handlePaste, handleRename, handleReplaceContent, handleCreateAssetSet, handleCreateAssetSetAt, handleCreateAssetSetIn, handleCreateGroup, handleCreateMagicTags, handleCreateTextFile, isMultiSelectMode, notify, selectedItems, t, tn]);
 
     return {
         menuState,

@@ -1,19 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { Keyboard, Plus, X } from "lucide-react";
+import { Keyboard, Mouse, Plus, Pointer, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
     formatBlueprintKeyboardBindingFromEvent,
     normalizeBlueprintKeyboardEventKeyName,
 } from "@shared/types/blueprint/graph";
+import { dedupeUIInputBindings, type UIInputBinding } from "@shared/types/ui-editor/inputAction";
 import {
-    UI_INPUT_POINTER_GESTURES,
-    dedupeUIInputBindings,
-    type UIInputBinding,
-} from "@shared/types/ui-editor/inputAction";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+    ContextMenu,
+    useContextMenu,
+    type ContextMenuDef,
+    type ContextMenuItemDef,
+} from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { getInputBindingLabel, getInputPointerGestureLabel } from "./inputBindingLabels";
+import {
+    INPUT_BINDING_DEVICES,
+    getInputBindingDevices,
+    getInputBindingDevicesLabel,
+    getInputBindingLabel,
+    getInputDeviceGestures,
+    getInputDeviceLabel,
+    getInputPointerGestureLabel,
+    type InputBindingDevice,
+    type TranslateFn,
+} from "./inputBindingLabels";
 
 type InputBindingListProps = {
     bindings: readonly UIInputBinding[];
@@ -26,12 +38,43 @@ type InputBindingListProps = {
 
 const MODIFIER_EVENT_KEYS = new Set(["alt", "control", "shift", "meta"]);
 
+/** One picture per device, shared by the chip markings and the add menu's groups. */
+const DEVICE_ICONS: Record<InputBindingDevice, LucideIcon> = {
+    pointer: Mouse,
+    key: Keyboard,
+    touch: Pointer,
+};
+
 function isModifierOnlyEvent(event: KeyboardEvent): boolean {
     return MODIFIER_EVENT_KEYS.has(normalizeBlueprintKeyboardEventKeyName(event.key));
 }
 
 function bindingKey(binding: UIInputBinding): string {
     return binding.kind === "pointer" ? `pointer:${binding.gesture}` : `key:${binding.key}`;
+}
+
+/**
+ * Which devices one chip's binding can be triggered from.
+ *
+ * The chips are one flat row whatever they are bound to, so a key, a scroll and a held finger sit
+ * side by side reading as the same kind of thing. This is the mark that separates them, and it is
+ * the quietest one that can still name two devices at once - a click and the four scroll directions
+ * belong to the mouse and to touch, and both have to be readable rather than one winning.
+ */
+function BindingDevices({ binding, t }: { binding: UIInputBinding; t: TranslateFn }) {
+    const devices = getInputBindingDevices(binding);
+    if (devices.length === 0) {
+        return null;
+    }
+    const label = getInputBindingDevicesLabel(binding, t);
+    return (
+        <span className="flex items-center gap-0.5 text-fg-subtle" role="img" aria-label={label} data-tip={label}>
+            {devices.map(device => {
+                const Icon = DEVICE_ICONS[device];
+                return <Icon key={device} className="h-3 w-3" aria-hidden />;
+            })}
+        </span>
+    );
 }
 
 /**
@@ -133,25 +176,48 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
         };
     }, [addBinding, listening]);
 
+    /**
+     * The gestures on offer, one row per device.
+     *
+     * Grouped rather than flat so that picking a gesture starts from the device it is for, and so an
+     * action bound only to a key shows a touch group with nothing taken in it. A gesture two devices
+     * reach is listed under both and adds the same binding from either, because the device is a
+     * property of the binding rather than a second thing an author chooses.
+     *
+     * The keyboard row arms key capture instead of opening a submenu. It has one way in rather than
+     * a list to choose from, and binding a key is the commonest thing done here - a submenu holding
+     * a single row would charge the commonest path an extra hover to keep the three rows symmetrical.
+     */
     const openAddMenu = (event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
-        const items: ContextMenuDef = UI_INPUT_POINTER_GESTURES.map(gesture => ({
-            id: gesture,
-            label: getInputPointerGestureLabel(gesture, t),
-            disabled: taken.has(`pointer:${gesture}`),
-            onClick: () => {
-                hideMenu();
-                addBinding({ kind: "pointer", gesture });
-            },
-        }));
-        items.push({ id: "sep", separator: true });
-        items.push({
-            id: "key",
-            label: t("uiEditor.inputActions.addKey"),
-            onClick: () => {
-                hideMenu();
-                setListening(true);
-            },
+        const items: ContextMenuDef = INPUT_BINDING_DEVICES.map(device => {
+            const Icon = DEVICE_ICONS[device];
+            const row: ContextMenuItemDef = {
+                id: `device:${device}`,
+                label: getInputDeviceLabel(device, t),
+                icon: <Icon className="h-4 w-4" aria-hidden />,
+            };
+            if (device === "key") {
+                return {
+                    ...row,
+                    onClick: () => {
+                        hideMenu();
+                        setListening(true);
+                    },
+                };
+            }
+            return {
+                ...row,
+                submenu: getInputDeviceGestures(device).map(gesture => ({
+                    id: `${device}:${gesture}`,
+                    label: getInputPointerGestureLabel(gesture, t),
+                    disabled: taken.has(`pointer:${gesture}`),
+                    onClick: () => {
+                        hideMenu();
+                        addBinding({ kind: "pointer", gesture });
+                    },
+                })),
+            };
         });
         setMenuItems(items);
         showMenu(event);
@@ -162,8 +228,9 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
             {(inherited ?? []).map(binding => (
                 <span
                     key={`inherited:${bindingKey(binding)}`}
-                    className="inline-flex min-h-7 items-center rounded-md border border-dashed border-edge px-2 text-2xs text-fg-subtle"
+                    className="inline-flex min-h-7 items-center gap-1 rounded-md border border-dashed border-edge px-2 text-2xs text-fg-subtle"
                 >
+                    <BindingDevices binding={binding} t={t} />
                     {getInputBindingLabel(binding, t)}
                 </span>
             ))}
@@ -172,6 +239,7 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
                     key={bindingKey(binding)}
                     className="inline-flex min-h-7 items-center gap-1 rounded-md border border-edge bg-fill-subtle pl-2 pr-1 text-2xs text-fg"
                 >
+                    <BindingDevices binding={binding} t={t} />
                     {getInputBindingLabel(binding, t)}
                     <button
                         type="button"

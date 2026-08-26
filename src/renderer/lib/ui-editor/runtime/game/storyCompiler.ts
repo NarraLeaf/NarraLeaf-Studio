@@ -2461,7 +2461,12 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
+        const transition = await createTransition(block.payload.transition, ctx, block.id);
+        // A returnable jump takes the config object, because that is where the flag lives; a plain
+        // one keeps handing the transition straight in, which is the call every existing row makes.
+        const chain = block.payload.returnable
+            ? ctx.nlrScene.jumpTo(target, { returnable: true, ...(transition ? { transition } : {}) } as any)
+            : ctx.nlrScene.jumpTo(target, transition as any);
         return [recordStatement(ctx, chain, block)];
     }
 

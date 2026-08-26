@@ -8,11 +8,14 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_BGM_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHARACTER,
     BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT,
+    BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
     BLUEPRINT_NODE_TYPE_GAME_GET_GAME_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_GLOBAL_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
@@ -948,6 +951,88 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             return {
                 outputValues: {
                     color: requireHostApi(ctx).game.getSpeakerColor(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+        displayName: "Is Dialog Waiting",
+        category: "Game",
+        keywords: [
+            "game", "dialog", "dialogue", "waiting", "wait", "complete", "finished", "typing",
+            "typewriter", "indicator", "advance", "continue", "prompt", "nlr",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isWaiting",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Is Waiting",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isWaiting: requireHostApi(ctx).game.isDialogWaiting(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+        displayName: "Get Dialog Text",
+        category: "Game",
+        keywords: [
+            "game", "dialog", "dialogue", "text", "line", "sentence", "message", "say", "nlr",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "text",
+                kind: "output",
+                semantic: "data",
+                valueType: "string",
+                label: "Text",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    text: requireHostApi(ctx).game.getDialogText(),
+                },
+            };
+        },
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
+        displayName: "Is Narrator",
+        category: "Game",
+        keywords: [
+            "game", "dialog", "dialogue", "narrator", "narration", "speaker", "nametag", "nlr",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        isLatent: false,
+        pins: [
+            {
+                id: "isNarrator",
+                kind: "output",
+                semantic: "data",
+                valueType: "boolean",
+                label: "Is Narrator",
+            },
+        ],
+        execute(ctx) {
+            return {
+                outputValues: {
+                    isNarrator: requireHostApi(ctx).game.isNarrator(),
                 },
             };
         },

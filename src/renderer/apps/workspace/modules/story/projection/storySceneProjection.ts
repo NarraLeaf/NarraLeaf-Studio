@@ -232,7 +232,12 @@ function projectBlockLine(
         return { text: `${indent}/condition`, editable: false, prefix: "" };
     }
     if (block.kind === "jump") {
-        return { text: `${indent}/jump ${getSceneName(document?.scenes, block.payload.targetSceneId)}`, editable: false, prefix: "" };
+        const returns = block.payload.returnable ? " return" : "";
+        return {
+            text: `${indent}/jump ${getSceneName(document?.scenes, block.payload.targetSceneId)}${returns}`,
+            editable: false,
+            prefix: "",
+        };
     }
     if (block.kind === "invalid") {
         // Verbatim: the line never parsed, so there is nothing to pretty-print from.

@@ -95,6 +95,7 @@ export type LintRuleId =
     | "story/jump-missing"
     | "story/empty-choice"
     | "story/dead-end"
+    | "story/call-cycle"
     | "story/unreachable-scene"
     | "story/empty-scene"
     | "story/app-tag-unknown"

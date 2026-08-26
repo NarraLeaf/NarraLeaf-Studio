@@ -125,6 +125,11 @@ export const lint = {
             description: "A scene that leaves on some paths and reaches its end on another",
             message: "Play runs off the end of the scene here",
         },
+        storyCallCycle: {
+            title: "Circular call",
+            description: "A returnable jump reaching a scene that can call its own back",
+            message: "Calls a scene that can call this one back",
+        },
         storyUnreachableScene: {
             title: "Unreachable scene",
             description: "A scene nothing can reach from the start",
