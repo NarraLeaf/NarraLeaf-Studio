@@ -194,8 +194,15 @@ function createHarness() {
                 registry.entries[id].defaultValue = defaultValue;
             }
         },
+        // True outside a live session, which is what this harness stands for. Inside one the real
+        // service answers false: removing a variable also empties the blueprint nodes that named it,
+        // and a session does not carry the blueprint document.
+        canDeleteEntry() {
+            return true;
+        },
         deleteEntry(id: string) {
             delete registry.entries[id];
+            return true;
         },
     };
     const uidoc = {

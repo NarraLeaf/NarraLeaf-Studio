@@ -1,7 +1,13 @@
 import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
 import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
+import { uiGraphPartsNodes, type LiveUIGraphParts } from "./uiGraphParts";
+import { uiPartsElements, type LiveUIElementRef, type LiveUIParts } from "./uiParts";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
@@ -561,6 +567,315 @@ export type LiveAssetFolderOp =
       };
 
 /**
+ * Everything that can be done to the interface document.
+ *
+ * **One verb, and it is the only vocabulary in this file that is not a list of gestures** - which is
+ * the answer to "what is one operation" for a document whose forty editing methods all funnel
+ * through one opaque mutator. `@shared/live/uiParts` carries the reasoning; the short of it is that
+ * the finest thing `UIDocumentService` can state truthfully at the point every edit passes through is
+ * *which records the document now holds differently*, and a statement of that form is exhaustive over
+ * gestures by construction rather than by anybody remembering to add a verb.
+ *
+ * One gesture is still one operation: a delta is produced per mutation, so dragging a button into a
+ * different container is one message naming the button and the two containers, and one press of undo
+ * takes it back.
+ *
+ * **Claimed**, over the elements it names - see {@link CLAIMED_OPS}.
+ */
+export type LiveUIOp =
+    /**
+     * The interface document's records, as they now are.
+     *
+     * ⚠ **A delta that will not fit in one message is refused by name rather than split.** Importing
+     * a template or turning a selection into a component restates hundreds of elements, and a room
+     * that watched that arrive in pieces would draw a screen nobody authored - the same rule an
+     * exchange import follows.
+     */
+    | {
+          op: "write-ui";
+          parts: LiveUIParts;
+          /**
+           * The elements this delta changes rather than creates, as the sender's copy held them.
+           *
+           * **The interface document's answer to `row-gone`.** A delta states what the document now
+           * holds, so nothing in its shape tells a new button from one somebody deleted while it was
+           * being dragged - and applied blind, the second of those puts a deleted element back with
+           * every machine agreeing about it, which is the one failure a digest cannot see. The
+           * sender knows which of the two it meant, so it says. See `uiPartsUpdates`.
+           */
+          updates?: readonly LiveUIElementRef[];
+      };
+
+/**
+ * Everything that can be done to the blueprint document.
+ *
+ * The interface document's mirror, one file along, and for the same reason: every canvas gesture
+ * reaches `uigraphs.json` through an opaque updater, so what the owning service can state is which
+ * records changed. See `@shared/live/uiGraphParts` for how fine those records are and why.
+ *
+ * **Claimed**, over the nodes it names.
+ */
+export type LiveUIGraphOp =
+    /** The blueprint document's records, as they now are. */
+    | {
+          op: "write-ui-graphs";
+          parts: LiveUIGraphParts;
+          /** The blueprints this delta changes rather than creates. See `uiGraphPartsUpdates`. */
+          updates?: readonly string[];
+      };
+
+/**
+ * Everything that can be done to the project dictionary.
+ *
+ * **Two verbs for a document with no ids at all**, and that is what shapes both of them. A
+ * dictionary entry is keyed by its own spelling: the term IS the identity, every other field
+ * describes it, and nothing on either side of an edit says that the term on the left and the term
+ * on the right are the same entry. So the address of an entry is a word the author typed, and
+ * renaming one is not a field edit - it is the entry moving house.
+ *
+ * `DictionaryService` reaches its document through one private mutator that takes a function over
+ * the whole list, exactly as the audio mixer and the asset sets do, so the operations here are
+ * stated where the service knows what it MEANS - at `addTerm`, `updateEntry` and `removeTerm` -
+ * rather than at the point the list is rewritten. That is `AssetsService.recordChanged`'s answer to
+ * the same shape of service, one document along.
+ */
+export type LiveDictionaryOp =
+    /**
+     * What the entry at one spelling now is, or that there is none.
+     *
+     * **One verb where the cast has three**, and the reason is the libraries': in this document
+     * "no entry" and "the project does not write that word" are the same state, so a delete verb to
+     * pair with a set verb would invent a distinction the file does not have. `term` is the address
+     * the entry has now; `entry` is what it becomes, and its own `term` may differ - which is what a
+     * rename is, in one operation, because renaming is one gesture in the panel.
+     *
+     * ⚠ **A rename onto a spelling the project already writes is not reachable from Studio** -
+     * `updateEntry` refuses it rather than merging two entries whose readings, variants and notes
+     * would have to be chosen between. A machine that receives one applies it as written, and the
+     * author who sent it keeps the undo entry; see `LiveBefore` for why that undo answers "nothing
+     * was kept".
+     */
+    | { op: "set-dictionary-entry"; term: string; entry: ProjectDictionaryEntry | null }
+    /**
+     * Both of the checks the dictionary drives, as they now stand.
+     *
+     * Whole rather than one switch at a time because they are one record on the document and the
+     * panel writes them through one patch; last-writer-wins, with the story's scene name, since the
+     * loser of that race loses a click.
+     */
+    | { op: "set-dictionary-options"; options: ProjectDictionaryOptions };
+
+/**
+ * Everything that can be done to the project's mixer.
+ *
+ * `AudioTrackService`'s own mutators, one per gesture, for `LiveStoryOp`'s reason: they already
+ * address by id, they already take a relative position, and they are already what every control in
+ * the audio section ends up calling. What they do NOT share is a single point that could state
+ * them - `applyTrackMutation` takes a function over the whole list and can only say "the tracks
+ * changed" - so the operations are stated at the mutators, where the service knows what it meant.
+ *
+ * None of these is claimed. A bus is a name, a fader, a routing choice and a loop switch: nothing
+ * on it accumulates prose, so the loser of a race loses a word or a drag rather than a paragraph
+ * nobody else can see. See {@link CLAIMED_OPS}.
+ */
+export type LiveAudioTrackOp =
+    /**
+     * Add a bus, in front of the sibling named, or last when that is null.
+     *
+     * Separate from `update-audio-track` with `insert-block` and `create-character`, and for their
+     * reason: an update naming a bus that is gone has to be refused so that the author keeps what
+     * they were editing, and one verb that created whatever it could not find would silently bring
+     * back a track somebody else deleted - with every reference that had fallen back to a seeded bus
+     * quietly re-pointing at it.
+     */
+    | {
+          op: "create-audio-track";
+          track: ProjectAudioTrack;
+          /** The bus this one sits in front of in the stored order, or null for last. */
+          beforeId: string | null;
+          /**
+           * Buses to route back into this one, for the creation that undoes a deletion.
+           *
+           * **Carried, where the deletion's own promotion is derived, and the asymmetry is
+           * `create-character.rebind`'s.** Going down, "which buses feed this one" is a question
+           * about the document. Coming back up it is not: those buses now name the deleted track's
+           * own parent, and so do the ones that always did - the two are indistinguishable
+           * afterwards. So the only correct answer is the one recorded when the deletion happened.
+           * Absent for an ordinary creation, which has nothing to reclaim.
+           */
+          reparent?: readonly string[];
+      }
+    /**
+     * Replace one bus's record.
+     *
+     * The whole record rather than a patch, for `update-block`'s reason and one of the mixer's own:
+     * a track's fields hold each other up - a volume is read against the routing it is multiplied
+     * through - and the panel commits a field at a time into a record it then re-normalizes, so a
+     * field-level verb would state something the service never produces.
+     */
+    | { op: "update-audio-track"; trackId: string; track: ProjectAudioTrack }
+    /**
+     * Remove one bus, and let every machine promote what fed into it.
+     *
+     * **One operation for something that rewrites other records, because their share of it is
+     * DERIVED** - the same shape as deleting a character and letting every machine rewrite the rows
+     * that spoke it. The children move to the deleted bus's own parent, which is a fact every
+     * machine can work out from a mixer the room already agrees on, so sending them would be a
+     * second statement of it.
+     *
+     * ⚠ The seeded buses cannot be deleted; a message naming one is refused rather than applied,
+     * because they are where every unresolvable reference lands and what the player's own volume
+     * sliders alias onto.
+     */
+    | { op: "delete-audio-track"; trackId: string }
+    /**
+     * Move one bus in the drawn order, in front of the sibling named or last when that is null.
+     *
+     * Order is not routing - the tree is rebuilt from `parentId`, and re-routing is an
+     * `update-audio-track` - so this changes what the author sees and nothing about what the game
+     * hears.
+     */
+    | { op: "move-audio-track"; trackId: string; beforeId: string | null };
+
+/**
+ * Everything that can be done to the project's asset sets.
+ *
+ * `AssetSetService`'s gestures, and two of them name every set they touch rather than one.
+ * Deleting a set takes the sets drawn inside it, and filing one in a folder takes them along - both
+ * cascades are computable from a document the room already agrees on, so the criterion that decides
+ * a paste's translations would make them derived.
+ *
+ * ⚠ **They are carried anyway, and that is a ruling rather than an oversight.** Neither cascade can
+ * be derived coming BACK: a deletion's records are gone, and a move's old folders are gone with it.
+ * Deriving the forward half while carrying the backward half would be two different answers to
+ * "which sets is this gesture about", and the cascade is a handful of ids in a document whose
+ * digest covers all of it either way. Naming them in both directions is what lets a move be its own
+ * inverse - which is `move-assets`' ruling, one document along.
+ *
+ * None of these is claimed: a set is a name, a filter and an axis, and the loser of a race loses a
+ * word or a drag. See {@link CLAIMED_OPS}.
+ */
+export type LiveAssetSetOp =
+    /**
+     * Declare sets, each in front of the sibling named or last when that is null, as ONE operation.
+     *
+     * The wizard states one. Undoing a deletion states every set the cascade destroyed, which is
+     * why this is plural: a run of single creations would draw a half-restored panel on every other
+     * screen and cost a press per row to take back.
+     */
+    | { op: "create-asset-sets"; creates: readonly { set: AssetSet; beforeId: string | null }[] }
+    /**
+     * Replace one set's record. Renaming, re-filtering and re-axing all write it whole, which is
+     * what `updateSet` is handed - see {@link LiveAudioTrackOp}'s update for the reason.
+     */
+    | { op: "update-asset-set"; setId: string; set: AssetSet }
+    /**
+     * Remove sets, as ONE operation.
+     *
+     * Dissolving a set and deleting a set with its sub-sets are the same edit to this document and
+     * two different things to the author; both arrive here, and the second names every set it
+     * removes. A set that is already gone is not an error - the second of two deletions changes
+     * nothing.
+     */
+    | { op: "delete-asset-sets"; setIds: readonly string[] }
+    /**
+     * File sets, each in its own folder, as ONE operation.
+     *
+     * Each entry carries its own destination so that the operation can also be its own inverse,
+     * which is `move-assets`' shape and its reason: the sets a drag collects were not all in the
+     * same place, and one destination for all of them would make an undo into a rearrangement
+     * nobody asked for.
+     */
+    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] };
+
+/**
+ * Everything that can be done to the project's variable registry.
+ *
+ * **Two verbs, and the addressing is the cast's: one entry, whole.** `VariableRegistryService` has a
+ * mutator per field - a rename, a retype, a default, a description - and each of them is a point
+ * every editing gesture passes through, so the vocabulary could have been per-field. It is not, for
+ * `update-character`'s reason: an entry's fields hold each other up. `valueType` decides what
+ * `defaultValue` means, and retyping a variable in the panel rewrites both in one gesture; a
+ * field-level verb would state half of that and leave every receiving machine to resolve the other
+ * half against its own copy.
+ *
+ * ⚠ **A rename carries nothing else, and that is worth stating because it looks as though it
+ * should.** Every reference to a project variable addresses it by `variableId` - a story expression's
+ * `StoryVariableRef`, a blueprint node's param, a save file's `storageKey`, which a rename
+ * deliberately never touches - so the name is a label and changing it rewrites no other document.
+ * There is nothing here for a receiver to derive.
+ *
+ * ⚠ **The AUTHORED deletion is not here, and `delete-variable` is not it.** Removing a variable the
+ * author chose to remove does not only take the entry: it clears the `savedVariableId` /
+ * `persistentVariableId` params of every `Get`/`Set` node that named it, which is a write to
+ * `editor/ui/uigraphs.json` - a document a session does not carry and the write boundary refuses. A
+ * verb that took the entry and left those nodes behind would give every author in the room a
+ * blueprint that fails at runtime with nothing on screen saying why. So `VariableRegistryService`
+ * refuses that gesture for as long as a sink is installed, exactly as `AssetsService` refuses an
+ * import: the act that cannot travel whole is stopped at the service that owns it, rather than left
+ * to a boundary that would let half of it through.
+ */
+export type LiveVariableOp =
+    /**
+     * Add a variable. The entry arrives whole, with the id its author minted.
+     *
+     * Separate from `update-variable` for the reason `create-character` is separate from
+     * `update-character`: an update naming an entry that is gone has to be refused, and a single verb
+     * that created whatever it could not find would silently put back a variable somebody removed
+     * before the session started.
+     */
+    | { op: "create-variable"; entry: VariableRegistryEntry }
+    /** Replace one entry. The whole entry - see {@link LiveVariableOp}. */
+    | { op: "update-variable"; variableId: string; entry: VariableRegistryEntry }
+    /**
+     * Take one entry back out.
+     *
+     * ⚠ **Reachable only as the inverse of `create-variable`**, the way `restore-asset-folder` is
+     * only reachable as the inverse of a folder deletion - and here that restriction is what makes
+     * the verb correct rather than merely tidy. An author's own deletion has to sweep the blueprint
+     * nodes that named the variable, and a session cannot carry that write; a variable *created
+     * inside this session* has no such nodes, because blueprint editing is frozen for the length of
+     * one, so there is provably nothing to sweep. Undo therefore takes back exactly what the
+     * creation added, and nothing else.
+     *
+     * Claimed with `delete-character`: somebody may have opened the row and started typing a name
+     * into it between the creation and the undo.
+     */
+    | { op: "delete-variable"; variableId: string };
+
+/**
+ * Everything that can be done to the named-string registry - `editor/localization/keys.json`.
+ *
+ * **Two verbs, and they are `LocalizationService`'s own**: `setKey(name, definition)` and
+ * `removeKey(name)` are the only two ways this document ever changes, and every gesture that reaches
+ * it - the add row at the foot of the named-key group, the inline source-text box, the remove button,
+ * the widget inspector's "create a key" dialog - ends at one of them. So the finest thing that can be
+ * stated truthfully at the one point every edit passes through is one key, whole.
+ *
+ * **One verb for creating and for replacing**, unlike the variable pair above and with
+ * `set-character-group`, because the service itself does not distinguish them: a key is addressed by
+ * its NAME, and `setKey` writes whatever name it is given. Splitting it would invent a distinction
+ * the document does not have, and a machine would then have to decide which of two operations an
+ * author typing into a source-text box had produced.
+ *
+ * ⚠ **Removing a key does not touch any translation, and that is the document's own rule rather than
+ * an omission here.** A named key's entries live in each language's library under `key:<name>`, and
+ * `removeKey` leaves them exactly where they are - orphans the library already tolerates, and the
+ * reason an author can take a removal back by declaring the key again and finding every translation
+ * still under it. So this operation reaches one document, and there is nothing for a receiver to
+ * derive.
+ *
+ * ⚠ **There is no rename verb because there is no rename gesture.** The registry is addressed by
+ * name, and Studio offers no way to change one; an author who wants a different name declares it and
+ * removes the old one, which is two operations because it is two acts.
+ */
+export type LiveLocalizationKeyOp =
+    /** What one named key now is. Creating and replacing alike - see {@link LiveLocalizationKeyOp}. */
+    | { op: "set-key"; name: string; definition: LocalizationKeyDefinition }
+    /** Remove one named key. Its translations stay where they are. */
+    | { op: "remove-key"; name: string };
+
+/**
  * Everything a session can be asked to do, whichever document it is about.
  *
  * Flat rather than nested by document, because every consumer of this type switches over `op` and a
@@ -573,7 +888,14 @@ export type LiveOp =
     | LiveLocalizationOp
     | LiveVoiceOp
     | LiveAssetOp
-    | LiveAssetFolderOp;
+    | LiveAssetFolderOp
+    | LiveUIOp
+    | LiveUIGraphOp
+    | LiveDictionaryOp
+    | LiveAudioTrackOp
+    | LiveAssetSetOp
+    | LiveVariableOp
+    | LiveLocalizationKeyOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -621,7 +943,53 @@ export type LiveDocument =
      * either type's shard. That asymmetry is the asset browser's own, and following it here keeps one
      * spelling of "which document" rather than two.
      */
-    | { doc: "asset-groups"; category: string };
+    | { doc: "asset-groups"; category: string }
+    /**
+     * The interface - `editor/ui/uidoc.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, holding every Surface, the
+     * component library and the one flat element map they are built out of. The largest document a
+     * project has, and the reason its operations are a delta of records rather than the document.
+     */
+    | { doc: "ui" }
+    /**
+     * The blueprints - `editor/ui/uigraphs.json`.
+     *
+     * A document of its own beside the interface rather than a second kind of "UI", because the two
+     * are two files and a message names one document. They are edited together constantly - adding a
+     * widget to a Surface reconciles a blueprint for it - and the seam between them is the reason
+     * this one has to be shared at all: a session that left it frozen would announce work-not-saved
+     * on every element anybody added.
+     */
+    | { doc: "ui-graphs" }
+    /**
+     * The project dictionary - `editor/dictionary.json`.
+     *
+     * Unparameterised with the cast, and for its reason: there is one of these per project, so the
+     * kind is the whole address and a session cannot be opened on "some of" it.
+     */
+    | { doc: "dictionary" }
+    /** The project's mixer - `editor/audio-tracks.json`. One per project, with the dictionary. */
+    | { doc: "audio-tracks" }
+    /** The project's asset sets - `editor/asset-sets.json`. One per project. */
+    | { doc: "asset-sets" }
+    /**
+     * The project's variable registry - `editor/variables.json`.
+     *
+     * Not parameterised, with the cast: there is one per project, so `{ doc: "variables" }` is the
+     * whole address.
+     */
+    | { doc: "variables" }
+    /**
+     * The named-string registry - `editor/localization/keys.json`.
+     *
+     * Not parameterised either, and deliberately a kind of its own rather than a `localization`
+     * address with a reserved locale. The two are different formats owned by the same service - one
+     * holds source texts, the other translations of them - and the document registry already keeps
+     * them apart for the same reason (`editor/localization/keys.json` would otherwise match the
+     * per-locale pattern with a locale of `keys`).
+     */
+    | { doc: "localization-keys" };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -669,6 +1037,30 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "delete-asset-folder":
         case "restore-asset-folder":
             return "asset-groups";
+        case "write-ui":
+            return "ui";
+        case "write-ui-graphs":
+            return "ui-graphs";
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return "dictionary";
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return "audio-tracks";
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return "asset-sets";
+        case "create-variable":
+        case "update-variable":
+        case "delete-variable":
+            return "variables";
+        case "set-key":
+        case "remove-key":
+            return "localization-keys";
     }
 }
 
@@ -739,6 +1131,20 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.doc === "asset-groups" && right.category === left.category;
+        case "ui":
+            return right.doc === "ui";
+        case "ui-graphs":
+            return right.doc === "ui-graphs";
+        case "dictionary":
+            return right.doc === "dictionary";
+        case "audio-tracks":
+            return right.doc === "audio-tracks";
+        case "asset-sets":
+            return right.doc === "asset-sets";
+        case "variables":
+            return right.doc === "variables";
+        case "localization-keys":
+            return right.doc === "localization-keys";
     }
 }
 
@@ -757,6 +1163,20 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `assets ${document.assetType}`;
         case "asset-groups":
             return `asset folders ${document.category}`;
+        case "ui":
+            return "interface";
+        case "ui-graphs":
+            return "blueprints";
+        case "dictionary":
+            return "dictionary";
+        case "audio-tracks":
+            return "audio tracks";
+        case "asset-sets":
+            return "asset sets";
+        case "variables":
+            return "variables";
+        case "localization-keys":
+            return "localization keys";
     }
 }
 
@@ -806,6 +1226,31 @@ export function describeLiveDocument(document: LiveDocument): string {
  * `TextField`s, which commit on blur and re-sync from their props: somebody else's edit to the same
  * record arriving mid-sentence takes the sentence with it, silently, which is the injury this rule
  * exists to name. A drag into a folder writes `groupId` and touches nothing anybody typed.
+ *
+ * **Nothing in the dictionary, the mixer or the asset sets is claimed, and the three answers come
+ * from one reading of the same test.** Every field on them is a word: a term and its reading, a
+ * bus's name and its fader, a set's name and the tag it filters on. A draft layer is there - the
+ * dictionary panel's four boxes commit on blur and re-read themselves from the entry - but what it
+ * drafts is a spelling rather than a paragraph, and the loser reads the winner's answer in the box
+ * the moment it arrives. The take's ruling is the one this follows: a claim is worth its ceremony
+ * where the losing author has typing nobody else can see and nothing else would report, and none of
+ * these three has that. The gesture a session actually produces most is adding a term from the
+ * story editor's spelling popover, which has no draft at all.
+ *
+ * ⚠ That ruling turns over the day one of them grows a field somebody writes paragraphs into.
+ * **A variable entry and a named key are both claimed, and they reach the answer by the injury
+ * rather than by the diagnostic.** Neither box keeps a draft the way a `TextField` does - the
+ * variables panel's name and default and the named key's source text are controlled inputs that
+ * write on every keystroke - so the usual question, "does the interface hold a draft of it", says no.
+ * The question behind it says yes: with a session installed the box's value IS the document, so an
+ * edit to the same entry arriving while somebody is composing lands directly under their cursor and
+ * takes what they had typed, with nothing said. That is the same injury a drafted box suffers,
+ * arriving by a different route, and it is what separates these from a scene name or a chapter order -
+ * those are settled in a dialog or a drag, and neither is a box that stays open in front of an author
+ * for as long as a panel is.
+ *
+ * A key's removal is claimed with `delete-character`: taking away the row somebody is inside takes
+ * the sentence they were writing about it.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
@@ -820,6 +1265,16 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-asset",
     "replace-asset-content",
     "delete-assets",
+    // The interface and the blueprints, over the elements and the nodes their deltas name. The test
+    // is the one every other entry answers: the properties panel and a node's parameter editors keep
+    // a half-typed value in their own state and reach the document on a throttle or on blur, so the
+    // loser of a race loses a sentence nobody else can see. See `@shared/live/uiParts`.
+    "write-ui",
+    "write-ui-graphs",
+    "update-variable",
+    "delete-variable",
+    "set-key",
+    "remove-key",
 ]);
 
 /**
@@ -980,6 +1435,62 @@ export function assetClaimKey(assetId: string): LiveClaimKey {
     return `asset:${assetId}`;
 }
 
+/** The claim over one variable registry entry. */
+export function variableClaimKey(variableId: string): LiveClaimKey {
+    return `variable:${variableId}`;
+}
+
+/**
+ * The claim over one named string.
+ *
+ * ⚠ **`named-key:` rather than `key:`**, which is not a stylistic choice: `key:<name>` is already the
+ * translation-unit id a named string has inside every locale library
+ * (`localizationKeyUnitId`), so a claim spelled that way would read as a translation claim to
+ * anybody scanning the set - and the two really do coexist in it, one per language for the same
+ * string.
+ *
+ * The name is the key because the registry is addressed by name; a key name cannot contain a colon
+ * (`isValidLocalizationKeyName`), so the segment after the prefix is unambiguous.
+ */
+export function localizationKeyClaimKey(name: string): LiveClaimKey {
+    return `named-key:${name}`;
+}
+
+/**
+ * The claim over one interface element.
+ *
+ * The component id is in the key because a component definition owns its own element map: an element
+ * of a component is not in `document.elements` at all, and the two maps are two address spaces even
+ * though both are keyed by uuid. Spelling the component in is what keeps a claim over an element of
+ * the library from being read as one over an element of a Surface.
+ */
+export function uiElementClaimKey(componentId: string | null, elementId: string): LiveClaimKey {
+    return `${UI_ELEMENT_CLAIM_PREFIX}${componentId ?? ""}:${elementId}`;
+}
+
+/**
+ * What every interface element's claim key starts with.
+ *
+ * Exported because a panel reading the set has to filter by it, and a prefix spelled a second time
+ * at the reader is exactly how the story editor's marks went missing for a fortnight while every
+ * assertion in its tests agreed with the mistake.
+ */
+export const UI_ELEMENT_CLAIM_PREFIX = "ui-element:";
+
+/**
+ * The claim over one blueprint node.
+ *
+ * ⚠ **Both the blueprint and the graph are in the key.** Node ids are not unique across the
+ * document: the seeded entry nodes use fixed ids - `global.appBoot` is in every project - so a key
+ * naming the node alone would have one Surface's boot node holding every other Surface's.
+ */
+export function uiNodeClaimKey(blueprintId: string, graphId: string, nodeId: string): LiveClaimKey {
+    return `${UI_NODE_CLAIM_PREFIX}${blueprintId}:${graphId}:${nodeId}`;
+}
+
+/** What every blueprint node's claim key starts with. See {@link UI_ELEMENT_CLAIM_PREFIX}. */
+export const UI_NODE_CLAIM_PREFIX = "ui-node:";
+
 /**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
@@ -1044,6 +1555,40 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
             // layer behind it. See {@link CLAIMED_OPS}.
             return [];
+        case "write-ui":
+            // Every element the delta names, and one held element refuses the whole gesture - the
+            // rule every batch follows. Half a layout change is a screen nobody arranged.
+            return uiPartsElements(op.parts).map(ref => uiElementClaimKey(ref.componentId, ref.elementId));
+        case "write-ui-graphs":
+            // Every node the delta names, on the same terms. The blueprint's own record, its graph
+            // slots and the owner records are not claimed: none of them has a draft layer behind it,
+            // and losing one costs a name.
+            return uiGraphPartsNodes(op.parts).map(ref => uiNodeClaimKey(ref.blueprintId, ref.graphId, ref.nodeId));
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            // Nothing to hold either: every field on these three documents is a word, so the loser
+            // of a race loses a word and reads the winner's. See {@link CLAIMED_OPS}.
+            return [];
+        case "update-variable":
+        case "delete-variable":
+            return [variableClaimKey(op.variableId)];
+        case "create-variable":
+            // Named for the same reason `create-character` names its record: the key is what the
+            // panel holds once the row exists. Whether it is CHECKED is `CLAIMED_OPS`' answer, and
+            // there it is not - the id was minted by whoever built the entry.
+            return [variableClaimKey(op.entry.id)];
+        case "set-key":
+            return [localizationKeyClaimKey(op.name)];
+        case "remove-key":
+            return [localizationKeyClaimKey(op.name)];
     }
 }
 
@@ -1101,7 +1646,70 @@ export type LiveDigestScope =
      * The asset shard's counterpart, and whole for the same two reasons - a folder deletion reaches
      * across every folder below it, and a section's folder list is a handful of four-field records.
      */
-    | { of: "asset-groups"; category: string };
+    | { of: "asset-groups"; category: string }
+    /**
+     * One Surface of the interface, with its whole element tree.
+     *
+     * The interface document's answer to a story's scene, and chosen for the same reason: it is the
+     * unit an author works inside, so a fingerprint of it is paid on the edits that reach it and
+     * never on the rest of the project. A whole-document digest would spend milliseconds of every
+     * machine's own thread on every nudge of every element - this repository has already measured
+     * what a per-document digest costs and refused it once.
+     */
+    | { of: "ui-surface"; surfaceId: string }
+    /** One component definition of the library, with its own element map. The Surface's counterpart. */
+    | { of: "ui-component"; componentId: string }
+    /**
+     * Everything about the interface document that no Surface and no component covers.
+     *
+     * The two ordered lists, the struct table, the input actions, the document's name, and any
+     * element that belongs to no Surface. Deliberately cheap - it carries no element bodies except
+     * those orphans - because it is computed on every effect about the interface.
+     */
+    | { of: "ui-shell" }
+    /**
+     * One blueprint, whole - its record and every graph in it.
+     *
+     * The unit the blueprint document is authored in, and small enough to hash on every edit: the
+     * largest blueprint in the shipped skeleton is 25 KB.
+     */
+    | { of: "ui-blueprint"; blueprintId: string }
+    /**
+     * Everything about the blueprint document that no blueprint covers: the owner records, the older
+     * root-level graphs, and which blueprints exist at all.
+     */
+    | { of: "ui-graph-shell" }
+    /**
+     * The project dictionary, whole.
+     *
+     * One of three whole-document scopes added together, and `@shared/live/projectTables` gives the
+     * reasons they share. The dictionary has one of its own: its entries are keyed by the author's
+     * own spelling, so a rename is one unit leaving and another arriving, and a per-entry digest
+     * would have to fingerprint two units for one operation to say anything at all.
+     */
+    | { of: "dictionary" }
+    /**
+     * The project's mixer, whole.
+     *
+     * Its own reason beside the shared two: deleting a bus promotes the buses that fed it, which is
+     * derived work reaching records the operation never names - and a whole-document digest covers
+     * it without the applier having to report what it touched.
+     */
+    | { of: "audio-tracks" }
+    /** The project's asset sets, whole. Its cascades reach across the list for the mixer's reason. */
+    | { of: "asset-sets" }
+    /**
+     * One variable registry entry.
+     *
+     * Per entry rather than per document, which is the ordinary rule and needs no exception here:
+     * every operation about this registry names exactly one entry, so nothing reaches across them the
+     * way an import reaches across a locale library's entries. The registry is also a map keyed by
+     * id with no order of its own - the panel sorts by name as it draws - so there is no shape left
+     * over for a document-wide scope to cover.
+     */
+    | { of: "variable"; variableId: string }
+    /** One named string. Per key, for the variable entry's reasons - the registry is a keyed map. */
+    | { of: "localization-key"; name: string };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -1164,6 +1772,40 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "delete-asset-folder":
         case "restore-asset-folder":
             return { of: "asset-groups", category: op.category };
+        // ⚠ Null, and every unit these two change is reported by the applier instead. Which Surface
+        // an element belongs to is a question about the tree, not about the message - and for an
+        // element that has just been deleted the only place left to ask is the state before the
+        // operation, which this function does not have. A scope derived from the message alone would
+        // fingerprint everything except the Surface the author just changed. See `uiPartsTouched`.
+        case "write-ui":
+        case "write-ui-graphs":
+            return null;
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return { of: "dictionary" };
+        // ⚠ A deletion promotes the buses that fed the one it removes, and none of them is named
+        // here - which is exactly why the unit is the whole document rather than one record.
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return { of: "audio-tracks" };
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return { of: "asset-sets" };
+        case "create-variable":
+            return { of: "variable", variableId: op.entry.id };
+        case "update-variable":
+        case "delete-variable":
+            return { of: "variable", variableId: op.variableId };
+        // A removal names a key that will not be there afterwards, and that is exactly what the
+        // digest states: absence is a value here, as it is for a character record, so a machine that
+        // failed to apply the removal disagrees rather than being excused.
+        case "set-key":
+        case "remove-key":
+            return { of: "localization-key", name: op.name };
     }
 }
 
@@ -1184,6 +1826,26 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.of === "asset-groups" && right.category === left.category;
+        case "ui-surface":
+            return right.of === "ui-surface" && right.surfaceId === left.surfaceId;
+        case "ui-component":
+            return right.of === "ui-component" && right.componentId === left.componentId;
+        case "ui-shell":
+            return right.of === "ui-shell";
+        case "ui-blueprint":
+            return right.of === "ui-blueprint" && right.blueprintId === left.blueprintId;
+        case "ui-graph-shell":
+            return right.of === "ui-graph-shell";
+        case "dictionary":
+            return right.of === "dictionary";
+        case "audio-tracks":
+            return right.of === "audio-tracks";
+        case "asset-sets":
+            return right.of === "asset-sets";
+        case "variable":
+            return right.of === "variable" && right.variableId === left.variableId;
+        case "localization-key":
+            return right.of === "localization-key" && right.name === left.name;
     }
 }
 
@@ -1342,6 +2004,19 @@ export type LiveRefusalReason =
      */
     | "asset-id-taken"
     /**
+     * The variable registry entry is gone.
+     *
+     * The registry's answer to `character-gone`, carrying the same instruction: the author's row is
+     * full of their own typing and it is theirs to keep. An update that created what it could not
+     * find would put back a variable somebody removed, and every blueprint node that used to name it
+     * would still be empty.
+     *
+     * ⚠ Reachable even though a session carries no verb that removes one: the room opens on a
+     * committed revision, and an entry can be missing from this registry because the author who
+     * joined never had it.
+     */
+    | "variable-gone"
+    /**
      * A folder with folders inside it, and the author did not ask for those to go too.
      *
      * ⚠ There is deliberately no refusal for "the bytes have not arrived". The host decides about
@@ -1352,6 +2027,34 @@ export type LiveRefusalReason =
      * assets that arrived by every other route.
      */
     | "folder-not-empty"
+    /**
+     * An interface element the delta was changing is gone.
+     *
+     * The interface's answer to `row-gone`, and it carries the same instruction: what the author has
+     * been dragging or typing is theirs, and nothing in this refusal may be read as licence to
+     * discard it. Applying instead would put a deleted element back on every screen in the room, with
+     * every machine agreeing about it - a divergence-free way of losing somebody's deletion, which
+     * is precisely the failure no digest can see. See `LiveUIOp.updates`.
+     */
+    | "ui-element-gone"
+    /** A blueprint the delta was changing is gone. The interface element's counterpart. */
+    | "ui-blueprint-gone"
+    /**
+     * The bus is gone. Somebody deleted it after the author reached for it.
+     *
+     * The mixer's answer to `row-gone`, carrying the same instruction: the panel the author is
+     * looking at is full of their own typing and it is theirs to keep. An update that created what
+     * it could not find would bring back a bus somebody deleted, and every reference that had fallen
+     * back to a seeded one would quietly re-point at it.
+     */
+    | "track-gone"
+    /**
+     * The asset set is gone. The mixer's `track-gone`, one document along.
+     *
+     * ⚠ Reachable even against a document nobody deleted from: a session opens on a committed
+     * revision, and a set can be missing from this list because the author who joined never had it.
+     */
+    | "set-gone"
     /**
      * The operation will not fit in one payload.
      *
@@ -1527,6 +2230,34 @@ export type LiveBlobNeeded = {
     missing: readonly number[];
 };
 
+/* ------------------------------------------------------------------ carrying on */
+
+/**
+ * A host saying the room is about to close and who is expected to open the next one.
+ *
+ * **The room ends; the collaboration does not have to.** A room's authority is the window that
+ * opened it, and the protocol has no verb that moves that authority - so continuing means a new room
+ * on the same story, opened by somebody who is still there. This is the only part of that which
+ * cannot be worked out independently: every window can compute the same successor from the same
+ * roster, but the rosters differ by whatever event has not arrived yet, and two machines opening a
+ * room each is two rooms.
+ *
+ * ⚠ **`revision` is not decoration.** Exactly one machine publishes a session's result and everybody
+ * else takes it - two machines recording the same content is two histories that will not merge - so
+ * the leaving host pushes and names what it pushed, and the successor puts its tree on that version
+ * before opening anything. A successor that published its own copy instead would fork the project
+ * against the host that just left it.
+ */
+export type LiveHandover = {
+    kind: "handover";
+    /** The instance expected to open the next room. */
+    to: string;
+    /** The story the next room is about, so nobody follows a room about something else. */
+    story: string;
+    /** What the leaving host published, and what the next room opens on. */
+    revision?: string;
+};
+
 /** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
@@ -1537,7 +2268,8 @@ export type LiveMessage =
     | LiveResync
     | LiveCatchUp
     | LiveBlobChunk
-    | LiveBlobNeeded;
+    | LiveBlobNeeded
+    | LiveHandover;
 
 /**
  * Whether a value is a message this build understands.
@@ -1560,5 +2292,6 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "resync"
         || kind === "catch-up"
         || kind === "blob"
-        || kind === "blob-needed";
+        || kind === "blob-needed"
+        || kind === "handover";
 }

@@ -1,6 +1,7 @@
 import {
     CLAIMED_OPS,
     characterClaimKey,
+    localizationKeyClaimKey,
     opAddresses,
     opBelongsTo,
     opClaimKeys,
@@ -21,9 +22,20 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    uiElementClaimKey,
+    variableClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionCarries,
+    NO_LIVE_INTERFACE,
+    NO_LIVE_LOCALES,
+    NO_LIVE_REGISTRIES,
+    type LiveSessionInterface,
+    type LiveSessionLocales,
+    type LiveSessionRegistries,
+} from "@shared/live/sharedDocuments";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -69,6 +81,29 @@ export type LiveHostDeps = {
     assetTypes?: readonly string[];
     /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
     assetCategories?: readonly string[];
+    /**
+     * Whether this session carries the interface and its blueprints.
+     *
+     * A flag rather than a list: there is one of each per project. Both or neither - see
+     * `LiveSessionInterface` for why one without the other is not a shape this can take.
+     */
+    ui?: LiveSessionInterface;
+    /**
+     * Which of the two project-level registries this session carries.
+     *
+     * Booleans rather than a list, because neither is parameterised - and read rather than assumed,
+     * for {@link locales}' reason: a registry this machine could not parse is one no operation can be
+     * applied to.
+     */
+    registries?: LiveSessionRegistries;
+    /**
+     * Whether one variable registry entry is there right now.
+     *
+     * The registry's answer to {@link readCharacter}, and a boolean for `hasAsset`'s reason: presence
+     * is the whole of what is asked, and handing the entry over would invite a later reader to plan
+     * against a copy instead of against the document.
+     */
+    hasVariable(variableId: string): boolean;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -96,6 +131,27 @@ export type LiveHostDeps = {
      * from one record.
      */
     readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
+    /**
+     * Whether one interface element is in the document right now.
+     *
+     * A boolean, with `hasAsset`: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy rather than against the document.
+     */
+    hasUIElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. The element's counterpart. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Whether one bus is in the mixer right now.
+     *
+     * A boolean with {@link hasAsset} rather than the record with {@link readCharacter}, and for
+     * that method's reason: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy instead of against the document.
+     *
+     * Permissive when absent, so a caller that has not wired the mixer yet gets a host that works.
+     */
+    hasAudioTrack?(trackId: string): boolean;
+    /** Whether one asset set is declared right now. The mixer's, one document along. */
+    hasAssetSet?(setId: string): boolean;
     /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
@@ -196,9 +252,26 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "create-assets": true,
     "replace-asset-content": true,
     "delete-assets": true,
+    "write-ui": true,
+    "write-ui-graphs": true,
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
+    "set-dictionary-entry": true,
+    "set-dictionary-options": true,
+    "create-audio-track": true,
+    "update-audio-track": true,
+    "delete-audio-track": true,
+    "move-audio-track": true,
+    "create-asset-sets": true,
+    "update-asset-set": true,
+    "delete-asset-sets": true,
+    "move-asset-sets": true,
+    "create-variable": true,
+    "update-variable": true,
+    "delete-variable": true,
+    "set-key": true,
+    "remove-key": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -273,6 +346,11 @@ export class LiveHost {
                 // Bytes in flight. The host has no more to do with them than anybody else: a slice
                 // changes no document and takes no sequence number, and the machine that holds the
                 // file answers a request for the ones it is short of. See `LiveBlobChunk`.
+                return null;
+            case "handover":
+                // About the room rather than about the document, so it is settled before a message
+                // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one
+                // is reading its own, coming back off the topic.
                 return null;
         }
     }
@@ -389,7 +467,34 @@ export class LiveHost {
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
         }
+        if (applied.op === "write-ui") {
+            // Nor an element that is gone. A delta whose removals somebody else held was refused
+            // before it got here, so what this releases is the deleter's own hold - which would
+            // otherwise sit in the room's set naming an element nobody can select until it lapsed.
+            for (const [elementId, record] of Object.entries(applied.parts.elements ?? {})) {
+                if (record === null) {
+                    this.claims.forget(uiElementClaimKey(null, elementId));
+                }
+            }
+            for (const [componentId, delta] of Object.entries(applied.parts.componentElements ?? {})) {
+                for (const [elementId, record] of Object.entries(delta)) {
+                    if (record === null) {
+                        this.claims.forget(uiElementClaimKey(componentId, elementId));
+                    }
+                }
+            }
+        }
         // There is deliberately no asset counterpart to those two. A session carries no verb that
+        if (applied.op === "delete-variable") {
+            // Nobody is inside a registry row that is gone.
+            this.claims.forget(variableClaimKey(applied.variableId));
+        }
+        if (applied.op === "remove-key") {
+            // Nor a named string that is gone. Its translations stay where they are, but the row
+            // that held the source text is not there for anybody to be inside any more.
+            this.claims.forget(localizationKeyClaimKey(applied.name));
+        }
+        // There is deliberately no asset counterpart to those. A session carries no verb that
         // removes an asset record, so a claim on one can only ever be given back or lapse.
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
@@ -721,6 +826,70 @@ export class LiveHost {
                 // them is drafted anywhere, so there is nothing a race can destroy.
                 return { op };
 
+            case "set-dictionary-entry":
+                // Nothing to check, and the reason is the translation library's: in this document an
+                // entry that is not there is not a state to be found missing - it is what a word the
+                // project does not write looks like. So an operation naming a term nobody has is an
+                // author teaching the project a spelling, which is the ordinary case rather than a
+                // race. Unclaimed, so there is nothing else to ask.
+                return { op };
+
+            case "set-dictionary-options":
+                // Last-writer-wins with the story's name: two people turning a check on and off is
+                // two edits, and the loser lost a click.
+                return { op };
+
+            case "create-audio-track":
+            case "create-asset-sets":
+                // Not checked against what is already there, and not claimed - `create-character`'s
+                // reason exactly: the ids were minted by whoever built the records, so one already
+                // present is a uuid collision rather than a race, and a retry is answered by the
+                // receipts. The creation that undoes a deletion names ids that have just left.
+                return { op };
+
+            case "update-audio-track":
+            case "move-audio-track":
+            case "delete-audio-track": {
+                if (this.deps.hasAudioTrack && !this.deps.hasAudioTrack(op.trackId)) {
+                    // ⚠ Says the bus is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would bring back a bus somebody deleted, and every reference
+                    // that had fallen back to a seeded one would quietly re-point at it.
+                    return { refuse: "track-gone" };
+                }
+                // ⚠ A deletion naming one of the three seeded buses is deliberately NOT refused
+                // here. It cannot be produced by this build - `deleteTrack` answers false before a
+                // sink is ever asked - and the normalizer re-seeds a missing built-in on every
+                // machine, so the room converges on the same mixer either way. A refusal nobody can
+                // reach is a refusal nobody maintains.
+                return { op };
+            }
+
+            case "update-asset-set": {
+                if (this.deps.hasAssetSet && !this.deps.hasAssetSet(op.setId)) {
+                    return { refuse: "set-gone" };
+                }
+                return { op };
+            }
+
+            case "delete-asset-sets":
+                // Deliberately tolerant of a set that is already gone, with
+                // `delete-character-group`: the second of two deletions changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return { op };
+
+            case "move-asset-sets": {
+                // Whole or not at all, and checked before a single row moves - the rule every batch
+                // follows. Half a drag is an arrangement the author never asked for, and the half
+                // that landed would look exactly like the whole of it.
+                for (const move of op.moves) {
+                    if (this.deps.hasAssetSet && !this.deps.hasAssetSet(move.setId)) {
+                        return { refuse: "set-gone" };
+                    }
+                }
+                return { op };
+            }
+
             case "delete-asset-folder": {
                 const folders = this.deps.readAssetFolders(op.category);
                 if (!folders || !folders[op.folderId]) {
@@ -736,6 +905,62 @@ export class LiveHost {
                 }
                 return { op };
             }
+
+            case "write-ui": {
+                // Whole or not at all, and the presence check comes first: an element this delta was
+                // *changing* has to still be there, or applying would resurrect it on every screen
+                // in the room with every machine agreeing about it. Creations are not checked - the
+                // ids were minted by whoever built the records.
+                for (const ref of op.updates ?? []) {
+                    if (!this.deps.hasUIElement(ref)) {
+                        // ⚠ Says the element is gone. It never says the author's typing is - the
+                        // same instruction `row-gone` and `character-gone` carry.
+                        return { refuse: "ui-element-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "create-variable":
+                // Not checked against an entry already there, and not claimed, with
+                // `create-character`: the id was minted by whoever built the entry, so a collision is
+                // a uuid collision rather than a race, and a retry is answered by the receipts.
+                return { op };
+
+            case "update-variable":
+            case "delete-variable": {
+                if (!this.deps.hasVariable(op.variableId)) {
+                    // ⚠ Says the entry is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would put back a variable somebody removed, leaving every
+                    // blueprint node that used to name it still empty.
+                    return { refuse: "variable-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "write-ui-graphs": {
+                for (const blueprintId of op.updates ?? []) {
+                    if (!this.deps.hasBlueprint(blueprintId)) {
+                        return { refuse: "ui-blueprint-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+            case "set-key":
+                // ⚠ The claim check and nothing else, with `set-translation`. There is no "key is
+                // gone" refusal to pair with `row-gone`, because this verb is the service's own
+                // create-or-replace: an operation naming a key nobody has is an author declaring a
+                // string, which is the ordinary case rather than a race. What CAN be raced is the
+                // source text somebody is halfway through, and that is what the claim covers.
+                return this.claimed(op, by) ?? { op };
+
+            case "remove-key":
+                // Claimed, with `delete-character`: taking away the row somebody is inside takes the
+                // sentence they were writing. Deliberately tolerant of a key that is already gone,
+                // with `delete-character-group` - the second of two removals changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return this.claimed(op, by) ?? { op };
         }
     }
 
@@ -842,6 +1067,8 @@ export class LiveHost {
             this.deps.locales ?? NO_LIVE_LOCALES,
             this.deps.assetTypes ?? [],
             this.deps.assetCategories ?? [],
+            this.deps.ui ?? NO_LIVE_INTERFACE,
+            this.deps.registries ?? NO_LIVE_REGISTRIES,
         );
     }
 }

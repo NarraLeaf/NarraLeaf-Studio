@@ -26,6 +26,7 @@ import {
     type InputBindingDevice,
     type TranslateFn,
 } from "./inputBindingLabels";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 type InputBindingListProps = {
     bindings: readonly UIInputBinding[];
@@ -92,7 +93,7 @@ function BindingDevices({ binding, t }: { binding: UIInputBinding; t: TranslateF
  */
 export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: InputBindingListProps) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const rootRef = useRef<HTMLDivElement | null>(null);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);

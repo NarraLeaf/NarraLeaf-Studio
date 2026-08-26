@@ -8,7 +8,7 @@ import type { AssetsService, AssetTransfer } from "@/lib/workspace/services/core
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
-import { assetGroupsSpec, assetsMetadataSpec } from "@shared/documents/specs";
+import { assetGroupsSpec, assetSetsSpec, assetsMetadataSpec } from "@shared/documents/specs";
 import { ASSET_PAYLOAD_ROOT } from "@shared/live/sharedDocuments";
 import { assetClaimKey } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
@@ -57,6 +57,31 @@ export function assetLibraryFreezeScope(): readonly string[] {
         ...ASSET_CATEGORY_ORDER.map(category => assetGroupsSpec.pathFor({ category })),
         ASSET_PAYLOAD_ROOT,
     ];
+}
+
+/**
+ * Which file the asset set editors write, as the project-relative path the freeze policy takes.
+ *
+ * Its own scope beside {@link assetLibraryFreezeScope} because it is its own document: a set holds
+ * no files, and everything about which files belong to one is read off the library's tags at the
+ * moment it is resolved.
+ */
+export function assetSetDocumentFreezeScope(): string {
+    return assetSetsSpec.pathFor();
+}
+
+/**
+ * What a gesture on a set row has to be allowed to write: the declaration AND the library.
+ *
+ * Both, because the panel's set gestures reach both documents and a guard that asked about one
+ * would answer for a control that writes the other. Making a set writes the tags that make its
+ * members members; deleting one offers to delete their files; filing one moves the rows drawn
+ * inside it. Only renaming stays inside the declaration, and there is no freeze in this build that
+ * allows one of the two and not the other - a session carries them together, and everything else
+ * freezes the project whole.
+ */
+export function assetSetFreezeScope(): readonly string[] {
+    return [assetSetDocumentFreezeScope(), ...assetLibraryFreezeScope()];
 }
 
 /* ---------------------------------------------------------------------------- holding one */

@@ -36,6 +36,26 @@ function endingBlock(id: string, name: string, parentId: string | null = null): 
     return { id, kind: "control", parentId, childrenIds: [], payload: { control: "ending", name } } as StoryBlock;
 }
 
+function choiceBlock(id: string, optionIds: string[]): StoryBlock {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId: null,
+        childrenIds: optionIds,
+        payload: { action: "choice", prompt: { textId: `${id}-p`, value: "", role: "choicePrompt" } },
+    } as StoryBlock;
+}
+
+function optionBlock(id: string, label: string, parentId: string, childrenIds: string[]): StoryBlock {
+    return {
+        id,
+        kind: "nodeAction",
+        parentId,
+        childrenIds,
+        payload: { action: "choiceOption", text: { textId: `${id}-t`, value: label, role: "choiceText" } },
+    } as StoryBlock;
+}
+
 function scene(id: string, name: string, blocks: StoryBlock[]): StoryScene {
     return {
         id,
@@ -173,5 +193,133 @@ describe("routes", () => {
 
         expect(map.routes).toHaveLength(1);
         expect(map.routes[0].sceneIds).toEqual(["sc1"]);
+    });
+});
+
+describe("a scene that both calls and leaves", () => {
+    it("keeps the two apart: one way out, one excursion, in document order", () => {
+        const doc = callThenJump();
+        const continuations = collectSceneFlowContinuations(buildSceneFlowGraph(doc), doc);
+
+        expect((continuations.get("sc1") ?? []).map(exit => [exit.kind, exit.kind === "stop" ? null : "target" in exit ? exit.target : null]))
+            .toEqual([["edge", "sc3"], ["call", "sc2"]]);
+    });
+
+    it("routes through the way out only, and the called scene is not on the route", () => {
+        const doc = callThenJump();
+        const map = buildSceneFlowRouteMap(buildSceneFlowGraph(doc), doc);
+
+        expect(map.routes.map(route => route.sceneIds)).toEqual([["sc1", "sc3"]]);
+    });
+});
+
+describe("several calls in one scene", () => {
+    /** `sc1` calls three scenes in a row, then leaves for the one holding the ending. */
+    function threeCalls(): StoryDocument {
+        return document([
+            scene("sc1", "Prologue", [
+                callBlock("b1", "sc2"),
+                callBlock("b2", "sc3"),
+                callBlock("b3", "sc4"),
+                jumpBlock("b4", "sc5"),
+            ]),
+            scene("sc2", "First aside", [narrationBlock("n2")]),
+            scene("sc3", "Second aside", [narrationBlock("n3")]),
+            scene("sc4", "Third aside", [narrationBlock("n4")]),
+            scene("sc5", "Chapter 2", [endingBlock("e5", "The end")]),
+        ], "sc1");
+    }
+
+    it("lists each called scene once, in the order the rows were written", () => {
+        const doc = threeCalls();
+        const continuations = collectSceneFlowContinuations(buildSceneFlowGraph(doc), doc);
+        const calls = (continuations.get("sc1") ?? []).filter(exit => exit.kind === "call");
+
+        expect(calls.map(exit => exit.kind === "call" && exit.target)).toEqual(["sc2", "sc3", "sc4"]);
+    });
+
+    it("does not multiply the routes: three excursions are not three decisions", () => {
+        // A route is the sequence of decisions that gets a player somewhere. None of these is one, so
+        // there is exactly one route however many calls the scene makes - which is also what keeps a
+        // scene full of calls from exploding the enumeration against its own cap.
+        const doc = threeCalls();
+        const map = buildSceneFlowRouteMap(buildSceneFlowGraph(doc), doc);
+
+        expect(map.routes.map(route => route.sceneIds)).toEqual([["sc1", "sc5"]]);
+        expect(map.truncated).toBe(false);
+    });
+
+    it("folds two calls to the same scene into one, the way two jumps to it fold", () => {
+        const doc = document([
+            scene("sc1", "Prologue", [callBlock("b1", "sc2"), callBlock("b2", "sc2"), jumpBlock("b3", "sc3")]),
+            scene("sc2", "Aside", [narrationBlock("n2")]),
+            scene("sc3", "Chapter 2", [endingBlock("e3", "The end")]),
+        ], "sc1");
+        const continuations = collectSceneFlowContinuations(buildSceneFlowGraph(doc), doc);
+
+        expect((continuations.get("sc1") ?? []).filter(exit => exit.kind === "call")).toHaveLength(1);
+    });
+});
+
+describe("endings around a call", () => {
+    it("reaches an ending written in the row after a call", () => {
+        // The run comes back to it, so it is on the route and the route ends there.
+        const doc = document([
+            scene("sc1", "Prologue", [callBlock("b1", "sc2"), endingBlock("e1", "The end")]),
+            scene("sc2", "Title card", [narrationBlock("n2")]),
+        ], "sc1");
+        const map = buildSceneFlowRouteMap(buildSceneFlowGraph(doc), doc);
+
+        expect(map.routes.map(route => route.endingId)).toEqual(["e1"]);
+        expect(map.unreachableEndings).toEqual([]);
+    });
+
+    it("does not claim an ending beyond a called scene is unreachable", () => {
+        // `sc2` is called and then leaves on a plain jump, which gives the call up and carries on -
+        // so `sc3` is entered for real and its ending can be reached. The route walk does not step
+        // into the call, so it cannot see either scene: that is a limit of the enumeration, and
+        // reporting it as a fact about the story is the mistake the direct case already avoids.
+        const doc = document([
+            scene("sc1", "Prologue", [callBlock("b1", "sc2"), jumpBlock("b2", "sc4")]),
+            scene("sc2", "Aside", [jumpBlock("b3", "sc3")]),
+            scene("sc3", "Beyond", [endingBlock("e3", "Secret end")]),
+            scene("sc4", "Chapter 2", [endingBlock("e4", "The end")]),
+        ], "sc1");
+        const map = buildSceneFlowRouteMap(buildSceneFlowGraph(doc), doc);
+
+        expect(map.unreachableEndings).toEqual([]);
+    });
+});
+
+describe("a call written inside a fork", () => {
+    /** The menu's second option calls a scene; its first leaves the scene for good. */
+    function callUnderOption(): StoryDocument {
+        return document([
+            scene("sc1", "Prologue", [
+                choiceBlock("ch1", ["o1", "o2"]),
+                optionBlock("o1", "Leave", "ch1", ["b1"]),
+                jumpBlock("b1", "sc3", "o1"),
+                optionBlock("o2", "Look", "ch1", ["b2"]),
+                callBlock("b2", "sc2", "o2"),
+            ]),
+            scene("sc2", "Title card", [endingBlock("e2", "Secret end")]),
+            scene("sc3", "Chapter 2", [endingBlock("e3", "The end")]),
+        ], "sc1");
+    }
+
+    it("still says the called scene is entered", () => {
+        // An arm owns the row, but a call is not the arm's way out - it is an excursion the run takes
+        // and returns from. Whoever owns the row, the scene it names is entered, and a consumer that
+        // never hears about it reports the endings inside it as unreachable.
+        const doc = callUnderOption();
+        const continuations = collectSceneFlowContinuations(buildSceneFlowGraph(doc), doc);
+        const calls = (continuations.get("sc1") ?? []).filter(exit => exit.kind === "call");
+
+        expect(calls.map(exit => exit.kind === "call" && exit.target)).toEqual(["sc2"]);
+    });
+
+    it("does not claim the ending inside it is unreachable", () => {
+        const map = buildSceneFlowRouteMap(buildSceneFlowGraph(callUnderOption()), callUnderOption());
+        expect(map.unreachableEndings).toEqual([]);
     });
 });
