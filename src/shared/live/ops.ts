@@ -1,5 +1,7 @@
 import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
 import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
+import { uiGraphPartsNodes, type LiveUIGraphParts } from "./uiGraphParts";
+import { uiPartsElements, type LiveUIElementRef, type LiveUIParts } from "./uiParts";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
@@ -570,6 +572,64 @@ export type LiveAssetFolderOp =
       };
 
 /**
+ * Everything that can be done to the interface document.
+ *
+ * **One verb, and it is the only vocabulary in this file that is not a list of gestures** - which is
+ * the answer to "what is one operation" for a document whose forty editing methods all funnel
+ * through one opaque mutator. `@shared/live/uiParts` carries the reasoning; the short of it is that
+ * the finest thing `UIDocumentService` can state truthfully at the point every edit passes through is
+ * *which records the document now holds differently*, and a statement of that form is exhaustive over
+ * gestures by construction rather than by anybody remembering to add a verb.
+ *
+ * One gesture is still one operation: a delta is produced per mutation, so dragging a button into a
+ * different container is one message naming the button and the two containers, and one press of undo
+ * takes it back.
+ *
+ * **Claimed**, over the elements it names - see {@link CLAIMED_OPS}.
+ */
+export type LiveUIOp =
+    /**
+     * The interface document's records, as they now are.
+     *
+     * ⚠ **A delta that will not fit in one message is refused by name rather than split.** Importing
+     * a template or turning a selection into a component restates hundreds of elements, and a room
+     * that watched that arrive in pieces would draw a screen nobody authored - the same rule an
+     * exchange import follows.
+     */
+    | {
+          op: "write-ui";
+          parts: LiveUIParts;
+          /**
+           * The elements this delta changes rather than creates, as the sender's copy held them.
+           *
+           * **The interface document's answer to `row-gone`.** A delta states what the document now
+           * holds, so nothing in its shape tells a new button from one somebody deleted while it was
+           * being dragged - and applied blind, the second of those puts a deleted element back with
+           * every machine agreeing about it, which is the one failure a digest cannot see. The
+           * sender knows which of the two it meant, so it says. See `uiPartsUpdates`.
+           */
+          updates?: readonly LiveUIElementRef[];
+      };
+
+/**
+ * Everything that can be done to the blueprint document.
+ *
+ * The interface document's mirror, one file along, and for the same reason: every canvas gesture
+ * reaches `uigraphs.json` through an opaque updater, so what the owning service can state is which
+ * records changed. See `@shared/live/uiGraphParts` for how fine those records are and why.
+ *
+ * **Claimed**, over the nodes it names.
+ */
+export type LiveUIGraphOp =
+    /** The blueprint document's records, as they now are. */
+    | {
+          op: "write-ui-graphs";
+          parts: LiveUIGraphParts;
+          /** The blueprints this delta changes rather than creates. See `uiGraphPartsUpdates`. */
+          updates?: readonly string[];
+      };
+
+/**
  * Everything that can be done to the project dictionary.
  *
  * **Two verbs for a document with no ids at all**, and that is what shapes both of them. A
@@ -747,6 +807,8 @@ export type LiveOp =
     | LiveVoiceOp
     | LiveAssetOp
     | LiveAssetFolderOp
+    | LiveUIOp
+    | LiveUIGraphOp
     | LiveDictionaryOp
     | LiveAudioTrackOp
     | LiveAssetSetOp;
@@ -798,6 +860,24 @@ export type LiveDocument =
      * spelling of "which document" rather than two.
      */
     | { doc: "asset-groups"; category: string }
+    /**
+     * The interface - `editor/ui/uidoc.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, holding every Surface, the
+     * component library and the one flat element map they are built out of. The largest document a
+     * project has, and the reason its operations are a delta of records rather than the document.
+     */
+    | { doc: "ui" }
+    /**
+     * The blueprints - `editor/ui/uigraphs.json`.
+     *
+     * A document of its own beside the interface rather than a second kind of "UI", because the two
+     * are two files and a message names one document. They are edited together constantly - adding a
+     * widget to a Surface reconciles a blueprint for it - and the seam between them is the reason
+     * this one has to be shared at all: a session that left it frozen would announce work-not-saved
+     * on every element anybody added.
+     */
+    | { doc: "ui-graphs" }
     /**
      * The project dictionary - `editor/dictionary.json`.
      *
@@ -856,6 +936,10 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "delete-asset-folder":
         case "restore-asset-folder":
             return "asset-groups";
+        case "write-ui":
+            return "ui";
+        case "write-ui-graphs":
+            return "ui-graphs";
         case "set-dictionary-entry":
         case "set-dictionary-options":
             return "dictionary";
@@ -939,6 +1023,10 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.doc === "asset-groups" && right.category === left.category;
+        case "ui":
+            return right.doc === "ui";
+        case "ui-graphs":
+            return right.doc === "ui-graphs";
         case "dictionary":
             return right.doc === "dictionary";
         case "audio-tracks":
@@ -963,6 +1051,10 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `assets ${document.assetType}`;
         case "asset-groups":
             return `asset folders ${document.category}`;
+        case "ui":
+            return "interface";
+        case "ui-graphs":
+            return "blueprints";
         case "dictionary":
             return "dictionary";
         case "audio-tracks":
@@ -1044,6 +1136,12 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-asset",
     "replace-asset-content",
     "delete-assets",
+    // The interface and the blueprints, over the elements and the nodes their deltas name. The test
+    // is the one every other entry answers: the properties panel and a node's parameter editors keep
+    // a half-typed value in their own state and reach the document on a throttle or on blur, so the
+    // loser of a race loses a sentence nobody else can see. See `@shared/live/uiParts`.
+    "write-ui",
+    "write-ui-graphs",
 ]);
 
 /**
@@ -1205,6 +1303,41 @@ export function assetClaimKey(assetId: string): LiveClaimKey {
 }
 
 /**
+ * The claim over one interface element.
+ *
+ * The component id is in the key because a component definition owns its own element map: an element
+ * of a component is not in `document.elements` at all, and the two maps are two address spaces even
+ * though both are keyed by uuid. Spelling the component in is what keeps a claim over an element of
+ * the library from being read as one over an element of a Surface.
+ */
+export function uiElementClaimKey(componentId: string | null, elementId: string): LiveClaimKey {
+    return `${UI_ELEMENT_CLAIM_PREFIX}${componentId ?? ""}:${elementId}`;
+}
+
+/**
+ * What every interface element's claim key starts with.
+ *
+ * Exported because a panel reading the set has to filter by it, and a prefix spelled a second time
+ * at the reader is exactly how the story editor's marks went missing for a fortnight while every
+ * assertion in its tests agreed with the mistake.
+ */
+export const UI_ELEMENT_CLAIM_PREFIX = "ui-element:";
+
+/**
+ * The claim over one blueprint node.
+ *
+ * ⚠ **Both the blueprint and the graph are in the key.** Node ids are not unique across the
+ * document: the seeded entry nodes use fixed ids - `global.appBoot` is in every project - so a key
+ * naming the node alone would have one Surface's boot node holding every other Surface's.
+ */
+export function uiNodeClaimKey(blueprintId: string, graphId: string, nodeId: string): LiveClaimKey {
+    return `${UI_NODE_CLAIM_PREFIX}${blueprintId}:${graphId}:${nodeId}`;
+}
+
+/** What every blueprint node's claim key starts with. See {@link UI_ELEMENT_CLAIM_PREFIX}. */
+export const UI_NODE_CLAIM_PREFIX = "ui-node:";
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -1268,6 +1401,15 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
             // layer behind it. See {@link CLAIMED_OPS}.
             return [];
+        case "write-ui":
+            // Every element the delta names, and one held element refuses the whole gesture - the
+            // rule every batch follows. Half a layout change is a screen nobody arranged.
+            return uiPartsElements(op.parts).map(ref => uiElementClaimKey(ref.componentId, ref.elementId));
+        case "write-ui-graphs":
+            // Every node the delta names, on the same terms. The blueprint's own record, its graph
+            // slots and the owner records are not claimed: none of them has a draft layer behind it,
+            // and losing one costs a name.
+            return uiGraphPartsNodes(op.parts).map(ref => uiNodeClaimKey(ref.blueprintId, ref.graphId, ref.nodeId));
         case "set-dictionary-entry":
         case "set-dictionary-options":
         case "create-audio-track":
@@ -1339,6 +1481,38 @@ export type LiveDigestScope =
      * across every folder below it, and a section's folder list is a handful of four-field records.
      */
     | { of: "asset-groups"; category: string }
+    /**
+     * One Surface of the interface, with its whole element tree.
+     *
+     * The interface document's answer to a story's scene, and chosen for the same reason: it is the
+     * unit an author works inside, so a fingerprint of it is paid on the edits that reach it and
+     * never on the rest of the project. A whole-document digest would spend milliseconds of every
+     * machine's own thread on every nudge of every element - this repository has already measured
+     * what a per-document digest costs and refused it once.
+     */
+    | { of: "ui-surface"; surfaceId: string }
+    /** One component definition of the library, with its own element map. The Surface's counterpart. */
+    | { of: "ui-component"; componentId: string }
+    /**
+     * Everything about the interface document that no Surface and no component covers.
+     *
+     * The two ordered lists, the struct table, the input actions, the document's name, and any
+     * element that belongs to no Surface. Deliberately cheap - it carries no element bodies except
+     * those orphans - because it is computed on every effect about the interface.
+     */
+    | { of: "ui-shell" }
+    /**
+     * One blueprint, whole - its record and every graph in it.
+     *
+     * The unit the blueprint document is authored in, and small enough to hash on every edit: the
+     * largest blueprint in the shipped skeleton is 25 KB.
+     */
+    | { of: "ui-blueprint"; blueprintId: string }
+    /**
+     * Everything about the blueprint document that no blueprint covers: the owner records, the older
+     * root-level graphs, and which blueprints exist at all.
+     */
+    | { of: "ui-graph-shell" }
     /**
      * The project dictionary, whole.
      *
@@ -1420,6 +1594,14 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "delete-asset-folder":
         case "restore-asset-folder":
             return { of: "asset-groups", category: op.category };
+        // ⚠ Null, and every unit these two change is reported by the applier instead. Which Surface
+        // an element belongs to is a question about the tree, not about the message - and for an
+        // element that has just been deleted the only place left to ask is the state before the
+        // operation, which this function does not have. A scope derived from the message alone would
+        // fingerprint everything except the Surface the author just changed. See `uiPartsTouched`.
+        case "write-ui":
+        case "write-ui-graphs":
+            return null;
         case "set-dictionary-entry":
         case "set-dictionary-options":
             return { of: "dictionary" };
@@ -1455,6 +1637,16 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.of === "asset-groups" && right.category === left.category;
+        case "ui-surface":
+            return right.of === "ui-surface" && right.surfaceId === left.surfaceId;
+        case "ui-component":
+            return right.of === "ui-component" && right.componentId === left.componentId;
+        case "ui-shell":
+            return right.of === "ui-shell";
+        case "ui-blueprint":
+            return right.of === "ui-blueprint" && right.blueprintId === left.blueprintId;
+        case "ui-graph-shell":
+            return right.of === "ui-graph-shell";
         case "dictionary":
             return right.of === "dictionary";
         case "audio-tracks":
@@ -1630,6 +1822,18 @@ export type LiveRefusalReason =
      */
     | "folder-not-empty"
     /**
+     * An interface element the delta was changing is gone.
+     *
+     * The interface's answer to `row-gone`, and it carries the same instruction: what the author has
+     * been dragging or typing is theirs, and nothing in this refusal may be read as licence to
+     * discard it. Applying instead would put a deleted element back on every screen in the room, with
+     * every machine agreeing about it - a divergence-free way of losing somebody's deletion, which
+     * is precisely the failure no digest can see. See `LiveUIOp.updates`.
+     */
+    | "ui-element-gone"
+    /** A blueprint the delta was changing is gone. The interface element's counterpart. */
+    | "ui-blueprint-gone"
+    /**
      * The bus is gone. Somebody deleted it after the author reached for it.
      *
      * The mixer's answer to `row-gone`, carrying the same instruction: the panel the author is
@@ -1773,6 +1977,34 @@ export type LiveCatchUp = {
  * the operation carrying it is refused, exactly as before, if the bytes never turn up.
  */
 
+/* ------------------------------------------------------------------ carrying on */
+
+/**
+ * A host saying the room is about to close and who is expected to open the next one.
+ *
+ * **The room ends; the collaboration does not have to.** A room's authority is the window that
+ * opened it, and the protocol has no verb that moves that authority - so continuing means a new room
+ * on the same story, opened by somebody who is still there. This is the only part of that which
+ * cannot be worked out independently: every window can compute the same successor from the same
+ * roster, but the rosters differ by whatever event has not arrived yet, and two machines opening a
+ * room each is two rooms.
+ *
+ * ⚠ **`revision` is not decoration.** Exactly one machine publishes a session's result and everybody
+ * else takes it - two machines recording the same content is two histories that will not merge - so
+ * the leaving host pushes and names what it pushed, and the successor puts its tree on that version
+ * before opening anything. A successor that published its own copy instead would fork the project
+ * against the host that just left it.
+ */
+export type LiveHandover = {
+    kind: "handover";
+    /** The instance expected to open the next room. */
+    to: string;
+    /** The story the next room is about, so nobody follows a room about something else. */
+    story: string;
+    /** What the leaving host published, and what the next room opens on. */
+    revision?: string;
+};
+
 /** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
@@ -1781,7 +2013,8 @@ export type LiveMessage =
     | LiveClaims
     | LiveClaim
     | LiveResync
-    | LiveCatchUp;
+    | LiveCatchUp
+    | LiveHandover;
 
 /**
  * Whether a value is a message this build understands.
@@ -1802,5 +2035,6 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "claims"
         || kind === "claim"
         || kind === "resync"
-        || kind === "catch-up";
+        || kind === "catch-up"
+        || kind === "handover";
 }
