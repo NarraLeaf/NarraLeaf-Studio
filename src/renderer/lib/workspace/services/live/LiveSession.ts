@@ -1105,6 +1105,7 @@ export class LiveSession {
                 break;
             case "brand":
                 this.deps.brand.applyOp(op as LiveBrandOp);
+                break;
             case "dictionary":
                 this.deps.dictionary.applyOp(op as LiveDictionaryOp);
                 break;
