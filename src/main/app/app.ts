@@ -205,12 +205,19 @@ export class App extends BaseApp {
         // stages, and only the window layer can ask a window to do that. Handed in as a
         // function because VcsManager holds a BaseApp: without it a commit would still
         // succeed and would describe a document that is about to change on disk.
-        this.vcsManager = new VcsManager(this, async projectPath => {
-            const workspace = this.findWorkspaceForProject(projectPath);
-            if (workspace) {
-                await this.flushWorkspacePendingSaves(workspace);
-            }
-        });
+        this.vcsManager = new VcsManager(
+            this,
+            async projectPath => {
+                const workspace = this.findWorkspaceForProject(projectPath);
+                if (workspace) {
+                    await this.flushWorkspacePendingSaves(workspace);
+                }
+            },
+            // Publishing lists a server's projects and records a new one over the session the
+            // TeamManager holds, rather than a second request that presents the token afresh.
+            // That manager is constructed just below, so this reads it when a publish runs.
+            (remoteOrigin, method, params) => this.teamManager.call(remoteOrigin, method, params),
+        );
 
         // A server is now a place Studio holds a session with, and that is a thing of
         // its own rather than a corner of version control. It is given the list of

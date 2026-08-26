@@ -180,13 +180,13 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 world.rooms.set(sessionId, remaining);
                 world.bus.announce(PROJECT, { kind: "live-changed", session: remaining });
             }
-            return { ok: true, value: null };
+            return { ok: true, value: {} };
         },
         close: async sessionId => {
             calls.push("close");
             world.rooms.delete(sessionId);
             world.bus.announce(PROJECT, { kind: "live-closed", session: sessionId });
-            return { ok: true, value: null };
+            return { ok: true, value: {} };
         },
         say: (sessionId, payload) => world.bus.say(sessionId, payload, self),
         listen: (sessionId, onMessage) => world.bus.listen(sessionId, onMessage),
