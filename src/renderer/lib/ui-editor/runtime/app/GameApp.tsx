@@ -166,6 +166,7 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
+import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -268,28 +269,6 @@ class NlrSessionSupersededError extends Error {
 }
 
 export type GameAppNavEntry = AppNavEntry;
-
-function normalizeError(error: unknown): string {
-    if (error instanceof Error) {
-        return error.stack ?? error.message;
-    }
-    return String(error);
-}
-
-/**
- * The sentence a failure states, without the stack.
- *
- * `normalizeError` prefers the stack, which is right for a console line and wrong for anything shown
- * to an author: the first thing they should read is what went wrong, not which of our frames noticed.
- * The stack still travels, next to it rather than instead of it (see {@link GameAppRuntimeIssue}).
- */
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message || String(error) : String(error);
-}
-
-function errorStack(error: unknown): string | undefined {
-    return error instanceof Error ? error.stack ?? undefined : undefined;
-}
 
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
     if (surfaceId) {
@@ -797,22 +776,46 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Log a failure AND, for hosts that can point into the story, say where it came from.
      *
      * Both, always: the console line is what a packaged build has, and dropping it here would trade
-     * one blind spot for another.
+     * one blind spot for another. The shape of the report lives in `failureReporting`; what this
+     * adds is the one thing only `GameApp` knows, which is where the play head was standing.
      */
     const reportFailure = useCallback((error: unknown, options?: { prefix?: string }) => {
-        const prefix = options?.prefix ?? "";
-        host.log("error", `${prefix}${normalizeError(error)}`);
         // Compile diagnostics report their own block and do not come through here; everything that
         // does is a thrown failure, so the play head is the only attribution available.
         const blockId = playHeadBlockId();
-        host.reportIssue?.({
-            level: "error",
-            message: `${prefix}${errorMessage(error)}`,
-            origin: blockId ? "playHead" : "session",
+        reportRuntimeFailure(host, error, {
+            ...(options?.prefix ? { prefix: options.prefix } : {}),
             ...(blockId ? { blockId } : {}),
-            ...(errorStack(error) ? { stack: errorStack(error) } : {}),
         });
     }, [host, playHeadBlockId]);
+    /**
+     * The failures that never reach a call site this file wraps.
+     *
+     * Every `reportFailure` above sits at the bottom of something Studio called and can therefore
+     * catch. A story row is not one of those: the engine advances it from inside its own `Player`,
+     * driven by a plain DOM click listener, and a throw out of a DOM listener is not a React render
+     * error — so the `Player`'s own error boundary never sees it, `NlrStageLayer`'s `onError` never
+     * fires, and the failure lands in the console as `Uncaught` with nothing else to show for it.
+     * That is a stage frozen mid-line while the Problems panel says nothing went wrong. A session's
+     * first advance escapes the same way with a different label, as an unhandled rejection: the
+     * engine schedules it on a bare microtask.
+     *
+     * Watching the window catches both, and watching is all it does. Nothing is consumed (see
+     * `watchUncaughtFailures`), so the console keeps the throw and its stack exactly as before, and
+     * nothing here touches the stage: it stays frozen on the row that failed, which is both honest
+     * and where the author needs to look. The row itself comes from the play head, as it does for
+     * every other thrown failure.
+     *
+     * Only for a host that can show issues. That is Dev Mode's authoring surface and nothing else:
+     * a packaged game installs its own hooks at the renderer entry (`runtimeErrorHooks`) and shows
+     * its own crash screen, and must not grow a second reporter behind them.
+     */
+    useEffect(() => {
+        if (!host.reportIssue) {
+            return;
+        }
+        return watchUncaughtFailures(window, reportFailure);
+    }, [host.reportIssue, reportFailure]);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
