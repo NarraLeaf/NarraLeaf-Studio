@@ -278,6 +278,10 @@ export type GameRuntimeArtifactCompileInput = {
      * The experimental `debuggable-build` condition, and nothing else, sets it. It is written into
      * both the pack and the loose app manifest because the runtime checks the two at different
      * moments - the manifest before Chromium starts, the pack once it is open.
+     *
+     * Dropped when {@link encryptionKey} is set, and the compile says so: a sealed build refuses a
+     * debugging switch whatever its markers claim, so writing one would only be a promise the
+     * artifact does not keep. See `honoursDebuggableMarker`.
      */
     debuggable?: boolean;
     /**
@@ -553,6 +557,19 @@ export async function compileGameRuntimeArtifact(
         }
         : { kind: "loose" };
 
+    // Only an unsealed artifact can carry the marker. The runtime refuses it on a sealed build
+    // regardless - the gate that matters runs before the store can be opened, so it reads the loose
+    // manifest, and a text file that opens a debugger port is not something a protected build may
+    // have. Dropping it here keeps the artifact honest rather than shipping a claim the runtime
+    // will ignore.
+    const debuggable = input.debuggable === true && !input.encryptionKey;
+    if (input.debuggable === true && input.encryptionKey) {
+        notices.push(
+            "asset protection is on, so this artifact ships without the debuggable marker: "
+            + "a sealed build refuses a debugging switch whatever its markers say",
+        );
+    }
+
     try {
         const assetManifest = await copyProjectAssets({
             projectPath: input.projectPath,
@@ -628,7 +645,7 @@ export async function compileGameRuntimeArtifact(
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
             mode,
-            ...(input.debuggable ? { debuggable: true } : {}),
+            ...(debuggable ? { debuggable: true } : {}),
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: input.productName?.trim()

@@ -1,3 +1,4 @@
+import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
 import {
@@ -115,6 +116,18 @@ export async function createRuntimeResources(
 
     const layers = await openLayers(appDir, await readPackAddOns(base), options);
     return layers.length > 0 ? new PatchedRuntimeResources(base, layers, options.log) : base;
+}
+
+/**
+ * Whether this app's content is sealed: the protected store sits beside the runtime.
+ *
+ * Synchronous and presence-only, because the caller that matters most asks before app-ready, where
+ * nothing can be awaited and the store cannot be opened. It answers the same question
+ * {@link createRuntimeResources} answers for itself a moment later, from the same file, so the two
+ * cannot disagree about what kind of build this is.
+ */
+export function isSealedBuildSync(appDir: string): boolean {
+    return fsSync.existsSync(path.join(appDir, RUNTIME_BUNDLE_FILENAME));
 }
 
 /**
