@@ -852,7 +852,7 @@ describe("game runtime artifact compiler", () => {
      * debugger attached to the process that holds the decrypted content. So the artifact does not
      * carry the claim at all, and says why.
      */
-    it("drops the debuggable marker from a protected build, and says so", async () => {
+    it("keeps the debuggable marker on a protected build, and says how far it reaches", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         await createRuntimeDist(runtimeDistDir);
@@ -872,14 +872,15 @@ describe("game runtime artifact compiler", () => {
             encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
-        expect(result.pack.debuggable).toBeUndefined();
-        expect(result.notices.some(notice => notice.includes("debuggable marker"))).toBe(true);
+        expect(result.pack.debuggable).toBe(true);
+        // The artifact is honest about being half a debuggable one, because the difference only
+        // shows up when someone runs the packaged game and nothing attaches.
+        expect(result.notices.some(notice => notice.includes("run directly"))).toBe(true);
 
-        // The loose manifest is the one an edit would reach, and it is the one that must not carry
-        // the claim either - it is copied from the pack, and this is the assertion that keeps the
-        // two from drifting apart.
+        // Both markers, because the runtime reads them at different moments and puts each through
+        // the same rule - an artifact carrying only one of them would be refused by the other gate.
         const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
-        expect(manifest.narraleaf.debuggable).toBeUndefined();
+        expect(manifest.narraleaf.debuggable).toBe(true);
 
         const reader = await openSealedBundle(
             path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
@@ -887,7 +888,7 @@ describe("game runtime artifact compiler", () => {
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
-            expect(pack.debuggable).toBeUndefined();
+            expect(pack.debuggable).toBe(true);
         } finally {
             await reader.close();
         }
