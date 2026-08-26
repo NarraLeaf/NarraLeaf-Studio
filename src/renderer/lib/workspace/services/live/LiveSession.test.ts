@@ -561,7 +561,13 @@ function createWindow(world: World, instance: string): Window {
                 if (window.version.syncTo !== null) {
                     window.version.head = window.version.syncTo;
                 }
-                return { conflicts: window.version.conflicts };
+                const conflicts = window.version.conflicts;
+                // One conflicted sync per test: a merge that was aborted is not re-offered.
+                window.version.conflicts = [];
+                return { conflicts };
+            },
+            abortMerge: async () => {
+                calls.push("abort");
             },
             adopt: async revision => {
                 calls.push(`adopt:${revision}`);
@@ -732,7 +738,10 @@ describe("a live session", () => {
             guest.version.uncommitted = true;
             const failure = await guest.session.join({ session: "room-1" });
             expect(failure).toBeNull();
-            expect(guest.calls).toEqual(["checkpoint", `adopt:${host.version.head}`, "join", "freeze"]);
+            // Synced to LEARN the room's version - there is no fetch verb - and then adopted.
+            expect(guest.calls).toEqual([
+                "checkpoint", "sync", `adopt:${host.version.head}`, "join", "freeze",
+            ]);
             // Named so the author can be told where their own work went before the session's state
             // landed on top of it.
             expect(guest.session.getView().checkpoint).toBe("rev-checkpoint-instance-guest-1");
@@ -741,31 +750,45 @@ describe("a live session", () => {
         it("adopts without a checkpoint when there was nothing to record", async () => {
             await openRoom();
             await guest.session.join({ session: "room-1" });
-            expect(guest.calls).toEqual([`adopt:${host.version.head}`, "join", "freeze"]);
+            expect(guest.calls).toEqual(["sync", `adopt:${host.version.head}`, "join", "freeze"]);
         });
 
-        it("adopts nothing when this tree is already on the room's version", async () => {
+        it("stops at the sync where that alone lands on the room's version", async () => {
+            // The cheapest way in and the one that keeps a history linear: a tree that has recorded
+            // nothing of its own fast-forwards onto what the host published, and there is nothing
+            // left to adopt.
+            await openRoom();
+            guest.version.syncTo = host.version.head;
+            await guest.session.join({ session: "room-1" });
+            expect(guest.calls).toEqual(["sync", "join", "freeze"]);
+        });
+
+        it("adopts nothing at all when this tree is already on the room's version", async () => {
             await openRoom();
             guest.version.head = host.version.head;
             await guest.session.join({ session: "room-1" });
             expect(guest.calls).toEqual(["join", "freeze"]);
         });
 
-        it("adopts rather than merging when this tree has moved past the room's version", async () => {
+        it("throws the merge away rather than handing the author a conflict", async () => {
             // ⚠ The whole of what makes a room somewhere an author can come back to. Every window
             // ends a session holding the same story with its own save timestamp in it, so the
-            // second time two machines meet, a merge finds two sides that changed one field to
-            // different values - and refuses. This used to be `revision-mismatch`, which is a
-            // session nobody could enter twice without doing version work by hand.
+            // second time two machines meet, the merge finds two sides that changed one field to
+            // different values - and used to refuse with `revision-mismatch`, which is a session
+            // nobody could enter twice without doing version work by hand. What the merge could not
+            // settle is about to be overwritten by the room's own copy, so it is discarded and the
+            // checkpoint above is where this author's side went.
             await openRoom();
             guest.version.head = "rev-guest-went-its-own-way";
             guest.version.uncommitted = true;
+            guest.version.conflicts = ["editor/story/stories/x/storydoc.json"];
 
             const failure = await guest.session.join({ session: "room-1" });
 
             expect(failure).toBeNull();
-            expect(guest.calls).not.toContain("sync");
-            expect(guest.calls).toContain(`adopt:${host.version.head}`);
+            expect(guest.calls).toEqual([
+                "checkpoint", "sync", "abort", `adopt:${host.version.head}`, "join", "freeze",
+            ]);
             expect(guest.version.head).toBe(host.version.head);
         });
 
@@ -832,7 +855,7 @@ describe("a live session", () => {
                 .toEqual({ kind: "story-not-here", storyId: "story-nobody-here-has" });
             // The adoption ran - this is only knowable afterwards - but the room was never joined
             // and nothing froze behind a session that could not have worked.
-            expect(guest.calls).toEqual([`adopt:${host.version.head}`]);
+            expect(guest.calls).toEqual(["sync", `adopt:${host.version.head}`]);
             expect(guest.freeze.armed).toBeNull();
         });
     });

@@ -303,6 +303,9 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     }
                 },
                 sync: async () => ({ conflicts: (await version().sync()).conflicts }),
+                abortMerge: async () => {
+                    await version().abortMerge();
+                },
                 adopt: async revision => {
                     // The same call the version rail's restore makes, said to be for a session:
                     // what changes is the two sentences the revisions carry, which are permanent
