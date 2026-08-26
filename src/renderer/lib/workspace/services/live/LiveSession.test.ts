@@ -5,11 +5,17 @@ import {
     charactersSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
 import type { LiveCastView } from "@shared/live/cast";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
+import { applyUIGraphParts, uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import { applyUIParts, uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import {
     characterClaimKey,
     storyRowClaimKey,
@@ -18,6 +24,8 @@ import {
     type LiveCharacterOp,
     type LiveDerived,
     type LiveEffect,
+    type LiveUIGraphOp,
+    type LiveUIOp,
     type LiveLocalizationOp,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -273,6 +281,8 @@ const CARRIED_LOCALES = { translations: ["ja"], voice: ["ja"] } as const;
 const CARRIED_ASSET_TYPES = ["image"];
 /** The sections every window in these tests holds folders for. */
 const CARRIED_ASSET_CATEGORIES = ["image"];
+/** Every window in these tests holds the interface and its blueprints. */
+const CARRIED_INTERFACE = { carried: true };
 
 /* -------------------------------------------------------------------------- a window */
 
@@ -310,11 +320,84 @@ type Window = {
     /** The asset metadata shards this window holds, by type, and where its record edits go. */
     assets: Record<string, Record<string, Record<string, unknown>>>;
     assetSink: { handle(op: LiveAssetOp | LiveAssetFolderOp): boolean } | null;
+    /** The interface this window holds, its blueprints, and where its edits go. */
+    ui: UIDocument;
+    uiGraphs: UIGraphDocument;
+    uiSink: { handle(op: LiveUIOp): boolean } | null;
+    uiGraphSink: { handle(op: LiveUIGraphOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
     timers: { delayMs: number; run: () => void; cancelled: boolean }[];
 };
+
+/** A Surface with one root and one child - as much interface as a session decision looks at. */
+function makeUIDocument(): UIDocument {
+    return {
+        schemaVersion: 11,
+        id: "uidoc",
+        name: "Interface",
+        surfaces: [{
+            id: "surface-1",
+            name: "Title",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 1920, height: 1080 },
+            rootElementId: "el-root",
+        }],
+        components: [],
+        elements: {
+            "el-root": {
+                id: "el-root",
+                type: "nl.root",
+                name: "Root",
+                parentId: null,
+                childrenIds: ["el-button"],
+                layout: { x: 0, y: 0, width: 1920, height: 1080 },
+                props: {},
+            },
+            "el-button": {
+                id: "el-button",
+                type: "nl.button",
+                name: "Start",
+                parentId: "el-root",
+                childrenIds: [],
+                layout: { x: 10, y: 10, width: 100, height: 40 },
+                props: {},
+            },
+        },
+    } as unknown as UIDocument;
+}
+
+/** One blueprint with one event graph, which is as much of the canvas as a decision looks at. */
+function makeUIGraphs(): UIGraphDocument {
+    return {
+        schemaVersion: 2,
+        graphs: {},
+        blueprintDocument: {
+            schemaVersion: 10,
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Start",
+                    owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            eventIds: ["ev-1"],
+                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                            functionIds: [],
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        },
+    } as unknown as UIGraphDocument;
+}
 
 /** The cast applier a window uses when an effect arrives. As small as the store's own. */
 function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
@@ -438,6 +521,10 @@ function createWindow(world: World, instance: string): Window {
         takeSink: null,
         assets: { image: {} },
         assetSink: null,
+        ui: makeUIDocument(),
+        uiGraphs: makeUIGraphs(),
+        uiSink: null,
+        uiGraphSink: null,
         clock: 0,
         timers: [],
     };
@@ -520,6 +607,35 @@ function createWindow(world: World, instance: string): Window {
                 calls.push(`assets:${op.op}`);
                 applyAssetOp(window.assets, op);
                 return [];
+            },
+        },
+        ui: {
+            setSink: sink => {
+                window.uiSink = sink?.ui ?? null;
+                window.uiGraphSink = sink?.graphs ?? null;
+            },
+            held: () => true,
+            document: () => window.ui,
+            graphs: () => window.uiGraphs,
+            hasElement: ref => uiHasElement(window.ui, ref),
+            hasBlueprint: blueprintId => uiHasBlueprint(window.uiGraphs, blueprintId),
+            applyOp: op => {
+                calls.push(`ui:${op.op}`);
+                if (op.op === "write-ui") {
+                    const ownersBefore = uiOwningSurfaceIds(window.ui);
+                    applyUIParts(window.ui, op.parts);
+                    const touched = uiPartsTouched(ownersBefore, window.ui, op.parts);
+                    return [
+                        ...touched.surfaces.map(surfaceId => ({ of: "ui-surface", surfaceId }) as const),
+                        ...(touched.shell ? [{ of: "ui-shell" } as const] : []),
+                    ];
+                }
+                applyUIGraphParts(window.uiGraphs, op.parts);
+                const touched = uiGraphPartsTouched(op.parts);
+                return [
+                    ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+                    ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+                ];
             },
         },
         version: {
@@ -758,7 +874,7 @@ describe("a live session", () => {
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
             expect(guest.freeze.armed?.writable).toEqual(
-                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES, CARRIED_INTERFACE),
             );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
@@ -822,7 +938,7 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES, CARRIED_INTERFACE),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
@@ -831,6 +947,8 @@ describe("a live session", () => {
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
                 assetGroupsSpec.pathFor({ category: "image" }),
+                uiDocumentSpec.pathFor(),
+                uiGraphsSpec.pathFor(),
                 // ⚠ And the two the vocabulary is never about: a file's bytes, which an applier puts
                 // down rather than anybody addressing, and the row order, which every machine
                 // recomputes from what it has just applied.

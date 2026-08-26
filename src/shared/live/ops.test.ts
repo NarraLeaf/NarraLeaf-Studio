@@ -155,6 +155,8 @@ describe("the operation vocabulary", () => {
             "update-block",
             "update-blocks",
             "update-character",
+            "write-ui",
+            "write-ui-graphs",
         ]);
         for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
