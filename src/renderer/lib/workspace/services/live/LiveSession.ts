@@ -10,7 +10,6 @@ import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import { assetsDigest } from "@shared/live/assets";
 import { assetGroupsDigest } from "@shared/live/assetGroups";
-import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
@@ -29,8 +28,6 @@ import {
     type LiveAssetRecord,
     type LiveAssetSetOp,
     type LiveAudioTrackOp,
-    type LiveBlobChunk,
-    type LiveBlobNeeded,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
@@ -51,9 +48,7 @@ import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
-import { blobChunkCount } from "@shared/live/blobs";
-import { experimentalState } from "@/lib/experimental";
-import { hasExperimentalCondition } from "@shared/types/experimental";
+import type { TeamTransferState } from "@shared/types/teamTransfer";
 import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
@@ -122,26 +117,16 @@ type ActiveSession = {
     /** The sections whose folders this session carries, settled on the way in with the rest. */
     assetCategories: readonly string[];
     /**
-     * Slices that have arrived and are waiting for the operation naming them.
+     * How far every file this window is carrying or collecting has got, as last read.
      *
-     * ⚠ Held per session and cleared with it: a transfer nobody claimed is memory held for a while,
-     * never a stray file in the author's project.
+     * ⚠ **A snapshot, not the transfers themselves.** The transfers live in the main process, which
+     * is the only place that may reach the network and the only place that should ever hold a byte
+     * of a file. What is here is two numbers per file, refreshed while any of them is outstanding,
+     * because the applier that asks about them is synchronous and cannot wait for an answer.
      */
-    blobsIn: LiveBlobInbox;
-    /**
-     * Files this window is carrying into the room, by transfer id.
-     *
-     * Kept after they are sent, because the only repair this channel has is somebody asking again -
-     * see `LiveBlobNeeded`. Dropped when the session ends.
-     */
-    blobsOut: Map<string, Uint8Array>;
-    /**
-     * Transfers this window has been told to stop carrying.
-     *
-     * Read by the send loop between turns, which is what lets a cancel reach a file that is halfway
-     * out of the door rather than only the ones that have not started.
-     */
-    blobsDropped: Set<string>;
+    blobs: Map<string, { bytes: number; total: number; state: TeamTransferState; label: string }>;
+    /** Cancels the poll that keeps {@link blobs} current, or null while nothing is moving. */
+    blobPoll: (() => void) | null;
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -196,41 +181,18 @@ type ActiveSession = {
 };
 
 /**
- * How many slices go out before the send loop lets the room have a turn.
+ * How often this window asks the main process how far its files have got.
  *
- * A thirty-megabyte file is a couple of thousand messages; sent in one loop they would sit in front
- * of every operation anybody else states for as long as it took. Small enough that a transfer still
- * finishes in seconds, large enough that the yield itself is not the cost.
+ * ⚠ **Polled rather than pushed, and only while something is moving.** What is being watched is a
+ * count that changes thousands of times a second; a message per change would be a message channel
+ * carrying the thing the transfer was moved off a message channel to avoid. The same interval the
+ * browser throttles its bands to, so a band never redraws with a number it has already drawn.
  */
-const BLOBS_PER_TURN = 24;
-
-/**
- * How many missing slices a repair request may name before it asks for the file instead.
- *
- * A list of indices is JSON, and one message is 16 KiB: a request naming every slice of a large file
- * would not fit in the message that carries it. An empty list already means the whole file, which is
- * the honest answer when that many are gone.
- */
-const MAX_NAMED_SLICES = 512;
-
-/**
- * How long the send loop waits between turns while `slow-live-transfer` is on.
- *
- * A local room moves a twenty-five-megabyte file in about a second, which is the right answer for an
- * author and the wrong one for anybody trying to look at what a transfer looks like while it is
- * happening. Long enough that the state between starting and finishing can be read on both screens,
- * and reachable only from a development launch that asks for it by name.
- */
-const SLOW_BLOB_TURN_MS = 260;
+const BLOB_POLL_MS = 120;
 
 /** The section an asset type is filed under, as the browser files it. */
 function assetCategoryOf(assetType: string): string {
     return categoryOfAssetType(assetType as AssetType);
-}
-
-/** How many slices one part of a transfer takes. What a repair request has to name. */
-function chunkCountOf(part: LiveAssetBytePart): number {
-    return blobChunkCount(part.size);
 }
 
 export class LiveSession {
@@ -707,9 +669,8 @@ export class LiveSession {
             locales,
             assetTypes,
             assetCategories,
-            blobsIn: new LiveBlobInbox(),
-            blobsOut: new Map(),
-            blobsDropped: new Set(),
+            blobs: new Map(),
+            blobPoll: null,
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -801,6 +762,13 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        // Whatever this project left half-carried, in an earlier session or an earlier run. Asked
+        // for on the way in rather than on the way out, because a transfer needs a window that has
+        // announced this project before the server will answer about it.
+        if (session.project.remoteOrigin !== null) {
+            void this.deps.transfers.resume(session.project.remoteOrigin, session.project.repositoryId);
+        }
+        this.pollBlobs(session);
         // The three small project tables, through the same sink the libraries use: none of them has
         // a document id this window has to be holding for an operation to be about it.
         this.deps.dictionary.setSink(this.librarySinkFor(session));
@@ -839,9 +807,13 @@ export class LiveSession {
         this.deps.dictionary.setSink(null);
         this.deps.audioTracks.setSink(null);
         this.deps.assetSets.setSink(null);
-        session.blobsIn.clear();
-        session.blobsOut.clear();
-        session.blobsDropped.clear();
+        // ⚠ **The transfers themselves are not stopped.** They belong to the project rather than to
+        // the room: a file that was halfway across when a session ended goes on, and is finished or
+        // picked up again next time - which is the whole of what "resumed rather than restarted"
+        // means when the interruption is the session itself. What stops here is watching them.
+        session.blobPoll?.();
+        session.blobPoll = null;
+        session.blobs.clear();
         session.stopListening();
         session.stopWatching();
         session.claimSweep?.();
@@ -911,13 +883,6 @@ export class LiveSession {
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.
-            return;
-        }
-        if (payload.kind === "blob" || payload.kind === "blob-needed") {
-            // ⚠ Before the host/guest split, and never through either of them. Bytes in flight are
-            // not operations: they change no document, take no sequence number and are applied by
-            // nobody, which is what keeps a large import from stopping everybody else's typing.
-            this.onBlobMessage(session, payload);
             return;
         }
         if (session.host) {
@@ -1422,156 +1387,212 @@ export class LiveSession {
     /**
      * Where the asset library's gestures go while this session is running.
      *
-     * The library sink's shape with one addition, and the addition is the whole of what makes a file
-     * shareable: an operation that adds or replaces one arrives here with the bytes it is bringing,
-     * and those go on the wire beside it rather than inside it.
+     * The library sink's shape and nothing more. ⚠ **No bytes pass through here any more**: an
+     * operation that adds or replaces a file names one that is already on its way, because putting
+     * it where the room can read it is what produced the length and the fingerprint the operation
+     * carries. See {@link blobPortFor}.
      */
     private assetSinkFor(session: ActiveSession): AssetOpSink {
         const library = this.librarySinkFor(session);
         return {
-            handle: (op, blobs): boolean => {
+            handle: (op): boolean => {
                 if (this.active !== session) {
                     return false;
                 }
-                // Held before the operation is stated, not after: a guest's intent may be answered
-                // by the host before this window has finished its own send loop, and a receiver that
-                // asked for a slice must find somebody holding it.
-                if (blobs) {
-                    for (const [transferId, bytes] of blobs) {
-                        session.blobsOut.set(transferId, bytes);
-                    }
-                }
-                const taken = library.handle(op as LiveAssetOp);
-                if (taken && blobs) {
-                    void this.sendBlobs(session, [...blobs.keys()]);
-                }
-                return taken;
+                return library.handle(op as LiveAssetOp);
             },
         };
     }
 
     /**
-     * Where the asset library reads the files an operation named.
+     * Where the asset library's files go, and where it reads how far they have got.
      *
-     * A pull rather than a push, because an applier is synchronous and writing a file is not: the
-     * record lands now and the library comes back for the bytes. See `AssetBlobPort`.
+     * **Two connections rather than one, and this is the seam.** What the library states is a record;
+     * what this carries is the file, over its own request to the server, so a two-hundred-megabyte
+     * import never sits in front of somebody else's typing. Every answer here is about a path or a
+     * count - the reading, the writing and the connection are the main process's.
+     *
+     * ⚠ **{@link AssetBlobPort.arrived} is synchronous and the transport is not.** The applier that
+     * asks cannot wait, so what it reads is the snapshot {@link pollBlobs} keeps current while
+     * anything is moving. That is also what wakes the library's queue: a file becoming complete is
+     * the only moment a payload that was waiting can be finished, and the poll is where it is seen.
      */
     private blobPortFor(session: ActiveSession): AssetBlobPort {
+        const remoteOrigin = session.project.remoteOrigin;
+        const project = session.project.repositoryId;
         return {
-            take: part => {
-                if (this.active !== session) {
-                    return null;
+            offer: async (assetId, part, source) => {
+                if (this.active !== session || remoteOrigin === null) {
+                    return {
+                        ok: false,
+                        problem: { kind: "unavailable", detail: "this project has no server" },
+                    };
                 }
-                const state = session.blobsIn.take(part.transferId, part.digest);
-                if (state.status === "complete") {
-                    return state.bytes;
-                }
-                if (state.status === "corrupt") {
-                    // Slices that do not add up to what the sender said. Asking again is the only
-                    // repair there is, and it is better than writing a file that opens as garbage.
-                    console.warn(`[live] transfer ${part.transferId} did not verify; asking again`);
-                }
-                return null;
-            },
-            request: part => {
-                if (this.active !== session) {
-                    return;
-                }
-                const missing = session.blobsIn.missing(part.transferId, chunkCountOf(part));
-                const needed: LiveBlobNeeded = {
-                    kind: "blob-needed",
-                    by: session.self,
+                const answered = await this.deps.transfers.offer({
+                    remoteOrigin,
+                    project,
                     transferId: part.transferId,
-                    // ⚠ Named one by one only while the list fits in a message. A file of any size
-                    // has more slices than a `live.say` has room to list, and an empty list already
-                    // means "all of it" - which is also the right answer when that many are missing.
-                    missing: missing.length > MAX_NAMED_SLICES ? [] : missing,
+                    label: assetId,
+                    source,
+                });
+                if (!answered.ok) {
+                    return { ok: false, problem: answered.problem };
+                }
+                if (answered.kind !== "offered") {
+                    return {
+                        ok: false,
+                        problem: { kind: "refused", detail: "that transfer was not accepted" },
+                    };
+                }
+                // Recorded now rather than at the next poll, so the row the author is looking at is
+                // filling from the moment they let go of the file rather than a tick later.
+                session.blobs.set(part.transferId, {
+                    bytes: 0,
+                    total: answered.size,
+                    state: "moving",
+                    label: assetId,
+                });
+                this.pollBlobs(session);
+                // ⚠ The length and the fingerprint are what was measured, not what the caller
+                // guessed: the caller passes zero and an empty string, because reading the file is
+                // exactly what it is not allowed to do.
+                return {
+                    ok: true,
+                    part: { ...part, size: answered.size, digest: answered.digest },
                 };
-                session.rooms.say(session.room.id, needed);
             },
-            arrived: part => ({
-                slices: session.blobsIn.received(part.transferId),
-                sent: session.blobsIn.sawLast(part.transferId, chunkCountOf(part)),
-            }),
-            abandon: part => {
-                if (this.active !== session) {
+            collect: (assetId, part, destination) => {
+                if (this.active !== session || remoteOrigin === null) {
                     return;
                 }
-                session.blobsIn.drop(part.transferId);
-                session.blobsOut.delete(part.transferId);
-                // Read by the send loop between turns: the machine that is sending this file learns
-                // of the cancel through the deletion's applier like everybody else, and this is what
-                // stops it partway rather than at the end.
-                session.blobsDropped.add(part.transferId);
+                if (session.blobs.has(part.transferId)) {
+                    // Already moving. On the machine that is sending this file that is its own
+                    // upload, and asking to collect it would be asking to write over the file being
+                    // read - the transport refuses it, and there is no reason to ask.
+                    return;
+                }
+                session.blobs.set(part.transferId, {
+                    bytes: 0,
+                    total: part.size,
+                    state: "waiting",
+                    label: assetId,
+                });
+                void this.deps.transfers.collect({
+                    remoteOrigin,
+                    project,
+                    transferId: part.transferId,
+                    label: assetId,
+                    destination,
+                    size: part.size,
+                    digest: part.digest,
+                });
+                this.pollBlobs(session);
+            },
+            arrived: part => {
+                const moving = session.blobs.get(part.transferId);
+                return moving === undefined
+                    ? { bytes: 0, state: "unknown" }
+                    : { bytes: moving.bytes, state: moving.state };
+            },
+            abandon: part => {
+                session.blobs.delete(part.transferId);
+                if (remoteOrigin === null) {
+                    return;
+                }
+                // ⚠ **Sent from every machine in the room, and that is the point.** The one that is
+                // sending the file learns of the cancel the same way everybody else does - through
+                // the deletion's own applier - and stops partway rather than at the end, because the
+                // object it was writing into is taken away from under it.
+                void this.deps.transfers.abandon(remoteOrigin, project, [part.transferId]);
+            },
+            inFlight: () => {
+                const out = new Map<string, { bytes: number; total: number }>();
+                for (const moving of session.blobs.values()) {
+                    if (moving.state === "done" || moving.state === "failed") {
+                        continue;
+                    }
+                    const already = out.get(moving.label);
+                    out.set(moving.label, {
+                        bytes: (already?.bytes ?? 0) + moving.bytes,
+                        total: (already?.total ?? 0) + moving.total,
+                    });
+                }
+                return out;
             },
         };
     }
 
     /**
-     * Put one transfer's slices on the wire, a few at a time.
+     * Keep the snapshot of what is moving current, for as long as anything is.
      *
-     * ⚠ **Paced on purpose.** A thirty-megabyte file is a couple of thousand messages, and sending
-     * them in one loop would sit in front of every operation anybody else states for as long as it
-     * took. The gap is small enough that a transfer still finishes in seconds and large enough that
-     * the room keeps answering.
+     * ⚠ **Polled rather than pushed.** What is being watched is a byte count that changes thousands
+     * of times a second; a message per change would put back on a message channel exactly the thing
+     * the transfer was taken off one to avoid. The interval is the one the browser throttles its
+     * bands to, so no band is asked to redraw a number it has already drawn.
+     *
+     * ⚠ **Stops when nothing is left**, and starting it again is what {@link AssetBlobPort.offer}
+     * and {@link AssetBlobPort.collect} do. A poll that ran for the length of a session would be a
+     * request every eighth of a second for hours in which no file moves at all.
      */
-    private blobTurnDelayMs(): number {
-        return hasExperimentalCondition(experimentalState(), "slow-live-transfer") ? SLOW_BLOB_TURN_MS : 0;
+    private pollBlobs(session: ActiveSession): void {
+        if (session.blobPoll !== null || this.active !== session) {
+            return;
+        }
+        const tick = (): void => {
+            session.blobPoll = this.deps.schedule(BLOB_POLL_MS, () => {
+                session.blobPoll = null;
+                void this.readBlobs(session).then(() => {
+                    if (this.active === session && this.blobsAreMoving(session)) {
+                        tick();
+                    }
+                });
+            });
+        };
+        tick();
     }
 
-    private async sendBlobs(session: ActiveSession, transferIds: readonly string[]): Promise<void> {
-        for (const transferId of transferIds) {
-            const bytes = session.blobsOut.get(transferId);
-            if (!bytes) {
+    /** Whether anything is still on its way, either out of this window or into it. */
+    private blobsAreMoving(session: ActiveSession): boolean {
+        for (const moving of session.blobs.values()) {
+            if (moving.state === "waiting" || moving.state === "moving") {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private async readBlobs(session: ActiveSession): Promise<void> {
+        const transfers = await this.deps.transfers.list();
+        if (this.active !== session) {
+            return;
+        }
+        let settled = false;
+        for (const transfer of transfers) {
+            const before = session.blobs.get(transfer.transferId);
+            if (before === undefined) {
+                // A transfer this window did not start: one picked up again from an earlier session
+                // or an earlier run. Adopted rather than ignored, so the row it belongs to fills in
+                // on screen instead of a file appearing from nowhere.
+                session.blobs.set(transfer.transferId, {
+                    bytes: transfer.bytes,
+                    total: transfer.total,
+                    state: transfer.state,
+                    label: transfer.label,
+                });
+                settled = true;
                 continue;
             }
-            const chunks = sliceBlob(transferId, bytes);
-            for (let at = 0; at < chunks.length; at += 1) {
-                if (this.active !== session || session.blobsDropped.has(transferId)) {
-                    // Left the room, or the record this file was for has been deleted while it was
-                    // going out. Either way the rest of it is bytes nobody will name.
-                    break;
-                }
-                session.rooms.say(session.room.id, chunks[at]);
-                if ((at + 1) % BLOBS_PER_TURN === 0) {
-                    await new Promise<void>(resolve => this.deps.schedule(this.blobTurnDelayMs(), resolve));
-                }
-            }
+            settled = settled
+                || (before.state !== transfer.state
+                    && (transfer.state === "done" || transfer.state === "failed"));
+            before.bytes = transfer.bytes;
+            before.total = transfer.total;
+            before.state = transfer.state;
         }
-    }
-
-    /**
-     * A slice arriving, or somebody saying they are short of some.
-     *
-     * The second half is the only repair this channel has: nothing is acknowledged and nothing is
-     * retransmitted on a timer, so a machine that finds itself short says exactly what it is short
-     * of and whoever holds the file sends those again.
-     */
-    private onBlobMessage(session: ActiveSession, message: LiveBlobChunk | LiveBlobNeeded): void {
-        if (message.kind === "blob") {
-            if (session.blobsIn.accept(message)) {
-                // A slice landing is the only moment a file that was waiting for one can become
-                // writable, so it is the only moment the library is asked to try again.
-                this.deps.assets.resumePayloads();
-            }
-            return;
-        }
-        if (message.by === session.self) {
-            // This window's own request, coming back off the topic.
-            return;
-        }
-        const bytes = session.blobsOut.get(message.transferId);
-        if (!bytes) {
-            // Somebody else is holding that file. Every message reaches the whole room, so the one
-            // that has it answers and the rest of us do nothing.
-            return;
-        }
-        const chunks = sliceBlob(message.transferId, bytes);
-        const wanted = message.missing.length === 0
-            ? chunks
-            : chunks.filter(chunk => message.missing.includes(chunk.index));
-        for (const chunk of wanted) {
-            session.rooms.say(session.room.id, chunk);
+        if (settled) {
+            // A file finishing - or being given up on - is the only moment a payload that was
+            // waiting can stop waiting, so it is the only moment the library is asked to try again.
+            this.deps.assets.resumePayloads();
         }
     }
 

@@ -44,6 +44,7 @@ import {
     TeamConnectionsHandler,
     TeamOpenHandler,
     TeamSubscribeHandler,
+    TeamTransferHandler,
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
@@ -457,6 +458,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new TeamCallHandler(),
         new TeamSubscribeHandler(),
         new TeamUnsubscribeHandler(),
+        // The sixth, and the only one that carries bytes rather than a question.
+        new TeamTransferHandler(),
     new VcsSignInWithPasswordHandler(),
         new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),

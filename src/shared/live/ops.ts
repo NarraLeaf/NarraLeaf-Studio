@@ -345,9 +345,9 @@ export type LiveAssetFolder = AssetGroupEntry;
  * free no matter how large the file is.
  *
  *  - **`transfer`** - the bytes exist on ONE machine and nowhere else: a file the author dragged in
- *    from the desktop, or a replacement picked from a file dialog. They are sliced and sent beside
- *    the operation - see {@link LiveBlobChunk} - because there is no other channel that carries them
- *    and no revision anybody else could fetch them from.
+ *    from the desktop, or a replacement picked from a file dialog. They travel over their own
+ *    request to the server, beside the operation rather than through it - see
+ *    {@link LiveAssetBytePart} - because there is no revision anybody else could fetch them from.
  *  - **`asset`** - the bytes are a copy of a file every machine already holds. What duplicating is.
  *    Sending them would be sending a room something it can produce for itself, which is the same
  *    test a deleted character's sweep passes: *can everybody else reach the same answer from the
@@ -358,7 +358,7 @@ export type LiveAssetFolder = AssetGroupEntry;
  *    same file. Undoing a deletion of a 200 MB video therefore costs one small message.
  */
 export type LiveAssetBytes =
-    /** Sliced and sent. See {@link LiveBlobChunk}. */
+    /** Put on the server and collected from it. See {@link LiveAssetBytePart}. */
     | { from: "transfer"; parts: readonly LiveAssetBytePart[] }
     /** Copied from a file every machine already holds. What a duplicate is. */
     | { from: "asset"; assetId: string }
@@ -381,18 +381,24 @@ export type LiveAssetBytePart = {
      * and a path is the one field here that decides where bytes land.
      */
     path: string | null;
-    /** What the slices carrying this file say they belong to. Minted by the sender. */
+    /**
+     * What the file is called on the server until everybody has it. Minted by the sender.
+     *
+     * The whole of the address: a machine that is short of this file asks its own server for
+     * `(project, transferId)` and reads whatever has arrived, going on as more does. Nothing about
+     * the room is in it, and that is deliberate - a transfer outlives the session it began in, so
+     * an interrupted one is resumed rather than restarted.
+     */
     transferId: string;
     /** How many bytes there are, so a receiver knows when it has them all. */
     size: number;
     /**
-     * What those bytes must hash to, over `@shared/utils/contentHash`.
+     * What those bytes must hash to, as SHA-256 hex.
      *
      * Not the record's own `hash`, which is whatever the filesystem computed on the sending machine:
      * this one is computed from the bytes actually put on the wire and checked against the bytes
-     * actually taken off it. The channel can drop a message - that is what `LiveEffect.seq` gaps are
-     * about - and a file assembled from slices with one missing is a file that looks fine until
-     * somebody opens it.
+     * actually taken off it. A transfer can be interrupted at any point, and a file left one block
+     * short is a file that looks fine until somebody opens it.
      */
     digest: string;
 };
@@ -1618,9 +1624,9 @@ export type LiveRefusalReason =
      * ⚠ There is deliberately no refusal for "the bytes have not arrived". The host decides about
      * records, and whether a particular machine has a file yet is that machine's own business: the
      * slices are still in flight when the operation is stated, so a host that waited for them would
-     * refuse almost every import. A machine short of a file asks for it (`LiveBlobNeeded`) and the
-     * library reports an unresolved reference until it lands - which is a state it already has, for
-     * assets that arrived by every other route.
+     * refuse almost every import. A machine short of a file collects it from the server on its own
+     * account, and the library reports an unresolved reference until it lands - which is a state it
+     * already has, for assets that arrived by every other route.
      */
     | "folder-not-empty"
     /**
@@ -1744,75 +1750,28 @@ export type LiveCatchUp = {
 /* ------------------------------------------------------------------ bytes in flight */
 
 /**
- * How much of a file one message carries.
+ * **Nothing here carries a byte, and that is the design.**
  *
- * Derived from the payload cap rather than chosen: one `live.say` is capped at
- * `TEAM_LIVE_PAYLOAD_LIMIT` (16 KiB), base64 costs four bytes for every three, and the envelope
- * around the data - the kind, a uuid, two numbers - is a couple of hundred more. 12000 leaves room
- * for all of it and stays a round number in the logs.
+ * A file a session is carrying does not appear in this vocabulary at all. It goes over its own
+ * request to the server - reserved, written, read back and dropped - while the messages below go
+ * over the room. Two channels rather than one, and the split is what the whole of the transfer
+ * work is for:
  *
- * ⚠ Raising it does not make transfers faster; it makes them fail. The cap is the server's.
+ *  - **A transfer cannot delay a sentence.** They are separate connections, so an author typing is
+ *    never behind somebody else's video. Sharing one channel meant pacing the sender by hand
+ *    against a figure somebody had guessed, and the guess was wrong in both directions at once.
+ *  - **Neither machine holds the file.** The sender streams it off its own disk and the receiver
+ *    streams it onto its own, so the largest file a session can carry is a question about disks
+ *    rather than about heaps. That is why {@link LiveAssetBytePart} has no size limit beside it any
+ *    more: the limit that used to be here was a limit on memory, and it stopped at 32 MiB, which is
+ *    under one piece of video.
+ *  - **An interruption is resumed, not restarted.** A message channel had no way to express "go on
+ *    from byte 41,000,000"; a request does, and the server keeps what it already holds.
+ *
+ * What is left in this file is what it was always for: what people say to each other.
+ * {@link LiveAssetBytePart} is the whole of the seam - an address, a length and a fingerprint - and
+ * the operation carrying it is refused, exactly as before, if the bytes never turn up.
  */
-export const LIVE_BLOB_CHUNK_BYTES = 12000;
-
-/**
- * The largest file a session will carry.
- *
- * **A limit worth stating rather than a limit worth hiding.** At {@link LIVE_BLOB_CHUNK_BYTES} a
- * message, 32 MiB is about 2800 messages - a few seconds on the sort of link a room runs over, and
- * already far past what an image, a piece of music, a font or a script weighs. What it does not
- * cover is video, and an author who drops a 400 MB file into a live session is told so by name
- * rather than left watching a progress bar that will not finish.
- *
- * The escape is the one every other size limit here has: end the session, import, and open it again -
- * the bulk of a project reaches the room through version control, and this channel carries only what
- * has happened since.
- */
-export const LIVE_BLOB_MAX_BYTES = 32 * 1024 * 1024;
-
-/**
- * One slice of a file, on its way to the room.
- *
- * **Not an operation, and that distinction is the whole design.** An operation changes a document and
- * is applied by the host in an order everybody follows; a slice changes nothing. It travels beside
- * the operation stream rather than through it, which is what keeps a forty-megabyte import from
- * stopping everybody else's typing for the length of the transfer.
- *
- * Sent by whoever holds the file - the host and a guest alike - because the server delivers a room's
- * messages to the whole room. Nothing is applied when the last slice lands: the bytes wait until the
- * operation naming their transfer is applied, and are dropped if it never is.
- */
-export type LiveBlobChunk = {
-    kind: "blob";
-    /** What this belongs to. Minted by the sender; named by {@link LiveAssetBytePart}. */
-    transferId: string;
-    /** Which slice, counting from zero. */
-    index: number;
-    /** How many there are, so a receiver knows what it is waiting for. */
-    total: number;
-    /** The slice, base64. */
-    data: string;
-};
-
-/**
- * A machine saying a transfer did not arrive whole, and which parts it is missing.
- *
- * The repair for the one thing this channel does not promise. It is the same bargain
- * {@link LiveResync} makes about effects, one layer down: nothing is retransmitted on a timer, and
- * nothing is acknowledged - a receiver that finds itself short says exactly what it is short of, and
- * the machine that has the file sends those slices again.
- *
- * Addressed to the room rather than to the sender, for {@link LiveCatchUp}'s reason: a message
- * reaches whoever is listening, and the holder recognises its own transfer.
- */
-export type LiveBlobNeeded = {
-    kind: "blob-needed";
-    /** The instance asking. */
-    by: string;
-    transferId: string;
-    /** The slices it does not have. Empty means it has none of them. */
-    missing: readonly number[];
-};
 
 /** Everything a machine in a session can say. */
 export type LiveMessage =
@@ -1822,9 +1781,7 @@ export type LiveMessage =
     | LiveClaims
     | LiveClaim
     | LiveResync
-    | LiveCatchUp
-    | LiveBlobChunk
-    | LiveBlobNeeded;
+    | LiveCatchUp;
 
 /**
  * Whether a value is a message this build understands.
@@ -1845,7 +1802,5 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "claims"
         || kind === "claim"
         || kind === "resync"
-        || kind === "catch-up"
-        || kind === "blob"
-        || kind === "blob-needed";
+        || kind === "catch-up";
 }
