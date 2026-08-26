@@ -13,6 +13,7 @@ import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
+import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
 import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
@@ -33,11 +34,14 @@ import {
     type LiveAssetFolderOp,
     type LiveAssetOp,
     type LiveAssetRecord,
+    type LiveAssetSetOp,
+    type LiveAudioTrackOp,
     type LiveBlobChunk,
     type LiveBlobNeeded,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
+    type LiveDictionaryOp,
     type LiveDigestScope,
     type LiveDocument,
     type LiveEffect,
@@ -451,6 +455,7 @@ export class LiveSession {
      * **One method for both roles and for both halves of the statement**, because a give-back that
      * could be wired up without its take - or taken on one role and forgotten on the other - is a
      * row nobody can edit for the rest of the session. A guest sends the message and holds nothing;
+    /**
      * a host records it in its own store, which is the only place a claim exists, and broadcasts
      * the set that resulted.
      *
@@ -664,6 +669,8 @@ export class LiveSession {
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
+            audioTracks: () => this.deps.audioTracks.tracks(),
+            assetSets: () => this.deps.assetSets.sets(),
             variables: variableId => this.deps.variables.entry(variableId),
             keys: () => this.deps.localization.keys(),
         });
@@ -792,6 +799,9 @@ export class LiveSession {
                 hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
+                hasAudioTrack: trackId =>
+                    this.deps.audioTracks.tracks()?.some(track => track.id === trackId) ?? false,
+                hasAssetSet: setId => this.deps.assetSets.sets()?.some(set => set.id === setId) ?? false,
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -846,6 +856,11 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        // The three small project tables, through the same sink the libraries use: none of them has
+        // a document id this window has to be holding for an operation to be about it.
+        this.deps.dictionary.setSink(this.librarySinkFor(session));
+        this.deps.audioTracks.setSink(this.librarySinkFor(session));
+        this.deps.assetSets.setSink(this.librarySinkFor(session));
         this.deps.variables.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
@@ -877,6 +892,9 @@ export class LiveSession {
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
+        this.deps.dictionary.setSink(null);
+        this.deps.audioTracks.setSink(null);
+        this.deps.assetSets.setSink(null);
         this.deps.variables.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
@@ -1056,6 +1074,9 @@ export class LiveSession {
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
             assetsByType: category => this.assetsOfCategory(category),
+            dictionary: () => this.deps.dictionary.document(),
+            audioTracks: () => this.deps.audioTracks.tracks(),
+            assetSets: () => this.deps.assetSets.sets(),
             variables: variableId => this.deps.variables.entry(variableId),
             keys: () => this.deps.localization.keys(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
@@ -1081,6 +1102,14 @@ export class LiveSession {
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
                 break;
+            case "dictionary":
+                this.deps.dictionary.applyOp(op as LiveDictionaryOp);
+                break;
+            case "audio-tracks":
+                this.deps.audioTracks.applyOp(op as LiveAudioTrackOp);
+                break;
+            case "asset-sets":
+                this.deps.assetSets.applyOp(op as LiveAssetSetOp);
             case "variables":
                 this.deps.variables.applyOp(op as LiveVariableOp);
                 break;
@@ -1137,6 +1166,14 @@ export class LiveSession {
                 return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
+            // One of each per project, so the kind is the whole address and there is nothing to
+            // read off the operation.
+            case "dictionary":
+                return { doc: "dictionary" };
+            case "audio-tracks":
+                return { doc: "audio-tracks" };
+            case "asset-sets":
+                return { doc: "asset-sets" };
             // One per project, so the verb is the whole address - with the cast.
             case "variables":
                 return { doc: "variables" };
@@ -1183,6 +1220,15 @@ export class LiveSession {
                 return assetsDigest(this.deps.assets.records(scope.assetType));
             case "asset-groups":
                 return assetGroupsDigest(this.deps.assets.folders(scope.category));
+            // Whole-document, with the libraries and the asset shards, and absent hashes to a value
+            // for their reason: all three are read as the workspace starts, so a machine that
+            // reaches an effect without one has failed at something.
+            case "dictionary":
+                return dictionaryDigest(this.deps.dictionary.document());
+            case "audio-tracks":
+                return audioTracksDigest(this.deps.audioTracks.tracks());
+            case "asset-sets":
+                return assetSetsDigest(this.deps.assetSets.sets());
             // ⚠ An entry that is not there hashes to a value rather than to nothing, the way a
             // missing character record does: taking a variable back out is an operation like any
             // other, and the machine that failed to apply it has to be caught rather than excused.
@@ -1417,15 +1463,16 @@ export class LiveSession {
     /**
      * Where translation and voice edits go while this session is running.
      *
-     * **One sink for the two libraries, the asset shards and the two project-level registries**,
-     * which is the only place in this file documents share one, and they share it because the
-     * decision is identical: none of them has a document id this window has to be holding for the
-     * operation to be about it - the operation names its own language, or its own asset type, or is
-     * about the single registry there is - so there is nothing left for them to differ about. Five
-     * copies of these ten lines would be five places to remember the size check.
+     * **One sink for every document that is not a story and not the cast**, which is the only
+     * place in this file documents share one, and they share it because the decision is identical:
+     * none of them has a document id this window has to be holding for the operation to be about it
+     * - the operation names its own language or its own asset type, and the project tables and the
+     * two registries have only one address each. Eight copies of these ten lines would be eight
+     * places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp | LiveVariableOp): boolean;
+        handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp
+            | LiveVariableOp | LiveDictionaryOp | LiveAudioTrackOp | LiveAssetSetOp): boolean;
     } {
         return {
             handle: (op): boolean => {

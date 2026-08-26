@@ -12,6 +12,9 @@ import type {
     LiveVoiceOp,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import { makeAssetSetAxis, type AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -1233,6 +1236,303 @@ describe("undoing what this window did to the asset library", () => {
     });
 });
 
+
+/* ---------------------------------------------------------- the three project tables */
+
+/**
+ * A dictionary, a mixer and a list of asset sets, each small enough to hold in a test.
+ *
+ * The appliers below are the services' own, cut down to what an inverse has to be checked against:
+ * what matters here is that undoing a gesture puts the table back the way it was, and a fixture that
+ * applied operations differently from the service would be checking itself.
+ */
+type Tables = {
+    dictionary: ProjectDictionaryDocument;
+    tracks: ProjectAudioTrack[];
+    sets: AssetSet[];
+};
+
+function makeTables(): Tables {
+    return {
+        dictionary: {
+            schemaVersion: 2,
+            entries: [{ term: "Kagurazaka", reading: "かぐらざか" }],
+            options: { suggestReadings: true, checkVariants: true },
+        },
+        tracks: [
+            { id: "master-ish", name: "Music", parentId: null, volume: 1, loop: false },
+            { id: "sub", name: "Strings", parentId: "master-ish", volume: 0.8, loop: true },
+            { id: "last", name: "Voices", parentId: null, volume: 1, loop: false },
+        ],
+        sets: [
+            { id: "s1", name: "Alice", type: "image", filter: [], axis: makeAssetSetAxis("release", []) },
+            { id: "s2", name: "Alice happy", type: "image", filter: [], groupId: "cast", axis: makeAssetSetAxis("release", []) },
+        ],
+    };
+}
+
+function applyTables(tables: Tables, op: LiveOp): void {
+    switch (op.op) {
+        case "set-dictionary-entry": {
+            const rest = tables.dictionary.entries
+                .filter(entry => entry.term !== op.term && entry.term !== op.entry?.term);
+            tables.dictionary.entries = op.entry ? [...rest, { ...op.entry }] : rest;
+            return;
+        }
+        case "set-dictionary-options":
+            tables.dictionary.options = { ...op.options };
+            return;
+        case "create-audio-track": {
+            const reparent = new Set(op.reparent ?? []);
+            const rest = tables.tracks
+                .filter(track => track.id !== op.track.id)
+                .map(track => (reparent.has(track.id) ? { ...track, parentId: op.track.id } : track));
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            rest.splice(index < 0 ? rest.length : index, 0, { ...op.track });
+            tables.tracks = rest;
+            return;
+        }
+        case "update-audio-track":
+            tables.tracks = tables.tracks.map(track => (
+                track.id === op.trackId ? { ...op.track, id: op.trackId } : track
+            ));
+            return;
+        case "delete-audio-track": {
+            const doomed = tables.tracks.find(track => track.id === op.trackId);
+            if (!doomed) {
+                return;
+            }
+            tables.tracks = tables.tracks
+                .filter(track => track.id !== op.trackId)
+                .map(track => (track.parentId === op.trackId ? { ...track, parentId: doomed.parentId } : track));
+            return;
+        }
+        case "move-audio-track": {
+            const moving = tables.tracks.find(track => track.id === op.trackId);
+            if (!moving) {
+                return;
+            }
+            const rest = tables.tracks.filter(track => track.id !== op.trackId);
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            rest.splice(index < 0 ? rest.length : index, 0, moving);
+            tables.tracks = rest;
+            return;
+        }
+        case "create-asset-sets": {
+            const next = tables.sets.filter(set => !op.creates.some(create => create.set.id === set.id));
+            for (const create of op.creates) {
+                const index = create.beforeId === null ? -1 : next.findIndex(set => set.id === create.beforeId);
+                next.splice(index < 0 ? next.length : index, 0, structuredClone(create.set));
+            }
+            tables.sets = next;
+            return;
+        }
+        case "update-asset-set":
+            tables.sets = tables.sets.map(set => (
+                set.id === op.setId ? { ...structuredClone(op.set), id: op.setId } : set
+            ));
+            return;
+        case "delete-asset-sets": {
+            const doomed = new Set(op.setIds);
+            tables.sets = tables.sets.filter(set => !doomed.has(set.id));
+            return;
+        }
+        case "move-asset-sets": {
+            const moves = new Map(op.moves.map(move => [move.setId, move.groupId]));
+            tables.sets = tables.sets.map(set => {
+                if (!moves.has(set.id)) {
+                    return set;
+                }
+                const groupId = moves.get(set.id) ?? null;
+                const { groupId: _current, ...rest } = set;
+                return groupId ? { ...rest, groupId } : rest;
+            });
+            return;
+        }
+        default:
+            throw new Error(`the tables fixture has no applier for ${op.op}`);
+    }
+}
+
+function tableSources(tables: Tables) {
+    return {
+        dictionary: () => tables.dictionary,
+        audioTracks: () => tables.tracks,
+        assetSets: () => tables.sets,
+    };
+}
+
+/** Capture, apply, and hand back what an undo would be asked about. */
+function performTable(tables: Tables, op: LiveOp, document: LiveEffect["document"], by = SELF): Done {
+    const before = captureBefore(op, tableSources(tables));
+    applyTables(tables, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document, op }, before };
+}
+
+function invertTable(tables: Tables, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, ...tableSources(tables) });
+}
+
+describe("undoing what this window did to the project dictionary", () => {
+    it("takes back an added term by removing it", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry", term: "Nattou", entry: { term: "Nattou" },
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries.map(entry => entry.term)).toContain("Nattou");
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries.map(entry => entry.term)).not.toContain("Nattou");
+    });
+
+    it("puts a removed term back with everything that described it", () => {
+        // The reason `null` is a value here rather than the absence of a record: clearing an entry
+        // IS the removal, so the undo has to know what the entry held.
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry", term: "Kagurazaka", entry: null,
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries).toHaveLength(0);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries).toEqual([{ term: "Kagurazaka", reading: "かぐらざか" }]);
+    });
+
+    it("takes a rename back by clearing the new spelling and restoring the old entry", () => {
+        // ⚠ The address of the inverse is where the entry ENDED UP. A rename is one gesture, so it
+        // is one operation, and taking it back has to remove what it wrote as well as put back what
+        // it moved - which is why the term is the entry's identity rather than a field of it.
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry",
+            term: "Kagurazaka",
+            entry: { term: "Kagura-zaka", reading: "かぐらざか" },
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries.map(entry => entry.term)).toEqual(["Kagura-zaka"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries).toEqual([{ term: "Kagurazaka", reading: "かぐらざか" }]);
+    });
+
+    it("keeps nothing for a rename onto a spelling the project already writes", () => {
+        // Studio refuses to produce one, so this is a machine a version apart - and one operation
+        // names one address, so nothing here could put both entries back. Answered as "nothing was
+        // kept" rather than as a half-restoration.
+        const tables = makeTables();
+        tables.dictionary.entries.push({ term: "Nattou" });
+        const op: LiveOp = { op: "set-dictionary-entry", term: "Kagurazaka", entry: { term: "Nattou" } };
+        expect(captureBefore(op, tableSources(tables))).toBeNull();
+    });
+
+    it("puts both checks back as one statement", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-options", options: { suggestReadings: false, checkVariants: false },
+        }, { doc: "dictionary" });
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.options).toEqual({ suggestReadings: true, checkVariants: true });
+    });
+});
+
+describe("undoing what this window did to the mixer", () => {
+    it("brings the buses that were promoted back under the one that was deleted", () => {
+        // ⚠ The asymmetry `create-character.rebind` has. Going down the promotion is derived; coming
+        // back up it is not, because a promoted bus is indistinguishable from one that always hung
+        // where it now hangs.
+        const tables = makeTables();
+        const done = performTable(tables, { op: "delete-audio-track", trackId: "master-ish" }, { doc: "audio-tracks" });
+        expect(tables.tracks.map(track => track.id)).toEqual(["sub", "last"]);
+        expect(tables.tracks[0]!.parentId).toBeNull();
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "sub", "last"]);
+        expect(tables.tracks.find(track => track.id === "sub")!.parentId).toBe("master-ish");
+    });
+
+    it("refuses when the bus is in the mixer again", () => {
+        const tables = makeTables();
+        const done = performTable(tables, { op: "delete-audio-track", trackId: "sub" }, { doc: "audio-tracks" });
+        tables.tracks.push({ id: "sub", name: "Strings again", parentId: null, volume: 1, loop: false });
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "track-restored" });
+    });
+
+    it("refuses to put a record back on a bus somebody deleted", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "update-audio-track",
+            trackId: "sub",
+            track: { id: "sub", name: "Strings", parentId: "master-ish", volume: 0.2, loop: true },
+        }, { doc: "audio-tracks" });
+        tables.tracks = tables.tracks.filter(track => track.id !== "sub");
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "track-gone" });
+    });
+
+    it("puts a moved bus back where it sat", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-audio-track", trackId: "sub", beforeId: null,
+        }, { doc: "audio-tracks" });
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "last", "sub"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "sub", "last"]);
+    });
+});
+
+describe("undoing what this window did to the asset sets", () => {
+    it("takes a declaration back by removing exactly what it made", () => {
+        const tables = makeTables();
+        const set: AssetSet = { id: "s3", name: "Ben", type: "image", filter: [], axis: makeAssetSetAxis("release", []) };
+        const done = performTable(tables, {
+            op: "create-asset-sets", creates: [{ set, beforeId: null }],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2", "s3"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2"]);
+    });
+
+    it("puts a deleted subtree back in the order it was in", () => {
+        // The anchors skip the sets that went with them, which is what lets one pass from the front
+        // restore two sets that shared a surviving successor without swapping them.
+        const tables = makeTables();
+        tables.sets.push({ id: "s3", name: "Cara", type: "image", filter: [], axis: makeAssetSetAxis("release", []) });
+        const done = performTable(tables, {
+            op: "delete-asset-sets", setIds: ["s1", "s2"],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s3"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2", "s3"]);
+        expect(tables.sets[1]!.groupId).toBe("cast");
+    });
+
+    it("files every set of a drag back where IT came from, not where they all went", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-asset-sets",
+            moves: [{ setId: "s1", groupId: "shared" }, { setId: "s2", groupId: "shared" }],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.groupId)).toEqual(["shared", "shared"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets[0]!.groupId).toBeUndefined();
+        expect(tables.sets[1]!.groupId).toBe("cast");
+    });
+
+    it("refuses when a set the batch named has gone", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-asset-sets", moves: [{ setId: "s1", groupId: "shared" }],
+        }, { doc: "asset-sets" });
+        tables.sets = tables.sets.filter(set => set.id !== "s1");
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "set-gone" });
+    });
+});
 
 /* -------------------------------------------------------------- the two project registries */
 

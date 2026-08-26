@@ -138,6 +138,10 @@ export const story = {
         refusedAssetIdTaken: "That asset already exists here. Nothing was imported.",
         // The author was asked about the folders inside it before anything was removed, and said no.
         refusedFolderNotEmpty: "That folder has folders in it. Nothing was deleted.",
+        // The mixer's answer to a record that has gone, and it says the same nothing about the
+        // panel: what the author typed into it is theirs and stays where it is.
+        refusedTrackGone: "That audio track is gone. The change was not applied.",
+        refusedSetGone: "That asset set is gone. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
@@ -168,6 +172,10 @@ export const story = {
         // one: the bytes that were there are not kept, so there is nothing to point the record back
         // at.
         undoContentReplaced: "Replacing a file cannot be taken back.",
+        undoTrackGone: "That audio track is gone.",
+        undoTrackRestored: "That audio track is in the mixer again.",
+        undoSetGone: "That asset set is gone.",
+        undoSetRestored: "That asset set is declared again.",
         undoVariableGone: "That variable is gone.",
         undoVariableRestored: "That variable exists again.",
         undoKeyRestored: "That string is declared again.",

@@ -31,35 +31,35 @@ function session(capabilities?: string[]): VcsServerSession {
 
 describe("what a server offers", () => {
     it("says yes to what the server named", () => {
-        const named = session(["projects", "project-detail", "members", "project-history"]);
+        const named = session(["session", "comments", "project-history"]);
 
-        expect(serverCan(named, "members")).toBe(true);
-        expect(serverCan(named, "project-detail")).toBe(true);
+        expect(serverCan(named, "session")).toBe(true);
+        expect(serverCan(named, "comments")).toBe(true);
         expect(serverCan(named, "project-history")).toBe(true);
     });
 
     it("says no to what it did not name, without asking it", () => {
-        expect(serverCan(session(["projects"]), "members")).toBe(false);
+        expect(serverCan(session(["session"]), "project-history")).toBe(false);
     });
 
     it("treats one capability independently of another", () => {
-        // Measured: a deployment can list projects and answer for one of them without
-        // serving history, so the two surfaces cannot share a gate.
-        const half = session(["projects", "project-detail"]);
+        // Measured: a deployment can serve conversations without serving a revision
+        // history, so the two surfaces cannot share a gate.
+        const half = session(["session", "comments"]);
 
-        expect(serverCan(half, "project-detail")).toBe(true);
+        expect(serverCan(half, "comments")).toBe(true);
         expect(serverCan(half, "project-history")).toBe(false);
     });
 
     it("says no for a session stored before Studio kept the list", () => {
         // The safe direction: the cost is a section appearing after the tab refreshes the
         // server, where the other direction is a request that is certain to be refused.
-        expect(serverCan(session(), "members")).toBe(false);
-        expect(serverCan(session([]), "members")).toBe(false);
+        expect(serverCan(session(), "project-history")).toBe(false);
+        expect(serverCan(session([]), "project-history")).toBe(false);
     });
 
     it("says no where there is no server at all", () => {
-        expect(serverCan(null, "members")).toBe(false);
-        expect(serverCan(undefined, "project-detail")).toBe(false);
+        expect(serverCan(null, "project-history")).toBe(false);
+        expect(serverCan(undefined, "comments")).toBe(false);
     });
 });

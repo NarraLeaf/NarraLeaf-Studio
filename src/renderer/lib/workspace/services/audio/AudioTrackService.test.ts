@@ -10,6 +10,7 @@ import {
 import { Services, type WorkspaceContext } from "../services";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
+import type { LiveAudioTrackOp } from "@shared/live/ops";
 import { AudioTrackService } from "./AudioTrackService";
 
 /**
@@ -447,5 +448,58 @@ describe("audio track undo", () => {
         expect(service.getTrack(track.id)?.volume).toBe(0.5);
         // The track itself is still there: the step undone is the edit, not its creation.
         expect(service.getTrack(track.id)?.name).toBe("Ambience");
+    });
+});
+
+describe("the live-session seam", () => {
+    it("states the record a field edit would have written, and does not touch the document", async () => {
+        // The bargain every sink in this codebase makes: with one installed the edit becomes an
+        // operation and the document stays where it is, so nothing is ever applied optimistically
+        // and nothing ever has to be taken back.
+        const { service } = await createHarness();
+        const stated: LiveAudioTrackOp[] = [];
+        service.setOperationSink({ handle: op => (stated.push(op), true) });
+
+        service.renameTrack(AUDIO_TRACK_ID_BGM, "Score");
+
+        expect(stated).toEqual([{
+            op: "update-audio-track",
+            trackId: AUDIO_TRACK_ID_BGM,
+            track: { ...service.getTrack(AUDIO_TRACK_ID_BGM)!, name: "Score" },
+        }]);
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)!.name).not.toBe("Score");
+    });
+
+    it("moves the mixer when the effect comes back, and leaves the project stack alone", async () => {
+        // ⚠ No undo step: inside a session undo sends the inverse of this window's own operation,
+        // and an entry on the project stack would be a whole-document snapshot taken before anybody
+        // else joined.
+        const { service, history } = await createHarness();
+        service.setOperationSink({ handle: () => true });
+        service.renameTrack(AUDIO_TRACK_ID_BGM, "Score");
+
+        service.applyLiveOp({
+            op: "update-audio-track",
+            trackId: AUDIO_TRACK_ID_BGM,
+            track: { ...service.getTrack(AUDIO_TRACK_ID_BGM)!, name: "Score" },
+        });
+
+        expect(service.getTrack(AUDIO_TRACK_ID_BGM)!.name).toBe("Score");
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("promotes the buses that fed a deleted one, which is what every machine derives", async () => {
+        const { service } = await createHarness();
+        service.setOperationSink({ handle: () => true });
+        const bus = service.createTrack({ name: "Submix" });
+        // Created through the sink, so it is not in the document yet - the effect is what files it.
+        service.applyLiveOp({ op: "create-audio-track", track: bus, beforeId: null });
+        const child = service.createTrack({ name: "Strings", parentId: bus.id });
+        service.applyLiveOp({ op: "create-audio-track", track: child, beforeId: null });
+
+        service.applyLiveOp({ op: "delete-audio-track", trackId: bus.id });
+
+        expect(service.getTrack(bus.id)).toBeUndefined();
+        expect(service.getTrack(child.id)!.parentId).toBeNull();
     });
 });

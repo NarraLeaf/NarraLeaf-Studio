@@ -1,8 +1,16 @@
 {
-  "note": "The Team protocol's wire names. A byte-identical copy lives in Studio at src/shared/types/teamContract.json; both move together or the two stop understanding each other. Each side has a test that pins its own constants to this file, so a rename that forgets one half fails there rather than on somebody's machine.",
-  "protocol": 1,
+  "_generated": "Generated from the @narraleaf/team-protocol contract; do not edit by hand. Until that package is published to npm, the generation is a byte-for-byte copy of the Team repository's protocol/contract.json. Studio's team.ts is pinned to this file by teamContract.test.ts, so a rename that reaches only one of them fails there rather than on somebody's machine.",
+  "protocol": 2,
   "socketPath": "/api/team/v1/socket",
-  "capabilities": ["session", "comments", "clients", "live", "overlay"],
+  "capabilities": [
+    "session",
+    "comments",
+    "clients",
+    "live",
+    "overlay",
+    "password-sign-in",
+    "project-history"
+  ],
   "errorCodes": [
     "unknown-method",
     "bad-params",
@@ -16,6 +24,9 @@
   "methods": [
     "projects.list",
     "projects.get",
+    "projects.history",
+    "projects.create",
+    "projects.forget",
     "members.list",
     "threads.list",
     "threads.get",
@@ -39,7 +50,6 @@
   ],
   "topics": {
     "projects": "projects",
-    "members": "members",
     "project": "project:{project}",
     "projectThreads": "project:{project}/threads",
     "projectOverlay": "project:{project}/overlay",
@@ -48,8 +58,19 @@
     "live": "live:{session}"
   },
   "frames": {
-    "fromServer": ["hello", "result", "error", "subscribed", "event", "bye"],
-    "fromClient": ["call", "subscribe", "unsubscribe"]
+    "fromServer": [
+      "hello",
+      "result",
+      "error",
+      "subscribed",
+      "event",
+      "bye"
+    ],
+    "fromClient": [
+      "call",
+      "subscribe",
+      "unsubscribe"
+    ]
   },
   "limits": {
     "anchorField": 512,
