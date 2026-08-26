@@ -571,7 +571,9 @@ export class LiveSession {
                 // of the repair: it adopts the room's version, which is where this tree should have
                 // been all along.
                 await this.join({ session: joined });
+                return "settled";
             }
+            await this.reopenWhatWasHosted(ready);
             return "settled";
         } catch (error) {
             // ⚠ Through `failEntry`, not just logged. Taking a room up moves the phase to
@@ -582,6 +584,45 @@ export class LiveSession {
             this.failEntry({ kind: "failed", detail: describe(error) });
             return "settled";
         }
+    }
+
+    /**
+     * Open again what this window was hosting when it went away.
+     *
+     * **The half of a reload the server cannot help with.** A room lives in a server's memory and
+     * belongs to the window that opened it, so a window going away ends it there and then - measured
+     * both ways, on a graceful reload and on a window killed outright. Everybody in it is told
+     * correctly; what nobody can tell afterwards is that the collaboration was meant to carry on,
+     * because from the next launch a reload and a goodbye look the same. So the one window that
+     * knows leaves itself a note, and this is where it is read - and thrown away.
+     *
+     * Bounded by {@link LIVE_CONTINUATION_MS}, which is the same window the guests are watching for
+     * the room in. A note older than that is a session that ended some time ago, and a workspace
+     * opening on it must not start a room around an author who came back the next morning.
+     */
+    private async reopenWhatWasHosted(
+        ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
+    ): Promise<void> {
+        const hosted = await this.deps.memory.recall();
+        if (hosted === null) {
+            return;
+        }
+        this.deps.memory.remember(null);
+        if (this.deps.now() - hosted.at > LIVE_CONTINUATION_MS) {
+            return;
+        }
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        const published = await this.publishHead();
+        if ("kind" in published) {
+            this.failEntry(published);
+            return;
+        }
+        await this.openRoom({
+            ready,
+            storyId: hosted.story,
+            revision: published.revision,
+            checkpoint: published.checkpoint,
+        });
     }
 
     /**
@@ -990,6 +1031,11 @@ export class LiveSession {
             // `after: 0` because a guest that has just joined has applied nothing.
             const resync: LiveResync = { kind: "resync", by: input.self, after: 0 };
             input.rooms.say(input.room.id, resync);
+        } else {
+            // The one fact a session leaves outside itself. A room belongs to the window that opened
+            // it, so a window going away ends it - and from the next launch, that is indistinguishable
+            // from an author having left. See `LiveMemoryPort`.
+            this.deps.memory.remember({ story: input.storyId });
         }
         this.publish(session, {
             phase: role === "host" ? "active" : "catching-up",
@@ -1066,6 +1112,12 @@ export class LiveSession {
         this.deps.freeze.lift(session.room.id);
 
         const silent = options.silently === true;
+        if (!silent) {
+            // Asked for, so there is nothing to come back to. Forgotten before anything that can
+            // fail, because a note that outlived the session it describes would reopen a room around
+            // an author who had closed one.
+            this.deps.memory.remember(null);
+        }
         const closed = !silent && (session.role === "host" || cause === "host-left");
         // Before the room is closed, because a handover is addressed into a room that still exists.
         if (!silent && session.role === "host" && cause !== "diverged") {
