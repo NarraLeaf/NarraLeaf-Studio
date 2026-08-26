@@ -989,7 +989,10 @@ describe("story document migration ladder", () => {
     // The regression that shipped: bumping the constant without adding a step left v3 documents
     // falling through migrateStoryDocumentToLatest untouched, so every existing project threw
     // "migration is not implemented" and its story panel would not open.
-    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [17]])("brings a v%i document to the current schema", version => {
+    // 22 is the rung immediately below the current one, and the one an additive bump is easiest to
+    // leave behind: v23 added `StoryJumpPayload.returnable` with no step of its own, so only the
+    // unconditional stamp at the end of the ladder brings a v22 document up at all.
+    it.each([[1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [17], [22]])("brings a v%i document to the current schema", version => {
         expect(normalizeStoryDocument(docAtVersion(version), "2026-07-16T00:00:00.000Z").schemaVersion)
             .toBe(STORY_DOCUMENT_SCHEMA_VERSION);
     });
