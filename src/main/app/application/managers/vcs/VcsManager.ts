@@ -549,10 +549,12 @@ export class VcsManager extends Manager {
      * something the author pressed, and not for anything that happens on opening a
      * project.
      *
-     * `{ online: true }` is therefore reachable from exactly five places, all of them in
-     * this class and all of them named after an act the author performed: reading the
-     * sync state, pushing, syncing, cloning, and signing in. Adding a sixth means
-     * deciding, again, that a socket may be opened without anyone asking for it.
+     * `offline: false` is therefore reachable from exactly six places, all of them in this
+     * class and all of them named after an act the author performed: reading the sync
+     * state, pushing, syncing, cloning, signing in, and putting this tree on the version a
+     * live session is running from - which is somebody having pressed Join. Adding a
+     * seventh means deciding, again, that a socket may be opened without anyone asking for
+     * it. The sixth reads only; see {@link restoreRevision}.
      */
     private globalsFor(root: string, options: { online?: boolean } = {}): LoreGlobals {
         return {
@@ -1047,21 +1049,35 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(projectPath);
             const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
-            const entries = await backend.listFilesAt(
-                globals,
-                session.store,
-                session.repositoryId,
-                revision,
+            // Which of the two acts this is. The mechanics below are identical; what differs is the
+            // two sentences the revisions carry - permanent repository content that a collaborator
+            // reads - and where the version being written may be fetched from. See
+            // `VcsRestoreOptions.purpose`.
+            const live = options.purpose === "live-session";
+            /**
+             * The globals the version is READ through, which for a session is the sixth online call.
+             *
+             * ⚠ **Reads only.** The commits below stay on the session's offline globals, and that is
+             * measured rather than tidy (§4.29): on a repository registered with a server, a
+             * revision committed under `offline: false` cannot have its content read back by the
+             * process that wrote it.
+             *
+             * Online because a session's version is one another machine has just pushed. Every other
+             * restore is of a revision this repository already holds, and {@link globalsFor} explains
+             * why nothing gets to open a socket without somebody having asked - joining a room is
+             * somebody asking.
+             */
+            const readGlobals = live ? { ...globals, offline: false } : globals;
+
+            const entries = await this.withServerSession(
+                live ? session.remoteOrigin : null,
+                () => backend.listFilesAt(readGlobals, session.store, session.repositoryId, revision),
             );
             const plan = planRevisionRestore({
                 revision: entries,
                 working: await readWorkingSetPaths(session.root),
             });
 
-            // Which of the two acts this is. The mechanics below are identical; the sentences the
-            // two revisions carry are not, and they are permanent repository content that a
-            // collaborator reads - see `VcsRestoreOptions.purpose`.
-            const live = options.purpose === "live-session";
             const checkpoint = await backend
                 .commitWorkingTree(globals, {
                     message: live ? CHECKPOINT_MESSAGES["live-session"] : CHECKPOINT_MESSAGES.restore,
@@ -1080,18 +1096,21 @@ export class VcsManager extends Manager {
                 checkpoint ? `checkpoint ${checkpoint.revision}` : "clean tree, no checkpoint",
             );
 
-            const applied = await applyRevisionRestore({
-                projectPath: session.root,
-                plan,
-                source: {
-                    read: (entry) => backend.readEntryBytes(
-                        globals,
-                        session.store,
-                        session.repositoryId,
-                        entry,
-                    ),
-                },
-            });
+            const applied = await this.withServerSession(
+                live ? session.remoteOrigin : null,
+                () => applyRevisionRestore({
+                    projectPath: session.root,
+                    plan,
+                    source: {
+                        read: (entry) => backend.readEntryBytes(
+                            readGlobals,
+                            session.store,
+                            session.repositoryId,
+                            entry,
+                        ),
+                    },
+                }),
+            );
 
             let recordFailure: string | null = null;
             const recorded = await backend
