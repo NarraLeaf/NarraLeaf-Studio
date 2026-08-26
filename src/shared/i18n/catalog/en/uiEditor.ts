@@ -83,6 +83,7 @@ export const uiEditor = {
             wheelDown: "Wheel down",
             wheelLeft: "Wheel left",
             wheelRight: "Wheel right",
+            longPress: "Long press",
         },
     },
     createDialog: {
