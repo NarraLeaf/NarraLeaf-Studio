@@ -12,8 +12,13 @@ import type {
     LiveDigestScope,
     LiveLocalizationOp,
     LiveStoryOp,
+    LiveUIGraphOp,
+    LiveUIOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
@@ -22,6 +27,8 @@ import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
@@ -242,6 +249,57 @@ export type LiveAssetsPort = {
     applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
 };
 
+/**
+ * The interface and its blueprints - `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`.
+ *
+ * **One port for two documents, and that is a statement rather than a shortcut.** Everywhere else a
+ * document has a port of its own; these two are one editing surface written to two files. Adding a
+ * widget to a Surface writes the first and then reconciles a private blueprint for it in the second,
+ * in the same synchronous step - so a session that carried one of them would spend its life
+ * announcing that the other could not be saved. They are loaded together, frozen together, and the
+ * one applier below reports units of both.
+ */
+export type LiveUIPort = {
+    /**
+     * Where interface and blueprint edits go instead of into the documents, or null to take both
+     * back. One call, because there is no state in which one of them is redirected and the other is
+     * not.
+     */
+    setSink(sink: { ui: UIOpSink; graphs: UIGraphOpSink } | null): void;
+    /**
+     * Whether this window holds both documents.
+     *
+     * What the session carries and what the write boundary leaves writable, from one answer - the
+     * shape every other port's `loadAll` has. Nothing to load: both are read as the workspace starts
+     * rather than when a panel opens them.
+     */
+    held(): boolean;
+    /** The interface document as it stands, or null when this window does not hold it. */
+    document(): UIDocument | null;
+    /** The blueprint document as it stands, or null when this window does not hold it. */
+    graphs(): UIGraphDocument | null;
+    /**
+     * Whether one element is in the interface right now.
+     *
+     * A boolean, with the asset port's `hasRecord`: presence is the whole of what the host asks, and
+     * handing the record over would invite a later reader to plan against a copy.
+     */
+    hasElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Answers with every unit it changed, and for an interface operation that includes units of
+     * the OTHER document.** Applying an interface delta runs the blueprint reconciliation behind it,
+     * which is derived work - every machine computes the same records from the same effect, which is
+     * why the ids it mints are derived from the owner key rather than freshly minted. Derived work is
+     * exactly the work that has to be fingerprinted rather than assumed, so what it touched is
+     * reported here and reaches the effect's digests.
+     */
+    applyOp(op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[];
+};
+
 /** The five things a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
@@ -297,6 +355,7 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    ui: LiveUIPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;

@@ -14,7 +14,13 @@ import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import { liveSessionWritablePaths, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionWritablePaths,
+    type LiveSessionInterface,
+    type LiveSessionLocales,
+} from "@shared/live/sharedDocuments";
+import { uiBlueprintDigest, uiGraphShellDigest } from "@shared/live/uiGraphParts";
+import { uiComponentDigest, uiShellDigest, uiSurfaceDigest } from "@shared/live/uiParts";
 import {
     assetClaimKey,
     characterClaimKey,
@@ -22,6 +28,8 @@ import {
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    uiElementClaimKey,
+    uiNodeClaimKey,
     type LiveAssetBytePart,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -40,6 +48,8 @@ import {
     type LiveRefusal,
     type LiveResync,
     type LiveStoryOp,
+    type LiveUIGraphOp,
+    type LiveUIOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
@@ -54,6 +64,8 @@ import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
 import { decideLiveRole, planLiveJoin } from "./liveEntry";
 import type { LiveProjectIdentity, LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
@@ -117,6 +129,11 @@ type ActiveSession = {
     assetTypes: readonly string[];
     /** The sections whose folders this session carries, settled on the way in with the rest. */
     assetCategories: readonly string[];
+    /**
+     * Whether this session carries the interface and its blueprints, settled on the way in with the
+     * rest. Both or neither - see `LiveSessionInterface`.
+     */
+    ui: LiveSessionInterface;
     /**
      * Slices that have arrived and are waiting for the operation naming them.
      *
@@ -499,6 +516,28 @@ export class LiveSession {
     }
 
     /**
+     * This window is writing one interface element, or has stopped.
+     *
+     * Held while the properties panel has that element selected, which is the only place the
+     * interface keeps a draft: its text fields commit on a throttle or on blur, so somebody else's
+     * edit to the same element arriving mid-sentence takes the sentence with it. The component id is
+     * in the key because a component definition owns its own element map.
+     */
+    public claimUIElement(componentId: string | null, elementId: string, holding: boolean): void {
+        this.claim(uiElementClaimKey(componentId, elementId), holding);
+    }
+
+    /**
+     * This window is writing one blueprint node, or has stopped.
+     *
+     * The element's counterpart on the canvas: a node's parameter editors are the draft layer, and
+     * the blueprint and graph are in the key because node ids are not unique across the document.
+     */
+    public claimUINode(blueprintId: string, graphId: string, nodeId: string, holding: boolean): void {
+        this.claim(uiNodeClaimKey(blueprintId, graphId, nodeId), holding);
+    }
+
+    /**
      * Take or give back one claim, whichever kind it is.
      *
      * The one path for both, so the host's record and the broadcast that follows it cannot come to
@@ -683,12 +722,16 @@ export class LiveSession {
         // opens it, so this only asks which ones are there.
         const assetTypes = this.deps.assets.shardTypes();
         const assetCategories = this.deps.assets.folderCategories();
+        // Nothing to read here either: both interface documents are loaded as the workspace starts.
+        // What this asks is whether they are there, which is what the session carries and what the
+        // boundary leaves writable - one set, from one call.
+        const ui: LiveSessionInterface = { carried: this.deps.ui.held() };
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories, ui),
         });
 
         const session: ActiveSession = {
@@ -701,6 +744,7 @@ export class LiveSession {
             locales,
             assetTypes,
             assetCategories,
+            ui,
             blobsIn: new LiveBlobInbox(),
             blobsOut: new Map(),
             blobsDropped: new Set(),
@@ -734,10 +778,13 @@ export class LiveSession {
                 locales,
                 assetTypes,
                 assetCategories,
+                ui,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
+                hasUIElement: ref => this.deps.ui.hasElement(ref),
+                hasBlueprint: blueprintId => this.deps.ui.hasBlueprint(blueprintId),
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -792,6 +839,7 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        this.deps.ui.setSink(this.interfaceSinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -822,6 +870,7 @@ export class LiveSession {
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
+        this.deps.ui.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
         session.blobsDropped.clear();
@@ -1000,6 +1049,8 @@ export class LiveSession {
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
             assetsByType: category => this.assetsOfCategory(category),
+            ui: this.deps.ui.document(),
+            uiGraphs: this.deps.ui.graphs(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1022,6 +1073,10 @@ export class LiveSession {
                 break;
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
+                break;
+            case "ui":
+            case "ui-graphs":
+                touched.push(...this.deps.ui.applyOp(op as LiveUIOp | LiveUIGraphOp));
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1071,6 +1126,11 @@ export class LiveSession {
                 return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
+            // One of each per project, so the address is the whole of it - the cast's shape.
+            case "ui":
+                return { doc: "ui" };
+            case "ui-graphs":
+                return { doc: "ui-graphs" };
         }
     }
 
@@ -1112,6 +1172,21 @@ export class LiveSession {
                 return assetsDigest(this.deps.assets.records(scope.assetType));
             case "asset-groups":
                 return assetGroupsDigest(this.deps.assets.folders(scope.category));
+            // ⚠ A Surface, a component or a blueprint this window does not hold hashes to a value
+            // rather than to nothing, with the cast's record and against a missing scene: both
+            // interface documents are in memory before a session can start, so arriving here without
+            // one means this machine failed at something - and answering null would rule
+            // `unproven` on exactly the effect that proves the two copies have parted company.
+            case "ui-surface":
+                return uiSurfaceDigest(this.deps.ui.document(), scope.surfaceId);
+            case "ui-component":
+                return uiComponentDigest(this.deps.ui.document(), scope.componentId);
+            case "ui-shell":
+                return uiShellDigest(this.deps.ui.document());
+            case "ui-blueprint":
+                return uiBlueprintDigest(this.deps.ui.graphs(), scope.blueprintId);
+            case "ui-graph-shell":
+                return uiGraphShellDigest(this.deps.ui.graphs());
         }
     }
 
@@ -1138,7 +1213,12 @@ export class LiveSession {
             && op.op !== "set-translations" && op.op !== "set-takes"
             && op.op !== "update-asset" && op.op !== "move-assets"
             && op.op !== "create-assets" && op.op !== "replace-asset-content"
-            && op.op !== "delete-assets" && op.op !== "restore-asset-folder") {
+            && op.op !== "delete-assets" && op.op !== "restore-asset-folder"
+            // ⚠ Both interface verbs, and these are the ones most able to reach the cap: importing
+            // a template restates hundreds of elements, and one graph's wiring is ten kilobytes in
+            // the shipped skeleton. Refused by name rather than split - an interface arriving in
+            // pieces would draw a screen nobody authored.
+            && op.op !== "write-ui" && op.op !== "write-ui-graphs") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1368,6 +1448,43 @@ export class LiveSession {
                 // changing a shared document on its own initiative.
                 return true;
             },
+        };
+    }
+
+    /**
+     * Where the interface editor's and the blueprint canvas's gestures go while this session runs.
+     *
+     * **One sink object holding two, because the two documents are one editing surface.** Their
+     * decision is the cast sink's, twice: a host applies its own operation and broadcasts the
+     * effect, a guest sends an intent and changes nothing. What is not shared is the address, which
+     * is why they are two functions rather than one - a message names one document.
+     */
+    private interfaceSinkFor(session: ActiveSession): { ui: UIOpSink; graphs: UIGraphOpSink } {
+        const take = (op: LiveUIOp | LiveUIGraphOp, document: LiveDocument): boolean => {
+            if (this.active !== session) {
+                // A session that has ended: the caller carries on exactly as it would with no sink.
+                return false;
+            }
+            if (session.host) {
+                this.hostApply(session, op, undefined);
+                return true;
+            }
+            if (this.tooLarge(op)) {
+                // Refused here rather than sent and dropped by the transport. A guest whose intent
+                // never leaves would sit waiting for a receipt that cannot come, re-sending it every
+                // three seconds for the rest of the session.
+                this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
+                return true;
+            }
+            session.guest?.intend(op, document);
+            this.publish(session, {});
+            // True even when the intent is refused later: what must never happen is this window
+            // changing a shared document on its own initiative.
+            return true;
+        };
+        return {
+            ui: { handle: op => take(op, { doc: "ui" }) },
+            graphs: { handle: op => take(op, { doc: "ui-graphs" }) },
         };
     }
 

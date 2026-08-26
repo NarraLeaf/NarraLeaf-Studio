@@ -107,6 +107,8 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "asset-gone": "story.live.refusedAssetGone",
     "asset-id-taken": "story.live.refusedAssetIdTaken",
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
+    "ui-element-gone": "story.live.refusedUIElementGone",
+    "ui-blueprint-gone": "story.live.refusedUIBlueprintGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
