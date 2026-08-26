@@ -69,6 +69,16 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze),
             ctx.services.get<VersionControlService>(Services.VersionControl),
             ctx.services.get<HistoryService>(Services.History),
+            // ⚠ And every document a session CARRIES, which is not the same list as the one it is
+            // driven from. Entering a room reads all of them into memory before anything is frozen
+            // or applied, so a session entered before they are up throws in the middle of entering.
+            // That never happened while the only way in was an author pressing a control - by then
+            // the workspace has been open for a while - and it happens every time now that a
+            // reloaded window takes its own room back up as the workspace starts.
+            ctx.services.get<CharacterService>(Services.Character),
+            ctx.services.get<LocalizationService>(Services.Localization),
+            ctx.services.get<VoiceService>(Services.Voice),
+            ctx.services.get<AssetsService>(Services.Assets),
         ]);
         this.session = new LiveSession(this.buildDeps(ctx));
         // Not awaited, and that is the point of it: a workspace must open at the same speed whether
