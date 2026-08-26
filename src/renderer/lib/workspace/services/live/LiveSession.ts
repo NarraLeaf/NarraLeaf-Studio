@@ -1097,6 +1097,7 @@ export class LiveSession {
             case "ui":
             case "ui-graphs":
                 touched.push(...this.deps.ui.applyOp(op as LiveUIOp | LiveUIGraphOp));
+                break;
             case "dictionary":
                 this.deps.dictionary.applyOp(op as LiveDictionaryOp);
                 break;
