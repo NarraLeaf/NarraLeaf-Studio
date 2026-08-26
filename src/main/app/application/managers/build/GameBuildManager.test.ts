@@ -248,6 +248,19 @@ describe("gameFusesForPlatform", () => {
         expect(gameFusesForPlatform("macos", true, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
     });
 
+    /*
+     * Except when the build is protected, where the condition buys nothing: the packaged game
+     * refuses a debugging switch however it is marked, and integrity is the thing that makes
+     * editing that marker into the archive expensive in the first place.
+     */
+    it("keeps asar integrity for a protected debuggable build", () => {
+        expect(gameFusesForPlatform("windows", true, true, true).enableEmbeddedAsarIntegrityValidation).toBe(true);
+        expect(gameFusesForPlatform("macos", true, true, true).enableEmbeddedAsarIntegrityValidation).toBe(true);
+        // Still nothing to validate against without a signature, and Linux has no support at all.
+        expect(gameFusesForPlatform("windows", false, true, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+        expect(gameFusesForPlatform("linux", true, true, true).enableEmbeddedAsarIntegrityValidation).toBe(false);
+    });
+
     it("keeps every other fuse where it was for a debuggable build", () => {
         for (const platform of ["windows", "macos", "linux"] as const) {
             const debuggable = gameFusesForPlatform(platform, true, true);

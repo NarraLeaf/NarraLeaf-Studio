@@ -108,11 +108,22 @@ describe("SurfaceElementTree", () => {
     });
 
     /**
-     * Every instance of one definition shares the element ids inside it, so if that content were
-     * addressable there would be no telling six placements apart.
+     * Who answers a press over a placement: the definition's own widgets, or the placement itself.
+     *
+     * It used to be the placement, on the reasoning that every instance of one definition shares the
+     * element ids inside it - so tagging that content would leave six placements indistinguishable.
+     * That reasoning is spent: an element event now carries the instance key and the component id
+     * beside the element id, which is the same way a list tells six rows of one template apart, and
+     * the thing that actually holds the graph is the definition's element rather than the placement.
+     * Leaving the content untagged meant a card with a click graph drew perfectly and answered
+     * nothing, because the walk stopped at a placement whose blueprint is empty by construction.
+     *
+     * The half worth keeping is the editing canvas, which has no blueprint runtime: there the
+     * content stays untagged and unreachable, so an author selects the placement as one object and
+     * edits the definition where it lives.
      */
     describe("a linked component instance", () => {
-        function renderInstanceMarkup(): string {
+        function renderInstanceMarkup(options?: { live?: boolean }): string {
             const document: UIDocument = {
                 schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
                 id: "doc",
@@ -172,13 +183,15 @@ describe("SurfaceElementTree", () => {
             const surface = document.surfaces[0]!;
             const hostAdapter: UIHostAdapter = {
                 host: "player",
-                blueprintRuntime: {
-                    surfaceId: surface.id,
-                    setSurfaceState: () => undefined,
-                    getSurfaceState: () => undefined,
-                    emitDebug: () => undefined,
-                    dispatchElementBlueprintEvent: async () => undefined,
-                },
+                blueprintRuntime: (options?.live ?? true)
+                    ? {
+                          surfaceId: surface.id,
+                          setSurfaceState: () => undefined,
+                          getSurfaceState: () => undefined,
+                          emitDebug: () => undefined,
+                          dispatchElementBlueprintEvent: async () => undefined,
+                      }
+                    : undefined,
             };
             const rendererRegistry = new ElementRendererRegistry([
                 { type: "nl.root", render: props => <>{props.children}</> },
@@ -201,16 +214,45 @@ describe("SurfaceElementTree", () => {
             return markup.match(new RegExp(`<[^>]*data-ui-element-id="${elementId}"[^>]*>`))?.[0] ?? "";
         }
 
-        it("leaves its content unaddressable, so the instance is what a click resolves to", () => {
+        /** Everything the placement draws, which on this document is everything after its own tag. */
+        function instanceSubtree(markup: string): string {
+            const at = markup.indexOf(tagFor(markup, "instance"));
+            expect(at, "the placement is not in the markup").toBeGreaterThanOrEqual(0);
+            return markup.slice(at);
+        }
+
+        it("lets the definition's own widgets answer a press where blueprints run", () => {
             const markup = renderInstanceMarkup();
 
-            // Element events find their owner by walking up to the nearest tagged ancestor. Content
-            // carries no tag of its own, so that walk passes straight through it to the placement -
-            // which is why six instances of one definition are six distinct click targets even
-            // though they share every id inside.
+            // Element events find their owner by walking up to the nearest tagged ancestor, so this
+            // is what decides whether the graph on the definition ever hears anything.
+            expect(tagFor(markup, "component-child")).not.toBe("");
+            expect(tagFor(markup, "component-root")).not.toBe("");
+            expect(tagFor(markup, "instance")).not.toBe("");
+        });
+
+        it("lets the pointer reach them, root included", () => {
+            const markup = renderInstanceMarkup();
+
+            // Two rules used to stop the press before any of the above could matter: the wrapper a
+            // definition is drawn in was click-through, and a root element is click-through because
+            // a Surface root is the whole screen. A definition's root is one widget somebody placed
+            // - on a save card it IS the pressable one - so neither applies here.
+            expect(tagFor(markup, "component-root")).toContain("pointer-events:auto");
+            expect(tagFor(markup, "component-child")).toContain("pointer-events:auto");
+            expect(instanceSubtree(markup)).not.toContain("pointer-events:none");
+        });
+
+        it("keeps it one object on a canvas that runs nothing", () => {
+            const markup = renderInstanceMarkup({ live: false });
+
+            // The editing canvas: an author clicks the placement and gets the placement, and edits
+            // what is inside by opening the definition. Both halves of the old behaviour are still
+            // here - nothing inside carries an id, and nothing inside can be reached by a pointer.
             expect(tagFor(markup, "component-child")).toBe("");
             expect(tagFor(markup, "component-root")).toBe("");
             expect(tagFor(markup, "instance")).not.toBe("");
+            expect(instanceSubtree(markup)).toContain("pointer-events:none");
         });
     });
 

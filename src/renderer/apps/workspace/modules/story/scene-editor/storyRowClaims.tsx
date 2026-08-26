@@ -4,6 +4,7 @@ import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
+import { storyRowClaimKey } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import { useWorkspace } from "../../../context";
 
@@ -96,10 +97,15 @@ export function othersClaims(view: LiveSessionView, storyId: StoryId | undefined
         return NO_CLAIMS;
     }
     const self = selfAccount(view);
+    // ⚠ **Filtered by prefix and stripped of it.** The set holds rows, character records,
+    // translations in every language and asset records at once, all keyed by `LiveClaimKey`; a
+    // reader that took the keys as block ids matches none of them, and the mark never appears at
+    // all - which is the claim's whole purpose arriving as a refusal instead.
+    const prefix = storyRowClaimKey("" as StoryBlockId);
     const held: Record<StoryBlockId, string> = {};
-    for (const [blockId, account] of Object.entries(view.claims)) {
-        if (account !== self) {
-            held[blockId] = account;
+    for (const [key, account] of Object.entries(view.claims)) {
+        if (key.startsWith(prefix) && account !== self) {
+            held[key.slice(prefix.length) as StoryBlockId] = account;
         }
     }
     return held;
@@ -120,7 +126,7 @@ export function rowClaimHolder(
     if (storyId === undefined || view.storyId !== storyId) {
         return null;
     }
-    const account = view.claims[blockId];
+    const account = view.claims[storyRowClaimKey(blockId)];
     return account === undefined || account === selfAccount(view) ? null : account;
 }
 

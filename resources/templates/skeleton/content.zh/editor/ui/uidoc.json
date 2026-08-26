@@ -5389,6 +5389,55 @@
       ],
       "createdAt": "2026-08-26T00:01:12.279Z",
       "updatedAt": "2026-08-26T00:01:12.280Z"
+    },
+    {
+      "id": "5107c0a1-0000-4000-8000-000000000200",
+      "name": "标题按钮",
+      "rootElementId": "5107c0a1-0000-4000-8000-000000000201",
+      "elements": {
+        "5107c0a1-0000-4000-8000-000000000201": {
+          "id": "5107c0a1-0000-4000-8000-000000000201",
+          "type": "nl.button",
+          "name": "标题按钮",
+          "parentId": null,
+          "childrenIds": [],
+          "layout": {
+            "x": 0,
+            "y": 0,
+            "width": 230,
+            "height": 58,
+            "visible": true,
+            "opacity": 1
+          },
+          "props": {
+            "label": "标题",
+            "fontSize": 26,
+            "color": "nlbrand:text.muted",
+            "fontWeight": "normal",
+            "textAlign": "left",
+            "textVerticalAlign": "center",
+            "lineHeight": 1.2,
+            "textWrapMode": "nowrap",
+            "backgroundColor": "transparent",
+            "fillType": "color",
+            "fillOpacity": 1,
+            "fillVisible": false,
+            "backgroundFit": "cover",
+            "borderRadius": 0,
+            "borderWidth": 0,
+            "borderColor": "nlbrand:container.border",
+            "borderStyle": "none",
+            "paddingX": 0,
+            "paddingY": 8,
+            "clipContent": true,
+            "cursor": "pointer",
+            "localizationKey": "nav.title"
+          }
+        }
+      },
+      "params": [],
+      "createdAt": "2026-08-26T00:38:00.201Z",
+      "updatedAt": "2026-08-26T00:38:00.202Z"
     }
   ],
   "elements": {
@@ -7116,6 +7165,12 @@
         "clipContent": true,
         "cursor": "pointer",
         "localizationKey": "nav.title"
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "5107c0a1-0000-4000-8000-000000000200",
+          "linked": true
+        }
       }
     },
     "29fd091e-8a94-489b-9a95-2f5e2e659aa3": {
@@ -10633,6 +10688,12 @@
         "clipContent": true,
         "cursor": "pointer",
         "localizationKey": "nav.title"
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "5107c0a1-0000-4000-8000-000000000200",
+          "linked": true
+        }
       }
     },
     "a732f704-cd5a-4b98-9120-5638e83ffccb": {
@@ -36787,6 +36848,12 @@
         "clipContent": true,
         "cursor": "pointer",
         "localizationKey": "nav.title"
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "5107c0a1-0000-4000-8000-000000000200",
+          "linked": true
+        }
       }
     },
     "eb7c1fef-8eca-41d7-8098-fc7c302f64f8": {
@@ -47567,6 +47634,12 @@
         "clipContent": true,
         "cursor": "pointer",
         "localizationKey": "nav.title"
+      },
+      "extra": {
+        "componentLink": {
+          "componentId": "5107c0a1-0000-4000-8000-000000000200",
+          "linked": true
+        }
       }
     },
     "216dc3b7-ec84-4fb0-9135-0babad12b3ef": {
