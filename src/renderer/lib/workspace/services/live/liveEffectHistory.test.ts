@@ -73,6 +73,10 @@ describe("the stack Ctrl+Z reads inside a session", () => {
             index: 0,
             direction: "undo",
             op: { op: "rename-story", name: "Tale" },
+            // The document the step's own effect named. A session carries every story in the
+            // project, so an inverse addressed to the room's story would take a rename back on the
+            // wrong file.
+            document: { doc: "story", storyId: "story-1" },
         });
     });
 

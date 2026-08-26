@@ -38,6 +38,7 @@ import type {
     StoryNoteBlock,
     StoryScene,
     StorySceneId,
+    StorySceneSnapshot,
 } from "@shared/types/story";
 import {
     deleteBlockFromScene,
@@ -97,7 +98,13 @@ function order(scene: StoryScene, parentId: StoryBlockId | null = null): StoryBl
 type World = {
     host: LiveHost;
     scenes: Record<StorySceneId, StoryScene>;
-    story: { name: string; entrySceneId: StorySceneId | null; chapterIds: readonly string[] };
+    story: {
+        name: string;
+        entrySceneId: StorySceneId | null;
+        chapterIds: readonly string[];
+        /** The outline: which scenes each chapter claims. What `readChapter` answers from. */
+        chapters: { id: string; sceneIds: StorySceneId[] }[];
+    };
     /** The cast, the second document a session carries. Mutated by the applier below. */
     cast: { characters: Record<string, StoredCharacter>; order: string[]; groups: Record<string, CharacterGroup> };
     /** The libraries this session carries, by language. */
@@ -292,7 +299,14 @@ function makeWorld(options: {
     for (const scene of options.scenes ?? [makeScene("s1", [{ block: note("a") }, { block: note("b") }, { block: note("c") }])]) {
         scenes[scene.id] = scene;
     }
-    const story = { name: "Skeleton", entrySceneId: "s1" as StorySceneId | null, chapterIds: ["c1", "c2"] as readonly string[] };
+    const story = {
+        name: "Skeleton",
+        entrySceneId: "s1" as StorySceneId | null,
+        chapterIds: ["c1", "c2"] as readonly string[],
+        // The first chapter claims every scene the world starts with; the second is the empty one a
+        // move or a creation can aim at.
+        chapters: [{ id: "c1", sceneIds: Object.keys(scenes) }, { id: "c2", sceneIds: [] as StorySceneId[] }],
+    };
     const cast: World["cast"] = { characters: {}, order: [], groups: {} };
     for (const member of options.cast ?? []) {
         cast.characters[member.profile.id] = member;
@@ -340,6 +354,7 @@ function makeWorld(options: {
             locales: LOCALES,
             assetTypes: ASSET_TYPES,
             readScene: (_storyId, id) => scenes[id] ?? null,
+            readChapter: (_storyId, id) => story.chapters.find(chapter => chapter.id === id) ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
             hasVariable: variableId => variables[variableId] !== undefined,
@@ -461,6 +476,65 @@ function apply(
         case "delete-asset-sets":
         case "move-asset-sets":
             return;
+        case "create-scene": {
+            scenes[op.scene.id] = structuredClone(op.scene);
+            if (op.chapter && !story.chapters.some(item => item.id === op.chapter?.id)) {
+                story.chapters.push({ id: op.chapter.id, sceneIds: [] });
+            }
+            story.chapters.find(item => item.id === op.chapterId)?.sceneIds.push(op.scene.id);
+            if (op.entry === true || story.entrySceneId === null) {
+                story.entrySceneId = op.scene.id;
+            }
+            return;
+        }
+        case "delete-scene": {
+            delete scenes[op.sceneId];
+            for (const chapter of story.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            return;
+        }
+        case "update-scene": {
+            const target = scenes[op.sceneId];
+            if (target) {
+                target.name = op.fields.name;
+                target.runtimeName = op.fields.runtimeName;
+            }
+            return;
+        }
+        case "move-scene": {
+            for (const chapter of story.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            story.chapters.find(item => item.id === op.chapterId)?.sceneIds.push(op.sceneId);
+            return;
+        }
+        case "set-scene-snapshots": {
+            const target = scenes[op.sceneId];
+            if (target) {
+                target.sceneSnapshots = structuredClone(op.snapshots) as StorySceneSnapshot[];
+            }
+            return;
+        }
+        case "create-chapter": {
+            story.chapters.push({ id: op.chapter.id, sceneIds: [...op.chapter.sceneIds] });
+            for (const restored of op.scenes ?? []) {
+                scenes[restored.id] = structuredClone(restored);
+            }
+            return;
+        }
+        case "rename-chapter":
+            return;
+        case "delete-chapter": {
+            const index = story.chapters.findIndex(item => item.id === op.chapterId);
+            if (index !== -1) {
+                for (const sceneId of story.chapters[index].sceneIds) {
+                    delete scenes[sceneId];
+                }
+                story.chapters.splice(index, 1);
+            }
+            return;
+        }
         case "create-variable":
             variables[op.entry.id] = structuredClone(op.entry);
             return;
@@ -2234,6 +2308,7 @@ describe("the project registries a session carries", () => {
             self: "host",
             stories: [STORY],
             readScene: () => null,
+            readChapter: () => null,
             readCharacter: () => null,
             hasAsset: () => false,
             hasVariable: () => true,
@@ -2259,5 +2334,176 @@ describe("the project registries a session carries", () => {
             document: { doc: "localization-keys" },
             op: { op: "remove-key", name: "menu.start" },
         }, "guest-1")).reason).toBe("document-not-shared");
+    });
+});
+
+/* ------------------------------------------------------------------------- the outline */
+
+describe("a live host deciding about the outline", () => {
+    it("takes a scene creation and files it where the operation says", () => {
+        // The scene, its chapter and its position all travel, because all three were settled on the
+        // machine that minted the id - and there is nothing in the document for anybody to derive
+        // them from.
+        const world = makeWorld();
+        const scene = makeScene("s2", [{ block: note("z") }]);
+
+        const effect = asEffect(send(world, {
+            op: "create-scene",
+            scene,
+            chapterId: "c2",
+            beforeSceneId: null,
+        }));
+
+        expect(effect.op.op).toBe("create-scene");
+        expect(world.scenes.s2.blocks.z).toBeDefined();
+        expect(world.story.chapters[1].sceneIds).toEqual(["s2"]);
+        // Fingerprinted over the scene it created, so a machine that dropped the rows on the way in
+        // disagrees on this message rather than on some later one that happens to reach the scene.
+        expect(effect.digests?.map(digest => digest.scope)).toEqual([{ of: "scene", storyId: STORY, sceneId: "s2" }]);
+    });
+
+    it("refuses a creation whose chapter has gone", () => {
+        // A scene in `scenes` that no chapter claims is one the outline never draws, so this is a
+        // refusal rather than a scene filed nowhere.
+        const world = makeWorld();
+
+        const refusal = asRefusal(send(world, {
+            op: "create-scene",
+            scene: makeScene("s2", []),
+            chapterId: "c9",
+            beforeSceneId: null,
+        }));
+
+        expect(refusal.reason).toBe("chapter-gone");
+        expect(world.scenes.s2).toBeUndefined();
+    });
+
+    it("takes a creation that carries the chapter it needs", () => {
+        // A story with no chapters at all makes one, and its id was minted on the sender's machine.
+        const world = makeWorld();
+
+        asEffect(send(world, {
+            op: "create-scene",
+            scene: makeScene("s2", []),
+            chapterId: "c3",
+            beforeSceneId: null,
+            chapter: { id: "c3", name: "Three", sceneIds: [] },
+        }));
+
+        expect(world.story.chapters.map(chapter => chapter.id)).toEqual(["c1", "c2", "c3"]);
+    });
+
+    it("refuses every scene edit whose scene has gone", () => {
+        const world = makeWorld();
+        for (const op of [
+            { op: "delete-scene", sceneId: "s9" },
+            { op: "update-scene", sceneId: "s9", fields: { name: "x", runtimeName: "x" } },
+            { op: "move-scene", sceneId: "s9", chapterId: "c1", beforeSceneId: null },
+            { op: "set-scene-snapshots", sceneId: "s9", snapshots: [] },
+        ] satisfies LiveOp[]) {
+            expect(asRefusal(send(world, op)).reason).toBe("scene-gone");
+        }
+    });
+
+    it("refuses a move into a chapter that has gone, and keeps the scene where it is", () => {
+        const world = makeWorld();
+
+        const refusal = asRefusal(send(world, {
+            op: "move-scene",
+            sceneId: "s1",
+            chapterId: "c9",
+            beforeSceneId: null,
+        }));
+
+        expect(refusal.reason).toBe("chapter-gone");
+        expect(world.story.chapters[0].sceneIds).toEqual(["s1"]);
+    });
+
+    it("refuses a chapter rename and a chapter deletion whose chapter has gone", () => {
+        const world = makeWorld();
+        expect(asRefusal(send(world, { op: "rename-chapter", chapterId: "c9", name: "x" })).reason)
+            .toBe("chapter-gone");
+        expect(asRefusal(send(world, { op: "delete-chapter", chapterId: "c9" })).reason)
+            .toBe("chapter-gone");
+    });
+
+    it("lets go of the claims on the rows of a scene it deletes", () => {
+        // Left in the set they would name rows nobody can reach, and would refuse the author who
+        // put the scene back - inside their own restored scene.
+        const world = makeWorld();
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
+        const scene = structuredClone(world.scenes.s1);
+
+        asEffect(send(world, { op: "delete-scene", sceneId: "s1" }, "guest-2"));
+        asEffect(send(world, {
+            op: "create-scene",
+            scene,
+            chapterId: "c1",
+            beforeSceneId: null,
+        }, "guest-2"));
+
+        const answer = send(world, {
+            op: "update-block",
+            sceneId: "s1",
+            blockId: "b",
+            payload: note("b", "mine").payload,
+        }, "guest-2");
+        expect(answer?.kind).toBe("effect");
+    });
+
+    it("lets go of the claims on the rows a chapter takes with it", () => {
+        const world = makeWorld();
+        world.host.receive({ kind: "claim", key: storyRowClaimKey("b"), holding: true }, "guest-1");
+        const scene = structuredClone(world.scenes.s1);
+
+        asEffect(send(world, { op: "delete-chapter", chapterId: "c1" }, "guest-2"));
+        expect(world.scenes.s1).toBeUndefined();
+        asEffect(send(world, {
+            op: "create-chapter",
+            chapter: { id: "c1", name: "One", sceneIds: ["s1"] },
+            beforeChapterId: null,
+            scenes: [scene],
+        }, "guest-2"));
+
+        const answer = send(world, {
+            op: "update-block",
+            sceneId: "s1",
+            blockId: "b",
+            payload: note("b", "mine").payload,
+        }, "guest-2");
+        expect(answer?.kind).toBe("effect");
+    });
+
+    it("claims nothing for a structural verb", () => {
+        // A claim is over a row somebody is writing. Deleting a scene does remove rows and names
+        // none of them, because a caret left in a scene must not refuse the outline.
+        for (const op of [
+            { op: "create-scene", scene: makeScene("s2", []), chapterId: "c1", beforeSceneId: null },
+            { op: "delete-scene", sceneId: "s1" },
+            { op: "update-scene", sceneId: "s1", fields: { name: "x", runtimeName: "x" } },
+            { op: "move-scene", sceneId: "s1", chapterId: "c2", beforeSceneId: null },
+            { op: "set-scene-snapshots", sceneId: "s1", snapshots: [] },
+            { op: "create-chapter", chapter: { id: "c3", name: "Three", sceneIds: [] }, beforeChapterId: null },
+            { op: "rename-chapter", chapterId: "c1", name: "x" },
+            { op: "delete-chapter", chapterId: "c1" },
+        ] satisfies LiveOp[]) {
+            expect(CLAIMED_OPS.has(op.op)).toBe(false);
+            expect(opClaimKeys(op)).toEqual([]);
+        }
+    });
+
+    it("says every structural verb is about the story document", () => {
+        for (const op of [
+            { op: "create-scene", scene: makeScene("s2", []), chapterId: "c1", beforeSceneId: null },
+            { op: "delete-scene", sceneId: "s1" },
+            { op: "update-scene", sceneId: "s1", fields: { name: "x", runtimeName: "x" } },
+            { op: "move-scene", sceneId: "s1", chapterId: "c2", beforeSceneId: null },
+            { op: "set-scene-snapshots", sceneId: "s1", snapshots: [] },
+            { op: "create-chapter", chapter: { id: "c3", name: "Three", sceneIds: [] }, beforeChapterId: null },
+            { op: "rename-chapter", chapterId: "c1", name: "x" },
+            { op: "delete-chapter", chapterId: "c1" },
+        ] satisfies LiveOp[]) {
+            expect(opDocumentKind(op)).toBe("story");
+        }
     });
 });

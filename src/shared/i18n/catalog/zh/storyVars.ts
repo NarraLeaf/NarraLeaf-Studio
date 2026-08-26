@@ -12,7 +12,7 @@ export const storyVars = {
         defaultPlaceholder: "默认值",
         defaultAria: "默认值",
         delete: "删除变量",
-        deleteInSession: "实时会话期间不可用。结束会话后可以删除该变量。",
+        deleteInSession: "本次实时会话中不可用，离开会话后可以删除该变量",
     },
     live: {
         entryClaimed: "{name} 正在编辑该变量",

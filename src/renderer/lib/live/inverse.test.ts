@@ -31,6 +31,7 @@ import {
     type StoryDocument,
     type StoryNoteBlock,
     type StoryScene,
+    type StorySceneSnapshot,
 } from "@shared/types/story";
 import {
     deleteBlockFromScene,
@@ -151,6 +152,112 @@ function apply(document: StoryDocument, op: LiveOp): void {
         case "reorder-chapters":
             document.chapters = op.chapterIds.map(id => document.chapters.find(chapter => chapter.id === id)!);
             return;
+        case "create-scene": {
+            document.scenes[op.scene.id] = structuredClone(op.scene);
+            if (op.chapter && !document.chapters.some(item => item.id === op.chapter?.id)) {
+                document.chapters.push(structuredClone(op.chapter));
+            }
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            if (chapter) {
+                const at = op.beforeSceneId === null ? -1 : chapter.sceneIds.indexOf(op.beforeSceneId);
+                if (at === -1) {
+                    chapter.sceneIds.push(op.scene.id);
+                } else {
+                    chapter.sceneIds.splice(at, 0, op.scene.id);
+                }
+            }
+            if (op.entry === true || document.entrySceneId === undefined) {
+                document.entrySceneId = op.scene.id;
+            }
+            return;
+        }
+        case "delete-scene": {
+            delete document.scenes[op.sceneId];
+            for (const chapter of document.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            if (document.entrySceneId === op.sceneId) {
+                delete document.entrySceneId;
+            }
+            return;
+        }
+        case "update-scene": {
+            const scene = document.scenes[op.sceneId];
+            scene.name = op.fields.name;
+            scene.runtimeName = op.fields.runtimeName;
+            if (op.fields.description === undefined) {
+                delete scene.description;
+            } else {
+                scene.description = op.fields.description;
+            }
+            if (op.fields.defaultBackgroundAssetId === undefined) {
+                delete scene.defaultBackgroundAssetId;
+            } else {
+                scene.defaultBackgroundAssetId = op.fields.defaultBackgroundAssetId;
+            }
+            if (op.fields.bgm === undefined) {
+                delete scene.bgm;
+            } else {
+                scene.bgm = op.fields.bgm;
+            }
+            return;
+        }
+        case "move-scene": {
+            for (const chapter of document.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            const target = document.chapters.find(item => item.id === op.chapterId);
+            if (target) {
+                const at = op.beforeSceneId === null ? -1 : target.sceneIds.indexOf(op.beforeSceneId);
+                if (at === -1) {
+                    target.sceneIds.push(op.sceneId);
+                } else {
+                    target.sceneIds.splice(at, 0, op.sceneId);
+                }
+            }
+            return;
+        }
+        case "set-scene-snapshots":
+            document.scenes[op.sceneId].sceneSnapshots = structuredClone(op.snapshots) as StorySceneSnapshot[];
+            return;
+        case "create-chapter": {
+            const at = op.beforeChapterId === null
+                ? -1
+                : document.chapters.findIndex(item => item.id === op.beforeChapterId);
+            const restored = structuredClone(op.chapter);
+            if (at === -1) {
+                document.chapters.push(restored);
+            } else {
+                document.chapters.splice(at, 0, restored);
+            }
+            for (const scene of op.scenes ?? []) {
+                document.scenes[scene.id] = structuredClone(scene);
+            }
+            if (op.entry !== undefined && document.scenes[op.entry]) {
+                document.entrySceneId = op.entry;
+            }
+            return;
+        }
+        case "rename-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            if (chapter) {
+                chapter.name = op.name;
+            }
+            return;
+        }
+        case "delete-chapter": {
+            const index = document.chapters.findIndex(item => item.id === op.chapterId);
+            if (index !== -1) {
+                for (const sceneId of document.chapters[index].sceneIds) {
+                    delete document.scenes[sceneId];
+                }
+                document.chapters.splice(index, 1);
+            }
+            if (document.entrySceneId !== undefined && !document.scenes[document.entrySceneId]) {
+                delete document.entrySceneId;
+            }
+            return;
+        }
     }
 }
 
@@ -1938,5 +2045,155 @@ describe("undoing what this window did to the named strings", () => {
         const done = performKey(keys, { op: "remove-key", name: "menu.start" });
         keys["menu.start"] = { sourceText: "Taken by somebody" };
         expect(asImpossible(invertKey(keys, done))).toBe("key-restored");
+    });
+});
+
+/* ---------------------------------------------------------------------------- the outline */
+
+describe("undoing what this window did to the outline", () => {
+    it("puts a deleted scene back with its rows, in its chapter, at its place", () => {
+        // ⚠ The one assertion this whole verb exists for. Restoring the shell would look like a
+        // working undo and be an empty scene where an afternoon's writing used to be.
+        const document = makeDocument();
+        const rows = Object.keys(document.scenes.s1.blocks).sort();
+
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        expect(document.scenes.s1).toBeUndefined();
+        expect(document.chapters[0].sceneIds).toEqual([]);
+
+        undo(document, done);
+
+        expect(Object.keys(document.scenes.s1.blocks).sort()).toEqual(rows);
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+        expect(document.scenes.s1.blocks.g.childrenIds).toEqual(["one", "two"]);
+        expect(document.chapters[0].sceneIds).toEqual(["s1"]);
+        expect(document.entrySceneId).toBe("s1");
+    });
+
+    it("refuses to put a scene back over one that is there again", () => {
+        // A redo of the deletion elsewhere, or somebody making a scene under the same id. Writing
+        // the recorded copy over it would take whatever has been written in it since.
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        apply(document, {
+            op: "create-scene",
+            scene: { id: "s1", name: "Somebody else's", runtimeName: "other", rootBlockIds: [], blocks: {} },
+            chapterId: "c1",
+            beforeSceneId: null,
+        });
+
+        expect(asImpossible(invert(document, done))).toBe("scene-restored");
+    });
+
+    it("refuses to put a scene back into a chapter that has gone", () => {
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        apply(document, { op: "delete-chapter", chapterId: "c1" });
+
+        expect(asImpossible(invert(document, done))).toBe("chapter-gone");
+    });
+
+    it("takes a scene creation back by deleting it", () => {
+        const document = makeDocument();
+        const scene: StoryScene = { id: "s3", name: "New", runtimeName: "new", rootBlockIds: [], blocks: {} };
+
+        const done = perform(document, { op: "create-scene", scene, chapterId: "c2", beforeSceneId: null });
+        expect(document.scenes.s3).toBeDefined();
+
+        undo(document, done);
+        expect(document.scenes.s3).toBeUndefined();
+    });
+
+    it("puts a scene's own fields back, clearing what the update added", () => {
+        const document = makeDocument();
+
+        const done = perform(document, {
+            op: "update-scene",
+            sceneId: "s1",
+            fields: { name: "Corridor", runtimeName: "corridor", description: "quiet" },
+        });
+        expect(document.scenes.s1.description).toBe("quiet");
+
+        undo(document, done);
+        expect(document.scenes.s1.name).toBe("Scene one");
+        expect(document.scenes.s1.description).toBeUndefined();
+    });
+
+    it("moves a scene back to the chapter it came from", () => {
+        const document = makeDocument();
+
+        const done = perform(document, { op: "move-scene", sceneId: "s1", chapterId: "c2", beforeSceneId: "s2" });
+        expect(document.chapters[1].sceneIds).toEqual(["s1", "s2"]);
+
+        undo(document, done);
+        expect(document.chapters[0].sceneIds).toEqual(["s1"]);
+        expect(document.chapters[1].sceneIds).toEqual(["s2"]);
+    });
+
+    it("puts a scene's snapshots back as the list they were", () => {
+        const document = makeDocument();
+
+        const done = perform(document, {
+            op: "set-scene-snapshots",
+            sceneId: "s1",
+            snapshots: [{ id: "snap", name: "Snap", values: {} }],
+        });
+        expect(document.scenes.s1.sceneSnapshots).toHaveLength(1);
+
+        undo(document, done);
+        expect(document.scenes.s1.sceneSnapshots).toEqual([]);
+    });
+
+    it("puts a deleted chapter back with every scene that left with it", () => {
+        const document = makeDocument();
+        const rows = Object.keys(document.scenes.s1.blocks).sort();
+
+        const done = perform(document, { op: "delete-chapter", chapterId: "c1" });
+        expect(document.scenes.s1).toBeUndefined();
+        expect(document.chapters.map(chapter => chapter.id)).toEqual(["c2"]);
+
+        undo(document, done);
+
+        expect(document.chapters.map(chapter => chapter.id)).toEqual(["c1", "c2"]);
+        expect(Object.keys(document.scenes.s1.blocks).sort()).toEqual(rows);
+        expect(document.entrySceneId).toBe("s1");
+    });
+
+    it("refuses to take a chapter creation back once somebody has filed a scene in it", () => {
+        // The inverse is a deletion, and a deletion takes the scenes inside. A chapter somebody else
+        // has filed into is their work sitting in a box this author happened to make.
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "create-chapter",
+            chapter: { id: "c3", name: "Three", sceneIds: [] },
+            beforeChapterId: null,
+        });
+        apply(document, { op: "move-scene", sceneId: "s2", chapterId: "c3", beforeSceneId: null });
+
+        expect(asImpossible(invert(document, done))).toBe("container-filled");
+    });
+
+    it("renames a chapter back", () => {
+        const document = makeDocument();
+        const done = perform(document, { op: "rename-chapter", chapterId: "c1", name: "Prologue" });
+        expect(document.chapters[0].name).toBe("Prologue");
+
+        undo(document, done);
+        expect(document.chapters[0].name).toBe("One");
+    });
+
+    it("refuses every outline step whose subject has gone", () => {
+        const document = makeDocument();
+        const renamed = perform(document, { op: "rename-chapter", chapterId: "c1", name: "Prologue" });
+        const updated = perform(document, {
+            op: "update-scene",
+            sceneId: "s2",
+            fields: { name: "x", runtimeName: "x" },
+        });
+        apply(document, { op: "delete-chapter", chapterId: "c1" });
+        apply(document, { op: "delete-scene", sceneId: "s2" });
+
+        expect(asImpossible(invert(document, renamed))).toBe("chapter-gone");
+        expect(asImpossible(invert(document, updated))).toBe("scene-gone");
     });
 });

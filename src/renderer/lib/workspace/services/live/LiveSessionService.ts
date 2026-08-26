@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp } from "@shared/live/ops";
+import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp, LiveVariableOp } from "@shared/live/ops";
 import { uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
 import { uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -28,6 +28,7 @@ import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
@@ -335,6 +336,45 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return scopes;
     }
 
+    /**
+     * Apply one registry operation, and the blueprint sweep a deletion implies.
+     *
+     * **The sweep is derived, which is what makes a deletion shareable at all.** The effect says the
+     * variable is gone; every machine then clears the `Get`/`Set` params that named it out of a
+     * blueprint document the room already agrees on, and arrives at the same records. Nothing about
+     * those nodes travels, for the criterion that decides every piece of derived work in this design:
+     * another machine can compute the same result from the same effect.
+     *
+     * ⚠ Run through `holdDerived`, so the sweep never becomes a `write-ui-graphs` message of its own -
+     * on a host that would be a second broadcast per deletion and a second press of undo, and on a
+     * guest an intent for work nobody asked for. What it wrote comes back as the blueprints to
+     * fingerprint.
+     *
+     * ⚠ The sweep runs BEFORE the entry leaves, with the order `deletePersistentVariable` keeps for
+     * its own reason: clearing first and failing to remove the entry leaves empty nodes beside a
+     * variable that is still there, which is the state neither half of this is allowed to produce.
+     */
+    private applyVariableOp(ctx: WorkspaceContext, op: LiveVariableOp): readonly LiveDigestScope[] {
+        const variables = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
+        if (op.op !== "delete-variable") {
+            variables.applyLiveOp(op);
+            return [];
+        }
+        const uigraphs = ctx.services.get<UIGraphService>(Services.UIGraph);
+        const blueprints = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const swept = uigraphs.holdDerived(() => blueprints.sweepVariableNodeRefs(op.variableId));
+        variables.applyLiveOp(op);
+        if (swept === null) {
+            // No node named it, which is the ordinary case for a variable created in this session.
+            return [];
+        }
+        const touched = uiGraphPartsTouched(swept);
+        return [
+            ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+            ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+        ];
+    }
+
     private uiDocumentOrNull(ctx: WorkspaceContext): UIDocument | null {
         try {
             return ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
@@ -519,7 +559,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 // does not, and a session must not carry it.
                 readable: () => variables().isReadable(),
                 entry: variableId => variables().getEntry(variableId) ?? null,
-                applyOp: op => variables().applyLiveOp(op),
+                applyOp: op => this.applyVariableOp(ctx, op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,

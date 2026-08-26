@@ -23,10 +23,9 @@ export const storyVars = {
         defaultPlaceholder: "default",
         defaultAria: "Default value",
         delete: "Delete variable",
-        // Off for the length of a live session. States what is the case, not why: removing a
-        // variable also empties the blueprint nodes that used it, and a session carries the
-        // registry without carrying the blueprint.
-        deleteInSession: "Unavailable during a live session. End the session to remove this variable.",
+        // Off in the sessions that cannot carry a removal - the ordinary one can. States what is
+        // the case and what to do about it, and nothing about which documents are involved.
+        deleteInSession: "Unavailable in this live session. Leave the session to remove this variable.",
     },
     live: {
         // On the mark an entry wears while somebody else has it open. A person is named: there is

@@ -842,6 +842,9 @@ function createWindow(world: World, instance: string): Window {
                 ownsOnly("variables", one => one.endsWith("-variable"), op);
                 calls.push(`variables:${op.op}`);
                 applyVariableOp(window.variables, op);
+                // A deletion sweeps the blueprint nodes that named the variable, and that work is
+                // derived - so the applier reports what it touched, exactly as the interface's does.
+                return op.op === "delete-variable" ? [{ of: "ui-graph-shell" as const }] : [];
             },
         },
         voice: {
@@ -1699,13 +1702,42 @@ describe("a live session", () => {
             expect(textOf(guest, "b")).toBe("typed by the host");
         });
 
-        it("is left alone when it is about another story", async () => {
+        it("travels when it is about another story the session carries", async () => {
+            // ⚠ A session leaves EVERY story document writable, because deleting a character
+            // rewrites the rows that spoke it wherever the author put them. An edit to a second
+            // story that went nowhere would be a change written on one machine only, on a path the
+            // write boundary allows and with no digest over it.
+            const other = host.story.createStory("Another");
+            const sceneId = host.story.getStoryDocument(other.id).chapters[0].sceneIds[0];
+            await openRoom();
+            const said: LiveEffect[] = [];
+            const stop = world.bus.listen("room-1", payload => {
+                const message = payload as { kind?: string };
+                if (message.kind === "effect") {
+                    said.push(payload as LiveEffect);
+                }
+            });
+
+            host.story.renameScene(other.id, sceneId, "Renamed on its own");
+            await drain(world.bus);
+
+            expect(host.story.getStoryDocument(other.id).scenes[sceneId].name).toBe("Renamed on its own");
+            // Addressed to the story it is about, never to the one the room is named after.
+            expect(said.map(effect => effect.document)).toEqual([{ doc: "story", storyId: other.id }]);
+            stop();
+        });
+
+        it("is refused when it is about a story the room never carried", async () => {
+            // A story made after the room opened is in nobody else's copy - the set was settled on
+            // the way in - so the operation is refused rather than written here alone.
             await openRoom();
             const other = host.story.createStory("Another");
-            const document = host.story.getStoryDocument(other.id);
-            host.story.renameScene(other.id, document.chapters[0].sceneIds[0], "Renamed on its own");
-            expect(host.story.getStoryDocument(other.id).scenes[document.chapters[0].sceneIds[0]].name)
-                .toBe("Renamed on its own");
+            const sceneId = host.story.getStoryDocument(other.id).chapters[0].sceneIds[0];
+
+            host.story.renameScene(other.id, sceneId, "Renamed on its own");
+
+            expect(host.story.getStoryDocument(other.id).scenes[sceneId].name).not.toBe("Renamed on its own");
+            expect(host.session.getView().lastRefusal?.reason).toBe("document-not-shared");
         });
     });
 

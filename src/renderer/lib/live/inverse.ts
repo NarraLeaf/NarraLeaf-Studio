@@ -6,6 +6,7 @@ import type {
     LiveDialogueRowRef,
     LiveEffect,
     LiveOp,
+    LiveSceneFields,
 } from "@shared/live/ops";
 import type { AppTagPluginConfig, ProjectAppTag, ProjectAppTagDocument } from "@shared/types/appTag";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
@@ -26,7 +27,15 @@ import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryChapter,
+    StoryDocument,
+    StoryScene,
+    StorySceneId,
+    StorySceneSnapshot,
+} from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
 
 /**
@@ -85,6 +94,28 @@ export type LiveInverseReason =
     | "no-record"
     /** The scene the operation was about is gone, and everything in it with it. */
     | "scene-gone"
+    /**
+     * The scene this deletion removed is in the document again, so there is nothing left to put back.
+     *
+     * `row-restored` one level up: a redo of the deletion, or somebody re-creating a scene under the
+     * same id, and creating it again would write over rows they have since put in it.
+     */
+    | "scene-restored"
+    /**
+     * The chapter the operation was about is gone.
+     *
+     * The outline's `scene-gone`, and it is what stops a restored scene being filed into a chapter
+     * somebody deleted in the meantime - a scene in `scenes` that no chapter claims is one the
+     * outline never draws, which reads as an undo that did nothing.
+     */
+    | "chapter-gone"
+    /**
+     * The chapter this deletion removed is in the outline again, so there is nothing left to put back.
+     *
+     * `scene-restored` one level up, and the same danger: re-creating it would write over the scenes
+     * somebody has since filed under it.
+     */
+    | "chapter-restored"
     /** The row is gone. Somebody deleted it after the operation landed. */
     | "row-gone"
     /** The row this delete removed is in the scene again, so there is nothing left to put back. */
@@ -268,6 +299,53 @@ export type LiveBefore =
     | { op: "rename-story"; name: string }
     /** The chapter order. */
     | { op: "reorder-chapters"; chapterIds: readonly string[] }
+    /**
+     * The scene itself, whole, where it was filed, and whether the story started at it.
+     *
+     * ⚠ **The whole scene, rows included, and that is the point of recording it here.** A deletion
+     * names an id; by the time an undo runs the scene is gone from the document and no message in
+     * the session carries it, so this is the only copy of what was destroyed. A record holding the
+     * scene's name and nothing else would put back an empty shell and look as though it had worked -
+     * the interface document learned that one the hard way, one round earlier.
+     *
+     * `entry` is here for a reason of its own: a deletion re-points the story's entry only when the
+     * scene it removed was the entry, and afterwards the pointer is somewhere else with nothing in
+     * the document saying where it had been.
+     */
+    | {
+          op: "delete-scene";
+          scene: StoryScene;
+          /** The chapter that claimed it, or null for a scene none did. */
+          chapterId: string | null;
+          /** The sibling it sat in front of there, or null for the end of the chapter. */
+          beforeSceneId: StorySceneId | null;
+          /** Whether the story started at this scene. */
+          entry: boolean;
+      }
+    /** The scene's own fields. An update states the new ones and nothing about the old. */
+    | { op: "update-scene"; fields: LiveSceneFields }
+    /** Where the scene was filed before it moved. A move states its destination only. */
+    | { op: "move-scene"; chapterId: string | null; beforeSceneId: StorySceneId | null }
+    /** The snapshots the scene held. The operation states the new list and nothing about the old. */
+    | { op: "set-scene-snapshots"; snapshots: readonly StorySceneSnapshot[] }
+    /** The chapter's name. */
+    | { op: "rename-chapter"; name: string }
+    /**
+     * The chapter itself, where it sat, every scene that left with it, and the entry it moved.
+     *
+     * `delete-scene`'s record one level up and for its reasons, with the cascade added: the scenes
+     * are not recoverable from anywhere after the chapter is gone, and putting back a chapter
+     * without them would be an empty chapter where an afternoon's work used to be.
+     */
+    | {
+          op: "delete-chapter";
+          chapter: StoryChapter;
+          /** The chapter it sat in front of, or null for the end of the outline. */
+          beforeChapterId: string | null;
+          scenes: readonly StoryScene[];
+          /** The scene the story started at, or null when it was not one of these. */
+          entry: StorySceneId | null;
+      }
     /**
      * The record the character held. An update states the new record and nothing about the old one -
      * the same shape as `update-block`, one document along.
@@ -638,6 +716,101 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
 
         case "reorder-chapters":
             return { op: "reorder-chapters", chapterIds: document.chapters.map(chapter => chapter.id) };
+
+        case "create-scene":
+        case "create-chapter":
+            // Nothing, with `insert-block`: the inverse is a deletion of what the effect already
+            // names, and nothing about the document before it is needed to build one.
+            return null;
+
+        case "delete-scene": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return null;
+            }
+            const owner = document.chapters.find(chapter => chapter.sceneIds.includes(op.sceneId)) ?? null;
+            const at = owner === null ? -1 : owner.sceneIds.indexOf(op.sceneId);
+            return {
+                op: "delete-scene",
+                // A copy, because the document is mutated in place: a reference would describe the
+                // scene after the deletion, which is the one mistake this module exists to avoid.
+                scene: structuredClone(scene),
+                chapterId: owner === null ? null : owner.id,
+                beforeSceneId: owner === null ? null : owner.sceneIds[at + 1] ?? null,
+                entry: document.entrySceneId === op.sceneId,
+            };
+        }
+
+        case "update-scene": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return null;
+            }
+            // Built the way the operation states them, keys and all: an absent field is what "the
+            // scene has none" looks like on disk, and a record that wrote `undefined` into one would
+            // invert into an operation the canonical encoder refuses.
+            return {
+                op: "update-scene",
+                fields: {
+                    name: scene.name,
+                    runtimeName: scene.runtimeName,
+                    ...(scene.description === undefined ? {} : { description: scene.description }),
+                    ...(scene.defaultBackgroundAssetId === undefined
+                        ? {}
+                        : { defaultBackgroundAssetId: scene.defaultBackgroundAssetId }),
+                    ...(scene.bgm === undefined ? {} : { bgm: structuredClone(scene.bgm) }),
+                },
+            };
+        }
+
+        case "move-scene": {
+            if (!document.scenes[op.sceneId]) {
+                return null;
+            }
+            const owner = document.chapters.find(chapter => chapter.sceneIds.includes(op.sceneId)) ?? null;
+            const at = owner === null ? -1 : owner.sceneIds.indexOf(op.sceneId);
+            return {
+                op: "move-scene",
+                chapterId: owner === null ? null : owner.id,
+                beforeSceneId: owner === null ? null : owner.sceneIds[at + 1] ?? null,
+            };
+        }
+
+        case "set-scene-snapshots": {
+            const scene = document.scenes[op.sceneId];
+            return scene
+                ? { op: "set-scene-snapshots", snapshots: structuredClone(scene.sceneSnapshots ?? []) }
+                : null;
+        }
+
+        case "rename-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            return chapter ? { op: "rename-chapter", name: chapter.name } : null;
+        }
+
+        case "delete-chapter": {
+            const index = document.chapters.findIndex(item => item.id === op.chapterId);
+            if (index === -1) {
+                return null;
+            }
+            const chapter = document.chapters[index];
+            // Copies of every scene the cascade is about to destroy. Read here because this is the
+            // last moment they exist at all - the chapter's own `sceneIds` names them, and after the
+            // deletion neither the chapter nor the scenes are anywhere to be found.
+            const scenes = chapter.sceneIds
+                .map(sceneId => document.scenes[sceneId])
+                .filter((scene): scene is StoryScene => scene !== undefined)
+                .map(scene => structuredClone(scene));
+            return {
+                op: "delete-chapter",
+                chapter: structuredClone(chapter),
+                beforeChapterId: document.chapters[index + 1]?.id ?? null,
+                scenes,
+                entry: document.entrySceneId !== undefined && chapter.sceneIds.includes(document.entrySceneId)
+                    ? document.entrySceneId
+                    : null,
+            };
+        }
 
         case "set-translation": {
             const units = sources.translations?.(op.locale) ?? null;
@@ -1551,6 +1724,142 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                 return { impossible: "chapters-changed" };
             }
             return { op: { op: "reorder-chapters", chapterIds: [...before.chapterIds] } };
+        }
+
+        case "create-scene": {
+            if (!document.scenes[op.scene.id]) {
+                return { impossible: "scene-gone" };
+            }
+            return { op: { op: "delete-scene", sceneId: op.scene.id } };
+        }
+
+        case "delete-scene": {
+            if (!before || before.op !== "delete-scene" || before.scene.id !== op.sceneId) {
+                return { impossible: "no-record" };
+            }
+            if (document.scenes[op.sceneId]) {
+                // Somebody redid the deletion elsewhere, or made a scene under the same id. Writing
+                // the recorded copy over it would take whatever has been written in it since.
+                return { impossible: "scene-restored" };
+            }
+            if (before.chapterId !== null && !document.chapters.some(item => item.id === before.chapterId)) {
+                // The chapter it lived in has gone too. A scene filed nowhere is one the outline
+                // never draws, so putting it back there would read as an undo that did nothing.
+                return { impossible: "chapter-gone" };
+            }
+            // The sibling is NOT checked, with `delete-block`'s: a scene whose neighbour has since
+            // gone lands at the end of the chapter it belonged to, which is where the author is
+            // looking - never in another document.
+            //
+            // A copy, because applying a creation writes the scene into the document. Handing over
+            // the record itself would leave a redo holding a scene that belongs to the story.
+            return {
+                op: {
+                    op: "create-scene",
+                    scene: structuredClone(before.scene),
+                    chapterId: before.chapterId,
+                    beforeSceneId: before.beforeSceneId,
+                    ...(before.entry ? { entry: true } : {}),
+                },
+            };
+        }
+
+        case "update-scene": {
+            if (!before || before.op !== "update-scene") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            return { op: { op: "update-scene", sceneId: op.sceneId, fields: structuredClone(before.fields) } };
+        }
+
+        case "move-scene": {
+            if (!before || before.op !== "move-scene") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            if (before.chapterId !== null && !document.chapters.some(item => item.id === before.chapterId)) {
+                return { impossible: "chapter-gone" };
+            }
+            return {
+                op: {
+                    op: "move-scene",
+                    sceneId: op.sceneId,
+                    chapterId: before.chapterId,
+                    beforeSceneId: before.beforeSceneId,
+                },
+            };
+        }
+
+        case "set-scene-snapshots": {
+            if (!before || before.op !== "set-scene-snapshots") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            return {
+                op: {
+                    op: "set-scene-snapshots",
+                    sceneId: op.sceneId,
+                    snapshots: structuredClone(before.snapshots),
+                },
+            };
+        }
+
+        case "rename-chapter": {
+            if (!before || before.op !== "rename-chapter") {
+                return { impossible: "no-record" };
+            }
+            if (!document.chapters.some(item => item.id === op.chapterId)) {
+                return { impossible: "chapter-gone" };
+            }
+            return { op: { op: "rename-chapter", chapterId: op.chapterId, name: before.name } };
+        }
+
+        case "create-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapter.id);
+            if (!chapter) {
+                return { impossible: "chapter-gone" };
+            }
+            // ⚠ Only a chapter still holding exactly what it was created with may be taken back,
+            // because the inverse is a deletion and a deletion takes the scenes inside. A chapter
+            // somebody else has filed a scene into is their work sitting in a box this author
+            // happened to make - which is `container-filled`, one level up from the row it names.
+            const own = new Set((op.scenes ?? []).map(scene => scene.id));
+            if (chapter.sceneIds.some(sceneId => !own.has(sceneId))) {
+                return { impossible: "container-filled" };
+            }
+            return { op: { op: "delete-chapter", chapterId: op.chapter.id } };
+        }
+
+        case "delete-chapter": {
+            if (!before || before.op !== "delete-chapter" || before.chapter.id !== op.chapterId) {
+                return { impossible: "no-record" };
+            }
+            if (document.chapters.some(item => item.id === op.chapterId)) {
+                return { impossible: "chapter-restored" };
+            }
+            for (const scene of before.scenes) {
+                if (document.scenes[scene.id]) {
+                    // One of the scenes is back under its own id. Writing the recorded copy over it
+                    // would take whatever has been written in it since - `scene-restored`'s injury,
+                    // reached through the chapter that held it.
+                    return { impossible: "scene-restored" };
+                }
+            }
+            return {
+                op: {
+                    op: "create-chapter",
+                    chapter: structuredClone(before.chapter),
+                    beforeChapterId: before.beforeChapterId,
+                    ...(before.scenes.length === 0 ? {} : { scenes: structuredClone(before.scenes) }),
+                    ...(before.entry === null ? {} : { entry: before.entry }),
+                },
+            };
         }
 
         case "create-character": {

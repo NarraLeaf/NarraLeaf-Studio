@@ -206,9 +206,10 @@ export type LiveLocalizationPort = {
  * an empty stand-in so the project still opens, and a session that carried THAT would be applying
  * operations to a registry with nothing to do with the file on disk.
  *
- * ⚠ **Nothing here removes an entry.** Deleting a variable also clears the params of every blueprint
- * node that named it, and the blueprint document is not a document a session carries -
- * `VariableRegistryService` refuses the gesture for as long as a sink is installed.
+ * ⚠ **Removing an entry reaches a second document.** Deleting a variable also clears the params of
+ * every blueprint node that named it - and the blueprint document is one a session carries now, so
+ * that sweep is derived rather than refused: the effect says the variable is gone, and every machine
+ * works out the same nodes. Which is why {@link applyOp} answers with scopes.
  */
 export type LiveVariablesPort = {
     /** Where registry edits go instead of into the registry, or null to take them back. */
@@ -217,8 +218,14 @@ export type LiveVariablesPort = {
     readable(): boolean;
     /** One entry as it stands, or null when there is none. Read for a digest and for an inverse. */
     entry(variableId: string): VariableRegistryEntry | null;
-    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
-    applyOp(op: LiveVariableOp): void;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * Answers with every unit it changed beyond the one the operation names - the blueprints a
+     * deletion's node sweep rewrote. Derived work is what has to be fingerprinted rather than
+     * assumed, and this is what puts those blueprints into the effect's digests.
+     */
+    applyOp(op: LiveVariableOp): readonly LiveDigestScope[];
 };
 
 /** One language's voice takes. The translations port's mirror, method for method. */
