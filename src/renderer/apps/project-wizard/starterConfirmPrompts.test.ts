@@ -1,9 +1,9 @@
 /**
  * Every place the starter template asks before it takes something away.
  *
- * There are ten of them. There were thirty-one, most of them one shape copied twelve times across
+ * There are seven of them. There were thirty-one, most of them one shape copied twelve times across
  * the save and load pages; those pages place one component twelve times now, so the shape is
- * asserted once and the count is what says nobody added an eleventh prompt somewhere else.
+ * asserted once and the count is what says nobody added an eighth prompt somewhere else.
  *
  * What each one has to prove is not "a Show Confirm exists in this graph" - these graphs hold fifty
  * nodes and a stray one would satisfy that - but that the click reaches the confirm through the
@@ -197,13 +197,15 @@ function assertPrompt(source: GraphSource, confirm: GraphNode, message: string, 
     expect(pins).toEqual(expect.arrayContaining(["in", "message", "button_1_label", "button_1_pressed", "dismissed"]));
 }
 
-/** The four nav buttons that go back to the title, by the page each one sits on. */
-const TITLE_BUTTONS: readonly { page: string; elementId: string }[] = [
-    { page: "Log", elementId: "d68d4baa-b176-426a-874d-a9c66269e0da" },
-    { page: "Config", elementId: "0f7bed84-816e-4cfd-b840-72ffe92356af" },
-    { page: "Load", elementId: "3b48abce-4359-40fc-ad3e-808cc8dc7f05" },
-    { page: "Save", elementId: "8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5" },
-];
+/**
+ * The button the four in-game page rails all place to get back to the title.
+ *
+ * It is the one rail entry that is the same wherever it appears: it is never the page you are
+ * standing on, so it never wears the active look, and nothing else about it varies. The four copies
+ * of this twelve-node graph are one component with no params now, which is why the question below
+ * is asked once rather than swept over four element ids.
+ */
+const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
 
 /**
  * The card the twelve save and load slots are all placements of.
@@ -238,15 +240,15 @@ describe("the questions the starter template asks before it takes something away
             ),
         );
         // Counted rather than sampled: the suites below each know which of these they mean, and
-        // this is what says nobody added an eleventh prompt outside them. It was thirty-one while
-        // the save card existed twelve times over; the card asks its three questions once now.
-        expect(asking).toHaveLength(10);
+        // this is what says nobody added an eighth prompt outside them. It was thirty-one while the
+        // save card existed twelve times over, and ten while each rail held its own Title button;
+        // the card asks its three questions once now, and the Title button asks its one once.
+        expect(asking).toHaveLength(7);
     });
 
-    it.each(TITLE_BUTTONS)(
-        "asks before leaving the $page page for the title, and only while a game is running",
-        ({ elementId }) => {
-            const { step, source, leadsTo, only } = graphFor(elementId);
+    it("asks before leaving a page for the title, and only while a game is running", () => {
+        {
+            const { step, source, leadsTo, only } = graphFor(TITLE_BUTTON);
             const click = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
             const branch = step(click.id, "then", BLUEPRINT_NODE_TYPE_FLOW_IF);
             source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
@@ -269,8 +271,8 @@ describe("the questions the starter template asks before it takes something away
             const go = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PAGE_GO);
             expect(go.params?.surfaceId ?? "").toBe("");
             expect(leadsTo(confirm.id, "button_1_pressed", go.id)).toBe(false);
-        },
-    );
+        }
+    });
 
     /**
      * The click, which is now two acts behind one gesture.
