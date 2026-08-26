@@ -121,6 +121,7 @@ export const story = {
         refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
         refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
         refusedAssetGone: "そのアセットは存在しない。この変更は反映されていない",
+        refusedVariableGone: "その変数は存在しない。この変更は反映されていない",
         refusedAssetIdTaken: "そのアセットはすでにここにある。何も取り込まれていない",
         refusedFolderNotEmpty: "そのフォルダーの中にフォルダーがある。何も削除されていない",
         refusedUIElementGone: "その要素は存在しない。この変更は反映されていない",
@@ -153,6 +154,9 @@ export const story = {
         undoTrackRestored: "そのオーディオトラックはミキサーに戻っている",
         undoSetGone: "そのアセットセットは存在しない",
         undoSetRestored: "そのアセットセットは再び宣言されている",
+        undoVariableGone: "その変数は存在しない",
+        undoVariableRestored: "その変数はまた存在している",
+        undoKeyRestored: "その文字列は再び宣言されている",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の

@@ -28,7 +28,7 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
     forgetServer: vi.fn(() => Promise.resolve({ success: true, data: { servers: [] } })),
-    listServerProjects: vi.fn(),
+    teamCall: vi.fn(),
     probeServer: vi.fn(),
     addServer: vi.fn(),
 }));
@@ -38,10 +38,10 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             forgetServer: bridge.forgetServer,
-            listServerProjects: bridge.listServerProjects,
             probeServer: bridge.probeServer,
             addServer: bridge.addServer,
         },
+        team: { call: bridge.teamCall },
         app: { promptServerTrust: vi.fn() },
     }),
 }));
@@ -69,7 +69,7 @@ afterEach(() => {
     cleanup();
     bridge.servers = [];
     bridge.forgetServer.mockClear();
-    bridge.listServerProjects.mockReset();
+    bridge.teamCall.mockReset();
     bridge.probeServer.mockReset();
     bridge.addServer.mockReset();
 });
@@ -95,7 +95,7 @@ describe("the servers panel", () => {
 
         await waitFor(() => expect(document.querySelector(`[data-servers-row='${ORIGIN}']`)).not.toBeNull());
         // Not a count, not a member, nothing that would have to be fetched to be right.
-        expect(bridge.listServerProjects).not.toHaveBeenCalled();
+        expect(bridge.teamCall).not.toHaveBeenCalled();
     });
 
     it("keeps adding one behind a press, in a dialog", async () => {

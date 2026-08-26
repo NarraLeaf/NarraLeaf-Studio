@@ -14,6 +14,7 @@ import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/componen
 import { BlueprintLiteralValueControl } from "./BlueprintLiteralValueControl";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard, type FreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { BLUEPRINT_MEMBER_TREE_PATHS } from "@shared/documents/specs/uiEditorPaths";
 import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/ui";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -449,7 +450,9 @@ export function BlueprintMemberTree({
     const { t } = useTranslation();
     // Declaring a layer or a variable, and renaming or deleting one, write the blueprint document.
     // Selecting a layer to look at its graph does not.
-    const freeze = useFreezeGuard();
+    // Two documents, both needed: a layer is the blueprint's and a variable is the project
+    // registry's, and one guard covers rows of each. See `BLUEPRINT_MEMBER_TREE_PATHS`.
+    const freeze = useFreezeGuard(BLUEPRINT_MEMBER_TREE_PATHS);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuLayerId, setMenuLayerId] = useState<string | null>(null);
     const { context, isInitialized } = useWorkspace();
