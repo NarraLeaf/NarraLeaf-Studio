@@ -1,10 +1,9 @@
 /**
  * Every place the starter template asks before it takes something away.
  *
- * There are thirty-one of them and they are a handful of shapes repeated, which is exactly the
- * condition under which a per-page assertion stops being worth anything: one slot quietly wired
- * straight through reads, on its own page, like a page nobody got round to. So this sweeps all
- * thirty-one from one list and fails on the count as well as the wiring.
+ * There are ten of them. There were thirty-one, most of them one shape copied twelve times across
+ * the save and load pages; those pages place one component twelve times now, so the shape is
+ * asserted once and the count is what says nobody added an eleventh prompt somewhere else.
  *
  * What each one has to prove is not "a Show Confirm exists in this graph" - these graphs hold fifty
  * nodes and a stray one would satisfy that - but that the click reaches the confirm through the
@@ -21,6 +20,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
     BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS,
+    BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ITEM_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
@@ -38,6 +38,7 @@ import {
     BLUEPRINT_NODE_TYPE_PAGE_GO,
     BLUEPRINT_NODE_TYPE_PERSISTENT_GET,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
+    BLUEPRINT_NODE_TYPE_STRING_EQUALS,
 } from "@shared/types/blueprint/graph";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "@/lib/ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
@@ -86,7 +87,9 @@ const confirmSurfaceId = document.surfaces.find(surface => surface.name === "Con
  */
 function graphFor(elementId: string, headType?: string) {
     const blueprint = blueprints.find(
-        candidate => candidate.owner.kind === "widgetMain" && candidate.owner.elementId === elementId,
+        candidate =>
+            (candidate.owner.kind === "widgetMain" || candidate.owner.kind === "componentWidgetMain")
+            && candidate.owner.elementId === elementId,
     );
     expect(blueprint, `no blueprint answers for element ${elementId}`).toBeDefined();
     const graphs = Object.values(blueprint!.program.graphs.events).filter(
@@ -202,28 +205,31 @@ const TITLE_BUTTONS: readonly { page: string; elementId: string }[] = [
     { page: "Save", elementId: "8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5" },
 ];
 
-/** The six save slots, in the order they are laid out on the page. */
-const SAVE_SLOTS: readonly string[] = [
-    "387326a1-5514-4ee2-9d73-48fbe03de0b8",
-    "fbc2bd42-7a0d-4528-8087-ecb494e50100",
-    "ad28642d-321a-4422-9689-d51e103e6a9b",
-    "25a9e39d-4ed9-4499-beb7-5d22c3d3b3a5",
-    "9eed63ce-3aef-478b-9a07-54b25c76739e",
-    "68f93492-5608-4cd1-9e6b-5ad3f158e4ca",
-];
+/**
+ * The card the twelve save and load slots are all placements of.
+ *
+ * There used to be twelve element ids here and three `it.each` sweeps over them, because the
+ * template held twelve copies of one graph and a copy quietly wired straight through would have
+ * read, on its own page, like a page nobody got round to. The copies are gone: the pages place one
+ * component twelve times, and which slot a placement is - and whether it saves or loads - are its
+ * two params. So the sweep collapses into the assertions below, and what stops a slot drifting is
+ * no longer a test but the fact that there is nothing left to drift from.
+ */
+const SLOT_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 
-/** The six load slots, likewise. */
-const LOAD_SLOTS: readonly string[] = [
-    "437fc707-729e-4024-b756-3dd15f800223",
-    "7b5f0ee2-a325-4063-9716-f62a91c6008d",
-    "15bcd9c6-f1dd-4930-926c-a0f293bd1455",
-    "fcd9b8c1-194d-450e-92b6-5124ca8a6fd9",
-    "a3d414fd-6c74-4ea8-882a-1a0646543627",
-    "c75bf9d9-7d38-4b74-ab1d-10816e2a1f14",
-];
+/**
+ * The slot id a node is reading, as the card now states it.
+ *
+ * Every place that used a literal "3" reads the `slot` param instead - that is the whole of what
+ * made the twelve copies different from one another.
+ */
+function expectReadsSlotParam(source: GraphSource, toId: string, port: string): void {
+    const param = source(toId, port, BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM);
+    expect(param.params?.paramId).toBe("slot");
+}
 
 describe("the questions the starter template asks before it takes something away", () => {
-    it("asks them in thirty-one places and nowhere else", () => {
+    it("asks them in ten places and nowhere else", () => {
         const asking = blueprints.flatMap(blueprint =>
             Object.values(blueprint.program.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
@@ -232,8 +238,9 @@ describe("the questions the starter template asks before it takes something away
             ),
         );
         // Counted rather than sampled: the suites below each know which of these they mean, and
-        // this is what says nobody added a thirty-second prompt outside them.
-        expect(asking).toHaveLength(31);
+        // this is what says nobody added an eleventh prompt outside them. It was thirty-one while
+        // the save card existed twelve times over; the card asks its three questions once now.
+        expect(asking).toHaveLength(10);
     });
 
     it.each(TITLE_BUTTONS)(
@@ -265,85 +272,85 @@ describe("the questions the starter template asks before it takes something away
         },
     );
 
-    it.each(SAVE_SLOTS.map((elementId, index) => ({ slot: index + 1, elementId })))(
-        "asks before overwriting save slot $slot, and only when that slot holds one",
-        ({ slot, elementId }) => {
-            const { step, source, leadsTo, only } = graphFor(elementId);
-            const click = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+    /**
+     * The click, which is now two acts behind one gesture.
+     *
+     * The card is placed on the Save page as `mode: "save"` and on the Load page as `mode: "load"`,
+     * so the press branches on that param before it does anything. Both sides are walked from here
+     * because they are one graph: a change that broke the load half while leaving the save half
+     * standing would otherwise pass on the strength of the half it did not touch.
+     */
+    function slotClickBranch() {
+        const graph = graphFor(SLOT_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        const click = graph.only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        const mode = graph.step(click.id, "then", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        const isSave = graph.source(mode.id, "condition", BLUEPRINT_NODE_TYPE_STRING_EQUALS);
+        expect(graph.source(isSave.id, "a", BLUEPRINT_NODE_TYPE_COMPONENT_GET_PARAM).params?.paramId).toBe("mode");
+        expect(isSave.params?.b).toBe("save");
+        return { ...graph, mode };
+    }
 
-            // The gate reads the same question the slot's own refresh asks: is this id among the
-            // saves that exist? An empty slot is written without a word.
-            const listIds = step(click.id, "then", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
-            const branch = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
-            const contains = source(branch.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
-            expect(source(contains.id, "array", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS).id).toBe(listIds.id);
-            expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
+    it("asks before overwriting a save, and only when that slot holds one", () => {
+        const { step, source, leadsTo, mode } = slotClickBranch();
 
-            const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(source, confirm, "This slot already holds a save. Overwrite it?", "Overwrite");
+        // The gate reads the same question the card's own refresh asks: is this id among the saves
+        // that exist? An empty slot is written without a word.
+        const listIds = step(mode.id, "true", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
+        const branch = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        const contains = source(branch.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
+        expect(source(contains.id, "array", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS).id).toBe(listIds.id);
+        expectReadsSlotParam(source, contains.id, "item");
 
-            const write = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PERSISTENT_GET);
-            expect(leadsTo(confirm.id, "button_1_pressed", write.id)).toBe(true);
-        },
-    );
+        const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(source, confirm, "This slot already holds a save. Overwrite it?", "Overwrite");
 
-    it.each(LOAD_SLOTS.map((elementId, index) => ({ slot: index + 1, elementId })))(
-        "asks before loading save slot $slot over a running game, and not from the title",
-        ({ slot, elementId }) => {
-            const { step, source, leadsTo, only } = graphFor(elementId);
-            const click = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        const write = step(branch.id, "false", BLUEPRINT_NODE_TYPE_PERSISTENT_GET);
+        expect(leadsTo(confirm.id, "button_1_pressed", write.id)).toBe(true);
+    });
 
-            // The slot-exists branch was already here; the question goes inside it, so pressing an
-            // empty slot still does nothing at all.
-            const listIds = step(click.id, "then", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
-            const exists = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
-            const contains = source(exists.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
-            expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
+    it("asks before loading a save over a running game, and not from the title", () => {
+        const { step, source, leadsTo, mode } = slotClickBranch();
 
-            const branch = step(exists.id, "true", BLUEPRINT_NODE_TYPE_FLOW_IF);
-            source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
+        // The slot-exists branch was already here; the question goes inside it, so pressing an
+        // empty slot still does nothing at all.
+        const listIds = step(mode.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
+        const exists = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        const contains = source(exists.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
+        expectReadsSlotParam(source, contains.id, "item");
 
-            const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(source, confirm, "Load this save? Unsaved progress is lost.", "Load");
+        const branch = step(exists.id, "true", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        source(branch.id, "condition", BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME);
 
-            const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
-            expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
-        },
-    );
+        const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(source, confirm, "Load this save? Unsaved progress is lost.", "Load");
+
+        const load = step(branch.id, "false", BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD);
+        expect(leadsTo(confirm.id, "button_1_pressed", load.id)).toBe(true);
+    });
 
     // A right click deletes the slot under the cursor, and it is the one act here that nothing can
-    // put back - the save screen can rewrite a slot, but a deleted one is gone. It was also the only
-    // one of the sixteen shapes that asked nothing at all, which is why the sweep covers both pages
-    // at once: the two graphs are the same graph, and a page that lost the question would read like
-    // a page nobody got round to.
-    it.each(
-        [...SAVE_SLOTS.map((elementId, index) => ({ page: "Save", slot: index + 1, elementId })),
-         ...LOAD_SLOTS.map((elementId, index) => ({ page: "Load", slot: index + 1, elementId }))],
-    )(
-        "asks before deleting $page slot $slot, and only when that slot holds one",
-        ({ slot, elementId }) => {
-            const { step, source, leadsTo, only } = graphFor(elementId);
-            const rightClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+    // put back - the save screen can rewrite a slot, but a deleted one is gone. It does not branch
+    // on the mode: both pages delete, which is why the card can answer for both with one path.
+    it("asks before deleting a save, and only when that slot holds one", () => {
+        const { step, source, leadsTo, only, nodes } = graphFor(SLOT_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
+        const rightClick = only(BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
 
-            // Same gate as the overwrite: an empty slot has nothing to lose, so it is deleted -
-            // which deletes nothing - without a word.
-            const listIds = step(rightClick.id, "then", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
-            const branch = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
-            const contains = source(branch.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
-            expect(source(contains.id, "item", BLUEPRINT_NODE_TYPE_LITERAL_STRING).params?.value).toBe(String(slot));
+        // Same gate as the overwrite: an empty slot has nothing to lose, so it is deleted - which
+        // deletes nothing - without a word.
+        const listIds = step(rightClick.id, "then", BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS);
+        const branch = step(listIds.id, "next", BLUEPRINT_NODE_TYPE_FLOW_IF);
+        const contains = source(branch.id, "condition", BLUEPRINT_NODE_TYPE_COLLECTION_ARRAY_CONTAINS);
+        expectReadsSlotParam(source, contains.id, "item");
 
-            const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
-            assertPrompt(source, confirm, "Delete this save? It cannot be brought back.", "Delete");
+        const confirm = step(branch.id, "true", BLUEPRINT_NODE_TYPE_LAYER_CONFIRM);
+        assertPrompt(source, confirm, "Delete this save? It cannot be brought back.", "Delete");
 
-            // Unlike the other shapes there is no false branch to the act: a slot with nothing in it
-            // is left alone rather than deleted quietly.
-            const remaining = Object.values(graphFor(elementId).nodes).filter(
-                node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
-            );
-            expect(remaining).toHaveLength(1);
-            expect(leadsTo(confirm.id, "button_1_pressed", remaining[0].id)).toBe(true);
-        },
-    );
+        // Unlike the other shapes there is no false branch to the act: a slot with nothing in it is
+        // left alone rather than deleted quietly.
+        const remaining = Object.values(nodes).filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE);
+        expect(remaining).toHaveLength(1);
+        expect(leadsTo(confirm.id, "button_1_pressed", remaining[0]!.id)).toBe(true);
+    });
 
     it("asks before going back to a line in the log, because everything after it is undone", () => {
         const { step, source, leadsTo, only } = graphFor(

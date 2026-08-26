@@ -51,7 +51,7 @@ import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointe
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { sniffMediaType } from "./mediaSniff";
-import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
+import { createRuntimeResources, isSealedBuildSync, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
@@ -98,6 +98,7 @@ import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
     hasStartupSwitch,
+    honoursDebuggableMarker,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
@@ -143,6 +144,15 @@ const shellManifest = readShellManifest();
 const shellMode = shellManifest.mode;
 
 /**
+ * Whether this build's content is sealed.
+ *
+ * Read from disk rather than from the pack, because the marker below has to be answered before
+ * anything can open one. It is the same file `createRuntimeResources` decides on a moment later, so
+ * the two cannot disagree about what kind of build this is.
+ */
+const shellSealed = isSealedBuildSync(appDir);
+
+/**
  * This build was made to be inspected, so the guards below stand aside for the launch switches
  * they otherwise refuse.
  *
@@ -150,8 +160,12 @@ const shellMode = shellManifest.mode;
  * own: the switch still has to be on the command line for anything to be listening. The pack
  * carries the same marker and stays authoritative - a manifest that claims this while the pack does
  * not is refused by the second gate, which is the one that runs from inside the archive.
+ *
+ * A sealed build refuses it whichever marker carries it, because this gate - the one that decides
+ * in time to matter - can only read the manifest, and a protected build cannot have a text edit
+ * standing between a stranger and its decrypted content. See {@link honoursDebuggableMarker}.
  */
-const shellDebuggable = shellManifest.debuggable;
+const shellDebuggable = honoursDebuggableMarker(shellManifest.debuggable, shellSealed);
 
 /*
  * Before anything has had a chance to print. A shipped game keeps its own output to its log file
@@ -455,13 +469,13 @@ void app.whenReady().then(async () => {
         explainRefusedPatches: shellMode !== "production" || shellDebuggable,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && pack.debuggable !== true && refusedStartupArguments().length > 0) {
+    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
         // rewritten shell manifest does not get past on the platforms that validate one.
         app.quit();
         return;
     }
-    if (pack.debuggable === true) {
+    if (packDebuggable(pack)) {
         console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
@@ -747,6 +761,19 @@ function emitTestEvent(event: GameTestEvent): void {
     }
 }
 
+/**
+ * The pack's own `debuggable` marker, as far as it is allowed to mean anything.
+ *
+ * Sealed builds are excluded here as well as at the pre-ready gate. This one cannot be tampered
+ * with - it comes out of the protected store - so the exclusion is not defending against an edit;
+ * it keeps the two gates saying the same thing, so that an artifact built before a sealed build
+ * stopped carrying the marker does not open DevTools after the earlier gate has already refused
+ * the switch that would have been inspected through them.
+ */
+function packDebuggable(pack: GameRuntimePackV1): boolean {
+    return honoursDebuggableMarker(pack.debuggable === true, shellSealed);
+}
+
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
         packPromise = runtimeResources()
@@ -789,7 +816,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // switch on the command line it starts exactly as a production build does, which is what keeps
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
-        || (pack.debuggable === true && hasDebuggingSwitch(startupArguments(), process.platform));
+        || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
     const win = new BrowserWindow({
         title: pack.project.name,
         // The design size is the STAGE, not the window: Electron's width/height are the outer size,
