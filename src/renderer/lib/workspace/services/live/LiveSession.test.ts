@@ -4,7 +4,9 @@ import {
     assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
+    localizationKeysSpec,
     storyDocumentSpec,
+    variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
@@ -12,19 +14,24 @@ import type { LiveCastView } from "@shared/live/cast";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import {
     characterClaimKey,
+    localizationKeyClaimKey,
     storyRowClaimKey,
     assetClaimKey,
     translationClaimKey,
+    variableClaimKey,
     type LiveCharacterOp,
     type LiveDerived,
     type LiveEffect,
+    type LiveLocalizationKeyOp,
     type LiveLocalizationOp,
     type LiveAssetFolderOp,
     type LiveAssetOp,
+    type LiveVariableOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
@@ -274,6 +281,9 @@ const CARRIED_ASSET_TYPES = ["image"];
 /** The sections every window in these tests holds folders for. */
 const CARRIED_ASSET_CATEGORIES = ["image"];
 
+/** Both project-level registries, which every window in these tests could read. */
+const CARRIED_REGISTRIES = { variables: true, localizationKeys: true };
+
 /* -------------------------------------------------------------------------- a window */
 
 type Window = {
@@ -303,7 +313,12 @@ type Window = {
     castSink: CharacterOpSink | null;
     /** The translation libraries this window holds, by language, and where its edits go. */
     translations: Record<string, Record<string, LocalizationUnit>>;
-    translationSink: { handle(op: LiveLocalizationOp): boolean } | null;
+    translationSink: { handle(op: LiveLocalizationOp | LiveLocalizationKeyOp): boolean } | null;
+    /** The named strings this window holds, and whether it holds the registry at all. */
+    keys: Record<string, LocalizationKeyDefinition> | null;
+    /** The variable registry entries this window holds, and where its edits go. */
+    variables: Record<string, VariableRegistryEntry>;
+    variableSink: { handle(op: LiveVariableOp): boolean } | null;
     /** The voice libraries this window holds, by language, and where its edits go. */
     takes: Record<string, Record<string, VoiceUnit>>;
     takeSink: { handle(op: LiveVoiceOp): boolean } | null;
@@ -366,6 +381,28 @@ function applyTranslationOp(libraries: Window["translations"], op: LiveLocalizat
             units[entry.unitId] = { ...entry.unit };
         }
     }
+}
+
+/** The named-key applier a window uses when an effect arrives. As small as the registry's own. */
+function applyKeyOp(keys: Window["keys"], op: LiveLocalizationKeyOp): void {
+    if (!keys) {
+        return;
+    }
+    if (op.op === "remove-key") {
+        delete keys[op.name];
+        return;
+    }
+    keys[op.name] = { ...op.definition };
+}
+
+/** The variable registry applier. One entry in, one entry out. */
+function applyVariableOp(entries: Window["variables"], op: LiveVariableOp): void {
+    if (op.op === "delete-variable") {
+        delete entries[op.variableId];
+        return;
+    }
+    const entry = op.op === "create-variable" ? op.entry : op.entry;
+    entries[entry.id] = structuredClone(entry);
 }
 
 /** The voice applier, the translations' mirror. */
@@ -434,6 +471,9 @@ function createWindow(world: World, instance: string): Window {
         castSink: null,
         translations: { ja: {} },
         translationSink: null,
+        keys: {},
+        variables: {},
+        variableSink: null,
         takes: { ja: {} },
         takeSink: null,
         assets: { image: {} },
@@ -490,9 +530,27 @@ function createWindow(world: World, instance: string): Window {
             },
             loadAll: async () => Object.keys(window.translations),
             units: locale => window.translations[locale] ?? null,
+            loadKeys: async () => window.keys !== null,
+            keys: () => window.keys,
             applyOp: op => {
+                if (op.op === "set-key" || op.op === "remove-key") {
+                    calls.push(`keys:${op.op}`);
+                    applyKeyOp(window.keys, op);
+                    return;
+                }
                 calls.push(`translations:${op.op}`);
                 applyTranslationOp(window.translations, op);
+            },
+        },
+        variables: {
+            setSink: sink => {
+                window.variableSink = sink;
+            },
+            readable: () => true,
+            entry: variableId => window.variables[variableId] ?? null,
+            applyOp: op => {
+                calls.push(`variables:${op.op}`);
+                applyVariableOp(window.variables, op);
             },
         },
         voice: {
@@ -758,7 +816,13 @@ describe("a live session", () => {
             expect(guest.session.getView().storyId).toBe(other.id);
             // And the freeze leaves the room's document writable, not the one this window shares.
             expect(guest.freeze.armed?.writable).toEqual(
-                liveSessionWritablePaths(guest.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                liveSessionWritablePaths(
+                    guest.story.listStories().map(e => e.id),
+                    CARRIED_LOCALES,
+                    CARRIED_ASSET_TYPES,
+                    CARRIED_ASSET_CATEGORIES,
+                    CARRIED_REGISTRIES,
+                ),
             );
             expect(guest.freeze.armed?.writable).toContain(storyDocumentSpec.pathFor({ storyId: other.id }));
         });
@@ -822,7 +886,13 @@ describe("a live session", () => {
             // and nowhere else, with no digest over it and nothing reporting a problem.
             expect(host.freeze.armed).toEqual({
                 session: "room-1",
-                writable: liveSessionWritablePaths(host.story.listStories().map(e => e.id), CARRIED_LOCALES, CARRIED_ASSET_TYPES, CARRIED_ASSET_CATEGORIES),
+                writable: liveSessionWritablePaths(
+                    host.story.listStories().map(e => e.id),
+                    CARRIED_LOCALES,
+                    CARRIED_ASSET_TYPES,
+                    CARRIED_ASSET_CATEGORIES,
+                    CARRIED_REGISTRIES,
+                ),
             });
             expect(host.freeze.armed?.writable).toEqual([
                 storyDocumentSpec.pathFor({ storyId: host.storyId }),
@@ -831,6 +901,10 @@ describe("a live session", () => {
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
                 assetGroupsSpec.pathFor({ category: "image" }),
+                // The two project-level registries, which are one per project and carried because
+                // this window could read them.
+                variableRegistrySpec.pathFor(),
+                localizationKeysSpec.pathFor(),
                 // ⚠ And the two the vocabulary is never about: a file's bytes, which an applier puts
                 // down rather than anybody addressing, and the row order, which every machine
                 // recomputes from what it has just applied.
@@ -1328,6 +1402,141 @@ describe("a live session", () => {
             expect(effect?.digests).toEqual([
                 { scope: { of: "assets", assetType: "image" }, hash: expect.any(String) },
             ]);
+        });
+    });
+
+    describe("the two project registries", () => {
+        function variable(id: string, name = id): VariableRegistryEntry {
+            return { id, name, scope: "saved", valueType: "boolean", storageKey: id };
+        }
+
+        function seedVariables(): void {
+            for (const window of [host, guest]) {
+                window.variables = { v1: variable("v1", "Gold") };
+            }
+        }
+
+        it("leaves both registries writable, which is what says the session carries them", async () => {
+            await openRoom();
+
+            const writable = host.freeze.armed?.writable ?? [];
+            expect(writable).toContain("editor/variables.json");
+            expect(writable).toContain("editor/localization/keys.json");
+        });
+
+        it("carries a rename from one window to the other, and applies nothing optimistically", async () => {
+            await openRoom();
+            await joinRoom();
+            seedVariables();
+
+            guest.variableSink?.handle({ op: "update-variable", variableId: "v1", entry: variable("v1", "Coins") });
+            // The row moves when the effect answering the intent arrives, not when the box was
+            // typed into - the same bargain every gesture on this seam makes.
+            expect(guest.variables.v1.name).toBe("Gold");
+
+            await drain(world.bus);
+            expect(host.variables.v1.name).toBe("Coins");
+            expect(guest.variables.v1.name).toBe("Coins");
+        });
+
+        it("carries a declared string, and its removal, to the other window", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.translationSink?.handle({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+            await drain(world.bus);
+            expect(host.keys?.["menu.start"]).toEqual({ sourceText: "Start" });
+            expect(guest.keys?.["menu.start"]).toEqual({ sourceText: "Start" });
+
+            guest.translationSink?.handle({ op: "remove-key", name: "menu.start" });
+            await drain(world.bus);
+            expect(host.keys?.["menu.start"]).toBeUndefined();
+            expect(guest.keys?.["menu.start"]).toBeUndefined();
+        });
+
+        it("refuses a write to an entry somebody else has open, and names them", async () => {
+            await openRoom();
+            await joinRoom();
+            seedVariables();
+
+            guest.session.claimVariable("v1", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims).toEqual({ [variableClaimKey("v1")]: "instance-guest" });
+
+            host.variableSink?.handle({ op: "update-variable", variableId: "v1", entry: variable("v1", "Taken") });
+            await drain(world.bus);
+
+            expect(host.variables.v1.name).toBe("Gold");
+            expect(host.session.getView().lastRefusal)
+                .toMatchObject({ reason: "row-claimed", op: "update-variable", heldBy: "instance-guest" });
+        });
+
+        it("refuses a write to a named string somebody else has open", async () => {
+            await openRoom();
+            await joinRoom();
+            for (const window of [host, guest]) {
+                window.keys = { "menu.start": { sourceText: "Start" } };
+            }
+
+            guest.session.claimLocalizationKey("menu.start", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims)
+                .toEqual({ [localizationKeyClaimKey("menu.start")]: "instance-guest" });
+
+            host.translationSink?.handle({ op: "set-key", name: "menu.start", definition: { sourceText: "Taken" } });
+            await drain(world.bus);
+
+            expect(host.keys?.["menu.start"]).toEqual({ sourceText: "Start" });
+            expect(host.session.getView().lastRefusal)
+                .toMatchObject({ reason: "row-claimed", op: "set-key", heldBy: "instance-guest" });
+        });
+
+        it("takes a declaration back with a removal, which is the only way that verb is reached", async () => {
+            // An author's own deletion is refused for the length of a session - it also empties the
+            // blueprint nodes that named the variable, and a session does not carry that document.
+            await openRoom();
+            await joinRoom();
+
+            guest.variableSink?.handle({ op: "create-variable", entry: variable("v9", "Route") });
+            await drain(world.bus);
+            expect(host.variables.v9?.name).toBe("Route");
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+            expect(host.variables.v9).toBeUndefined();
+            expect(guest.variables.v9).toBeUndefined();
+        });
+
+        it("takes back the first declaration of a named string by removing it", async () => {
+            await openRoom();
+            await joinRoom();
+
+            guest.translationSink?.handle({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+            await drain(world.bus);
+            expect(host.keys?.["menu.start"]).toBeDefined();
+
+            expect(guest.session.undo()).toBe(true);
+            await drain(world.bus);
+            expect(host.keys?.["menu.start"]).toBeUndefined();
+            expect(guest.keys?.["menu.start"]).toBeUndefined();
+        });
+
+        it("fingerprints the entry it changed, so a machine that applied it differently is caught", async () => {
+            await openRoom();
+            await joinRoom();
+            seedVariables();
+
+            world.bus.said.length = 0;
+            guest.variableSink?.handle({ op: "update-variable", variableId: "v1", entry: variable("v1", "Coins") });
+            guest.translationSink?.handle({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+            await drain(world.bus);
+
+            const effects = world.bus.said
+                .filter((payload): payload is LiveEffect => (payload as LiveEffect).kind === "effect");
+            expect(effects.find(one => one.op.op === "update-variable")?.digests)
+                .toEqual([{ scope: { of: "variable", variableId: "v1" }, hash: expect.any(String) }]);
+            expect(effects.find(one => one.op.op === "set-key")?.digests)
+                .toEqual([{ scope: { of: "localization-key", name: "menu.start" }, hash: expect.any(String) }]);
         });
     });
 

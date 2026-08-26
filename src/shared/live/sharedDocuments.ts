@@ -3,7 +3,9 @@ import {
     assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
+    localizationKeysSpec,
     storyDocumentSpec,
+    variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId } from "@shared/types/story";
@@ -67,9 +69,20 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * folders it has just applied - and it is deliberately NOT a `LiveDocument`, so no message can be
  * addressed to it.
  *
- * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
- * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
- * for the length of a session and says so - which is the harmless half of the trade.
+ * **The two project-level registries join them last**: the variable registry (`editor/variables.json`)
+ * and the named-string registry (`editor/localization/keys.json`). Both are one per project, so
+ * neither is parameterised - and both are carried only when this machine could actually READ them,
+ * for the reason a language's library is: an applier is synchronous, so a registry that is not in
+ * memory when the session starts is one no effect can ever reach, and carrying it would leave the
+ * boundary allowing writes the host refuses.
+ *
+ * ⚠ **`variables.json` being writable does not mean every gesture on it travels.** Removing a
+ * variable also clears the params of every blueprint node that named it, which is a write to
+ * `editor/ui/uigraphs.json` - a document this table does not carry - so the vocabulary has no verb
+ * for it and `VariableRegistryService` refuses the gesture for as long as a sink is installed. That
+ * is the same shape the asset library is already in, and it is the safe half of the invariant: the
+ * owning service stops what cannot travel, rather than the write boundary allowing an edit that
+ * would land on one machine and nowhere else.
  */
 
 /** The languages a session carries libraries for. Two lists, because the two are configured apart. */
@@ -107,6 +120,25 @@ export type LiveSessionAssetCategories = readonly string[];
 
 /** No folder shards at all. */
 export const NO_LIVE_ASSET_CATEGORIES: LiveSessionAssetCategories = [];
+
+/**
+ * Which of the two project-level registries this machine holds.
+ *
+ * Booleans rather than a list, because neither is parameterised: there is one variable registry and
+ * one named-string registry per project, so the whole question is whether this machine read it.
+ * Passed in for {@link LiveSessionLocales}' reason - a document nothing loaded is one no operation
+ * can be applied to, and carrying it would make it writable while the host refused every operation
+ * about it.
+ */
+export type LiveSessionRegistries = {
+    /** Whether this machine holds `editor/variables.json`. */
+    variables: boolean;
+    /** Whether this machine holds `editor/localization/keys.json`. */
+    localizationKeys: boolean;
+};
+
+/** Neither registry - what a caller that has read neither passes. */
+export const NO_LIVE_REGISTRIES: LiveSessionRegistries = { variables: false, localizationKeys: false };
 
 /**
  * Every path a session leaves writable that no operation is ever about.
@@ -157,6 +189,7 @@ export function liveSessionDocuments(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): readonly LiveDocument[] {
     return [
         ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
@@ -165,6 +198,8 @@ export function liveSessionDocuments(
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
         ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
+        ...(registries.variables ? [{ doc: "variables" } as const] : []),
+        ...(registries.localizationKeys ? [{ doc: "localization-keys" } as const] : []),
     ];
 }
 
@@ -190,6 +225,10 @@ export function liveDocumentPath(document: LiveDocument): string {
             return assetsMetadataSpec.pathFor({ type: document.assetType });
         case "asset-groups":
             return assetGroupsSpec.pathFor({ category: document.category });
+        case "variables":
+            return variableRegistrySpec.pathFor();
+        case "localization-keys":
+            return localizationKeysSpec.pathFor();
     }
 }
 
@@ -204,9 +243,10 @@ export function liveSessionWritablePaths(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): readonly string[] {
     return [
-        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories).map(liveDocumentPath),
+        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, registries).map(liveDocumentPath),
         ...liveSessionDerivedPaths(assetCategories),
     ];
 }
@@ -225,7 +265,8 @@ export function liveSessionCarries(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): boolean {
-    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories)
+    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, registries)
         .some(carried => sameLiveDocument(carried, document));
 }

@@ -1182,7 +1182,18 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         );
     }
 
-    public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
+    /**
+     * Remove a global variable, and the node refs that named it.
+     *
+     * ⚠ **Asked before anything is written**, and that order is the whole of why this is not one
+     * call. The registry refuses a deletion for the length of a live session - it also rewrites the
+     * blueprint document, which a session does not carry - and clearing the node refs first would
+     * leave every `Get`/`Set` node empty while the variable stayed exactly where it was.
+     */
+    public deletePersistentVariable(historyBlueprintId: string, variableId: string): boolean {
+        if (!this.getVariableRegistryService().canDeleteEntry()) {
+            return false;
+        }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
             this.applyBlueprintMutation(doc => {
@@ -1194,6 +1205,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             });
             this.getVariableRegistryService().deleteEntry(variableId);
         });
+        return true;
     }
 
     public createSavedRegistryVariable(
@@ -1241,8 +1253,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * `savedVariableId` node param, so leaving one behind gives the author a node that fails at
      * runtime ("Pick a Saved variable") with nothing on screen saying why. Different param, different
      * node types, same failure - hence the shared, parameterized helper rather than a second copy.
+     *
+     * ⚠ Asked before anything is written, with {@link deletePersistentVariable}.
      */
-    public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): void {
+    public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): boolean {
+        if (!this.getVariableRegistryService().canDeleteEntry()) {
+            return false;
+        }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             this.applyBlueprintMutation(doc => {
                 this.clearVariableNodeRefs(doc, {
@@ -1253,6 +1270,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             });
             this.getVariableRegistryService().deleteEntry(variableId);
         });
+        return true;
     }
 
     public createBlueprintVariable(

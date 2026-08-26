@@ -16,6 +16,7 @@ import { AssetsService } from "../core/AssetsService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
+import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
 import type { LiveSessionDeps, LiveProjectIdentity } from "./liveSessionPorts";
@@ -154,6 +155,21 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimAsset(assetId, holding);
     }
 
+    /**
+     * Say that this window is editing one variable registry entry, or that it has stopped.
+     *
+     * The fifth door beside the other four, and the same bargain: silent outside a session, so the
+     * panel calls it without asking whether there is one.
+     */
+    public claimVariable(variableId: string, holding: boolean): void {
+        this.session?.claimVariable(variableId, holding);
+    }
+
+    /** Say that this window is editing one named string, or that it has stopped. Silent outside a session. */
+    public claimLocalizationKey(name: string, holding: boolean): void {
+        this.session?.claimLocalizationKey(name, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;
@@ -171,6 +187,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
         const assets = (): AssetsService => ctx.services.get<AssetsService>(Services.Assets);
         const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
+        const variables = (): VariableRegistryService =>
+            ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
 
@@ -228,6 +246,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 setSink: sink => localization().setOperationSink(sink),
                 loadAll: () => localization().loadAllDocuments(),
                 units: locale => localization().unitsOf(locale),
+                loadKeys: () => localization().loadKeysForLive(),
+                keys: () => localization().keysIfLoaded(),
                 applyOp: op => localization().applyLiveOp(op),
             },
             voice: {
@@ -247,6 +267,15 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
+            },
+            variables: {
+                setSink: sink => variables().setOperationSink(sink),
+                // No load step: the registry is read as the workspace starts. What this asks is
+                // whether what is in memory stands for the file on disk - after an unreadable read it
+                // does not, and a session must not carry it.
+                readable: () => variables().isReadable(),
+                entry: variableId => variables().getEntry(variableId) ?? null,
+                applyOp: op => variables().applyLiveOp(op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,

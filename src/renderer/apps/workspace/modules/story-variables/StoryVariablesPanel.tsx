@@ -50,6 +50,7 @@ import {
     LocalBlueprintService,
     VARIABLE_PANEL_HISTORY_SCOPE_ID,
 } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import type {
     StoryDocument,
@@ -68,6 +69,14 @@ import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentEntry } from "@shared/variables/mergedPersistentView";
 import { jumpToSearchTarget } from "../search/searchJump";
 import type { StoryVariablesPanelPayload } from "./storyVariablesPanelId";
+import {
+    useVariableClaim,
+    useVariableClaimHold,
+    useVariableRemovalAvailable,
+    VariableClaimMark,
+    VariableClaimsProvider,
+    variableRegistryFreezeScope,
+} from "./variablesLiveSession";
 
 const INPUT_CLASS = cn(
     CONTROL_SIZE_CLASS.sm,
@@ -124,12 +133,33 @@ function VariableRowEditor(props: {
     onRetype: (valueType: StoryVariableValueType) => void;
     onDefault: (value: StoryLiteralValue) => void;
     onDelete: () => void;
+    /** Focus moving in or out of this row, so a live session can hold the entry while it is open. */
+    onFocusChange: (open: boolean) => void;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    // Scoped to the registry this panel writes, so a live session - which leaves that document
+    // writable - does not grey a row the author is meant to be editing. Everything else about a
+    // freeze is unchanged.
+    const freeze = useFreezeGuard(variableRegistryFreezeScope());
     const valueTypeOptions = useValueTypeOptions();
+    // Who else has this entry open in a live session, or null. Read-only for as long as somebody has.
+    const heldBy = useVariableClaim(props.row.id);
+    const removable = useVariableRemovalAvailable();
+    // `readOnly` rather than `disabled` while somebody else holds it, exactly as the freeze does and
+    // as the translation table does: the row is what the author came to READ.
+    const held = heldBy !== null;
+    const heldTip = held ? t("storyVars.live.entryClaimed", { name: heldBy }) : undefined;
     return (
-        <div className="flex items-center gap-1.5">
+        <div
+            className="flex items-center gap-1.5"
+            onFocus={() => props.onFocusChange(true)}
+            onBlur={event => {
+                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                    props.onFocusChange(false);
+                }
+            }}
+        >
+            {heldBy ? <VariableClaimMark account={heldBy} /> : null}
             {/* All three of these rewrite project data, and until this pass only the delete
                 button beside them knew about the freeze: on a frozen project the author could rename
                 a variable, retype it and edit its default, watch the row update, and lose all of it
@@ -140,8 +170,8 @@ function VariableRowEditor(props: {
                 className={INPUT_CLASS}
                 value={props.row.name}
                 onChange={event => props.onRename(event.target.value)}
-                readOnly={freeze.frozen}
-                data-tip={freeze.frozen ? freeze.reason : undefined}
+                readOnly={freeze.frozen || held}
+                data-tip={freeze.frozen ? freeze.reason : heldTip}
                 aria-label={t("storyVars.row.nameAria")}
             />
             <Select
@@ -150,7 +180,7 @@ function VariableRowEditor(props: {
                 onChange={value => props.onRetype(String(value) as StoryVariableValueType)}
                 size="sm"
                 portalMenu
-                disabled={freeze.frozen}
+                disabled={freeze.frozen || held}
                 className="w-24 shrink-0"
             />
             <input
@@ -158,8 +188,8 @@ function VariableRowEditor(props: {
                 value={formatDefault(props.row.defaultValue, props.row.valueType)}
                 placeholder={t("storyVars.row.defaultPlaceholder")}
                 onChange={event => props.onDefault(parseDefault(event.target.value, props.row.valueType))}
-                readOnly={freeze.frozen}
-                data-tip={freeze.frozen ? freeze.reason : undefined}
+                readOnly={freeze.frozen || held}
+                data-tip={freeze.frozen ? freeze.reason : heldTip}
                 aria-label={t("storyVars.row.defaultAria")}
             />
             <button
@@ -169,7 +199,14 @@ function VariableRowEditor(props: {
                     "flex items-center justify-center rounded-md text-fg-subtle hover:bg-fill hover:text-danger disabled:cursor-not-allowed disabled:opacity-40",
                 )}
                 onClick={props.onDelete}
-                {...freeze.writes(false, t("storyVars.row.delete"))}
+                {...freeze.writes(
+                    // ⚠ Off for the length of a live session, and NOT because of the freeze: this
+                    // document is writable throughout one. Removing a variable also empties the
+                    // blueprint nodes that named it, and that write is not one a session carries, so
+                    // the act is refused whole rather than half applied. See `variablesLiveSession`.
+                    !removable || held,
+                    held ? heldTip : removable ? t("storyVars.row.delete") : t("storyVars.row.deleteInSession"),
+                )}
             >
                 <Trash2 className="h-3.5 w-3.5" />
             </button>
@@ -211,8 +248,9 @@ export function VariableJumpRow(props: { name: string; valueType: StoryVariableV
 function SectionHeader(props: { title: string; hint: string; onAdd?: () => void }) {
     const { t } = useTranslation();
     // Declaring a variable writes project data. The hint popover beside it does not, and stays
-    // open to a reader of a frozen project.
-    const freeze = useFreezeGuard();
+    // open to a reader of a frozen project. Scoped to the registry, so a live session - which carries
+    // creations - leaves the control working.
+    const freeze = useFreezeGuard(variableRegistryFreezeScope());
     return (
         <div className="flex items-center justify-between">
             <div className="flex min-w-0 items-center gap-1">
@@ -237,7 +275,18 @@ function SectionHeader(props: { title: string; hint: string; onAdd?: () => void 
     );
 }
 
-export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
+export function StoryVariablesPanel(props: PanelComponentProps<StoryVariablesPanelPayload>) {
+    // The claims and the session state, read once for the whole panel: the session publishes on every
+    // operation anybody in the room applies, and a row that subscribed for itself would re-render on
+    // every remote keystroke.
+    return (
+        <VariableClaimsProvider>
+            <StoryVariablesPanelBody {...props} />
+        </VariableClaimsProvider>
+    );
+}
+
+function StoryVariablesPanelBody({ payload }: PanelComponentProps<StoryVariablesPanelPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
@@ -260,10 +309,26 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
         [context, isInitialized],
     );
 
+    const liveService = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+
     const [document, setDocument] = useState<StoryDocument | null>(null);
     const [registryRows, setRegistryRows] = useState<{ saved: VariableRegistryEntry[]; persistent: VariableRegistryEntry[] }>(
         { saved: [], persistent: [] },
     );
+    /** The entry a box on this panel has focus in, or null. What a live session holds. */
+    const [focusedVariableId, setFocusedVariableId] = useState<string | null>(null);
+
+    /**
+     * Hold the entry this panel has open, so nobody in the room writes over it.
+     *
+     * Held while a box on the row has focus rather than while somebody is typing: the boxes write
+     * the document on every keystroke, so a remote edit arriving mid-word lands under the cursor.
+     * Silent outside a session.
+     */
+    useVariableClaimHold({ service: liveService, variableId: focusedVariableId });
 
     useEffect(() => {
         if (!storyService || !storyId) {
@@ -395,6 +460,7 @@ export function StoryVariablesPanel({ payload }: PanelComponentProps<StoryVariab
                 }}
                 onDefault={value => edit.setDefault(entry.id, value)}
                 onDelete={() => edit.remove(entry.id)}
+                onFocusChange={open => setFocusedVariableId(open ? entry.id : null)}
             />
         );
 

@@ -4,7 +4,9 @@ import {
     assetsMetadataSpec,
     charactersSpec,
     localizationDocumentSpec,
+    localizationKeysSpec,
     storyDocumentSpec,
+    variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import { isVersioned } from "@shared/vcs/workingSet";
@@ -15,12 +17,14 @@ import {
     liveSessionDocuments,
     liveSessionWritablePaths,
     type LiveSessionLocales,
+    type LiveSessionRegistries,
 } from "./sharedDocuments";
 
 const STORY = "story-1";
 const LOCALES: LiveSessionLocales = { translations: ["ja", "fr"], voice: ["ja"] };
 const ASSET_TYPES = ["image", "audio"];
 const ASSET_CATEGORIES = ["image", "media"];
+const REGISTRIES: LiveSessionRegistries = { variables: true, localizationKeys: true };
 
 /**
  * The one table two things read: the write boundary, which asks which paths a session leaves
@@ -159,9 +163,38 @@ describe("the documents a session carries", () => {
             .toHaveLength(10 + 3);
     });
 
-    it("leaves the named-key registry out, which is the invariant working rather than an omission", () => {
-        // `editor/localization/keys.json` has no verbs, so declaring a UI string stays frozen for the
-        // length of a session and says so - the harmless half of the trade this table enforces.
+    it("adds the two project-level registries, and only the ones this machine could read", () => {
+        // Booleans rather than a list, because neither is parameterised - and read rather than
+        // assumed, for the libraries' reason: a registry that would not parse is one no effect can be
+        // applied to, and carrying it would leave the boundary allowing writes the host refuses.
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], REGISTRIES)).toEqual([
+            { doc: "characters" },
+            { doc: "variables" },
+            { doc: "localization-keys" },
+        ]);
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], {
+            variables: true,
+            localizationKeys: false,
+        })).toEqual([{ doc: "characters" }, { doc: "variables" }]);
+        // Neither, which is what a caller that read neither passes - and the default.
+        expect(liveSessionDocuments([STORY])).toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }]);
+    });
+
+    it("puts each registry at the path its own spec owns", () => {
+        expect(liveDocumentPath({ doc: "variables" })).toBe(variableRegistrySpec.pathFor());
+        expect(liveDocumentPath({ doc: "localization-keys" })).toBe(localizationKeysSpec.pathFor());
+        // ⚠ Both are versioned project data, so both really are inside the freeze this widens.
+        expect(isVersioned(variableRegistrySpec.pathFor())).toBe(true);
+        expect(isVersioned(localizationKeysSpec.pathFor())).toBe(true);
+    });
+
+    it("keeps the named-key registry frozen for a session that could not read it", () => {
+        // The half of the invariant that stays: a document is writable during a session exactly when
+        // the session can carry its changes, and a registry nothing parsed carries nothing.
         expect(liveSessionWritablePaths([STORY], LOCALES).some(path => path.endsWith("keys.json"))).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES, [], [], REGISTRIES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES, [], [], REGISTRIES)).toBe(true);
     });
 });

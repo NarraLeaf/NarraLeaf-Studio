@@ -12,6 +12,10 @@ export const storyVars = {
         defaultPlaceholder: "默认值",
         defaultAria: "默认值",
         delete: "删除变量",
+        deleteInSession: "实时会话期间无法删除变量。",
+    },
+    live: {
+        entryClaimed: "{name} 正在编辑该变量",
     },
     scene: {
         title: "场景变量",

@@ -109,6 +109,7 @@ export const workspace = {
         },
         live: {
             entryClaimed: "{name} 正在翻译该行",
+            keyClaimed: "{name} 正在编辑该字符串",
         },
     },
     voice: {

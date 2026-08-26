@@ -105,6 +105,7 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "scene-gone": "story.live.refusedSceneGone",
     "character-gone": "story.live.refusedCharacterGone",
     "asset-gone": "story.live.refusedAssetGone",
+    "variable-gone": "story.live.refusedVariableGone",
     "asset-id-taken": "story.live.refusedAssetIdTaken",
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
     "too-large": "story.live.refusedTooLarge",
@@ -147,6 +148,9 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "chapters-changed": "story.live.undoChaptersChanged",
     "character-gone": "story.live.undoCharacterGone",
     "character-restored": "story.live.undoCharacterRestored",
+    "variable-gone": "story.live.undoVariableGone",
+    "variable-restored": "story.live.undoVariableRestored",
+    "key-restored": "story.live.undoKeyRestored",
     "asset-gone": "story.live.undoAssetGone",
     "content-replaced": "story.live.undoContentReplaced",
 };
