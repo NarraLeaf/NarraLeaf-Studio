@@ -35,14 +35,12 @@ vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: nul
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
     launchSettings: vi.fn(),
-    listServerProjects: vi.fn(),
     teamCall: vi.fn(),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
-            listServerProjects: bridge.listServerProjects,
             // Reached only once the add row is pressed; a stub keeps the mount honest.
             probeServer: () => Promise.resolve({ success: false }),
             addServer: () => Promise.resolve({ success: false }),
@@ -58,10 +56,6 @@ afterEach(() => {
     cleanup();
     bridge.servers = [];
     bridge.launchSettings.mockClear();
-    bridge.listServerProjects.mockReset().mockResolvedValue({
-        success: true,
-        data: { ok: true, projects: [] },
-    });
     bridge.teamCall.mockReset().mockResolvedValue({ success: true, data: { ok: true, value: null } });
 });
 
