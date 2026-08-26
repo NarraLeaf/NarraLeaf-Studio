@@ -160,6 +160,23 @@ export function useDocumentNames(sides: ComparisonSides | null): DocumentNameCon
 }
 
 /**
+ * The names for one side, read once and not kept up to date.
+ *
+ * {@link useDocumentNames} is this same answer maintained for a surface that is on screen; this is
+ * the answer at a moment, for a caller that is not a component. The sync that has just ended in
+ * conflicts is the one so far: it names the documents it is about to report and then never asks
+ * again, and mounting a hook for that would put a story-index read behind every rail, status entry
+ * and team badge that happens to use the same surface.
+ */
+export async function readDocumentNames(
+    service: VersionControlService,
+    side: ComparisonSide | null,
+): Promise<DocumentNameContext> {
+    const titles = await readStoryTitles(service, side);
+    return titles.size === 0 ? NO_DOCUMENT_NAMES : { storyTitles: titles };
+}
+
+/**
  * One side's story index, or an empty map.
  *
  * Every failure is the same answer on purpose. The index is absent from a revision that predates

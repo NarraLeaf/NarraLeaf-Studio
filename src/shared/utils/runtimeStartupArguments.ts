@@ -164,12 +164,21 @@ export function startupSwitchNames(args: readonly string[], platform: NodeJS.Pla
     return reviewStartupArguments(args, platform, []).removable;
 }
 
+/** What a build is, as far as the debuggable marker is concerned. */
+export type DebuggableBuildFacts = {
+    /** The `debuggable` marker this side of the launch can see. */
+    marker: boolean;
+    /** Whether the content is sealed: the project turned asset protection on. */
+    sealed: boolean;
+    /** Whether this is a packaged application rather than an app directory someone ran by hand. */
+    packaged: boolean;
+};
+
 /**
  * Whether a `debuggable` marker on this build may be acted on.
  *
- * A build whose content is sealed - the project turned asset encryption on, so the pack and the
- * assets live inside the protected store - never honours it, whichever of the two markers carries
- * it and whatever it says.
+ * Honoured everywhere except one combination: a build that is both **sealed and packaged** refuses
+ * it, whichever of the two markers carries it and whatever it says.
  *
  * The reason is timing rather than policy. What actually keeps a debugger out is the check that
  * runs *before* app-ready, because Chromium reads `--remote-debugging-port` after this script has
@@ -179,18 +188,24 @@ export function startupSwitchNames(args: readonly string[], platform: NodeJS.Pla
  * manifest - a plain JSON file sitting beside the archive.
  *
  * On an ordinary build that is an accepted cost: the manifest is inside an asar whose integrity is
- * validated on the platforms that can, and a player owns the machine either way. On a build whose
- * author asked for asset protection it is not, because the point of that build is that reading its
- * content should cost something, and a one-word edit to a text file is the cheapest imaginable
- * route to a debugger attached to the process that holds the decrypted content.
+ * validated on the platforms that can, and a player owns the machine either way. On the *shipped*
+ * form of a build whose author asked for asset protection it is not, because the point of that
+ * build is that reading its content should cost something, and a one-word edit to a text file is
+ * the cheapest imaginable route to a debugger attached to the process holding the decrypted
+ * content.
  *
- * So a sealed build answers no, decided from the presence of the store rather than from anything
- * inside it - that is the one fact about protection a pre-ready check can establish. Deleting the
- * store to get past this does not produce a protected build with a debugger; it produces a build
- * with no content.
+ * `packaged` is what separates the shipped form from the one a developer is looking at. An app
+ * directory started under a stock Electron is not something anybody received: whoever is holding it
+ * already has the main script as plain JavaScript and can delete this check outright, so refusing
+ * there would protect nothing and would cost the one workflow the marker exists for - inspecting a
+ * real sealed build without having to turn its protection off and debug a different code path.
+ *
+ * `sealed` is read from the presence of the store rather than from anything inside it, because that
+ * is the one fact about protection a pre-ready check can establish. Deleting the store to get past
+ * this does not produce a protected build with a debugger; it produces a build with no content.
  */
-export function honoursDebuggableMarker(marker: boolean, sealed: boolean): boolean {
-    return marker && !sealed;
+export function honoursDebuggableMarker(build: DebuggableBuildFacts): boolean {
+    return build.marker && !(build.sealed && build.packaged);
 }
 
 /** Whether this command line asked for a debugger. */
