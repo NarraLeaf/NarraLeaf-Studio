@@ -26,6 +26,7 @@ import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK,
     BLUEPRINT_NODE_TYPE_FLOW_IF,
+    BLUEPRINT_NODE_TYPE_FN_CALL,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
 } from "@shared/types/blueprint/graph";
 import { AUDIO_TRACK_ID_SOUND } from "@shared/types/audioTrack";
@@ -129,13 +130,47 @@ function next(graph: Graph, fromId: string, port: string): GraphNode {
     return node.type === BLUEPRINT_NODE_TYPE_DATA_MEMO ? next(graph, node.id, "next") : node;
 }
 
+/**
+ * The cues the project declares, by the reference a call names, each with the clip it plays.
+ *
+ * Derived from the template rather than listed here: what a cue plays is one fact now, and a list
+ * beside it would be a second place for that fact to be written down. Sixty nodes used to name a
+ * clip; three do.
+ */
+const CUE_PLAYS: Map<string, GraphNode> = (() => {
+    const out = new Map<string, GraphNode>();
+    for (const blueprint of blueprints) {
+        for (const event of Object.values(blueprint.program.graphs.events)) {
+            const { nodes, edges } = event.graph;
+            for (const head of Object.values(nodes)) {
+                if (head.type !== "blueprint.fn.head") {
+                    continue;
+                }
+                const body = edges.find(edge => edge.from.nodeId === head.id && edge.from.port === "then");
+                const played = body ? nodes[body.to.nodeId] : undefined;
+                if (played?.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY) {
+                    out.set(`fn:${blueprint.id}:${head.id}`, played);
+                }
+            }
+        }
+    }
+    return out;
+})();
+
+/** Whether a node is a call to one of those cues, as opposed to any other function the template calls. */
+function isCueCall(node: GraphNode): boolean {
+    return node.type === BLUEPRINT_NODE_TYPE_FN_CALL && CUE_PLAYS.has(String(node.params?.fnRef ?? ""));
+}
+
 function assertCue(cue: GraphNode, clipName: string): void {
-    expect(cue.type).toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+    expect(cue.type).toBe(BLUEPRINT_NODE_TYPE_FN_CALL);
+    const played = CUE_PLAYS.get(String(cue.params?.fnRef ?? ""));
+    expect(played, `${String(cue.params?.fnRef)} is not one of the cues this project declares`).toBeDefined();
     expect(CLIP[clipName], `the template ships no clip named ${clipName}`).toBeDefined();
-    expect(cue.params?.soundAssetId).toBe(CLIP[clipName]);
+    expect(played!.params?.soundAssetId).toBe(CLIP[clipName]);
     // The SFX track, so the player's own effects slider and mute reach it. A cue the settings page
     // cannot turn down is the one thing a UI sound must never be.
-    expect(cue.params?.audioTrackId).toBe(AUDIO_TRACK_ID_SOUND);
+    expect(played!.params?.audioTrackId).toBe(AUDIO_TRACK_ID_SOUND);
 }
 
 /** A cue answering a click, with the action it used to run still behind it. */
@@ -143,7 +178,7 @@ function assertClickCue(graph: Graph, headType: string, clipName: string): void 
     const head = only(graph, headType);
     const cue = next(graph, head.id, "then");
     assertCue(cue, clipName);
-    expect(next(graph, cue.id, "next").type).not.toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+    expect(isCueCall(next(graph, cue.id, "next"))).toBe(false);
 }
 
 /**
@@ -192,11 +227,23 @@ const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
 const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
 
 describe("the sounds the starter template makes", () => {
+    it("declares each cue once, on the track the player can turn down", () => {
+        // Three clips ship, and each is named in exactly one place now. This is what says the
+        // indirection is real: a fourth entry here would mean somebody wrote a clip id back into a
+        // widget's own graph, which is the sixty-edit shape the cues exist to end.
+        expect([...CUE_PLAYS.values()].map(played => played.params?.soundAssetId).sort()).toEqual(
+            [CLIP["ui-back"], CLIP["ui-confirm"], CLIP["ui-hover"]].sort(),
+        );
+        for (const played of CUE_PLAYS.values()) {
+            expect(played.params?.audioTrackId).toBe(AUDIO_TRACK_ID_SOUND);
+        }
+    });
+
     it("makes them in sixty places and nowhere else", () => {
         const cues = blueprints.flatMap(blueprint =>
             Object.values(blueprint.program.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
-                    .filter(node => node.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY)
+                    .filter(node => isCueCall(node))
                     .map(node => `${blueprint.owner.elementId ?? blueprint.id}:${node.id}`),
             ),
         );
@@ -235,7 +282,7 @@ describe("the sounds the starter template makes", () => {
         // question it raises answers with a cue of its own.
         const removeGraph = graphFor(SAVE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
         const remove = only(removeGraph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_RIGHT_CLICK);
-        expect(next(removeGraph, remove.id, "then").type).not.toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
+        expect(isCueCall(next(removeGraph, remove.id, "then"))).toBe(false);
     });
 
     it.each([

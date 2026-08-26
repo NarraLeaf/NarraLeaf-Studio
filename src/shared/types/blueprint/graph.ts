@@ -1079,6 +1079,31 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSp
 /** The speaking character's authored accent colour. Speaker-scoped, exactly like Get Nametag. */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR = "blueprint.game.getSpeakerColor" as const;
 /**
+ * Whether the line on screen has finished revealing and the dialog is waiting for the player.
+ *
+ * The condition a click-to-continue indicator is drawn under. It mirrors one engine state, reached
+ * from one place: the moment the typewriter runs out of characters, or the moment a skip finishes
+ * the line early. False while the line is still typing, and false again as soon as the next line
+ * mounts, so an indicator bound to it appears and disappears with no timer of its own.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING = "blueprint.game.isDialogWaiting" as const;
+/**
+ * The current line's text.
+ *
+ * The whole line rather than the part revealed so far. The engine evaluates a line's words once
+ * when it mounts and reveals a prefix of that, so this reads the same before and after the
+ * typewriter runs - which is what makes it usable for a length-dependent layout decision.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT = "blueprint.game.getDialogText" as const;
+/**
+ * Whether the current line has no speaker.
+ *
+ * The condition a nametag hides itself under. `Get Nametag` already answers null for a narrator
+ * line, but a widget that has to lay itself out differently needs the fact before it has a name to
+ * test, and an empty name is also what a character with a blank nametag reports.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR = "blueprint.game.isNarrator" as const;
+/**
  * Any character's data, by reference - the addressable sibling of the speaker-scoped getters above.
  * The character is picked with a `characterId` param (a `"characters"` dynamic select), not a pin,
  * so no new value type was needed for it.
