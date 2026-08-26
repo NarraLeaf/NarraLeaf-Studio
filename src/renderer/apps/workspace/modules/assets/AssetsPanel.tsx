@@ -170,6 +170,17 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // One subscription for every row. Empty outside a live session.
     const assetClaims = useAssetClaims();
     const assetTransfers = useAssetTransfers();
+
+    /**
+     * Stop a file that is still arriving, and take its record with it.
+     *
+     * Straight to the service and with no confirmation, for the reason `cancelTransfers` gives:
+     * nothing an author made is being thrown away, and the row it acts on is one the menu only
+     * offers this on while its file is in the air.
+     */
+    const handleCancelTransfer = useCallback((assetId: string) => {
+        context?.services.get<AssetsService>(Services.Assets).cancelTransfers([assetId]);
+    }, [context]);
     const searchBoxRef = useRef<HTMLInputElement>(null);
     /**
      * The panel's scroller.
@@ -968,6 +979,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
         handleCreateAssetSet, canCreateAssetSet, handleCreateAssetSetIn, handleCreateAssetSetAt,
         notify: notifyFromMenu,
+        assetTransfers,
+        handleCancelTransfer,
     });
 
     const handleRootDrop = useCallback(

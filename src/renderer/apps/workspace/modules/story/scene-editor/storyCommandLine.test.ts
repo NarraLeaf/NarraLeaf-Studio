@@ -187,6 +187,15 @@ describe("projectStoryCommandLine", () => {
         expect(project("/hide Alice").startsWith("/")).toBe(true);
     });
 
+    it("prints the return flag only on a row that carries it", () => {
+        // A row that was never flagged prints the line it always printed, so an existing project's
+        // rows are unchanged by the flag existing.
+        expect(project("/jump 'Chapter 2'")).toBe("/jump 'Chapter 2'");
+        // Spelled out, as every bare flag reads back - the row is the full spelling of a line the
+        // author may have typed short.
+        expect(project("/jump 'Chapter 2' return")).toBe("/jump 'Chapter 2' return=true");
+    });
+
     it("quotes a value the tokenizer would otherwise split — and never a greedy one", () => {
         expect(project("/jump 'Chapter 2'")).toBe("/jump 'Chapter 2'");
         // `/label`'s name is greedy: it takes the rest of the line, so quoting it would put the quotes
@@ -540,6 +549,8 @@ describe("projectStoryCommandLine", () => {
             "/wait click",
             "/set gold 100",
             "/jump 'Chapter 2' t=fade d=0.6",
+            "/jump 'Chapter 2' return",
+            "/jump 'Chapter 2' return t=fade d=0.6",
             "/goto intro",
             "/label after refusal",
             "/cut Demo",

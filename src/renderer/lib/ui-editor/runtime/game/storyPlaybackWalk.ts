@@ -133,6 +133,18 @@ class PlanBuilder {
             return true;
         }
         if (block.kind === "jump") {
+            // A returnable jump is not where this scene stops - control comes back to the row after
+            // it - so in launch mode it is an ordinary step and the walk carries on past it. The
+            // single-scene preview still holds: it compiles one scene, so the scene being called is
+            // not in the story it built and there is nothing to come back from.
+            if (block.payload.returnable && this.followJumps) {
+                if (this.steps.length >= MAX_STEPS) {
+                    this.stopAtLimit();
+                    return false;
+                }
+                this.steps.push({ blockId: block.id, bodyOnly: false, insideNvl: this.isInsideNvl(block) });
+                return true;
+            }
             // Launch mode follows the jump into the target scene, so emit it as the tail's last step.
             // The single-scene preview instead holds before it. Either way this scene runs no further.
             if (this.followJumps && this.steps.length < MAX_STEPS) {
