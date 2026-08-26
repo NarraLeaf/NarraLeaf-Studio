@@ -974,6 +974,9 @@ export class LiveSession {
             phase: role === "host" ? "active" : "catching-up",
             entryFailure: null,
             ended: null,
+            // The room that was expected back IS this one. A window in a session is waiting for
+            // nothing, and a line saying otherwise would be drawn over a session that is running.
+            rejoining: null,
             undoRefusal: null,
             lastRefusal: null,
         });
@@ -1096,6 +1099,13 @@ export class LiveSession {
             this.startFollowing(session, continuation);
             return;
         }
+        const blocked = this.blocked();
+        if (blocked) {
+            // Something froze this workspace between the room ending and this running. Arming a
+            // session's freeze over it would take that state's latch away rather than adding to it.
+            this.failEntry(blocked);
+            return;
+        }
         this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
             const ready = await this.ready();
@@ -1107,6 +1117,17 @@ export class LiveSession {
                 ? await this.deps.version.checkpoint()
                 : null;
             await this.matchRoomRevision(revision);
+            // ⚠ And then a sync, which is the one place a session asks for a merge on purpose.
+            // A window that has spent its sessions ADOPTING other people's versions holds a history
+            // the server has never seen, so its own first push would be refused - and this window is
+            // about to become the one everybody publishes through. The merge settles without a
+            // question because both sides are the same bytes: this tree was just written from the
+            // version the server is standing on.
+            const synced = await this.deps.version.sync();
+            if (synced.conflicts.length > 0) {
+                this.failEntry({ kind: "merge-conflicts", paths: synced.conflicts });
+                return;
+            }
             await this.openRoom({
                 ready,
                 storyId: continuation.story as StoryId,
