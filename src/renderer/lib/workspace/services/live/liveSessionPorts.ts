@@ -258,8 +258,26 @@ export type LiveVersionPort = {
      * here knows what to do about it.
      */
     push(): Promise<{ diverged: boolean }>;
-    /** Bring the working tree up to the server. `conflicts` is what the merge left to a human. */
+    /**
+     * Bring the working tree - and this repository's knowledge of the server's revisions - up to
+     * date. `conflicts` is what the merge left to a human.
+     *
+     * ⚠ **It is also the only way to LEARN a revision.** There is no fetch verb: a repository can
+     * only put down a version it holds, and a room's version was pushed by another machine seconds
+     * ago. So entering a room syncs first and adopts second, and the merge in between is a side
+     * effect of the fetch rather than the point of it.
+     */
     sync(): Promise<{ conflicts: readonly string[] }>;
+    /**
+     * Throw the open merge away and put the working tree back to what it was before it started.
+     *
+     * What a session does with a merge it only wanted the fetch from. Everything the merge could
+     * not settle is about to be overwritten by the room's own copy anyway, and a session that
+     * stopped to ask its author to settle a conflict between two copies of one afternoon's work is
+     * the failure this path exists to remove - the checkpoint taken on the way in is where their
+     * side of it went.
+     */
+    abortMerge(): Promise<void>;
     /**
      * Put this working tree on the content of one version.
      *

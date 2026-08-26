@@ -995,11 +995,26 @@ export class LiveSession {
     /**
      * Put this working tree on the version a room is running from, unless it is already there.
      *
-     * The one step that costs anything on the way in, and the one that makes coming back free. See
-     * `LiveVersionPort.adopt` for why it is an adoption and not a merge.
+     * The one step that costs anything on the way in, and the one that makes coming back free.
+     *
+     * **Two acts, and only the second one is the point.** A repository can put down a version it
+     * holds and no other, and a room's version was pushed by another machine seconds ago - so this
+     * syncs first, purely to learn it. Where that sync fast-forwards, it has already done the whole
+     * job and there is nothing to adopt; where it merges cleanly, the tree is a merge of two copies
+     * of the same work and the adoption settles it on the room's; where it cannot merge, the merge
+     * is **thrown away** rather than handed to the author, because what it could not decide is
+     * about to be overwritten by the room's own copy. See `LiveVersionPort.adopt` for why the
+     * second act is an adoption and never a merge.
      */
     private async matchRoomRevision(revision: string | undefined): Promise<void> {
         if (revision === undefined || (await this.deps.version.head()) === revision) {
+            return;
+        }
+        const synced = await this.deps.version.sync();
+        if (synced.conflicts.length > 0) {
+            await this.deps.version.abortMerge();
+        }
+        if ((await this.deps.version.head()) === revision) {
             return;
         }
         await this.deps.version.adopt(revision);
@@ -1131,17 +1146,6 @@ export class LiveSession {
                 ? await this.deps.version.checkpoint()
                 : null;
             await this.matchRoomRevision(revision);
-            // ⚠ And then a sync, which is the one place a session asks for a merge on purpose.
-            // A window that has spent its sessions ADOPTING other people's versions holds a history
-            // the server has never seen, so its own first push would be refused - and this window is
-            // about to become the one everybody publishes through. The merge settles without a
-            // question because both sides are the same bytes: this tree was just written from the
-            // version the server is standing on.
-            const synced = await this.deps.version.sync();
-            if (synced.conflicts.length > 0) {
-                this.failEntry({ kind: "merge-conflicts", paths: synced.conflicts });
-                return;
-            }
             await this.openRoom({
                 ready,
                 storyId: continuation.story as StoryId,
