@@ -121,6 +121,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -434,6 +435,21 @@ export enum IPCEventType {
     teamEvent = "team.event",
     /** Pushed: a session opened, dropped, or was refused. */
     teamConnectionChanged = "team.connectionChanged",
+    /**
+     * Bytes, which is the one thing the five above cannot carry.
+     *
+     * ⚠ **A sixth, and deliberately the only one.** `teamCall` is a named method with JSON on
+     * either side, and a file is none of that: it runs for minutes, says how far it has got, can be
+     * stopped, and above all must never have its contents put through a message - the renderer may
+     * not reach the network, and a file crossing here would be a copy of itself in a second heap on
+     * its way to a third. So this carries a **path and a count**, never a byte, and the main
+     * process does the reading, the writing and the connection.
+     *
+     * It is one event rather than four for {@link teamCall}'s reason: the action is named inside
+     * it. Anything that has to move bytes to a server later - and there will be something - asks
+     * here rather than adding a seventh.
+     */
+    teamTransfer = "team.transfer",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1584,6 +1600,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Client,
         data: { connection: TeamConnection },
         response: never;
+    };
+    [IPCEventType.teamTransfer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamTransferRequest,
+        response: TeamTransferOutcome;
     };
 };
 

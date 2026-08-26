@@ -664,11 +664,19 @@ export const assets = {
         // On the band a row wears while its file is still coming in over a session. A share of the
         // file, not a time: how long is a property of the network and is not knowable from here.
         transferring: "{percent}% of this asset has arrived",
-        // On a file a session will not carry. The remedy names the only thing that works, and the
-        // limit is stated so the author can tell which of their files are over it.
-        tooLargeTitle: "Not imported into the session",
-        tooLargeDetailOne: "{name} is larger than {size} MB. End the session to import it.",
-        tooLargeDetailMany: "{count} files are larger than {size} MB. End the session to import them.",
+        // On a file a session did not carry. There is no size limit on a file any more; what can
+        // refuse one is the server, so the two cases are told apart - a project with as much in
+        // transit as it may hold is waited out, and everything else is a server that is not
+        // answering.
+        refusedTitle: "Not imported into the session",
+        refusedQuotaOne: "{name} exceeds what this project may have in transit. Import it once the files already being carried have arrived.",
+        refusedQuotaMany: "{count} files exceed what this project may have in transit. Import them once the files already being carried have arrived.",
+        refusedOne: "{name} could not be sent to the server.",
+        refusedMany: "{count} files could not be sent to the server.",
+        // On replacing a file, which is one file rather than a batch and reports through the panel
+        // rather than through a notification.
+        replaceRefused: "That file could not be sent to the server.",
+        replaceRefusedQuota: "That file exceeds what this project may have in transit.",
     },
     newTextFile: {
         title: "New Text File",
