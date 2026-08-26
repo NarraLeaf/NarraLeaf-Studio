@@ -38,7 +38,7 @@ import {
     type SceneFlowEdgeModel,
     type SceneFlowGraph,
 } from "./sceneFlowModel";
-import { buildSceneFlowLines, type SceneFlowDrawnLine } from "./sceneFlowLines";
+import { buildSceneFlowLines, sceneFlowLinePaint, type SceneFlowDrawnLine } from "./sceneFlowLines";
 import { SceneFlowZoomControls } from "./SceneFlowZoomControls";
 import type { SceneFlowViewport } from "./sceneFlowTabId";
 
@@ -386,6 +386,9 @@ function SceneFlowCanvasInner({
             // which is the right reading of both facts at once.
             const opacity = (dim(line.id) ?? 1) * (line.disabled ? DISABLED_LINE_OPACITY : 1);
             const fromArm = line.sourceBranchId !== undefined;
+            // Colour, dash and the second arrowhead all come from one place, because they compose:
+            // a switched-off conditional call wears three of the map's codes at once.
+            const paint = sceneFlowLinePaint(line);
             return {
                 id: line.id,
                 source: fromArm ? line.sourceBranchId! : line.sourceSceneId,
@@ -400,20 +403,22 @@ function SceneFlowCanvasInner({
                 label: fromArm ? branchChips?.[line.sourceBranchId!] : edgeLabel(line, t),
                 labelShowBg: false,
                 labelStyle: { fill: "rgb(var(--nl-fg-subtle))", fontSize: 10, opacity },
-                markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" },
-                // An arrow at both ends is a line the run comes back along - a returnable jump. It
-                // is a second arrow rather than a second colour or a second dash pattern because the
-                // other two are already spoken for (dashed = conditional, faded = switched off), and
-                // because two arrowheads say the thing itself rather than standing for it.
-                ...(line.returns
-                    ? { markerStart: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: "rgb(var(--nl-fg-muted))" } }
+                // Both heads take the line's own colour: an arrowhead in a different ink from the
+                // line under it reads as belonging to something else, which is the whole problem
+                // the call colour exists to solve.
+                markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: paint.stroke },
+                // An arrow at both ends is a line the run comes back along - a returnable jump. Two
+                // arrowheads say the thing itself rather than standing for it; what they cannot say
+                // is which line they are on, and `sceneFlowLinePaint` explains what does.
+                ...(paint.doubleHeaded
+                    ? { markerStart: { type: MarkerType.ArrowClosed, width: 14, height: 14, color: paint.stroke } }
                     : {}),
                 style: {
-                    stroke: "rgb(var(--nl-fg-muted))",
+                    stroke: paint.stroke,
                     strokeWidth: 1.5,
                     // Dashed = the jump only fires on some runs (it sits under a condition or a
                     // loop). A line leaving an arm is conditional by construction.
-                    strokeDasharray: line.conditional ? "5 4" : undefined,
+                    strokeDasharray: paint.strokeDasharray,
                     opacity,
                 },
                 interactionWidth: 20,
