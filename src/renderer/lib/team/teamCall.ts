@@ -33,6 +33,18 @@ import type { VcsServerMember, VcsServerProject } from "@shared/types/vcs";
 /** What any of these answers with. */
 export type TeamOutcome<T> = { ok: true; value: T } | { ok: false; problem: TeamProblem };
 
+/**
+ * What a call that changes something and answers nothing hands back.
+ *
+ * These methods - `clients.withdraw`, `live.leave`, `live.close`, `live.say`,
+ * `overlay.drop`, and an `unsubscribe` acknowledgement - carry an empty object on the
+ * wire rather than a value. Success is that object: there is nothing in it to read, and
+ * no caller reads it, but a call that answered is one that happened. Named on its own so
+ * the wrappers below say what they are, rather than each declaring `null` and inviting a
+ * `=== null` the wire would never satisfy.
+ */
+export type TeamAck = Record<string, never>;
+
 /** A shape the server sent that this build cannot read. */
 function unreadable<T>(): TeamOutcome<T> {
     return { ok: false, problem: { kind: "refused", code: "internal", detail: "unreadable answer" } };
@@ -379,9 +391,9 @@ export async function announceClient(
 export async function withdrawClient(
     remoteOrigin: string,
     project: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.clientsWithdraw, { project });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Which installations are connected, narrowed to those with one project open. */
@@ -510,18 +522,18 @@ export async function joinLiveSession(
 export async function leaveLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveLeave, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Close one outright, which only the window that opened it may do. */
 export async function closeLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveClose, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /**
@@ -536,9 +548,9 @@ export async function sayInLiveSession(
     remoteOrigin: string,
     session: string,
     payload: unknown,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveSay, { session, payload });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /* -------------------------------------------------------------------- overlay */
@@ -664,7 +676,7 @@ export async function putOverlay(
 export async function dropOverlay(
     remoteOrigin: string,
     id: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayDrop, { id });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
