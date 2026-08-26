@@ -44,10 +44,12 @@ export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set(
 /**
  * The button whose press produces a gesture, for the gestures that are a press at all.
  *
- * Three of the seven are missing on purpose. A wheel notch is instantaneous - there is no moment
+ * Most of the list is missing on purpose. A wheel notch is instantaneous - there is no moment
  * during which one is being held - and a double click is a *sequence* rather than a state: the
  * button being down after one press is not a double click in progress, and reporting it as one
- * would make a single held click answer for both gestures at once.
+ * would make a single held click answer for both gestures at once. A long press is held, but not by
+ * a button: it begins when a recogniser says it did rather than when anything was pressed, so it is
+ * answered from `gestures` above instead of from here.
  */
 const POINTER_GESTURE_HOLD_BUTTONS: Partial<Record<UIInputPointerGesture, number>> = {
     click: 0,
