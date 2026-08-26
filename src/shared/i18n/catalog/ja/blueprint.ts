@@ -566,6 +566,7 @@ export const blueprint = {
         replacement: "置換後",
         savedVariable: "セーブ変数",
         sceneId: "シーン Id",
+        optionId: "選択肢 Id",
         sceneVariable: "シーン変数",
         search: "検索",
         separator: "区切り",

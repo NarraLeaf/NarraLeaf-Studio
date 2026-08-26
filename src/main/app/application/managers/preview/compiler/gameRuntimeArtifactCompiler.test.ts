@@ -844,6 +844,56 @@ describe("game runtime artifact compiler", () => {
     });
 
     /*
+     * The one combination the marker must not survive.
+     *
+     * A protected build's runtime refuses a debugging switch whatever its markers say, because the
+     * gate that decides in time reads the loose manifest - a text file - and a build whose author
+     * paid for asset protection cannot have a one-word edit standing between a stranger and a
+     * debugger attached to the process that holds the decrypted content. So the artifact does not
+     * carry the claim at all, and says why.
+     */
+    it("drops the debuggable marker from a protected build, and says so", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main", "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            debuggable: true,
+            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        expect(result.pack.debuggable).toBeUndefined();
+        expect(result.notices.some(notice => notice.includes("debuggable marker"))).toBe(true);
+
+        // The loose manifest is the one an edit would reach, and it is the one that must not carry
+        // the claim either - it is copied from the pack, and this is the assertion that keeps the
+        // two from drifting apart.
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.debuggable).toBeUndefined();
+
+        const reader = await openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+            expect(pack.debuggable).toBeUndefined();
+        } finally {
+            await reader.close();
+        }
+    });
+
+    /*
      * The point of the whole opaque-read design, asserted end to end: a shipped protected build must
      * be unable to answer "what is in here", while still being able to answer "give me this id".
      *
