@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import type { TranslationKey } from "@shared/i18n";
-import { NO_DOCUMENT_NAMES, documentNameOf, isAuthoredName, renderDocumentName } from "./documentName";
+import {
+    NO_DOCUMENT_NAMES,
+    documentNameOf,
+    isAuthoredName,
+    listDocumentNames,
+    renderDocumentName,
+} from "./documentName";
 
 const story = (id: string) => `editor/story/stories/${id}/storydoc.json`;
 const titles = (entries: Record<string, string>) => ({ storyTitles: new Map(Object.entries(entries)) });
@@ -54,5 +60,48 @@ describe("what the author calls a document", () => {
 
         expect(one).toEqual({ source: "file", path: "scripts/a/build.js" });
         expect(renderDocumentName(one, t)).not.toBe(renderDocumentName(two, t));
+    });
+});
+
+
+/**
+ * The short list a notice can carry.
+ *
+ * The sync that ends in conflicts is what this is for, and what it is guarding is that the notice
+ * and the panel it sends the author to are about the same things said the same way - the notice
+ * used to print repository paths beside a panel calling the very same files by their titles.
+ */
+describe("listing a few documents for a notice", () => {
+    const conflicts = [story("s-1"), story("s-2"), "editor/ui/uidoc.json"];
+
+    it("lists what the author made, one per line, and no file names", () => {
+        const lines = listDocumentNames(conflicts, titles({ "s-1": "The Forest", "s-2": "The Harbour" }), t, 5);
+
+        expect(lines.split("\n")).toEqual([
+            "The Forest",
+            "The Harbour",
+            "documentDiff.name.uiDocument",
+        ]);
+        expect(lines).not.toContain("storydoc");
+        expect(lines).not.toContain(".json");
+        expect(lines).not.toContain("editor/");
+    });
+
+    /**
+     * A merge can leave hundreds of files behind and a notice is read at a glance. Truncation is
+     * silent here because the sentence around it states the whole count - see `listDocumentNames`.
+     */
+    it("stops at the caller's limit", () => {
+        const lines = listDocumentNames(conflicts, NO_DOCUMENT_NAMES, t, 2);
+
+        expect(lines.split("\n")).toHaveLength(2);
+    });
+
+    it("still tells two unreadable titles apart, rather than repeating one word", () => {
+        const lines = listDocumentNames([story("s-1"), story("s-2")], NO_DOCUMENT_NAMES, t, 5).split("\n");
+
+        expect(lines[0]).not.toBe(lines[1]);
+        expect(lines[0]).toContain("s-1");
+        expect(lines[0]).not.toContain("storydoc");
     });
 });

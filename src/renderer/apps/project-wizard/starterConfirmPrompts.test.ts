@@ -64,7 +64,8 @@ type GraphSource = (toId: string, port: string, type: string) => GraphNode;
  * changes which node the press ends up running, and this file is about the question, not about
  * them - the cues have `starterSoundCues.test.ts`, and the words are asserted on the pins below.
  */
-const PASSED_THROUGH: readonly string[] = [BLUEPRINT_NODE_TYPE_SOUND_PLAY, BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT];
+const PASSED_THROUGH: readonly string[] = [BLUEPRINT_NODE_TYPE_LOCALIZATION_GET_TEXT];
+
 
 function readTemplate(file: string): unknown {
     return JSON.parse(
@@ -78,6 +79,36 @@ const blueprints = Object.values(
         .blueprintDocument.blueprints,
 );
 const confirmSurfaceId = document.surfaces.find(surface => surface.name === "Confirm")!.id;
+
+/**
+ * The cues the project declares, by the reference a call names.
+ *
+ * A cue is a call to a global function that plays a clip, so "decoration" is no longer a node type:
+ * `Call Fn` is also how a save card refreshes itself after writing, and stepping over that would
+ * walk this file past a node the questions below are asked about.
+ */
+const CUE_FN_REFS: ReadonlySet<string> = new Set(
+    blueprints.flatMap(blueprint =>
+        Object.values(blueprint.program.graphs.events).flatMap(event => {
+            const { nodes, edges } = event.graph;
+            return Object.values(nodes)
+                .filter(head => head.type === "blueprint.fn.head")
+                .filter(head => {
+                    const body = edges.find(edge => edge.from.nodeId === head.id && edge.from.port === "then");
+                    return body ? nodes[body.to.nodeId]?.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY : false;
+                })
+                .map(head => `fn:${blueprint.id}:${head.id}`);
+        }),
+    ),
+);
+
+/** Anything on the route that decorates it rather than deciding it. */
+function isPassedThrough(node: GraphNode | undefined, wanted: string): boolean {
+    if (!node || node.type === wanted) {
+        return false;
+    }
+    return PASSED_THROUGH.includes(node.type) || CUE_FN_REFS.has(String(node.params?.fnRef ?? ""));
+}
 
 /**
  * The event graph on the blueprint that answers for an element, with lookups over it - or, when the
@@ -110,7 +141,7 @@ function graphFor(elementId: string, headType?: string) {
             const out = edges.filter(edge => edge.from.nodeId === currentId && edge.from.port === currentPort);
             expect(out, `${currentId}.${currentPort} leads to ${out.length} nodes`).toHaveLength(1);
             const target = nodes[out[0]!.to.nodeId]!;
-            if (PASSED_THROUGH.includes(target?.type) && type !== target?.type) {
+            if (isPassedThrough(target, type)) {
                 currentId = target.id;
                 currentPort = "next";
                 continue;

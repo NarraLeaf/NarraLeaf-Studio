@@ -13,6 +13,7 @@ import {
     MERGE_VALUE_FIELD_LIMIT,
     MERGE_VALUE_TEXT_LIMIT,
     mergeDocumentBlockedKey,
+    mergeHeadingKey,
     resolveMergeDecisionLabel,
     type MergeChoiceState,
 } from "./mergeDecisionView";
@@ -371,5 +372,31 @@ describe("buildConflictRows", () => {
 
         expect(rows[0]).toMatchObject({ decision: "per-change", settled: false });
         expect(countUndecidedFiles(rows)).toBe(1);
+    });
+});
+
+
+/**
+ * The strip above the resolve panel, which used to name a merge whether or not there was one.
+ *
+ * Finishing a merge therefore left the panel contradicting itself: the strip said the project's two
+ * versions were being merged while the body two lines below said no merge was in progress.
+ */
+describe("mergeHeadingKey", () => {
+    it("names the merge while there is one", () => {
+        expect(mergeHeadingKey({ inProgress: true, conflicts: ["a.json"] })).toBe("documentDiff.resolve.merging");
+    });
+
+    it("stops naming it once the merge is over", () => {
+        expect(mergeHeadingKey({ inProgress: false, conflicts: [] })).toBe("documentDiff.resolve.tab");
+    });
+
+    /**
+     * Before the first read, and this is why the state is passed rather than a boolean: "nobody has
+     * asked yet" is not "there is none", and the fallback has to be the answer that claims nothing
+     * either way rather than the one that happens to be likely.
+     */
+    it("claims nothing before anything has been read", () => {
+        expect(mergeHeadingKey(null)).toBe("documentDiff.resolve.tab");
     });
 });
