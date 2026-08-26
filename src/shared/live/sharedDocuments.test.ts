@@ -19,6 +19,7 @@ import {
     liveSessionCarries,
     liveSessionDocuments,
     liveSessionWritablePaths,
+    NO_LIVE_INTERFACE,
     type LiveSessionLocales,
     type LiveSessionRegistries,
 } from "./sharedDocuments";
@@ -198,7 +199,7 @@ describe("the documents a session carries", () => {
         // assumed, for the libraries' reason: a registry that would not parse is one no effect can be
         // applied to, and carrying it would leave the boundary allowing writes the host refuses.
         // Beside the three unparameterised project tables, which are always carried.
-        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], REGISTRIES)).toEqual([
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toEqual([
             { doc: "characters" },
             { doc: "dictionary" },
             { doc: "audio-tracks" },
@@ -206,7 +207,7 @@ describe("the documents a session carries", () => {
             { doc: "variables" },
             { doc: "localization-keys" },
         ]);
-        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], {
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], NO_LIVE_INTERFACE, {
             variables: true,
             localizationKeys: false,
         })).toEqual([
@@ -235,8 +236,8 @@ describe("the documents a session carries", () => {
         expect(liveSessionWritablePaths([STORY], LOCALES).some(path => path.endsWith("keys.json"))).toBe(false);
         expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES)).toBe(false);
         expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES)).toBe(false);
-        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES, [], [], REGISTRIES)).toBe(true);
-        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES, [], [], REGISTRIES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toBe(true);
     });
 
     it("carries the three project tables whatever else it was given", () => {

@@ -6,7 +6,7 @@ import type {
     LiveUndoRefusalReason,
 } from "@/lib/workspace/services/live/liveSessionView";
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveRefusalReason } from "@shared/live/ops";
+import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { TeamProjectState } from "../../hooks/useTeamProject";
 
 /**
@@ -67,16 +67,42 @@ export function liveEntryFailureSentence(failure: LiveEntryFailure): LiveSentenc
 }
 
 /**
- * What to do about a refusal that pressing the control again cannot get past, or null.
+ * The next thing to do about a refusal, or null where the refusal already says it.
  *
- * One of the fourteen has one. A session cannot be re-based on a newer version, so a tree that has
- * moved past the room's revision can never join it however many times the control is pressed - the
- * two copies have to meet on the server first, and nothing on screen said so.
+ * **A `Record` over the whole union, like the sentences above it, and for a stronger reason.** A
+ * refusal that names a state without naming a way out is a control the author presses again, gets
+ * the same red line from, and stops trusting - and the states this feature can be in are precisely
+ * the ones an author has no way of guessing at. So a new one does not compile until somebody has
+ * decided whether there is anything to do about it.
+ *
+ * Null is a real answer and is used deliberately: where the sentence is already an instruction
+ * ("Record a version to start a live session"), a second line repeating it in other words is noise.
  */
+const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = {
+    // Already in one, and the control the author pressed is the one that leaves it.
+    busy: null,
+    // The freeze's sentence names the state that has to be left, which is the whole remedy.
+    frozen: null,
+    // Both sentences are instructions already.
+    "no-server": null,
+    "no-revision": null,
+    "no-instance": "workspace.shell.team.liveNoInstanceNext",
+    "no-repository": "workspace.shell.team.liveNoRepositoryNext",
+    // "That session is on {project}. Open that project to join it." - the instruction is the whole
+    // sentence, and this window cannot open another project anyway.
+    "clone-required": null,
+    "revision-mismatch": "workspace.shell.team.liveVersionMismatchNext",
+    "merge-conflicts": "workspace.shell.team.liveMergeConflictsNext",
+    "room-gone": "workspace.shell.team.liveRoomGoneNext",
+    // The remedy is on the other machine and the sentence already names it.
+    "room-story-unknown": null,
+    "story-not-here": "workspace.shell.team.liveStoryNotHereNext",
+    refused: "workspace.shell.team.liveRefusedNext",
+    failed: "workspace.shell.team.liveFailedNext",
+};
+
 export function liveEntryFailureRemedy(failure: LiveEntryFailure): TranslationKey | null {
-    return failure.kind === "revision-mismatch"
-        ? "workspace.shell.team.liveVersionMismatchNext"
-        : null;
+    return ENTRY_REMEDIES[failure.kind];
 }
 
 /**
@@ -93,7 +119,18 @@ const SESSION_ENDS: Record<LiveSessionEnd["cause"], TranslationKey | null> = {
     diverged: "workspace.shell.team.liveEndedDiverged",
 };
 
-export function liveEndSentence(end: LiveSessionEnd): TranslationKey | null {
+/**
+ * What the author is told about a session that ended, or null when nothing is.
+ *
+ * `carryingOn` is the one thing that changes what an ending means. A host that hands over or reloads
+ * closes the room, and the room is back within seconds under somebody else - so "the session is
+ * over" would be the wrong half of what happened, and would be followed by the session reappearing
+ * with nothing having explained it.
+ */
+export function liveEndSentence(end: LiveSessionEnd, carryingOn = false): TranslationKey | null {
+    if (carryingOn && end.cause === "host-left") {
+        return "workspace.shell.team.liveEndedHandedOver";
+    }
     return SESSION_ENDS[end.cause];
 }
 
@@ -108,12 +145,29 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "variable-gone": "story.live.refusedVariableGone",
     "asset-id-taken": "story.live.refusedAssetIdTaken",
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
+    "ui-element-gone": "story.live.refusedUIElementGone",
+    "ui-blueprint-gone": "story.live.refusedUIBlueprintGone",
     "track-gone": "story.live.refusedTrackGone",
     "set-gone": "story.live.refusedSetGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
     "unknown-op": "story.live.refusedUnknownOp",
+};
+
+/**
+ * What a held subject is called, for the one refusal that names a person.
+ *
+ * `row-claimed` is one reason across every document a session carries, and the sentence has to say
+ * what was taken rather than what the reason is spelled: an author told "somebody is writing that
+ * line" after moving a button has been told about a document they are not in.
+ *
+ * Only where the subject is not a line, and only for that one reason - the operations here have
+ * refusals of their own, and those say what they mean already.
+ */
+const CLAIMED_SUBJECTS: Partial<Record<LiveOpKind, TranslationKey>> = {
+    "write-ui": "story.live.refusedElementClaimed",
+    "write-ui-graphs": "story.live.refusedNodeClaimed",
 };
 
 /**
@@ -124,7 +178,9 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
  * refusal exists at all is that losing one silently is worse than any interruption.
  */
 export function liveRefusalSentence(refusal: LiveRefusalNotice): LiveSentence {
-    const key = REFUSALS[refusal.reason];
+    const key = refusal.reason === "row-claimed"
+        ? CLAIMED_SUBJECTS[refusal.op] ?? REFUSALS[refusal.reason]
+        : REFUSALS[refusal.reason];
     // A person is being named, and the row-claimed sentence is the only one that names anybody.
     return refusal.heldBy === undefined ? { key } : { key, params: { name: refusal.heldBy } };
 }
@@ -185,6 +241,27 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
                 ? "workspace.shell.team.liveHost"
                 : "workspace.shell.team.liveGuest";
     }
+}
+
+/**
+ * What the control that takes this window out of a room does, and how much it costs.
+ *
+ * Three answers rather than two, because a host leaving is no longer one act. A room's authority is
+ * the window that opened it, so a host walking out of a room with somebody else in it hands it over:
+ * the session carries on in a new room opened by whoever was nominated. A host walking out of a room
+ * of one ends it - there is nobody to hand it to - and that is the destructive one.
+ *
+ * Named after what happens rather than after which half of the session this window is, because the
+ * two are no longer the same question, and a control that said "End" over a session that carries on
+ * would be asking somebody to be brave about nothing.
+ */
+export function liveLeaveAct(view: LiveSessionView): { key: TranslationKey; destructive: boolean } {
+    if (view.role !== "host") {
+        return { key: "workspace.shell.team.liveLeaveSession", destructive: false };
+    }
+    return liveOtherMembers(view).length > 0
+        ? { key: "workspace.shell.team.liveHandOverSession", destructive: false }
+        : { key: "workspace.shell.team.liveEndSession", destructive: true };
 }
 
 /**

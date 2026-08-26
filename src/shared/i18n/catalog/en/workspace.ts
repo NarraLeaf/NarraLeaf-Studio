@@ -392,22 +392,35 @@ export const workspace = {
         liveNoRepository: "This project has no version history.",
         liveNoRevision: "Record a version to start a live session.",
         liveCloneRequired: "That session is on {project}. Open that project to join it.",
-        liveVersionMismatch: "That session opened on an older version than this project holds.",
-        // The remedy, because there is no way round it from here: a session cannot be re-based on
-        // a newer version, so the two copies have to meet on the server first. Said as a second
-        // line, like the divergence has, rather than as a longer first one.
-        liveVersionMismatchNext: "Send this copy to the server, then ask the host to start the session again.",
+        // Reached only by starting a session now: joining adopts the version the room opened on, so
+        // there is no longer such a thing as a copy that cannot reach it.
+        liveVersionMismatch: "This project and the server have both changed since they last met.",
+        liveVersionMismatchNext: "Get the server's versions, settle any differences, then try again.",
         liveRoomGone: "That session is no longer open.",
+        liveRoomGoneNext: "Start one, or wait for the host to open it again.",
         // The room is there and this window still cannot follow it: the first because the
         // host is old enough not to say which story it opened on, the second because the
         // story it named is not in this copy even after syncing.
         liveRoomStoryUnknown: "That session does not say which story it is about. Ask the host to update Studio.",
         liveStoryNotHere: "That session is about a story this project does not have.",
+        liveStoryNotHereNext: "Ask the host to send that story to the server, then try again.",
         liveRefused: "That server refused the session.",
+        liveRefusedNext: "Try again once that server answers.",
         liveFailed: "The live session could not be started.",
+        liveFailedNext: "Try again.",
+        liveNoInstanceNext: "Check the connection to that server, then try again.",
+        liveNoRepositoryNext: "Enable version control for this project, then try again.",
+        liveMergeConflictsNext: "Settle the merge, then try again.",
         // How a session ended, for the two endings the author did not ask for. Leaving is
         // silent: they pressed the control and watched the row change.
         liveEndedHostLeft: "The host left. The session is over.",
+        // The same event where the room is coming back. A host that hands over or reloads closes
+        // the room and another one opens seconds later, so "the session is over" would be the wrong
+        // half of what happened.
+        liveEndedHandedOver: "The host left. The session is reopening under somebody else.",
+        // While this window is waiting for that to happen. Drawn where the room row is, so the slot
+        // that said which room this window was in says what it is waiting for instead.
+        liveRejoining: "Rejoining when the session reopens.",
         // Said as what happened to this copy rather than as a goodbye: the session is gone
         // AND what is on this disk is not what the others are looking at.
         liveEndedDiverged: "This copy stopped matching the session and left it.",
@@ -459,6 +472,9 @@ export const workspace = {
         liveFrozenTitle: "A live session is open.",
         liveLeaveSession: "Leave the live session",
         liveEndSession: "End the live session",
+        // What a host leaving a room with somebody else in it does. The session carries on in a new
+        // room under the member who has been in it longest.
+        liveHandOverSession: "Hand the live session over",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",
@@ -883,6 +899,10 @@ export const workspace = {
             // wording an author would otherwise see names koffi and a worker thread.
             closingWithApp: "Studio is closing. Try again after it restarts.",
             commitBeforeSync: "Submit a version before getting the server's.",
+            // A push the server would not take because both sides have moved on. The remedy is the
+            // one the backend names; what it does not do is name it in the reader's language, or
+            // without the internal operation that failed in front of it.
+            branchDiverged: "This project and the server have both changed. Get the server's versions first, then send yours.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
@@ -967,6 +987,8 @@ export const workspace = {
                 checkpointClose: "Checkpoint before closing the project",
                 checkpointBuild: "Checkpoint before build",
                 checkpointRestore: "Checkpoint before restore",
+                checkpointLiveSession: "Checkpoint before a live session",
+                liveSessionMatched: "Matched the live session's version",
                 // `{version}` is a revision number or a hash. Not language, so it is not translated.
                 restored: "Restored version {version}",
             },

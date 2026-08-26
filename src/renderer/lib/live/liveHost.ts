@@ -22,16 +22,20 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    uiElementClaimKey,
     variableClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
 import {
     liveSessionCarries,
+    NO_LIVE_INTERFACE,
     NO_LIVE_LOCALES,
     NO_LIVE_REGISTRIES,
+    type LiveSessionInterface,
     type LiveSessionLocales,
     type LiveSessionRegistries,
 } from "@shared/live/sharedDocuments";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -78,6 +82,13 @@ export type LiveHostDeps = {
     /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
     assetCategories?: readonly string[];
     /**
+     * Whether this session carries the interface and its blueprints.
+     *
+     * A flag rather than a list: there is one of each per project. Both or neither - see
+     * `LiveSessionInterface` for why one without the other is not a shape this can take.
+     */
+    ui?: LiveSessionInterface;
+    /**
      * Which of the two project-level registries this session carries.
      *
      * Booleans rather than a list, because neither is parameterised - and read rather than assumed,
@@ -120,6 +131,15 @@ export type LiveHostDeps = {
      * from one record.
      */
     readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
+    /**
+     * Whether one interface element is in the document right now.
+     *
+     * A boolean, with `hasAsset`: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy rather than against the document.
+     */
+    hasUIElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. The element's counterpart. */
+    hasBlueprint(blueprintId: string): boolean;
     /**
      * Whether one bus is in the mixer right now.
      *
@@ -232,6 +252,8 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "create-assets": true,
     "replace-asset-content": true,
     "delete-assets": true,
+    "write-ui": true,
+    "write-ui-graphs": true,
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
@@ -324,6 +346,11 @@ export class LiveHost {
                 // Bytes in flight. The host has no more to do with them than anybody else: a slice
                 // changes no document and takes no sequence number, and the machine that holds the
                 // file answers a request for the ones it is short of. See `LiveBlobChunk`.
+                return null;
+            case "handover":
+                // About the room rather than about the document, so it is settled before a message
+                // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one
+                // is reading its own, coming back off the topic.
                 return null;
         }
     }
@@ -440,6 +467,24 @@ export class LiveHost {
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
         }
+        if (applied.op === "write-ui") {
+            // Nor an element that is gone. A delta whose removals somebody else held was refused
+            // before it got here, so what this releases is the deleter's own hold - which would
+            // otherwise sit in the room's set naming an element nobody can select until it lapsed.
+            for (const [elementId, record] of Object.entries(applied.parts.elements ?? {})) {
+                if (record === null) {
+                    this.claims.forget(uiElementClaimKey(null, elementId));
+                }
+            }
+            for (const [componentId, delta] of Object.entries(applied.parts.componentElements ?? {})) {
+                for (const [elementId, record] of Object.entries(delta)) {
+                    if (record === null) {
+                        this.claims.forget(uiElementClaimKey(componentId, elementId));
+                    }
+                }
+            }
+        }
+        // There is deliberately no asset counterpart to those two. A session carries no verb that
         if (applied.op === "delete-variable") {
             // Nobody is inside a registry row that is gone.
             this.claims.forget(variableClaimKey(applied.variableId));
@@ -861,6 +906,21 @@ export class LiveHost {
                 return { op };
             }
 
+            case "write-ui": {
+                // Whole or not at all, and the presence check comes first: an element this delta was
+                // *changing* has to still be there, or applying would resurrect it on every screen
+                // in the room with every machine agreeing about it. Creations are not checked - the
+                // ids were minted by whoever built the records.
+                for (const ref of op.updates ?? []) {
+                    if (!this.deps.hasUIElement(ref)) {
+                        // ⚠ Says the element is gone. It never says the author's typing is - the
+                        // same instruction `row-gone` and `character-gone` carry.
+                        return { refuse: "ui-element-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
             case "create-variable":
                 // Not checked against an entry already there, and not claimed, with
                 // `create-character`: the id was minted by whoever built the entry, so a collision is
@@ -879,6 +939,14 @@ export class LiveHost {
                 return this.claimed(op, by) ?? { op };
             }
 
+            case "write-ui-graphs": {
+                for (const blueprintId of op.updates ?? []) {
+                    if (!this.deps.hasBlueprint(blueprintId)) {
+                        return { refuse: "ui-blueprint-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
             case "set-key":
                 // ⚠ The claim check and nothing else, with `set-translation`. There is no "key is
                 // gone" refusal to pair with `row-gone`, because this verb is the service's own
@@ -999,6 +1067,7 @@ export class LiveHost {
             this.deps.locales ?? NO_LIVE_LOCALES,
             this.deps.assetTypes ?? [],
             this.deps.assetCategories ?? [],
+            this.deps.ui ?? NO_LIVE_INTERFACE,
             this.deps.registries ?? NO_LIVE_REGISTRIES,
         );
     }

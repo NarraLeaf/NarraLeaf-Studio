@@ -10,6 +10,7 @@ import {
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
 import { getWidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
+import { uiOwningSurfaceIds } from "@shared/live/uiParts";
 
 /**
  * Keeps local instance BlueprintDocument (in uigraphs.json) aligned with UIDocument surfaces and widgets.
@@ -113,58 +114,12 @@ export class UIBlueprintLifecycleCoordinator
 }
 
 /**
- * The surface every element belongs to, for the whole document, in one pass.
+ * The Surface every element belongs to, for the whole document, in one pass.
  *
- * Each parent chain is walked at most once: the walk stops as soon as it reaches an element whose
- * answer is already known, then writes that answer back down the chain it came up. Elements that
- * reach no surface (orphans, and a parent cycle if a document is ever damaged) are simply absent.
+ * ⚠ **Shared with a live session's digests rather than owned here**, and the two must go on being
+ * one walk. A session fingerprints one Surface with its whole tree, and this reconciliation decides
+ * which Surface a widget's private blueprint belongs to; two implementations of "which Surface is
+ * this element under" would be two answers, and the one a digest disagreed over would eject a
+ * machine from the room over a document nothing was wrong with.
  */
-export function resolveOwningSurfaceIds(doc: UIDocument): Map<string, string> {
-    const surfaceIdByRootElementId = new Map<string, string>();
-    for (const surface of doc.surfaces) {
-        surfaceIdByRootElementId.set(surface.rootElementId, surface.id);
-    }
-
-    const resolved = new Map<string, string | null>();
-    for (const startId of Object.keys(doc.elements)) {
-        if (resolved.has(startId)) {
-            continue;
-        }
-        const chain: string[] = [];
-        const onChain = new Set<string>();
-        let cursor: string | null = startId;
-        let answer: string | null = null;
-        while (cursor) {
-            if (resolved.has(cursor)) {
-                answer = resolved.get(cursor) ?? null;
-                break;
-            }
-            if (onChain.has(cursor)) {
-                // A parentId cycle: nothing here belongs to a surface.
-                break;
-            }
-            const element: UIElement | undefined = doc.elements[cursor];
-            if (!element) {
-                break;
-            }
-            chain.push(cursor);
-            onChain.add(cursor);
-            if (element.parentId === null) {
-                answer = surfaceIdByRootElementId.get(cursor) ?? null;
-                break;
-            }
-            cursor = element.parentId;
-        }
-        for (const elementId of chain) {
-            resolved.set(elementId, answer);
-        }
-    }
-
-    const owners = new Map<string, string>();
-    for (const [elementId, surfaceId] of resolved) {
-        if (surfaceId) {
-            owners.set(elementId, surfaceId);
-        }
-    }
-    return owners;
-}
+export const resolveOwningSurfaceIds = uiOwningSurfaceIds;

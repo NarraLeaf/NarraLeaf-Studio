@@ -1,14 +1,19 @@
+import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import type { LiveDerived, LiveDigestScope } from "@shared/live/ops";
+import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp } from "@shared/live/ops";
+import { uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import { uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
-import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
 import { CharacterService } from "../core/CharacterService";
-import { VersionControlService } from "../core/VersionControlService";
+import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
 import { HistoryService } from "../history/HistoryService";
 import { HistoryScopeKind, historyScopeParts, isHistoryScopeOf } from "../history/historyScopes";
@@ -19,6 +24,8 @@ import { DictionaryService } from "../dictionary/DictionaryService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
+import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
@@ -45,14 +52,12 @@ import { IDLE_LIVE_SESSION, type LiveEntryFailure, type LiveSessionView } from "
 /**
  * What the checkpoint recorded on the way into a session is labelled.
  *
- * `interval` is not a lie about what happened, only about what triggered it: its message is the
- * bare "Checkpoint", which is exactly what this is. The alternatives say something untrue on a
- * permanent revision that travels to collaborators - the author did not close a project, run a
- * build or restore anything - and a reason of its own would have to be added to
- * `VcsCheckpointReason` and to the message table beside it, which is a change to the shared
- * vocabulary rather than to this feature.
+ * A reason of its own, because the sentence it writes is permanent repository content that a
+ * collaborator reads: the bare "Checkpoint" the timer records says nothing about why a revision
+ * nobody asked for is sitting in front of an afternoon's work, and every other reason says something
+ * untrue - the author did not close a project, run a build or restore anything.
  */
-const LIVE_CHECKPOINT_REASON: VcsCheckpointReason = "interval";
+const LIVE_CHECKPOINT_REASON: VcsCheckpointReason = "live-session";
 
 /**
  * What entering answers before this service has come up.
@@ -75,8 +80,48 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze),
             ctx.services.get<VersionControlService>(Services.VersionControl),
             ctx.services.get<HistoryService>(Services.History),
+            // ⚠ And every document a session CARRIES, which is not the same list as the one it is
+            // driven from. Entering a room reads all of them into memory before anything is frozen
+            // or applied, so a session entered before they are up throws in the middle of entering.
+            // That never happened while the only way in was an author pressing a control - by then
+            // the workspace has been open for a while - and it happens every time now that a
+            // reloaded window takes its own room back up as the workspace starts.
+            ctx.services.get<CharacterService>(Services.Character),
+            ctx.services.get<LocalizationService>(Services.Localization),
+            ctx.services.get<VoiceService>(Services.Voice),
+            ctx.services.get<AssetsService>(Services.Assets),
         ]);
         this.session = new LiveSession(this.buildDeps(ctx));
+        // Not awaited, and that is the point of it: a workspace must open at the same speed whether
+        // or not there is a server to ask, and the answer for nearly every window is "you were in
+        // nothing". What it repairs is the room a reload left behind - see `LiveSession.resume`.
+        void this.takeUpAnyRoom();
+    }
+
+    /**
+     * How long to keep asking whether this window was already in a room, and how often.
+     *
+     * The socket to the server is opened while the workspace is starting, so the first pass runs
+     * before there is anything to ask - and a window that gave up there would go on holding a room
+     * open on the server with nobody able to answer an intent in it. Four tries over half a minute
+     * covers a connection that is slow rather than absent; a connection that is absent answers
+     * `settled` on the first pass and nothing further is asked.
+     */
+    private static readonly RESUME_DELAYS_MS = [0, 2_000, 6_000, 20_000] as const;
+
+    private async takeUpAnyRoom(): Promise<void> {
+        for (const delay of LiveSessionService.RESUME_DELAYS_MS) {
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            if (this.session === null) {
+                // The window closed while this was waiting.
+                return;
+            }
+            if (await this.session.resume() === "settled") {
+                return;
+            }
+        }
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
@@ -159,6 +204,28 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
     }
 
     /**
+     * Say that this window is editing one interface element, or that it has stopped.
+     *
+     * The canvas's door beside the row's, the record's, the line's and the asset's, and the same
+     * bargain: silent outside a session, so the properties panel calls it without asking whether
+     * there is one. The component id is part of the address because a component definition owns its
+     * own element map.
+     */
+    public claimUIElement(componentId: string | null, elementId: string, holding: boolean): void {
+        this.session?.claimUIElement(componentId, elementId, holding);
+    }
+
+    /**
+     * Say that this window is editing one blueprint node, or that it has stopped.
+     *
+     * The element's counterpart on the blueprint canvas. Both the blueprint and the graph are part
+     * of the address because node ids are not unique across the document.
+     */
+    public claimUINode(blueprintId: string, graphId: string, nodeId: string, holding: boolean): void {
+        this.session?.claimUINode(blueprintId, graphId, nodeId, holding);
+    }
+
+    /**
      * Say that this window is editing one variable registry entry, or that it has stopped.
      *
      * The fifth door beside the other four, and the same bargain: silent outside a session, so the
@@ -184,6 +251,78 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
 
     /* ------------------------------------------------------------------- wiring */
 
+    /**
+     * Apply one interface or blueprint operation, and answer every unit it changed.
+     *
+     * **The one place the seam between the two documents is handled, and the reason it lives in the
+     * wiring rather than in a service.** Applying an interface delta runs
+     * `UIBlueprintLifecycleCoordinator` behind it, which writes `uigraphs.json` to keep the private
+     * blueprints aligned with the Surfaces and widgets that now exist. That write is DERIVED: every
+     * machine performs it from the same effect and reaches the same records, which is why the ids it
+     * mints come from the owner key (see `derivedBlueprintId`). So it must not become an operation of
+     * its own - `UIGraphService.holdDerived` stands the sink aside for the length of it and answers
+     * with what it wrote, and what it wrote is fingerprinted here like everything else.
+     *
+     * ⚠ The Surface owner map is read BEFORE applying. Which Surface an element belongs to is a
+     * question about the tree, and for an element the delta is deleting the only place left to ask is
+     * the state before - so a digest taken afterwards alone would fingerprint every Surface except
+     * the one the author just changed.
+     */
+    private applyInterfaceOp(ctx: WorkspaceContext, op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[] {
+        const uidoc = ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const uigraphs = ctx.services.get<UIGraphService>(Services.UIGraph);
+        const scopes: LiveDigestScope[] = [];
+        if (op.op === "write-ui") {
+            const ownersBefore = uiOwningSurfaceIds(uidoc.getDocument());
+            const derived = uigraphs.holdDerived(() => uidoc.applyLiveOp(op));
+            const touched = uiPartsTouched(ownersBefore, uidoc.getDocument(), op.parts);
+            for (const surfaceId of touched.surfaces) {
+                scopes.push({ of: "ui-surface", surfaceId });
+            }
+            for (const componentId of touched.components) {
+                scopes.push({ of: "ui-component", componentId });
+            }
+            if (touched.shell) {
+                scopes.push({ of: "ui-shell" });
+            }
+            if (derived) {
+                const reconciled = uiGraphPartsTouched(derived);
+                for (const blueprintId of reconciled.blueprints) {
+                    scopes.push({ of: "ui-blueprint", blueprintId });
+                }
+                if (reconciled.shell) {
+                    scopes.push({ of: "ui-graph-shell" });
+                }
+            }
+            return scopes;
+        }
+        uigraphs.applyLiveOp(op);
+        const touched = uiGraphPartsTouched(op.parts);
+        for (const blueprintId of touched.blueprints) {
+            scopes.push({ of: "ui-blueprint", blueprintId });
+        }
+        if (touched.shell) {
+            scopes.push({ of: "ui-graph-shell" });
+        }
+        return scopes;
+    }
+
+    private uiDocumentOrNull(ctx: WorkspaceContext): UIDocument | null {
+        try {
+            return ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        } catch {
+            return null;
+        }
+    }
+
+    private uiGraphsOrNull(ctx: WorkspaceContext): UIGraphDocument | null {
+        try {
+            return ctx.services.get<UIGraphService>(Services.UIGraph).getDocument();
+        } catch {
+            return null;
+        }
+    }
+
     private buildDeps(ctx: WorkspaceContext): LiveSessionDeps {
         const story = (): StoryService => ctx.services.get<StoryService>(Services.Story);
         const characters = (): CharacterService => ctx.services.get<CharacterService>(Services.Character);
@@ -197,6 +336,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+        const uidoc = (): UIDocumentService => ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const uigraphs = (): UIGraphService => ctx.services.get<UIGraphService>(Services.UIGraph);
 
         return {
             instance: async () => {
@@ -274,6 +415,21 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
             },
+            ui: {
+                setSink: sink => {
+                    uidoc().setOperationSink(sink?.ui ?? null);
+                    uigraphs().setOperationSink(sink?.graphs ?? null);
+                },
+                // No load step: both documents are read as the workspace starts. What this asks is
+                // whether they are there - a workspace that failed to bring one up carries neither,
+                // and the write boundary then goes on refusing both.
+                held: () => this.uiDocumentOrNull(ctx) !== null && this.uiGraphsOrNull(ctx) !== null,
+                document: () => this.uiDocumentOrNull(ctx),
+                graphs: () => this.uiGraphsOrNull(ctx),
+                hasElement: ref => uiHasElement(this.uiDocumentOrNull(ctx), ref),
+                hasBlueprint: blueprintId => uiHasBlueprint(this.uiGraphsOrNull(ctx), blueprintId),
+                applyOp: op => this.applyInterfaceOp(ctx, op),
+            },
             // The three project tables. No load step, with the asset shards: all three are read as
             // the workspace starts rather than when a panel opens them.
             dictionary: {
@@ -313,9 +469,29 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     return status !== null && !status.clean;
                 },
                 push: async () => {
-                    await version().push();
+                    try {
+                        await version().push();
+                        return { diverged: false };
+                    } catch (error) {
+                        // The one refusal a session can act on, told apart by the code the main
+                        // process gives it rather than by the backend's English - see
+                        // `VcsBranchDivergedError`. Everything else is somebody else's to explain.
+                        if (error instanceof VcsCallError && error.code === VcsErrorCode.BranchDiverged) {
+                            return { diverged: true };
+                        }
+                        throw error;
+                    }
                 },
                 sync: async () => ({ conflicts: (await version().sync()).conflicts }),
+                abortMerge: async () => {
+                    await version().abortMerge();
+                },
+                adopt: async revision => {
+                    // The same call the version rail's restore makes, said to be for a session:
+                    // what changes is the two sentences the revisions carry, which are permanent
+                    // repository content a collaborator reads. See `VcsRestoreOptions.purpose`.
+                    await version().restoreRevision(revision, { purpose: "live-session" });
+                },
             },
             freeze: {
                 reason: () => freeze().getReason(),
@@ -335,11 +511,52 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     }
                 },
             },
+            memory: {
+                // Keyed by repository id rather than by path, for the reason every other identity in
+                // this feature is: a folder gets renamed and a repository does not. Written through
+                // the whole map because the store holds one value per key, and read defensively
+                // because what is on disk was written by some other version of this.
+                remember: hosting => {
+                    void (async () => {
+                        const project = await this.identity(ctx);
+                        if (project === null) {
+                            return;
+                        }
+                        const held = await this.hostedSessions();
+                        const next = { ...held };
+                        if (hosting === null) {
+                            delete next[project.repositoryId];
+                        } else {
+                            next[project.repositoryId] = { story: hosting.story, at: Date.now() };
+                        }
+                        await getInterface().app.state.setGlobalState("team.hostedLiveSessions", next);
+                    })().catch(error => {
+                        // A note that could not be written is a reload that will not come back to
+                        // its room, and nothing else. Never a reason to refuse a session.
+                        console.warn("[LiveSession] could not record what this window is hosting", error);
+                    });
+                },
+                recall: async () => {
+                    const project = await this.identity(ctx);
+                    if (project === null) {
+                        return null;
+                    }
+                    const held = (await this.hostedSessions())[project.repositoryId];
+                    return held && typeof held.story === "string" && typeof held.at === "number"
+                        ? { story: held.story as StoryId, at: held.at }
+                        : null;
+                },
+            },
             history: {
                 forgetStoryScenes: storyId => {
                     ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
                         isHistoryScopeOf(scopeId, HistoryScopeKind.StoryScene)
                         && historyScopeParts(scopeId)[0] === storyId);
+                },
+                forgetInterfaceEditors: () => {
+                    ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
+                        isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)
+                        || isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint));
                 },
             },
             now: () => Date.now(),
@@ -348,6 +565,13 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 return () => clearTimeout(timer);
             },
         };
+    }
+
+    /** What every window on this machine has recorded about a session it was hosting. */
+    private async hostedSessions(): Promise<Record<string, { story: string; at: number }>> {
+        const answer = await getInterface().app.state.getGlobalState("team.hostedLiveSessions");
+        const held = answer.success ? answer.data.value : null;
+        return held !== null && typeof held === "object" ? held : {};
     }
 
     private async identity(ctx: WorkspaceContext): Promise<LiveProjectIdentity | null> {

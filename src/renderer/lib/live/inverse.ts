@@ -6,10 +6,18 @@ import type {
     LiveEffect,
     LiveOp,
 } from "@shared/live/ops";
+import {
+    uiGraphPartsBefore,
+    uiGraphPartsRestored,
+    type LiveUIGraphParts,
+} from "@shared/live/uiGraphParts";
+import { uiPartsBefore, uiPartsRestored, type LiveUIParts } from "@shared/live/uiParts";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { ProjectDictionaryDocument, ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -323,6 +331,16 @@ export type LiveBefore =
           folders: readonly LiveAssetFolder[];
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
       }
+    /**
+     * The interface records the delta named, as they stood.
+     *
+     * `update-block`'s shape over a whole set: a delta states what the document is about to hold and
+     * nothing about what it held, so undo is a delta of the other side. `null` inside it is "there
+     * was no such record", which is what makes undoing a creation a removal rather than a puzzle.
+     */
+    | { op: "write-ui"; parts: LiveUIParts }
+    /** The blueprint records the delta named, as they stood. The interface's mirror. */
+    | { op: "write-ui-graphs"; parts: LiveUIGraphParts }
     /**
      * The entry that was at the address, or null when there was none.
      *
@@ -742,6 +760,22 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
             // Its own inverse is a deletion of the folder it put back, which needs nothing kept.
             return null;
 
+        case "write-ui": {
+            const document = sources.ui ?? null;
+            if (document === null) {
+                return null;
+            }
+            return { op: "write-ui", parts: uiPartsBefore(document, op.parts) };
+        }
+
+        case "write-ui-graphs": {
+            const document = sources.uiGraphs ?? null;
+            if (document === null) {
+                return null;
+            }
+            return { op: "write-ui-graphs", parts: uiGraphPartsBefore(document, op.parts) };
+        }
+
         case "set-dictionary-entry": {
             const dictionary = sources.dictionary?.() ?? null;
             if (dictionary === null) {
@@ -941,6 +975,15 @@ export type LiveBeforeSources = {
      * being deleted.
      */
     assetsByType?(category: string): Readonly<Record<string, Readonly<Record<string, LiveAssetRecord>>>>;
+    /**
+     * The interface document as it stands, or null when this machine does not hold it.
+     *
+     * A document rather than a reader, unlike the libraries': there is one of these per project, so
+     * there is no parameter inside the operation to resolve first.
+     */
+    ui?: UIDocument | null;
+    /** The blueprint document as it stands, or null when this machine does not hold it. */
+    uiGraphs?: UIGraphDocument | null;
     /**
      * The project dictionary as it stands, or null when this window does not hold it.
      *
@@ -1757,6 +1800,22 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
 
+        case "write-ui": {
+            if (!before || before.op !== "write-ui") {
+                return { impossible: "no-record" };
+            }
+            // A delta of the other side, and its own precondition: every element it puts back was
+            // there before the operation and is therefore there now, so naming them makes an undo
+            // whose target somebody has since deleted refuse rather than resurrect.
+            return {
+                op: {
+                    op: "write-ui",
+                    parts: before.parts,
+                    updates: uiPartsRestored(before.parts),
+                },
+            };
+        }
+
         case "create-variable": {
             const id = op.entry.id;
             if (!context.variables?.(id)) {
@@ -1783,6 +1842,19 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     op: "update-variable",
                     variableId: op.variableId,
                     entry: structuredClone(before.entry),
+                },
+            };
+        }
+
+        case "write-ui-graphs": {
+            if (!before || before.op !== "write-ui-graphs") {
+                return { impossible: "no-record" };
+            }
+            return {
+                op: {
+                    op: "write-ui-graphs",
+                    parts: before.parts,
+                    updates: uiGraphPartsRestored(before.parts),
                 },
             };
         }
