@@ -200,3 +200,38 @@ describe("the variable registry inside a live session", () => {
         expect(DOCUMENT.endsWith("variables.json")).toBe(true);
     });
 });
+
+describe("retyping a variable, which is one gesture", () => {
+    it("states the type and the starting value as ONE operation", async () => {
+        // ⚠ The failure this pins: two calls would be two operations, and the second is built from a
+        // document the first has not been allowed to change - so it carries the OLD value type and
+        // undoes the retype on every machine in the room.
+        const { service, handled } = await createHarness();
+        service.setOperationSink(null);
+        const entry = service.createEntry("saved", { name: "Gold", valueType: "boolean", defaultValue: false });
+        service.setOperationSink({ handle: op => (handled.push(op), true) });
+
+        service.setEntryValueType(entry.id, "number", 0);
+
+        expect(handled).toEqual([{
+            op: "update-variable",
+            variableId: entry.id,
+            entry: { ...entry, valueType: "number", defaultValue: 0 },
+        }]);
+    });
+
+    it("leaves the default alone when the caller only changes the type", async () => {
+        const { service, handled } = await createHarness();
+        service.setOperationSink(null);
+        const entry = service.createEntry("saved", { name: "Gold", valueType: "boolean", defaultValue: false });
+        service.setOperationSink({ handle: op => (handled.push(op), true) });
+
+        service.setEntryValueType(entry.id, "number");
+
+        expect(handled).toEqual([{
+            op: "update-variable",
+            variableId: entry.id,
+            entry: { ...entry, valueType: "number" },
+        }]);
+    });
+});

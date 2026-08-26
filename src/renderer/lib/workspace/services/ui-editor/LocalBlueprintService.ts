@@ -1176,9 +1176,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         historyBlueprintId: string,
         variableId: string,
         valueType: StoryVariableValueType,
+        defaultValue?: LiteralValue,
     ): void {
         this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
-            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType, defaultValue),
         );
     }
 
@@ -1241,9 +1242,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         historyBlueprintId: string,
         variableId: string,
         valueType: StoryVariableValueType,
+        defaultValue?: LiteralValue,
     ): void {
         this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
-            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType, defaultValue),
         );
     }
 
