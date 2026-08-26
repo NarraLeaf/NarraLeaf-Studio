@@ -509,6 +509,16 @@ function createWindow(world: World, instance: string): Window {
             ? { repositoryId: PROJECT, projectPath: PROJECT_PATH, remoteOrigin: REMOTE }
             : null),
         rooms: () => createRooms(world, instance, calls),
+        // Nothing here moves a file. What these drive is the vocabulary, and the transport a file
+        // goes over is a different connection with a suite of its own - see
+        // src/main/app/application/managers/team/TeamTransfers.test.ts.
+        transfers: {
+            offer: async () => ({ ok: true, kind: "offered", size: 0, digest: "" }),
+            collect: async () => ({ ok: true, kind: "accepted" }),
+            abandon: async () => undefined,
+            list: async () => [],
+            resume: async () => undefined,
+        },
         story: {
             setSink: sink => service.setOperationSink(sink),
             listStories: () => service.listStories().map(entry => entry.id),

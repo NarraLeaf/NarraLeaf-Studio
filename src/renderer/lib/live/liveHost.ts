@@ -290,12 +290,6 @@ export class LiveHost {
                 // back off the topic - every participant receives its own - and there is nothing to
                 // do about it and nothing to say.
                 return null;
-            case "blob":
-            case "blob-needed":
-                // Bytes in flight. The host has no more to do with them than anybody else: a slice
-                // changes no document and takes no sequence number, and the machine that holds the
-                // file answers a request for the ones it is short of. See `LiveBlobChunk`.
-                return null;
         }
     }
 

@@ -32,10 +32,12 @@ import type {
     TeamConnection,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
+import { TeamTransfers } from "./TeamTransfers";
 
 /**
  * What this needs of a client, which is what a test stands in for.
@@ -80,6 +82,14 @@ export class TeamManager {
     private readonly servers: () => VcsServerSession[];
     private readonly tokenFor: (remoteOrigin: string) => string | null;
     private readonly newClient: (options: TeamClientOptions) => TeamClientLike;
+    /**
+     * Files on the move.
+     *
+     * One for the whole application rather than one per window, for the same reason the clients
+     * are: a transfer belongs to a project on this disk, it outlives the window that started it,
+     * and two windows on one project must not carry the same file twice.
+     */
+    private readonly files: TeamTransfers;
 
     constructor(app: BaseApp, servers: () => VcsServerSession[], stands: TeamStandIns = {}) {
         this.app = app;
@@ -87,9 +97,28 @@ export class TeamManager {
         this.tokenFor = stands.tokenFor
             ?? ((remoteOrigin) => recallServerToken(app.getGlobalState(), remoteOrigin));
         this.newClient = stands.newClient ?? ((options) => new TeamClient(options));
+        this.files = new TeamTransfers({
+            authUrlFor: (remoteOrigin) =>
+                this.servers().find((each) => each.remoteOrigin === remoteOrigin)?.authUrl ?? null,
+            tokenFor: (remoteOrigin) => this.tokenFor(remoteOrigin),
+            installation: () => installationId(this.app.getGlobalState()),
+            userDataDir: () => this.app.getUserDataDir(),
+            log: (line) => this.app.logger.info(line),
+            slow: () => this.app.hasExperimentalCondition("slow-live-transfer"),
+        });
         this.app.windowManager.events.on("window-closed", (window) => {
             this.forgetWindow(window);
         });
+    }
+
+    /**
+     * Move a file, or say how far one has got.
+     *
+     * Separate from {@link call} because it is separate in kind: a call is a named method with JSON
+     * on either side, and this is a stream that runs for minutes. See `@shared/types/teamTransfer`.
+     */
+    transfer(request: TeamTransferRequest): Promise<TeamTransferOutcome> {
+        return this.files.handle(request);
     }
 
     /* ------------------------------------------------------------ what a screen sees */
@@ -195,6 +224,9 @@ export class TeamManager {
         for (const client of this.clients.values()) client.dispose();
         this.clients.clear();
         this.wanted.clear();
+        // The transfers stop, and their journal stays: what was interrupted is picked up when a
+        // window next opens the project it belongs to.
+        this.files.dispose();
     }
 
     /* ----------------------------------------------------------------- internals */

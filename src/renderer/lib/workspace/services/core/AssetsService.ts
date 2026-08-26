@@ -8,8 +8,7 @@ import type {
     LiveAssetRecord,
     LiveDigestScope,
 } from "@shared/live/ops";
-import { LIVE_BLOB_MAX_BYTES } from "@shared/live/ops";
-import { blobChunkCount, blobDigest, shouldAskForRepair } from "@shared/live/blobs";
+import type { TeamTransferProblem, TeamTransferState } from "@shared/types/teamTransfer";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { FsRequestResult } from "@shared/types/os";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
@@ -105,12 +104,11 @@ export type AssetOpSink = {
      * True means the sink has it and the library must not be touched. False means this edit is not
      * the sink's business and the caller carries on as usual.
      *
-     * `blobs` is the files the operation says it is bringing, by transfer id - see
-     * `LiveAssetBytes`. Present only for the operations that add or replace a file, and only on the
-     * machine the file came from: every other way of getting bytes (a copy of a sibling, a record
-     * coming back out of the trash) is work every machine does for itself.
+     * ⚠ **No bytes.** An operation that brings a file names it - see `LiveAssetBytePart` - and the
+     * file itself is already on its way by the time this is called, because putting it somewhere the
+     * room can read it is what produced the length and the fingerprint the operation carries.
      */
-    handle(op: LiveAssetOp | LiveAssetFolderOp, blobs?: ReadonlyMap<string, Uint8Array>): boolean;
+    handle(op: LiveAssetOp | LiveAssetFolderOp): boolean;
 };
 
 /**
@@ -124,27 +122,46 @@ export type AssetOpSink = {
  * reference is reported, not fatal) and which repairs itself when the slices land.
  */
 export type AssetBlobPort = {
-    /** A completed transfer's bytes, or null when they have not all arrived yet. */
-    take(part: LiveAssetBytePart): Uint8Array | null;
-    /** Ask the room to send the slices this machine is missing. */
-    request(part: LiveAssetBytePart): void;
     /**
-     * How much of one file has landed.
+     * Put one file where the room can read it, and say what it turned out to be.
      *
-     * `slices` is what the author watches arrive. `sent` says the last slice has been seen, which is
-     * what tells a file still in flight from one that is short of a slice: see
-     * {@link LiveBlobInbox.sawLast}.
+     * ⚠ **Called before the operation naming the file is stated, and answered before the file has
+     * gone anywhere.** What it waits for is the server agreeing to hold it, which is the last moment
+     * at which "this will not travel" can be something an author is told rather than an import that
+     * stops halfway on everybody else's screen. The length and the fingerprint come back because
+     * they are measured here - the caller never reads the file.
      */
-    arrived(part: LiveAssetBytePart): { slices: number; sent: boolean };
+    offer(
+        assetId: string,
+        part: LiveAssetBytePart,
+        source: string,
+    ): Promise<{ ok: true; part: LiveAssetBytePart } | { ok: false; problem: TeamTransferProblem }>;
     /**
-     * Stop carrying one file: forget the slices in hand, and stop sending or answering for it.
+     * Start collecting one file into the place it belongs.
+     *
+     * Does nothing on the machine that is sending it: that one already has the file, and the same
+     * question - how far has this got - is answered by its own upload.
+     */
+    collect(assetId: string, part: LiveAssetBytePart, destination: string): void;
+    /** How far one file has got, and whether it has settled. */
+    arrived(part: LiveAssetBytePart): { bytes: number; state: TeamTransferState | "unknown" };
+    /**
+     * Stop carrying one file, and take it off the server.
      *
      * **Both ends, from whichever end asks.** A transfer is cancelled by deleting the record it is
      * for, and that deletion reaches every machine in the room - so the one that is sending learns
-     * about it the same way the ones receiving do, and its send loop stops mid-file rather than
-     * finishing a file nothing will name.
+     * about it the same way the ones receiving do. It stops partway rather than at the end for two
+     * reasons at once: it is told, and the object it was writing into is no longer there.
      */
     abandon(part: LiveAssetBytePart): void;
+    /**
+     * Every file this window is carrying or collecting, by the record it belongs to.
+     *
+     * What the browser's bands are drawn from. Includes transfers this window picked up again from
+     * an earlier session or an earlier run, which have no queued work behind them and would
+     * otherwise arrive with nothing on screen saying so.
+     */
+    inFlight(): ReadonlyMap<string, { bytes: number; total: number }>;
 };
 
 /**
@@ -157,11 +174,10 @@ export type AssetBlobPort = {
  */
 export type AssetTransfer = {
     assetId: string;
-    /** Slices in hand, of the whole record. Bundles count every file in them. */
-    slices: number;
-    total: number;
-    /** What the record's files add up to. */
+    /** Bytes that have moved, of the whole record. Bundles count every file in them. */
     bytes: number;
+    /** What the record's files add up to. */
+    total: number;
 };
 
 /**
@@ -216,14 +232,10 @@ type AssetPayloadWork =
         do: "write";
         assetType: AssetType;
         assetId: string;
-        /** The files still short of a slice. Shrinks as they land. */
+        /** The files that have not landed yet. Shrinks as they do. */
         parts: readonly LiveAssetBytePart[];
         /** Every file this record is made of. Never shrinks: it is what progress is measured out of. */
         whole: readonly LiveAssetBytePart[];
-        /** Slices in hand at the previous attempt. See {@link MAX_BLOB_REPAIRS}. */
-        seen: number;
-        /** How many repairs have been asked for. */
-        asked: number;
     }
     /** A copy of a file every machine already holds. */
     | { do: "copy"; assetType: AssetType; assetId: string; fromAssetId: string }
@@ -244,9 +256,7 @@ function payloadWorkForBytes(assetType: string, assetId: string, bytes: LiveAsse
     }
     switch (bytes.from) {
         case "transfer":
-            // `seen: -1` rather than 0 so the first attempt is never read as a stall: it runs while
-            // the sender is still sending, and asking then would have the whole file sent twice.
-            return [{ do: "write", assetType, assetId, parts: bytes.parts, whole: bytes.parts, seen: -1, asked: 0 }];
+            return [{ do: "write", assetType, assetId, parts: bytes.parts, whole: bytes.parts }];
         case "asset":
             return [{ do: "copy", assetType, assetId, fromAssetId: bytes.assetId }];
         case "trash":
@@ -538,11 +548,13 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     /**
      * State a batch of creations, one operation per shard, carrying whatever files have to travel.
      *
-     * ⚠ **Refused before anything is stated when a file is too large to carry**, rather than after
-     * the room has watched half of it arrive. The escape is the one every size limit here has, and it
-     * is said out loud rather than left to a progress bar that never finishes.
+     * ⚠ **Refused before anything is stated when a file will not travel**, rather than after the
+     * room has watched half of it arrive. There is no size limit here any more - what can refuse is
+     * the server, and only because a project has as much in transit as it may - but the shape of the
+     * answer is unchanged, and has to be: the alternative is an import that stops halfway with
+     * nothing on any screen saying so.
      *
-     * ❗ **One file being too large refuses that file, not the batch.** An import of forty pictures
+     * ❗ **One file being refused refuses that file, not the batch.** An import of forty pictures
      * with one video among them used to state nothing at all: the whole gesture was abandoned at the
      * first file over the limit, and because a creation is offered from inside the importer's own
      * transaction, nothing was left to report it either. The author saw a library that had not
@@ -557,16 +569,15 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         const byType = new Map<AssetType, { record: LiveAssetRecord; bytes: LiveAssetBytes }[]>();
-        const blobs = new Map<string, Uint8Array>();
-        const refused: Asset<AssetType, AssetSource>[] = [];
+        const refused: { record: Asset<AssetType, AssetSource>; problem: TeamTransferProblem }[] = [];
         for (const creation of creations) {
-            const carried = await this.readBytesToCarry(creation.record, creation.bytes, blobs);
-            if (!carried) {
-                refused.push(creation.record);
+            const carried = await this.offerBytesToCarry(creation.record, creation.bytes);
+            if (!carried.ok) {
+                refused.push({ record: creation.record, problem: carried.problem });
                 continue;
             }
             const bucket = byType.get(creation.record.type);
-            const entry = { record: creation.record as unknown as LiveAssetRecord, bytes: carried };
+            const entry = { record: creation.record as unknown as LiveAssetRecord, bytes: carried.bytes };
             if (bucket) {
                 bucket.push(entry);
             } else {
@@ -575,7 +586,7 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         }
 
         for (const [assetType, creates] of byType) {
-            sink.handle({ op: "create-assets", assetType, creates }, blobs);
+            sink.handle({ op: "create-assets", assetType, creates });
         }
         if (refused.length > 0) {
             await this.reportRefusedCreations(refused);
@@ -591,9 +602,11 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * still whatever a video weighs. Leaving it is a project that grows by the size of every import
      * an author tried during a session.
      */
-    private async reportRefusedCreations(refused: readonly Asset<AssetType, AssetSource>[]): Promise<void> {
+    private async reportRefusedCreations(
+        refused: readonly { record: Asset<AssetType, AssetSource>; problem: TeamTransferProblem }[],
+    ): Promise<void> {
         const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        for (const record of refused) {
+        for (const { record } of refused) {
             const path = this.getLocalAssetsManager().getLocalAssetPath(record.id);
             try {
                 // A bundle is a directory and everything else is a file; asking which costs one call
@@ -604,17 +617,20 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
                 console.warn("[AssetsService] could not sweep the file of a refused import", error);
             }
         }
+        // One sentence for the whole batch, and which one depends on why: a project with as much in
+        // transit as it may hold is a different thing to do about than a server that is not
+        // answering, and the two must not be told as one.
+        const quota = refused.every(each => each.problem.kind === "quota");
+        const one = refused.length === 1;
         try {
             this.getContext().services.get<UIService>(Services.UI).notifications.show({
                 type: NotificationType.Warning,
-                message: translate("assets.live.tooLargeTitle"),
+                message: translate("assets.live.refusedTitle"),
                 detail: translate(
-                    refused.length === 1 ? "assets.live.tooLargeDetailOne" : "assets.live.tooLargeDetailMany",
-                    {
-                        name: refused[0].name,
-                        count: String(refused.length),
-                        size: String(Math.floor(LIVE_BLOB_MAX_BYTES / (1024 * 1024))),
-                    },
+                    quota
+                        ? (one ? "assets.live.refusedQuotaOne" : "assets.live.refusedQuotaMany")
+                        : (one ? "assets.live.refusedOne" : "assets.live.refusedMany"),
+                    { name: refused[0].record.name, count: String(refused.length) },
                 ),
             });
         } catch (error) {
@@ -623,37 +639,35 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
-     * Read the files a creation has to carry, and slice-plan them.
+     * Put the files a creation brings where the room can read them.
      *
-     * Answers the bytes description as it will travel, or null when the file is too large for a
-     * session to carry. Nothing is read for the two kinds that travel nothing.
+     * Answers the bytes description as it will travel - the length and the fingerprint filled in
+     * from what was actually measured - or the reason it will not. Nothing happens for the two kinds
+     * that travel nothing, which is most of what a library does.
+     *
+     * ⚠ **Nothing is read here.** The file is on this disk and the main process streams it from
+     * there; what comes back is two numbers about it.
      */
-    private async readBytesToCarry(
+    private async offerBytesToCarry(
         record: Asset<AssetType, AssetSource>,
         bytes: LiveAssetBytes,
-        into: Map<string, Uint8Array>,
-    ): Promise<LiveAssetBytes | null> {
+    ): Promise<{ ok: true; bytes: LiveAssetBytes } | { ok: false; problem: TeamTransferProblem }> {
         if (bytes.from !== "transfer") {
-            return bytes;
+            return { ok: true, bytes };
         }
-        const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
+        const port = this.blobPort;
+        if (!port) {
+            return { ok: false, problem: { kind: "unavailable", detail: "no session is carrying files" } };
+        }
         const parts: LiveAssetBytePart[] = [];
-        let carried = 0;
         for (const part of bytes.parts) {
-            const path = this.payloadPathFor(record.id, part.path);
-            const read = await filesystem.readRaw(path);
-            if (!read.ok) {
-                console.warn(`[AssetsService] could not read ${path} to carry it into the session`);
-                return null;
+            const offered = await port.offer(record.id, part, this.payloadPathFor(record.id, part.path));
+            if (!offered.ok) {
+                return offered;
             }
-            carried += read.data.length;
-            if (carried > LIVE_BLOB_MAX_BYTES) {
-                return null;
-            }
-            into.set(part.transferId, read.data);
-            parts.push({ ...part, size: read.data.length, digest: blobDigest(read.data) });
+            parts.push(offered.part);
         }
-        return { from: "transfer", parts };
+        return { ok: true, bytes: { from: "transfer", parts } };
     }
 
     /**
@@ -689,13 +703,19 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             previous as unknown as Record<string, unknown>,
         );
 
-        const blobs = new Map<string, Uint8Array>();
-        const bytes = await this.readBytesToCarry(live, {
+        const bytes = await this.offerBytesToCarry(live, {
             from: "transfer",
             parts: [{ path: null, transferId: this.mintTransferId(), size: 0, digest: "" }],
-        }, blobs);
-        if (!bytes) {
-            return { success: false, error: "That file is too large to replace during a live session." };
+        });
+        if (!bytes.ok) {
+            return {
+                success: false,
+                error: translate(
+                    bytes.problem.kind === "quota"
+                        ? "assets.live.replaceRefusedQuota"
+                        : "assets.live.replaceRefused",
+                ),
+            };
         }
 
         this.opSink.handle({
@@ -703,8 +723,8 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             assetType: asset.type,
             assetId: asset.id,
             record,
-            bytes,
-        }, blobs);
+            bytes: bytes.bytes,
+        });
         return { success: true, data: applied.data as Asset<T, AssetSource> };
     }
 
@@ -1076,36 +1096,44 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
      * duplicate, a deletion and taking a deletion back are each one small message.
      */
     public transfers(): readonly AssetTransfer[] {
-        const out: AssetTransfer[] = [];
-        for (const work of this.transferring.values()) {
-            let total = 0;
-            let bytes = 0;
-            for (const part of work.whole) {
-                total += blobChunkCount(part.size);
-                bytes += part.size;
-            }
-            out.push({ assetId: work.assetId, slices: this.slicesInHand(work), total, bytes });
+        const out = new Map<string, AssetTransfer>();
+        // What the transport is actually doing, which covers the transfers this window picked up
+        // again from an earlier session or an earlier run - those have no queued work behind them
+        // and would otherwise fill a file in with nothing on screen saying so.
+        for (const [assetId, moving] of this.blobPort?.inFlight() ?? []) {
+            out.set(assetId, { assetId, bytes: moving.bytes, total: moving.total });
         }
-        return out;
+        for (const work of this.transferring.values()) {
+            if (out.has(work.assetId)) {
+                continue;
+            }
+            // Queued and not yet started: a row that is about to fill rather than one that is not
+            // there. Drawn at nothing rather than left out, because the row is the placeholder.
+            let total = 0;
+            for (const part of work.whole) {
+                total += part.size;
+            }
+            out.set(work.assetId, { assetId: work.assetId, bytes: this.bytesInHand(work), total });
+        }
+        return [...out.values()];
     }
 
     /**
-     * How many slices of one record are here, counting the files already written as whole.
+     * How much of one record is here, counting the files already put down as whole.
      *
-     * ⚠ **A file that has been taken out of the inbox reads as zero there**, which is right for the
-     * inbox and wrong for a bar: taking is what completes a file, so counting only what is still in
-     * the inbox would make a bundle's bar fall back every time one of its files finished.
+     * ⚠ **A file that has landed is no longer a transfer the transport reports**, which is right for
+     * the transport and wrong for a band: landing is what completes a file, so counting only what is
+     * still moving would make a bundle's band fall back every time one of its files finished.
      */
-    private slicesInHand(work: AssetPayloadWork & { do: "write" }): number {
+    private bytesInHand(work: AssetPayloadWork & { do: "write" }): number {
         const outstanding = new Set(work.parts.map(part => part.transferId));
-        let slices = 0;
+        let bytes = 0;
         for (const part of work.whole) {
-            const count = blobChunkCount(part.size);
-            slices += outstanding.has(part.transferId)
-                ? Math.min(this.blobPort?.arrived(part).slices ?? 0, count)
-                : count;
+            bytes += outstanding.has(part.transferId)
+                ? Math.min(this.blobPort?.arrived(part).bytes ?? 0, part.size)
+                : part.size;
         }
-        return slices;
+        return bytes;
     }
 
     /**
@@ -1164,59 +1192,37 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
         const local = this.getLocalAssetsManager();
         switch (work.do) {
             case "write": {
+                // ⚠ **Nothing is written here.** The file lands where it belongs by itself - the
+                // main process streams it off the socket into a name beside its own and moves it
+                // into place once every byte of it is there and hashes to what the sender said. So
+                // this is a record of what is still outstanding, and the only thing it does is ask
+                // for what has not been asked for yet.
                 const still: LiveAssetBytePart[] = [];
-                // Read before anything is taken, because taking empties the inbox: what is wanted
-                // here is how far this record had got when the attempt began.
-                const held = this.slicesInHand(work);
-                const short: LiveAssetBytePart[] = [];
-                const ready: { part: LiveAssetBytePart; bytes: Uint8Array }[] = [];
-                // ⚠ Taken first and written afterwards. Taking is what empties the inbox, so a file
-                // whose bytes are in hand reads as zero slices from that moment - and writing while
-                // the record still counted it as outstanding made the bar fall back to nothing for
-                // as long as the disk took.
                 for (const part of work.parts) {
-                    const bytes = this.blobPort?.take(part) ?? null;
-                    if (!bytes) {
-                        still.push(part);
-                        if (this.blobPort?.arrived(part).sent) {
-                            // Every slice was sent and this file is still short of one, so one was
-                            // lost. The only case worth a repair, and the only one that gets one
-                            // while the slices are still flowing.
-                            short.push(part);
-                        }
+                    const where = this.blobPort?.arrived(part) ?? { bytes: 0, state: "unknown" as const };
+                    if (where.state === "done") {
                         continue;
                     }
-                    ready.push({ part, bytes });
-                }
-                if (ready.length > 0) {
-                    this.transferring.set(work.assetId, { ...work, parts: still });
-                }
-                for (const { part, bytes } of ready) {
-                    await this.writePayloadFile(this.payloadPathFor(work.assetId, part.path), bytes);
+                    if (where.state === "failed") {
+                        // It will not arrive. The record stands with no file under it, which the
+                        // reference report already says out loud - and which is a state the library
+                        // has for assets that arrived by every other route as well.
+                        console.warn(`[AssetsService] ${part.transferId} will not arrive`);
+                        continue;
+                    }
+                    if (where.state === "unknown") {
+                        this.blobPort?.collect(
+                            work.assetId,
+                            part,
+                            this.payloadPathFor(work.assetId, part.path),
+                        );
+                    }
+                    still.push(part);
                 }
                 if (still.length > 0) {
-                    // ⚠ Asked for only at the two moments it is worth asking at. See
-                    // {@link shouldAskForRepair} - asking on every slice is what a small test file
-                    // will not show and a real one turns into a room that carries nothing else.
-                    const repair = shouldAskForRepair({
-                        have: held,
-                        seen: work.seen,
-                        sent: short.length > 0,
-                        asked: work.asked,
-                    });
-                    if (repair) {
-                        for (const part of (short.length > 0 ? short : still)) {
-                            this.blobPort?.request(part);
-                        }
-                    }
-                    // The parts that did land are on disk; only the rest is waited for, so a bundle
-                    // of forty files does not start again from the first one every time.
-                    const waiting = {
-                        ...work,
-                        parts: still,
-                        seen: held,
-                        asked: repair ? work.asked + 1 : work.asked,
-                    };
+                    // The files that did land are on disk; only the rest is waited for, so a bundle
+                    // of forty does not start again from the first one every time.
+                    const waiting = { ...work, parts: still };
                     this.waitingPayloads.push(waiting);
                     this.transferring.set(work.assetId, waiting);
                     this.notifyTransfers(false);
@@ -1250,11 +1256,12 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
     }
 
     /**
-     * Try the files that were waiting for slices again.
+     * Try the files that were waiting again.
      *
-     * Called when a slice arrives, because that is the only moment the answer can have changed -
-     * there is no timer here and there must not be one: a transfer that is never completed would
-     * otherwise be a machine asking for it for the rest of the session.
+     * Called when what the transport reports has moved, because that is the only moment the answer
+     * can have changed. ⚠ **Nothing here is on a timer of its own**: a transfer that is never going
+     * to finish is one the transport gives up on and says so, and a queue that woke itself would go
+     * on asking about it for the rest of the session.
      */
     public resumePayloads(): void {
         if (this.waitingPayloads.length === 0) {
@@ -1333,16 +1340,6 @@ export class AssetsService extends Service<AssetsService> implements IAssetServi
             }
         }
         this.notifyTransfers(true);
-    }
-
-    /** Put one file down, making the shard directory first. */
-    private async writePayloadFile(path: string, bytes: Uint8Array): Promise<void> {
-        const filesystem = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        await filesystem.createDir(dirname(path));
-        const written = await filesystem.writeRaw(path, bytes);
-        if (!written.ok) {
-            throw new RendererError(`Failed to write asset payload: ${path}`);
-        }
     }
 
     /** Take one asset's file back out of this machine's trash. */

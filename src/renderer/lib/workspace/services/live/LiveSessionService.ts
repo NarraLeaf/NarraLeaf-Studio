@@ -23,6 +23,13 @@ import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
 import type { LiveSessionDeps, LiveProjectIdentity } from "./liveSessionPorts";
 import { createTeamLiveRooms } from "./teamLiveRooms";
+import {
+    abandonTransfers,
+    collectTransfer,
+    listTransfers,
+    offerTransfer,
+    resumeTransfers,
+} from "@/lib/team/teamTransfer";
 import { IDLE_LIVE_SESSION, type LiveEntryFailure, type LiveSessionView } from "./liveSessionView";
 
 /**
@@ -194,6 +201,19 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             },
             project: () => this.identity(ctx),
             rooms: remoteOrigin => createTeamLiveRooms(remoteOrigin),
+            // Bytes, which the rooms above deliberately do not carry. Everything here names a path
+            // and the main process does the reading, the writing and the connection.
+            transfers: {
+                offer: input => offerTransfer(input),
+                collect: input => collectTransfer(input),
+                abandon: async (remoteOrigin, project, transferIds) => {
+                    await abandonTransfers(remoteOrigin, project, transferIds);
+                },
+                list: () => listTransfers(),
+                resume: async (remoteOrigin, project) => {
+                    await resumeTransfers(remoteOrigin, project);
+                },
+            },
             story: {
                 setSink: sink => story().setOperationSink(sink),
                 listStories: () => story().listStories().map(entry => entry.id),

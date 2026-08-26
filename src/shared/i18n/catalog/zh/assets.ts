@@ -490,9 +490,13 @@ export const assets = {
     live: {
         recordClaimed: "{name} 正在编辑该资产",
         transferring: "该资产已传输 {percent}%",
-        tooLargeTitle: "未导入到会话",
-        tooLargeDetailOne: "{name} 超过 {size} MB，结束会话后再导入",
-        tooLargeDetailMany: "{count} 个文件超过 {size} MB，结束会话后再导入",
+        refusedTitle: "未导入到会话",
+        refusedQuotaOne: "{name} 超过该工程可同时传输的容量，待传输中的文件到达后再导入",
+        refusedQuotaMany: "{count} 个文件超过该工程可同时传输的容量，待传输中的文件到达后再导入",
+        refusedOne: "{name} 无法发送到服务器",
+        refusedMany: "{count} 个文件无法发送到服务器",
+        replaceRefused: "该文件无法发送到服务器",
+        replaceRefusedQuota: "该文件超过该工程可同时传输的容量",
     },
     newTextFile: {
         title: "新建文本文件",

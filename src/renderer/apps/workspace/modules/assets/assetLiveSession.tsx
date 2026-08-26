@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { CLAIM_REASSERT_MS } from "@/lib/live";
+import { transferShare } from "@shared/live/blobs";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
@@ -247,13 +248,11 @@ export function useAssetTransfers(): AssetTransfers {
     return transfers;
 }
 
-/** What a bar is drawn from. A file with no slices in it yet is one whole slice, never a division by zero. */
+/** What a band is drawn from. The arithmetic is shared, so a band is never asked to draw past a row. */
 function shareOf(arriving: readonly AssetTransfer[]): AssetTransfers {
     const out: Record<string, number> = {};
     for (const transfer of arriving) {
-        out[transfer.assetId] = transfer.total <= 0
-            ? 0
-            : Math.min(1, transfer.slices / transfer.total);
+        out[transfer.assetId] = transferShare(transfer.bytes, transfer.total);
     }
     return out;
 }

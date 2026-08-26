@@ -23,6 +23,7 @@ import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferView } from "@shared/types/teamTransfer";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { AssetSetOpSink } from "../assets/AssetSetService";
@@ -329,6 +330,46 @@ export type LiveHistoryPort = {
     forgetStoryScenes(storyId: StoryId): void;
 };
 
+/**
+ * Where a file goes to reach the room, and how far it has got.
+ *
+ * **Everything here names a path and never a byte.** The reading, the writing and the connection
+ * happen in the main process, which is the only one that may reach the network - so what this port
+ * carries is an address, a length and a count. See `@shared/types/teamTransfer`.
+ */
+export type LiveTransferPort = {
+    /**
+     * Put one file where the room can read it.
+     *
+     * ⚠ **Answers before the bytes have gone anywhere**, once the server has agreed to hold it. That
+     * is the last moment at which "this will not travel" is a refusal an author reads rather than an
+     * import that stops halfway on everybody else's screen.
+     */
+    offer(input: {
+        remoteOrigin: string;
+        project: string;
+        transferId: string;
+        label: string;
+        source: string;
+    }): Promise<TeamTransferOutcome>;
+    /** Start collecting one file into the place it belongs. */
+    collect(input: {
+        remoteOrigin: string;
+        project: string;
+        transferId: string;
+        label: string;
+        destination: string;
+        size: number;
+        digest: string;
+    }): Promise<TeamTransferOutcome>;
+    /** Stop these, and take them off the server. What cancelling an import reaches. */
+    abandon(remoteOrigin: string, project: string, transferIds: readonly string[]): Promise<void>;
+    /** Everything this window is carrying or collecting. */
+    list(): Promise<readonly TeamTransferView[]>;
+    /** Pick up whatever this project left half-carried, in an earlier session or an earlier run. */
+    resume(remoteOrigin: string, project: string): Promise<void>;
+};
+
 /** Everything {@link LiveSession} needs from the world. */
 export type LiveSessionDeps = {
     /** This window's instance id on the server, or null when it has not been given one. */
@@ -348,6 +389,7 @@ export type LiveSessionDeps = {
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
+    transfers: LiveTransferPort;
     /**
      * Milliseconds from a source that only moves forward, and a delayed run that can be cancelled.
      *
