@@ -3,6 +3,7 @@ import { ownerRefToIndexKey } from "@/lib/workspace/services/ui-editor/blueprint
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 
 type Props = {
     blueprint: Blueprint;
@@ -18,7 +19,7 @@ export function BlueprintPrivateRevisionBar({ blueprint, localBp, onReopenRevisi
     const { t } = useTranslation();
     // Making a sibling revision writes the blueprint document. Switching which existing revision is
     // active writes too - it is what the game runs - so both are off; the list itself stays readable.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     if (blueprint.owner.kind === "sharedAsset") {
         return (
             <p className="text-2xs text-fg-subtle">{t("blueprint.revisions.sharedAssetSingle")}</p>

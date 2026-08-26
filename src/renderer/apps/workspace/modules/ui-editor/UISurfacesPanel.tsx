@@ -59,6 +59,7 @@ import { getEditorSurfaceAreaBackgroundColor } from "@/lib/ui-editor/runtime/sur
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import { copyUiSurface, pasteUiSurface } from "@/lib/ui-editor/commands/uiSurfaceCommands";
 import { useUiSurfaceClipboardPresence } from "@/lib/ui-editor/commands/useUiSurfaceClipboardSync";
+import { interfaceDocumentFreezeScope } from "./uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const BLUEPRINT_ENTRY_TAB_PREFIX = "blueprint-entry:";
@@ -157,7 +158,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
     const canPasteSurface = useUiSurfaceClipboardPresence(Boolean(documentService));
     // Renaming, duplicating and deleting a surface write the interface document. Opening one - and the
     // filter, the search and the previews - do not.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     /**
      * The freeze as it stands NOW, for the three flows that put a dialog between the author's click
      * and the write.

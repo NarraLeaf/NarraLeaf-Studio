@@ -78,6 +78,7 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
+import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -485,7 +486,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Surface",
@@ -536,7 +537,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Widget",
@@ -590,7 +591,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Component Widget",

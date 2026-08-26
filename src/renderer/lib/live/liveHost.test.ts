@@ -43,6 +43,17 @@ import {
     moveBlockInScene,
     updateBlockPayload,
 } from "@/lib/workspace/services/story/storyModel";
+import { applyUIGraphParts, uiBlueprintDigest, uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import {
+    applyUIParts,
+    uiHasElement,
+    uiOwningSurfaceIds,
+    uiPartsTouched,
+    uiShellDigest,
+    uiSurfaceDigest,
+} from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { CLAIM_REASSERT_MS, DEFAULT_CLAIM_TIMEOUT_MS, LiveClaimStore } from "./claims";
 import { LiveHost, type LiveOutbound } from "./liveHost";
 
@@ -94,6 +105,10 @@ type World = {
     assets: Record<string, Record<string, LiveAssetRecord>>;
     /** The folder shards this session carries, by section. */
     folders: Record<string, Record<string, LiveAssetFolder>>;
+    /** The interface document, the seventh a session carries. Mutated by the applier below. */
+    ui: UIDocument;
+    /** The blueprints beside it. */
+    uiGraphs: UIGraphDocument;
     /** The mixer and the asset sets, two of the three tables a session always carries. */
     tracks: { id: string }[];
     sets: { id: string }[];
@@ -104,6 +119,85 @@ type World = {
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
+
+/** The interface's one editable element, moved. What every delta in these tests states. */
+function movedButton(): unknown {
+    return {
+        id: "el-button",
+        type: "nl.button",
+        name: "Start",
+        parentId: "el-root",
+        childrenIds: [],
+        layout: { x: 400, y: 10, width: 100, height: 40 },
+        props: {},
+    };
+}
+
+/** Both interface documents are carried by every host in these tests. */
+const INTERFACE = { carried: true };
+
+/** A Surface with one root and one child, which is as much interface as a decision ever looks at. */
+function makeUIDocument(): UIDocument {
+    return {
+        schemaVersion: 11,
+        id: "uidoc",
+        name: "Interface",
+        surfaces: [{
+            id: "surface-1",
+            name: "Title",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 1920, height: 1080 },
+            rootElementId: "el-root",
+        }],
+        components: [],
+        elements: {
+            "el-root": element("el-root", null, ["el-button"]),
+            "el-button": element("el-button", "el-root", []),
+        },
+    } as unknown as UIDocument;
+}
+
+function element(id: string, parentId: string | null, childrenIds: string[]): unknown {
+    return {
+        id,
+        type: parentId === null ? "nl.root" : "nl.button",
+        name: id,
+        parentId,
+        childrenIds,
+        layout: { x: 0, y: 0, width: 10, height: 10 },
+        props: {},
+    };
+}
+
+function makeUIGraphs(): UIGraphDocument {
+    return {
+        schemaVersion: 2,
+        graphs: {},
+        blueprintDocument: {
+            schemaVersion: 10,
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Widget",
+                    owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            eventIds: ["ev-1"],
+                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                            functionIds: [],
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        },
+    } as unknown as UIGraphDocument;
+}
 
 /** The languages every host in these tests carries libraries for. */
 const LOCALES = { translations: ["ja"], voice: ["ja"] };
@@ -196,6 +290,8 @@ function makeWorld(options: {
     const takes: World["takes"] = { ja: { ...(options.takes ?? {}) } };
     const assets: World["assets"] = { image: { ...(options.assets ?? {}) }, audio: {} };
     const folders: World["folders"] = { image: { ...(options.folders ?? {}) }, media: {} };
+    const ui = makeUIDocument();
+    const uiGraphs = makeUIGraphs();
     // One of each is enough for the two refusals these documents have: the host asks only whether a
     // record is there, and everything else about them is last-writer-wins.
     const tracks: World["tracks"] = [{ id: "bgm" }];
@@ -213,6 +309,8 @@ function makeWorld(options: {
         takes,
         assets,
         folders,
+        ui,
+        uiGraphs,
         tracks,
         sets,
         variables,
@@ -228,8 +326,11 @@ function makeWorld(options: {
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
             hasVariable: variableId => variables[variableId] !== undefined,
             assetCategories: ASSET_CATEGORIES,
+            ui: INTERFACE,
             registries: REGISTRIES,
             readAssetFolders: category => folders[category] ?? null,
+            hasUIElement: ref => uiHasElement(ui, ref),
+            hasBlueprint: blueprintId => uiHasBlueprint(uiGraphs, blueprintId),
             hasAudioTrack: trackId => tracks.some(track => track.id === trackId),
             hasAssetSet: setId => sets.some(set => set.id === setId),
             digestOf: scope => {
@@ -252,6 +353,15 @@ function makeWorld(options: {
                 if (scope.of === "asset-groups") {
                     return assetsDigest(folders[scope.category] ?? null);
                 }
+                if (scope.of === "ui-surface") {
+                    return uiSurfaceDigest(ui, scope.surfaceId);
+                }
+                if (scope.of === "ui-shell") {
+                    return uiShellDigest(ui);
+                }
+                if (scope.of === "ui-blueprint") {
+                    return uiBlueprintDigest(uiGraphs, scope.blueprintId);
+                }
                 if (scope.of === "variable") {
                     return variableEntryDigest(variables[scope.variableId] ?? null);
                 }
@@ -262,7 +372,26 @@ function makeWorld(options: {
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, translations, takes, assets, folders, variables, keys, op);
+                const ownersBefore = uiOwningSurfaceIds(ui);
+                apply(scenes, story, cast, translations, takes, assets, folders, ui, uiGraphs, variables, keys, op);
+                // The interface reports its own units, because which Surface an element is under is
+                // a question about the tree rather than about the message - see `uiPartsTouched`.
+                if (op.op === "write-ui") {
+                    const touched = uiPartsTouched(ownersBefore, ui, op.parts);
+                    return [
+                        ...touched.surfaces.map(surfaceId => ({ of: "ui-surface", surfaceId }) as const),
+                        ...touched.components.map(componentId => ({ of: "ui-component", componentId }) as const),
+                        ...(touched.shell ? [{ of: "ui-shell" } as const] : []),
+                    ];
+                }
+                if (op.op === "write-ui-graphs") {
+                    const touched = uiGraphPartsTouched(op.parts);
+                    return [
+                        ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+                        ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+                    ];
+                }
+                return [];
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -290,6 +419,8 @@ function apply(
     takes: World["takes"],
     assets: World["assets"],
     folders: World["folders"],
+    ui: UIDocument,
+    uiGraphs: UIGraphDocument,
     variables: World["variables"],
     keys: World["keys"],
     op: LiveOp,
@@ -458,6 +589,12 @@ function apply(
         case "reorder-chapters":
             story.chapterIds = [...op.chapterIds];
             return;
+        case "write-ui":
+            applyUIParts(ui, op.parts);
+            return;
+        case "write-ui-graphs":
+            applyUIGraphParts(uiGraphs, op.parts);
+            return;
     }
 }
 
@@ -503,6 +640,10 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "assets", assetType: (op as { assetType: string }).assetType };
         case "asset-groups":
             return { doc: "asset-groups", category: (op as { category: string }).category };
+        case "ui":
+            return { doc: "ui" };
+        case "ui-graphs":
+            return { doc: "ui-graphs" };
         // One of each per project, so the kind is the whole address.
         case "dictionary":
             return { doc: "dictionary" };
@@ -1119,6 +1260,22 @@ describe("the claim check", () => {
                 bytes: { from: "trash" },
             },
             "delete-assets": { op: "delete-assets", assetType: "image", assetIds: ["a1"] },
+            "write-ui": {
+                op: "write-ui",
+                parts: { elements: { "el-button": movedButton() as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            },
+            "write-ui-graphs": {
+                op: "write-ui-graphs",
+                parts: {
+                    graphs: {
+                        "bp-1": {
+                            events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                        },
+                    },
+                },
+                updates: ["bp-1"],
+            },
             "update-variable": { op: "update-variable", variableId: "v1", entry: variable("v1", "Gold") },
             "delete-variable": { op: "delete-variable", variableId: "v1" },
             "set-key": { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } },
@@ -1140,6 +1297,92 @@ describe("the claim check", () => {
             expect(refusal.reason, kind).toBe("row-claimed");
             expect(world.applied, kind).toHaveLength(0);
         }
+    });
+});
+
+describe("the interface and the blueprints a session carries", () => {
+    it("writes the records a delta names, and removes the ones it says are gone", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        expect(effect.seq).toBe(1);
+        expect((world.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+
+        send(world, { op: "write-ui", parts: { elements: { "el-button": null } } });
+        expect(world.ui.elements["el-button"]).toBeUndefined();
+    });
+
+    it("refuses a delta whose element is gone, so a deletion cannot be undone by a drag", () => {
+        // ⚠ Nothing in a delta's shape tells a new element from one somebody deleted while it was
+        // being dragged, which is why the sender says which of its records it was CHANGING. Applied
+        // blind, the second of those puts a deleted element back with every machine agreeing about
+        // it - the one failure a digest cannot see.
+        const world = makeWorld();
+        send(world, { op: "write-ui", parts: { elements: { "el-button": null } } });
+
+        const refusal = asRefusal(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        expect(refusal.reason).toBe("ui-element-gone");
+        expect(world.ui.elements["el-button"]).toBeUndefined();
+    });
+
+    it("takes a delta that creates an element, because a creation names an id nobody has", () => {
+        const world = makeWorld();
+        const created = { ...(movedButton() as Record<string, unknown>), id: "el-new", name: "New" };
+        expect(asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-new": created as never } },
+        })).seq).toBe(1);
+        expect(world.ui.elements["el-new"]).toBeDefined();
+    });
+
+    it("fingerprints the Surface an element is under, not the whole document", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        // The applier reports the units; the host stamps each of them. `opDigestScope` answers null
+        // for this verb on purpose - which Surface an element is under is a question about the tree.
+        expect(effect.digests?.map(digest => digest.scope)).toEqual([{ of: "ui-surface", surfaceId: "surface-1" }]);
+    });
+
+    it("refuses a blueprint delta whose blueprint is gone", () => {
+        const world = makeWorld();
+        send(world, { op: "write-ui-graphs", parts: { blueprints: { "bp-1": null } } });
+
+        const refusal = asRefusal(send(world, {
+            op: "write-ui-graphs",
+            parts: { graphs: { "bp-1": { events: { "ev-1": { nodes: {} } } } } },
+            updates: ["bp-1"],
+        }));
+        expect(refusal.reason).toBe("ui-blueprint-gone");
+    });
+
+    it("writes one node without touching the rest of the graph", () => {
+        const world = makeWorld();
+        asEffect(send(world, {
+            op: "write-ui-graphs",
+            parts: {
+                graphs: {
+                    "bp-1": {
+                        events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                    },
+                },
+            },
+            updates: ["bp-1"],
+        }));
+        const blueprint = world.uiGraphs.blueprintDocument.blueprints["bp-1"];
+        const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+        expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
+        expect(graph?.edges).toEqual([]);
     });
 });
 
@@ -1842,6 +2085,8 @@ describe("the project registries a session carries", () => {
             readCharacter: () => null,
             hasAsset: () => false,
             hasVariable: () => true,
+            hasUIElement: () => true,
+            hasBlueprint: () => true,
             readAssetFolders: () => null,
             digestOf: () => null,
             applyOp: () => undefined,

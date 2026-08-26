@@ -214,6 +214,8 @@ function makeHost(claims?: LiveClaimStore): { host: LiveHost; scene: StoryScene 
         hasAsset: () => false,
         hasVariable: () => false,
         readAssetFolders: () => null,
+        hasUIElement: () => false,
+        hasBlueprint: () => false,
         digestOf: () => null,
         applyOp: op => {
             if (op.op === "delete-block") {
