@@ -200,9 +200,10 @@ function VariableRowEditor(props: {
                 )}
                 onClick={props.onDelete}
                 {...freeze.writes(
-                    // ⚠ Off for the length of a live session, and NOT because of the freeze: this
-                    // document is writable throughout one. Removing a variable also empties the
-                    // blueprint nodes that named it, and that write is not one a session carries, so
+                    // ⚠ Off in the sessions that cannot carry a removal, and NOT because of the
+                    // freeze: this document is writable throughout one. Removing a variable also
+                    // empties the blueprint nodes that named it, which an ordinary session derives
+                    // from the effect - and a window holding no blueprint document cannot, so there
                     // the act is refused whole rather than half applied. See `variablesLiveSession`.
                     !removable || held,
                     held ? heldTip : removable ? t("storyVars.row.delete") : t("storyVars.row.deleteInSession"),

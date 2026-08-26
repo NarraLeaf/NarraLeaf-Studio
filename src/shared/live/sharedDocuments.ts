@@ -113,13 +113,30 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  *    the room opens; and renaming the project renames the file, so the writable path would move
  *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
  *
- * ⚠ **`variables.json` being writable does not mean every gesture on it travels.** Removing a
- * variable also clears the params of every blueprint node that named it, which is a write to
- * `editor/ui/uigraphs.json` - a document this table does not carry - so the vocabulary has no verb
- * for it and `VariableRegistryService` refuses the gesture for as long as a sink is installed. That
- * is the same shape the asset library is already in, and it is the safe half of the invariant: the
- * owning service stops what cannot travel, rather than the write boundary allowing an edit that
- * would land on one machine and nowhere else.
+ * ⚠ **A story document being writable means every gesture on it travels, and that is a wider claim
+ * than "the rows travel".** The vocabulary began with the rows and grew to the outline for exactly
+ * this reason: creating a scene, deleting one, filing it in a chapter, editing what the scene says
+ * about itself, its snapshots, and making, renaming or removing a chapter are all writes to the same
+ * file - so while they had no verbs they were silent local changes on a path the boundary allowed,
+ * with no digest over any of them. They have verbs now. The one gesture that does NOT is
+ * `StoryService.replaceScene` - the whole-scene write a script import and a NarraLang commit end in -
+ * and it is refused by the service that owns it, for the reason `AssetsService` refuses an import:
+ * what it states is "here is the scene now", which is whole-document last-writer-wins over the
+ * largest unit in the project.
+ *
+ * ⚠ **The story LIBRARY is not here, and its absence is the invariant working.** Making, removing or
+ * re-pointing a story writes `editor/story/stories.json` and a document at a path this table does not
+ * name, so the boundary refuses both - which is the honest half, and it is why the set is built from
+ * the stories the project had when the room opened rather than from the ones it has now.
+ *
+ * ⚠ **`variables.json` and the blueprint document are one gesture apart.** Removing a variable also
+ * clears the params of every blueprint node that named it, which is a write to
+ * `editor/ui/uigraphs.json`. While that document was not carried the gesture had nowhere to go and
+ * `VariableRegistryService` refused it for as long as a sink was installed; carried, the sweep is
+ * derived - every machine computes the same nodes from the same effect - and the removal travels.
+ * The refusal remains for the session that does not hold both interface documents, which is the safe
+ * half of the invariant: the owning service stops what cannot travel, rather than the write boundary
+ * allowing an edit that would land on one machine and nowhere else.
  *
  * ⚠ **The Gallery's catalog is not here, and it is the harmless half of the trade for a sharp
  * reason.** It lives in a plugin store (`editor/services/narraleaf.gallery.items.json`) and the only

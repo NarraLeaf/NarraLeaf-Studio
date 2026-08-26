@@ -23,8 +23,13 @@ import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
     StoryBlockId,
+    StoryChapter,
+    StoryChapterId,
     StoryId,
+    StoryScene,
+    StorySceneBgm,
     StorySceneId,
+    StorySceneSnapshot,
 } from "@shared/types/story";
 
 /**
@@ -171,7 +176,149 @@ export type LiveStoryOp =
     | { op: "set-entry-scene"; sceneId: StorySceneId | null }
     | { op: "rename-story"; name: string }
     /** Chapters in their new order, named by id. */
-    | { op: "reorder-chapters"; chapterIds: readonly string[] };
+    | { op: "reorder-chapters"; chapterIds: readonly string[] }
+    /**
+     * Add a scene, whole, filed in one chapter.
+     *
+     * **The scene travels entire, the way `insert-block` carries its block**, and for a sharper
+     * reason than a block has. Three things about a new scene are minted rather than derived: its id,
+     * its runtime name - which falls back to `scene_<uuid>` for a title with no latin letters in it -
+     * and, in a story with no chapters at all, the chapter it is filed under. A verb that named only
+     * what the author typed would have every machine mint different ids for one scene, which is two
+     * scenes with one name and no way back to one.
+     *
+     * It is also the inverse of `delete-scene`, which is the other reason it carries a whole scene
+     * rather than an empty one: putting a scene back has to put its rows back with it, in one
+     * operation. A verb that restored the shell would leave an empty scene on every screen and look
+     * as though the undo had worked.
+     *
+     * ⚠ **A scene with enough rows in it will not fit in one message.** That is refused by name
+     * (`too-large`) and never split, with {@link LiveCharacterOp}'s record: half a scene arriving is
+     * a scene nobody wrote, agreed upon by everybody.
+     */
+    | {
+          op: "create-scene";
+          scene: StoryScene;
+          /** The chapter it is filed under, or null for a scene no chapter claims. */
+          chapterId: StoryChapterId | null;
+          /** The sibling it sits in front of inside that chapter, or null for the end of it. */
+          beforeSceneId: StorySceneId | null;
+          /**
+           * The chapter to make first, when the one named is not there.
+           *
+           * Carried because its id is minted too: creating a scene in a story with no chapters makes
+           * one, and a machine that minted its own would file the scene in a chapter nobody else has.
+           */
+          chapter?: StoryChapter;
+          /**
+           * Make this scene the story's entry.
+           *
+           * Absent is the ordinary case, and the applier still derives the rule the panel has always
+           * had - a story with no entry takes the first scene made in it. Present is an inverse
+           * putting back an entry that a deletion moved, which is not derivable from the document
+           * afterwards: by then the pointer is somewhere else and nothing says where it was.
+           */
+          entry?: boolean;
+      }
+    /**
+     * Remove a scene, and everything in it.
+     *
+     * One operation because it is one gesture, with `delete-blocks`. What it destroys is not
+     * derivable afterwards, so the record of what it displaced holds the scene entire - its rows, its
+     * chapter, its position in that chapter and whether it was the entry - and the inverse is a
+     * `create-scene` of all of it.
+     */
+    | { op: "delete-scene"; sceneId: StorySceneId }
+    /**
+     * Replace what a scene says about itself, apart from its rows.
+     *
+     * **The scene's fields rather than the scene**, which is the difference between this and
+     * `update-character`: a scene's rows are the largest thing in the project and every one of them
+     * has verbs already, so a whole-record verb here would send a hundred rows of prose to change a
+     * background. The fields it does carry are stated whole for `update-block`'s reason - the
+     * inspector commits them together, and clearing one has to be expressible.
+     *
+     * ⚠ **`rename-scene` is still its own verb and is not folded into this one.** They are two
+     * gestures - the outline's rename box and the scene overview's inspector - and the outline's is
+     * the one an author uses while the overview is not open at all.
+     */
+    | { op: "update-scene"; sceneId: StorySceneId; fields: LiveSceneFields }
+    /**
+     * File a scene in a chapter, in front of the sibling named or last when that is null.
+     *
+     * Its own inverse, with `move-block`: the operation states a destination, and where the scene
+     * came from is what the record of the displaced state keeps.
+     */
+    | {
+          op: "move-scene";
+          sceneId: StorySceneId;
+          chapterId: StoryChapterId | null;
+          beforeSceneId: StorySceneId | null;
+      }
+    /**
+     * The scene's snapshots, as they now stand.
+     *
+     * One verb for five gestures - add one, rename one, delete one, set a value, clear a value -
+     * because `StoryService` reaches them through one mutator over the whole list, which is the point
+     * every snapshot edit passes through. `set-dictionary-options` is the same shape one document
+     * along and is stated the same way for the same reason.
+     *
+     * Not claimed: a snapshot is a name and a table of numbers picked from closed sets, so the loser
+     * of a race loses a click. See {@link CLAIMED_OPS}.
+     */
+    | { op: "set-scene-snapshots"; sceneId: StorySceneId; snapshots: readonly StorySceneSnapshot[] }
+    /**
+     * Add a chapter, in front of the sibling named or last when that is null.
+     *
+     * The chapter travels whole for `create-scene`'s reason: its id is minted. `scenes` is what makes
+     * this the inverse of `delete-chapter` - that deletion takes every scene of the chapter with it,
+     * so putting the chapter back has to put them back too, in one operation.
+     */
+    | {
+          op: "create-chapter";
+          chapter: StoryChapter;
+          beforeChapterId: StoryChapterId | null;
+          /** The scenes to put back with it. Absent for an ordinary creation, which has none. */
+          scenes?: readonly StoryScene[];
+          /** The entry scene to restore, for the inverse of a deletion that moved it. */
+          entry?: StorySceneId;
+      }
+    /** Rename one chapter. Last-writer-wins with a scene's name - see {@link CLAIMED_OPS}. */
+    | { op: "rename-chapter"; chapterId: StoryChapterId; name: string }
+    /**
+     * Remove a chapter **and every scene in it**.
+     *
+     * The widest structural deletion the story has, and one operation for `delete-blocks`' reason:
+     * the cascade is what the author asked for, and a run of deletions would draw every intermediate
+     * document on every other screen in the room.
+     *
+     * ⚠ Its inverse carries every scene the cascade destroyed, so a large chapter can be one that
+     * will not fit in a message - answered as `too-large` when the undo is sent, never as half a
+     * chapter coming back.
+     */
+    | { op: "delete-chapter"; chapterId: StoryChapterId };
+
+/**
+ * What a scene says about itself, apart from its rows.
+ *
+ * Named rather than spelled inline because two things state it - the operation and the record of what
+ * that operation displaced - and two spellings of one shape are two chances for them to disagree.
+ *
+ * `runtimeName` travels beside `name` because it is derived from it only when it is empty, and only
+ * on the machine that did the editing: a receiver that derived its own would compile a different
+ * scene name into the game from the one every other machine compiled.
+ *
+ * ⚠ **An absent field is an absent key, never `undefined`.** The canonical encoder refuses a property
+ * whose value is `undefined`, so a scene cleared that way would be one no receiving machine could
+ * save - see `VariableRegistryService.setEntryDefault`, which learned it one document along.
+ */
+export type LiveSceneFields = {
+    name: string;
+    runtimeName: string;
+    description?: string;
+    defaultBackgroundAssetId?: string;
+    bgm?: StorySceneBgm;
+};
 
 /** One dialogue row, addressed across the whole project. What a rebind names. */
 export type LiveDialogueRowRef = {
@@ -981,15 +1128,18 @@ export type LiveAssetSetOp =
  * deliberately never touches - so the name is a label and changing it rewrites no other document.
  * There is nothing here for a receiver to derive.
  *
- * ⚠ **The AUTHORED deletion is not here, and `delete-variable` is not it.** Removing a variable the
- * author chose to remove does not only take the entry: it clears the `savedVariableId` /
- * `persistentVariableId` params of every `Get`/`Set` node that named it, which is a write to
- * `editor/ui/uigraphs.json` - a document a session does not carry and the write boundary refuses. A
- * verb that took the entry and left those nodes behind would give every author in the room a
- * blueprint that fails at runtime with nothing on screen saying why. So `VariableRegistryService`
- * refuses that gesture for as long as a sink is installed, exactly as `AssetsService` refuses an
- * import: the act that cannot travel whole is stopped at the service that owns it, rather than left
- * to a boundary that would let half of it through.
+ * ⚠ **Removing one reaches a second document, and that reach is DERIVED rather than carried.** It
+ * clears the `savedVariableId` / `persistentVariableId` params of every `Get`/`Set` node that named
+ * it, which is a write to `editor/ui/uigraphs.json`. That is not something the operation states:
+ * every machine works out the same nodes from the same registry and the same blueprints, which is the
+ * criterion that decides every piece of derived work here. What it does mean is that the sweep has to
+ * be fingerprinted - `LiveSessionService.applyVariableOp` reports the blueprints it rewrote, and they
+ * reach the effect's digests beside the entry's own.
+ *
+ * ⚠ **A session that does not carry the blueprint document refuses the gesture instead**, at
+ * `VariableRegistryService` and exactly as `AssetsService` refuses an import: `editor/variables.json`
+ * IS writable during a session, so a deletion reaching the write boundary would be allowed and would
+ * land on one machine only. The act that cannot travel whole is stopped at the service that owns it.
  */
 export type LiveVariableOp =
     /**
@@ -1004,15 +1154,12 @@ export type LiveVariableOp =
     /** Replace one entry. The whole entry - see {@link LiveVariableOp}. */
     | { op: "update-variable"; variableId: string; entry: VariableRegistryEntry }
     /**
-     * Take one entry back out.
+     * Take one entry back out, and let every machine clear the nodes that named it.
      *
-     * ⚠ **Reachable only as the inverse of `create-variable`**, the way `restore-asset-folder` is
-     * only reachable as the inverse of a folder deletion - and here that restriction is what makes
-     * the verb correct rather than merely tidy. An author's own deletion has to sweep the blueprint
-     * nodes that named the variable, and a session cannot carry that write; a variable *created
-     * inside this session* has no such nodes, because blueprint editing is frozen for the length of
-     * one, so there is provably nothing to sweep. Undo therefore takes back exactly what the
-     * creation added, and nothing else.
+     * An author's own removal and the inverse of a `create-variable` are one verb, because they are
+     * one act on this document: the entry leaves, and the sweep that follows it is derived - see
+     * {@link LiveVariableOp}. Undoing a creation made inside the session sweeps nothing, which is
+     * not a special case but the ordinary answer for a variable no node has had time to name.
      *
      * Claimed with `delete-character`: somebody may have opened the row and started typing a name
      * into it between the creation and the undo.
@@ -1204,6 +1351,14 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return "story";
         case "create-character":
         case "update-character":
@@ -1535,6 +1690,17 @@ export function opBlockId(op: LiveStoryOp): StoryBlockId | null {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // The structural verbs are about a scene, a chapter or the outline - never about one row,
+        // even where they destroy hundreds of them. A claim is over a row somebody is writing, and
+        // deleting a scene is answered by the scene's own check rather than by the rows inside it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -1571,6 +1737,17 @@ export function opBlockIds(op: LiveStoryOp): readonly StoryBlockId[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Empty with the rest of the structural verbs - see {@link opBlockId}. A scene deletion does
+        // remove rows, and none of them is named here: the rows are not what the gesture is about,
+        // and a claim check over them would refuse a scene because somebody left a caret in it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return [];
     }
 }
@@ -1601,8 +1778,22 @@ export function opSceneId(op: LiveStoryOp): StorySceneId | null {
             return onlySceneOf(op.edits);
         case "set-entry-scene":
             return op.sceneId;
+        // The scene a structural verb is about, when it is about one. `create-scene` names it
+        // through the record it carries, which is the only place the id exists at all.
+        case "create-scene":
+            return op.scene.id;
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+            return op.sceneId;
         case "rename-story":
         case "reorder-chapters":
+        // The chapter verbs are about the outline. `delete-chapter` reaches every scene in the
+        // chapter and still names none of them: there is no single scene for a digest to be of.
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -1782,6 +1973,14 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return opBlockIds(op).map(storyRowClaimKey);
         case "update-character":
         case "delete-character":
@@ -2037,11 +2236,30 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
             const sceneId = opSceneId(op);
             return sceneId === null ? null : { of: "scene", storyId, sceneId };
         }
+        // The scene a structural verb changes the content of. A creation's scene arrives whole, so
+        // the fingerprint proves the rows came with it; the three edits below change fields the
+        // digest covers.
+        case "create-scene":
+            return { of: "scene", storyId, sceneId: op.scene.id };
+        case "update-scene":
+        case "set-scene-snapshots":
+            return { of: "scene", storyId, sceneId: op.sceneId };
         // Names a scene it does not change: the pointer moved, the scene did not, and a digest of it
         // would be a fingerprint of something this operation cannot have altered.
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Filing a scene changes the chapter that holds it, not a word inside it - `move-block`'s
+        // answer one level up.
+        case "move-scene":
+        // ⚠ Null because there is nothing left to fingerprint. A scene this machine no longer holds
+        // hashes to nothing rather than to a value (see `LiveSession.digestOf`), so a scope here
+        // would be a digest that is always absent - and the outline the two verbs below change is
+        // not a unit any scope covers, exactly as `reorder-chapters` has never been.
+        case "delete-scene":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
         case "create-character":
             return { of: "character", characterId: op.character.profile.id };
@@ -2288,6 +2506,16 @@ export type LiveRefusalReason =
     | "anchor-gone"
     /** The scene is gone. */
     | "scene-gone"
+    /**
+     * The chapter is gone.
+     *
+     * The outline's answer to `scene-gone`, and needed as soon as a scene can be filed at all: a
+     * creation names the chapter it goes in, and a chapter somebody deleted while the author was
+     * typing a scene name is a place the scene cannot land. Applying anyway would put the scene in a
+     * document that draws it nowhere - `scenes` holds it and no chapter claims it - which reads on
+     * every screen as a scene that was never created.
+     */
+    | "chapter-gone"
     /**
      * The character record is gone.
      *

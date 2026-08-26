@@ -122,6 +122,9 @@ export const story = {
         refusedRowGone: "That line is gone. The change was not applied.",
         refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
         refusedSceneGone: "That scene is gone. The change was not applied.",
+        // The outline's answer to a scene that has gone. A scene filed in no chapter is one the
+        // outline never draws, so the request is refused rather than half applied.
+        refusedChapterGone: "That chapter is gone. The change was not applied.",
         refusedNotInSession: "This machine is no longer in the session.",
         // The cast's answer to a line that has gone. Says the character is gone and nothing about
         // the panel: what the author typed into it is theirs and stays where it is.
@@ -158,8 +161,8 @@ export const story = {
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That change is too large to share in a live session. It was not applied.",
-        // The session does not carry that document at all - a story other than the one the room is
-        // about, or a kind of document a session cannot pass between machines yet.
+        // The session does not carry that document at all - a story that was not in the project when
+        // the room opened, or a kind of document a session cannot pass between machines yet.
         refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
         refusedUnknownOp: "The session did not take that change.",
         // Why the last undo or redo sent nothing. Each names the state that leaves the step
@@ -169,6 +172,11 @@ export const story = {
         undoSceneGone: "That scene is gone.",
         undoRowGone: "That line is gone.",
         undoRowRestored: "That line is in the scene again.",
+        // The structural steps. Each names the state that leaves the deletion with nothing to put
+        // back: the scene or the chapter is already there, or the place it belonged in is not.
+        undoSceneRestored: "That scene is in the story again.",
+        undoChapterGone: "That chapter is gone.",
+        undoChapterRestored: "That chapter is in the story again.",
         undoContainerGone: "The block that line was in is gone.",
         undoAnchorGone: "Where that line moved from is gone.",
         undoContainerFilled: "That block has lines in it now.",

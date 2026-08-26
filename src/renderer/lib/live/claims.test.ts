@@ -210,6 +210,7 @@ function makeHost(claims?: LiveClaimStore): { host: LiveHost; scene: StoryScene 
         self: "host",
         stories: [STORY],
         readScene: (_storyId, id) => (id === scene.id ? scene : null),
+        readChapter: () => null,
         readCharacter: () => null,
         hasAsset: () => false,
         hasVariable: () => false,

@@ -194,11 +194,15 @@ function createHarness() {
                 registry.entries[id].defaultValue = defaultValue;
             }
         },
-        // True outside a live session, which is what this harness stands for. Inside one the real
-        // service answers false: removing a variable also empties the blueprint nodes that named it,
-        // and a session does not carry the blueprint document.
+        // True outside a live session, which is what this harness stands for. The real service
+        // answers false only where nothing can carry the node sweep a removal implies.
         canDeleteEntry() {
             return true;
+        },
+        /** Whether a live session owns this registry. Flipped by the one test that is about that. */
+        shared: false,
+        isShared() {
+            return this.shared;
         },
         deleteEntry(id: string) {
             delete registry.entries[id];
@@ -812,5 +816,76 @@ describe("LocalBlueprintService ensure* helpers", () => {
         const afterCreate = graphMutations.count;
         expect(service.ensureWidgetMain("surface-a", "button-a", "Button", "nl.button")).toBe(id);
         expect(graphMutations.count).toBe(afterCreate);
+    });
+});
+
+describe("removing a registry variable inside a live session", () => {
+    it("states the removal and leaves the node sweep to the effect", () => {
+        // ⚠ The sweep is DERIVED: the effect says the variable is gone, and every machine works out
+        // the same nodes from the same blueprints. Doing it here as well would be a second write for
+        // work the effect already implies - and, on a host, a second message and a second undo step.
+        const { service, registryService, graphDocument } = createHarness();
+        const saved = service.createSavedRegistryVariable("bp-main", { name: "Flag", valueType: "boolean" });
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        bp.program.graphs.events.onClick = {
+            id: "onClick",
+            graph: {
+                nodes: {
+                    getSaved: {
+                        id: "getSaved",
+                        type: BLUEPRINT_NODE_TYPE_SAVED_GET,
+                        params: { savedVariableId: saved.id },
+                    },
+                },
+                edges: [],
+            },
+        };
+        registryService.shared = true;
+
+        expect(service.deleteSavedRegistryVariable("bp-main", saved.id)).toBe(true);
+
+        expect(registryService.listEntries()).toEqual([]);
+        // Untouched here. The applier that takes the effect is what clears it, on this machine and
+        // on every other, from one statement.
+        expect(bp.program.graphs.events.onClick?.graph?.nodes?.getSaved?.params?.savedVariableId).toBe(saved.id);
+    });
+
+    it("sweeps both scopes when an effect arrives, whichever declared the variable", () => {
+        // The applier runs after the entry has left the registry, so there is nothing left to ask
+        // about its scope - and an id belongs to one entry, so clearing both is exact.
+        const { service, graphDocument } = createHarness();
+        const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
+        if (bp.program.kind !== "graph") {
+            throw new Error("Expected graph blueprint");
+        }
+        bp.program.graphs.events.onClick = {
+            id: "onClick",
+            graph: {
+                nodes: {
+                    getSaved: {
+                        id: "getSaved",
+                        type: BLUEPRINT_NODE_TYPE_SAVED_GET,
+                        params: { savedVariableId: "v1", [BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]: "boolean" },
+                    },
+                    setPersistent: {
+                        id: "setPersistent",
+                        type: BLUEPRINT_NODE_TYPE_PERSISTENT_SET,
+                        params: { persistentVariableId: "v2" },
+                    },
+                },
+                edges: [],
+            },
+        };
+
+        service.sweepVariableNodeRefs("v1");
+
+        const nodes = bp.program.graphs.events.onClick?.graph?.nodes;
+        expect(nodes?.getSaved?.params?.savedVariableId).toBeUndefined();
+        expect(nodes?.getSaved?.params?.[BLUEPRINT_NODE_PARAM_VARIABLE_VALUE_TYPE]).toBeUndefined();
+        // A variable the sweep was not about keeps its node.
+        expect(nodes?.setPersistent?.params?.persistentVariableId).toBe("v2");
     });
 });

@@ -947,7 +947,10 @@ export class LiveSession {
         if (session.host) {
             const key = `step:${(session.steps += 1)}`;
             session.effects.expect(key, plan);
-            const answer = this.hostApply(session, plan.op, plan.derived, key);
+            // The document the step's own effect named, never one composed here: a session carries
+            // every story in the project, so an inverse addressed to the room's story would take a
+            // rename back on the wrong file.
+            const answer = this.hostApply(session, plan.op, plan.derived, key, plan.document);
             if (answer.kind === "refusal") {
                 session.effects.abandon(key);
                 return false;
@@ -959,7 +962,7 @@ export class LiveSession {
         if (!guest) {
             return false;
         }
-        const intent = guest.intend(plan.op, this.documentOf(session, plan.op), plan.derived);
+        const intent = guest.intend(plan.op, plan.document, plan.derived);
         // Settled when the effect answering it comes back, never on sending: the host may refuse,
         // and a cursor that had already moved would leave the author one press further back than
         // the document is.
@@ -1070,6 +1073,8 @@ export class LiveSession {
                 ui,
                 registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
+                readChapter: (storyId, chapterId) =>
+                    this.deps.story.document(storyId)?.chapters.find(chapter => chapter.id === chapterId) ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
                 hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
@@ -1156,7 +1161,14 @@ export class LiveSession {
         this.deps.dictionary.setSink(this.librarySinkFor(session));
         this.deps.audioTracks.setSink(this.librarySinkFor(session));
         this.deps.assetSets.setSink(this.librarySinkFor(session));
-        this.deps.variables.setSink(this.librarySinkFor(session));
+        // The registry's sink is the libraries' with one answer added: whether a deletion can travel.
+        // It reaches a second document - the blueprint nodes that named the variable - and a session
+        // that could not read the two interface documents carries neither, so there is nowhere for
+        // that sweep to land. See `VariableOpSink.canDelete`.
+        this.deps.variables.setSink({
+            ...this.librarySinkFor(session),
+            canDelete: () => this.deps.ui.held(),
+        });
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -1672,7 +1684,10 @@ export class LiveSession {
                 this.deps.assetSets.applyOp(op as LiveAssetSetOp);
                 break;
             case "variables":
-                this.deps.variables.applyOp(op as LiveVariableOp);
+                // ⚠ Reported, not merely done. A deletion sweeps the blueprint nodes that named the
+                // variable, and that sweep is derived on every machine from this one effect - so it
+                // is exactly the work that has to be fingerprinted rather than assumed.
+                touched.push(...this.deps.variables.applyOp(op as LiveVariableOp));
                 break;
             // The named-string registry is applied by the service that owns the translations beside
             // it - one service, two documents, and they stay two everywhere it matters.
@@ -1880,6 +1895,14 @@ export class LiveSession {
         op: LiveOp,
         derived: LiveDerived | undefined,
         key?: string,
+        /**
+         * The document this operation is about, when the caller knows better than the verb does.
+         *
+         * Only the story documents need it: there is one of every other kind per project, so the
+         * verb IS the address, while a story operation names a scene and every story in the project
+         * is shared. Absent means "compose it" - see {@link documentOf}.
+         */
+        document?: LiveDocument,
     ): LiveEffect | LiveRefusal {
         const host = session.host;
         if (!host) {
@@ -1891,7 +1914,7 @@ export class LiveSession {
             this.noteRefusal(session, refusal, op.op);
             return refusal;
         }
-        const answer = host.applyLocal(op, this.documentOf(session, op), derived);
+        const answer = host.applyLocal(op, document ?? this.documentOf(session, op), derived);
         if (answer.kind === "refusal") {
             session.pendingBefore = null;
             this.noteRefusal(session, answer, op.op);
@@ -2007,16 +2030,23 @@ export class LiveSession {
     private sinkFor(session: ActiveSession): StoryOpSink {
         return {
             handle: (storyId, op, derived): boolean => {
-                if (this.active !== session || storyId !== session.storyId) {
-                    // Another story, or a session that has ended: the mutator carries on exactly as
-                    // it would with no sink at all.
+                if (this.active !== session) {
+                    // A session that has ended: the mutator carries on exactly as it would with no
+                    // sink at all.
                     return false;
                 }
+                // ⚠ **Every story the session carries, not only the one the room is named after.**
+                // A session leaves every story document in the project writable - deleting a
+                // character rewrites the rows that spoke it wherever the author put them - so a sink
+                // that declined the others would let an edit to a second story be written into this
+                // machine's copy and into nobody else's, with no digest over it and nothing anywhere
+                // reporting it. See `@shared/live/sharedDocuments`.
+                const document: LiveDocument = { doc: "story", storyId };
                 if (session.host) {
-                    this.hostApply(session, op, derived);
+                    this.hostApply(session, op, derived, undefined, document);
                     return true;
                 }
-                session.guest?.intend(op, { doc: "story", storyId }, derived);
+                session.guest?.intend(op, document, derived);
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on

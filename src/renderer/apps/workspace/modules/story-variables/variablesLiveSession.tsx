@@ -5,6 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
+import type { VariableRegistryService } from "@/lib/workspace/services/variables/VariableRegistryService";
 import { variableRegistrySpec } from "@shared/documents/specs";
 import { variableClaimKey } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
@@ -86,8 +87,8 @@ const NO_CLAIMS: VariableClaims = {};
 
 const VariableClaimsContext = createContext<VariableClaims>(NO_CLAIMS);
 
-/** Whether a live session is carrying this project's registry, for the controls it switches off. */
-const VariableSessionContext = createContext<boolean>(false);
+/** Whether removing a variable is available right now, for the one control that asks. */
+const VariableRemovalContext = createContext<boolean>(true);
 
 /**
  * The claims on the registry, and whether a session is running, as two values that only change when
@@ -103,13 +104,19 @@ export function VariableClaimsProvider({ children }: { children: React.ReactNode
         () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
         [context, isInitialized],
     );
+    const registry = useMemo(
+        () => (context && isInitialized
+            ? context.services.get<VariableRegistryService>(Services.VariableRegistry)
+            : null),
+        [context, isInitialized],
+    );
     const [claims, setClaims] = useState<VariableClaims>(NO_CLAIMS);
-    const [inSession, setInSession] = useState(false);
+    const [removable, setRemovable] = useState(true);
 
     useEffect(() => {
         if (!service) {
             setClaims(NO_CLAIMS);
-            setInSession(false);
+            setRemovable(true);
             return;
         }
         const read = () => {
@@ -118,18 +125,21 @@ export function VariableClaimsProvider({ children }: { children: React.ReactNode
                 const next = othersVariableClaims(view);
                 return signatureOf(next) === signatureOf(previous) ? previous : next;
             });
-            setInSession(view.phase !== "idle");
+            // Asked of the registry rather than derived from "is there a session": a deletion
+            // travels now, and what decides it is whether THIS session carries the blueprint
+            // document the node sweep has to land in. One predicate, answered where it is known.
+            setRemovable(registry?.canDeleteEntry() ?? true);
         };
         // On the way in as well as on every change: a panel opened during a session has missed the
         // message that carried the claims standing at that moment.
         read();
         return service.onChanged(read);
-    }, [service]);
+    }, [registry, service]);
 
     return (
-        <VariableSessionContext.Provider value={inSession}>
+        <VariableRemovalContext.Provider value={removable}>
             <VariableClaimsContext.Provider value={claims}>{children}</VariableClaimsContext.Provider>
-        </VariableSessionContext.Provider>
+        </VariableRemovalContext.Provider>
     );
 }
 
@@ -148,14 +158,17 @@ export function useVariableClaim(variableId: string): string | null {
 /**
  * Whether removing a variable is available right now.
  *
- * ⚠ **False for the length of a live session**, and the reason is not the freeze: `editor/variables.json`
- * is writable throughout one. Removing a variable also clears the params of every blueprint node that
- * named it, and the blueprint document is not one a session carries - so the act cannot travel whole
- * and `VariableRegistryService` refuses it. This is the panel saying so before the author presses
- * anything, which is the same bargain the freeze guard makes.
+ * **True inside an ordinary session**, which it was not while a session did not carry the blueprint
+ * document: removing a variable also clears the params of every node that named it, and that sweep is
+ * derived from the effect now rather than being work with nowhere to go.
+ *
+ * ⚠ It is still false where the sweep has nowhere to land - a window that could not read the two
+ * interface documents carries neither - which is why this reads the registry's own predicate rather
+ * than "is there a session". The panel saying so before the author presses anything is the same
+ * bargain the freeze guard makes.
  */
 export function useVariableRemovalAvailable(): boolean {
-    return !useContext(VariableSessionContext);
+    return useContext(VariableRemovalContext);
 }
 
 /**

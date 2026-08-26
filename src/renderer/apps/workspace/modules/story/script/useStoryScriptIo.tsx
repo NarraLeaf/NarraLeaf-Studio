@@ -9,6 +9,7 @@ import type { CharacterService } from "@/lib/workspace/services/core/CharacterSe
 import type { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UuidService } from "@/lib/workspace/services/core/UuidService";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { Services } from "@/lib/workspace/services/services";
@@ -147,6 +148,16 @@ export function useStoryScriptIo(): StoryScriptIo {
 
     const beginImport = useCallback(async (storyId: StoryId) => {
         if (!context) {
+            return;
+        }
+        // An import rewrites whole scenes, and `StoryService.replaceScene` - its one write - is not
+        // an operation a session carries: what it states is "here is the scene now", which says
+        // nothing about which rows changed and would take back whatever a collaborator has written
+        // in them. Said before the file picker opens rather than after the plan is built, so the
+        // author is not asked to choose a file for an import that cannot happen.
+        if (context.services.get<LiveSessionService>(Services.Live).ownsStory(storyId)) {
+            context.services.get<UIService>(Services.UI)
+                .showError(t("workspace.shell.freeze.unavailableLive"));
             return;
         }
         try {

@@ -107,6 +107,16 @@ export type LiveHostDeps = {
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
+     * The chapter as it stands right now - its id and the scenes it claims - or null when that story
+     * has no such chapter.
+     *
+     * The outline's answer to {@link readScene}, and the record rather than a boolean because the
+     * host asks two things of it: whether a scene can be filed there, and which scenes leave with a
+     * chapter that is being removed. The second is not knowable from a presence check, and it has to
+     * be asked *before* the removal - afterwards there is nowhere left to learn what was in it.
+     */
+    readChapter(storyId: StoryId, chapterId: string): { id: string; sceneIds: readonly StorySceneId[] } | null;
+    /**
      * The character record as it stands right now, or null when the cast has no such member.
      *
      * The cast's answer to {@link readScene}, and asked for the same two reasons: an operation naming
@@ -249,6 +259,14 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-entry-scene": true,
     "rename-story": true,
     "reorder-chapters": true,
+    "create-scene": true,
+    "delete-scene": true,
+    "update-scene": true,
+    "move-scene": true,
+    "set-scene-snapshots": true,
+    "create-chapter": true,
+    "rename-chapter": true,
+    "delete-chapter": true,
     "create-character": true,
     "update-character": true,
     "delete-character": true,
@@ -474,10 +492,19 @@ export class LiveHost {
                 this.positions.remember(scene, applied.blockId);
             }
         }
+        // Every row a structural deletion is about to take with it, read while the scenes that hold
+        // them are still there. Afterwards there is nowhere left to learn which rows they were.
+        const leaving = this.rowsLeavingWith(applied, document);
         const alsoTouched = this.deps.applyOp(applied, document, derived) ?? [];
         if (applied.op === "delete-block") {
             // Nobody is writing a row that is gone.
             this.claims.forget(storyRowClaimKey(applied.blockId));
+        }
+        for (const blockId of leaving) {
+            // Nor a row whose whole scene is gone. Left in the set they would name rows nobody can
+            // reach until they lapsed - and would refuse the author who put the scene back, in their
+            // own restored scene.
+            this.claims.forget(storyRowClaimKey(blockId));
         }
         if (applied.op === "delete-character") {
             // Nor a record that is gone. The story rows it spoke keep their words under a bare name;
@@ -577,6 +604,61 @@ export class LiveHost {
             case "rename-scene": {
                 if (!this.deps.readScene(storyId, op.sceneId)) {
                     return { refuse: "scene-gone" };
+                }
+                return { op };
+            }
+
+            case "create-scene": {
+                // The chapter has to be somewhere for the scene to land in. One that carries its own
+                // chapter is making it here, so there is nothing to look up; one that names a chapter
+                // somebody deleted while the author was typing a name is refused rather than filed
+                // into a document that draws it nowhere - `scenes` would hold it and no chapter would
+                // claim it, which on every screen reads as a scene that was never created.
+                //
+                // ⚠ The scene id is deliberately NOT checked against one already there, with
+                // `create-character`: the id was minted by whoever built the record, so a collision
+                // is a uuid collision rather than a race, and a *retry* is answered by the receipts.
+                if (op.chapterId !== null && op.chapter === undefined
+                    && !this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
+                }
+                return { op };
+            }
+
+            case "delete-scene":
+            case "update-scene":
+            case "set-scene-snapshots": {
+                if (!this.deps.readScene(storyId, op.sceneId)) {
+                    return { refuse: "scene-gone" };
+                }
+                return { op };
+            }
+
+            case "move-scene": {
+                if (!this.deps.readScene(storyId, op.sceneId)) {
+                    return { refuse: "scene-gone" };
+                }
+                if (op.chapterId !== null && !this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
+                }
+                // ⚠ The sibling is deliberately not checked, which is `insert-block`'s answer rather
+                // than `move-block`'s. A row that lands in the wrong place is a paragraph the author
+                // has to find before they can undo it; a scene that lands at the end of the chapter
+                // they are already looking at is one drag away, and it is in the chapter they asked
+                // for either way.
+                return { op };
+            }
+
+            case "create-chapter":
+                // Nothing to check, with `create-character`: the id was minted by whoever built the
+                // record. A chapter carrying scenes is an undo putting a deletion back, and the
+                // scenes in it are the ones that left with it.
+                return { op };
+
+            case "rename-chapter":
+            case "delete-chapter": {
+                if (!this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
                 }
                 return { op };
             }
@@ -1126,6 +1208,24 @@ export class LiveHost {
 
     private isMember(instance: string): boolean {
         return this.deps.isMember ? this.deps.isMember(instance) : true;
+    }
+
+    /**
+     * Every row a structural deletion is about to remove, read before it happens.
+     *
+     * Empty for everything else, so the caller can ask unconditionally: the two verbs that take rows
+     * away without naming one are a scene deletion and a chapter deletion, and both are answerable
+     * only while the document still holds what they are about.
+     */
+    private rowsLeavingWith(op: LiveOp, document: LiveDocument): readonly StoryBlockId[] {
+        if (op.op !== "delete-scene" && op.op !== "delete-chapter") {
+            return [];
+        }
+        const storyId = storyOf(document);
+        const sceneIds = op.op === "delete-scene"
+            ? [op.sceneId]
+            : this.deps.readChapter(storyId, op.chapterId)?.sceneIds ?? [];
+        return sceneIds.flatMap(sceneId => Object.keys(this.deps.readScene(storyId, sceneId)?.blocks ?? {}));
     }
 
     /** Whether this session speaks for a document, asked of the one table both halves read. */

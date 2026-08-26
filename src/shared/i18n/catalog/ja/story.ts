@@ -119,6 +119,9 @@ export const story = {
         refusedRowGone: "その行はもうない。この変更は反映されていない",
         refusedAnchorGone: "移動先の行はもうない。この変更は反映されていない",
         refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
+        // アウトラインにとっての「シーンがもうない」。どのチャプターにも入っていない
+        // シーンはアウトラインに描かれないので、半分だけ適用せず丸ごと拒否する。
+        refusedChapterGone: "そのチャプターはもうない。この変更は反映されていない",
         refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
         refusedAssetGone: "そのアセットは存在しない。この変更は反映されていない",
         refusedVariableGone: "その変数は存在しない。この変更は反映されていない",
@@ -142,6 +145,11 @@ export const story = {
         undoSceneGone: "そのシーンはもうない",
         undoRowGone: "その行はもうない",
         undoRowRestored: "その行はシーンに戻っている",
+        // 構造の手順。この削除に戻す先が残っていない状態をそれぞれ名指しする——
+        // シーンやチャプターがすでに戻っているか、元あった場所がもうないか。
+        undoSceneRestored: "そのシーンは物語に戻っている",
+        undoChapterGone: "そのチャプターはもうない",
+        undoChapterRestored: "そのチャプターは物語に戻っている",
         undoContainerGone: "その行が入っていたブロックはもうない",
         undoAnchorGone: "その行が元にあった場所はもうない",
         undoContainerFilled: "そのブロックには別の行が入っている",
