@@ -124,6 +124,7 @@ import {
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
     BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
@@ -1843,13 +1844,18 @@ function resolveLayerMountedNodeOutput(
 }
 
 /**
- * `Is Action Held` - whether one of the project's input actions is down right now.
+ * The `Input` family's pure reads - `Is Action Held` and `Get Input Device`.
  *
  * The router that knows lives on the runtime side of the boundary, so it is asked for structurally
  * (see {@link BlueprintInputActionHostApi}) rather than through a declared host-API family. A host
- * that has no input router answers **false** rather than nothing: the pin is a non-nullable boolean,
- * "nobody is holding anything" is the honest reading in an editor preview with no player at the
- * keyboard, and `undefined` here would travel silently down every wire that consumes it.
+ * that has no input router answers with the family's neutral reading rather than nothing, because
+ * `undefined` here would travel silently down every wire that consumes it.
+ *
+ * For `Is Action Held` that reading is **false**: the pin is a non-nullable boolean, and "nobody is
+ * holding anything" is honest in an editor preview with no player at the keyboard. For
+ * `Get Input Device` it is **"pointer"**, which is the same answer the device tracker itself gives
+ * on a machine with no coarse pointer before the player has touched anything - so an author never
+ * has to write a separate arm for "the device could not be read".
  */
 function resolveInputActionNodeOutput(
     nodeType: string,
@@ -1857,6 +1863,13 @@ function resolveInputActionNodeOutput(
     params: Record<string, unknown>,
     runtime?: DataPinResolveRuntime,
 ): unknown {
+    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
+        | { input?: BlueprintInputActionHostApi }
+        | undefined;
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE && portId === "device") {
+        const device = hostApi?.input?.getDevice?.();
+        return device ? String(device) : "pointer";
+    }
     if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
         return undefined;
     }
@@ -1864,9 +1877,6 @@ function resolveInputActionNodeOutput(
     if (!actionId) {
         return false;
     }
-    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
-        | { input?: BlueprintInputActionHostApi }
-        | undefined;
     return hostApi?.input?.isActionHeld?.(actionId) === true;
 }
 

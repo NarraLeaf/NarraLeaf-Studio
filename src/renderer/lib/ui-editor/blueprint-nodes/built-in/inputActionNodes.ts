@@ -11,6 +11,7 @@
 
 import {
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
     BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -86,6 +87,14 @@ export type BlueprintInputActionHostApi = {
      * wheel notch and a double click cannot, and never answer.
      */
     isActionHeld?: (actionId: string) => boolean;
+    /**
+     * Which device the player is using at this moment.
+     *
+     * One of the four values the `On Action` head's `source` pin carries, so a graph tests both
+     * against the same literals. It is the player's last-used hardware rather than what a binding
+     * could accept, because only the first tells an interface which word to print.
+     */
+    getDevice?: () => string;
 };
 
 export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
@@ -102,6 +111,30 @@ export const inputActionBlueprintNodes: BlueprintNodeDef[] = [
         // gesture is held" is the binding it exists for.
         pins: [{ id: "held", kind: "output", semantic: "data", valueType: "boolean", label: "Held" }],
         inspectorParams: [inputActionParam()],
+        execute: () => ({}),
+    },
+    {
+        type: BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+        displayName: "Get Input Device",
+        category: "Input",
+        // English only, as everywhere in the catalogue: the palette searches the localized title
+        // too, so a translated name is what a query in another language matches on.
+        keywords: [
+            "input", "device", "pointer", "mouse", "keyboard", "key", "touch", "tap", "click",
+            "platform", "mobile", "desktop",
+        ],
+        graphKinds: ["event", "function", "macro"],
+        isPure: true,
+        // No scope, for the reason `Is Action Held` has none: it answers about the player rather
+        // than about any one element. Pure, so a prompt's text may be bound straight to it.
+        //
+        // `device` carries the same four values as the `source` pin on the `On Action` head, and
+        // reads as a plain string so both are compared the same way. All four are in the domain
+        // from the first day even though nothing produces every one of them yet: a pin's set of
+        // values can be narrowed later - graphs switching on the survivors keep working - but never
+        // widened, because a graph written against a smaller set has no branch for a value that
+        // did not exist when it was authored, and would fall through in silence.
+        pins: [{ id: "device", kind: "output", semantic: "data", valueType: "string", label: "Device" }],
         execute: () => ({}),
     },
 ];

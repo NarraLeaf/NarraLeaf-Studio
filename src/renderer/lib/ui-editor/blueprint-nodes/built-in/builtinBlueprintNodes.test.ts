@@ -336,9 +336,13 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
-/** Nobody is at the keyboard in these tests, so nothing is being held down. */
+/**
+ * Nobody is at the keyboard in these tests, so nothing is being held down - and with no window to
+ * watch, the device is the one a machine without a coarse pointer reads before any input arrives.
+ */
 const NO_HELD_INPUT_HOST: BlueprintHostApiRuntime["input"] = {
     isActionHeld: () => false,
+    getDevice: () => "pointer",
 };
 
 /** No host in these tests owns a window, so no cursor can be moved from one. */
