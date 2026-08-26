@@ -18,12 +18,6 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
-    VcsServerMembersOutcome,
-    VcsServerProjectDeleteOutcome,
-    VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
-    VcsServerProjectOutcome,
-    VcsServerProjectsOutcome,
     VcsServerSession,
     VcsSignInOutcome,
     VcsSignInProblem,
@@ -568,92 +562,6 @@ export class VcsListServersHandler extends IPCHandler<IPCEventType.vcsListServer
 }
 
 /**
- * What one server holds.
- *
- * Takes no project, for the same reason listing servers does not: a project is
- * chosen from this list, so there is not one yet.
- */
-export class VcsListServerProjectsHandler extends IPCHandler<IPCEventType.vcsListServerProjects> {
-    readonly name = IPCEventType.vcsListServerProjects;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin }: IPCEvents[IPCEventType.vcsListServerProjects]["data"],
-    ): Promise<RequestStatus<VcsServerProjectsOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().listServerProjects(remoteOrigin));
-    }
-}
-
-/**
- * What one server knows about one project.
- *
- * Asked only of a server that advertised `project-detail`; a deployment that offers none
- * has no such surface in front of it, so this is never reached to answer a 404.
- */
-export class VcsGetServerProjectHandler extends IPCHandler<IPCEventType.vcsGetServerProject> {
-    readonly name = IPCEventType.vcsGetServerProject;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin, projectId }: IPCEvents[IPCEventType.vcsGetServerProject]["data"],
-    ): Promise<RequestStatus<VcsServerProjectDetailOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().getServerProject(remoteOrigin, projectId));
-    }
-}
-
-/**
- * Take one project off a server.
- *
- * The one call in this group that changes what a server holds. What it changes is the
- * list: the repository keeps its store and every revision in it, and a project taken off
- * by mistake is published again under the same repository id.
- */
-export class VcsDeleteServerProjectHandler extends IPCHandler<IPCEventType.vcsDeleteServerProject> {
-    readonly name = IPCEventType.vcsDeleteServerProject;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin, projectId }: IPCEvents[IPCEventType.vcsDeleteServerProject]["data"],
-    ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().deleteServerProject(remoteOrigin, projectId));
-    }
-}
-
-/** The latest revisions on one of a server's projects. Asked only where `project-history` is offered. */
-export class VcsListServerProjectHistoryHandler
-    extends IPCHandler<IPCEventType.vcsListServerProjectHistory> {
-    readonly name = IPCEventType.vcsListServerProjectHistory;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin, projectId, limit, before }:
-            IPCEvents[IPCEventType.vcsListServerProjectHistory]["data"],
-    ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>> {
-        return this.tryUse(async () => window.app.getVcsManager().listServerProjectHistory(
-            remoteOrigin,
-            projectId,
-            {
-                ...(limit === undefined ? {} : { limit }),
-                ...(before === undefined ? {} : { before }),
-            },
-        ));
-    }
-}
-
-/**
- * Who has an account on one server.
- *
- * Takes no project, for the same reason listing its projects does not. Asked only of a
- * server that advertised `members`.
- */
-/**
  * Exchange a username and a password for a token.
  *
  * The only call in this file that names an address instead of a `remoteOrigin`, because
@@ -675,24 +583,12 @@ export class VcsSignInWithPasswordHandler extends IPCHandler<IPCEventType.vcsSig
     }
 }
 
-export class VcsListServerMembersHandler extends IPCHandler<IPCEventType.vcsListServerMembers> {
-    readonly name = IPCEventType.vcsListServerMembers;
-    readonly type = IPCMessageType.request;
-
-    public async handle(
-        window: AppWindow,
-        { remoteOrigin }: IPCEvents[IPCEventType.vcsListServerMembers]["data"],
-    ): Promise<RequestStatus<VcsServerMembersOutcome>> {
-        return this.tryUse(async () =>
-            window.app.getVcsManager().listServerMembers(remoteOrigin));
-    }
-}
-
 /**
  * Which repositories this machine already holds.
  *
- * Takes no project, like the two above: the question is asked of the whole installation,
- * once, so that a list of a server's projects can say which of them are already here.
+ * Takes no project, like listing the servers does not: the question is asked of the whole
+ * installation, once, so that a list of a server's projects can say which of them are
+ * already here.
  *
  * **Two plain file reads per project and nothing else.** Lore's repository lock is
  * exclusive and blocking - opening a store another process holds never returns, and
