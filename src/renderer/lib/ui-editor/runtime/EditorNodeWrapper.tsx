@@ -18,6 +18,7 @@ import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
 import type { BehaviorGraphEventControl } from "@/lib/ui-editor/behavior-graph/BehaviorNodeRegistry";
 import { getOrCreateDomEventPropagationControl } from "@/lib/ui-editor/runtime/eventPropagationControl";
 import { readInputEventTime, wheelGestureGate } from "@/lib/ui-editor/runtime/input/wheelGesture";
+import { isTouchStrokeInFlight } from "@/lib/ui-editor/runtime/input/touchGesture";
 import { getWidgetLogicEvent, isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { shouldHandleBlueprintElementEvent } from "./blueprintEventTargeting";
 import { useSurfacePassive } from "@/lib/ui-editor/runtime/surface/SurfacePassiveContext";
@@ -538,6 +539,17 @@ export function EditorNodeWrapper({
 
     const onContextMenu = useCallback(
         (e: MouseEvent<HTMLDivElement>) => {
+            // The element half of the `contextmenu` split. Android raises this event from the
+            // platform's own held finger and iOS raises nothing of the kind, so answering it would
+            // make one long press mean two things on one phone and one thing on the other - and an
+            // author must not be able to feel which phone a player is holding. Every long press is
+            // produced by one timer of ours running the same code on both, and the platform's
+            // version of it is swallowed here rather than reconciled: consistency by construction,
+            // not by two platforms being tuned to agree.
+            if (isTouchStrokeInFlight()) {
+                e.preventDefault();
+                return;
+            }
             if (dispatchWidgetEvent("rightClick", e.target, localMousePayload(e), getOrCreateDomEventPropagationControl(e.nativeEvent))) {
                 e.preventDefault();
             }
