@@ -1133,8 +1133,15 @@ export function useVersionSurface(): VersionSurface {
             setMerge(merge);
             if (!alive.current) return true;
             // The repository's list where there is one, for the reason the re-read above gives: the
-            // notice and the panel that resolves it must be about the same set of files.
-            const conflicts = merge?.conflicts ?? result.conflicts;
+            // notice and the panel that resolves it must be about the same set of files. Gated on
+            // `inProgress` rather than trusting `conflicts` to be empty without it - the same
+            // predicate `VersionControlService.sync` uses, and the two must not be able to disagree
+            // about whether there is a merge. A closed merge reports nothing: there would be nowhere
+            // for the notice to send anybody. Null is no version control at all, and then the sync's
+            // own list is the only answer there is.
+            const conflicts = merge === null
+                ? result.conflicts
+                : (merge.inProgress ? merge.conflicts : []);
             if (conflicts.length > 0) {
                 // Named rather than listed as paths. This notice arrives at the same moment as the
                 // panel that will settle them, and that panel calls a story by the author's own
