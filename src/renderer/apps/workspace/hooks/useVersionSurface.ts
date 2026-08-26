@@ -1303,6 +1303,11 @@ function describeFailure(thrown: unknown): VersionFailure {
             return { text: translate("workspace.shell.versionControl.closingWithApp"), tone: "failure" };
         case VcsErrorCode.UncommittedChanges:
             return { text: translate("workspace.shell.versionControl.commitBeforeSync"), tone: "failure" };
+        case VcsErrorCode.BranchDiverged:
+            // The backend's own sentence names the same remedy, and it named it in English with the
+            // internal verb that failed in front of it (`branchPush: Branch has diverged, …`). What
+            // is translated here is the situation, not a paraphrase of a message.
+            return { text: translate("workspace.shell.versionControl.branchDiverged"), tone: "failure" };
         // `ProjectPath` deliberately falls through to the raw sentence: it can only be reached
         // through a defect, and that sentence is three lines of diagnosis aimed at whoever has to
         // fix it. Paraphrasing it would throw away the only copy.
