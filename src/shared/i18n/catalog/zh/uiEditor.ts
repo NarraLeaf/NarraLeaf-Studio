@@ -77,6 +77,7 @@ export const uiEditor = {
             wheelDown: "滚轮下滚",
             wheelLeft: "滚轮左滚",
             wheelRight: "滚轮右滚",
+            longPress: "长按",
         },
     },
     createDialog: {

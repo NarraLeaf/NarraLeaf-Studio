@@ -79,6 +79,7 @@ export const uiEditor = {
             wheelDown: "ホイール下",
             wheelLeft: "ホイール左",
             wheelRight: "ホイール右",
+            longPress: "長押し",
         },
     },
     createDialog: {
