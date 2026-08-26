@@ -1087,8 +1087,17 @@ export function assetClaimKey(assetId: string): LiveClaimKey {
  * the library from being read as one over an element of a Surface.
  */
 export function uiElementClaimKey(componentId: string | null, elementId: string): LiveClaimKey {
-    return componentId === null ? `ui-element::${elementId}` : `ui-element:${componentId}:${elementId}`;
+    return `${UI_ELEMENT_CLAIM_PREFIX}${componentId ?? ""}:${elementId}`;
 }
+
+/**
+ * What every interface element's claim key starts with.
+ *
+ * Exported because a panel reading the set has to filter by it, and a prefix spelled a second time
+ * at the reader is exactly how the story editor's marks went missing for a fortnight while every
+ * assertion in its tests agreed with the mistake.
+ */
+export const UI_ELEMENT_CLAIM_PREFIX = "ui-element:";
 
 /**
  * The claim over one blueprint node.
@@ -1098,8 +1107,11 @@ export function uiElementClaimKey(componentId: string | null, elementId: string)
  * naming the node alone would have one Surface's boot node holding every other Surface's.
  */
 export function uiNodeClaimKey(blueprintId: string, graphId: string, nodeId: string): LiveClaimKey {
-    return `ui-node:${blueprintId}:${graphId}:${nodeId}`;
+    return `${UI_NODE_CLAIM_PREFIX}${blueprintId}:${graphId}:${nodeId}`;
 }
+
+/** What every blueprint node's claim key starts with. See {@link UI_ELEMENT_CLAIM_PREFIX}. */
+export const UI_NODE_CLAIM_PREFIX = "ui-node:";
 
 /**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.

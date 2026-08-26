@@ -1,6 +1,11 @@
 import { FsRejectErrorCode } from "@shared/types/os";
 import type { LiveUIGraphOp } from "@shared/live/ops";
-import { applyUIGraphParts, diffUIGraphParts, type LiveUIGraphParts } from "@shared/live/uiGraphParts";
+import {
+    applyUIGraphParts,
+    diffUIGraphParts,
+    uiGraphPartsUpdates,
+    type LiveUIGraphParts,
+} from "@shared/live/uiGraphParts";
 import { RendererError } from "@shared/utils/error";
 import type { BlueprintPersistentVariable } from "@shared/types/blueprint/document";
 import { type UIGraph, type UIGraphDocument, UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
@@ -306,7 +311,11 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
                 // are almost always no-ops.
                 return;
             }
-            if (this.opSink.handle({ op: "write-ui-graphs", parts })) {
+            // Which blueprints were already here, for the interface delta's reason: a graph edit
+            // landing on a blueprint somebody deleted would put the whole blueprint back rather
+            // than the one node.
+            const updates = uiGraphPartsUpdates(current, parts);
+            if (this.opSink.handle({ op: "write-ui-graphs", parts, ...(updates.length === 0 ? {} : { updates }) })) {
                 return;
             }
         }

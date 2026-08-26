@@ -1336,4 +1336,7 @@ export const blueprint = {
         getPlaytime: "プレイ時間を取得",
         getTotalPlaytime: "累計プレイ時間を取得",
     },
+    live: {
+        nodeClaimed: "{name} がこのノードを編集している",
+    },
 } satisfies LocaleNamespace<"blueprint">;

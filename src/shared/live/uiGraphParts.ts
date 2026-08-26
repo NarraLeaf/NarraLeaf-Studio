@@ -482,12 +482,16 @@ function slotsBefore(
             for (const [nodeId, node] of Object.entries(ir.nodes ?? {})) {
                 nodes[nodeId] = copy(node);
             }
+            // ⚠ `variables` and `meta` only where the slot had them. Writing an empty table into a
+            // graph that had none would put a record back that is not the record that was there -
+            // and the difference would show up as a digest disagreement between the machine that
+            // undid the deletion and the machine that had never seen it.
             captured[graphId] = {
                 slot: copy(shellOfSlot(slot)),
                 nodes,
                 edges: copy(ir.edges ?? []),
-                variables: copy(ir.variables ?? {}),
-                irMeta: copy(ir.meta ?? {}),
+                ...(ir.variables === undefined ? {} : { variables: copy(ir.variables) }),
+                ...(ir.meta === undefined ? {} : { irMeta: copy(ir.meta) }),
             };
             continue;
         }

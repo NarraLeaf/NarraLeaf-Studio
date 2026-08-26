@@ -25,6 +25,11 @@ import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
 import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
 import {
+    interfaceDocumentFreezeScope,
+    useUIElementClaimHold,
+    useUIElementClaimOf,
+} from "../ui-editor/uiLiveSession";
+import {
     characterDocumentFreezeScope,
     useCharacterClaimHold,
     useCharacterClaimOf,
@@ -1423,10 +1428,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         if (uiInspectorContent) {
             return (
-                <>
+                <UIElementInspector
+                    componentId={parseComponentEditorSurfaceId(deferredUiSelection?.surfaceId ?? "")}
+                    elementId={deferredUiSelection?.elementIds.length === 1 ? deferredUiSelection.elementIds[0] : null}
+                >
                     {uiSelectionDiagnosticStrip}
                     {uiInspectorContent}
-                </>
+                </UIElementInspector>
             );
         }
         if (activeComponentDefinition && documentService) {
@@ -1546,6 +1554,42 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
  * else holds it the fields stand down: the host would refuse the operation anyway, and letting the
  * author write a paragraph first is exactly the injury the claim exists to prevent.
  */
+/**
+ * The interface branch of the inspector, and the two things a live session adds to it.
+ *
+ * `CharacterInspector`'s counterpart three documents along, and the same two: the branch says which
+ * files it writes - both interface documents, because an element edit reconciles a blueprint behind
+ * it - and it holds the element for as long as it is open here.
+ *
+ * ⚠ **Only a single selection is claimed.** A rubber-band over forty elements is a gesture about
+ * their arrangement rather than about anything written in them, and forty claims would take forty
+ * rows of the room's claim set for a drag nobody is drafting into. What a multi-selection still gets
+ * is the freeze scope, so its layout fields go on working.
+ *
+ * Unlike the character and asset branches this wraps the content rather than building it: the
+ * interface inspector is assembled per selection several screens up, and a second assembly here
+ * would be a second schema to keep in step with the first.
+ */
+function UIElementInspector({ componentId, elementId, children }: {
+    componentId: string | null;
+    elementId: string | null;
+    children: React.ReactNode;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useUIElementClaimHold({ service: live, componentId, elementId });
+    const heldBy = useUIElementClaimOf(componentId, elementId);
+    const writes = useMemo(
+        () => ({ scope: interfaceDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return <InspectorWritesProvider value={writes}>{children}</InspectorWritesProvider>;
+}
+
 function CharacterInspector({ characterId, schema, data }: {
     characterId: string;
     schema: PropertyEditorSchema<CharacterEditorContext>;

@@ -39,6 +39,7 @@ import { freezeContextMenuRows, useFreezeGuard } from "@/apps/workspace/componen
 import { appendDeveloperIdSection, DEVELOPER_MENU_ROW_IDS } from "@/lib/developer";
 import { getSurfaceDisplayLabel } from "@/lib/ui-editor/surfaceDisplayLabel";
 import { translate } from "@/lib/i18n";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 /**
  * The canvas menu rows a frozen project keeps: the ones that only read the document.
@@ -81,7 +82,7 @@ export function useSurfaceCanvasContextMenu(params: {
         hideMenu,
     } = params;
 
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
     const lastContextPoint = useRef<{ x: number; y: number } | null>(null);
     const lastContextHitElementId = useRef<string | null>(null);
