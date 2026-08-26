@@ -688,7 +688,18 @@ function buildDraft(
             if (isFail(scene)) {
                 return scene;
             }
-            return { kind: "jump", payload: prune({ targetSceneId: scene.value, transition }) };
+            const returns = wordOf(slots, "returns");
+            if (returns !== undefined && returns !== "return") {
+                return fail("badWord", returns);
+            }
+            return {
+                kind: "jump",
+                payload: prune({
+                    targetSceneId: scene.value,
+                    returnable: returns === "return" ? true : undefined,
+                    transition,
+                }),
+            };
         }
         case "wait": {
             const word = wordOf(slots, "amount");

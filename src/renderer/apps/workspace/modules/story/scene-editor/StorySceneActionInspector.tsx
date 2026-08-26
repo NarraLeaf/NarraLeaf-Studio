@@ -755,6 +755,16 @@ function InspectorFields(props: {
                         onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
                     />
                 </div>
+                <ToggleField
+                    label={t("storyInspector.jump.returnable")}
+                    checked={Boolean(payload.returnable)}
+                    onChange={checked => props.onUpdatePayload({
+                        ...payload,
+                        // Cleared rather than set to false: a row that is not returnable carries no
+                        // field at all, which is the shape every row written before this had.
+                        returnable: checked ? true : undefined,
+                    })}
+                />
                 <TransitionEditor
                     value={payload.transition}
                     context="scene"

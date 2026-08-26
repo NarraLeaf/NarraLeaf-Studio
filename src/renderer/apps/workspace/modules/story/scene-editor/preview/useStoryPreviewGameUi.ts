@@ -5,6 +5,9 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
@@ -334,6 +337,12 @@ export function useStoryPreviewGameUi(input: {
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+                // Parity with the Dev Mode host's own teardown: the dialog slot's bridge publishes
+                // the line, and a preview that ended between runs must not leave the last line
+                // reading as one still waiting for the player.
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
             };
         };
 

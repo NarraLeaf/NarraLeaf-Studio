@@ -454,7 +454,13 @@ export const help = {
                 + "\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
-                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.",
+                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
+                + "- An input action takes as many bindings as it needs, and each binding is marked with the "
+                + "devices that reach it. Touch needs no actions of its own.\n"
+                + "- The four scroll bindings are reached by a wheel, a trackpad and a finger dragging the "
+                + "screen. The direction is the one the view moves in.\n"
+                + "- Where a line has to read differently on a touch screen, read the device with Get Input "
+                + "Device, branch on it, and set the text for each.",
         },
         uiComponents: {
             title: "Reusable parts",

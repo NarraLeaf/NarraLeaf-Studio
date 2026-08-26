@@ -328,6 +328,7 @@ export const assets = {
         newSubGroup: "新建子分组",
         newTextFile: "新建文本文件",
         importAssets: "导入资产…",
+        cancelTransfer: "取消导入",
         replaceContent: "替换文件…",
         copyCount: {
             one: "复制 {count} 项",

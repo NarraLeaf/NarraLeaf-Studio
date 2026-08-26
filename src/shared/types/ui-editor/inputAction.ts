@@ -22,6 +22,7 @@
 
 import { formatBlueprintKeyboardBinding } from "../blueprint/graph";
 import type { UIDocument } from "./document";
+import type { UIInputActionSource } from "./inputActionEvent";
 import { getWidgetLogicApi } from "./widgetLogic";
 
 /**
@@ -32,6 +33,22 @@ import { getWidgetLogicApi } from "./widgetLogic";
  * enumerates them. Deliberately coarse - these are gestures a *panel* can mean something by, not
  * the full pointer event set an element still gets through its own heads. Hover and movement are
  * absent because a panel-wide "the pointer passed over here" is not an action anybody declares.
+ *
+ * **A gesture's name says what happened, not which piece of hardware did it.** `click` is a mouse
+ * button and a finger tapping; the four `wheel` directions are a wheel, a trackpad's two fingers
+ * and a finger dragging a touch screen, which are one gesture with one set of directions rather
+ * than three. Which devices reach a gesture is a separate question, answered by
+ * {@link inputBindingDevices} - and it is a question about the binding, not a second axis an author
+ * has to choose along.
+ *
+ * `longPress` stays in this family rather than opening a `kind` of its own for two reasons. The web
+ * platform's own "pointer" already means the family of devices that aim at a point - mouse, pen,
+ * finger - so a press held on one of them is a pointer gesture whatever produced it. And
+ * `resolveSurfaceInputActionHits` decides whether a binding stands down over an operable control by
+ * asking `signal.kind === "pointer"`: a long press landing on a button must give way exactly as a
+ * click does, and a separate kind would silently walk past that test.
+ *
+ * Appended to, never reordered - the binding picker enumerates the tuple in order.
  */
 export const UI_INPUT_POINTER_GESTURES = [
     "click",
@@ -41,6 +58,7 @@ export const UI_INPUT_POINTER_GESTURES = [
     "wheelDown",
     "wheelLeft",
     "wheelRight",
+    "longPress",
 ] as const;
 
 export type UIInputPointerGesture = (typeof UI_INPUT_POINTER_GESTURES)[number];
@@ -179,6 +197,54 @@ export function resolveSurfaceActionBindings(
         return dedupeUIInputBindings(enablement.overrideBindings);
     }
     return dedupeUIInputBindings([...(def?.bindings ?? []), ...(enablement?.addBindings ?? [])]);
+}
+
+/**
+ * Which devices can produce each pointer gesture.
+ *
+ * A full `Record` rather than a `Partial<Record>` on purpose: a gesture added to the tuple without
+ * an entry here has to be a compile error. The alternative fails quietly - the new gesture reads as
+ * belonging to no device at all, so every author-facing device marking simply omits it and nobody
+ * finds out until a player on the missing device cannot trigger the action.
+ *
+ * Two of the rulings are worth stating outright, because both look like oversights:
+ *
+ *  - **`doubleClick` is pointer only.** The shell and the web export both set `touch-action` so that
+ *    a double tap does not become a zoom or a synthetic double click, deliberately - so there is no
+ *    touch gesture left to map onto it.
+ *  - **`rightClick` is pointer only.** Android raises `contextmenu` from a held finger, which would
+ *    make right click reachable by touch by accident; that stream belongs to `longPress` instead,
+ *    where an author who wanted a held finger asked for one.
+ */
+const POINTER_GESTURE_DEVICES: Record<UIInputPointerGesture, readonly UIInputActionSource[]> = {
+    click: ["pointer", "touch"],
+    doubleClick: ["pointer"],
+    rightClick: ["pointer"],
+    wheelUp: ["pointer", "touch"],
+    wheelDown: ["pointer", "touch"],
+    wheelLeft: ["pointer", "touch"],
+    wheelRight: ["pointer", "touch"],
+    longPress: ["touch"],
+};
+
+/**
+ * The devices one binding can be triggered from.
+ *
+ * **A set, not a single device**, and that is the load-bearing part of the whole model. A `click`
+ * is a mouse button *and* the click a finger's tap synthesises; the four wheel directions are a
+ * wheel, a trackpad and a finger dragging a touch screen. Bindings that belong to two devices at
+ * once are why a "control scheme" cannot be an axis beside the binding: an axis needs every binding
+ * to sit in exactly one scheme, and these sit in two. So the device is read off the binding itself,
+ * and neither {@link UIInputActionDef} nor {@link UISurfaceActionEnablement} stores anything about
+ * it.
+ */
+export function inputBindingDevices(binding: UIInputBinding): ReadonlySet<UIInputActionSource> {
+    return new Set(binding.kind === "pointer" ? POINTER_GESTURE_DEVICES[binding.gesture] : ["key"]);
+}
+
+/** Whether a player on this device can trigger this binding. */
+export function inputBindingReachesDevice(binding: UIInputBinding, device: UIInputActionSource): boolean {
+    return inputBindingDevices(binding).has(device);
 }
 
 /**

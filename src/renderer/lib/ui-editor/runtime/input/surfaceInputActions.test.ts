@@ -18,7 +18,7 @@ const ADVANCE: UIInputActionDef = {
 
 const VOCABULARY: Record<string, UIInputActionDef> = { advance: ADVANCE };
 
-const CLICK: UIInputSignal = { kind: "pointer", gesture: "click", x: 12, y: 34 };
+const CLICK: UIInputSignal = { kind: "pointer", gesture: "click", device: "pointer", x: 12, y: 34 };
 
 function element(type: string, props?: Record<string, unknown>): UIElement {
     return {
@@ -136,6 +136,29 @@ describe("resolveSurfaceInputActionHits", () => {
                 hitChain: [element("nl.button")],
             }),
         ).toEqual([{ actionId: "advance", consume: true, payload: { actionId: "advance", source: "key" } }]);
+    });
+
+    it("reports the device the signal came from rather than assuming a mouse", () => {
+        // The same gesture reaches routing from both hands: a `click` is a mouse button and the
+        // click a tap synthesises. An author asking "was this a finger" is asking about the device,
+        // and the answer has to come off the signal rather than off the gesture's name.
+        const source = (signal: UIInputSignal) => hits({ enablements: [{ actionId: "advance" }], signal })[0]?.payload.source;
+
+        expect(source(CLICK)).toBe("pointer");
+        expect(source({ ...CLICK, device: "touch" })).toBe("touch");
+    });
+
+    it("reports a key as a key whatever else is happening", () => {
+        const keyAction: Record<string, UIInputActionDef> = {
+            advance: { id: "advance", name: "Advance", bindings: [{ kind: "key", key: "Space" }] },
+        };
+        expect(
+            hits({
+                vocabulary: keyAction,
+                enablements: [{ actionId: "advance" }],
+                signal: { kind: "key", event: { key: " " } },
+            })[0]?.payload.source,
+        ).toBe("key");
     });
 
     it("ignores an action this project does not define", () => {

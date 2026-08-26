@@ -1,6 +1,13 @@
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
 import { formatBlueprintKeyboardBinding } from "@shared/types/blueprint/graph";
-import type { UIInputBinding, UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
+import {
+    UI_INPUT_POINTER_GESTURES,
+    inputBindingDevices,
+    inputBindingReachesDevice,
+    type UIInputBinding,
+    type UIInputPointerGesture,
+} from "@shared/types/ui-editor/inputAction";
+import type { UIInputActionSource } from "@shared/types/ui-editor/inputActionEvent";
 
 export type TranslateFn = (key: TranslationKey, params?: InterpolationParams) => string;
 
@@ -22,4 +29,50 @@ export function getInputBindingLabel(binding: UIInputBinding, t: TranslateFn): s
     return binding.kind === "pointer"
         ? getInputPointerGestureLabel(binding.gesture, t)
         : formatBlueprintKeyboardBinding(binding.key) || binding.key;
+}
+
+/**
+ * The devices the author panels list bindings under, in the order they are listed.
+ *
+ * A subset of `UIInputActionSource` rather than the whole union. The union is what a fired action
+ * reports, and it names one device no binding in this build can reach; a picker built from it would
+ * offer a group with nothing that can go into it.
+ */
+export const INPUT_BINDING_DEVICES = ["pointer", "key", "touch"] as const satisfies readonly UIInputActionSource[];
+
+export type InputBindingDevice = (typeof INPUT_BINDING_DEVICES)[number];
+
+export function getInputDeviceLabel(device: InputBindingDevice, t: TranslateFn): string {
+    return t(`uiEditor.inputActions.device.${device}`);
+}
+
+/**
+ * Which devices reach one binding, in the panels' order.
+ *
+ * Several bindings answer to two: a click is a mouse button and a finger's tap, and the four scroll
+ * directions are a wheel, a trackpad and a finger dragging a screen. So this is a list rather than
+ * one device, and every marking drawn from it has room for more than one.
+ */
+export function getInputBindingDevices(binding: UIInputBinding): InputBindingDevice[] {
+    const devices = inputBindingDevices(binding);
+    return INPUT_BINDING_DEVICES.filter(device => devices.has(device));
+}
+
+/** The device names one binding is marked with, one per line. */
+export function getInputBindingDevicesLabel(binding: UIInputBinding, t: TranslateFn): string {
+    return getInputBindingDevices(binding)
+        .map(device => getInputDeviceLabel(device, t))
+        .join("\n");
+}
+
+/**
+ * The gestures a player on this device can produce.
+ *
+ * Empty for the keyboard, which reaches no gesture: its group offers key capture instead. A gesture
+ * two devices reach is returned for both, and the binding added from either group is the same one.
+ */
+export function getInputDeviceGestures(device: InputBindingDevice): UIInputPointerGesture[] {
+    return UI_INPUT_POINTER_GESTURES.filter(gesture =>
+        inputBindingReachesDevice({ kind: "pointer", gesture }, device),
+    );
 }

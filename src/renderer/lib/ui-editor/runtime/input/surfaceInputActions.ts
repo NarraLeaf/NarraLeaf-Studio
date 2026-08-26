@@ -48,14 +48,32 @@ import {
     type UISurfaceActionEnablement,
     type UISurfaceInputMode,
 } from "@shared/types/ui-editor/inputAction";
-import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
+import type { UIInputActionEventPayload, UIInputActionSource } from "@shared/types/ui-editor/inputActionEvent";
 import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
+
+/**
+ * The devices a pointer gesture can come from.
+ *
+ * A pen counts as `pointer`: it aims at a single point the way a mouse does, and everything an
+ * interface would phrase differently for one it phrases the same way for the other. What separates
+ * `touch` from both is that a fingertip covers its target rather than aiming at it.
+ */
+export type UIPointerInputDevice = Extract<UIInputActionSource, "pointer" | "touch">;
 
 /** One input, in the terms the bindings are written in. */
 export type UIInputSignal =
     | {
           kind: "pointer";
           gesture: UIInputPointerGesture;
+          /**
+           * Which pointing device produced it.
+           *
+           * Carried on the signal rather than assumed, because the same gesture reaches here from
+           * both: a `click` is a mouse button and a finger's tap, and the four wheel directions are
+           * a wheel, a trackpad and a finger dragging. Required rather than defaulted, so a new
+           * route into routing has to say which of them it is instead of quietly reporting a mouse.
+           */
+          device: UIPointerInputDevice;
           /** Where it landed, in the surface's design coordinates. */
           x: number;
           y: number;
@@ -159,7 +177,7 @@ export function resolveSurfaceInputActionHits(input: {
             consume: readUISurfaceActionConsume(enablement),
             payload:
                 signal.kind === "pointer"
-                    ? { actionId: enablement.actionId, source: "pointer", x: signal.x, y: signal.y }
+                    ? { actionId: enablement.actionId, source: signal.device, x: signal.x, y: signal.y }
                     : { actionId: enablement.actionId, source: "key" },
         });
     }

@@ -25,6 +25,10 @@ function jumpBlock(id: string, targetSceneId: string, parentId: string | null = 
     return { id, kind: "jump", parentId, childrenIds: [], payload: { targetSceneId } };
 }
 
+function callBlock(id: string, targetSceneId: string, parentId: string | null = null): StoryBlock {
+    return { id, kind: "jump", parentId, childrenIds: [], payload: { targetSceneId, returnable: true } };
+}
+
 function endingBlock(id: string, name: string, parentId: string | null = null): StoryBlock {
     return { id, kind: "control", parentId, childrenIds: [], payload: { control: "ending", name } } as StoryBlock;
 }
@@ -464,5 +468,58 @@ describe("narraleaf-studio:reachable-endings", () => {
         await expect(definition.run(cancelling)).rejects.toThrow();
         expect(findings).toHaveLength(1);
         expect(findings[0].target).toMatchObject({ storyId: "story-1" });
+    });
+
+    // --- returnable jumps ---------------------------------------------------
+
+    it("does not report a called scene for running out of rows - that is the return", async () => {
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Prologue", [callBlock("call", "card"), jumpBlock("j", "b")]),
+                scene("card", "Title card", [emptyBlock("e1")]),
+                scene("b", "Chapter 2", [endingBlock("end", "The end")]),
+            ], "a")),
+        }));
+
+        expect(verdict.status).toBe("passed");
+        expect(findings).toEqual([]);
+    });
+
+    it("reports a scene whose only continuation is a call - the run stops once it returns", async () => {
+        const { verdict, findings } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Prologue", [
+                    choiceBlock("c1", ["o0", "o1"]),
+                    choiceOptionBlock("o0", ["j0"], "Leave", "c1"),
+                    jumpBlock("j0", "b", "o0"),
+                    choiceOptionBlock("o1", [], "Stay", "c1"),
+                    callBlock("call", "card"),
+                ]),
+                scene("card", "Title card", [emptyBlock("e1")]),
+                scene("b", "Chapter 2", [endingBlock("end", "The end")]),
+            ], "a")),
+        }));
+
+        expect(verdict.status).toBe("failed");
+        expect(findings).toHaveLength(1);
+        expect(findings[0].target).toMatchObject({ sceneId: "a" });
+    });
+
+    it("reaches an ending written inside a called scene", async () => {
+        const { verdict } = await run(fixtureHost({
+            stories: oneStory(document([
+                scene("a", "Prologue", [callBlock("call", "card"), jumpBlock("j", "b")]),
+                scene("card", "Title card", [endingBlock("end-card", "Secret end")]),
+                scene("b", "Chapter 2", [endingBlock("end", "The end")]),
+            ], "a")),
+        }));
+
+        expect(verdict).toEqual({
+            status: "passed",
+            summary: {
+                key: "test.builtin.reachableEndings.summary.passed",
+                params: { errors: 0, unreached: 0, endings: 2 },
+            },
+        });
     });
 });

@@ -426,6 +426,7 @@ export const assets = {
         /** その他だけ。作者が読み込むのではなく作れる唯一のアセット。 */
         newTextFile: "新規テキストファイル",
         importAssets: "アセットを読み込む…",
+        cancelTransfer: "読み込みを中止",
         replaceContent: "ファイルを差し替え…",
         copyCount: {
             other: "{count} 件をコピー",

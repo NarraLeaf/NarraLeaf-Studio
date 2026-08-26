@@ -40,6 +40,9 @@ import { truncateDebugEventMessage } from "./DebugBridge";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
@@ -74,6 +77,7 @@ import {
     getSharedInputHoldTracker,
     isInputBindingHeld,
 } from "@/lib/ui-editor/runtime/input/inputHoldState";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
 import { hitChainHasOperableElement } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import { readSurfaceHitChain } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
@@ -542,6 +546,23 @@ export type BlueprintHostApiRuntime = {
          */
         getSpeakerColor: () => BlueprintRGBAColor;
         /**
+         * Has the line on screen finished revealing, with the dialog now waiting for the player.
+         *
+         * False while it is still typing, and false again the moment the next line mounts, so an
+         * indicator bound to it needs no timer of its own. False with no dialog on screen at all.
+         */
+        isDialogWaiting: () => boolean;
+        /**
+         * The current line's text - the whole line, not the part revealed so far. Empty string when
+         * no line is on screen.
+         */
+        getDialogText: () => string;
+        /**
+         * Does the current line have no speaker. Distinct from a null nametag, which a character
+         * with a blank name also reports. False when no line is on screen.
+         */
+        isNarrator: () => boolean;
+        /**
          * Any character by id, from the table mirrored into global state - the addressable read the
          * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
          * that is not (or is no longer) in the project.
@@ -671,20 +692,27 @@ export type BlueprintHostApiRuntime = {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
     /**
-     * What the player is holding down, for `Is Action Held`.
+     * The read side of input routing, for `Is Action Held` and `Get Input Device`.
      *
-     * The read side of input routing, and the only part of it a graph can ask about rather than be
-     * told about. Everything else in the input model is a dispatch - an action fires, a head runs -
-     * and none of that can answer "while the gesture is down", because a fired event leaves nothing
-     * behind that says whether the hand is still there.
+     * The only part of the input model a graph can ask about rather than be told about. Everything
+     * else in it is a dispatch - an action fires, a head runs - and none of that can answer "while
+     * the gesture is down" or "with which hand", because a fired event leaves nothing behind that
+     * says whether the hand is still there or what it was.
      *
      * Structural rather than a declared family in `@shared/types/blueprint/hostApi`, matching how
-     * `Is Action Held` reaches for it (see `BlueprintInputActionHostApi`): the contract there names
-     * capabilities a host may or may not implement, and this one is answered by the window every
-     * host already has.
+     * both nodes reach for it (see `BlueprintInputActionHostApi`): the contract there names
+     * capabilities a host may or may not implement, and these are answered by the window every host
+     * already has.
      */
     input: {
         isActionHeld: (actionId: string) => boolean;
+        /**
+         * Which device the player is using at this moment.
+         *
+         * One of the four values the `On Action` head's `source` pin carries, typed as a plain
+         * string so a graph compares both against the same literals.
+         */
+        getDevice: () => string;
     };
     /**
      * Moving the player's real cursor, for the Move Mouse family.
@@ -4093,6 +4121,43 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            /**
+             * The three line-scoped reads below take no host override, unlike every neighbour here.
+             * There is nothing for a host to override with: the values come off the engine's own
+             * dialog hook, which only `DialogStateBridge` can see, and it is the one component every
+             * host renders inside the dialog. Global state is therefore the only source, and reading
+             * it directly is what makes the answer identical in Dev Mode and in the story preview.
+             */
+            isDialogWaiting: () => {
+                const cap = "game.isDialogWaiting";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return scope.globalGet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDialogText: () => {
+                const cap = "game.getDialogText";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = scope.globalGet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY);
+                    // The pin is a non-nullable string, so "no line on screen" is the empty string
+                    // rather than an absent value a downstream text node would render as "undefined".
+                    return typeof value === "string" ? value : "";
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isNarrator: () => {
+                const cap = "game.isNarrator";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return scope.globalGet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getCharacter: (characterId: string) => {
                 const cap = "game.getCharacter";
                 emitHostCall(emit, cap, "call");
@@ -4519,6 +4584,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     return readInputActionHeld(document, activeSurfaceId, String(actionId ?? ""));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDevice: () => {
+                const cap = "input.getDevice";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readCurrentInputDevice();
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

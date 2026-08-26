@@ -262,7 +262,13 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
 
         // --- Scene ---------------------------------------------------------------------------------
         background: { keyword: "bg", slots: [{ slot: "source", value: ["name", "color"] }, ...TRANSITION_TAIL] },
-        jump: { keyword: "jump", slots: [{ slot: "scene", value: "name" }, ...TRANSITION_TAIL] },
+        // `returns` sits between the scene and the transition tail, as a bare word: `jump "Title
+        // card" return with fade 0.6`. A word rather than a lead-and-value pair because there is only
+        // one thing it can say, which is the shape `loop` takes on an audio line.
+        jump: {
+            keyword: "jump",
+            slots: [{ slot: "scene", value: "name" }, { slot: "returns", value: "word" }, ...TRANSITION_TAIL],
+        },
         wait: { keyword: "wait", slots: [{ slot: "amount", value: ["word", "seconds"] }] },
         nvl: { keyword: "nvl", slots: TRANSFORM_TAIL },
 

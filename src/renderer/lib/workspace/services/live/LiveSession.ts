@@ -48,6 +48,8 @@ import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/ty
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import { blobChunkCount } from "@shared/live/blobs";
+import { experimentalState } from "@/lib/experimental";
+import { hasExperimentalCondition } from "@shared/types/experimental";
 import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
@@ -129,6 +131,13 @@ type ActiveSession = {
      * see `LiveBlobNeeded`. Dropped when the session ends.
      */
     blobsOut: Map<string, Uint8Array>;
+    /**
+     * Transfers this window has been told to stop carrying.
+     *
+     * Read by the send loop between turns, which is what lets a cancel reach a file that is halfway
+     * out of the door rather than only the ones that have not started.
+     */
+    blobsDropped: Set<string>;
     /** This window's instance id. What tells its own effects from everybody else's. */
     self: string;
     /** The revision recorded on the way in, or null when there was nothing to record. */
@@ -199,6 +208,16 @@ const BLOBS_PER_TURN = 24;
  * the honest answer when that many are gone.
  */
 const MAX_NAMED_SLICES = 512;
+
+/**
+ * How long the send loop waits between turns while `slow-live-transfer` is on.
+ *
+ * A local room moves a twenty-five-megabyte file in about a second, which is the right answer for an
+ * author and the wrong one for anybody trying to look at what a transfer looks like while it is
+ * happening. Long enough that the state between starting and finishing can be read on both screens,
+ * and reachable only from a development launch that asks for it by name.
+ */
+const SLOW_BLOB_TURN_MS = 260;
 
 /** The section an asset type is filed under, as the browser files it. */
 function assetCategoryOf(assetType: string): string {
@@ -684,6 +703,7 @@ export class LiveSession {
             assetCategories,
             blobsIn: new LiveBlobInbox(),
             blobsOut: new Map(),
+            blobsDropped: new Set(),
             self: input.self,
             checkpoint: input.checkpoint,
             host: null,
@@ -804,6 +824,7 @@ export class LiveSession {
         this.deps.assets.setSink(null, null);
         session.blobsIn.clear();
         session.blobsOut.clear();
+        session.blobsDropped.clear();
         session.stopListening();
         session.stopWatching();
         session.claimSweep?.();
@@ -1424,6 +1445,17 @@ export class LiveSession {
                 slices: session.blobsIn.received(part.transferId),
                 sent: session.blobsIn.sawLast(part.transferId, chunkCountOf(part)),
             }),
+            abandon: part => {
+                if (this.active !== session) {
+                    return;
+                }
+                session.blobsIn.drop(part.transferId);
+                session.blobsOut.delete(part.transferId);
+                // Read by the send loop between turns: the machine that is sending this file learns
+                // of the cancel through the deletion's applier like everybody else, and this is what
+                // stops it partway rather than at the end.
+                session.blobsDropped.add(part.transferId);
+            },
         };
     }
 
@@ -1435,6 +1467,10 @@ export class LiveSession {
      * took. The gap is small enough that a transfer still finishes in seconds and large enough that
      * the room keeps answering.
      */
+    private blobTurnDelayMs(): number {
+        return hasExperimentalCondition(experimentalState(), "slow-live-transfer") ? SLOW_BLOB_TURN_MS : 0;
+    }
+
     private async sendBlobs(session: ActiveSession, transferIds: readonly string[]): Promise<void> {
         for (const transferId of transferIds) {
             const bytes = session.blobsOut.get(transferId);
@@ -1443,12 +1479,14 @@ export class LiveSession {
             }
             const chunks = sliceBlob(transferId, bytes);
             for (let at = 0; at < chunks.length; at += 1) {
-                if (this.active !== session) {
-                    return;
+                if (this.active !== session || session.blobsDropped.has(transferId)) {
+                    // Left the room, or the record this file was for has been deleted while it was
+                    // going out. Either way the rest of it is bytes nobody will name.
+                    break;
                 }
                 session.rooms.say(session.room.id, chunks[at]);
                 if ((at + 1) % BLOBS_PER_TURN === 0) {
-                    await new Promise<void>(resolve => this.deps.schedule(0, resolve));
+                    await new Promise<void>(resolve => this.deps.schedule(this.blobTurnDelayMs(), resolve));
                 }
             }
         }
