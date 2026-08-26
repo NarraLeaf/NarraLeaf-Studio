@@ -215,6 +215,27 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
 }
 
 /**
+ * What the control that takes this window out of a room does, and how much it costs.
+ *
+ * Three answers rather than two, because a host leaving is no longer one act. A room's authority is
+ * the window that opened it, so a host walking out of a room with somebody else in it hands it over:
+ * the session carries on in a new room opened by whoever was nominated. A host walking out of a room
+ * of one ends it - there is nobody to hand it to - and that is the destructive one.
+ *
+ * Named after what happens rather than after which half of the session this window is, because the
+ * two are no longer the same question, and a control that said "End" over a session that carries on
+ * would be asking somebody to be brave about nothing.
+ */
+export function liveLeaveAct(view: LiveSessionView): { key: TranslationKey; destructive: boolean } {
+    if (view.role !== "host") {
+        return { key: "workspace.shell.team.liveLeaveSession", destructive: false };
+    }
+    return liveOtherMembers(view).length > 0
+        ? { key: "workspace.shell.team.liveHandOverSession", destructive: false }
+        : { key: "workspace.shell.team.liveEndSession", destructive: true };
+}
+
+/**
  * Everybody in the room except this window, by account.
  *
  * Empty while entering, and empty in a room of one - both of which draw nothing, because a line

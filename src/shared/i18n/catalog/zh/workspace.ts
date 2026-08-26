@@ -417,6 +417,7 @@ export const workspace = {
         liveFrozenTitle: "实时会话进行中",
         liveLeaveSession: "离开实时会话",
         liveEndSession: "结束实时会话",
+        liveHandOverSession: "交接实时会话",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
