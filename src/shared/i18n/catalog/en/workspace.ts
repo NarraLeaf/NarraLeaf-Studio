@@ -469,6 +469,9 @@ export const workspace = {
         liveFrozenTitle: "A live session is open.",
         liveLeaveSession: "Leave the live session",
         liveEndSession: "End the live session",
+        // What a host leaving a room with somebody else in it does. The session carries on in a new
+        // room under the member who has been in it longest.
+        liveHandOverSession: "Hand the live session over",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",

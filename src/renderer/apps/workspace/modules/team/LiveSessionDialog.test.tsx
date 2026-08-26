@@ -215,9 +215,20 @@ describe("what the dialog does when pressed", () => {
 
         cleanup();
         resetWindowOverlayHostForTests();
-        // A host holds the only copy that counts, so its window walking away ends the room for
-        // everybody. Offering it "Leave" would name an act the others would not experience.
+        // A host with somebody else in the room hands it over: the session carries on in a new room
+        // under whoever was nominated, so naming this "End" would ask for courage about nothing.
         world.view = inRoom({ role: "host" });
+        draw();
+        expect(act("leave")?.textContent).toBe("workspace.shell.team.liveHandOverSession");
+
+        cleanup();
+        resetWindowOverlayHostForTests();
+        // A host alone in the room ends it. There is nobody to hand it to, and this is the one of
+        // the three that is destructive.
+        world.view = inRoom({
+            role: "host",
+            session: room({ members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }] }),
+        });
         draw();
         expect(act("leave")?.textContent).toBe("workspace.shell.team.liveEndSession");
         fireEvent.click(act("leave") as HTMLElement);

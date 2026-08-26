@@ -437,6 +437,7 @@ export const workspace = {
         liveFrozenTitle: "ライブセッション中",
         liveLeaveSession: "ライブセッションを退出",
         liveEndSession: "ライブセッションを終了",
+        liveHandOverSession: "ライブセッションを引き渡す",
         // プロジェクトに付いているが、プロジェクトの中にはないデータ。そのうち
         // 現在のものではないバージョンに対して書かれた件数。
         attached: "付随データ {count} 件",
