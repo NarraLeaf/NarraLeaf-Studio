@@ -918,6 +918,11 @@ function renderLinkedComponentInstanceContent(input: {
         height: "100%",
         overflow: "hidden",
     };
+    // A host that runs blueprints is a host where the definition's widgets are the player's to
+    // press; anywhere else the instance is one object an author selects, and its insides are not
+    // separately clickable. Both halves of that - who carries an element id, and what the pointer
+    // can reach - answer to the same question, so they are decided once, here.
+    const liveContent = Boolean(input.hostAdapter.blueprintRuntime);
     const contentStyle: CSSProperties = {
         position: "absolute",
         left: 0,
@@ -926,7 +931,10 @@ function renderLinkedComponentInstanceContent(input: {
         height: rootHeight,
         transform: `scale(${instanceWidth / rootWidth}, ${instanceHeight / rootHeight})`,
         transformOrigin: "top left",
-        pointerEvents: "none",
+        // Inherited by the whole definition, so leaving this "none" at runtime made every widget
+        // inside every placement unreachable: the press landed on the placement's own wrapper, and
+        // the card that drew perfectly answered nothing.
+        pointerEvents: liveContent ? "auto" : "none",
     };
     return (
         // The placement is announced to everything below it, the way a list announces a row. Without
@@ -950,7 +958,22 @@ function renderLinkedComponentInstanceContent(input: {
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
                     [virtualSurface.id],
-                    false,
+                    // A definition's insides answer the player, but never the author's pointer.
+                    //
+                    // This was a flat `false` from when a component was a picture: nothing inside
+                    // one ran, so "not the editor's to select" and "not the player's to press" were
+                    // the same sentence. They stopped being the same the moment a definition could
+                    // carry a blueprint - a card placed twelve times still had to answer a click,
+                    // and `false` here meant no widget inside any placement ever heard one. The
+                    // press landed on the DOM and was dropped at `EditorNodeWrapper`, which is why
+                    // the card drew perfectly and did nothing.
+                    //
+                    // The predicate is the one the nested-surface renderer above already uses: a
+                    // host that runs blueprints is a host where widgets are live. The editing
+                    // canvas has no blueprint runtime, so a component's insides stay unselectable
+                    // there, which is the half of the original `false` worth keeping - an author
+                    // edits the definition, not one drawing of it.
+                    liveContent,
                     input.interactive ?? true,
                     input.keyboardInteractive ?? input.interactive ?? true,
                     input.valueRuntime,
@@ -1152,6 +1175,7 @@ function renderElementTree(
             element={resolved}
             layout={resolved.layout}
             isRoot={resolved.parentId === null}
+            isComponentRoot={resolved.parentId === null && Boolean(componentId)}
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
             hasRuntimeOpacityOverride={Boolean(
@@ -1163,6 +1187,7 @@ function renderElementTree(
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
+            componentId={componentId}
             componentParams={componentParams}
         >
             {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
