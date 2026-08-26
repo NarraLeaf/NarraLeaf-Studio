@@ -45,6 +45,7 @@ import {
     VCS_CHECKPOINT_MESSAGES,
     VCS_DEFAULT_COMMIT_MESSAGE,
     VCS_DEFAULT_MERGE_MESSAGE,
+    VCS_LIVE_SESSION_MESSAGE,
 } from "@shared/vcs/systemRevisionMessage";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
@@ -261,6 +262,19 @@ function isMissingBackendSession(error: unknown): boolean {
 }
 
 /**
+ * The backend refusing a push because both sides have moved on.
+ *
+ * Matched on the sentence for {@link isMissingBackendSession}'s reason - it arrives as a plain
+ * `LoreCallError` with no code of its own - and the phrase is the backend's own and measured
+ * (`Branch has diverged, sync to merge remote changes`). A future wording that this misses reads as
+ * it did before this existed, which is the raw sentence, rather than as anything worse.
+ */
+function isDivergedBranch(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /diverged/i.test(message);
+}
+
+/**
  * A project path this layer cannot work in, said so before anything acts on it.
  *
  * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
@@ -294,6 +308,22 @@ export class VcsUncommittedChangesError extends Error {
     constructor() {
         super("Submit a version before syncing: this project has changes that are not recorded yet");
         this.name = "VcsUncommittedChangesError";
+    }
+}
+
+/**
+ * A push refused because this branch and the server's have both moved on.
+ *
+ * Named rather than passed through for the reason {@link VcsUncommittedChangesError} is named: it
+ * reaches an author, and what reached them was the backend's English with the internal verb that
+ * failed in front of it. The remedy has not changed and neither has the situation - only who says it.
+ */
+export class VcsBranchDivergedError extends Error {
+    readonly code = VcsErrorCode.BranchDiverged;
+
+    constructor(readonly detail: string) {
+        super(detail);
+        this.name = "VcsBranchDivergedError";
     }
 }
 
@@ -1028,9 +1058,13 @@ export class VcsManager extends Manager {
                 working: await readWorkingSetPaths(session.root),
             });
 
+            // Which of the two acts this is. The mechanics below are identical; the sentences the
+            // two revisions carry are not, and they are permanent repository content that a
+            // collaborator reads - see `VcsRestoreOptions.purpose`.
+            const live = options.purpose === "live-session";
             const checkpoint = await backend
                 .commitWorkingTree(globals, {
-                    message: CHECKPOINT_MESSAGES.restore,
+                    message: live ? CHECKPOINT_MESSAGES["live-session"] : CHECKPOINT_MESSAGES.restore,
                     kind: "checkpoint",
                 })
                 .catch((error) => {
@@ -1067,10 +1101,16 @@ export class VcsManager extends Manager {
                     // history whose entries read in whichever language happened to be selected that
                     // day is worse than one that reads in English throughout. The label is a
                     // revision number, which is not language.
-                    message: composeRestoreMessage(
-                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
-                    ),
-                    kind: "commit",
+                    message: live
+                        ? VCS_LIVE_SESSION_MESSAGE
+                        : composeRestoreMessage(
+                            options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
+                        ),
+                    // A checkpoint rather than a commit for a session, because the author did not
+                    // ask for it: the rail collapses checkpoints, and a room entered three times in
+                    // an afternoon must not put three rows the author cannot act on into a history
+                    // they read to find their own work.
+                    kind: live ? "checkpoint" : "commit",
                 })
                 .catch((error) => {
                     if (isNothingToCommit(error)) return null;
@@ -2261,8 +2301,11 @@ export class VcsManager extends Manager {
      * Send this branch's revisions to the server.
      *
      * Refused by the backend when the branch has diverged, with a sentence that names the
-     * remedy (`Branch has diverged, sync to merge remote changes`). That error is passed
-     * through unchanged - see `remote.ts`.
+     * remedy (`Branch has diverged, sync to merge remote changes`). **That one is renamed
+     * rather than passed through** ({@link VcsBranchDivergedError}): the remedy is right,
+     * but it arrived as English carrying the internal verb that failed, in front of an
+     * author whose interface is not in English. Every other refusal still passes through -
+     * see `remote.ts`.
      *
      * Nothing is written locally, so a failure leaves the project exactly as it was.
      */
@@ -2274,7 +2317,12 @@ export class VcsManager extends Manager {
                 offline: false,
                 // The account id, not the author's name - see `resolveOnlineIdentity`.
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            }));
+            })).catch((error: unknown) => {
+                if (isDivergedBranch(error)) {
+                    throw new VcsBranchDivergedError(error instanceof Error ? error.message : String(error));
+                }
+                throw error;
+            });
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
                 result.alreadyPushed ? "(already up to date)" : "",

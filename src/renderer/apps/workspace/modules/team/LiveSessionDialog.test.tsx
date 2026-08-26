@@ -328,7 +328,7 @@ describe("what the dialog says about not entering", () => {
     it("says an attempt that failed, rather than leaving the control silent", () => {
         world.view = {
             ...IDLE_LIVE_SESSION,
-            entryFailure: { kind: "revision-mismatch", expected: "rev-9", actual: "rev-11" },
+            entryFailure: { kind: "revision-mismatch", revision: "rev-11" },
         };
         draw();
 
