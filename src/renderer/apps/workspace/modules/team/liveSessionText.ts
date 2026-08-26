@@ -6,7 +6,7 @@ import type {
     LiveUndoRefusalReason,
 } from "@/lib/workspace/services/live/liveSessionView";
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveRefusalReason } from "@shared/live/ops";
+import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { TeamProjectState } from "../../hooks/useTeamProject";
 
 /**
@@ -116,6 +116,21 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
 };
 
 /**
+ * What a held subject is called, for the one refusal that names a person.
+ *
+ * `row-claimed` is one reason across every document a session carries, and the sentence has to say
+ * what was taken rather than what the reason is spelled: an author told "somebody is writing that
+ * line" after moving a button has been told about a document they are not in.
+ *
+ * Only where the subject is not a line, and only for that one reason - the operations here have
+ * refusals of their own, and those say what they mean already.
+ */
+const CLAIMED_SUBJECTS: Partial<Record<LiveOpKind, TranslationKey>> = {
+    "write-ui": "story.live.refusedElementClaimed",
+    "write-ui-graphs": "story.live.refusedNodeClaimed",
+};
+
+/**
  * What the author is told about an edit the host would not take.
  *
  * ⚠ Whatever shows this must leave the author's text exactly where it is. A refused row is the one
@@ -123,7 +138,9 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
  * refusal exists at all is that losing one silently is worse than any interruption.
  */
 export function liveRefusalSentence(refusal: LiveRefusalNotice): LiveSentence {
-    const key = REFUSALS[refusal.reason];
+    const key = refusal.reason === "row-claimed"
+        ? CLAIMED_SUBJECTS[refusal.op] ?? REFUSALS[refusal.reason]
+        : REFUSALS[refusal.reason];
     // A person is being named, and the row-claimed sentence is the only one that names anybody.
     return refusal.heldBy === undefined ? { key } : { key, params: { name: refusal.heldBy } };
 }

@@ -125,6 +125,8 @@ export const story = {
         refusedFolderNotEmpty: "そのフォルダーの中にフォルダーがある。何も削除されていない",
         refusedUIElementGone: "その要素は存在しない。この変更は反映されていない",
         refusedUIBlueprintGone: "そのブループリントは存在しない。この変更は反映されていない",
+        refusedElementClaimed: "{name} がその要素を編集している。この変更は反映されていない",
+        refusedNodeClaimed: "{name} がそのノードを編集している。この変更は反映されていない",
         refusedTooLarge: "この変更は大きすぎてリアルタイムセッションで共有できない。反映されていない",
         refusedDocumentNotShared: "リアルタイムセッションはそのドキュメントを共有しない。この変更は反映されていない",
         refusedNotInSession: "この端末はもうセッションにいない",

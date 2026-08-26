@@ -139,6 +139,11 @@ export const story = {
         // the properties panel: what the author typed into it is theirs and stays where it is.
         refusedUIElementGone: "That element is gone. The change was not applied.",
         refusedUIBlueprintGone: "That blueprint is gone. The change was not applied.",
+        // The same refusal as a held row, said about what was actually held. One reason spans
+        // every document a session carries, and an author told about a line after moving a
+        // button has been told about a document they are not in.
+        refusedElementClaimed: "{name} is editing that element. The change was not applied.",
+        refusedNodeClaimed: "{name} is editing that node. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That change is too large to share in a live session. It was not applied.",
