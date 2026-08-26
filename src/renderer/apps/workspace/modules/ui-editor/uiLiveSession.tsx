@@ -5,7 +5,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
-import { uiDocumentSpec, uiGraphsSpec } from "@shared/documents/specs";
+import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 import { uiElementClaimKey, UI_ELEMENT_CLAIM_PREFIX } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
 
@@ -31,7 +31,7 @@ import { useWorkspace } from "../../context";
  * is compared against the set a live session declares writable.
  */
 export function interfaceDocumentFreezeScope(): readonly string[] {
-    return [uiDocumentSpec.pathFor(), uiGraphsSpec.pathFor()];
+    return INTERFACE_DOCUMENT_PATHS;
 }
 
 /* ------------------------------------------------------------------------------- undoing */
