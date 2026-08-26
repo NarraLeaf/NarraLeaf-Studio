@@ -145,7 +145,7 @@ export const story = {
         undoAssetGone: "そのアセットは存在しない",
         undoContentReplaced: "ファイルの差し替えは取り消せない",
         undoVariableGone: "その変数は存在しない",
-        undoVariableRestored: "その変数はレジストリに戻っている",
+        undoVariableRestored: "その変数はまた存在している",
         undoKeyRestored: "その文字列は再び宣言されている",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
