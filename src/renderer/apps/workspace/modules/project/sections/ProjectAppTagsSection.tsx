@@ -502,7 +502,7 @@ function TagItem({
                         onFocusChange={setFocused}
                         {...claimed}
                         value={identity[key].value}
-                        disabled={frozen.disabled}
+                        disabled={frozen.disabled || claimed.readOnly}
                         service={service}
                     />
                 ))}
@@ -520,7 +520,7 @@ function TagItem({
                                 tag={tag}
                                 axis={axis}
                                 service={service}
-                                disabled={frozen.disabled}
+                                disabled={frozen.disabled || claimed.readOnly}
                             />
                         ))}
                     </div>
@@ -540,7 +540,7 @@ function TagItem({
                                 mechanism={mechanism}
                                 scenes={scenes}
                                 service={service}
-                                disabled={frozen.disabled}
+                                disabled={frozen.disabled || claimed.readOnly}
                             />
                         ))}
                     </div>
@@ -553,7 +553,7 @@ function TagItem({
                     surfaceId={ending.value}
                     overridden={ending.overridden}
                     surfaces={surfaces}
-                    disabled={frozen.disabled}
+                    disabled={frozen.disabled || claimed.readOnly}
                     service={service}
                 />
 
