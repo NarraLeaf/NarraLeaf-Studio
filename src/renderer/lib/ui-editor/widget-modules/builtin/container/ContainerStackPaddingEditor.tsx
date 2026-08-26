@@ -11,6 +11,7 @@ import {
     CONTAINER_STACK_SPACING_ABS_MAX_PX,
     type ContainerWidgetProps,
 } from "@shared/types/ui-editor/container";
+import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 
 export type ContainerStackPaddingEditorProps = {
     current: ContainerWidgetProps;
@@ -43,7 +44,7 @@ export function ContainerStackPaddingEditor({
      * Read here rather than taken as a prop: this editor is mounted from an `inlineRow` render
      * callback, whose context carries no `readOnly` for the caller to pass on.
      */
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(INTERFACE_DOCUMENT_PATHS);
     const [sidesOpen, setSidesOpen] = useState(false);
     const [popoverPos, setPopoverPos] = useState({ left: 0, top: 0, width: 280 });
     const anchorRef = useRef<HTMLDivElement | null>(null);

@@ -15,8 +15,13 @@ import type {
     LiveDigestScope,
     LiveLocalizationOp,
     LiveStoryOp,
+    LiveUIGraphOp,
+    LiveUIOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
@@ -31,6 +36,8 @@ import type { CharacterOpSink } from "../core/CharacterService";
 import type { DictionaryOpSink } from "../dictionary/DictionaryService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
@@ -252,6 +259,57 @@ export type LiveAssetsPort = {
 };
 
 /**
+ * The interface and its blueprints - `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`.
+ *
+ * **One port for two documents, and that is a statement rather than a shortcut.** Everywhere else a
+ * document has a port of its own; these two are one editing surface written to two files. Adding a
+ * widget to a Surface writes the first and then reconciles a private blueprint for it in the second,
+ * in the same synchronous step - so a session that carried one of them would spend its life
+ * announcing that the other could not be saved. They are loaded together, frozen together, and the
+ * one applier below reports units of both.
+ */
+export type LiveUIPort = {
+    /**
+     * Where interface and blueprint edits go instead of into the documents, or null to take both
+     * back. One call, because there is no state in which one of them is redirected and the other is
+     * not.
+     */
+    setSink(sink: { ui: UIOpSink; graphs: UIGraphOpSink } | null): void;
+    /**
+     * Whether this window holds both documents.
+     *
+     * What the session carries and what the write boundary leaves writable, from one answer - the
+     * shape every other port's `loadAll` has. Nothing to load: both are read as the workspace starts
+     * rather than when a panel opens them.
+     */
+    held(): boolean;
+    /** The interface document as it stands, or null when this window does not hold it. */
+    document(): UIDocument | null;
+    /** The blueprint document as it stands, or null when this window does not hold it. */
+    graphs(): UIGraphDocument | null;
+    /**
+     * Whether one element is in the interface right now.
+     *
+     * A boolean, with the asset port's `hasRecord`: presence is the whole of what the host asks, and
+     * handing the record over would invite a later reader to plan against a copy.
+     */
+    hasElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Answers with every unit it changed, and for an interface operation that includes units of
+     * the OTHER document.** Applying an interface delta runs the blueprint reconciliation behind it,
+     * which is derived work - every machine computes the same records from the same effect, which is
+     * why the ids it mints are derived from the owner key rather than freshly minted. Derived work is
+     * exactly the work that has to be fingerprinted rather than assumed, so what it touched is
+     * reported here and reaches the effect's digests.
+     */
+    applyOp(op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[];
+};
+
+/**
  * The three small project tables a session carries, as one shape three times over.
  *
  * The dictionary, the mixer and the asset sets are one document each per project, and each needs
@@ -385,6 +443,20 @@ export type LiveHistoryPort = {
      * deleting everything they wrote, with nothing on either screen reporting it.
      */
     forgetStoryScenes(storyId: StoryId): void;
+    /**
+     * Throw away every Surface and blueprint stack.
+     *
+     * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
+     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * One applied - during a session or after it - would put the screen back the way it was before
+     * anybody else joined, deleting everything they have added since, with nothing on either machine
+     * reporting it.
+     *
+     * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
+     * scenes are at risk; the interface is one document with every Surface in it, and every stack
+     * over it is about to become historical.
+     */
+    forgetInterfaceEditors(): void;
 };
 
 /** Everything {@link LiveSession} needs from the world. */
@@ -400,6 +472,7 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    ui: LiveUIPort;
     dictionary: LiveDictionaryPort;
     audioTracks: LiveAudioTrackPort;
     assetSets: LiveAssetSetPort;

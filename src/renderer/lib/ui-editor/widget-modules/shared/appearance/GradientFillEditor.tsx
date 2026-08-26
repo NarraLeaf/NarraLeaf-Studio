@@ -44,6 +44,7 @@ import {
 } from "@shared/types/ui-editor/gradientFill";
 import { gradientToCss } from "@shared/ui-editor/gradientCss";
 import type { TranslationKey } from "@shared/i18n";
+import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 
 /**
  * The authoring surface for a gradient fill: a swatch that paints the gradient itself, and the
@@ -317,7 +318,7 @@ export function GradientFillEditor({ value, onChange, draftResetKey, className }
     // overlay host: it is not a descendant of the `<fieldset disabled>` the properties framework
     // wraps this field in, so no clamp an ancestor applies can reach it. The same arrangement the
     // container's per-side padding popover uses, and for the same reason.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(INTERFACE_DOCUMENT_PATHS);
 
     const fill = value ?? DEFAULT_GRADIENT_FILL;
     const stops = useMemo(() => sortStops(fill.stops), [fill.stops]);

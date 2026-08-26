@@ -6,7 +6,7 @@ import type {
     LiveUndoRefusalReason,
 } from "@/lib/workspace/services/live/liveSessionView";
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveRefusalReason } from "@shared/live/ops";
+import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { TeamProjectState } from "../../hooks/useTeamProject";
 
 /**
@@ -144,12 +144,29 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "asset-gone": "story.live.refusedAssetGone",
     "asset-id-taken": "story.live.refusedAssetIdTaken",
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
+    "ui-element-gone": "story.live.refusedUIElementGone",
+    "ui-blueprint-gone": "story.live.refusedUIBlueprintGone",
     "track-gone": "story.live.refusedTrackGone",
     "set-gone": "story.live.refusedSetGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
     "unknown-op": "story.live.refusedUnknownOp",
+};
+
+/**
+ * What a held subject is called, for the one refusal that names a person.
+ *
+ * `row-claimed` is one reason across every document a session carries, and the sentence has to say
+ * what was taken rather than what the reason is spelled: an author told "somebody is writing that
+ * line" after moving a button has been told about a document they are not in.
+ *
+ * Only where the subject is not a line, and only for that one reason - the operations here have
+ * refusals of their own, and those say what they mean already.
+ */
+const CLAIMED_SUBJECTS: Partial<Record<LiveOpKind, TranslationKey>> = {
+    "write-ui": "story.live.refusedElementClaimed",
+    "write-ui-graphs": "story.live.refusedNodeClaimed",
 };
 
 /**
@@ -160,7 +177,9 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
  * refusal exists at all is that losing one silently is worse than any interruption.
  */
 export function liveRefusalSentence(refusal: LiveRefusalNotice): LiveSentence {
-    const key = REFUSALS[refusal.reason];
+    const key = refusal.reason === "row-claimed"
+        ? CLAIMED_SUBJECTS[refusal.op] ?? REFUSALS[refusal.reason]
+        : REFUSALS[refusal.reason];
     // A person is being named, and the row-claimed sentence is the only one that names anybody.
     return refusal.heldBy === undefined ? { key } : { key, params: { name: refusal.heldBy } };
 }

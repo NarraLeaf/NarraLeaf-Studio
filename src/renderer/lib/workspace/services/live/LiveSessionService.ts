@@ -2,7 +2,11 @@ import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import type { LiveDerived, LiveDigestScope } from "@shared/live/ops";
+import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp } from "@shared/live/ops";
+import { uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import { uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
@@ -20,6 +24,8 @@ import { DictionaryService } from "../dictionary/DictionaryService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
+import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
 import type { LiveSessionDeps, LiveProjectIdentity } from "./liveSessionPorts";
@@ -196,6 +202,28 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimAsset(assetId, holding);
     }
 
+    /**
+     * Say that this window is editing one interface element, or that it has stopped.
+     *
+     * The canvas's door beside the row's, the record's, the line's and the asset's, and the same
+     * bargain: silent outside a session, so the properties panel calls it without asking whether
+     * there is one. The component id is part of the address because a component definition owns its
+     * own element map.
+     */
+    public claimUIElement(componentId: string | null, elementId: string, holding: boolean): void {
+        this.session?.claimUIElement(componentId, elementId, holding);
+    }
+
+    /**
+     * Say that this window is editing one blueprint node, or that it has stopped.
+     *
+     * The element's counterpart on the blueprint canvas. Both the blueprint and the graph are part
+     * of the address because node ids are not unique across the document.
+     */
+    public claimUINode(blueprintId: string, graphId: string, nodeId: string, holding: boolean): void {
+        this.session?.claimUINode(blueprintId, graphId, nodeId, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;
@@ -206,6 +234,78 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
     }
 
     /* ------------------------------------------------------------------- wiring */
+
+    /**
+     * Apply one interface or blueprint operation, and answer every unit it changed.
+     *
+     * **The one place the seam between the two documents is handled, and the reason it lives in the
+     * wiring rather than in a service.** Applying an interface delta runs
+     * `UIBlueprintLifecycleCoordinator` behind it, which writes `uigraphs.json` to keep the private
+     * blueprints aligned with the Surfaces and widgets that now exist. That write is DERIVED: every
+     * machine performs it from the same effect and reaches the same records, which is why the ids it
+     * mints come from the owner key (see `derivedBlueprintId`). So it must not become an operation of
+     * its own - `UIGraphService.holdDerived` stands the sink aside for the length of it and answers
+     * with what it wrote, and what it wrote is fingerprinted here like everything else.
+     *
+     * ⚠ The Surface owner map is read BEFORE applying. Which Surface an element belongs to is a
+     * question about the tree, and for an element the delta is deleting the only place left to ask is
+     * the state before - so a digest taken afterwards alone would fingerprint every Surface except
+     * the one the author just changed.
+     */
+    private applyInterfaceOp(ctx: WorkspaceContext, op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[] {
+        const uidoc = ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const uigraphs = ctx.services.get<UIGraphService>(Services.UIGraph);
+        const scopes: LiveDigestScope[] = [];
+        if (op.op === "write-ui") {
+            const ownersBefore = uiOwningSurfaceIds(uidoc.getDocument());
+            const derived = uigraphs.holdDerived(() => uidoc.applyLiveOp(op));
+            const touched = uiPartsTouched(ownersBefore, uidoc.getDocument(), op.parts);
+            for (const surfaceId of touched.surfaces) {
+                scopes.push({ of: "ui-surface", surfaceId });
+            }
+            for (const componentId of touched.components) {
+                scopes.push({ of: "ui-component", componentId });
+            }
+            if (touched.shell) {
+                scopes.push({ of: "ui-shell" });
+            }
+            if (derived) {
+                const reconciled = uiGraphPartsTouched(derived);
+                for (const blueprintId of reconciled.blueprints) {
+                    scopes.push({ of: "ui-blueprint", blueprintId });
+                }
+                if (reconciled.shell) {
+                    scopes.push({ of: "ui-graph-shell" });
+                }
+            }
+            return scopes;
+        }
+        uigraphs.applyLiveOp(op);
+        const touched = uiGraphPartsTouched(op.parts);
+        for (const blueprintId of touched.blueprints) {
+            scopes.push({ of: "ui-blueprint", blueprintId });
+        }
+        if (touched.shell) {
+            scopes.push({ of: "ui-graph-shell" });
+        }
+        return scopes;
+    }
+
+    private uiDocumentOrNull(ctx: WorkspaceContext): UIDocument | null {
+        try {
+            return ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
+        } catch {
+            return null;
+        }
+    }
+
+    private uiGraphsOrNull(ctx: WorkspaceContext): UIGraphDocument | null {
+        try {
+            return ctx.services.get<UIGraphService>(Services.UIGraph).getDocument();
+        } catch {
+            return null;
+        }
+    }
 
     private buildDeps(ctx: WorkspaceContext): LiveSessionDeps {
         const story = (): StoryService => ctx.services.get<StoryService>(Services.Story);
@@ -218,6 +318,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const assetSets = (): AssetSetService => ctx.services.get<AssetSetService>(Services.AssetSets);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
+        const uidoc = (): UIDocumentService => ctx.services.get<UIDocumentService>(Services.UIDocument);
+        const uigraphs = (): UIGraphService => ctx.services.get<UIGraphService>(Services.UIGraph);
 
         return {
             instance: async () => {
@@ -292,6 +394,21 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
+            },
+            ui: {
+                setSink: sink => {
+                    uidoc().setOperationSink(sink?.ui ?? null);
+                    uigraphs().setOperationSink(sink?.graphs ?? null);
+                },
+                // No load step: both documents are read as the workspace starts. What this asks is
+                // whether they are there - a workspace that failed to bring one up carries neither,
+                // and the write boundary then goes on refusing both.
+                held: () => this.uiDocumentOrNull(ctx) !== null && this.uiGraphsOrNull(ctx) !== null,
+                document: () => this.uiDocumentOrNull(ctx),
+                graphs: () => this.uiGraphsOrNull(ctx),
+                hasElement: ref => uiHasElement(this.uiDocumentOrNull(ctx), ref),
+                hasBlueprint: blueprintId => uiHasBlueprint(this.uiGraphsOrNull(ctx), blueprintId),
+                applyOp: op => this.applyInterfaceOp(ctx, op),
             },
             // The three project tables. No load step, with the asset shards: all three are read as
             // the workspace starts rather than when a panel opens them.
@@ -406,6 +523,11 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                     ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
                         isHistoryScopeOf(scopeId, HistoryScopeKind.StoryScene)
                         && historyScopeParts(scopeId)[0] === storyId);
+                },
+                forgetInterfaceEditors: () => {
+                    ctx.services.get<HistoryService>(Services.History).clearMatching(scopeId =>
+                        isHistoryScopeOf(scopeId, HistoryScopeKind.UISurface)
+                        || isHistoryScopeOf(scopeId, HistoryScopeKind.Blueprint));
                 },
             },
             now: () => Date.now(),
