@@ -431,20 +431,46 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
         }
         before.blueprints = blueprints;
     }
-    if (parts.graphs) {
-        const graphs: Record<string, LiveBlueprintGraphsDelta> = {};
-        for (const [blueprintId, delta] of Object.entries(parts.graphs)) {
-            const blueprint = held[blueprintId];
-            const index = blueprint?.program.kind === "graph" ? blueprint.program.graphs : undefined;
-            const captured: LiveBlueprintGraphsDelta = {};
-            if (delta.events) {
-                captured.events = slotsBefore(index?.events ?? {}, delta.events);
-            }
-            if (delta.functions) {
-                captured.functions = slotsBefore(index?.functions ?? {}, delta.functions);
-            }
+    const graphs: Record<string, LiveBlueprintGraphsDelta> = {};
+    for (const [blueprintId, delta] of Object.entries(parts.graphs ?? {})) {
+        const blueprint = held[blueprintId];
+        const index = blueprint?.program.kind === "graph" ? blueprint.program.graphs : undefined;
+        const captured: LiveBlueprintGraphsDelta = {};
+        if (delta.events) {
+            captured.events = slotsBefore(index?.events ?? {}, delta.events);
+        }
+        if (delta.functions) {
+            captured.functions = slotsBefore(index?.functions ?? {}, delta.functions);
+        }
+        graphs[blueprintId] = captured;
+    }
+    // ⚠ **A blueprint the delta is removing is captured whole, every graph in it.** A shell travels
+    // without its graphs - that is the whole point of it - so an inverse built from the shell alone
+    // puts an empty blueprint back under the right name, which reads as the undo having worked. And
+    // a delta never names the graphs of a blueprint it is removing: saying so would be a second
+    // statement of the same removal.
+    for (const [blueprintId, shell] of Object.entries(parts.blueprints ?? {})) {
+        if (shell !== null || graphs[blueprintId]) {
+            continue;
+        }
+        const blueprint = held[blueprintId];
+        if (blueprint?.program.kind !== "graph") {
+            continue;
+        }
+        const captured: LiveBlueprintGraphsDelta = {};
+        const events = wholeSlots(blueprint.program.graphs.events ?? {});
+        const functions = wholeSlots(blueprint.program.graphs.functions ?? {});
+        if (Object.keys(events).length > 0) {
+            captured.events = events;
+        }
+        if (Object.keys(functions).length > 0) {
+            captured.functions = functions;
+        }
+        if (captured.events || captured.functions) {
             graphs[blueprintId] = captured;
         }
+    }
+    if (Object.keys(graphs).length > 0) {
         before.graphs = graphs;
     }
     if (parts.owners) {
@@ -462,6 +488,20 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
         before.legacyGraphs = legacyGraphs;
     }
     return before;
+}
+
+/** Every slot of one index, each captured whole. What a removed blueprint's inverse carries. */
+function wholeSlots(
+    held: Readonly<Record<string, BlueprintEventGraph | BlueprintFunctionGraph>>,
+): Record<string, LiveGraphSlotDelta | null> {
+    const captured: Record<string, LiveGraphSlotDelta | null> = {};
+    for (const graphId of Object.keys(held)) {
+        captured[graphId] = null;
+    }
+    // Asked for as removals, then answered as the whole slot: `slotsBefore` reads a `null` in the
+    // forward delta as "this slot is going" and keeps everything that was in it, which is exactly
+    // what a blueprint that is going needs of every one of its graphs.
+    return slotsBefore(held, captured);
 }
 
 function slotsBefore(

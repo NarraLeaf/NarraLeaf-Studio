@@ -353,17 +353,35 @@ export function uiPartsBefore(document: UIDocument, parts: LiveUIParts): LiveUIP
         }
         before.elements = elements;
     }
-    if (parts.componentElements) {
-        const components = indexById(document.components);
-        const componentElements: Record<UIComponentId, Record<UIElementId, UIElement | null>> = {};
-        for (const [componentId, delta] of Object.entries(parts.componentElements)) {
-            const held = components[componentId]?.elements ?? {};
-            const elements: Record<UIElementId, UIElement | null> = {};
-            for (const elementId of Object.keys(delta)) {
-                elements[elementId] = copy(held[elementId] ?? null);
-            }
+    const components = indexById(document.components);
+    const componentElements: Record<UIComponentId, Record<UIElementId, UIElement | null>> = {};
+    for (const [componentId, delta] of Object.entries(parts.componentElements ?? {})) {
+        const held = components[componentId]?.elements ?? {};
+        const elements: Record<UIElementId, UIElement | null> = {};
+        for (const elementId of Object.keys(delta)) {
+            elements[elementId] = copy(held[elementId] ?? null);
+        }
+        componentElements[componentId] = elements;
+    }
+    // ⚠ **A component the delta is removing is captured whole, tree and all.** Going down, a
+    // deletion is one word and the elements go with the record; coming back up, nothing anywhere
+    // else holds them - and a delta never names the elements of a component it is removing, because
+    // saying so would be a second statement of the same removal. Without this the inverse puts an
+    // empty component back under the right name, which reads as the undo having worked.
+    for (const [componentId, shell] of Object.entries(parts.components ?? {})) {
+        if (shell !== null || componentElements[componentId]) {
+            continue;
+        }
+        const held = components[componentId]?.elements ?? {};
+        const elements: Record<UIElementId, UIElement | null> = {};
+        for (const [elementId, element] of Object.entries(held)) {
+            elements[elementId] = copy(element);
+        }
+        if (Object.keys(elements).length > 0) {
             componentElements[componentId] = elements;
         }
+    }
+    if (Object.keys(componentElements).length > 0) {
         before.componentElements = componentElements;
     }
     if (parts.surfaces) {
