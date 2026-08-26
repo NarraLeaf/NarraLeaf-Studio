@@ -262,12 +262,12 @@ function selfAccount(view: LiveSessionView): string | null {
  * on a character - `nameInitials` and `nameMonogramColor` derive both halves from the account name -
  * so it says *a person* rather than *an action*, and says which person.
  */
-export function TranslationClaimMark({ account }: { account: string }) {
+export function TranslationClaimMark({ account, tip }: { account: string; tip?: string }) {
     const { t } = useTranslation();
     return (
         <span
             data-translation-claim={account}
-            data-tip={t("workspace.localization.live.entryClaimed", { name: account })}
+            data-tip={tip ?? t("workspace.localization.live.entryClaimed", { name: account })}
             className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-2xs font-medium leading-none text-white"
             style={{ backgroundColor: nameMonogramColor(account) }}
         >
