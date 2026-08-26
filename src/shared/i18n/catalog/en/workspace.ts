@@ -423,8 +423,8 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations, the asset library, the variables and the named strings.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations, the asset library, the variables and the named strings.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -690,7 +690,7 @@ export const workspace = {
             // A live session saves its own story and refuses the rest, so the title above
             // would be false about the file the author is most likely typing into.
             frozenTitleSession: "That file is not being saved",
-            frozenDetailSession: "A live session is open. Only its story and the cast are saved; leave the session to change anything else.",
+            frozenDetailSession: "A live session is open. Only what the session carries is saved; leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
