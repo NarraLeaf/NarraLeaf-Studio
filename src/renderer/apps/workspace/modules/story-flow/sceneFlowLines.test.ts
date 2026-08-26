@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story";
 import type { StoryBlock, StoryDocument, StoryScene } from "@shared/types/story";
 import { buildSceneFlowGraph } from "./sceneFlowModel";
-import { buildSceneFlowLines } from "./sceneFlowLines";
+import {
+    buildSceneFlowLines,
+    SCENE_FLOW_CALL_STROKE,
+    SCENE_FLOW_CONDITIONAL_DASH,
+    SCENE_FLOW_LINE_STROKE,
+    sceneFlowLinePaint,
+} from "./sceneFlowLines";
 
 function jumpBlock(id: string, targetSceneId: string, parentId: string | null = null): StoryBlock {
     return { id, kind: "jump", parentId, childrenIds: [], payload: { targetSceneId } };
@@ -129,6 +135,42 @@ describe("buildSceneFlowLines", () => {
 
         expect(lines).toHaveLength(1);
         expect(lines[0].jumps.map(jump => jump.blockId)).toEqual(["j1"]);
+    });
+
+    it("paints a line from what it is, and from nothing else", () => {
+        // The two codes are independent axes and every pairing occurs in real stories, so they are
+        // pinned as a table rather than one at a time.
+        const paint = (conditional: boolean, returns: boolean) =>
+            sceneFlowLinePaint({ conditional, returns });
+
+        expect(paint(false, false)).toEqual({
+            stroke: SCENE_FLOW_LINE_STROKE,
+            strokeDasharray: undefined,
+            doubleHeaded: false,
+        });
+        expect(paint(true, false)).toEqual({
+            stroke: SCENE_FLOW_LINE_STROKE,
+            strokeDasharray: SCENE_FLOW_CONDITIONAL_DASH,
+            doubleHeaded: false,
+        });
+        expect(paint(false, true)).toEqual({
+            stroke: SCENE_FLOW_CALL_STROKE,
+            strokeDasharray: undefined,
+            doubleHeaded: true,
+        });
+        expect(paint(true, true)).toEqual({
+            stroke: SCENE_FLOW_CALL_STROKE,
+            strokeDasharray: SCENE_FLOW_CONDITIONAL_DASH,
+            doubleHeaded: true,
+        });
+    });
+
+    it("takes its colours from theme tokens, so both themes and the accent keep working", () => {
+        // A literal here would be a colour the light theme never gets to override - the one thing
+        // docs/design-system.md rules out outright.
+        for (const stroke of [SCENE_FLOW_LINE_STROKE, SCENE_FLOW_CALL_STROKE]) {
+            expect(stroke).toMatch(/^rgb\(var\(--nl-[a-z-]+\)\)$/);
+        }
     });
 
     it("keeps every line's id matching the graph edge it was drawn from", () => {
