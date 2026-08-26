@@ -173,6 +173,30 @@ describe("the interface document as a delta of records", () => {
         expect(applied).toEqual(after);
     });
 
+    it("puts a removed component back with its tree, not as an empty shell", () => {
+        // ⚠ A shell travels without its elements, and a delta never names the elements of a
+        // component it is removing - saying so would be a second statement of the same removal. So
+        // an inverse built from the shell alone restores an empty component under the right name,
+        // which reads as the undo having worked.
+        const before = document();
+        const after = clone(before);
+        after.components = [];
+
+        const parts = diffUIParts(before, after)!;
+        expect(parts.components?.["c1"]).toBeNull();
+        expect(parts.componentElements?.["c1"]).toBeUndefined();
+
+        const kept = uiPartsBefore(before, parts);
+        // The tree is in the record kept for the inverse, though the delta never named it.
+        expect(Object.keys(kept.componentElements?.["c1"] ?? {}).sort()).toEqual(["cb-1", "cr-1"]);
+        const applied = clone(before);
+        applyUIParts(applied, parts);
+        expect(applied.components).toEqual([]);
+
+        applyUIParts(applied, kept);
+        expect(applied).toEqual(before);
+    });
+
     it("carries the whole order of a list whenever the list changed at all", () => {
         // A delta that named only the changed entry would leave "where does a new Surface go" to
         // each machine's own guess.

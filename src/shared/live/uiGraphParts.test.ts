@@ -161,6 +161,29 @@ describe("the blueprint document as a delta of records", () => {
         expect(applied).toEqual(before);
     });
 
+    it("puts a removed blueprint back with its graphs, not as an empty shell", () => {
+        // The interface's removed-component case, one document along and for the same reason: the
+        // shell is what travels, and nothing else holds what was inside it.
+        const before = document();
+        const after = clone(before);
+        delete after.blueprintDocument.blueprints["bp-1"];
+
+        const parts = diffUIGraphParts(before, after)!;
+        expect(parts.blueprints?.["bp-1"]).toBeNull();
+        expect(parts.graphs?.["bp-1"]).toBeUndefined();
+
+        const kept = uiGraphPartsBefore(before, parts);
+        // Every graph is in the record kept for the inverse, though the delta never named one.
+        expect(Object.keys(kept.graphs?.["bp-1"]?.events ?? {})).toEqual(["ev-1"]);
+        expect(Object.keys(kept.graphs?.["bp-1"]?.events?.["ev-1"]?.nodes ?? {}).sort()).toEqual(["n-1", "n-2"]);
+        const applied = clone(before);
+        applyUIGraphParts(applied, parts);
+        expect(applied.blueprintDocument.blueprints["bp-1"]).toBeUndefined();
+
+        applyUIGraphParts(applied, kept);
+        expect(applied).toEqual(before);
+    });
+
     it("puts a deleted node back exactly as it was", () => {
         const before = document();
         const after = clone(before);
