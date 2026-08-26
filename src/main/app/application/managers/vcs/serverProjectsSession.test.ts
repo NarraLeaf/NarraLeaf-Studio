@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TeamCallOutcome } from "@shared/types/team";
+import type { VcsServerProject } from "@shared/types/vcs";
 import {
     createServerProjectOverSession,
     listServerProjectsOverSession,
@@ -51,6 +52,30 @@ describe("listing a server's projects over the session", () => {
         const result = await listServerProjectsOverSession(call, ORIGIN);
 
         expect(result).toEqual({ ok: false, problem: { kind: "unreachable" } });
+    });
+
+    it("keeps an empty history as empty rather than as zero versions", async () => {
+        // A server records a project the moment it is created and reads its repository
+        // afterwards, so an empty history object is the ordinary answer for one made a
+        // moment ago. Every field it does not carry has to survive as nothing: a zero here
+        // is a panel saying nobody has ever worked on the project.
+        const call = calling({ ok: true, value: { projects: [{ ...row(), history: {} }] } });
+        const result = await listServerProjectsOverSession(call, ORIGIN);
+
+        expect(result).toMatchObject({ ok: true });
+        const [project] = (result as { ok: true; projects: VcsServerProject[] }).projects;
+        expect(project?.history).toEqual({});
+        expect(project?.history).not.toHaveProperty("revisions");
+        expect(project?.history).not.toHaveProperty("lastAt");
+    });
+
+    it("carries no history at all for a server that did not send the field", async () => {
+        const call = calling({ ok: true, value: { projects: [row()] } });
+        const result = await listServerProjectsOverSession(call, ORIGIN);
+
+        expect(result).toMatchObject({ ok: true });
+        expect((result as { ok: true; projects: VcsServerProject[] }).projects[0])
+            .not.toHaveProperty("history");
     });
 });
 

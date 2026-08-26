@@ -31,7 +31,6 @@ vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: [] } }),
-            listServerProjects: () => Promise.resolve({ success: true, data: { ok: true, projects: [] } }),
         },
         // The window opens a session with this project's server the moment the workspace is
         // drawn - that is what makes the check automatic - and the dialog behind this cell reads
