@@ -164,6 +164,35 @@ export function startupSwitchNames(args: readonly string[], platform: NodeJS.Pla
     return reviewStartupArguments(args, platform, []).removable;
 }
 
+/**
+ * Whether a `debuggable` marker on this build may be acted on.
+ *
+ * A build whose content is sealed - the project turned asset encryption on, so the pack and the
+ * assets live inside the protected store - never honours it, whichever of the two markers carries
+ * it and whatever it says.
+ *
+ * The reason is timing rather than policy. What actually keeps a debugger out is the check that
+ * runs *before* app-ready, because Chromium reads `--remote-debugging-port` after this script has
+ * had its turn: quitting later still leaves the port accepting connections about 130ms in, while
+ * taking the switch off the command line means it never listens at all. That check has to answer
+ * before anything can open the pack, so the only marker it can read is the one in the loose app
+ * manifest - a plain JSON file sitting beside the archive.
+ *
+ * On an ordinary build that is an accepted cost: the manifest is inside an asar whose integrity is
+ * validated on the platforms that can, and a player owns the machine either way. On a build whose
+ * author asked for asset protection it is not, because the point of that build is that reading its
+ * content should cost something, and a one-word edit to a text file is the cheapest imaginable
+ * route to a debugger attached to the process that holds the decrypted content.
+ *
+ * So a sealed build answers no, decided from the presence of the store rather than from anything
+ * inside it - that is the one fact about protection a pre-ready check can establish. Deleting the
+ * store to get past this does not produce a protected build with a debugger; it produces a build
+ * with no content.
+ */
+export function honoursDebuggableMarker(marker: boolean, sealed: boolean): boolean {
+    return marker && !sealed;
+}
+
 /** Whether this command line asked for a debugger. */
 export function hasDebuggingSwitch(args: readonly string[], platform: NodeJS.Platform): boolean {
     const asked = new Set(DEBUGGING_SWITCHES);

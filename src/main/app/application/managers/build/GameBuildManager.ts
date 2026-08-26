@@ -961,9 +961,9 @@ export class GameBuildManager {
     ): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         // Read before the variant, because a DLC decides which variant this is: the record is the
         // one place that says where the DLC belongs, and letting the dialog say it too would make
         // "sealed for the demo, declared for the release" a state an author could reach.
@@ -1650,11 +1650,11 @@ export class GameBuildManager {
     private async run(session: BuildSession, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         if (targets.length === 0) {
@@ -3180,8 +3180,22 @@ export class GameBuildManager {
      * difference this makes to the output - no asar integrity, a runtime that will attach - is not
      * one anybody can see by looking at the file.
      */
-    private reportDebuggableBuild(session: BuildSession): boolean {
+    private reportDebuggableBuild(session: BuildSession, sealed: boolean): boolean {
         if (!this.app.hasExperimentalCondition("debuggable-build")) {
+            return false;
+        }
+        if (sealed) {
+            // Refused rather than shipped-and-ignored. A sealed build's runtime declines a
+            // debugging switch whatever its markers say (see `honoursDebuggableMarker`), so an
+            // artifact that carried the condition would differ from a production one in exactly one
+            // way - no asar integrity - while delivering nothing the condition exists for.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "experimental condition debuggable-build was ignored: this project protects "
+                    + "its assets, and a protected build never accepts a debugging switch. The "
+                    + "artifact ships as an ordinary one, asar integrity included.",
+            });
             return false;
         }
         this.emit(session, {

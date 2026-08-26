@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { CLAIM_REASSERT_MS } from "@/lib/live";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
+import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import { Services } from "@/lib/workspace/services/services";
+import type { AssetsService, AssetTransfer } from "@/lib/workspace/services/core/AssetsService";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { ASSET_CATEGORY_ORDER, AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -177,6 +179,60 @@ function selfAccount(view: LiveSessionView): string | null {
     return view.session?.members.find(member => member.instance === view.self)?.account ?? null;
 }
 
+/* ------------------------------------------------------------------- what is arriving */
+
+/** How far one file has got, by asset id. Between 0 and 1. */
+export type AssetTransfers = Readonly<Record<string, number>>;
+
+export const NO_ASSET_TRANSFERS: AssetTransfers = {};
+
+/**
+ * The files on their way into this library, and how far each has got.
+ *
+ * **The same on both machines and for the same reason the mark above is**: the room relays a message
+ * back to whoever said it, so a file being carried in is a file arriving everywhere in the room -
+ * including on the screen of the author who dragged it in. Neither side is watching an estimate.
+ *
+ * One subscription for the whole panel, like the claims: the service reports progress in steps
+ * rather than per slice, and a row that subscribed for itself would still be one subscription per
+ * row of a library that has hundreds.
+ */
+export function useAssetTransfers(): AssetTransfers {
+    const { context, isInitialized } = useWorkspace();
+    const service = useMemo(
+        () => (context && isInitialized ? context.services.get<AssetsService>(Services.Assets) : null),
+        [context, isInitialized],
+    );
+    const [transfers, setTransfers] = useState<AssetTransfers>(NO_ASSET_TRANSFERS);
+
+    useEffect(() => {
+        if (!service) {
+            setTransfers(NO_ASSET_TRANSFERS);
+            return;
+        }
+        const read = (arriving: readonly AssetTransfer[]) => setTransfers(
+            arriving.length === 0 ? NO_ASSET_TRANSFERS : shareOf(arriving),
+        );
+        // On the way in as well: a panel opened while a file is arriving has missed the step that
+        // said it started.
+        read(service.transfers());
+        return service.getEvents().on("transfers", read);
+    }, [service]);
+
+    return transfers;
+}
+
+/** What a bar is drawn from. A file with no slices in it yet is one whole slice, never a division by zero. */
+function shareOf(arriving: readonly AssetTransfer[]): AssetTransfers {
+    const out: Record<string, number> = {};
+    for (const transfer of arriving) {
+        out[transfer.assetId] = transfer.total <= 0
+            ? 0
+            : Math.min(1, transfer.slices / transfer.total);
+    }
+    return out;
+}
+
 /* ------------------------------------------------------------------------- what it draws */
 
 /**
@@ -186,6 +242,30 @@ function selfAccount(view: LiveSessionView): string | null {
  * a character and on a translation - `nameInitials` and `nameMonogramColor` derive both halves from
  * the account name - so it says *a person* rather than *an action*, and says which person.
  */
+/**
+ * What a row wears while its file is still arriving.
+ *
+ * **A band across the row rather than a bar beside it.** The row is where the file will be - its
+ * name, its type, the folder it was dropped into - so filling that row says which file is coming and
+ * how far it has got in one place, without a second list of transfers to read alongside the library.
+ *
+ * Drawn behind the row's own text: the caller gives the row `relative isolate` and this sits under
+ * it, so a name stays legible over the band at any width.
+ */
+export function AssetTransferSweep({ share, className }: { share: number; className?: string }) {
+    return (
+        <span
+            aria-hidden
+            data-asset-transfer={Math.round(share * 100)}
+            className={cn(
+                "pointer-events-none absolute inset-y-0 left-0 -z-10 bg-primary/20 transition-[width] duration-200",
+                className,
+            )}
+            style={{ width: `${Math.round(share * 100)}%` }}
+        />
+    );
+}
+
 export function AssetClaimMark({ account }: { account: string }) {
     const { t } = useTranslation();
     return (
