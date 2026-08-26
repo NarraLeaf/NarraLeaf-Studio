@@ -18391,649 +18391,6 @@
         },
         "bindings": {}
       },
-      "4c51968f-de40-4292-b4b5-e3412b6ab36b": {
-        "id": "4c51968f-de40-4292-b4b5-e3412b6ab36b",
-        "name": "插图框",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "54544404-100e-4cf6-8f97-5d1ab0e74047"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "b998720b-ae92-4abf-89c5-bf72e16d1bee": {
-        "id": "b998720b-ae92-4abf-89c5-bf72e16d1bee",
-        "name": "插图",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "684fe42b-bd5e-410c-b0fc-01a9bb25f901"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "1b4d5909-e4b6-4ee5-bb24-1832eb147f3c": {
-        "id": "1b4d5909-e4b6-4ee5-bb24-1832eb147f3c",
-        "name": "锁定标记",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "22aa1023-b409-4937-b139-5828eb3dc1a8"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "0f6477be-d012-4884-bbed-0f0ec5d03c95": {
-        "id": "0f6477be-d012-4884-bbed-0f0ec5d03c95",
-        "name": "场景名",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "af5ea9a0-8b6d-41e2-8abf-b749752a9519"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "e77bc593-fa4f-41dc-9814-1c0a20ef5163": {
-        "id": "e77bc593-fa4f-41dc-9814-1c0a20ef5163",
-        "name": "点击区域",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "03921db3-a8f5-4399-9146-232d076891e1"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f"
-            ],
-            "events": {
-              "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f": {
-                "id": "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 160
-                        }
-                      }
-                    },
-                    "n2Click": {
-                      "id": "n2Click",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 1060
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n7": {
-                      "id": "n7",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n8": {
-                      "id": "n8",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "text"
-                        ],
-                        "text": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n9": {
-                      "id": "n9",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "nT": {
-                      "id": "nT",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "true"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 420
-                        }
-                      }
-                    },
-                    "nF": {
-                      "id": "nF",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "false"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 500
-                        }
-                      }
-                    },
-                    "rArt": {
-                      "id": "rArt",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "684fe42b-bd5e-410c-b0fc-01a9bb25f901",
-                        "elementType": "nl.image"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 580
-                        }
-                      }
-                    },
-                    "rName": {
-                      "id": "rName",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "af5ea9a0-8b6d-41e2-8abf-b749752a9519",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 660
-                        }
-                      }
-                    },
-                    "rLock": {
-                      "id": "rLock",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "22aa1023-b409-4937-b139-5828eb3dc1a8",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 740
-                        }
-                      }
-                    },
-                    "c1": {
-                      "id": "c1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c2": {
-                      "id": "c2",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c3": {
-                      "id": "c3",
-                      "type": "blueprint.game.startStory",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 600,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 580,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "i18n.sceneName": {
-                      "id": "i18n.sceneName",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "scenes.sceneCorridor"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 140
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n7",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n8",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2Click",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c2",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "c3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "text"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "703a25d6-0b62-422a-81fa-c274be8099da": {
         "id": "703a25d6-0b62-422a-81fa-c274be8099da",
         "name": "场景 2",
@@ -19060,649 +18417,6 @@
         },
         "bindings": {}
       },
-      "5d2adfb6-e5f5-46ba-86f5-343febddfb53": {
-        "id": "5d2adfb6-e5f5-46ba-86f5-343febddfb53",
-        "name": "插图框",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "64e59e96-bc8d-4563-9a7d-59607cd65638"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "77c12d1c-5698-4ba1-a837-a5df005923c7": {
-        "id": "77c12d1c-5698-4ba1-a837-a5df005923c7",
-        "name": "插图",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "284d28bd-3bb3-48a9-83e9-75e075fd2c1c"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "f350cbba-9fc1-4ea9-bbb5-9bd1b62a2133": {
-        "id": "f350cbba-9fc1-4ea9-bbb5-9bd1b62a2133",
-        "name": "锁定标记",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "1ac44b6e-df14-4ca1-bdf8-a54a967928de"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "f40e0732-f8ad-4b32-b531-b0e60d28b524": {
-        "id": "f40e0732-f8ad-4b32-b531-b0e60d28b524",
-        "name": "场景名",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "c3da621a-bd4d-466f-adc7-44a2dd049778"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "3fef162c-68ce-4781-8efe-637243f9450e": {
-        "id": "3fef162c-68ce-4781-8efe-637243f9450e",
-        "name": "点击区域",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "da6c0b4b-d423-4f55-831e-e66eb734e21d"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "d7e0c0de-0005-4a10-9f01-0a1b2c3d4e5f"
-            ],
-            "events": {
-              "d7e0c0de-0005-4a10-9f01-0a1b2c3d4e5f": {
-                "id": "d7e0c0de-0005-4a10-9f01-0a1b2c3d4e5f",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 160
-                        }
-                      }
-                    },
-                    "n2Click": {
-                      "id": "n2Click",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 1060
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n7": {
-                      "id": "n7",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n8": {
-                      "id": "n8",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "text"
-                        ],
-                        "text": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n9": {
-                      "id": "n9",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "nT": {
-                      "id": "nT",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "true"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 420
-                        }
-                      }
-                    },
-                    "nF": {
-                      "id": "nF",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "false"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 500
-                        }
-                      }
-                    },
-                    "rArt": {
-                      "id": "rArt",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "284d28bd-3bb3-48a9-83e9-75e075fd2c1c",
-                        "elementType": "nl.image"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 580
-                        }
-                      }
-                    },
-                    "rName": {
-                      "id": "rName",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "c3da621a-bd4d-466f-adc7-44a2dd049778",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 660
-                        }
-                      }
-                    },
-                    "rLock": {
-                      "id": "rLock",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "1ac44b6e-df14-4ca1-bdf8-a54a967928de",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 740
-                        }
-                      }
-                    },
-                    "c1": {
-                      "id": "c1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c2": {
-                      "id": "c2",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c3": {
-                      "id": "c3",
-                      "type": "blueprint.game.startStory",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "5143dcd8-bebc-4468-b4e2-00f6d5781af6"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 600,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 580,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "i18n.sceneName": {
-                      "id": "i18n.sceneName",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "scenes.sceneClubroom"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 140
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n7",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n8",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2Click",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c2",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "c3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "text"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "1f9819bf-e637-439a-88f6-0d8d70dd80bf": {
         "id": "1f9819bf-e637-439a-88f6-0d8d70dd80bf",
         "name": "场景 3",
@@ -19718,649 +18432,6 @@
           "graphs": {
             "eventIds": [],
             "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "f0c8c14e-0dd2-4a25-8c02-597818eded7e": {
-        "id": "f0c8c14e-0dd2-4a25-8c02-597818eded7e",
-        "name": "插图框",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "83fa2c8a-798a-420e-9ce8-008d081d516e"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "fcd010cb-5e1a-41d9-9d01-d21f6bfd54ca": {
-        "id": "fcd010cb-5e1a-41d9-9d01-d21f6bfd54ca",
-        "name": "插图",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "cdf70ddd-ce44-4c24-8cdb-0818bcd4e767"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "2f256887-fbd0-40f9-9ea7-6f732e21e254": {
-        "id": "2f256887-fbd0-40f9-9ea7-6f732e21e254",
-        "name": "锁定标记",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "e8f61063-490b-4dc4-bdec-b62e524892e7"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "9ea8c518-219e-48fd-9af0-2c07572e6ba5": {
-        "id": "9ea8c518-219e-48fd-9af0-2c07572e6ba5",
-        "name": "场景名",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "4a5dcfc1-0f29-49bb-a20f-4c79d56a1a1b"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "4cdedf09-6928-4480-8d1b-3ded48f8ec87": {
-        "id": "4cdedf09-6928-4480-8d1b-3ded48f8ec87",
-        "name": "点击区域",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "5fa15492-6e11-44c1-bc2e-a66577dc8371"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "d7e0c0de-0006-4a10-9f01-0a1b2c3d4e5f"
-            ],
-            "events": {
-              "d7e0c0de-0006-4a10-9f01-0a1b2c3d4e5f": {
-                "id": "d7e0c0de-0006-4a10-9f01-0a1b2c3d4e5f",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.init",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 160
-                        }
-                      }
-                    },
-                    "n2Click": {
-                      "id": "n2Click",
-                      "type": "blueprint.game.isSceneVisited",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 1060
-                        }
-                      }
-                    },
-                    "n3": {
-                      "id": "n3",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n4": {
-                      "id": "n4",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n5": {
-                      "id": "n5",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n6": {
-                      "id": "n6",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": -60
-                        }
-                      }
-                    },
-                    "n7": {
-                      "id": "n7",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n8": {
-                      "id": "n8",
-                      "type": "blueprint.element.text.setText",
-                      "params": {
-                        "__inlineLiteralPins": [
-                          "text"
-                        ],
-                        "text": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "n9": {
-                      "id": "n9",
-                      "type": "blueprint.element.displayable.setDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1080,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "nT": {
-                      "id": "nT",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "true"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 420
-                        }
-                      }
-                    },
-                    "nF": {
-                      "id": "nF",
-                      "type": "blueprint.data.booleanLiteral",
-                      "params": {
-                        "value": "false"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 500
-                        }
-                      }
-                    },
-                    "rArt": {
-                      "id": "rArt",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "cdf70ddd-ce44-4c24-8cdb-0818bcd4e767",
-                        "elementType": "nl.image"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 580
-                        }
-                      }
-                    },
-                    "rName": {
-                      "id": "rName",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "4a5dcfc1-0f29-49bb-a20f-4c79d56a1a1b",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 660
-                        }
-                      }
-                    },
-                    "rLock": {
-                      "id": "rLock",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-                        "elementId": "e8f61063-490b-4dc4-bdec-b62e524892e7",
-                        "elementType": "nl.text"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 380,
-                          "y": 740
-                        }
-                      }
-                    },
-                    "c1": {
-                      "id": "c1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c2": {
-                      "id": "c2",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "c3": {
-                      "id": "c3",
-                      "type": "blueprint.game.startStory",
-                      "params": {
-                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d",
-                        "sceneId": "c083e0f3-8665-451a-800a-6d2cd5650d33"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 600,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 580,
-                          "y": 900
-                        }
-                      }
-                    },
-                    "i18n.sceneName": {
-                      "id": "i18n.sceneName",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "scenes.sceneLastLight"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 820,
-                          "y": 140
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "n3",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n4",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n4",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n5",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n6",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n3",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rArt",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nF",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n7",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n7",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rName",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n8",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n8",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "rLock",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "element"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nT",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n9",
-                        "port": "display"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "n2Click",
-                        "port": "isVisited"
-                      },
-                      "to": {
-                        "nodeId": "c2",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "c2",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "c3",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.sceneName",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "n5",
-                        "port": "text"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
             "functionIds": [],
             "functions": {}
           }
@@ -23934,6 +22005,632 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "5107c0a1-0000-4000-8000-000000000110": {
+        "id": "5107c0a1-0000-4000-8000-000000000110",
+        "name": "场景卡片",
+        "owner": {
+          "kind": "componentWidgetMain",
+          "componentId": "5107c0a1-0000-4000-8000-000000000100",
+          "elementId": "03921db3-a8f5-4399-9146-232d076891e1"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f"
+            ],
+            "events": {
+              "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f": {
+                "id": "d7e0c0de-0004-4a10-9f01-0a1b2c3d4e5f",
+                "name": "图层 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.init",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.game.isSceneVisited",
+                      "params": {
+                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 160
+                        }
+                      }
+                    },
+                    "n2Click": {
+                      "id": "n2Click",
+                      "type": "blueprint.game.isSceneVisited",
+                      "params": {
+                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 1060
+                        }
+                      }
+                    },
+                    "n3": {
+                      "id": "n3",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n4": {
+                      "id": "n4",
+                      "type": "blueprint.element.displayable.setDisplay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": -60
+                        }
+                      }
+                    },
+                    "n5": {
+                      "id": "n5",
+                      "type": "blueprint.element.text.setText",
+                      "params": {
+                        "__inlineLiteralPins": []
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 820,
+                          "y": -60
+                        }
+                      }
+                    },
+                    "n6": {
+                      "id": "n6",
+                      "type": "blueprint.element.displayable.setDisplay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1080,
+                          "y": -60
+                        }
+                      }
+                    },
+                    "n7": {
+                      "id": "n7",
+                      "type": "blueprint.element.displayable.setDisplay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 220
+                        }
+                      }
+                    },
+                    "n8": {
+                      "id": "n8",
+                      "type": "blueprint.element.text.setText",
+                      "params": {
+                        "__inlineLiteralPins": [
+                          "text"
+                        ],
+                        "text": ""
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 820,
+                          "y": 220
+                        }
+                      }
+                    },
+                    "n9": {
+                      "id": "n9",
+                      "type": "blueprint.element.displayable.setDisplay",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 1080,
+                          "y": 220
+                        }
+                      }
+                    },
+                    "nT": {
+                      "id": "nT",
+                      "type": "blueprint.data.booleanLiteral",
+                      "params": {
+                        "value": "true"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 420
+                        }
+                      }
+                    },
+                    "nF": {
+                      "id": "nF",
+                      "type": "blueprint.data.booleanLiteral",
+                      "params": {
+                        "value": "false"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 500
+                        }
+                      }
+                    },
+                    "rArt": {
+                      "id": "rArt",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "component:5107c0a1-0000-4000-8000-000000000100",
+                        "elementId": "684fe42b-bd5e-410c-b0fc-01a9bb25f901",
+                        "elementType": "nl.image"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 580
+                        }
+                      }
+                    },
+                    "rName": {
+                      "id": "rName",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "component:5107c0a1-0000-4000-8000-000000000100",
+                        "elementId": "af5ea9a0-8b6d-41e2-8abf-b749752a9519",
+                        "elementType": "nl.text"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 660
+                        }
+                      }
+                    },
+                    "rLock": {
+                      "id": "rLock",
+                      "type": "blueprint.element.ref",
+                      "params": {
+                        "surfaceId": "component:5107c0a1-0000-4000-8000-000000000100",
+                        "elementId": "22aa1023-b409-4937-b139-5828eb3dc1a8",
+                        "elementType": "nl.text"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 740
+                        }
+                      }
+                    },
+                    "c1": {
+                      "id": "c1",
+                      "type": "blueprint.event.head.mouseClick",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "c2": {
+                      "id": "c2",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "c3": {
+                      "id": "c3",
+                      "type": "blueprint.game.startStory",
+                      "params": {
+                        "storyId": "71bb159f-1322-4539-b09f-9593a426a67d"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 580,
+                          "y": 900
+                        }
+                      }
+                    },
+                    "i18n.sceneName": {
+                      "id": "i18n.sceneName",
+                      "type": "blueprint.localization.getText",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 820,
+                          "y": 140
+                        }
+                      }
+                    },
+                    "pScene1": {
+                      "id": "pScene1",
+                      "type": "blueprint.component.getParam",
+                      "params": {
+                        "paramId": "sceneId"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": -280,
+                          "y": 160
+                        }
+                      }
+                    },
+                    "pScene2": {
+                      "id": "pScene2",
+                      "type": "blueprint.component.getParam",
+                      "params": {
+                        "paramId": "sceneId"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": -280,
+                          "y": 1060
+                        }
+                      }
+                    },
+                    "pScene3": {
+                      "id": "pScene3",
+                      "type": "blueprint.component.getParam",
+                      "params": {
+                        "paramId": "sceneId"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 380,
+                          "y": 1060
+                        }
+                      }
+                    },
+                    "pName": {
+                      "id": "pName",
+                      "type": "blueprint.component.getParam",
+                      "params": {
+                        "paramId": "nameKey"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 140
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2",
+                        "port": "isVisited"
+                      },
+                      "to": {
+                        "nodeId": "n3",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rArt",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nT",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n4",
+                        "port": "display"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n4",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.sceneName",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rName",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n5",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n5",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n6",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rLock",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n6",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nF",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n6",
+                        "port": "display"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n3",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n7",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rArt",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n7",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nF",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n7",
+                        "port": "display"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n7",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n8",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rName",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n8",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n8",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n9",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "rLock",
+                        "port": "element"
+                      },
+                      "to": {
+                        "nodeId": "n9",
+                        "port": "element"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nT",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n9",
+                        "port": "display"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "c1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "c2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "n2Click",
+                        "port": "isVisited"
+                      },
+                      "to": {
+                        "nodeId": "c2",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "c2",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "c3",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.sceneName",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "n5",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.sceneName",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n5",
+                        "port": "text"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "pScene1",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "sceneId"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "pScene2",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "n2Click",
+                        "port": "sceneId"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "pScene3",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "c3",
+                        "port": "sceneId"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "pName",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "i18n.sceneName",
+                        "port": "key"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -25526,41 +24223,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:54544404-100e-4cf6-8f97-5d1ab0e74047": {
-        "activeBlueprintId": "4c51968f-de40-4292-b4b5-e3412b6ab36b",
-        "privateBlueprintIds": [
-          "4c51968f-de40-4292-b4b5-e3412b6ab36b"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:684fe42b-bd5e-410c-b0fc-01a9bb25f901": {
-        "activeBlueprintId": "b998720b-ae92-4abf-89c5-bf72e16d1bee",
-        "privateBlueprintIds": [
-          "b998720b-ae92-4abf-89c5-bf72e16d1bee"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:22aa1023-b409-4937-b139-5828eb3dc1a8": {
-        "activeBlueprintId": "1b4d5909-e4b6-4ee5-bb24-1832eb147f3c",
-        "privateBlueprintIds": [
-          "1b4d5909-e4b6-4ee5-bb24-1832eb147f3c"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:af5ea9a0-8b6d-41e2-8abf-b749752a9519": {
-        "activeBlueprintId": "0f6477be-d012-4884-bbed-0f0ec5d03c95",
-        "privateBlueprintIds": [
-          "0f6477be-d012-4884-bbed-0f0ec5d03c95"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:03921db3-a8f5-4399-9146-232d076891e1": {
-        "activeBlueprintId": "e77bc593-fa4f-41dc-9814-1c0a20ef5163",
-        "privateBlueprintIds": [
-          "e77bc593-fa4f-41dc-9814-1c0a20ef5163"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:0c09b343-25ce-4f0c-909c-4b49b5d8141f": {
         "activeBlueprintId": "703a25d6-0b62-422a-81fa-c274be8099da",
         "privateBlueprintIds": [
@@ -25568,80 +24230,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:64e59e96-bc8d-4563-9a7d-59607cd65638": {
-        "activeBlueprintId": "5d2adfb6-e5f5-46ba-86f5-343febddfb53",
-        "privateBlueprintIds": [
-          "5d2adfb6-e5f5-46ba-86f5-343febddfb53"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:284d28bd-3bb3-48a9-83e9-75e075fd2c1c": {
-        "activeBlueprintId": "77c12d1c-5698-4ba1-a837-a5df005923c7",
-        "privateBlueprintIds": [
-          "77c12d1c-5698-4ba1-a837-a5df005923c7"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:1ac44b6e-df14-4ca1-bdf8-a54a967928de": {
-        "activeBlueprintId": "f350cbba-9fc1-4ea9-bbb5-9bd1b62a2133",
-        "privateBlueprintIds": [
-          "f350cbba-9fc1-4ea9-bbb5-9bd1b62a2133"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:c3da621a-bd4d-466f-adc7-44a2dd049778": {
-        "activeBlueprintId": "f40e0732-f8ad-4b32-b531-b0e60d28b524",
-        "privateBlueprintIds": [
-          "f40e0732-f8ad-4b32-b531-b0e60d28b524"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:da6c0b4b-d423-4f55-831e-e66eb734e21d": {
-        "activeBlueprintId": "3fef162c-68ce-4781-8efe-637243f9450e",
-        "privateBlueprintIds": [
-          "3fef162c-68ce-4781-8efe-637243f9450e"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:21137ab3-ec1a-47cf-a1f4-1a4cc545acf8": {
         "activeBlueprintId": "1f9819bf-e637-439a-88f6-0d8d70dd80bf",
         "privateBlueprintIds": [
           "1f9819bf-e637-439a-88f6-0d8d70dd80bf"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:83fa2c8a-798a-420e-9ce8-008d081d516e": {
-        "activeBlueprintId": "f0c8c14e-0dd2-4a25-8c02-597818eded7e",
-        "privateBlueprintIds": [
-          "f0c8c14e-0dd2-4a25-8c02-597818eded7e"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:cdf70ddd-ce44-4c24-8cdb-0818bcd4e767": {
-        "activeBlueprintId": "fcd010cb-5e1a-41d9-9d01-d21f6bfd54ca",
-        "privateBlueprintIds": [
-          "fcd010cb-5e1a-41d9-9d01-d21f6bfd54ca"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:e8f61063-490b-4dc4-bdec-b62e524892e7": {
-        "activeBlueprintId": "2f256887-fbd0-40f9-9ea7-6f732e21e254",
-        "privateBlueprintIds": [
-          "2f256887-fbd0-40f9-9ea7-6f732e21e254"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:4a5dcfc1-0f29-49bb-a20f-4c79d56a1a1b": {
-        "activeBlueprintId": "9ea8c518-219e-48fd-9af0-2c07572e6ba5",
-        "privateBlueprintIds": [
-          "9ea8c518-219e-48fd-9af0-2c07572e6ba5"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:5fa15492-6e11-44c1-bc2e-a66577dc8371": {
-        "activeBlueprintId": "4cdedf09-6928-4480-8d1b-3ded48f8ec87",
-        "privateBlueprintIds": [
-          "4cdedf09-6928-4480-8d1b-3ded48f8ec87"
         ],
         "initializedFrontend": "visual"
       },
@@ -25762,12 +24354,18 @@
         "privateBlueprintIds": [
           "5107c0a1-0000-4000-8000-000000000010"
         ]
+      },
+      "componentWidgetMain:5107c0a1-0000-4000-8000-000000000100:03921db3-a8f5-4399-9146-232d076891e1": {
+        "activeBlueprintId": "5107c0a1-0000-4000-8000-000000000110",
+        "privateBlueprintIds": [
+          "5107c0a1-0000-4000-8000-000000000110"
+        ]
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-25T23:52:25.794Z"
+    "updatedAt": "2026-08-26T00:01:24.077Z"
   }
 }
