@@ -168,6 +168,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.frameWidget.getTargetPage", "blueprint.game.getAppTag", "blueprint.game.getAutoForward",
     "blueprint.game.getBgmVolume", "blueprint.game.getCharacter", "blueprint.game.getChoiceCount",
     "blueprint.game.getCps", "blueprint.game.getGameSpeed", "blueprint.game.getGlobalVolume",
+    "blueprint.game.getDialogText", "blueprint.game.isDialogWaiting", "blueprint.game.isNarrator",
     "blueprint.game.getNametag", "blueprint.game.getNotifications",
     "blueprint.game.getPlaytime", "blueprint.game.getSkip",
     "blueprint.game.getAutoForwardDelay", "blueprint.game.getSkipping",
