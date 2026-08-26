@@ -154,6 +154,18 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 没有活动 game runtime 时执行失败。
 
+## Is Dialog Shown
+
+`blueprint.game.isDialogShown` - Is Dialog Shown
+
+读取当前 NarraLeaf React `showDialog` preference，即 Dialog UI 此刻是否在屏幕上。该节点是 pure 节点，可用于 `event`、`function`、`macro` 图和 Blueprint Value；对应写入继续使用现有 `Show Dialog`、`Hide Dialog`、`Toggle Dialog Display` 节点，不新增第二个 `showDialog` setter。
+
+隐藏 Dialog 的路径不止一条——长按手势、Quick Menu 按钮、设置项写入的是同一个 preference，所以要在「Dialog 已隐藏」和「Dialog 在等待推进」之间分支的蓝图应当读取本节点，而不是自己记住上一次写了什么。骨架模板的 Dialogue Surface 用它区分 `advance` 动作的两种结果：Dialog 在显示时推进，Dialog 已隐藏时恢复显示。
+
+- `isShown` / `Is Shown` - `boolean`（传出引脚），当前 `showDialog` preference key 的值
+
+没有活动 game runtime 时执行失败。
+
 ## Set Sentence Speed
 
 `blueprint.game.setSentenceSpeed` - Set Sentence Speed
@@ -178,7 +190,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 
 ## Game Preference Getter / Setter
 
-以下节点对应玩家偏好。其中 `skipping`、`skipReadText`、`autoForwardDelay` 由 Studio 提供：前两个只存在于 preference store 中，由 Studio 的跳过循环解释；`autoForwardDelay` 在引擎侧是 `game.config`，宿主在启动时和每次变化时写入。其余字段直接对应 NarraLeaf React `GamePreference`。Getter 是 pure 节点，只有一个传出值引脚；Setter 是 latent 执行节点，具有 `in`、偏好值输入和 `next`。除 `Get Sentence Speed` 外，每个字段都有成对的 Getter/Setter。`showDialog` 不在本组中注册新的 Getter/Setter，继续由现有 `Show Dialog`、`Hide Dialog`、`Toggle Dialog Display` 节点覆盖。
+以下节点对应玩家偏好。其中 `skipping`、`skipReadText`、`autoForwardDelay` 由 Studio 提供：前两个只存在于 preference store 中，由 Studio 的跳过循环解释；`autoForwardDelay` 在引擎侧是 `game.config`，宿主在启动时和每次变化时写入。其余字段直接对应 NarraLeaf React `GamePreference`。Getter 是 pure 节点，只有一个传出值引脚；Setter 是 latent 执行节点，具有 `in`、偏好值输入和 `next`。除 `Get Sentence Speed` 和 `Is Dialog Shown` 外，每个字段都有成对的 Getter/Setter。`showDialog` 只有 Getter：写入继续由现有 `Show Dialog`、`Hide Dialog`、`Toggle Dialog Display` 节点覆盖。
 
 | Preference key | Getter | Setter | Pin | Validation |
 | --- | --- | --- | --- | --- |
@@ -186,6 +198,7 @@ Preference Getter/Setter 通过 NarraLeaf React `game.preference.getPreference(.
 | `skip` | `Get Skip` (`blueprint.game.getSkip`) | `Set Skip` (`blueprint.game.setSkip`) | `skip` / `Skip`, `boolean` | 必须是 boolean |
 | `skipping` | `Get Skipping` (`blueprint.game.getSkipping`) | `Set Skipping` (`blueprint.game.setSkipping`) | `skipping` / `Skipping`, `boolean` | 必须是 boolean |
 | `skipReadText` | `Get Skip Read Text` (`blueprint.game.getSkipReadText`) | `Set Skip Read Text` (`blueprint.game.setSkipReadText`) | `skipReadText` / `Skip Read Text`, `boolean` | 必须是 boolean |
+| `showDialog` | `Is Dialog Shown` (`blueprint.game.isDialogShown`) | 使用 `Show Dialog` / `Hide Dialog` / `Toggle Dialog Display` | `isShown` / `Is Shown`, `boolean` | 必须是 boolean |
 | `autoForwardDelay` | `Get Auto Forward Delay` (`blueprint.game.getAutoForwardDelay`) | `Set Auto Forward Delay` (`blueprint.game.setAutoForwardDelay`) | `autoForwardDelay` / `Auto Forward Delay`, `float` | 必须是大于等于 0 的有限数字，单位 ms |
 | `gameSpeed` | `Get Game Speed` (`blueprint.game.getGameSpeed`) | `Set Game Speed` (`blueprint.game.setGameSpeed`) | `gameSpeed` / `Game Speed`, `float` | 必须是大于 0 的有限数字 |
 | `cps` | `Get Sentence Speed` (`blueprint.game.getCps`) | 使用 `Set Sentence Speed` (`blueprint.game.setSentenceSpeed`) | `cps` / `CPS`, `float` | 必须是大于 0 的有限数字 |

@@ -10926,7 +10926,7 @@
             "events": {
               "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
                 "id": "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-                "name": "会話を送る",
+                "name": "会話を送る・会話を再表示",
                 "graph": {
                   "nodes": {
                     "head": {
@@ -10942,14 +10942,47 @@
                         }
                       }
                     },
+                    "shown": {
+                      "id": "shown",
+                      "type": "blueprint.game.isDialogShown",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 200
+                        }
+                      }
+                    },
+                    "branch": {
+                      "id": "branch",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 0
+                        }
+                      }
+                    },
                     "next": {
                       "id": "next",
                       "type": "blueprint.game.next",
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
-                          "y": 0
+                          "x": 600,
+                          "y": -40
+                        }
+                      }
+                    },
+                    "show": {
+                      "id": "show",
+                      "type": "blueprint.game.showDialog",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 120
                         }
                       }
                     }
@@ -10961,7 +10994,37 @@
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "branch",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "shown",
+                        "port": "isShown"
+                      },
+                      "to": {
+                        "nodeId": "branch",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "branch",
+                        "port": "true"
+                      },
+                      "to": {
                         "nodeId": "next",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "branch",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "show",
                         "port": "in"
                       }
                     }
@@ -11038,9 +11101,9 @@
                         }
                       }
                     },
-                    "toggle": {
-                      "id": "toggle",
-                      "type": "blueprint.game.toggleDialogDisplay",
+                    "hide": {
+                      "id": "hide",
+                      "type": "blueprint.game.hideDialog",
                       "params": {},
                       "meta": {
                         "editorLayout": {
@@ -11057,7 +11120,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "toggle",
+                        "nodeId": "hide",
                         "port": "in"
                       }
                     }
@@ -22978,6 +23041,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-26T16:27:37.125Z"
+    "updatedAt": "2026-08-26T20:09:43.791Z"
   }
 }
