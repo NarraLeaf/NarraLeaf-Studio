@@ -470,6 +470,9 @@ export const assets = {
         /** Other only: the one asset an author can make rather than import. */
         newTextFile: "New Text File",
         importAssets: "Import Assets…",
+        // The only row a file that is still arriving offers. Says what stops, not what is deleted:
+        // an import that has not landed is not something the author has.
+        cancelTransfer: "Cancel import",
         replaceContent: "Replace File…",
         copyCount: {
             one: "Copy {count} item",
