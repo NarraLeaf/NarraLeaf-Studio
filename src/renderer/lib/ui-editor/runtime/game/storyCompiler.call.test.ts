@@ -163,3 +163,75 @@ describe("the playback walk", () => {
         expect(plan.stop).toMatchObject({ reason: "jump", blockId: "j" });
     });
 });
+
+describe("a returnable jump the compiler cannot make ordinary sense of", () => {
+    it("compiles a call to a scene with no rows in it", async () => {
+        // An empty called scene returns the instant it is entered. Nothing about that is a diagnostic
+        // - an author writes the scene before its content - and the row after the call still has to
+        // be compiled, or filling the scene in later would leave the return landing on nothing.
+        const doc = document(jumpBlock("j", "scene-empty", true), [narrationBlock("a2", "After.")]);
+        const withEmpty = {
+            ...doc,
+            scenes: {
+                ...doc.scenes,
+                "scene-empty": { id: "scene-empty", name: "Nothing yet", runtimeName: "scene-empty", rootBlockIds: [], blocks: {} },
+            },
+        } as unknown as StoryDocument;
+
+        const compiled = await compileStudioStoryToNlr({
+            document: withEmpty,
+            sceneId: "scene-1",
+            characters: [],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toEqual(expect.arrayContaining(["j", "a2"]));
+    });
+
+    it("reports a call naming a scene the document does not have, exactly as a plain jump is reported", async () => {
+        const doc = document(jumpBlock("j", "scene-gone", true), [narrationBlock("a2", "After.")]);
+        const compiled = await compileStudioStoryToNlr({
+            document: doc,
+            sceneId: "scene-1",
+            characters: [],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics.map(entry => entry.blockId)).toEqual(["j"]);
+    });
+});
+
+describe("the playback walk launched from each row around a call", () => {
+    const doc = () => document(jumpBlock("j", "scene-2", true), [narrationBlock("a2", "After."), narrationBlock("a3", "Last.")]);
+
+    it("launched at the call row, plays the call and everything after it", () => {
+        const plan = collectStoryPlaybackPlan(doc().scenes["scene-1"], "j", { followJumps: true });
+
+        expect(plan.steps.map(step => step.blockId)).toEqual(["j", "a2", "a3"]);
+        expect(plan.stop).toEqual({ reason: "sceneEnd" });
+    });
+
+    it("launched at the row after the call, plays from there and does not re-enter the call", () => {
+        const plan = collectStoryPlaybackPlan(doc().scenes["scene-1"], "a2", { followJumps: true });
+
+        expect(plan.steps.map(step => step.blockId)).toEqual(["a2", "a3"]);
+        expect(plan.stop).toEqual({ reason: "sceneEnd" });
+    });
+
+    it("launched at a row inside the called scene, plays that scene and stops at its end", () => {
+        // A launch is not a resume: nothing called this scene, so there is no caller to come back to
+        // and the tail is the scene's own remaining rows.
+        const plan = collectStoryPlaybackPlan(doc().scenes["scene-2"], "b1", { followJumps: true });
+
+        expect(plan.steps.map(step => step.blockId)).toEqual(["b1"]);
+        expect(plan.stop).toEqual({ reason: "sceneEnd" });
+    });
+
+    it("carries on past a call written as the last row, because the scene really does end there", () => {
+        const plan = collectStoryPlaybackPlan(document(jumpBlock("j", "scene-2", true)).scenes["scene-1"], null, { followJumps: true });
+
+        expect(plan.steps.map(step => step.blockId)).toEqual(["a1", "j"]);
+        expect(plan.stop).toEqual({ reason: "sceneEnd" });
+    });
+});
