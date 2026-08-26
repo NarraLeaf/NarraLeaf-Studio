@@ -51,6 +51,7 @@ import { SectionCard } from "@/lib/components/elements/SectionCard";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetSetFreezeScope } from "@/apps/workspace/modules/assets/assetLiveSession";
 import type { AssetSetService } from "@/lib/workspace/services/assets/AssetSetService";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
@@ -147,7 +148,9 @@ export function AssetSetInspector({
 }) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const freeze = useFreezeGuard();
+    // The declaration and the library, because this panel writes both: the fields are the set's own,
+    // and picking a file for a value writes that file's tags. See `assetSetFreezeScope`.
+    const freeze = useFreezeGuard(assetSetFreezeScope());
     const [blocked, setBlocked] = useState(false);
     // The document changes under this panel whenever a sub-set is made or renamed, and what a value
     // resolves to depends on it.

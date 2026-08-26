@@ -97,6 +97,18 @@ export type LiveHostDeps = {
      */
     readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
     /**
+     * Whether one bus is in the mixer right now.
+     *
+     * A boolean with {@link hasAsset} rather than the record with {@link readCharacter}, and for
+     * that method's reason: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy instead of against the document.
+     *
+     * Permissive when absent, so a caller that has not wired the mixer yet gets a host that works.
+     */
+    hasAudioTrack?(trackId: string): boolean;
+    /** Whether one asset set is declared right now. The mixer's, one document along. */
+    hasAssetSet?(setId: string): boolean;
+    /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
      *
@@ -199,6 +211,16 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
+    "set-dictionary-entry": true,
+    "set-dictionary-options": true,
+    "create-audio-track": true,
+    "update-audio-track": true,
+    "delete-audio-track": true,
+    "move-audio-track": true,
+    "create-asset-sets": true,
+    "update-asset-set": true,
+    "delete-asset-sets": true,
+    "move-asset-sets": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -725,6 +747,70 @@ export class LiveHost {
                 // Last-writer-wins, with `set-character-group`: a folder is four fields and none of
                 // them is drafted anywhere, so there is nothing a race can destroy.
                 return { op };
+
+            case "set-dictionary-entry":
+                // Nothing to check, and the reason is the translation library's: in this document an
+                // entry that is not there is not a state to be found missing - it is what a word the
+                // project does not write looks like. So an operation naming a term nobody has is an
+                // author teaching the project a spelling, which is the ordinary case rather than a
+                // race. Unclaimed, so there is nothing else to ask.
+                return { op };
+
+            case "set-dictionary-options":
+                // Last-writer-wins with the story's name: two people turning a check on and off is
+                // two edits, and the loser lost a click.
+                return { op };
+
+            case "create-audio-track":
+            case "create-asset-sets":
+                // Not checked against what is already there, and not claimed - `create-character`'s
+                // reason exactly: the ids were minted by whoever built the records, so one already
+                // present is a uuid collision rather than a race, and a retry is answered by the
+                // receipts. The creation that undoes a deletion names ids that have just left.
+                return { op };
+
+            case "update-audio-track":
+            case "move-audio-track":
+            case "delete-audio-track": {
+                if (this.deps.hasAudioTrack && !this.deps.hasAudioTrack(op.trackId)) {
+                    // ⚠ Says the bus is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would bring back a bus somebody deleted, and every reference
+                    // that had fallen back to a seeded one would quietly re-point at it.
+                    return { refuse: "track-gone" };
+                }
+                // ⚠ A deletion naming one of the three seeded buses is deliberately NOT refused
+                // here. It cannot be produced by this build - `deleteTrack` answers false before a
+                // sink is ever asked - and the normalizer re-seeds a missing built-in on every
+                // machine, so the room converges on the same mixer either way. A refusal nobody can
+                // reach is a refusal nobody maintains.
+                return { op };
+            }
+
+            case "update-asset-set": {
+                if (this.deps.hasAssetSet && !this.deps.hasAssetSet(op.setId)) {
+                    return { refuse: "set-gone" };
+                }
+                return { op };
+            }
+
+            case "delete-asset-sets":
+                // Deliberately tolerant of a set that is already gone, with
+                // `delete-character-group`: the second of two deletions changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return { op };
+
+            case "move-asset-sets": {
+                // Whole or not at all, and checked before a single row moves - the rule every batch
+                // follows. Half a drag is an arrangement the author never asked for, and the half
+                // that landed would look exactly like the whole of it.
+                for (const move of op.moves) {
+                    if (this.deps.hasAssetSet && !this.deps.hasAssetSet(move.setId)) {
+                        return { refuse: "set-gone" };
+                    }
+                }
+                return { op };
+            }
 
             case "delete-asset-folder": {
                 const folders = this.deps.readAssetFolders(op.category);
