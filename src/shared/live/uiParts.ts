@@ -202,20 +202,9 @@ export function applyUIParts(document: UIDocument, parts: LiveUIParts): void {
     if (parts.elements) {
         writeRecordMap(document.elements, parts.elements);
     }
-    if (parts.componentElements) {
-        for (const [componentId, delta] of Object.entries(parts.componentElements)) {
-            const component = (document.components ?? []).find(entry => entry.id === componentId);
-            if (!component) {
-                // The component record arrives in the same delta, so it is written first below and
-                // this cannot normally happen. A delta that names a component nobody has is applied
-                // as far as it can be rather than thrown: an applier that threw would leave every
-                // machine with half of one message.
-                continue;
-            }
-            component.elements = component.elements ?? {};
-            writeRecordMap(component.elements, delta);
-        }
-    }
+    // ⚠ The component records first, then their elements. A component that has just appeared has
+    // nowhere to put its tree until its own record is there, and a component whose record is being
+    // written keeps whatever elements this machine already holds - the shell travels without them.
     if (parts.components) {
         const existing = indexById(document.components);
         const shells = parts.components;
@@ -235,20 +224,20 @@ export function applyUIParts(document: UIDocument, parts: LiveUIParts): void {
                 }
                 continue;
             }
-            // The elements stay with whatever this machine already holds; the delta's own
-            // `componentElements` writes them, and it is applied below so that a component that has
-            // just appeared is there to receive them.
             next.push({ ...shell, elements: previous?.elements ?? {} });
         }
         document.components = next;
-        if (parts.componentElements) {
-            for (const [componentId, delta] of Object.entries(parts.componentElements)) {
-                const component = next.find(entry => entry.id === componentId);
-                if (component) {
-                    component.elements = component.elements ?? {};
-                    writeRecordMap(component.elements, delta);
-                }
+    }
+    if (parts.componentElements) {
+        for (const [componentId, delta] of Object.entries(parts.componentElements)) {
+            const component = (document.components ?? []).find(entry => entry.id === componentId);
+            if (!component) {
+                // A delta naming a component nobody has is applied as far as it can be rather than
+                // thrown: an applier that threw would leave every machine holding half a message.
+                continue;
             }
+            component.elements = component.elements ?? {};
+            writeRecordMap(component.elements, delta);
         }
     }
     if (parts.surfaces) {
