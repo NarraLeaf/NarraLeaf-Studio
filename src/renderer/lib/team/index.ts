@@ -39,6 +39,7 @@ export {
     teamCall,
     withdrawClient,
     type OverlayReading,
+    type TeamAck,
     type TeamOutcome,
     type ThreadPage,
 } from "./teamCall";
