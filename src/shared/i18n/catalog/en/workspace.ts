@@ -457,7 +457,7 @@ export const workspace = {
         // what an author would go looking for rather than by document kind, and kept in step with
         // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
         // somebody hunting for a control that was working all along.
-        liveFrozenWhat: "The stories, the cast, the translations and the whole asset library - files included - are saved. Everything else here is current and read-only until the session ends.",
+        liveFrozenWhat: "The stories, the cast, the translations, the dictionary, the audio tracks, the asset sets and the whole asset library - files included - are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -700,10 +700,12 @@ export const workspace = {
             frozenTitle: "Changes are not being saved",
             frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
-            // A live session saves its own story and refuses the rest, so the title above
-            // would be false about the file the author is most likely typing into.
+            // A live session saves the documents it carries and refuses the rest, so the title
+            // above would be false about the file the author is most likely typing into.
             frozenTitleSession: "That file is not being saved",
-            frozenDetailSession: "A live session is open. Only its story and the cast are saved; leave the session to change anything else.",
+            // The documents themselves are named where the author asks what a session takes -
+            // `liveFrozenWhat` - rather than here, which is a line under a title in a status bar.
+            frozenDetailSession: "A live session is open, and only the documents it carries are saved. Leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",

@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
     assetGroupsSpec,
+    assetSetsSpec,
     assetsMetadataSpec,
+    audioTracksSpec,
     charactersSpec,
+    dictionarySpec,
     localizationDocumentSpec,
     storyDocumentSpec,
     voiceDocumentSpec,
@@ -21,12 +24,14 @@ import {
     type LiveLocalizationOp,
     type LiveAssetFolderOp,
     type LiveAssetOp,
+    type LiveAudioTrackOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import { HistoryService } from "../history/HistoryService";
@@ -187,13 +192,13 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 world.rooms.set(sessionId, remaining);
                 world.bus.announce(PROJECT, { kind: "live-changed", session: remaining });
             }
-            return { ok: true, value: null };
+            return { ok: true, value: {} };
         },
         close: async sessionId => {
             calls.push("close");
             world.rooms.delete(sessionId);
             world.bus.announce(PROJECT, { kind: "live-closed", session: sessionId });
-            return { ok: true, value: null };
+            return { ok: true, value: {} };
         },
         say: (sessionId, payload) => world.bus.say(sessionId, payload, self),
         listen: (sessionId, onMessage) => world.bus.listen(sessionId, onMessage),
@@ -326,11 +331,64 @@ type Window = {
     /** The asset metadata shards this window holds, by type, and where its record edits go. */
     assets: Record<string, Record<string, Record<string, unknown>>>;
     assetSink: { handle(op: LiveAssetOp | LiveAssetFolderOp): boolean } | null;
+    /** The mixer this window holds, and where its edits go while a session is running. */
+    tracks: ProjectAudioTrack[];
+    trackSink: { handle(op: LiveAudioTrackOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
     timers: { delayMs: number; run: () => void; cancelled: boolean }[];
 };
+
+/** The mixer applier a window uses when an effect arrives. As small as the service's own. */
+function applyTrackOp(window: Window, op: LiveAudioTrackOp): void {
+    switch (op.op) {
+        case "create-audio-track": {
+            const reparent = new Set(op.reparent ?? []);
+            const rest = window.tracks
+                .filter(track => track.id !== op.track.id)
+                .map(track => (reparent.has(track.id) ? { ...track, parentId: op.track.id } : track));
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            if (index < 0) {
+                rest.push({ ...op.track });
+            } else {
+                rest.splice(index, 0, { ...op.track });
+            }
+            window.tracks = rest;
+            return;
+        }
+        case "update-audio-track":
+            window.tracks = window.tracks.map(track => (
+                track.id === op.trackId ? { ...op.track, id: op.trackId } : track
+            ));
+            return;
+        case "delete-audio-track": {
+            const doomed = window.tracks.find(track => track.id === op.trackId);
+            if (!doomed) {
+                return;
+            }
+            window.tracks = window.tracks
+                .filter(track => track.id !== op.trackId)
+                .map(track => (track.parentId === op.trackId ? { ...track, parentId: doomed.parentId } : track));
+            return;
+        }
+        case "move-audio-track": {
+            const moving = window.tracks.find(track => track.id === op.trackId);
+            if (!moving) {
+                return;
+            }
+            const rest = window.tracks.filter(track => track.id !== op.trackId);
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            if (index < 0) {
+                rest.push(moving);
+            } else {
+                rest.splice(index, 0, moving);
+            }
+            window.tracks = rest;
+            return;
+        }
+    }
+}
 
 /** The cast applier a window uses when an effect arrives. As small as the store's own. */
 function applyCastOp(cast: Window["cast"], op: LiveCharacterOp): void {
@@ -455,6 +513,8 @@ function createWindow(world: World, instance: string): Window {
         takeSink: null,
         assets: { image: {} },
         assetSink: null,
+        tracks: [],
+        trackSink: null,
         clock: 0,
         timers: [],
     };
@@ -538,6 +598,30 @@ function createWindow(world: World, instance: string): Window {
                 applyAssetOp(window.assets, op);
                 return [];
             },
+        },
+        // The three small project tables. The dictionary and the asset sets are wired to nothing:
+        // no test drives them, and a port that answered with a document nobody wrote would be a
+        // fixture pretending to be a service. The mixer is real enough to apply an operation,
+        // because that is what the round trip below states.
+        dictionary: {
+            setSink: () => undefined,
+            document: () => null,
+            applyOp: () => undefined,
+        },
+        audioTracks: {
+            setSink: sink => {
+                window.trackSink = sink;
+            },
+            tracks: () => window.tracks,
+            applyOp: op => {
+                calls.push(`tracks:${op.op}`);
+                applyTrackOp(window, op);
+            },
+        },
+        assetSets: {
+            setSink: () => undefined,
+            sets: () => null,
+            applyOp: () => undefined,
         },
         version: {
             checkpoint: async () => {
@@ -925,6 +1009,11 @@ describe("a live session", () => {
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
                 assetGroupsSpec.pathFor({ category: "image" }),
+                // The three project tables, which take no parameter: one of each per project, so a
+                // session carries them whatever else it was opened on.
+                dictionarySpec.pathFor(),
+                audioTracksSpec.pathFor(),
+                assetSetsSpec.pathFor(),
                 // ⚠ And the two the vocabulary is never about: a file's bytes, which an applier puts
                 // down rather than anybody addressing, and the row order, which every machine
                 // recomputes from what it has just applied.

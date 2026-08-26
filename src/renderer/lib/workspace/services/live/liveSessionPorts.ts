@@ -1,4 +1,4 @@
-import type { TeamOutcome } from "@/lib/team";
+import type { TeamAck, TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
@@ -6,20 +6,29 @@ import type {
     LiveAssetFolderOp,
     LiveAssetOp,
     LiveAssetRecord,
+    LiveAssetSetOp,
+    LiveAudioTrackOp,
     LiveCharacterOp,
     LiveDerived,
     LiveDialogueRowRef,
+    LiveDictionaryOp,
     LiveDigestScope,
     LiveLocalizationOp,
     LiveStoryOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
+import type { AssetSetOpSink } from "../assets/AssetSetService";
+import type { AudioTrackOpSink } from "../audio/AudioTrackService";
 import type { CharacterOpSink } from "../core/CharacterService";
+import type { DictionaryOpSink } from "../dictionary/DictionaryService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
 import type { VoiceOpSink } from "../voice/VoiceService";
@@ -61,8 +70,8 @@ export type LiveRooms = {
         title?: string;
     }): Promise<TeamOutcome<TeamLiveSession>>;
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
-    leave(sessionId: string): Promise<TeamOutcome<null>>;
-    close(sessionId: string): Promise<TeamOutcome<null>>;
+    leave(sessionId: string): Promise<TeamOutcome<TeamAck>>;
+    close(sessionId: string): Promise<TeamOutcome<TeamAck>>;
     /**
      * Say one thing to a room.
      *
@@ -242,6 +251,42 @@ export type LiveAssetsPort = {
     applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
 };
 
+/**
+ * The three small project tables a session carries, as one shape three times over.
+ *
+ * The dictionary, the mixer and the asset sets are one document each per project, and each needs
+ * exactly the three things a shared document has to provide: somewhere for its edits to go, a way to
+ * read it, and an applier that does not consult the sink. Fewer methods than the libraries have,
+ * because there is nothing to load on the way in - all three are read as the workspace starts rather
+ * than when a panel opens them - and fewer than the story has, because none of them derives anything
+ * anybody else has to write.
+ *
+ * Three named ports rather than one generic one: the operation types differ, and a port that took
+ * `LiveOp` would let a caller hand a story operation to the mixer.
+ */
+export type LiveDictionaryPort = {
+    /** Where dictionary edits go instead of into the document, or null to take them back. */
+    setSink(sink: DictionaryOpSink | null): void;
+    /** The document as it stands, or null when this window does not hold it. */
+    document(): ProjectDictionaryDocument | null;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveDictionaryOp): void;
+};
+
+/** The project's mixer. {@link LiveDictionaryPort}'s shape, one document along. */
+export type LiveAudioTrackPort = {
+    setSink(sink: AudioTrackOpSink | null): void;
+    tracks(): readonly ProjectAudioTrack[] | null;
+    applyOp(op: LiveAudioTrackOp): void;
+};
+
+/** The project's asset sets. {@link LiveDictionaryPort}'s shape again. */
+export type LiveAssetSetPort = {
+    setSink(sink: AssetSetOpSink | null): void;
+    sets(): readonly AssetSet[] | null;
+    applyOp(op: LiveAssetSetOp): void;
+};
+
 /** What a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
@@ -355,6 +400,9 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    dictionary: LiveDictionaryPort;
+    audioTracks: LiveAudioTrackPort;
+    assetSets: LiveAssetSetPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;

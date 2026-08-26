@@ -37,6 +37,7 @@ import {
     type TeamSubscribeOutcome,
 } from "@shared/types/team";
 
+import { endpointOf as resolveServerEndpoint } from "../vcs/serverApi";
 import { TeamSocket, type TeamSocketClosed, type TeamSocketOptions } from "./socket";
 
 /** How long a call waits for an answer before the session is treated as hung. */
@@ -522,17 +523,15 @@ function projectOf(params: unknown): string | null {
 /**
  * The host and port behind a stored `authUrl`.
  *
- * Sessions keep `https://host:port`. Parsed rather than pattern-matched so that a
- * trailing slash, a stray path or an IPv6 literal are the URL parser's problem.
+ * **One resolver, shared with the REST side.** A stored `https://host:port` describes the
+ * same machine whether a call goes over the socket or over the version-control routes, and
+ * two resolvers that disagreed on the port a bare address falls back to - this one once
+ * answered 443, the other 41402 - would dial two different servers from one saved address.
+ * So the address parsing lives in {@link resolveServerEndpoint}, which also strips the
+ * brackets an IPv6 literal carries (an address `tls.connect` cannot use), and this hands
+ * back the two fields a socket needs.
  */
 export function endpointOf(authUrl: string): { host: string; port: number } | null {
-    try {
-        const url = new URL(authUrl);
-        if (url.protocol !== "https:") return null;
-        const port = url.port === "" ? 443 : Number(url.port);
-        if (!Number.isInteger(port) || port <= 0 || port > 65535) return null;
-        return { host: url.hostname, port };
-    } catch {
-        return null;
-    }
+    const endpoint = resolveServerEndpoint(authUrl);
+    return endpoint === null ? null : { host: endpoint.host, port: endpoint.port };
 }

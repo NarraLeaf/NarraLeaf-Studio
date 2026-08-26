@@ -28,7 +28,6 @@ import {
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
     TEAM_SUGGESTION_LIMIT,
-    TEAM_TOPIC_MEMBERS,
     TEAM_TOPIC_PROJECTS,
     TeamMethod,
     teamLiveTopic,
@@ -61,7 +60,15 @@ const contract = JSON.parse(
  * Kept beside the assertion rather than exported: their only reader is this file, and a
  * list of capability names exported from a test is a list somebody would use.
  */
-const CAPABILITIES: TeamCapability[] = ["session", "comments", "clients", "live", "overlay"];
+const CAPABILITIES: TeamCapability[] = [
+    "session",
+    "comments",
+    "clients",
+    "live",
+    "overlay",
+    "password-sign-in",
+    "project-history",
+];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
     "bad-params",
@@ -90,7 +97,6 @@ describe("the protocol contract", () => {
 
     it("builds the topics the contract spells out", () => {
         expect(TEAM_TOPIC_PROJECTS).toBe(contract.topics["projects"]);
-        expect(TEAM_TOPIC_MEMBERS).toBe(contract.topics["members"]);
         expect(teamProjectTopic("abc")).toBe(contract.topics["project"]?.replace("{project}", "abc"));
         expect(teamProjectThreadsTopic("abc")).toBe(
             contract.topics["projectThreads"]?.replace("{project}", "abc"),

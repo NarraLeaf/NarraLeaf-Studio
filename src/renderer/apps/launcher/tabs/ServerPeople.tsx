@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 
-import { getInterface } from "@/lib/app/bridge";
 import { nameInitials, nameMonogramColor } from "@/lib/components/monogram";
 import { useTranslation } from "@/lib/i18n";
+import { listMembers } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import type { TranslationKey } from "@shared/i18n";
+import { serverProblemFromTeam } from "@shared/types/vcs";
 import type { VcsServerMember } from "@shared/types/vcs";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
@@ -53,19 +54,13 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
         setOpened(null);
 
         void (async () => {
-            const result = await getInterface().vcs
-                .listServerMembers(remoteOrigin)
-                .catch(() => null);
+            const result = await listMembers(remoteOrigin);
             if (ticket !== latest.current) return;
-            if (!result?.success) {
-                setProblem("launcher.servers.problem.unknown");
+            if (!result.ok) {
+                setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            if (!result.data.ok) {
-                setProblem(SERVER_PROBLEM_KEYS[result.data.problem.kind]);
-                return;
-            }
-            setMembers(result.data.members);
+            setMembers(result.value);
         })();
     }, [remoteOrigin]);
 
