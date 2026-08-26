@@ -40,6 +40,7 @@ const DEFAULT_CONTAINER_MODULE_MODES: Record<ContainerAppearanceModuleId, Module
 };
 
 const DEFAULT_BUTTON_MODULE_MODES: Record<ButtonAppearanceModuleId, ModuleEditMode> = {
+    typography: "default",
     background: "default",
     border: "default",
     spacing: "default",
@@ -62,6 +63,7 @@ const DEFAULT_CONTAINER_MOTION_VISIBILITY: Record<ContainerAppearanceModuleId, b
 };
 
 const DEFAULT_BUTTON_MOTION_VISIBILITY: Record<ButtonAppearanceModuleId, boolean> = {
+    typography: false,
     background: false,
     border: false,
     spacing: false,
@@ -87,6 +89,7 @@ function deriveContainerMotionVisibility(model: AppearanceModel): Record<Contain
 
 function deriveButtonMotionVisibility(model: AppearanceModel): Record<ButtonAppearanceModuleId, boolean> {
     return {
+        typography: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.typography),
         background: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.background),
         border: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.border),
         spacing: moduleHasAnyAppearanceTransitionInModel(model, BUTTON_KEYS.spacing),
@@ -254,7 +257,7 @@ export function AppearanceAuthoringPanel({
         // Include variant id so draft-backed inputs (NumericDraftEnhancedInput, etc.) reset when switching variants.
         const variantSeg = selectedVariantId ? `|v:${selectedVariantId}` : "";
         if (kind === "button") {
-            return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}|${buttonModuleModes.effects}`;
+            return `${draftResetKey}${variantSeg}|b:${buttonModuleModes.typography}|${buttonModuleModes.background}|${buttonModuleModes.border}|${buttonModuleModes.spacing}|${buttonModuleModes.transform}|${buttonModuleModes.effects}`;
         }
         if (kind === "text") {
             return `${draftResetKey}${variantSeg}|t:${textModuleModes.typography}|${textModuleModes.transform}|${textModuleModes.effects}`;

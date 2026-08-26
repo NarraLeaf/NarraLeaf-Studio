@@ -4,6 +4,11 @@ import { Switch } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
 import { serializeColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
 import type { ColorValue } from "@/apps/workspace/modules/properties/framework/types";
+import type { FontAssetFieldDefinition } from "@/apps/workspace/modules/properties/framework/types";
+import { ColorPickerTrigger } from "@/apps/workspace/modules/properties/framework/fields/ColorPickerField";
+import { FontAssetField } from "@/apps/workspace/modules/properties/framework/fields/FontAssetField";
+import { parseColorValue } from "@/apps/workspace/modules/properties/framework/utils/colorUtils";
+import { Select } from "@/lib/components/elements/Select";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { getSupportedEffectKindsForWidgetType } from "@shared/types/ui-editor/effects";
@@ -16,7 +21,7 @@ import type {
 } from "@shared/types/ui-editor/appearance";
 import type { RectangleLikeProps, StrokeJoin } from "@shared/types/ui-editor/rectangleLike";
 import { STROKE_ALIGN_OPTIONS, STROKE_JOIN_OPTIONS } from "@/lib/ui-editor/widget-modules/shared/chrome/constants";
-import { Droplets, Move } from "lucide-react";
+import { Baseline, Droplets, Move, Type } from "lucide-react";
 import { formatPercentDisplay, readFiniteNumber } from "./appearanceCompactHelpers";
 import {
     BUTTON_MODULE_KEYS,
@@ -34,6 +39,11 @@ import { AppearanceFieldMotionButton, ModuleMotionMenuButton } from "./Appearanc
 import { CompactEffectsAppearance } from "./CompactEffectsAppearance";
 import { ButtonCursorSelect } from "../editors/ButtonCursorSelect";
 import { useAppearancePositionInLayout } from "../appearancePositionOwner";
+
+/** Appearance rows hold authored data, so a value that is not a string is not one to render. */
+function readString(value: unknown, fallback: string): string {
+    return typeof value === "string" && value.length > 0 ? value : fallback;
+}
 
 type Props = {
     variant: AppearanceVariant;
@@ -64,11 +74,13 @@ export function CompactButtonAppearance({
 }: Props) {
     const { t } = useTranslation();
     const positionInLayout = useAppearancePositionInLayout();
+    const typographyMode = buttonModuleModes.typography;
     const backgroundMode = buttonModuleModes.background;
     const borderMode = buttonModuleModes.border;
     const spacingMode = buttonModuleModes.spacing;
     const transformMode = buttonModuleModes.transform;
     const effectsMode = buttonModuleModes.effects;
+    const typographyMotionVisible = buttonMotionVisibility.typography;
     const backgroundMotionVisible = buttonMotionVisibility.background;
     const borderMotionVisible = buttonMotionVisibility.border;
     const spacingMotionVisible = buttonMotionVisibility.spacing;
@@ -79,13 +91,27 @@ export function CompactButtonAppearance({
     const imageFillBaseline = buttonPropsToImageFillBaseline(flat);
 
     useEffect(() => {
-        (["background", "border", "spacing", "transform", "effects"] as const).forEach(mid => {
+        (["typography", "background", "border", "spacing", "transform", "effects"] as const).forEach(mid => {
             const m = buttonModuleModes[mid];
             if (m !== "default" && !moduleFullyHasExclusiveState(variant, BUTTON_MODULE_KEYS[mid], m)) {
                 setButtonModuleMode(mid, "default");
             }
         });
     }, [variant, buttonModuleModes, setButtonModuleMode]);
+
+    const getTypography = (key: ButtonAppearancePropertyKey) =>
+        getRowValueForModuleEdit(variant, key, typographyMode);
+    const patchTypography = (key: ButtonAppearancePropertyKey, value: unknown) => {
+        commitVariant(
+            updateRowValueForModuleEditOrEnsure(
+                variant,
+                BUTTON_MODULE_KEYS.typography,
+                key,
+                typographyMode,
+                value as never
+            )
+        );
+    };
 
     const getBorder = (key: ButtonAppearancePropertyKey) => getRowValueForModuleEdit(variant, key, borderMode);
     const getSpacing = (key: ButtonAppearancePropertyKey) => getRowValueForModuleEdit(variant, key, spacingMode);
@@ -158,8 +184,136 @@ export function CompactButtonAppearance({
         },
     ];
 
+    const fontField: FontAssetFieldDefinition<UIInspectorData> = {
+        id: "compact.button.fontAssetId",
+        type: "fontAsset",
+        label: t("widgetAppearance.typography.font"),
+        getValue: () => {
+            const value = getTypography("fontAssetId");
+            return typeof value === "string" ? value : null;
+        },
+        setValue: (_data, value) => patchTypography("fontAssetId", value ?? null),
+    };
+    const labelWeight = readString(getTypography("fontWeight"), "normal");
+    const labelColor = parseColorValue(readString(getTypography("color"), "#e5e7eb"), { hex: "#e5e7eb", alpha: 1 });
+
     return (
         <div className="space-y-3 min-w-0">
+            <CompactModuleCard
+                title={t("widgetAppearance.typography.title")}
+                headerHoverAction={
+                    <ModuleMotionMenuButton
+                        enabled={typographyMotionVisible}
+                        hasConfiguredFields={motionFieldsConfigured.typography}
+                        onEnabledChange={visible => setButtonMotionVisible("typography", visible)}
+                    />
+                }
+                headerRight={
+                    <CompactModuleStateHeader
+                        variant={variant}
+                        commitVariant={commitVariant}
+                        moduleKeys={BUTTON_MODULE_KEYS.typography}
+                        mode={typographyMode}
+                        onModeChange={m => setButtonModuleMode("typography", m)}
+                    />
+                }
+            >
+                <FontAssetField field={fontField} data={inspectorData} onSaving={onSaving} />
+
+                <div className="flex flex-wrap gap-2 min-w-0">
+                    <div className="flex-1 min-w-[6rem]">
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(readFiniteNumber(getTypography("fontSize"), 16))}
+                                draftResetKey={`${draftResetKey}-buttonFontSize`}
+                                onFiniteNumber={v => patchTypography("fontSize", Math.min(256, Math.max(8, v)))}
+                                inputMode="numeric"
+                                type="number"
+                                min={8}
+                                max={256}
+                                unit="px"
+                                leftIcon={<Type className="w-4 h-4 text-fg-muted" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                            />
+                            {typographyMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="fontSize"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                    <div className="flex-1 min-w-[6rem]">
+                        <div className="flex items-center gap-1 min-w-0">
+                            <NumericDraftEnhancedInput
+                                committedDisplay={String(readFiniteNumber(getTypography("lineHeight"), 1.4))}
+                                draftResetKey={`${draftResetKey}-buttonLineHeight`}
+                                onFiniteNumber={v => {
+                                    if (v <= 0) {
+                                        return;
+                                    }
+                                    patchTypography("lineHeight", Math.min(4, Math.max(0.8, v)));
+                                }}
+                                inputMode="decimal"
+                                type="number"
+                                min={0.8}
+                                max={4}
+                                step={0.05}
+                                leftIcon={<Baseline className="w-4 h-4 text-fg-muted" />}
+                                className="w-full min-w-0"
+                                selectAllOnFocus
+                            />
+                            {typographyMotionVisible ? (
+                                <AppearanceFieldMotionButton
+                                    variant={variant}
+                                    setFieldTransition={setFieldTransition}
+                                    groupKey="lineHeight"
+                                    draftResetKey={draftResetKey}
+                                />
+                            ) : null}
+                        </div>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2 items-end min-w-0">
+                    <div className="min-w-0">
+                        <span className="mb-1 block text-xs font-medium text-fg-muted">
+                            {t("widgetAppearance.typography.weight")}
+                        </span>
+                        <Select
+                            value={labelWeight}
+                            options={[
+                                { value: "normal", label: t("widgetAppearance.typography.weightRegular") },
+                                { value: "600", label: t("widgetAppearance.typography.weightSemibold") },
+                                { value: "bold", label: t("widgetAppearance.typography.weightBold") },
+                            ]}
+                            fullWidth
+                            onChange={next => patchTypography("fontWeight", String(next))}
+                        />
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <ColorPickerTrigger
+                            value={labelColor}
+                            displayMode="icon"
+                            brandPalette
+                            allowOpacity={false}
+                            onChange={(next: ColorValue) => patchTypography("color", serializeColorValue(next))}
+                        />
+                        {typographyMotionVisible ? (
+                            <AppearanceFieldMotionButton
+                                variant={variant}
+                                setFieldTransition={setFieldTransition}
+                                groupKey="color"
+                                draftResetKey={draftResetKey}
+                            />
+                        ) : null}
+                    </div>
+                </div>
+            </CompactModuleCard>
+
             <CompactBackgroundAppearance
                 variant={variant}
                 commitVariant={commitVariant}
