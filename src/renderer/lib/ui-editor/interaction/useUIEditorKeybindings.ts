@@ -63,6 +63,19 @@ export type UseUIEditorKeybindingsParams = {
      * hand Ctrl+Z back to whatever binding sits behind it, which is another editor's undo.
      */
     readOnly?: UIEditorReadOnly;
+    /**
+     * Somewhere else that owns undo and redo right now, or undefined for this editor's own stacks.
+     *
+     * **What a live session passes.** The stacks this editor keeps are whole-Surface snapshots of a
+     * document only this author ever had, so applying one inside a shared session would put the
+     * screen back the way it was before anybody else joined - deleting every element they have added
+     * since, with nothing on either machine reporting it. Inside a session undo is sending the
+     * inverse of one's own last operation instead.
+     *
+     * Injected rather than reached for, because this module is bundled into the game runtime and the
+     * live session is Studio's: the caller is in the workspace and can see both.
+     */
+    undoOverride?: { undo(): void; redo(): void } | null;
 };
 
 export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): void {
@@ -79,6 +92,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         uiService,
         requestRenamePrimary,
         readOnly = UI_EDITOR_WRITABLE,
+        undoOverride = null,
     } = params;
     const readOnlyActive = readOnly.active;
 
@@ -164,13 +178,29 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
             uiEditorAlign(documentService, surfaceId, getUiSelection(stateService, surfaceId), op);
         };
         const undo = () => {
-            if (!historyService || isTypingInField()) {
+            if (isTypingInField()) {
+                return;
+            }
+            if (undoOverride) {
+                // A live session. See {@link UseUIEditorKeybindingsParams.undoOverride}: this
+                // editor's own stack holds snapshots of a document nobody else has agreed to.
+                undoOverride.undo();
+                return;
+            }
+            if (!historyService) {
                 return;
             }
             historyService.undo(surfaceId);
         };
         const redo = () => {
-            if (!historyService || isTypingInField()) {
+            if (isTypingInField()) {
+                return;
+            }
+            if (undoOverride) {
+                undoOverride.redo();
+                return;
+            }
+            if (!historyService) {
                 return;
             }
             historyService.redo(surfaceId);
@@ -271,6 +301,7 @@ export function useUIEditorKeybindings(params: UseUIEditorKeybindingsParams): vo
         uiService,
         requestRenamePrimary,
         readOnlyActive,
+        undoOverride,
     ]);
 
     const escapeHandler = useCallback(() => {

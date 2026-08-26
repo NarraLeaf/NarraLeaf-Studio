@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assetsDigest } from "@shared/live/assets";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
+import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import { makeAssetSetAxis } from "@shared/types/assetSet";
 import {
@@ -12,8 +13,10 @@ import {
     characterClaimKey,
     opClaimKeys,
     opDocumentKind,
+    localizationKeyClaimKey,
     storyRowClaimKey,
     translationClaimKey,
+    variableClaimKey,
     type LiveAssetFolder,
     type LiveAssetRecord,
     type LiveDocument,
@@ -25,7 +28,8 @@ import {
     type LiveRefusalReason,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
@@ -41,6 +45,17 @@ import {
     moveBlockInScene,
     updateBlockPayload,
 } from "@/lib/workspace/services/story/storyModel";
+import { applyUIGraphParts, uiBlueprintDigest, uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
+import {
+    applyUIParts,
+    uiHasElement,
+    uiOwningSurfaceIds,
+    uiPartsTouched,
+    uiShellDigest,
+    uiSurfaceDigest,
+} from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import { CLAIM_REASSERT_MS, DEFAULT_CLAIM_TIMEOUT_MS, LiveClaimStore } from "./claims";
 import { LiveHost, type LiveOutbound } from "./liveHost";
 
@@ -98,12 +113,99 @@ type World = {
         dlcs: { id: string; name: string; attachTo: string }[];
         colors: { id: string; name?: string; value: string }[];
     };
+    /** The interface document, the seventh a session carries. Mutated by the applier below. */
+    ui: UIDocument;
+    /** The blueprints beside it. */
+    uiGraphs: UIGraphDocument;
     /** The mixer and the asset sets, two of the three tables a session always carries. */
     tracks: { id: string }[];
     sets: { id: string }[];
+    /** The variable registry this session carries. */
+    variables: Record<string, VariableRegistryEntry>;
+    /** The named-string registry this session carries. */
+    keys: Record<string, LocalizationKeyDefinition>;
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
+
+/** The interface's one editable element, moved. What every delta in these tests states. */
+function movedButton(): unknown {
+    return {
+        id: "el-button",
+        type: "nl.button",
+        name: "Start",
+        parentId: "el-root",
+        childrenIds: [],
+        layout: { x: 400, y: 10, width: 100, height: 40 },
+        props: {},
+    };
+}
+
+/** Both interface documents are carried by every host in these tests. */
+const INTERFACE = { carried: true };
+
+/** A Surface with one root and one child, which is as much interface as a decision ever looks at. */
+function makeUIDocument(): UIDocument {
+    return {
+        schemaVersion: 11,
+        id: "uidoc",
+        name: "Interface",
+        surfaces: [{
+            id: "surface-1",
+            name: "Title",
+            host: "app",
+            kind: "appSurface",
+            designSize: { width: 1920, height: 1080 },
+            rootElementId: "el-root",
+        }],
+        components: [],
+        elements: {
+            "el-root": element("el-root", null, ["el-button"]),
+            "el-button": element("el-button", "el-root", []),
+        },
+    } as unknown as UIDocument;
+}
+
+function element(id: string, parentId: string | null, childrenIds: string[]): unknown {
+    return {
+        id,
+        type: parentId === null ? "nl.root" : "nl.button",
+        name: id,
+        parentId,
+        childrenIds,
+        layout: { x: 0, y: 0, width: 10, height: 10 },
+        props: {},
+    };
+}
+
+function makeUIGraphs(): UIGraphDocument {
+    return {
+        schemaVersion: 2,
+        graphs: {},
+        blueprintDocument: {
+            schemaVersion: 10,
+            blueprints: {
+                "bp-1": {
+                    id: "bp-1",
+                    name: "Widget",
+                    owner: { kind: "widgetMain", surfaceId: "surface-1", elementId: "el-button" },
+                    frontend: "visual",
+                    programKind: "graph",
+                    program: {
+                        kind: "graph",
+                        graphs: {
+                            eventIds: ["ev-1"],
+                            events: { "ev-1": { id: "ev-1", name: "Click", graph: { nodes: {}, edges: [] } } },
+                            functionIds: [],
+                            functions: {},
+                        },
+                    },
+                },
+            },
+            ownerRecords: {},
+        },
+    } as unknown as UIGraphDocument;
+}
 
 /** The languages every host in these tests carries libraries for. */
 const LOCALES = { translations: ["ja"], voice: ["ja"] };
@@ -113,6 +215,14 @@ const ASSET_TYPES = ["image", "audio"];
 
 /** The sections every host in these tests carries folders for. */
 const ASSET_CATEGORIES = ["image", "media"];
+
+/** Both project-level registries, which every host in these tests carries. */
+const REGISTRIES = { variables: true, localizationKeys: true };
+
+/** A registry entry with nothing on it but what addresses it and what an edit can move. */
+function variable(id: string, name = id): VariableRegistryEntry {
+    return { id, name, scope: "saved", valueType: "boolean", storageKey: id };
+}
 
 /** An asset record with nothing on it but what addresses it and what an edit can move. */
 function asset(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
@@ -164,6 +274,10 @@ function makeWorld(options: {
     appTags?: World["config"]["appTags"];
     dlcs?: World["config"]["dlcs"];
     colors?: World["config"]["colors"];
+    /** The variable registry entries this host starts with. */
+    variables?: Record<string, VariableRegistryEntry>;
+    /** The named strings this host starts with. */
+    keys?: Record<string, LocalizationKeyDefinition>;
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -193,10 +307,14 @@ function makeWorld(options: {
         dlcs: [...(options.dlcs ?? [])],
         colors: [...(options.colors ?? [])],
     };
+    const ui = makeUIDocument();
+    const uiGraphs = makeUIGraphs();
     // One of each is enough for the two refusals these documents have: the host asks only whether a
     // record is there, and everything else about them is last-writer-wins.
     const tracks: World["tracks"] = [{ id: "bgm" }];
     const sets: World["sets"] = [{ id: "alice" }];
+    const variables: World["variables"] = { ...(options.variables ?? {}) };
+    const keys: World["keys"] = { ...(options.keys ?? {}) };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -209,8 +327,12 @@ function makeWorld(options: {
         assets,
         folders,
         config,
+        ui,
+        uiGraphs,
         tracks,
         sets,
+        variables,
+        keys,
         applied,
         host: new LiveHost({
             self: "host",
@@ -220,11 +342,16 @@ function makeWorld(options: {
             readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
+            hasVariable: variableId => variables[variableId] !== undefined,
             assetCategories: ASSET_CATEGORIES,
+            ui: INTERFACE,
+            registries: REGISTRIES,
             readAssetFolders: category => folders[category] ?? null,
             hasAppTag: tagId => config.appTags.some(tag => tag.id === tagId),
             hasDlc: dlcId => config.dlcs.some(dlc => dlc.id === dlcId),
             hasBrandColor: colorId => config.colors.some(color => color.id === colorId),
+            hasUIElement: ref => uiHasElement(ui, ref),
+            hasBlueprint: blueprintId => uiHasBlueprint(uiGraphs, blueprintId),
             hasAudioTrack: trackId => tracks.some(track => track.id === trackId),
             hasAssetSet: setId => sets.some(set => set.id === setId),
             digestOf: scope => {
@@ -247,11 +374,45 @@ function makeWorld(options: {
                 if (scope.of === "asset-groups") {
                     return assetsDigest(folders[scope.category] ?? null);
                 }
+                if (scope.of === "ui-surface") {
+                    return uiSurfaceDigest(ui, scope.surfaceId);
+                }
+                if (scope.of === "ui-shell") {
+                    return uiShellDigest(ui);
+                }
+                if (scope.of === "ui-blueprint") {
+                    return uiBlueprintDigest(uiGraphs, scope.blueprintId);
+                }
+                if (scope.of === "variable") {
+                    return variableEntryDigest(variables[scope.variableId] ?? null);
+                }
+                if (scope.of === "localization-key") {
+                    return localizationKeyDigest(keys[scope.name] ?? null);
+                }
                 return castDigest(cast);
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, translations, takes, assets, folders, config, op);
+                const ownersBefore = uiOwningSurfaceIds(ui);
+                apply(scenes, story, cast, translations, takes, assets, folders, config, ui, uiGraphs, variables, keys, op);
+                // The interface reports its own units, because which Surface an element is under is
+                // a question about the tree rather than about the message - see `uiPartsTouched`.
+                if (op.op === "write-ui") {
+                    const touched = uiPartsTouched(ownersBefore, ui, op.parts);
+                    return [
+                        ...touched.surfaces.map(surfaceId => ({ of: "ui-surface", surfaceId }) as const),
+                        ...touched.components.map(componentId => ({ of: "ui-component", componentId }) as const),
+                        ...(touched.shell ? [{ of: "ui-shell" } as const] : []),
+                    ];
+                }
+                if (op.op === "write-ui-graphs") {
+                    const touched = uiGraphPartsTouched(op.parts);
+                    return [
+                        ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+                        ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+                    ];
+                }
+                return [];
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -280,6 +441,10 @@ function apply(
     assets: World["assets"],
     folders: World["folders"],
     config: World["config"],
+    ui: UIDocument,
+    uiGraphs: UIGraphDocument,
+    variables: World["variables"],
+    keys: World["keys"],
     op: LiveOp,
 ): void {
     switch (op.op) {
@@ -295,6 +460,21 @@ function apply(
         case "update-asset-set":
         case "delete-asset-sets":
         case "move-asset-sets":
+            return;
+        case "create-variable":
+            variables[op.entry.id] = structuredClone(op.entry);
+            return;
+        case "update-variable":
+            variables[op.variableId] = structuredClone(op.entry);
+            return;
+        case "delete-variable":
+            delete variables[op.variableId];
+            return;
+        case "set-key":
+            keys[op.name] = { ...op.definition };
+            return;
+        case "remove-key":
+            delete keys[op.name];
             return;
         case "create-assets":
             for (const create of op.creates) {
@@ -469,6 +649,12 @@ function apply(
             // Neither is checked against the document by any test here: both are last-writer-wins and
             // the host reads nothing to decide them.
             return;
+        case "write-ui":
+            applyUIParts(ui, op.parts);
+            return;
+        case "write-ui-graphs":
+            applyUIGraphParts(uiGraphs, op.parts);
+            return;
     }
 }
 
@@ -524,6 +710,10 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "assets", assetType: (op as { assetType: string }).assetType };
         case "asset-groups":
             return { doc: "asset-groups", category: (op as { category: string }).category };
+        case "ui":
+            return { doc: "ui" };
+        case "ui-graphs":
+            return { doc: "ui-graphs" };
         // One of each per project, so the kind is the whole address.
         case "app-tags":
             return { doc: "app-tags" };
@@ -537,6 +727,10 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "audio-tracks" };
         case "asset-sets":
             return { doc: "asset-sets" };
+        case "variables":
+            return { doc: "variables" };
+        case "localization-keys":
+            return { doc: "localization-keys" };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -1149,6 +1343,26 @@ describe("the claim check", () => {
             "delete-dlc": { op: "delete-dlc", dlcId: "side" },
             "update-brand-color": { op: "update-brand-color", colorId: "c9", color: { id: "c9", value: "#123456" } },
             "delete-brand-color": { op: "delete-brand-color", colorId: "c9" },
+            "write-ui": {
+                op: "write-ui",
+                parts: { elements: { "el-button": movedButton() as never } },
+                updates: [{ componentId: null, elementId: "el-button" }],
+            },
+            "write-ui-graphs": {
+                op: "write-ui-graphs",
+                parts: {
+                    graphs: {
+                        "bp-1": {
+                            events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                        },
+                    },
+                },
+                updates: ["bp-1"],
+            },
+            "update-variable": { op: "update-variable", variableId: "v1", entry: variable("v1", "Gold") },
+            "delete-variable": { op: "delete-variable", variableId: "v1" },
+            "set-key": { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } },
+            "remove-key": { op: "remove-key", name: "menu.start" },
         };
         expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
 
@@ -1162,11 +1376,99 @@ describe("the claim check", () => {
                 appTags: [variant("t1")],
                 dlcs: [dlcRecord("side")],
                 colors: [{ id: "c9", value: "#123456" }],
+                variables: { v1: variable("v1") },
+                keys: { "menu.start": { sourceText: "Start" } },
             });
             const refusal = asRefusal(send(world, op, "guest-1"));
             expect(refusal.reason, kind).toBe("row-claimed");
             expect(world.applied, kind).toHaveLength(0);
         }
+    });
+});
+
+describe("the interface and the blueprints a session carries", () => {
+    it("writes the records a delta names, and removes the ones it says are gone", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        expect(effect.seq).toBe(1);
+        expect((world.ui.elements["el-button"] as unknown as { layout: { x: number } }).layout.x).toBe(400);
+
+        send(world, { op: "write-ui", parts: { elements: { "el-button": null } } });
+        expect(world.ui.elements["el-button"]).toBeUndefined();
+    });
+
+    it("refuses a delta whose element is gone, so a deletion cannot be undone by a drag", () => {
+        // ⚠ Nothing in a delta's shape tells a new element from one somebody deleted while it was
+        // being dragged, which is why the sender says which of its records it was CHANGING. Applied
+        // blind, the second of those puts a deleted element back with every machine agreeing about
+        // it - the one failure a digest cannot see.
+        const world = makeWorld();
+        send(world, { op: "write-ui", parts: { elements: { "el-button": null } } });
+
+        const refusal = asRefusal(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        expect(refusal.reason).toBe("ui-element-gone");
+        expect(world.ui.elements["el-button"]).toBeUndefined();
+    });
+
+    it("takes a delta that creates an element, because a creation names an id nobody has", () => {
+        const world = makeWorld();
+        const created = { ...(movedButton() as Record<string, unknown>), id: "el-new", name: "New" };
+        expect(asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-new": created as never } },
+        })).seq).toBe(1);
+        expect(world.ui.elements["el-new"]).toBeDefined();
+    });
+
+    it("fingerprints the Surface an element is under, not the whole document", () => {
+        const world = makeWorld();
+        const effect = asEffect(send(world, {
+            op: "write-ui",
+            parts: { elements: { "el-button": movedButton() as never } },
+            updates: [{ componentId: null, elementId: "el-button" }],
+        }));
+        // The applier reports the units; the host stamps each of them. `opDigestScope` answers null
+        // for this verb on purpose - which Surface an element is under is a question about the tree.
+        expect(effect.digests?.map(digest => digest.scope)).toEqual([{ of: "ui-surface", surfaceId: "surface-1" }]);
+    });
+
+    it("refuses a blueprint delta whose blueprint is gone", () => {
+        const world = makeWorld();
+        send(world, { op: "write-ui-graphs", parts: { blueprints: { "bp-1": null } } });
+
+        const refusal = asRefusal(send(world, {
+            op: "write-ui-graphs",
+            parts: { graphs: { "bp-1": { events: { "ev-1": { nodes: {} } } } } },
+            updates: ["bp-1"],
+        }));
+        expect(refusal.reason).toBe("ui-blueprint-gone");
+    });
+
+    it("writes one node without touching the rest of the graph", () => {
+        const world = makeWorld();
+        asEffect(send(world, {
+            op: "write-ui-graphs",
+            parts: {
+                graphs: {
+                    "bp-1": {
+                        events: { "ev-1": { nodes: { "n-1": { id: "n-1", type: "blueprint.log", params: {} } } } },
+                    },
+                },
+            },
+            updates: ["bp-1"],
+        }));
+        const blueprint = world.uiGraphs.blueprintDocument.blueprints["bp-1"];
+        const graph = blueprint.program.kind === "graph" ? blueprint.program.graphs.events["ev-1"].graph : undefined;
+        expect(Object.keys(graph?.nodes ?? {})).toEqual(["n-1"]);
+        expect(graph?.edges).toEqual([]);
     });
 });
 
@@ -1829,5 +2131,133 @@ describe("the three project tables", () => {
             { doc: "audio-tracks" },
         );
         expect(answer).toMatchObject({ kind: "refusal", reason: "document-not-shared" });
+    });
+});
+
+/**
+ * The two project-level registries: the variable registry and the named strings.
+ *
+ * One per project, so the host has no address to check beyond the verb - and one refusal apiece that
+ * the story's own vocabulary does not have: an update naming an entry nobody holds.
+ */
+describe("the project registries a session carries", () => {
+    it("replaces one entry whole, because an entry's fields hold each other up", () => {
+        // A retype rewrites the value type and the default together, so a field-level verb would
+        // state half of one gesture and leave every receiving machine to resolve the other half.
+        const world = makeWorld({ variables: { v1: variable("v1", "Gold") } });
+        const effect = asEffect(send(world, {
+            op: "update-variable",
+            variableId: "v1",
+            entry: { ...variable("v1", "Gold"), valueType: "number", defaultValue: 10 },
+        }));
+
+        expect(world.variables.v1).toEqual({ ...variable("v1", "Gold"), valueType: "number", defaultValue: 10 });
+        expect(effect.digests).toEqual([{ scope: { of: "variable", variableId: "v1" }, hash: expect.any(String) }]);
+    });
+
+    it("refuses an update whose entry is gone, and says the entry is gone", () => {
+        // ⚠ Says the ENTRY is gone and nothing about the box the author is typing in. An update that
+        // created what it could not find would put back a variable somebody removed, leaving every
+        // blueprint node that named it still empty.
+        const world = makeWorld();
+        expect(asRefusal(send(world, { op: "update-variable", variableId: "ghost", entry: variable("ghost") })).reason)
+            .toBe("variable-gone");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("takes a creation without checking for a collision, because the id was minted", () => {
+        // With `create-character`: two ids colliding is a uuid collision rather than a race, and a
+        // retry of one creation is answered by the receipts.
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "create-variable", entry: variable("v9", "Route") })).seq).toBe(1);
+        expect(world.variables.v9?.name).toBe("Route");
+    });
+
+    it("takes a removal only for an entry that is there, because it is only ever an undo", () => {
+        const world = makeWorld({ variables: { v1: variable("v1") } });
+        asEffect(send(world, { op: "delete-variable", variableId: "v1" }));
+        expect(world.variables.v1).toBeUndefined();
+        expect(asRefusal(send(world, { op: "delete-variable", variableId: "v1" })).reason).toBe("variable-gone");
+    });
+
+    it("forgets the claim on an entry it has just removed", () => {
+        const world = makeWorld({ variables: { v1: variable("v1") } });
+        world.host.claimLocal(variableClaimKey("v1"), true);
+        expect(world.host.claims.snapshot().held[variableClaimKey("v1")]).toBe("host");
+        asEffect(send(world, { op: "delete-variable", variableId: "v1" }, "host"));
+        expect(world.host.claims.snapshot().held[variableClaimKey("v1")]).toBeUndefined();
+    });
+
+    it("declares a named string with one verb, whether or not it was there", () => {
+        // The service's own create-or-replace: the registry is addressed by NAME, and `setKey` writes
+        // whatever name it is given. Splitting it would invent a distinction the document does not
+        // have, and a machine would have to decide which of two operations a typed box produced.
+        const world = makeWorld();
+        const declared = asEffect(send(world, { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } }));
+        expect(world.keys["menu.start"]).toEqual({ sourceText: "Start" });
+        expect(declared.digests)
+            .toEqual([{ scope: { of: "localization-key", name: "menu.start" }, hash: expect.any(String) }]);
+
+        asEffect(send(world, { op: "set-key", name: "menu.start", definition: { sourceText: "Begin" } }));
+        expect(world.keys["menu.start"]).toEqual({ sourceText: "Begin" });
+    });
+
+    it("tolerates removing a named string that is already gone", () => {
+        // With `delete-character-group`: the second of two removals changes nothing, and refusing it
+        // would report a conflict where there is only agreement.
+        const world = makeWorld({ keys: { "menu.start": { sourceText: "Start" } } });
+        asEffect(send(world, { op: "remove-key", name: "menu.start" }));
+        expect(asEffect(send(world, { op: "remove-key", name: "menu.start" })).seq).toBe(2);
+        expect(world.keys["menu.start"]).toBeUndefined();
+    });
+
+    it("forgets the claim on a named string it has just removed", () => {
+        const world = makeWorld({ keys: { "menu.start": { sourceText: "Start" } } });
+        world.host.claimLocal(localizationKeyClaimKey("menu.start"), true);
+        asEffect(send(world, { op: "remove-key", name: "menu.start" }, "host"));
+        expect(world.host.claims.snapshot().held[localizationKeyClaimKey("menu.start")]).toBeUndefined();
+    });
+
+    it("refuses a registry this session does not carry at all", () => {
+        // ⚠ The table's half of the invariant: a machine that could not read the registry carries it
+        // nowhere, and an operation about it is refused rather than applied into a stand-in.
+        const world = makeWorld();
+        const refusal = asRefusal(world.host.receive({
+            kind: "intent",
+            clientId: "c-stray",
+            document: { doc: "variables" },
+            op: { op: "update-variable", variableId: "v1", entry: variable("v1") },
+        }, "guest-1"));
+        expect(refusal.reason).toBe("variable-gone");
+
+        const unshared = new LiveHost({
+            self: "host",
+            stories: [STORY],
+            readScene: () => null,
+            readCharacter: () => null,
+            hasAsset: () => false,
+            hasVariable: () => true,
+            hasUIElement: () => true,
+            hasBlueprint: () => true,
+            hasAppTag: () => true,
+            hasDlc: () => true,
+            hasBrandColor: () => true,
+            readAssetFolders: () => null,
+            digestOf: () => null,
+            applyOp: () => undefined,
+            nextSeq: () => 1,
+        });
+        expect(asRefusal(unshared.receive({
+            kind: "intent",
+            clientId: "c-1",
+            document: { doc: "variables" },
+            op: { op: "update-variable", variableId: "v1", entry: variable("v1") },
+        }, "guest-1")).reason).toBe("document-not-shared");
+        expect(asRefusal(unshared.receive({
+            kind: "intent",
+            clientId: "c-2",
+            document: { doc: "localization-keys" },
+            op: { op: "remove-key", name: "menu.start" },
+        }, "guest-1")).reason).toBe("document-not-shared");
     });
 });

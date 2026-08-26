@@ -8,6 +8,8 @@ import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDoc
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { OutlineElementBadgeProvider } from "@/lib/ui-editor/interaction/outline/outlineBadges";
+import { UIElementClaimMark, UIElementClaimsProvider, useUIElementClaim } from "../uiLiveSession";
 
 export type SurfaceOutlinePanelProps = {
     surfaceId: string;
@@ -29,6 +31,21 @@ export type SurfaceOutlinePanelProps = {
  * itself has to redraw is decided inside `UILayersPanel`, which watches its own slice of the
  * document.
  */
+/**
+ * The mark an outline row wears while somebody else in a live session has that element open.
+ *
+ * Supplied to the outline rather than drawn by them: the layer tree is part of `lib/ui-editor`,
+ * which the game runtime compiles, and a live session is Studio's. See `outlineBadges`.
+ *
+ * ⚠ Surface elements only. A component definition's elements live in their own map and are edited in
+ * a component editor, which draws its own outline against the same tree - the componentId there is
+ * not this panel's to know, so a row for one would be asking about the wrong address.
+ */
+function SurfaceOutlineClaimBadge({ elementId }: { elementId: string }) {
+    const account = useUIElementClaim(null, elementId);
+    return account === null ? null : <UIElementClaimMark account={account} />;
+}
+
 export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
     surfaceId,
     stateService,
@@ -94,6 +111,8 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                     // of the tree from reaching the canvas behind it and zooming instead.
                     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
                         {canShowLayers ? (
+                            <UIElementClaimsProvider>
+                            <OutlineElementBadgeProvider value={SurfaceOutlineClaimBadge}>
                             <UILayersPanel
                                 surfaceId={surfaceId}
                                 stateService={stateService!}
@@ -104,6 +123,8 @@ export const SurfaceOutlinePanel = memo(function SurfaceOutlinePanel({
                                 allowAddSelectionToComponentLibrary={allowAddSelectionToComponentLibrary}
                                 readOnly={readOnly}
                             />
+                            </OutlineElementBadgeProvider>
+                            </UIElementClaimsProvider>
                         ) : (
                             <div className="p-4 text-xs text-fg-subtle">{t("uiEditor.editor.loadingServices")}</div>
                         )}

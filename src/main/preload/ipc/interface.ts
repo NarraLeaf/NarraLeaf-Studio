@@ -55,7 +55,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -607,21 +607,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsRefreshServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
-        /** Goes to the network. The list is asked for every time; nothing here caches it. */
-        listServerProjects: (remoteOrigin: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerProjects, { remoteOrigin }) as Promise<RequestStatus<VcsServerProjectsOutcome>>,
-        /** Goes to the network. Only for a server that advertised `project-detail`. */
-        getServerProject: (remoteOrigin: string, projectId: string) =>
-            ipcClient.invoke(IPCEventType.vcsGetServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDetailOutcome>>,
-        /** Goes to the network. Takes the project off the server's list; the repository keeps everything in it. */
-        deleteServerProject: (remoteOrigin: string, projectId: string) =>
-            ipcClient.invoke(IPCEventType.vcsDeleteServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDeleteOutcome>>,
-        /** Goes to the network. Only for a server that advertised `project-history`. */
-        listServerProjectHistory: (remoteOrigin: string, projectId: string, limit?: number, before?: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerProjectHistory, { remoteOrigin, projectId, limit, before }) as Promise<RequestStatus<VcsServerProjectHistoryOutcome>>,
-        /** Goes to the network. Only for a server that advertised `members`. */
-        listServerMembers: (remoteOrigin: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerMembers, { remoteOrigin }) as Promise<RequestStatus<VcsServerMembersOutcome>>,
         /**
          * Goes to the network, carrying no token because this is where one comes from.
          * The password reaches the main process and is kept by neither side.

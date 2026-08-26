@@ -48,6 +48,8 @@ const NO_CONFIG = {
     hasBrandColor: () => false,
     audioTracks: () => null,
     assetSets: () => null,
+    variables: () => null,
+    keys: () => null,
 };
 
 function effect(seq: number, op: LiveOp, patch: Partial<LiveEffect> = {}): LiveEffect {
@@ -103,6 +105,8 @@ describe("the stack Ctrl+Z reads inside a session", () => {
         expect(second).toMatchObject({ index: 0, op: { op: "rename-story", name: "First" } });
 
         const redo = history.plan("redo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
+        expect(second).toMatchObject({ index: 0, op: { op: "rename-story", name: "First" } });
+
         expect(redo).toMatchObject({ index: 1, op: { op: "rename-story", name: "Third" } });
     });
 

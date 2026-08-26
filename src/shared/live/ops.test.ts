@@ -13,6 +13,7 @@ import {
     characterClaimKey,
     dlcClaimKey,
     isLiveMessage,
+    localizationKeyClaimKey,
     opAddresses,
     opBelongsTo,
     opBlockId,
@@ -24,6 +25,8 @@ import {
     sameDigestScope,
     sameLiveDocument,
     storyRowClaimKey,
+    translationClaimKey,
+    variableClaimKey,
     type LiveAssetOp,
     type LiveCharacterOp,
     type LiveOp,
@@ -158,9 +161,12 @@ describe("the operation vocabulary", () => {
             "delete-brand-color",
             "delete-character",
             "delete-dlc",
+            "delete-variable",
+            "remove-key",
             "replace-asset-content",
             "set-app-tag-defaults",
             "set-block-disabled",
+            "set-key",
             "set-translation",
             "set-translations",
             "update-app-tag",
@@ -170,10 +176,26 @@ describe("the operation vocabulary", () => {
             "update-brand-color",
             "update-character",
             "update-dlc",
+            "update-variable",
+            "write-ui",
+            "write-ui-graphs",
         ]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder", "create-app-tag", "create-dlc", "create-brand-color", "move-brand-color", "set-brand-fonts"] as const) {
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder", "create-app-tag", "create-dlc", "create-brand-color", "move-brand-color", "set-brand-fonts", "create-variable"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
+    });
+
+    it("claims a variable entry and a named string, which is the same test reaching a different box", () => {
+        // Neither box keeps a draft the way the properties panel's fields do - both are controlled
+        // inputs that write on every keystroke - so the usual diagnostic says no. The question behind
+        // it says yes: with a session installed the box's value IS the document, so somebody else's
+        // edit to the same entry lands under the author's cursor and takes what they had typed. A
+        // creation is unclaimed with every other creation: the id was minted by whoever built it.
+        expect(CLAIMED_OPS.has("update-variable")).toBe(true);
+        expect(CLAIMED_OPS.has("delete-variable")).toBe(true);
+        expect(CLAIMED_OPS.has("create-variable")).toBe(false);
+        expect(CLAIMED_OPS.has("set-key")).toBe(true);
+        expect(CLAIMED_OPS.has("remove-key")).toBe(true);
     });
 
     it("claims a translation and not a voice take, which is the same test applied twice", () => {
@@ -521,5 +543,65 @@ describe("the project's three configuration tables", () => {
             .toEqual({ of: "brand" });
         expect(sameDigestScope({ of: "brand" }, { of: "brand" })).toBe(true);
         expect(sameDigestScope({ of: "brand" }, { of: "dlc" })).toBe(false);
+    });
+});
+
+/**
+ * The two project-level registries: the variable registry and the named strings.
+ *
+ * One per project, so the verb is the whole address - with the cast, and unlike everything that is
+ * parameterised. What they add to the vocabulary is one claim key space each, and a digest per
+ * entry rather than per document.
+ */
+describe("the project registries a session carries", () => {
+    const ENTRY = { id: "v1", name: "Gold", scope: "saved", valueType: "number", storageKey: "v1" } as const;
+    const CREATE: LiveOp = { op: "create-variable", entry: ENTRY };
+    const UPDATE: LiveOp = { op: "update-variable", variableId: "v1", entry: { ...ENTRY, name: "Coins" } };
+    const REMOVE: LiveOp = { op: "delete-variable", variableId: "v1" };
+    const SET_KEY: LiveOp = { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } };
+    const REMOVE_KEY: LiveOp = { op: "remove-key", name: "menu.start" };
+
+    it("routes each verb to the document it can only ever be about", () => {
+        expect([CREATE, UPDATE, REMOVE].map(opDocumentKind)).toEqual(["variables", "variables", "variables"]);
+        expect([SET_KEY, REMOVE_KEY].map(opDocumentKind)).toEqual(["localization-keys", "localization-keys"]);
+        expect(opBelongsTo(UPDATE, { doc: "variables" })).toBe(true);
+        expect(opBelongsTo(UPDATE, { doc: "localization-keys" })).toBe(false);
+        // Nothing of their own to compare, because neither document is parameterised: the kind
+        // agreeing IS the whole check here, unlike a translation that names its own language.
+        expect(opAddresses(UPDATE, { doc: "variables" })).toBe(true);
+        expect(opAddresses(SET_KEY, { doc: "localization-keys" })).toBe(true);
+    });
+
+    it("fingerprints one entry rather than the document, which is the ordinary rule", () => {
+        // No exception is needed here: every operation about either registry names exactly one
+        // entry, so nothing reaches across them the way an import reaches across a locale library.
+        expect(opDigestScope(CREATE, "story-1" as never)).toEqual({ of: "variable", variableId: "v1" });
+        expect(opDigestScope(UPDATE, "story-1" as never)).toEqual({ of: "variable", variableId: "v1" });
+        expect(opDigestScope(REMOVE, "story-1" as never)).toEqual({ of: "variable", variableId: "v1" });
+        expect(opDigestScope(SET_KEY, "story-1" as never)).toEqual({ of: "localization-key", name: "menu.start" });
+        expect(opDigestScope(REMOVE_KEY, "story-1" as never)).toEqual({ of: "localization-key", name: "menu.start" });
+    });
+
+    it("keys each claim in its own prefix, so one set can hold every kind at once", () => {
+        expect(opClaimKeys(UPDATE)).toEqual([variableClaimKey("v1")]);
+        expect(opClaimKeys(REMOVE)).toEqual([variableClaimKey("v1")]);
+        expect(opClaimKeys(SET_KEY)).toEqual([localizationKeyClaimKey("menu.start")]);
+        expect(opClaimKeys(REMOVE_KEY)).toEqual([localizationKeyClaimKey("menu.start")]);
+        // ⚠ A named string has BOTH kinds of claim in the same set: `named-key:` over its source
+        // text, and `translation:<locale>:key:<name>` over each language's box. Spelling the first
+        // one `key:` would make the two read as one to anybody scanning the set.
+        expect(localizationKeyClaimKey("menu.start")).not.toBe(translationClaimKey("ja", "key:menu.start"));
+        expect(variableClaimKey("v1")).not.toBe(characterClaimKey("v1"));
+        expect(variableClaimKey("v1")).not.toBe(assetClaimKey("v1"));
+        expect(variableClaimKey("v1")).not.toBe(storyRowClaimKey("v1"));
+    });
+
+    it("tells the two registries apart, and each from itself", () => {
+        expect(sameLiveDocument({ doc: "variables" }, { doc: "variables" })).toBe(true);
+        expect(sameLiveDocument({ doc: "localization-keys" }, { doc: "localization-keys" })).toBe(true);
+        expect(sameLiveDocument({ doc: "variables" }, { doc: "localization-keys" })).toBe(false);
+        // ⚠ Not the per-language libraries either: the same service owns both, and the key registry
+        // holds the source texts the libraries are translations of.
+        expect(sameLiveDocument({ doc: "localization-keys" }, { doc: "localization", locale: "ja" })).toBe(false);
     });
 });

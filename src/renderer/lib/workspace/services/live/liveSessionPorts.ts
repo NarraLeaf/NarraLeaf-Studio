@@ -16,19 +16,27 @@ import type {
     LiveDictionaryOp,
     LiveDigestScope,
     LiveDlcOp,
+    LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveStoryOp,
+    LiveUIGraphOp,
+    LiveUIOp,
+    LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
 import type { ProjectAppTagDocument } from "@shared/types/appTag";
 import type { ProjectBrandDocument } from "@shared/types/brand";
 import type { ProjectDlcDocument } from "@shared/types/dlc";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { AppTagOpSink } from "../appTag/AppTagService";
 import type { BrandOpSink } from "../brand/BrandService";
@@ -40,6 +48,9 @@ import type { DlcOpSink } from "../dlc/DlcService";
 import type { DictionaryOpSink } from "../dictionary/DictionaryService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
+import type { VariableOpSink } from "../variables/VariableRegistryService";
 import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
@@ -170,8 +181,43 @@ export type LiveLocalizationPort = {
     loadAll(): Promise<readonly string[]>;
     /** One language's entries as they stand, or null when this window does not hold them. */
     units(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
+    /**
+     * Read the named-string registry, and say whether this window holds it.
+     *
+     * ⚠ **A second document on one port**, which no other kind here does, and it is the same service
+     * owning both: `editor/localization/keys.json` holds the source texts the per-language libraries
+     * are translations of. They are addressed apart everywhere it matters - their own `LiveDocument`,
+     * their own digest, their own claim - so what they share is a sink and a port, not an identity.
+     */
+    loadKeys(): Promise<boolean>;
+    /** Every named string as it stands, or null when this window does not hold the registry. */
+    keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
     /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
-    applyOp(op: LiveLocalizationOp): void;
+    applyOp(op: LiveLocalizationOp | LiveLocalizationKeyOp): void;
+};
+
+/**
+ * The project's variable registry - `editor/variables.json`.
+ *
+ * The cast port's shape rather than a library's: there is one registry per project, so nothing here
+ * is parameterised and there is no set of them to load. What it does have that the cast does not is
+ * {@link readable}, because the registry survives a document it could not parse - the service keeps
+ * an empty stand-in so the project still opens, and a session that carried THAT would be applying
+ * operations to a registry with nothing to do with the file on disk.
+ *
+ * ⚠ **Nothing here removes an entry.** Deleting a variable also clears the params of every blueprint
+ * node that named it, and the blueprint document is not a document a session carries -
+ * `VariableRegistryService` refuses the gesture for as long as a sink is installed.
+ */
+export type LiveVariablesPort = {
+    /** Where registry edits go instead of into the registry, or null to take them back. */
+    setSink(sink: VariableOpSink | null): void;
+    /** Whether this window holds a registry it could actually read. */
+    readable(): boolean;
+    /** One entry as it stands, or null when there is none. Read for a digest and for an inverse. */
+    entry(variableId: string): VariableRegistryEntry | null;
+    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
+    applyOp(op: LiveVariableOp): void;
 };
 
 /** One language's voice takes. The translations port's mirror, method for method. */
@@ -296,6 +342,57 @@ export type LiveBrandPort = {
 };
 
 /**
+ * The interface and its blueprints - `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`.
+ *
+ * **One port for two documents, and that is a statement rather than a shortcut.** Everywhere else a
+ * document has a port of its own; these two are one editing surface written to two files. Adding a
+ * widget to a Surface writes the first and then reconciles a private blueprint for it in the second,
+ * in the same synchronous step - so a session that carried one of them would spend its life
+ * announcing that the other could not be saved. They are loaded together, frozen together, and the
+ * one applier below reports units of both.
+ */
+export type LiveUIPort = {
+    /**
+     * Where interface and blueprint edits go instead of into the documents, or null to take both
+     * back. One call, because there is no state in which one of them is redirected and the other is
+     * not.
+     */
+    setSink(sink: { ui: UIOpSink; graphs: UIGraphOpSink } | null): void;
+    /**
+     * Whether this window holds both documents.
+     *
+     * What the session carries and what the write boundary leaves writable, from one answer - the
+     * shape every other port's `loadAll` has. Nothing to load: both are read as the workspace starts
+     * rather than when a panel opens them.
+     */
+    held(): boolean;
+    /** The interface document as it stands, or null when this window does not hold it. */
+    document(): UIDocument | null;
+    /** The blueprint document as it stands, or null when this window does not hold it. */
+    graphs(): UIGraphDocument | null;
+    /**
+     * Whether one element is in the interface right now.
+     *
+     * A boolean, with the asset port's `hasRecord`: presence is the whole of what the host asks, and
+     * handing the record over would invite a later reader to plan against a copy.
+     */
+    hasElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Answers with every unit it changed, and for an interface operation that includes units of
+     * the OTHER document.** Applying an interface delta runs the blueprint reconciliation behind it,
+     * which is derived work - every machine computes the same records from the same effect, which is
+     * why the ids it mints are derived from the owner key rather than freshly minted. Derived work is
+     * exactly the work that has to be fingerprinted rather than assumed, so what it touched is
+     * reported here and reaches the effect's digests.
+     */
+    applyOp(op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[];
+};
+
+/**
  * The three small project tables a session carries, as one shape three times over.
  *
  * The dictionary, the mixer and the asset sets are one document each per project, and each needs
@@ -331,7 +428,7 @@ export type LiveAssetSetPort = {
     applyOp(op: LiveAssetSetOp): void;
 };
 
-/** The five things a session asks of version control. */
+/** What a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
     checkpoint(): Promise<string | null>;
@@ -339,10 +436,51 @@ export type LiveVersionPort = {
     head(): Promise<string | null>;
     /** Whether the working tree holds anything no revision has. */
     hasUncommittedChanges(): Promise<boolean>;
-    /** Put this branch on the server, so the revision a room opens on is one others can fetch. */
-    push(): Promise<void>;
-    /** Bring the working tree up to the server. `conflicts` is what the merge left to a human. */
+    /**
+     * Put this branch on the server, so the revision a room opens on is one others can fetch.
+     *
+     * Answers `diverged` instead of throwing for the one refusal a session can act on: both sides
+     * have moved on, and the way past it is a sync. Everything else still throws, because nothing
+     * here knows what to do about it.
+     */
+    push(): Promise<{ diverged: boolean }>;
+    /**
+     * Bring the working tree - and this repository's knowledge of the server's revisions - up to
+     * date. `conflicts` is what the merge left to a human.
+     *
+     * ⚠ **It is also the only way to LEARN a revision.** There is no fetch verb: a repository can
+     * only put down a version it holds, and a room's version was pushed by another machine seconds
+     * ago. So entering a room syncs first and adopts second, and the merge in between is a side
+     * effect of the fetch rather than the point of it.
+     */
     sync(): Promise<{ conflicts: readonly string[] }>;
+    /**
+     * Throw the open merge away and put the working tree back to what it was before it started.
+     *
+     * What a session does with a merge it only wanted the fetch from. Everything the merge could
+     * not settle is about to be overwritten by the room's own copy anyway, and a session that
+     * stopped to ask its author to settle a conflict between two copies of one afternoon's work is
+     * the failure this path exists to remove - the checkpoint taken on the way in is where their
+     * side of it went.
+     */
+    abortMerge(): Promise<void>;
+    /**
+     * Put this working tree on the content of one version.
+     *
+     * **The step that makes entering a room free of version work**, and the reason it is an adoption
+     * rather than a merge. Everybody in a room has to be looking at the same document, and a merge
+     * cannot promise that: two machines that applied the same session's effects hold the same story
+     * with two different save timestamps in it, so merging their copies produces a conflict about a
+     * field neither author has ever seen. Adoption has no such case - the room's version is written
+     * over this tree byte for byte - and it is safe to do without asking because the checkpoint
+     * taken first is where whatever was here went.
+     *
+     * ⚠ **It records a revision of its own**, because the backend has no verb that moves a branch
+     * backwards (see `VcsManager.restoreRevision`). What that revision holds is the room's content,
+     * so a machine that adopts and later syncs merges "we changed nothing" against the host's work,
+     * which settles without a question.
+     */
+    adopt(revision: string): Promise<void>;
 };
 
 /** The write latch, as much of it as a session touches. */
@@ -361,6 +499,23 @@ export type LiveFreezePort = {
     lift(session: string): void;
 };
 
+/**
+ * The one thing about a session that outlives the window it was running in.
+ *
+ * **Deliberately the smallest fact that could not be recovered from anywhere else.** Everything else
+ * a session knows is the server's - who is in a room, what it is about, what it opened on - and
+ * asking the server is always better than remembering. What the server cannot say is that a room
+ * ENDED because a window went away rather than because somebody left: a room belongs to the window
+ * that opened it and the server closes it either way, so from the next launch the two are the same
+ * event. This is the note that tells them apart, and it is thrown away as soon as it has been read.
+ */
+export type LiveMemoryPort = {
+    /** Say this window is hosting a session on this story, or that it is not any more. */
+    remember(hosting: { story: StoryId } | null): void;
+    /** What this window was hosting when it went away, with when, or null. */
+    recall(): Promise<{ story: StoryId; at: number } | null>;
+};
+
 /** The undo stacks, as much of them as a session touches. */
 export type LiveHistoryPort = {
     /**
@@ -371,6 +526,20 @@ export type LiveHistoryPort = {
      * deleting everything they wrote, with nothing on either screen reporting it.
      */
     forgetStoryScenes(storyId: StoryId): void;
+    /**
+     * Throw away every Surface and blueprint stack.
+     *
+     * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
+     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * One applied - during a session or after it - would put the screen back the way it was before
+     * anybody else joined, deleting everything they have added since, with nothing on either machine
+     * reporting it.
+     *
+     * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
+     * scenes are at risk; the interface is one document with every Surface in it, and every stack
+     * over it is about to become historical.
+     */
+    forgetInterfaceEditors(): void;
 };
 
 /** Everything {@link LiveSession} needs from the world. */
@@ -389,12 +558,15 @@ export type LiveSessionDeps = {
     appTags: LiveAppTagsPort;
     dlc: LiveDlcPort;
     brand: LiveBrandPort;
+    ui: LiveUIPort;
     dictionary: LiveDictionaryPort;
     audioTracks: LiveAudioTrackPort;
     assetSets: LiveAssetSetPort;
+    variables: LiveVariablesPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
+    memory: LiveMemoryPort;
     /**
      * Milliseconds from a source that only moves forward, and a delayed run that can be cancelled.
      *

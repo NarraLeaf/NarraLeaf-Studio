@@ -1334,4 +1334,7 @@ export const blueprint = {
         getPlaytime: "获取游玩时长",
         getTotalPlaytime: "获取累计游玩时长",
     },
+    live: {
+        nodeClaimed: "{name} 正在编辑该节点",
+    },
 } satisfies LocaleNamespace<"blueprint">;

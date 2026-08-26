@@ -4,7 +4,9 @@ import type { LiveCastView } from "@shared/live/cast";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LocalizationKeyDefinition } from "@shared/types/localization";
 import type { StoryDocument } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
 
 /**
@@ -121,6 +123,10 @@ export class LiveEffectHistory {
             audioTracks(): readonly ProjectAudioTrack[] | null;
             /** The asset sets as they stand now, for the steps that are about them. */
             assetSets(): readonly AssetSet[] | null;
+            /** One registry entry as it stands now, for the steps that are about the variables. */
+            variables(variableId: string): VariableRegistryEntry | null;
+            /** Every named string as it stands now, for the steps that are about them. */
+            keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
         },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
@@ -142,6 +148,8 @@ export class LiveEffectHistory {
             hasBrandColor: context.hasBrandColor,
             audioTracks: context.audioTracks,
             assetSets: context.assetSets,
+            variables: context.variables,
+            keys: context.keys,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {
