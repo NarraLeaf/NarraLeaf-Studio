@@ -1,8 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
+    appTagsSpec,
     assetGroupsSpec,
     assetsMetadataSpec,
+    brandSpec,
     charactersSpec,
+    dlcSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
     voiceDocumentSpec,
@@ -11,18 +14,28 @@ import type { StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story"
 import type { LiveCastView } from "@shared/live/cast";
 import { liveSessionWritablePaths } from "@shared/live/sharedDocuments";
 import {
+    appTagClaimKey,
+    brandColorClaimKey,
     characterClaimKey,
+    dlcClaimKey,
     storyRowClaimKey,
     assetClaimKey,
     translationClaimKey,
+    type LiveAppTagOp,
+    type LiveBrandOp,
     type LiveCharacterOp,
     type LiveDerived,
+    type LiveDlcOp,
     type LiveEffect,
     type LiveLocalizationOp,
     type LiveAssetFolderOp,
     type LiveAssetOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import { APP_TAG_SCHEMA_VERSION, type ProjectAppTagDocument } from "@shared/types/appTag";
+import { BRAND_SCHEMA_VERSION, type ProjectBrandDocument } from "@shared/types/brand";
+import { DLC_SCHEMA_VERSION, type ProjectDlcDocument } from "@shared/types/dlc";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -310,6 +323,15 @@ type Window = {
     /** The asset metadata shards this window holds, by type, and where its record edits go. */
     assets: Record<string, Record<string, Record<string, unknown>>>;
     assetSink: { handle(op: LiveAssetOp | LiveAssetFolderOp): boolean } | null;
+    /** The three configuration tables this window holds, and where its edits go. */
+    config: {
+        appTags: ProjectAppTagDocument;
+        dlcs: ProjectDlcDocument;
+        brand: ProjectBrandDocument;
+    };
+    appTagSink: { handle(op: LiveAppTagOp): boolean } | null;
+    dlcSink: { handle(op: LiveDlcOp): boolean } | null;
+    brandSink: { handle(op: LiveBrandOp): boolean } | null;
     /** This window's reading of the time, in milliseconds. Moved by hand. See {@link fireTimers}. */
     clock: number;
     /** Everything this window has asked to have run later, in the order it asked. */
@@ -414,6 +436,73 @@ function applyAssetOp(shards: Window["assets"], op: LiveAssetOp | LiveAssetFolde
     }
 }
 
+/**
+ * The three configuration tables' appliers, as small as the store's own.
+ *
+ * Deliberately not the services: what these tests are about is the session - who is allowed to change
+ * a table and what reaches the other window - and a real service would drag a document store, an
+ * autosave timer and a history stack into every one of them.
+ */
+function applyAppTagOp(document: ProjectAppTagDocument, op: LiveAppTagOp): void {
+    switch (op.op) {
+        case "create-app-tag":
+            document.tags = insertLiveRecordBefore(document.tags, structuredClone(op.tag), op.beforeId);
+            return;
+        case "update-app-tag":
+            document.tags = document.tags.map(tag => (tag.id === op.tagId ? structuredClone(op.tag) : tag));
+            return;
+        case "delete-app-tag":
+            document.tags = document.tags.filter(tag => tag.id !== op.tagId);
+            return;
+        case "set-app-tag-defaults":
+            document.pluginConfig = op.defaults.pluginConfig;
+            document.assetAxes = op.defaults.assetAxes;
+            document.reachableScenes = op.defaults.reachableScenes;
+            document.endingSurfaceId = op.defaults.endingSurfaceId;
+            return;
+    }
+}
+
+function applyDlcOp(document: ProjectDlcDocument, op: LiveDlcOp): void {
+    switch (op.op) {
+        case "create-dlc":
+            document.dlcs = insertLiveRecordBefore(document.dlcs, structuredClone(op.dlc), op.beforeId);
+            return;
+        case "update-dlc":
+            document.dlcs = document.dlcs.map(dlc => (dlc.id === op.dlcId ? structuredClone(op.dlc) : dlc));
+            return;
+        case "delete-dlc":
+            document.dlcs = document.dlcs.filter(dlc => dlc.id !== op.dlcId);
+            return;
+    }
+}
+
+function applyBrandOp(document: ProjectBrandDocument, op: LiveBrandOp): void {
+    switch (op.op) {
+        case "create-brand-color":
+            document.colors = insertLiveRecordBefore(document.colors, structuredClone(op.color), op.beforeId);
+            return;
+        case "update-brand-color":
+            document.colors = document.colors.map(color => (color.id === op.colorId ? structuredClone(op.color) : color));
+            return;
+        case "delete-brand-color":
+            document.colors = document.colors.filter(color => color.id !== op.colorId);
+            return;
+        case "move-brand-color": {
+            const moving = document.colors.find(color => color.id === op.colorId);
+            if (!moving) {
+                return;
+            }
+            const rest = document.colors.filter(color => color.id !== op.colorId);
+            document.colors = insertLiveRecordBefore(rest, moving, op.beforeId ?? undefined);
+            return;
+        }
+        case "set-brand-fonts":
+            document.fonts = structuredClone(op.fonts) as ProjectBrandDocument["fonts"];
+            return;
+    }
+}
+
 function createWindow(world: World, instance: string): Window {
     const { service, history } = createStoryService();
     const ids = seed(service);
@@ -438,6 +527,14 @@ function createWindow(world: World, instance: string): Window {
         takeSink: null,
         assets: { image: {} },
         assetSink: null,
+        config: {
+            appTags: { schemaVersion: APP_TAG_SCHEMA_VERSION, tags: [] },
+            dlcs: { schemaVersion: DLC_SCHEMA_VERSION, dlcs: [] },
+            brand: { schemaVersion: BRAND_SCHEMA_VERSION, colors: [], fonts: [] },
+        },
+        appTagSink: null,
+        dlcSink: null,
+        brandSink: null,
         clock: 0,
         timers: [],
     };
@@ -520,6 +617,39 @@ function createWindow(world: World, instance: string): Window {
                 calls.push(`assets:${op.op}`);
                 applyAssetOp(window.assets, op);
                 return [];
+            },
+        },
+        appTags: {
+            setSink: sink => {
+                window.appTagSink = sink;
+            },
+            document: () => window.config.appTags,
+            hasTag: tagId => window.config.appTags.tags.some(tag => tag.id === tagId),
+            applyOp: op => {
+                calls.push(`appTags:${op.op}`);
+                applyAppTagOp(window.config.appTags, op);
+            },
+        },
+        dlc: {
+            setSink: sink => {
+                window.dlcSink = sink;
+            },
+            document: () => window.config.dlcs,
+            hasDlc: dlcId => window.config.dlcs.dlcs.some(dlc => dlc.id === dlcId),
+            applyOp: op => {
+                calls.push(`dlc:${op.op}`);
+                applyDlcOp(window.config.dlcs, op);
+            },
+        },
+        brand: {
+            setSink: sink => {
+                window.brandSink = sink;
+            },
+            document: () => window.config.brand,
+            hasColor: colorId => window.config.brand.colors.some(color => color.id === colorId),
+            applyOp: op => {
+                calls.push(`brand:${op.op}`);
+                applyBrandOp(window.config.brand, op);
             },
         },
         version: {
@@ -831,12 +961,23 @@ describe("a live session", () => {
                 voiceDocumentSpec.pathFor({ locale: "ja" }),
                 assetsMetadataSpec.pathFor({ type: "image" }),
                 assetGroupsSpec.pathFor({ category: "image" }),
+                // The three configuration tables. One of each per project, so they take nothing from
+                // the caller and are always in the set.
+                appTagsSpec.pathFor(),
+                dlcSpec.pathFor(),
+                brandSpec.pathFor(),
                 // ⚠ And the two the vocabulary is never about: a file's bytes, which an applier puts
                 // down rather than anybody addressing, and the row order, which every machine
                 // recomputes from what it has just applied.
                 "assets/content",
                 "assets/assets.order.image.json",
             ]);
+            // ⚠ And the two configuration documents a session deliberately does NOT carry, which is
+            // the same invariant working: the save schema is edited from inside the blueprint editor
+            // and undone through it, and the project configuration is written by every settings page
+            // there is - see `@shared/live/sharedDocuments`.
+            expect(host.freeze.armed?.writable).not.toContain("editor/save-schema.json");
+            expect(host.freeze.armed?.writable.some(path => path.endsWith(".nlproj"))).toBe(false);
             // And the scene stacks are dropped, because every snapshot in them is a statement about
             // a document only this author ever had.
             expect(host.forgotten).toEqual([host.storyId]);
@@ -1699,6 +1840,93 @@ describe("a live session", () => {
             // The row stays gone: nothing here restores a scene, which is what would have brought
             // it back along with everything else the room has done since.
             expect(guest.story.getStoryDocument(guest.storyId).scenes[guest.sceneId].blocks["c"]).toBeUndefined();
+        });
+    });
+
+    describe("the project's three configuration tables", () => {
+        function variant(id: string, name = "Demo"): ProjectAppTagDocument["tags"][number] {
+            return { id, name, overrides: {} };
+        }
+
+        function seedConfig(): void {
+            for (const window of [host, guest]) {
+                window.config.appTags.tags = [variant("t1")];
+                window.config.dlcs.dlcs = [{ id: "side", name: "Side Story", attachTo: "main" }];
+                window.config.brand.colors = [{ id: "c9", name: "Ink", value: "#101318" }];
+            }
+        }
+
+        it("carries a variant rename from one window to the other, and applies nothing optimistically", async () => {
+            await openRoom();
+            await joinRoom();
+            seedConfig();
+
+            guest.appTagSink?.handle({ op: "update-app-tag", tagId: "t1", tag: variant("t1", "Trial") });
+            // The row changes when the effect answering the intent arrives, not when the field was
+            // blurred - the same bargain every gesture on this seam makes.
+            expect(guest.config.appTags.tags[0]?.name).toBe("Demo");
+
+            await drain(world.bus);
+            expect(host.config.appTags.tags[0]?.name).toBe("Trial");
+            expect(guest.config.appTags.tags[0]?.name).toBe("Trial");
+        });
+
+        it("carries the host's own palette edit to the guest with no interaction there", async () => {
+            await openRoom();
+            await joinRoom();
+            seedConfig();
+
+            host.brandSink?.handle({ op: "update-brand-color", colorId: "c9", color: { id: "c9", value: "#FF0000" } });
+            await drain(world.bus);
+            expect(guest.config.brand.colors[0]?.value).toBe("#FF0000");
+        });
+
+        it("refuses an edit to a row somebody else is inside, and keeps their typing", async () => {
+            await openRoom();
+            await joinRoom();
+            seedConfig();
+
+            guest.session.claimDlc("side", true);
+            await drain(world.bus);
+
+            host.dlcSink?.handle({
+                op: "update-dlc", dlcId: "side", dlc: { id: "side", name: "Taken", attachTo: "main" },
+            });
+            await drain(world.bus);
+            expect(host.session.getView().lastRefusal?.reason).toBe("row-claimed");
+            expect(host.config.dlcs.dlcs[0]?.name).toBe("Side Story");
+            expect(guest.config.dlcs.dlcs[0]?.name).toBe("Side Story");
+        });
+
+        it("keys its claims by table, so one table's row does not answer for another's", async () => {
+            // Every kind of claim lives in one map. A bare id shared between two tables would be a
+            // confusion nothing could detect - see `@shared/live/ops`.
+            await openRoom();
+            await joinRoom();
+            seedConfig();
+
+            guest.session.claimAppTag("t1", true);
+            await drain(world.bus);
+            expect(host.session.getView().claims[appTagClaimKey("t1")]).toBe("instance-guest");
+            expect(host.session.getView().claims[dlcClaimKey("t1")]).toBeUndefined();
+            expect(host.session.getView().claims[brandColorClaimKey("t1")]).toBeUndefined();
+        });
+
+        it("takes back the host's own variant edit by sending its inverse", async () => {
+            await openRoom();
+            await joinRoom();
+            seedConfig();
+
+            host.appTagSink?.handle({ op: "update-app-tag", tagId: "t1", tag: variant("t1", "Trial") });
+            await drain(world.bus);
+            expect(guest.config.appTags.tags[0]?.name).toBe("Trial");
+
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+            // Both copies, because an undo inside a session is an operation like any other rather
+            // than a snapshot this window puts back on its own.
+            expect(host.config.appTags.tags[0]?.name).toBe("Demo");
+            expect(guest.config.appTags.tags[0]?.name).toBe("Demo");
         });
     });
 });

@@ -29,6 +29,14 @@ const SCENE_ID = "scene-1";
 
 const IN_A_SESSION = en.live.editUnavailable;
 const FROZEN = "Unavailable while the project is frozen. Unfreeze the project to use it.";
+/**
+ * The same string for the one freeze that has no unfreeze.
+ *
+ * A live session is left or closed, so the sentence above would name a control that is itself
+ * unavailable. Which one a greyed control shows is the freeze's kind and nothing else - what it
+ * may DO is still the write boundary's own predicate.
+ */
+const FROZEN_LIVE = "Unavailable during a live session. Leave the session to use it.";
 
 const document = {
     id: STORY_ID,
@@ -144,9 +152,9 @@ describe("the outline while a session owns this story", () => {
         expect(newScene.matches(":disabled")).toBe(true);
         expect(newScene.getAttribute("data-tip")).toBe(IN_A_SESSION);
         // The library above is a different document, which no partial freeze leaves writable, so it
-        // shows the workspace's own sentence and always did.
+        // shows the sentence every control a freeze switches off shows.
         expect(newStory.matches(":disabled")).toBe(true);
-        expect(newStory.getAttribute("data-tip")).toBe(FROZEN);
+        expect(newStory.getAttribute("data-tip")).toBe(FROZEN_LIVE);
     });
 
     it("keeps a scene's rename and entry-scene rows live, because both travel", async () => {

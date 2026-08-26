@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LiveCastView } from "@shared/live/cast";
+import { opDocumentKind } from "@shared/live/ops";
 import type {
     LiveAssetOp,
     LiveAssetRecord,
@@ -9,6 +10,11 @@ import type {
     LiveOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import { APP_TAG_SCHEMA_VERSION, type ProjectAppTag, type ProjectAppTagDocument } from "@shared/types/appTag";
+import { BRAND_SCHEMA_VERSION, type BrandColor, type ProjectBrandDocument } from "@shared/types/brand";
+import { DLC_SCHEMA_VERSION, type ProjectDlc, type ProjectDlcDocument } from "@shared/types/dlc";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -1227,5 +1233,264 @@ describe("undoing what this window did to the asset library", () => {
         expect(done.before).toBeNull();
         expect(inverseOf(done.effect, { self: SELF, before: done.before, assets: () => null }))
             .toEqual({ impossible: "no-record" });
+    });
+});
+
+/* -------------------------------------------- the project's three configuration tables */
+
+function makeAppTags(tags: ProjectAppTag[] = []): ProjectAppTagDocument {
+    return { schemaVersion: APP_TAG_SCHEMA_VERSION, tags: tags.map(tag => structuredClone(tag)) };
+}
+
+function makeDlcs(entries: ProjectDlc[] = []): ProjectDlcDocument {
+    return { schemaVersion: DLC_SCHEMA_VERSION, dlcs: entries.map(entry => ({ ...entry })) };
+}
+
+function makeBrand(colors: BrandColor[] = [], fonts: ProjectFontEntry[] = []): ProjectBrandDocument {
+    return {
+        schemaVersion: BRAND_SCHEMA_VERSION,
+        colors: colors.map(color => ({ ...color })),
+        fonts: fonts.map(font => ({ ...font })),
+    };
+}
+
+function variant(id: string, name = "Demo"): ProjectAppTag {
+    return { id, name, overrides: {} };
+}
+
+/**
+ * The three configuration tables, as much of them as an inverse ever reads.
+ *
+ * One harness for the three, because the three are one design with three addresses - which is also
+ * why the interface half of them is one file.
+ */
+type ConfigWorld = {
+    appTags: ProjectAppTagDocument;
+    dlcs: ProjectDlcDocument;
+    brand: ProjectBrandDocument;
+};
+
+function makeConfigWorld(patch: Partial<ConfigWorld> = {}): ConfigWorld {
+    return {
+        appTags: patch.appTags ?? makeAppTags(),
+        dlcs: patch.dlcs ?? makeDlcs(),
+        brand: patch.brand ?? makeBrand(),
+    };
+}
+
+function applyConfig(world: ConfigWorld, op: LiveOp): void {
+    switch (op.op) {
+        case "create-app-tag":
+            world.appTags.tags = insertLiveRecordBefore(world.appTags.tags, structuredClone(op.tag), op.beforeId);
+            return;
+        case "update-app-tag":
+            world.appTags.tags = world.appTags.tags.map(tag => (tag.id === op.tagId ? structuredClone(op.tag) : tag));
+            return;
+        case "delete-app-tag":
+            world.appTags.tags = world.appTags.tags.filter(tag => tag.id !== op.tagId);
+            return;
+        case "set-app-tag-defaults":
+            world.appTags.pluginConfig = op.defaults.pluginConfig;
+            world.appTags.assetAxes = op.defaults.assetAxes;
+            world.appTags.reachableScenes = op.defaults.reachableScenes;
+            world.appTags.endingSurfaceId = op.defaults.endingSurfaceId;
+            for (const entry of op.tagPluginConfig ?? []) {
+                world.appTags.tags = world.appTags.tags.map(tag => (tag.id === entry.tagId
+                    ? { ...tag, pluginConfig: structuredClone(entry.pluginConfig) }
+                    : tag));
+            }
+            return;
+        case "create-dlc":
+            world.dlcs.dlcs = insertLiveRecordBefore(world.dlcs.dlcs, { ...op.dlc }, op.beforeId);
+            return;
+        case "update-dlc":
+            world.dlcs.dlcs = world.dlcs.dlcs.map(dlc => (dlc.id === op.dlcId ? { ...op.dlc } : dlc));
+            return;
+        case "delete-dlc":
+            world.dlcs.dlcs = world.dlcs.dlcs.filter(dlc => dlc.id !== op.dlcId);
+            return;
+        case "create-brand-color":
+            world.brand.colors = insertLiveRecordBefore(world.brand.colors, { ...op.color }, op.beforeId);
+            return;
+        case "update-brand-color":
+            world.brand.colors = world.brand.colors.map(color => (color.id === op.colorId ? { ...op.color } : color));
+            return;
+        case "delete-brand-color":
+            world.brand.colors = world.brand.colors.filter(color => color.id !== op.colorId);
+            return;
+        case "move-brand-color": {
+            const moving = world.brand.colors.find(color => color.id === op.colorId);
+            if (!moving) {
+                return;
+            }
+            const rest = world.brand.colors.filter(color => color.id !== op.colorId);
+            world.brand.colors = insertLiveRecordBefore(rest, moving, op.beforeId ?? undefined);
+            return;
+        }
+        case "set-brand-fonts":
+            world.brand.fonts = op.fonts.map(font => ({ ...font }));
+            return;
+    }
+}
+
+function performConfig(world: ConfigWorld, op: LiveOp, by = SELF): Done {
+    const before = captureBefore(op, {
+        appTags: world.appTags,
+        dlcs: world.dlcs,
+        brand: world.brand,
+    });
+    applyConfig(world, op);
+    return {
+        effect: {
+            kind: "effect",
+            by,
+            seq: ++seq,
+            document: { doc: opDocumentKind(op) } as LiveEffect["document"],
+            op,
+        },
+        before,
+    };
+}
+
+function invertConfig(world: ConfigWorld, done: Done, self = SELF): LiveInverse {
+    return inverseOf(done.effect, {
+        self,
+        before: done.before,
+        hasAppTag: tagId => world.appTags.tags.some(tag => tag.id === tagId),
+        hasDlc: dlcId => world.dlcs.dlcs.some(dlc => dlc.id === dlcId),
+        hasBrandColor: colorId => world.brand.colors.some(color => color.id === colorId),
+    });
+}
+
+function undoConfig(world: ConfigWorld, done: Done): Done {
+    return performConfig(world, asOp(invertConfig(world, done)));
+}
+
+describe("undoing what this window did to a configuration table", () => {
+    it("takes back a creation by deleting the row it named", () => {
+        const world = makeConfigWorld();
+        const done = performConfig(world, { op: "create-app-tag", tag: variant("t1") });
+        expect(world.appTags.tags).toHaveLength(1);
+        undoConfig(world, done);
+        expect(world.appTags.tags).toEqual([]);
+    });
+
+    it("takes back an edit by writing the record that was kept", () => {
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1", "Demo")]) });
+        const done = performConfig(world, {
+            op: "update-app-tag",
+            tagId: "t1",
+            tag: { id: "t1", name: "Trial", overrides: { version: "0.9" } },
+        });
+        undoConfig(world, done);
+        expect(world.appTags.tags).toEqual([variant("t1", "Demo")]);
+    });
+
+    it("puts a deleted row back where it sat, not at the end", () => {
+        // The one thing the cast does not do, and the reason a creation takes a neighbour: these
+        // tables' creations append, so an undo without it would be a rearrangement wearing the word
+        // undo, and the author would have to notice.
+        const world = makeConfigWorld({
+            dlcs: makeDlcs([
+                { id: "a", name: "A", attachTo: "main" },
+                { id: "b", name: "B", attachTo: "main" },
+                { id: "c", name: "C", attachTo: "main" },
+            ]),
+        });
+        const done = performConfig(world, { op: "delete-dlc", dlcId: "b" });
+        expect(world.dlcs.dlcs.map(dlc => dlc.id)).toEqual(["a", "c"]);
+        undoConfig(world, done);
+        expect(world.dlcs.dlcs.map(dlc => dlc.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("puts a deleted row back at the end when its neighbour has gone too", () => {
+        const world = makeConfigWorld({
+            brand: makeBrand([{ id: "a", value: "#000000" }, { id: "b", value: "#FFFFFF" }]),
+        });
+        const done = performConfig(world, { op: "delete-brand-color", colorId: "a" });
+        performConfig(world, { op: "delete-brand-color", colorId: "b" });
+        undoConfig(world, done);
+        expect(world.brand.colors.map(color => color.id)).toEqual(["a"]);
+    });
+
+    it("refuses to put a row back that somebody has already put back", () => {
+        const world = makeConfigWorld({ dlcs: makeDlcs([{ id: "a", name: "A", attachTo: "main" }]) });
+        const done = performConfig(world, { op: "delete-dlc", dlcId: "a" });
+        performConfig(world, { op: "create-dlc", dlc: { id: "a", name: "A", attachTo: "main" } });
+        expect(asImpossible(invertConfig(world, done))).toBe("config-entry-restored");
+    });
+
+    it("refuses to take back an edit to a row somebody else deleted", () => {
+        // Refused rather than turned back into a creation, with an update to the cast: putting back
+        // a variant somebody else deleted is not undoing an edit, it is making an edition of the
+        // game, and the author asked for neither.
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1")]) });
+        const done = performConfig(world, { op: "update-app-tag", tagId: "t1", tag: variant("t1", "Trial") });
+        performConfig(world, { op: "delete-app-tag", tagId: "t1" });
+        expect(asImpossible(invertConfig(world, done))).toBe("config-entry-gone");
+    });
+
+    it("refuses to take back somebody else's edit at all", () => {
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1")]) });
+        const done = performConfig(world, { op: "delete-app-tag", tagId: "t1" }, OTHER);
+        expect(asImpossible(invertConfig(world, done))).toBe("not-mine");
+    });
+
+    it("takes back a rearrangement of the palette", () => {
+        const world = makeConfigWorld({
+            brand: makeBrand([
+                { id: "a", value: "#000000" },
+                { id: "b", value: "#111111" },
+                { id: "c", value: "#222222" },
+            ]),
+        });
+        const done = performConfig(world, { op: "move-brand-color", colorId: "a", beforeId: null });
+        expect(world.brand.colors.map(color => color.id)).toEqual(["b", "c", "a"]);
+        undoConfig(world, done);
+        expect(world.brand.colors.map(color => color.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("takes back a change to the font stack, whole", () => {
+        const world = makeConfigWorld({ brand: makeBrand([], [{ assetId: "serif" }]) });
+        const done = performConfig(world, {
+            op: "set-brand-fonts",
+            fonts: [{ assetId: "sans" }, { assetId: "serif" }],
+        });
+        undoConfig(world, done);
+        expect(world.brand.fonts).toEqual([{ assetId: "serif" }]);
+    });
+
+    it("takes back the project's own record, and the variants the same write rewrote", () => {
+        // The half that cannot be derived on the way back: writing a plugin field no variant may
+        // state also takes it off every variant, and afterwards nothing left in the document says
+        // what those entries were.
+        const world = makeConfigWorld({
+            appTags: makeAppTags([{ id: "t1", name: "Demo", overrides: {}, pluginConfig: { steam: { appid: "480" } } }]),
+        });
+        const done = performConfig(world, {
+            op: "set-app-tag-defaults",
+            defaults: { pluginConfig: { steam: { appid: "620" } } },
+            tagPluginConfig: [{ tagId: "t1", pluginConfig: {} }],
+        });
+        expect(world.appTags.tags[0]?.pluginConfig).toEqual({});
+        undoConfig(world, done);
+        expect(world.appTags.pluginConfig).toBeUndefined();
+        expect(world.appTags.tags[0]?.pluginConfig).toEqual({ steam: { appid: "480" } });
+    });
+
+    it("has nothing to keep for a creation, exactly as an insert has not", () => {
+        expect(captureBefore({ op: "create-dlc", dlc: { id: "a", name: "A", attachTo: "main" } }, {})).toBeNull();
+        expect(captureBefore({ op: "create-brand-color", color: { id: "a", value: "#000000" } }, {})).toBeNull();
+    });
+
+    it("keeps nothing for a table this window does not hold, and the undo says so", () => {
+        const world = makeConfigWorld({ dlcs: makeDlcs([{ id: "a", name: "A", attachTo: "main" }]) });
+        const op: LiveOp = { op: "delete-dlc", dlcId: "a" };
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "dlc" }, op },
+            before: captureBefore(op, {}),
+        };
+        expect(done.before).toBeNull();
+        expect(asImpossible(invertConfig(world, done))).toBe("no-record");
     });
 });

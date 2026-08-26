@@ -5,7 +5,9 @@ import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
     CLAIMED_OPS,
+    appTagClaimKey,
     assetClaimKey,
+    brandColorClaimKey,
     characterClaimKey,
     opClaimKeys,
     opDocumentKind,
@@ -89,6 +91,12 @@ type World = {
     assets: Record<string, Record<string, LiveAssetRecord>>;
     /** The folder shards this session carries, by section. */
     folders: Record<string, Record<string, LiveAssetFolder>>;
+    /** The three configuration tables this session carries. Mutated by the applier below. */
+    config: {
+        appTags: { id: string; name: string; overrides: Record<string, string> }[];
+        dlcs: { id: string; name: string; attachTo: string }[];
+        colors: { id: string; name?: string; value: string }[];
+    };
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
@@ -148,6 +156,10 @@ function makeWorld(options: {
     assets?: Record<string, LiveAssetRecord>;
     /** The image folders this host starts with. */
     folders?: Record<string, LiveAssetFolder>;
+    /** The three configuration tables this host starts with. */
+    appTags?: World["config"]["appTags"];
+    dlcs?: World["config"]["dlcs"];
+    colors?: World["config"]["colors"];
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -172,6 +184,11 @@ function makeWorld(options: {
     const takes: World["takes"] = { ja: { ...(options.takes ?? {}) } };
     const assets: World["assets"] = { image: { ...(options.assets ?? {}) }, audio: {} };
     const folders: World["folders"] = { image: { ...(options.folders ?? {}) }, media: {} };
+    const config: World["config"] = {
+        appTags: [...(options.appTags ?? [])],
+        dlcs: [...(options.dlcs ?? [])],
+        colors: [...(options.colors ?? [])],
+    };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -183,6 +200,7 @@ function makeWorld(options: {
         takes,
         assets,
         folders,
+        config,
         applied,
         host: new LiveHost({
             self: "host",
@@ -194,6 +212,9 @@ function makeWorld(options: {
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
             assetCategories: ASSET_CATEGORIES,
             readAssetFolders: category => folders[category] ?? null,
+            hasAppTag: tagId => config.appTags.some(tag => tag.id === tagId),
+            hasDlc: dlcId => config.dlcs.some(dlc => dlc.id === dlcId),
+            hasBrandColor: colorId => config.colors.some(color => color.id === colorId),
             digestOf: scope => {
                 if (scope.of === "scene") {
                     const scene = scenes[scope.sceneId];
@@ -218,7 +239,7 @@ function makeWorld(options: {
             },
             applyOp: op => {
                 applied.push(op);
-                apply(scenes, story, cast, translations, takes, assets, folders, op);
+                apply(scenes, story, cast, translations, takes, assets, folders, config, op);
             },
             nextSeq: () => ++seq,
             isMember: options.members ? instance => options.members?.includes(instance) ?? false : undefined,
@@ -246,6 +267,7 @@ function apply(
     takes: World["takes"],
     assets: World["assets"],
     folders: World["folders"],
+    config: World["config"],
     op: LiveOp,
 ): void {
     switch (op.op) {
@@ -384,7 +406,55 @@ function apply(
         case "reorder-chapters":
             story.chapterIds = [...op.chapterIds];
             return;
+        case "create-app-tag":
+            config.appTags.push({ ...op.tag, overrides: { ...op.tag.overrides } });
+            return;
+        case "update-app-tag":
+            config.appTags = config.appTags.map(tag => (tag.id === op.tagId
+                ? { ...op.tag, overrides: { ...op.tag.overrides } }
+                : tag));
+            return;
+        case "delete-app-tag":
+            config.appTags = config.appTags.filter(tag => tag.id !== op.tagId);
+            return;
+        case "set-app-tag-defaults":
+            // Nothing in this world models the project's own record; what these tests check about it
+            // is the claim, and that is decided before the applier is reached.
+            return;
+        case "create-dlc":
+            config.dlcs.push({ ...op.dlc });
+            return;
+        case "update-dlc":
+            config.dlcs = config.dlcs.map(dlc => (dlc.id === op.dlcId ? { ...op.dlc } : dlc));
+            return;
+        case "delete-dlc":
+            config.dlcs = config.dlcs.filter(dlc => dlc.id !== op.dlcId);
+            return;
+        case "create-brand-color":
+            config.colors.push({ ...op.color });
+            return;
+        case "update-brand-color":
+            config.colors = config.colors.map(color => (color.id === op.colorId ? { ...op.color } : color));
+            return;
+        case "delete-brand-color":
+            config.colors = config.colors.filter(color => color.id !== op.colorId);
+            return;
+        case "move-brand-color":
+        case "set-brand-fonts":
+            // Neither is checked against the document by any test here: both are last-writer-wins and
+            // the host reads nothing to decide them.
+            return;
     }
+}
+
+/** One build variant, as much of one as a claim or a refusal ever looks at. */
+function variant(id: string, name = "Demo"): World["config"]["appTags"][number] {
+    return { id, name, overrides: {} };
+}
+
+/** One DLC, the same way. */
+function dlcRecord(id: string, name = "Side Story"): World["config"]["dlcs"][number] {
+    return { id, name, attachTo: "release" };
 }
 
 /** One library applier for both kinds: a null entry removes, anything else replaces. */
@@ -429,6 +499,13 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "assets", assetType: (op as { assetType: string }).assetType };
         case "asset-groups":
             return { doc: "asset-groups", category: (op as { category: string }).category };
+        // One of each per project, so the kind is the whole address.
+        case "app-tags":
+            return { doc: "app-tags" };
+        case "dlc":
+            return { doc: "dlc" };
+        case "brand":
+            return { doc: "brand" };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -1034,13 +1111,27 @@ describe("the claim check", () => {
                 bytes: { from: "trash" },
             },
             "delete-assets": { op: "delete-assets", assetType: "image", assetIds: ["a1"] },
+            "update-app-tag": { op: "update-app-tag", tagId: "t1", tag: variant("t1") },
+            "delete-app-tag": { op: "delete-app-tag", tagId: "t1" },
+            "set-app-tag-defaults": { op: "set-app-tag-defaults", defaults: { endingSurfaceId: "page-1" } },
+            "update-dlc": { op: "update-dlc", dlcId: "side", dlc: dlcRecord("side") },
+            "delete-dlc": { op: "delete-dlc", dlcId: "side" },
+            "update-brand-color": { op: "update-brand-color", colorId: "c9", color: { id: "c9", value: "#123456" } },
+            "delete-brand-color": { op: "delete-brand-color", colorId: "c9" },
         };
         expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
 
         for (const [kind, op] of Object.entries(samples)) {
             // Held by somebody else, on every key the operation names.
             const claims = Object.fromEntries(opClaimKeys(op).map(key => [key, "guest-2"]));
-            const world = makeWorld({ claims, cast: [record("c1", "Ada")], assets: { a1: asset("a1") } });
+            const world = makeWorld({
+                claims,
+                cast: [record("c1", "Ada")],
+                assets: { a1: asset("a1") },
+                appTags: [variant("t1")],
+                dlcs: [dlcRecord("side")],
+                colors: [{ id: "c9", value: "#123456" }],
+            });
             const refusal = asRefusal(send(world, op, "guest-1"));
             expect(refusal.reason, kind).toBe("row-claimed");
             expect(world.applied, kind).toHaveLength(0);
@@ -1546,5 +1637,71 @@ describe("the asset library a session carries", () => {
             document: { doc: "assets", assetType: "font" },
             op: { op: "update-asset", assetType: "font", assetId: "f1", record: asset("f1") },
         }, "guest-1")).reason).toBe("document-not-shared");
+    });
+});
+
+describe("the project's three configuration tables", () => {
+    it("applies a creation without looking for the row, because the id was just minted", () => {
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "create-app-tag", tag: variant("t1") })).seq).toBe(1);
+        expect(world.config.appTags.map(tag => tag.id)).toEqual(["t1"]);
+        expect(asEffect(send(world, { op: "create-dlc", dlc: dlcRecord("side") })).seq).toBe(2);
+        expect(asEffect(send(world, { op: "create-brand-color", color: { id: "c9", value: "#123456" } })).seq).toBe(3);
+    });
+
+    it("refuses an edit to a row that is gone, and says so rather than creating one", () => {
+        // An update that created what it could not find would put back a variant, a DLC or a colour
+        // somebody else deleted - and for the first two that is an edition of the game, or a file
+        // already in players' hands.
+        const world = makeWorld();
+        expect(asRefusal(send(world, { op: "update-app-tag", tagId: "t1", tag: variant("t1") })).reason)
+            .toBe("config-entry-gone");
+        expect(asRefusal(send(world, { op: "delete-dlc", dlcId: "side" })).reason).toBe("config-entry-gone");
+        expect(asRefusal(send(world, { op: "update-brand-color", colorId: "c9", color: { id: "c9", value: "#000000" } })).reason)
+            .toBe("config-entry-gone");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("takes a write to the project's own record without looking for anything", () => {
+        // The document's root exists in every project, including one whose variant list is empty.
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "set-app-tag-defaults", defaults: { endingSurfaceId: "credits" } })).seq).toBe(1);
+    });
+
+    it("lets a rearrangement and the font stack through unclaimed", () => {
+        // Last-writer-wins, with `move-block` and `move-assets`: neither touches a word anybody
+        // wrote, and neither reads the document to be decided.
+        const world = makeWorld({
+            claims: { [brandColorClaimKey("c9")]: "guest-2" },
+            colors: [{ id: "c9", value: "#123456" }],
+        });
+        expect(asEffect(send(world, { op: "move-brand-color", colorId: "c9", beforeId: null }, "guest-1")).seq).toBe(1);
+        expect(asEffect(send(world, { op: "set-brand-fonts", fonts: [{ assetId: "serif" }] }, "guest-1")).seq).toBe(2);
+    });
+
+    it("is tolerant of a rearrangement naming a colour that has gone", () => {
+        // Refusing would report a conflict over a gesture that costs nobody anything, and the
+        // applier leaves the order exactly as it is.
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "move-brand-color", colorId: "gone", beforeId: null })).seq).toBe(1);
+    });
+
+    it("fingerprints the whole table, which is what catches a rearrangement", () => {
+        const world = makeWorld({ colors: [{ id: "c9", value: "#123456" }] });
+        const effect = asEffect(send(world, { op: "update-brand-color", colorId: "c9", color: { id: "c9", value: "#000000" } }));
+        expect(effect.digests?.map(digest => digest.scope)).toEqual([{ of: "brand" }]);
+    });
+
+    it("refuses an operation paired with another table's address", () => {
+        // The kind agreeing is the whole of the check for these three, because none of them carries
+        // an address of its own - there is one of each per project.
+        const world = makeWorld();
+        const outbound = world.host.receive({
+            kind: "intent",
+            clientId: "c-mismatch",
+            document: { doc: "brand" },
+            op: { op: "delete-dlc", dlcId: "side" },
+        }, "guest-1");
+        expect(asRefusal(outbound).reason).toBe("document-not-shared");
     });
 });

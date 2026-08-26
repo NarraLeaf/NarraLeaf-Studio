@@ -105,6 +105,16 @@ export class LiveEffectHistory {
             assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
             /** One section's folders as they stand now, for the steps that are about them. */
             assetFolders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+            /**
+             * Whether one row of a configuration table is still there.
+             *
+             * Predicates rather than the documents, for `LiveInverseContext`'s reason: the record an
+             * inverse puts back comes from what was captured, and presence is the only thing the
+             * document itself is asked.
+             */
+            hasAppTag(tagId: string): boolean;
+            hasDlc(dlcId: string): boolean;
+            hasBrandColor(colorId: string): boolean;
         },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
@@ -121,6 +131,9 @@ export class LiveEffectHistory {
             cast: context.cast,
             assets: context.assets,
             assetFolders: context.assetFolders,
+            hasAppTag: context.hasAppTag,
+            hasDlc: context.hasDlc,
+            hasBrandColor: context.hasBrandColor,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {

@@ -2,24 +2,33 @@ import type { TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAppTagOp,
     LiveAssetFolder,
     LiveAssetFolderOp,
     LiveAssetOp,
     LiveAssetRecord,
+    LiveBrandOp,
     LiveCharacterOp,
     LiveDerived,
     LiveDialogueRowRef,
     LiveDigestScope,
+    LiveDlcOp,
     LiveLocalizationOp,
     LiveStoryOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import type { ProjectAppTagDocument } from "@shared/types/appTag";
+import type { ProjectBrandDocument } from "@shared/types/brand";
+import type { ProjectDlcDocument } from "@shared/types/dlc";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { VoiceUnit } from "@shared/types/voice";
+import type { AppTagOpSink } from "../appTag/AppTagService";
+import type { BrandOpSink } from "../brand/BrandService";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
+import type { DlcOpSink } from "../dlc/DlcService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
 import type { VoiceOpSink } from "../voice/VoiceService";
@@ -242,6 +251,41 @@ export type LiveAssetsPort = {
     applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
 };
 
+/**
+ * The build variants - one of the three configuration tables a session carries.
+ *
+ * Four methods, and they are the same four the two below have: somewhere for its edits to go, the
+ * document to fingerprint, whether a row is still there, and an applier that does not consult the
+ * sink. There is no `loadAll` on any of them, and that is what makes them the cheapest documents to
+ * share: all three services read their file as the workspace starts rather than when a panel opens
+ * it, so a session has nothing to fetch on the way in.
+ */
+export type LiveAppTagsPort = {
+    setSink(sink: AppTagOpSink | null): void;
+    /** The document as it stands, or null when this window does not hold it. Read for the digest. */
+    document(): ProjectAppTagDocument | null;
+    /** Whether one variant is still in the list. What the host's refusal is decided on. */
+    hasTag(tagId: string): boolean;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveAppTagOp): void;
+};
+
+/** The DLC list. The variants' port, method for method. */
+export type LiveDlcPort = {
+    setSink(sink: DlcOpSink | null): void;
+    document(): ProjectDlcDocument | null;
+    hasDlc(dlcId: string): boolean;
+    applyOp(op: LiveDlcOp): void;
+};
+
+/** The palette and the default font stack. The variants' port, method for method. */
+export type LiveBrandPort = {
+    setSink(sink: BrandOpSink | null): void;
+    document(): ProjectBrandDocument | null;
+    hasColor(colorId: string): boolean;
+    applyOp(op: LiveBrandOp): void;
+};
+
 /** The five things a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
@@ -297,6 +341,9 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    appTags: LiveAppTagsPort;
+    dlc: LiveDlcPort;
+    brand: LiveBrandPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;

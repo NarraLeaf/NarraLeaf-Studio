@@ -12,6 +12,8 @@ import {
     type ProjectBrandDocument,
 } from "@shared/types/brand";
 import { getActiveBrandPalette, setActiveBrandPalette, type BrandPalette } from "@shared/brand/brandRegistry";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import type { LiveBrandOp } from "@shared/live/ops";
 import { setActiveProjectFonts, setActiveProjectLocale } from "@shared/typography/projectFonts";
 import {
     normalizeProjectFontStack,
@@ -34,6 +36,26 @@ type BrandServiceEvents = {
     colorsChanged: BrandColor[];
     fontsChanged: ProjectFontEntry[];
     dirtyChanged: boolean;
+};
+
+/**
+ * Somewhere a palette edit can go instead of into the document.
+ *
+ * The seam a live session hangs this table off; see `DlcOpSink`, which is the same bargain one
+ * document along. With a sink installed an edit becomes an operation and the document is not
+ * touched; the panel changes when the operation comes back as somebody's effect and
+ * {@link BrandService.applyLiveOp} applies it.
+ *
+ * ⚠ **Offered by each mutator rather than by the two write paths they share.**
+ * {@link BrandService.applyColorMutation} takes a whole-list closure and can state nothing finer
+ * than "the palette is now this", and a colour's name is a blur-committed field.
+ */
+export type BrandOpSink = {
+    /**
+     * Take one operation, or decline it. True means the document must not be touched at all; false
+     * is the ordinary answer outside a session.
+     */
+    handle(op: LiveBrandOp): boolean;
 };
 
 /**
@@ -75,6 +97,8 @@ export class BrandService extends Service<BrandService> implements IBrandService
     private readonly events = new EventEmitter<BrandServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Where palette edits go instead of into the document, when something else owns them. */
+    private opSink: BrandOpSink | null = null;
     /** Unsubscribe from the localization config; see {@link watchProjectLocale}. */
     private stopLocaleWatch: (() => void) | null = null;
     private readonly autoSaver = new DebouncedSaver({
@@ -305,6 +329,11 @@ export class BrandService extends Service<BrandService> implements IBrandService
             ...(name ? { name } : {}),
             value: input?.value?.trim() || NEW_BRAND_COLOR_VALUE,
         };
+        if (this.offer({ op: "create-brand-color", color })) {
+            // ⚠ Inside a session the colour handed back is NOT in the palette yet - it is what this
+            // window has asked for, and it lands when the effect comes back.
+            return color;
+        }
         this.applyColorMutation(colors => [...colors, color]);
         return this.getColor(color.id) ?? color;
     }
@@ -326,32 +355,15 @@ export class BrandService extends Service<BrandService> implements IBrandService
      * A seeded slot is patchable like any other - re-pointing `button.primary` is the whole feature.
      */
     public updateColor(id: string, patch: { name?: string; value?: string }): void {
-        this.applyColorMutation(colors => colors.map(color => {
-            if (color.id !== id) {
-                return color;
-            }
-            const next: BrandColor = { ...color };
-            if (patch.name !== undefined) {
-                const name = patch.name.trim();
-                if (name) {
-                    next.name = name;
-                } else {
-                    // Removed, not blanked. The normalizer drops an empty name anyway, and an
-                    // explicit `undefined` left on the record is what the canonical encoder refuses
-                    // by name - the colour the author just cleared would be the one that stops the
-                    // file saving.
-                    delete next.name;
-                }
-            }
-            // A blank value is ignored rather than written. An entry with nothing to paint is dropped
-            // by the normalizer, so storing "" would turn "the author cleared the field while
-            // retyping" into "the author's colour is gone".
-            const value = patch.value?.trim();
-            if (value) {
-                next.value = value;
-            }
-            return next;
-        }));
+        const current = this.getColor(id);
+        if (!current) {
+            return;
+        }
+        const next = patchedColor(current, patch);
+        if (this.offer({ op: "update-brand-color", colorId: id, color: next })) {
+            return;
+        }
+        this.applyColorMutation(colors => colors.map(color => (color.id === id ? next : color)));
     }
 
     /**
@@ -368,12 +380,22 @@ export class BrandService extends Service<BrandService> implements IBrandService
         if (isBuiltinBrandColorId(id) || !this.getColor(id)) {
             return false;
         }
+        if (this.offer({ op: "delete-brand-color", colorId: id })) {
+            return true;
+        }
         this.applyColorMutation(colors => colors.filter(color => color.id !== id));
         return true;
     }
 
     /** Move a colour to sit before `beforeId` in the stored order, or last when that is null. */
     public moveColor(id: string, beforeId: string | null): void {
+        if (this.offer({ op: "move-brand-color", colorId: id, beforeId })) {
+            return;
+        }
+        this.moveColorLocally(id, beforeId);
+    }
+
+    private moveColorLocally(id: string, beforeId: string | null): void {
         this.applyColorMutation(colors => {
             const moving = colors.find(color => color.id === id);
             if (!moving || beforeId === id) {
@@ -456,14 +478,104 @@ export class BrandService extends Service<BrandService> implements IBrandService
         this.emitColorsChanged();
     }
 
-    /** {@link applyColorMutation} for the font stack. Same contract, same single entry point. */
+    /**
+     * {@link applyColorMutation} for the font stack. Same contract, same single entry point.
+     *
+     * ⚠ **This is where a live session intercepts the stack, and the colours are intercepted in
+     * their mutators instead.** The asymmetry is the vocabulary's: the operation for the stack IS the
+     * whole stack - four gestures all state a new order of at most a handful of rungs - so this point
+     * can state it truthfully, where "the palette is now this" would be last-writer-wins over
+     * somebody's half-typed colour name.
+     */
     private applyFontMutation(mutator: (fonts: ProjectFontEntry[]) => ProjectFontEntry[]): void {
         const document = this.getDocument();
-        document.fonts = normalizeProjectFontStack(mutator([...document.fonts]));
+        const fonts = normalizeProjectFontStack(mutator([...document.fonts]));
+        if (this.offer({ op: "set-brand-fonts", fonts })) {
+            return;
+        }
+        document.fonts = fonts;
         this.revision += 1;
         this.setDirty(true);
         this.autoSaver.schedule();
         this.emitFontsChanged();
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send palette edits somewhere else, or take them back. Null restores the ordinary behaviour. */
+    public setOperationSink(sink: BrandOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * The document as it stands, or null before it has been read.
+     *
+     * What a digest is taken over. Null rather than the throw {@link getDocument} makes, because the
+     * caller is a fingerprint and "this window does not hold the palette" has to be hashable.
+     */
+    public liveDocument(): ProjectBrandDocument | null {
+        return this.document;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam. Every branch goes through one of the two mutation entries, so the
+     * palette is re-normalized and published exactly as an ordinary edit publishes it - a colour that
+     * reached the document without `setActiveBrandPalette` would be one the window does not paint
+     * with until something unrelated repainted.
+     *
+     * **Nothing here enters this author's undo stack**; see `DlcService.applyLiveOp`.
+     */
+    public applyLiveOp(op: LiveBrandOp): void {
+        switch (op.op) {
+            case "create-brand-color": {
+                const color = structuredClone(op.color) as BrandColor;
+                this.applyColorMutation(colors => (colors.some(entry => entry.id === color.id)
+                    // A creation for a colour already here is a retry that escaped the receipts.
+                    ? colors.map(entry => (entry.id === color.id ? color : entry))
+                    : insertLiveRecordBefore(colors, color, op.beforeId)));
+                return;
+            }
+            case "update-brand-color": {
+                if (!this.getColor(op.colorId)) {
+                    // The host refuses an update naming a colour it cannot find, so reaching this is
+                    // this machine having missed the creation. The digest on this effect reports it.
+                    return;
+                }
+                const color = structuredClone(op.color) as BrandColor;
+                this.applyColorMutation(colors => colors.map(entry => (entry.id === op.colorId ? color : entry)));
+                return;
+            }
+            case "delete-brand-color":
+                this.applyColorMutation(colors => colors.filter(entry => entry.id !== op.colorId));
+                return;
+            case "move-brand-color":
+                this.moveColorLocally(op.colorId, op.beforeId);
+                return;
+            case "set-brand-fonts": {
+                const fonts = structuredClone(op.fonts) as ProjectFontEntry[];
+                const document = this.getDocument();
+                document.fonts = normalizeProjectFontStack(fonts);
+                this.revision += 1;
+                this.setDirty(true);
+                this.autoSaver.schedule();
+                this.emitFontsChanged();
+                return;
+            }
+            default: {
+                // ⚠ The switch is exhaustive by construction, and this is what says so. A verb added
+                // with no case here would be a silent no-op: the effect would land on every other
+                // machine in the room and not on this one.
+                const unapplied: never = op;
+                return unapplied;
+            }
+        }
+    }
+
+    /** Hand one operation to the sink, or say that there is none. See {@link BrandOpSink}. */
+    private offer(op: LiveBrandOp): boolean {
+        return this.opSink?.handle(op) ?? false;
     }
 
     /**
@@ -527,4 +639,35 @@ export class BrandService extends Service<BrandService> implements IBrandService
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }
+}
+
+/**
+ * `color` with a patch written over it - the record `updateColor` stores, and the one an operation
+ * carries.
+ *
+ * Outside the class because both halves of that mutator read it: the operation must carry the same
+ * record the local write would have produced, and a second spelling of these two rules is a colour
+ * that reads one way in a session and another outside one.
+ */
+function patchedColor(color: BrandColor, patch: { name?: string; value?: string }): BrandColor {
+    const next: BrandColor = { ...color };
+    if (patch.name !== undefined) {
+        const name = patch.name.trim();
+        if (name) {
+            next.name = name;
+        } else {
+            // Removed, not blanked. The normalizer drops an empty name anyway, and an explicit
+            // `undefined` left on the record is what the canonical encoder refuses by name - the
+            // colour the author just cleared would be the one that stops the file saving.
+            delete next.name;
+        }
+    }
+    // A blank value is ignored rather than written. An entry with nothing to paint is dropped by the
+    // normalizer, so storing "" would turn "the author cleared the field while retyping" into "the
+    // author's colour is gone".
+    const value = patch.value?.trim();
+    if (value) {
+        next.value = value;
+    }
+    return next;
 }

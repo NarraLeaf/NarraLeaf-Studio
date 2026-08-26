@@ -135,6 +135,10 @@ export const story = {
         refusedAssetIdTaken: "That asset already exists here. Nothing was imported.",
         // The author was asked about the folders inside it before anything was removed, and said no.
         refusedFolderNotEmpty: "That folder has folders in it. Nothing was deleted.",
+        // A row of one of the project's configuration tables - a build variant, a DLC, a colour of
+        // the palette. One sentence for the three: the panel in front of the author already says
+        // which table it was, and it says the same nothing about what they have typed into it.
+        refusedConfigEntryGone: "That entry is no longer in this project. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
         refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
@@ -165,6 +169,8 @@ export const story = {
         // one: the bytes that were there are not kept, so there is nothing to point the record back
         // at.
         undoContentReplaced: "Replacing a file cannot be taken back.",
+        undoConfigEntryGone: "That entry is no longer in this project.",
+        undoConfigEntryRestored: "That entry is back in this project.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

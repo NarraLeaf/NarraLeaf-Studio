@@ -97,6 +97,17 @@ export type LiveHostDeps = {
      */
     readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
     /**
+     * Whether one row of a configuration table is still there.
+     *
+     * Three predicates, one per table, and booleans for {@link hasAsset}'s reason: presence is the
+     * whole of what is asked. An update naming a row that is gone is refused so the author keeps the
+     * field they are typing into - and, for the first two, so that nobody's edit puts back an edition
+     * of the game or a file already in players' hands.
+     */
+    hasAppTag(tagId: string): boolean;
+    hasDlc(dlcId: string): boolean;
+    hasBrandColor(colorId: string): boolean;
+    /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
      *
@@ -199,6 +210,18 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
+    "create-app-tag": true,
+    "update-app-tag": true,
+    "delete-app-tag": true,
+    "set-app-tag-defaults": true,
+    "create-dlc": true,
+    "update-dlc": true,
+    "delete-dlc": true,
+    "create-brand-color": true,
+    "update-brand-color": true,
+    "delete-brand-color": true,
+    "move-brand-color": true,
+    "set-brand-fonts": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -736,6 +759,59 @@ export class LiveHost {
                 }
                 return { op };
             }
+
+            case "create-app-tag":
+            case "create-dlc":
+            case "create-brand-color":
+                // Not checked against a row already there, and not claimed, with `create-character`:
+                // the id was minted by whoever built the record, so two of them colliding is a uuid
+                // collision rather than a race, and a *retry* of one create is answered by the
+                // receipts. The applier replaces rather than duplicates for the same reason.
+                return { op };
+
+            case "update-app-tag":
+            case "delete-app-tag": {
+                if (!this.deps.hasAppTag(op.tagId)) {
+                    // ⚠ Says the row is gone. It never says the author's typing is - the instruction
+                    // `row-gone` and `character-gone` both carry.
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-app-tag-defaults":
+                // Nothing to find: the project's own record is the document's root and exists in
+                // every project, including one whose variant list is empty. The claim check is the
+                // whole of it, and it is over the release variant's row - see `opClaimKeys`.
+                return this.claimed(op, by) ?? { op };
+
+            case "update-dlc":
+            case "delete-dlc": {
+                if (!this.deps.hasDlc(op.dlcId)) {
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "update-brand-color":
+            case "delete-brand-color": {
+                if (!this.deps.hasBrandColor(op.colorId)) {
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "move-brand-color":
+                // Last-writer-wins and unclaimed, with `move-block` and `move-assets`: a drag
+                // rearranges the palette without touching a word anybody wrote. Deliberately tolerant
+                // of a colour that has gone since - the applier leaves the order as it is, and
+                // refusing would report a conflict over a gesture that costs nobody anything.
+                return { op };
+
+            case "set-brand-fonts":
+                // Last-writer-wins for the stack as a whole. Nothing on it is typed, so there is no
+                // draft for a race to destroy - see `CLAIMED_OPS`.
+                return { op };
         }
     }
 
