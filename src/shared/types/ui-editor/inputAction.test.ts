@@ -4,22 +4,29 @@ import {
     UI_INPUT_POINTER_GESTURES,
     collectReferencedUIInputActionIds,
     findUISurfaceActionEnablement,
+    inputBindingDevices,
+    inputBindingReachesDevice,
     isOperableWidgetType,
     isUIInputPointerGesture,
     normalizeUIInputActionLibrary,
+    normalizeUIInputBinding,
     normalizeUISurfaceActionEnablements,
     normalizeUISurfaceInputMode,
     pruneUISurfaceActionEnablements,
     readUISurfaceActionConsume,
     readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
+    resolveSurfaceActionDevices,
     type UIInputActionDef,
     type UIInputBinding,
+    type UIInputPointerGesture,
 } from "./inputAction";
+import type { UIInputActionSource } from "./inputActionEvent";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "./widgetLogic";
 
 const click: UIInputBinding = { kind: "pointer", gesture: "click" };
 const rightClick: UIInputBinding = { kind: "pointer", gesture: "rightClick" };
+const longPress: UIInputBinding = { kind: "pointer", gesture: "longPress" };
 const escape: UIInputBinding = { kind: "key", key: "Escape" };
 const space: UIInputBinding = { kind: "key", key: "Space" };
 
@@ -136,6 +143,103 @@ describe("pointer gestures", () => {
         }
         expect(isUIInputPointerGesture("hover")).toBe(false);
         expect(isUIInputPointerGesture(undefined)).toBe(false);
+    });
+
+    it("stores and reads back a long press with no branch of its own", () => {
+        // It is a pointer gesture like the rest, so being in the tuple is the whole of what makes it
+        // storable - there is no second place a new gesture has to be admitted.
+        expect(normalizeUIInputBinding({ kind: "pointer", gesture: "longPress" })).toEqual(longPress);
+    });
+});
+
+function devicesOf(binding: UIInputBinding): UIInputActionSource[] {
+    return [...inputBindingDevices(binding)].sort();
+}
+
+function pointer(gesture: UIInputPointerGesture): UIInputBinding {
+    return { kind: "pointer", gesture };
+}
+
+describe("inputBindingDevices", () => {
+    // Written out one gesture at a time rather than generated from the same table the answer comes
+    // from: a loop over the source of truth would agree with any answer it gave, and pinning each
+    // ruling separately is the only reason this test exists.
+    it("reads a click as mouse and finger alike", () => {
+        expect(devicesOf(pointer("click"))).toEqual(["pointer", "touch"]);
+    });
+
+    it("reads a double click as pointer only", () => {
+        expect(devicesOf(pointer("doubleClick"))).toEqual(["pointer"]);
+    });
+
+    it("reads a right click as pointer only", () => {
+        expect(devicesOf(pointer("rightClick"))).toEqual(["pointer"]);
+    });
+
+    it("reads each scroll direction as mouse and finger alike", () => {
+        expect(devicesOf(pointer("wheelUp"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelDown"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelLeft"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelRight"))).toEqual(["pointer", "touch"]);
+    });
+
+    it("reads a long press as touch only", () => {
+        expect(devicesOf(pointer("longPress"))).toEqual(["touch"]);
+    });
+
+    it("reads a key binding as the keyboard", () => {
+        expect(devicesOf(escape)).toEqual(["key"]);
+        expect(devicesOf(space)).toEqual(["key"]);
+    });
+
+    it("leaves no gesture reachable from nowhere", () => {
+        for (const gesture of UI_INPUT_POINTER_GESTURES) {
+            expect(inputBindingDevices(pointer(gesture)).size).toBeGreaterThan(0);
+        }
+    });
+
+    it("gives no binding to the gamepad yet", () => {
+        // The pad is declared in the source union and produced by nothing. Whoever wires one up
+        // turns this red, which is the reminder to say in the table above which gestures it reaches.
+        const bindings: UIInputBinding[] = [...UI_INPUT_POINTER_GESTURES.map(pointer), escape, space];
+        for (const binding of bindings) {
+            expect(inputBindingReachesDevice(binding, "gamepad")).toBe(false);
+        }
+    });
+
+    it("answers the same question the set does", () => {
+        expect(inputBindingReachesDevice(click, "touch")).toBe(true);
+        expect(inputBindingReachesDevice(click, "key")).toBe(false);
+        expect(inputBindingReachesDevice(longPress, "pointer")).toBe(false);
+        expect(inputBindingReachesDevice(escape, "key")).toBe(true);
+    });
+});
+
+describe("resolveSurfaceActionDevices", () => {
+    function devices(...args: Parameters<typeof resolveSurfaceActionDevices>): UIInputActionSource[] {
+        return [...resolveSurfaceActionDevices(...args)].sort();
+    }
+
+    it("unions the project defaults when the surface says nothing", () => {
+        expect(devices(action([click, escape]))).toEqual(["key", "pointer", "touch"]);
+        expect(devices(action([escape]))).toEqual(["key"]);
+    });
+
+    it("counts the surface's own additions", () => {
+        expect(devices(action([escape]), { actionId: "advance", addBindings: [longPress] })).toEqual([
+            "key",
+            "touch",
+        ]);
+    });
+
+    it("counts only the override when one stands", () => {
+        expect(
+            devices(action([click, escape]), { actionId: "advance", overrideBindings: [rightClick] }),
+        ).toEqual(["pointer"]);
+    });
+
+    it("reads an override present but empty as reachable from nowhere", () => {
+        expect(devices(action([click, escape]), { actionId: "advance", overrideBindings: [] })).toEqual([]);
     });
 });
 
