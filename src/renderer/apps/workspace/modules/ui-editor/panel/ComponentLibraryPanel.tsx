@@ -11,6 +11,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Checkbox } from "@/lib/components/elements";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { LivePreviewFrame } from "./LivePreviewFrame";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 type ComponentLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -61,7 +62,7 @@ export function ComponentLibraryPanel({
     const { t, tn } = useTranslation();
     // The library is browsable while frozen - search, previews, opening a component for reading - and
     // only creating, renaming, duplicating and deleting are off.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const panelRef = useRef<HTMLDivElement | null>(null);
     const [open, setOpen] = useState(true);
     const [components, setComponents] = useState<UIComponentDefinition[]>([]);

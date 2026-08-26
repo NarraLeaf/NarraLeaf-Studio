@@ -21,9 +21,17 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    uiElementClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionCarries,
+    NO_LIVE_INTERFACE,
+    NO_LIVE_LOCALES,
+    type LiveSessionInterface,
+    type LiveSessionLocales,
+} from "@shared/live/sharedDocuments";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -69,6 +77,13 @@ export type LiveHostDeps = {
     assetTypes?: readonly string[];
     /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
     assetCategories?: readonly string[];
+    /**
+     * Whether this session carries the interface and its blueprints.
+     *
+     * A flag rather than a list: there is one of each per project. Both or neither - see
+     * `LiveSessionInterface` for why one without the other is not a shape this can take.
+     */
+    ui?: LiveSessionInterface;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
     /**
@@ -96,6 +111,15 @@ export type LiveHostDeps = {
      * from one record.
      */
     readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
+    /**
+     * Whether one interface element is in the document right now.
+     *
+     * A boolean, with `hasAsset`: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy rather than against the document.
+     */
+    hasUIElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. The element's counterpart. */
+    hasBlueprint(blueprintId: string): boolean;
     /**
      * Whether one bus is in the mixer right now.
      *
@@ -208,6 +232,8 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "create-assets": true,
     "replace-asset-content": true,
     "delete-assets": true,
+    "write-ui": true,
+    "write-ui-graphs": true,
     "set-asset-folder": true,
     "delete-asset-folder": true,
     "restore-asset-folder": true,
@@ -289,6 +315,11 @@ export class LiveHost {
                 // Things the host itself says. One arriving here is this host's own message coming
                 // back off the topic - every participant receives its own - and there is nothing to
                 // do about it and nothing to say.
+                return null;
+            case "handover":
+                // About the room rather than about the document, so it is settled before a message
+                // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one
+                // is reading its own, coming back off the topic.
                 return null;
         }
     }
@@ -404,6 +435,23 @@ export class LiveHost {
             // Nor a record that is gone. The story rows it spoke keep their words under a bare name;
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
+        }
+        if (applied.op === "write-ui") {
+            // Nor an element that is gone. A delta whose removals somebody else held was refused
+            // before it got here, so what this releases is the deleter's own hold - which would
+            // otherwise sit in the room's set naming an element nobody can select until it lapsed.
+            for (const [elementId, record] of Object.entries(applied.parts.elements ?? {})) {
+                if (record === null) {
+                    this.claims.forget(uiElementClaimKey(null, elementId));
+                }
+            }
+            for (const [componentId, delta] of Object.entries(applied.parts.componentElements ?? {})) {
+                for (const [elementId, record] of Object.entries(delta)) {
+                    if (record === null) {
+                        this.claims.forget(uiElementClaimKey(componentId, elementId));
+                    }
+                }
+            }
         }
         // There is deliberately no asset counterpart to those two. A session carries no verb that
         // removes an asset record, so a claim on one can only ever be given back or lapse.
@@ -816,6 +864,30 @@ export class LiveHost {
                 }
                 return { op };
             }
+
+            case "write-ui": {
+                // Whole or not at all, and the presence check comes first: an element this delta was
+                // *changing* has to still be there, or applying would resurrect it on every screen
+                // in the room with every machine agreeing about it. Creations are not checked - the
+                // ids were minted by whoever built the records.
+                for (const ref of op.updates ?? []) {
+                    if (!this.deps.hasUIElement(ref)) {
+                        // ⚠ Says the element is gone. It never says the author's typing is - the
+                        // same instruction `row-gone` and `character-gone` carry.
+                        return { refuse: "ui-element-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "write-ui-graphs": {
+                for (const blueprintId of op.updates ?? []) {
+                    if (!this.deps.hasBlueprint(blueprintId)) {
+                        return { refuse: "ui-blueprint-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
         }
     }
 
@@ -922,6 +994,7 @@ export class LiveHost {
             this.deps.locales ?? NO_LIVE_LOCALES,
             this.deps.assetTypes ?? [],
             this.deps.assetCategories ?? [],
+            this.deps.ui ?? NO_LIVE_INTERFACE,
         );
     }
 }

@@ -135,13 +135,22 @@ export const story = {
         refusedAssetIdTaken: "That asset already exists here. Nothing was imported.",
         // The author was asked about the folders inside it before anything was removed, and said no.
         refusedFolderNotEmpty: "That folder has folders in it. Nothing was deleted.",
+        // The interface's answer to a row that has gone, and it says the same nothing about
+        // the properties panel: what the author typed into it is theirs and stays where it is.
+        refusedUIElementGone: "That element is gone. The change was not applied.",
+        refusedUIBlueprintGone: "That blueprint is gone. The change was not applied.",
+        // The same refusal as a held row, said about what was actually held. One reason spans
+        // every document a session carries, and an author told about a line after moving a
+        // button has been told about a document they are not in.
+        refusedElementClaimed: "{name} is editing that element. The change was not applied.",
+        refusedNodeClaimed: "{name} is editing that node. The change was not applied.",
         // The mixer's answer to a record that has gone, and it says the same nothing about the
         // panel: what the author typed into it is theirs and stays where it is.
         refusedTrackGone: "That audio track is gone. The change was not applied.",
         refusedSetGone: "That asset set is gone. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
-        refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
+        refusedTooLarge: "That change is too large to share in a live session. It was not applied.",
         // The session does not carry that document at all - a story other than the one the room is
         // about, or a kind of document a session cannot pass between machines yet.
         refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
