@@ -573,6 +573,7 @@ export const blueprint = {
         replacement: "Replacement",
         savedVariable: "Saved variable",
         sceneId: "Scene Id",
+        optionId: "Option Id",
         sceneVariable: "Scene variable",
         search: "Search",
         separator: "Separator",

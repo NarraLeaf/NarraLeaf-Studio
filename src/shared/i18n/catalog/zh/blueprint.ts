@@ -564,6 +564,7 @@ export const blueprint = {
         replacement: "替换内容",
         savedVariable: "存档变量",
         sceneId: "场景 Id",
+        optionId: "选项 Id",
         sceneVariable: "场景变量",
         search: "查找内容",
         separator: "分隔符",

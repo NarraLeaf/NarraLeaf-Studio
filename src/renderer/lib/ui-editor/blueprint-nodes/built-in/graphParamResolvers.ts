@@ -1707,18 +1707,31 @@ function resolveTextReadByIdNodeOutput(
  * boolean, and "not visited" is the correct answer for a gallery row that is not wired yet.
  */
 function resolveVisitedNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
     nodeType: string,
     portId: string,
     params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
     const game = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game;
+    // Wired wins over picked, the same resolution `Start Story` gives the same pair: the picker is
+    // what an author reaches for, and the pin is what a card placed once per scene reads its own
+    // scene from.
+    const target = (key: string): string =>
+        String(
+            resolveDataPinValue(graph, nodeId, key, params, blueprintLocals, depth + 1, runtime)
+                ?? params[key]
+                ?? "",
+        ).trim();
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED && portId === "isVisited") {
-        const sceneId = String(params.sceneId ?? "").trim();
+        const sceneId = target("sceneId");
         return sceneId ? game?.isSceneVisited(sceneId) === true : false;
     }
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED && portId === "isPicked") {
-        const optionId = String(params.optionId ?? "").trim();
+        const optionId = target("optionId");
         return optionId ? game?.isOptionPicked(optionId) === true : false;
     }
     return undefined;
@@ -3475,9 +3488,13 @@ function resolveSelfOutput(
         return textReadByIdOutput;
     }
     const visitedOutput = resolveVisitedNodeOutput(
+        graph,
+        nodeId,
         selfNode.type,
         portId,
         selfNode.params ?? {},
+        blueprintLocals,
+        depth,
         runtime,
     );
     if (visitedOutput !== undefined) {

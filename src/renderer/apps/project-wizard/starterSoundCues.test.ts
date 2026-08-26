@@ -179,8 +179,11 @@ const HOVERS: readonly { page: string; button: string }[] = [
 /** The card the save and load pages both place; its Hit area is what answers a press. */
 const SAVE_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 
+/** The card the Scenes page places once per scene. */
+const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
+
 describe("the sounds the starter template makes", () => {
-    it("makes them in sixty-eight places and nowhere else", () => {
+    it("makes them in sixty-six places and nowhere else", () => {
         const cues = blueprints.flatMap(blueprint =>
             Object.values(blueprint.program.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
@@ -190,9 +193,9 @@ describe("the sounds the starter template makes", () => {
         );
         // Counted rather than sampled: the cases below each know which of these they mean, and this
         // is what says nobody sprinkled one more somewhere outside them.
-        // 1 save/load card + 3 scene cards + 2 list rows + 2 dialog answers, plus the buttons below.
-        // The card was twelve cues while the pages held twelve copies of it; they place it now.
-        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 8);
+        // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers, plus the buttons below.
+        // Each card was one cue per placement while the pages held copies of it; they place it now.
+        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 6);
     });
 
     it.each(CLICKS)("$page ▸ $button answers a click with $clip, before it acts", ({ page, button, clip }) => {
@@ -226,18 +229,16 @@ describe("the sounds the starter template makes", () => {
     });
 
     it("a scene card answers only when it has a scene to open", () => {
-        const cards = elementsOn("Scenes", "Hit area", "nl.container");
-        expect(cards).toHaveLength(3);
-        for (const card of cards) {
-            const graph = graphFor(card.id);
-            const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
-            // The cue sits past the visited gate rather than in front of it. A locked card's click
-            // ends at that gate, and a cue answering a press that does nothing is the one thing a UI
-            // sound must not teach.
-            const gate = next(graph, click.id, "then");
-            expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
-            assertCue(next(graph, gate.id, "true"), "ui-confirm");
-        }
+        // One card, placed once per scene. Which scene it opens and what that scene is called are
+        // its params, so a page cannot have a card that answers and a card that does not.
+        const graph = graphFor(SCENE_CARD, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        const click = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK);
+        // The cue sits past the visited gate rather than in front of it. A locked card's click
+        // ends at that gate, and a cue answering a press that does nothing is the one thing a UI
+        // sound must not teach.
+        const gate = next(graph, click.id, "then");
+        expect(gate.type).toBe(BLUEPRINT_NODE_TYPE_FLOW_IF);
+        assertCue(next(graph, gate.id, "true"), "ui-confirm");
     });
 
     it("the confirm dialog answers in two voices, one per kind of answer", () => {
