@@ -1204,8 +1204,10 @@ export class LiveSession {
      *
      * Confined to the verbs that can actually reach the cap, so an ordinary edit does not pay a JSON
      * encode: a whole character record is bounded by nothing, and a library batch is a whole exchange
-     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. Everything
-     * else is a line of prose and a few ids.
+     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. A named
+     * string's source text and a `json` variable's starting value are bounded by nothing either -
+     * both are boxes an author can paste a document into. Everything else is a line of prose and a
+     * few ids.
      *
      * ⚠ An import too large to travel is refused by name and said out loud, exactly as a fat
      * character record is. It is never split into several operations: an import is one gesture, and
@@ -1217,7 +1219,8 @@ export class LiveSession {
             && op.op !== "update-asset" && op.op !== "move-assets"
             && op.op !== "create-assets" && op.op !== "replace-asset-content"
             && op.op !== "delete-assets" && op.op !== "restore-asset-folder"
-            && op.op !== "set-key") {
+            && op.op !== "set-key"
+            && op.op !== "create-variable" && op.op !== "update-variable") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
