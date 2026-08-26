@@ -6,9 +6,9 @@ import type { VcsServerCapability, VcsServerSession } from "@shared/types/vcs";
  * **A capability is checked, never probed.** The alternative is to call and read the 404,
  * and that is wrong twice over: it spends a request on every server that has not been
  * upgraded, and it turns "this deployment does not do that" into a failure with a
- * sentence attached. There is nothing an author does about a server that does not offer
- * members, so there is nothing to tell them - the section is simply not there, exactly as
- * it is not there for a Studio that has not been asked to draw one.
+ * sentence attached. There is nothing an author does about a server that does not keep a
+ * revision history, so there is nothing to tell them - the section is simply not there,
+ * exactly as it is not there for a Studio that has not been asked to draw one.
  *
  * A session records what its server answered when it was added or last refreshed, and
  * `vcs.refreshServer` is what brings that up to date; the Servers tab does it once per

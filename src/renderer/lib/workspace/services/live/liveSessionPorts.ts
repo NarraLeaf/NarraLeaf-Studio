@@ -1,4 +1,4 @@
-import type { TeamOutcome } from "@/lib/team";
+import type { TeamAck, TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
@@ -70,8 +70,8 @@ export type LiveRooms = {
         title?: string;
     }): Promise<TeamOutcome<TeamLiveSession>>;
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
-    leave(sessionId: string): Promise<TeamOutcome<null>>;
-    close(sessionId: string): Promise<TeamOutcome<null>>;
+    leave(sessionId: string): Promise<TeamOutcome<TeamAck>>;
+    close(sessionId: string): Promise<TeamOutcome<TeamAck>>;
     /**
      * Say one thing to a room.
      *
