@@ -9,7 +9,11 @@ import {
     dictionarySpec,
     dlcSpec,
     localizationDocumentSpec,
+    localizationKeysSpec,
     storyDocumentSpec,
+    uiDocumentSpec,
+    uiGraphsSpec,
+    variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import type { StoryId } from "@shared/types/story";
@@ -80,9 +84,12 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * is a small thing to want in the middle of writing, and a control that is grey for the length of an
  * afternoon is a control the author works around.
  *
- * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
- * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
- * for the length of a session and says so - which is the harmless half of the trade.
+ * **The two project-level registries join them last**: the variable registry (`editor/variables.json`)
+ * and the named-string registry (`editor/localization/keys.json`). Both are one per project, so
+ * neither is parameterised - and both are carried only when this machine could actually READ them,
+ * for the reason a language's library is: an applier is synchronous, so a registry that is not in
+ * memory when the session starts is one no effect can ever reach, and carrying it would leave the
+ * boundary allowing writes the host refuses.
  *
  * **The three configuration tables joined next**: the build variants, the DLC list and the palette.
  * They are unparameterised, like the cast - one of each per project - and they are here because a
@@ -107,6 +114,15 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
  *
  * ⚠ **The Gallery's catalog is not here either, and it is the same half of the trade for a sharper
+ * ⚠ **`variables.json` being writable does not mean every gesture on it travels.** Removing a
+ * variable also clears the params of every blueprint node that named it, which is a write to
+ * `editor/ui/uigraphs.json` - a document this table does not carry - so the vocabulary has no verb
+ * for it and `VariableRegistryService` refuses the gesture for as long as a sink is installed. That
+ * is the same shape the asset library is already in, and it is the safe half of the invariant: the
+ * owning service stops what cannot travel, rather than the write boundary allowing an edit that
+ * would land on one machine and nowhere else.
+ *
+ * ⚠ **The Gallery's catalog is not here, and it is the harmless half of the trade for a sharp
  * reason.** It lives in a plugin store (`editor/services/narraleaf.gallery.items.json`) and the only
  * seam Studio owns is `storage.writeJson`, which is handed the whole catalog. The finest thing that
  * can be stated at the one point every gallery edit passes through is therefore "here is the new
@@ -152,12 +168,54 @@ export type LiveSessionAssetCategories = readonly string[];
 export const NO_LIVE_ASSET_CATEGORIES: LiveSessionAssetCategories = [];
 
 /**
+ * Whether a session carries the interface and its blueprints.
+ *
+ * A boolean rather than a list, because both are one document per project - `{ doc: "ui" }` and
+ * `{ doc: "ui-graphs" }` are whole addresses the way the cast's is. Passed in for
+ * {@link LiveSessionLocales}' reason all the same: what a machine holds is what it managed to read,
+ * and a document nothing loaded is one no operation can be applied to.
+ *
+ * ⚠ **The two travel together and there is no shape in which one is carried without the other.**
+ * They are one editing surface pretending to be two files: adding a widget to a Surface writes
+ * `uidoc.json` and then reconciles a private blueprint for it in `uigraphs.json`, in the same
+ * synchronous step. Carrying the interface alone would announce work-not-saved on every element
+ * anybody added; carrying the blueprints alone would be a canvas whose owners never appear.
+ */
+export type LiveSessionInterface = {
+    /** `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`, both or neither. */
+    carried: boolean;
+};
+
+/** Neither interface document - what a caller that has not read them passes. */
+export const NO_LIVE_INTERFACE: LiveSessionInterface = { carried: false };
+
+/**
+ * Which of the two project-level registries this machine holds.
+ *
+ * Booleans rather than a list, because neither is parameterised: there is one variable registry and
+ * one named-string registry per project, so the whole question is whether this machine read it.
+ * Passed in for {@link LiveSessionLocales}' reason - a document nothing loaded is one no operation
+ * can be applied to, and carrying it would make it writable while the host refused every operation
+ * about it.
+ */
+export type LiveSessionRegistries = {
+    /** Whether this machine holds `editor/variables.json`. */
+    variables: boolean;
+    /** Whether this machine holds `editor/localization/keys.json`. */
+    localizationKeys: boolean;
+};
+
+/** Neither registry - what a caller that has read neither passes. */
+export const NO_LIVE_REGISTRIES: LiveSessionRegistries = { variables: false, localizationKeys: false };
+
+/**
  * Every path a session leaves writable that no operation is ever about.
  *
  * Two kinds of file, and neither is a `LiveDocument`:
  *
  *  - **the asset payloads** (`assets/content/`), which are bytes an applier puts down rather than a
- *    document anybody addresses;
+ *    document anybody addresses
+/**
  *  - **the row-order shards**, which every machine recomputes from what it has just applied.
  *
  * ⚠ Held apart from {@link liveSessionDocuments} on purpose. The invariant that file states is about
@@ -201,6 +259,8 @@ export function liveSessionDocuments(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): readonly LiveDocument[] {
     return [
         ...storyIds.map((storyId): LiveDocument => ({ doc: "story", storyId })),
@@ -215,11 +275,17 @@ export function liveSessionDocuments(
         { doc: "app-tags" },
         { doc: "dlc" },
         { doc: "brand" },
+        // Both or neither. See {@link LiveSessionInterface}: the interface and its blueprints are
+        // one editing surface written to two files, and a session that carried one of them would
+        // refuse the writes the other one makes on its behalf.
+        ...(ui.carried ? ([{ doc: "ui" }, { doc: "ui-graphs" }] as LiveDocument[]) : []),
         // Unparameterised with the cast: one of each per project, so there is nothing to expand and
         // nothing a caller could get wrong about which of them a session carries.
         { doc: "dictionary" },
         { doc: "audio-tracks" },
         { doc: "asset-sets" },
+        ...(registries.variables ? [{ doc: "variables" } as const] : []),
+        ...(registries.localizationKeys ? [{ doc: "localization-keys" } as const] : []),
     ];
 }
 
@@ -251,12 +317,20 @@ export function liveDocumentPath(document: LiveDocument): string {
             return dlcSpec.pathFor();
         case "brand":
             return brandSpec.pathFor();
+        case "ui":
+            return uiDocumentSpec.pathFor();
+        case "ui-graphs":
+            return uiGraphsSpec.pathFor();
         case "dictionary":
             return dictionarySpec.pathFor();
         case "audio-tracks":
             return audioTracksSpec.pathFor();
         case "asset-sets":
             return assetSetsSpec.pathFor();
+        case "variables":
+            return variableRegistrySpec.pathFor();
+        case "localization-keys":
+            return localizationKeysSpec.pathFor();
     }
 }
 
@@ -271,9 +345,11 @@ export function liveSessionWritablePaths(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): readonly string[] {
     return [
-        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories).map(liveDocumentPath),
+        ...liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, ui, registries).map(liveDocumentPath),
         ...liveSessionDerivedPaths(assetCategories),
     ];
 }
@@ -292,7 +368,9 @@ export function liveSessionCarries(
     locales: LiveSessionLocales = NO_LIVE_LOCALES,
     assetTypes: LiveSessionAssetTypes = NO_LIVE_ASSET_TYPES,
     assetCategories: LiveSessionAssetCategories = NO_LIVE_ASSET_CATEGORIES,
+    ui: LiveSessionInterface = NO_LIVE_INTERFACE,
+    registries: LiveSessionRegistries = NO_LIVE_REGISTRIES,
 ): boolean {
-    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories)
+    return liveSessionDocuments(storyIds, locales, assetTypes, assetCategories, ui, registries)
         .some(carried => sameLiveDocument(carried, document));
 }

@@ -129,6 +129,9 @@ export const story = {
         // The asset library's answer to the same thing, and it says the same nothing about the
         // inspector: what the author typed into it is theirs and stays where it is.
         refusedAssetGone: "That asset is gone. The change was not applied.",
+        // The variable registry's answer to the same thing. Says nothing about the row the author is
+        // typing in: what is in it is theirs and stays where it is.
+        refusedVariableGone: "That variable is gone. The change was not applied.",
         // Not a race: asset ids are minted by whoever built the record, so one already in use is a
         // retry that escaped or a build that mints them differently. Never applied - writing over a
         // record under its own id is the one way an import destroys a file that was already there.
@@ -139,13 +142,22 @@ export const story = {
         // the palette. One sentence for the three: the panel in front of the author already says
         // which table it was, and it says the same nothing about what they have typed into it.
         refusedConfigEntryGone: "That entry is no longer in this project. The change was not applied.",
+        // The interface's answer to a row that has gone, and it says the same nothing about
+        // the properties panel: what the author typed into it is theirs and stays where it is.
+        refusedUIElementGone: "That element is gone. The change was not applied.",
+        refusedUIBlueprintGone: "That blueprint is gone. The change was not applied.",
+        // The same refusal as a held row, said about what was actually held. One reason spans
+        // every document a session carries, and an author told about a line after moving a
+        // button has been told about a document they are not in.
+        refusedElementClaimed: "{name} is editing that element. The change was not applied.",
+        refusedNodeClaimed: "{name} is editing that node. The change was not applied.",
         // The mixer's answer to a record that has gone, and it says the same nothing about the
         // panel: what the author typed into it is theirs and stays where it is.
         refusedTrackGone: "That audio track is gone. The change was not applied.",
         refusedSetGone: "That asset set is gone. The change was not applied.",
         // A record too big for one message. Named rather than silent, because the alternative is a
         // change that appears to have been made and reached nobody.
-        refusedTooLarge: "That character is too large to share in a live session. The change was not applied.",
+        refusedTooLarge: "That change is too large to share in a live session. It was not applied.",
         // The session does not carry that document at all - a story other than the one the room is
         // about, or a kind of document a session cannot pass between machines yet.
         refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
@@ -179,6 +191,9 @@ export const story = {
         undoTrackRestored: "That audio track is in the mixer again.",
         undoSetGone: "That asset set is gone.",
         undoSetRestored: "That asset set is declared again.",
+        undoVariableGone: "That variable is gone.",
+        undoVariableRestored: "That variable exists again.",
+        undoKeyRestored: "That string is declared again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`

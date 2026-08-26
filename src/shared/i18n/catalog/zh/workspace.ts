@@ -109,6 +109,7 @@ export const workspace = {
         },
         live: {
             entryClaimed: "{name} 正在翻译该行",
+            keyClaimed: "{name} 正在编辑该字符串",
         },
     },
     voice: {
@@ -354,17 +355,28 @@ export const workspace = {
         liveNoRepository: "此项目没有版本历史",
         liveNoRevision: "先记录一个版本才能开始实时会话",
         liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
-        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
-        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
-        // 与分叉那条一样写成第二行，而不是把第一行拉长。
-        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
+        // 只有开始会话才会遇到：加入会直接对齐房间开始时的版本，不再存在「够不到」的副本。
+        liveVersionMismatch: "此项目与服务器都有对方没有的版本",
+        // 补救办法与分叉那条一样写成第二行，而不是把第一行拉长。
+        liveVersionMismatchNext: "先从服务器获取版本并处理差异，然后再试一次",
         liveRoomGone: "该会话已经关闭",
+        liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
         liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
         liveStoryNotHere: "该会话所改的故事不在此项目中",
+        liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
         liveRefused: "服务器拒绝了这场会话",
+        liveRefusedNext: "等服务器恢复响应后再试一次",
         liveFailed: "无法开始实时会话",
+        liveFailedNext: "再试一次",
+        liveNoInstanceNext: "检查与该服务器的连接，然后再试一次",
+        liveNoRepositoryNext: "先为此项目启用版本控制，然后再试一次",
+        liveMergeConflictsNext: "先完成合并，然后再试一次",
         // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
         liveEndedHostLeft: "主持方已离开，会话结束",
+        // 同一件事，但房间会回来：主持方交接或重载时房间会关闭，几秒后由别人重新开启。
+        liveEndedHandedOver: "主持方已离开，会话将由其他成员重新开启",
+        // 等待期间显示在房间那一行的位置上。
+        liveRejoining: "会话重新开启后将自动加入",
         // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
         // 已经不是其他人正在看的那一份。
         liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
@@ -378,8 +390,8 @@ export const workspace = {
         liveNobody: "此项目没有进行中的实时会话",
         liveRoomOpen: "{name} 开着一场实时会话",
         // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
-        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除故事、角色、译文与配音、资产库、词典、音频轨道、资产集、变体、DLC 与配色以外的一切",
-        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除故事、角色、译文与配音、资产库、词典、音频轨道、资产集、变体、DLC 与配色以外的一切",
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除会话所携带的文档以外的一切",
         // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
         liveStory: "故事",
         liveHostedBy: "主持方 {name}",
@@ -396,7 +408,7 @@ export const workspace = {
         livePendingOne: "1 项修改正在等待主持方",
         livePendingMany: "{count} 项修改正在等待主持方",
         // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间保存故事、角色、译文与配音、词典、音频轨道、资产集、变体、DLC、配色，以及整个资产库（含文件本身）；其余内容是当前的，且为只读",
+        liveFrozenWhat: "会话期间保存故事、角色、译文与配音、整个资产库（含文件本身），以及项目自身的表（词典、音频轨道、资产集、变量、命名字符串、变体、DLC 与配色）；其余内容是当前的，且为只读",
         liveUnavailableHere: "实时会话期间不可用",
         // 别人正在写的行，集中在一处读，不必逐行去找标记。
         liveClaimsLabel: "正在被编辑的行",
@@ -406,6 +418,7 @@ export const workspace = {
         liveFrozenTitle: "实时会话进行中",
         liveLeaveSession: "离开实时会话",
         liveEndSession: "结束实时会话",
+        liveHandOverSession: "交接实时会话",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
@@ -777,6 +790,7 @@ export const workspace = {
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
             commitBeforeSync: "从服务器获取之前先提交版本",
+            branchDiverged: "本工程与服务器都有新的版本，先获取服务器的版本再发送",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
@@ -829,6 +843,8 @@ export const workspace = {
                 checkpointClose: "关闭工程前的检查点",
                 checkpointBuild: "构建前的检查点",
                 checkpointRestore: "还原前的检查点",
+                checkpointLiveSession: "实时会话前的检查点",
+                liveSessionMatched: "已对齐实时会话的版本",
                 restored: "还原到 {version}",
             },
             // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以

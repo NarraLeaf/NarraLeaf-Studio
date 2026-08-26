@@ -15,8 +15,16 @@ import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cas
 import { appTagsDigest, brandDigest, dlcDigest } from "@shared/live/config";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
+import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
-import { liveSessionWritablePaths, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionWritablePaths,
+    type LiveSessionInterface,
+    type LiveSessionLocales,
+    type LiveSessionRegistries,
+} from "@shared/live/sharedDocuments";
+import { uiBlueprintDigest, uiGraphShellDigest } from "@shared/live/uiGraphParts";
+import { uiComponentDigest, uiShellDigest, uiSurfaceDigest } from "@shared/live/uiParts";
 import {
     appTagClaimKey,
     assetClaimKey,
@@ -24,10 +32,14 @@ import {
     characterClaimKey,
     dlcClaimKey,
     isLiveMessage,
+    localizationKeyClaimKey,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
     type LiveAppTagOp,
+    uiElementClaimKey,
+    uiNodeClaimKey,
+    variableClaimKey,
     type LiveAssetBytePart,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -45,12 +57,17 @@ import {
     type LiveDlcOp,
     type LiveDocument,
     type LiveEffect,
+    type LiveHandover,
+    type LiveLocalizationKeyOp,
     type LiveLocalizationOp,
     type LiveMessage,
     type LiveOp,
     type LiveRefusal,
     type LiveResync,
     type LiveStoryOp,
+    type LiveUIGraphOp,
+    type LiveUIOp,
+    type LiveVariableOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
@@ -65,8 +82,18 @@ import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { CharacterOpSink } from "../core/CharacterService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
-import { decideLiveRole, planLiveJoin } from "./liveEntry";
+import {
+    chooseLiveSuccessor,
+    continuesLiveSession,
+    decideLiveRole,
+    LIVE_CONTINUATION_MS,
+    planLiveGhostRoom,
+    planLiveJoin,
+    type LiveContinuation,
+} from "./liveEntry";
 import type { LiveProjectIdentity, LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
 import {
     IDLE_LIVE_SESSION,
@@ -128,6 +155,17 @@ type ActiveSession = {
     assetTypes: readonly string[];
     /** The sections whose folders this session carries, settled on the way in with the rest. */
     assetCategories: readonly string[];
+    /**
+     * Whether this session carries the interface and its blueprints, settled on the way in with the
+     * rest. Both or neither - see `LiveSessionInterface`.
+     */
+    ui: LiveSessionInterface;
+    /**
+     * Which of the two project-level registries this session carries, settled on the way in with the
+     * rest - and by what this machine could actually READ, for the libraries' reason: a registry that
+     * would not parse is one no effect can be applied to.
+     */
+    registries: LiveSessionRegistries;
     /**
      * Slices that have arrived and are waiting for the operation naming them.
      *
@@ -198,6 +236,14 @@ type ActiveSession = {
     divergence: LiveDivergence | null;
     /** How many undo or redo steps this window has sent, for the keys their answers arrive under. */
     steps: number;
+    /**
+     * The last thing the host said about who carries the room on, or null while nobody has.
+     *
+     * Kept rather than acted on where it arrives, because it is about what happens AFTER the room
+     * closes and the room has not closed yet: acting on it early would be a second room opening
+     * beside one that is still running.
+     */
+    handover: LiveHandover | null;
     stopListening: () => void;
     stopWatching: () => void;
 };
@@ -244,6 +290,14 @@ export class LiveSession {
     private view: LiveSessionView = IDLE_LIVE_SESSION;
     private readonly listeners = new Set<(view: LiveSessionView) => void>();
     private active: ActiveSession | null = null;
+    /**
+     * Stops watching for the room that carries on from one that closed, or null when nothing is.
+     *
+     * Outside {@link ActiveSession} because it is the one thing that outlives a session on purpose:
+     * a window follows a collaboration from one room into the next, and the stretch in between is
+     * exactly the stretch in which there is no session to hang it off.
+     */
+    private following: (() => void) | null = null;
 
     public constructor(private readonly deps: LiveSessionDeps) {}
 
@@ -287,45 +341,109 @@ export class LiveSession {
         if (blocked) {
             return this.failEntry(blocked);
         }
-        this.patch({ phase: "entering", entryFailure: null, ended: null });
+        this.stopFollowing();
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
                 return this.failEntry(ready);
             }
-            const recorded = await this.deps.version.checkpoint();
-            // Null means the tree had nothing to record, and the head is then already the revision
-            // this session's document stands at. A checkpoint of an unchanged tree is a lie about
-            // the author's history, so the absence of one is the ordinary case rather than a fault.
-            const revision = recorded ?? (await this.deps.version.head());
-            if (!revision) {
-                return this.failEntry({ kind: "no-revision" });
+            const published = await this.publishHead();
+            if ("kind" in published) {
+                return this.failEntry(published);
             }
-            await this.deps.version.push();
-            const opened = await ready.rooms.open({
-                project: ready.project.repositoryId,
-                revision,
-                // What the room is about, said once here and read by everybody who joins. The
-                // alternative - letting each joiner work it out - can only ever produce a document
-                // that machine already has.
-                story: input.storyId,
+            return await this.openRoom({
+                ready,
+                storyId: input.storyId,
+                revision: published.revision,
+                checkpoint: published.checkpoint,
                 ...(input.title === undefined ? {} : { title: input.title }),
             });
-            if (!opened.ok) {
-                return this.failEntry({ kind: "refused", problem: opened.problem });
-            }
-            await this.enter({
-                room: opened.value,
-                rooms: ready.rooms,
-                project: ready.project,
-                self: ready.instance,
-                storyId: input.storyId,
-                checkpoint: recorded,
-            });
-            return null;
         } catch (error) {
             return this.failEntry({ kind: "failed", detail: describe(error) });
         }
+    }
+
+    /**
+     * Record what this window is holding and put it where the room's other members can fetch it.
+     *
+     * **Exactly one machine publishes a session's content and every other machine adopts it.** Two
+     * machines recording the same story - which is what everybody in a room ends a session holding -
+     * are two histories that differ only in when each of them last saved, and merging those produces
+     * a conflict about a timestamp neither author has ever seen. So this is the host's act and
+     * nobody else's, and it is why {@link join} adopts rather than merges.
+     *
+     * A push refused because both sides have moved on is answered once, with a sync, and tried
+     * again. That is the ordinary shape of it now that a room can change hands: a window that spent
+     * three sessions adopting somebody else's versions has a history the server has never seen, and
+     * the merge it needs settles without a question because its own side changed nothing.
+     */
+    private async publishHead(): Promise<{ revision: string; checkpoint: string | null } | LiveEntryFailure> {
+        const recorded = await this.deps.version.checkpoint();
+        // Null means the tree had nothing to record, and the head is then already the revision this
+        // session's document stands at. A checkpoint of an unchanged tree is a lie about the
+        // author's history, so the absence of one is the ordinary case rather than a fault.
+        const revision = recorded ?? (await this.deps.version.head());
+        if (!revision) {
+            return { kind: "no-revision" };
+        }
+        if (!(await this.deps.version.push()).diverged) {
+            return { revision, checkpoint: recorded };
+        }
+        const synced = await this.deps.version.sync();
+        if (synced.conflicts.length > 0) {
+            // Two people's own work, not a session's. Settling it comes first, and the room is not
+            // urgent: nothing has been opened and nothing has been told to anybody.
+            return { kind: "merge-conflicts", paths: synced.conflicts };
+        }
+        const merged = await this.deps.version.head();
+        if (!merged) {
+            return { kind: "no-revision" };
+        }
+        if ((await this.deps.version.push()).diverged) {
+            // Refused twice over, with a merge in between. Somebody pushed while this one was
+            // merging, or the divergence is not one a merge settles - either way it is a person's
+            // to sort out, and a room opened on a revision nobody else can fetch is worse.
+            return { kind: "revision-mismatch", revision: merged };
+        }
+        return { revision: merged, checkpoint: recorded };
+    }
+
+    /**
+     * Open the room and step into it, on a revision that is already on the server.
+     *
+     * Shared by the two ways a room comes into being: an author asking for one, and a room being
+     * re-founded because the one before it lost its host. The difference between them is entirely in
+     * where `revision` came from - this window's own publication, or the one the leaving host named.
+     */
+    private async openRoom(input: {
+        ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms };
+        storyId: StoryId;
+        revision: string;
+        checkpoint: string | null;
+        title?: string;
+    }): Promise<LiveEntryFailure | null> {
+        const opened = await input.ready.rooms.open({
+            project: input.ready.project.repositoryId,
+            revision: input.revision,
+            // What the room is about, said once here and read by everybody who joins. The
+            // alternative - letting each joiner work it out - can only ever produce a document
+            // that machine already has.
+            story: input.storyId,
+            ...(input.title === undefined ? {} : { title: input.title }),
+        });
+        if (!opened.ok) {
+            return this.failEntry({ kind: "refused", problem: opened.problem });
+        }
+        await this.enter({
+            room: opened.value,
+            rooms: input.ready.rooms,
+            project: input.ready.project,
+            self: input.ready.instance,
+            storyId: input.storyId,
+            checkpoint: input.checkpoint,
+        });
+        return null;
     }
 
     /**
@@ -334,20 +452,29 @@ export class LiveSession {
      * Two shapes, and `planLiveJoin` decides which. A machine that has the project records a
      * checkpoint for anything uncommitted - so that what the author did before the session is
      * somewhere they can go back to, rather than something the session's state lands on top of -
-     * and then brings its tree to the revision the room opened on. A machine that does not have the
-     * project has nothing to protect and needs a clone, which is a flow that belongs to a window
-     * with no project open; that is reported rather than performed.
+     * and then **adopts** the version the room opened on. A machine that does not have the project
+     * has nothing to protect and needs a clone, which is a flow that belongs to a window with no
+     * project open; that is reported rather than performed.
      *
-     * Either way the last thing before following along is asking the host for everything since the
-     * room opened, because an operation applied out of the host's order produces a document the
-     * host never held.
+     * ⚠ **Adopts rather than merges, and that is what makes a room somewhere an author can come back
+     * to.** Everybody in a room ends a session holding the same story with their own save timestamp
+     * in it, so the second time the same two machines meet, a merge finds two sides that changed the
+     * same field to different values and refuses - and the author is sent to settle a conflict about
+     * a fact neither of them wrote. So the room's version is written over this tree instead, after
+     * the checkpoint that is where the previous contents went. Nothing is lost and nothing has to be
+     * decided: the copy being adopted is the one the room is looking at, which is the only copy that
+     * has ever counted.
+     *
+     * The last thing before following along is asking the host for everything since the room opened,
+     * because an operation applied out of the host's order produces a document the host never held.
      */
     public async join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
             return this.failEntry(blocked);
         }
-        this.patch({ phase: "entering", entryFailure: null, ended: null });
+        this.stopFollowing();
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
@@ -382,25 +509,9 @@ export class LiveSession {
                 });
             }
             const checkpoint = plan.checkpoint ? await this.deps.version.checkpoint() : null;
-            const synced = await this.deps.version.sync();
-            if (synced.conflicts.length > 0) {
-                // A merge is open now, and a merge is one of the freezes that refuses a session
-                // anyway. Settling it comes first; the room will still be there or it will not.
-                return this.failEntry({ kind: "merge-conflicts", paths: synced.conflicts });
-            }
-            if (room.revision !== undefined) {
-                const head = await this.deps.version.head();
-                if (head !== room.revision) {
-                    // Somebody pushed past the revision the room opened on, so this tree cannot be
-                    // brought to it by syncing. Joining anyway would put two machines in one room
-                    // holding different documents - the failure the digest guard catches after the
-                    // fact, walked into deliberately. Re-basing a running session on a newer
-                    // revision is what fixes this, and nothing here does that yet.
-                    return this.failEntry({ kind: "revision-mismatch", expected: room.revision, actual: head });
-                }
-            }
+            await this.matchRoomRevision(room.revision);
             if (this.deps.story.document(storyId) === null) {
-                // The sync has landed, so this is the tree the room opened on and the document
+                // The adoption has landed, so this IS the tree the room opened on and the document
                 // still is not in it. Entering anyway would give every read of it null and say
                 // nothing about why.
                 return this.failEntry({ kind: "story-not-here", storyId });
@@ -425,6 +536,9 @@ export class LiveSession {
 
     /** Leave. The freeze lifts and what is on disk is this author's own, committable as usual. */
     public async leave(): Promise<void> {
+        // Asked for, so nothing is waited for afterwards: a window whose author has stepped out of a
+        // room must not be pulled back into the one that replaces it.
+        this.stopFollowing();
         await this.end("left");
     }
 
@@ -434,9 +548,156 @@ export class LiveSession {
      * The freeze and the sink are both module-level or service-level and outlive this object, so a
      * teardown that left either in place would be a project that refuses to save, or an editor
      * handing gestures to a room nobody is in.
+     *
+     * ⚠ **Nothing is said to the server, and that is the decision rather than a shortcoming.** A
+     * window going away is a reload as often as it is a goodbye, and this cannot tell the two
+     * apart - so it says nothing and lets the two things that CAN tell them apart do it. A reload
+     * comes back and takes the room up again ({@link resume}); a window that is really closing
+     * withdraws its client instance, and a room whose host has withdrawn is one the server closes.
+     *
+     * What this used to do was close the room on the way out, on an IPC call the page teardown does
+     * not wait for. When it landed, a reload ended the collaboration for everybody in it; when it
+     * did not, the room outlived the window with nobody able to answer an intent. Neither is what
+     * an author who pressed Ctrl+R meant.
      */
     public dispose(): void {
-        void this.end("left");
+        this.stopFollowing();
+        void this.end("left", { silently: true });
+    }
+
+    /**
+     * Take up whatever this window was already part of, as the workspace starts.
+     *
+     * **A reload is not leaving, and the server cannot tell the difference.** A window that reloads
+     * says goodbye with an IPC call that the page teardown does not wait for, so the room is still
+     * there afterwards, still listing this instance - as its host with nobody able to answer an
+     * intent, or as a member of somebody else's. Both are recoverable from the roster alone, which
+     * is why nothing is written down anywhere: what the server already knows is the whole of it.
+     *
+     * Silent about everything it decides not to do. This runs on every workspace that opens, most of
+     * which are in no session and never have been, and a failure to reach a server on the way in is
+     * not something to put in front of an author who did not ask a question.
+     *
+     * **`ask-again` is not a failure and is the ordinary answer for the first second or two.** This
+     * runs while the workspace is still starting, and the socket to the server is being opened at
+     * the same time - so the first pass usually finds no instance id and no answer, which says
+     * nothing at all about whether there is a room. The caller tries a few more times; see
+     * `LiveSessionService`.
+     */
+    public async resume(): Promise<"settled" | "ask-again"> {
+        if (this.active || this.view.phase !== "idle" || this.blocked() !== null) {
+            return "settled";
+        }
+        try {
+            const ready = await this.ready();
+            if ("kind" in ready) {
+                // A project on no server, or no repository at all, is settled: nothing about it will
+                // change by asking again. Not having been given an instance id yet is the opposite.
+                return ready.kind === "no-instance" ? "ask-again" : "settled";
+            }
+            const listed = await ready.rooms.list(ready.project.repositoryId);
+            if (!listed.ok) {
+                return "ask-again";
+            }
+            const mine = listed.value.find(room => room.openedByInstance === ready.instance);
+            if (mine) {
+                await this.resumeOwnRoom(ready, mine);
+                return "settled";
+            }
+            const joined = listed.value.find(room =>
+                room.members.some(member => member.instance === ready.instance));
+            if (joined) {
+                // Still on the roster, so the leave never landed either. Joining again is the whole
+                // of the repair: it adopts the room's version, which is where this tree should have
+                // been all along.
+                await this.join({ session: joined });
+                return "settled";
+            }
+            await this.reopenWhatWasHosted(ready);
+            return "settled";
+        } catch (error) {
+            // ⚠ Through `failEntry`, not just logged. Taking a room up moves the phase to
+            // `entering` before it can fail, and a throw that only reached the console left a
+            // window saying it was entering a session for the rest of its life - no freeze, no
+            // room, and no way to press anything, because every way in refuses a window that is
+            // already on its way somewhere.
+            this.failEntry({ kind: "failed", detail: describe(error) });
+            return "settled";
+        }
+    }
+
+    /**
+     * Open again what this window was hosting when it went away.
+     *
+     * **The half of a reload the server cannot help with.** A room lives in a server's memory and
+     * belongs to the window that opened it, so a window going away ends it there and then - measured
+     * both ways, on a graceful reload and on a window killed outright. Everybody in it is told
+     * correctly; what nobody can tell afterwards is that the collaboration was meant to carry on,
+     * because from the next launch a reload and a goodbye look the same. So the one window that
+     * knows leaves itself a note, and this is where it is read - and thrown away.
+     *
+     * Bounded by {@link LIVE_CONTINUATION_MS}, which is the same window the guests are watching for
+     * the room in. A note older than that is a session that ended some time ago, and a workspace
+     * opening on it must not start a room around an author who came back the next morning.
+     */
+    private async reopenWhatWasHosted(
+        ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
+    ): Promise<void> {
+        const hosted = await this.deps.memory.recall();
+        if (hosted === null) {
+            return;
+        }
+        this.deps.memory.remember(null);
+        if (this.deps.now() - hosted.at > LIVE_CONTINUATION_MS) {
+            return;
+        }
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        const published = await this.publishHead();
+        if ("kind" in published) {
+            this.failEntry(published);
+            return;
+        }
+        await this.openRoom({
+            ready,
+            storyId: hosted.story,
+            revision: published.revision,
+            checkpoint: published.checkpoint,
+        });
+    }
+
+    /**
+     * What to do about a room this window opened and then vanished from.
+     *
+     * Re-founded where somebody is still in it and closed where nobody is - see `planLiveGhostRoom`
+     * for why those are the only two answers. Re-founding is the same act a handover performs, and
+     * for the same reason: the old room opened on a version that no longer holds the work done in
+     * it, so continuing means a new room on what this window publishes now.
+     */
+    private async resumeOwnRoom(
+        ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
+        room: TeamLiveSession,
+    ): Promise<void> {
+        const plan = planLiveGhostRoom(room, ready.instance);
+        // Closed first either way. Two rooms about one story is two collaborations, and the members
+        // of the old one need the ending before they can follow the new one.
+        await ready.rooms.close(room.id).catch(() => undefined);
+        const storyId = room.story as StoryId | undefined;
+        if (plan.kind === "close" || storyId === undefined) {
+            return;
+        }
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        const published = await this.publishHead();
+        if ("kind" in published) {
+            this.failEntry(published);
+            return;
+        }
+        await this.openRoom({
+            ready,
+            storyId,
+            revision: published.revision,
+            checkpoint: published.checkpoint,
+            ...(room.title === undefined ? {} : { title: room.title }),
+        });
     }
 
     /* -------------------------------------------------------------------- claims */
@@ -447,6 +708,7 @@ export class LiveSession {
      * **One method for both roles and for both halves of the statement**, because a give-back that
      * could be wired up without its take - or taken on one role and forgotten on the other - is a
      * row nobody can edit for the rest of the session. A guest sends the message and holds nothing;
+    /**
      * a host records it in its own store, which is the only place a claim exists, and broadcasts
      * the set that resulted.
      *
@@ -533,6 +795,54 @@ export class LiveSession {
     /** This window is editing one colour of the palette, or has stopped. See {@link claimAppTag}. */
     public claimBrandColor(colorId: string, holding: boolean): void {
         this.claim(brandColorClaimKey(colorId), holding);
+    }
+
+    /**
+     * This window is writing one interface element, or has stopped.
+     *
+     * Held while the properties panel has that element selected, which is the only place the
+     * interface keeps a draft: its text fields commit on a throttle or on blur, so somebody else's
+     * edit to the same element arriving mid-sentence takes the sentence with it. The component id is
+     * in the key because a component definition owns its own element map.
+     */
+    public claimUIElement(componentId: string | null, elementId: string, holding: boolean): void {
+        this.claim(uiElementClaimKey(componentId, elementId), holding);
+    }
+
+    /**
+     * This window is writing one blueprint node, or has stopped.
+     *
+     * The element's counterpart on the canvas: a node's parameter editors are the draft layer, and
+     * the blueprint and graph are in the key because node ids are not unique across the document.
+     */
+    public claimUINode(blueprintId: string, graphId: string, nodeId: string, holding: boolean): void {
+        this.claim(uiNodeClaimKey(blueprintId, graphId, nodeId), holding);
+    }
+
+    /**
+     * This window is editing one variable registry entry, or has stopped.
+     *
+     * The registry's door beside the row's, the record's, the translation's and the asset's, and held
+     * for the same span: while the row is open in front of somebody, not while their fingers are
+     * moving. The panel's name and default boxes are controlled inputs that write on every keystroke,
+     * so with a session installed the box's value IS the document - and an edit to the same entry
+     * arriving mid-word lands under the author's cursor and takes what they had typed.
+     *
+     * No project id and no scope, because there is one registry per project.
+     */
+    public claimVariable(variableId: string, holding: boolean): void {
+        this.claim(variableClaimKey(variableId), holding);
+    }
+
+    /**
+     * This window is editing one named string, or has stopped.
+     *
+     * The key registry's door, beside the translation's - and they are held together on a named-key
+     * row, one for the source text and one for each language's box beside it. Addressed by NAME
+     * because the registry is.
+     */
+    public claimLocalizationKey(name: string, holding: boolean): void {
+        this.claim(localizationKeyClaimKey(name), holding);
     }
 
     /**
@@ -665,6 +975,8 @@ export class LiveSession {
             hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
             audioTracks: () => this.deps.audioTracks.tracks(),
             assetSets: () => this.deps.assetSets.sets(),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -709,6 +1021,9 @@ export class LiveSession {
         // snapshot of a document only this author ever had, and one applied after the session would
         // put the scene back as it was before anybody else joined.
         this.deps.history.forgetStoryScenes(input.storyId);
+        // And every interface stack, for the same reason one document along: they hold whole-Surface
+        // and whole-blueprint snapshots of a document only this author ever had.
+        this.deps.history.forgetInterfaceEditors();
         // Flushes what is owed first, then refuses everything but this session's story document.
         // Every story into memory before anything is frozen or applied. A machine that never opened
         // one could not apply a sweep that reaches it, and appliers are synchronous - there is no
@@ -725,12 +1040,24 @@ export class LiveSession {
         // opens it, so this only asks which ones are there.
         const assetTypes = this.deps.assets.shardTypes();
         const assetCategories = this.deps.assets.folderCategories();
+        // Nothing to read here either: both interface documents are loaded as the workspace starts.
+        // What this asks is whether they are there, which is what the session carries and what the
+        // boundary leaves writable - one set, from one call.
+        const ui: LiveSessionInterface = { carried: this.deps.ui.held() };
+        // The two project-level registries, and the same rule the libraries follow: what this machine
+        // could READ is what the session carries. The variable registry survives a file it could not
+        // parse - the service keeps an empty stand-in so the project still opens - so "is it there"
+        // is not the question; "is what is in memory the file on disk" is.
+        const registries: LiveSessionRegistries = {
+            variables: this.deps.variables.readable(),
+            localizationKeys: await this.deps.localization.loadKeys(),
+        };
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories, ui, registries),
         });
 
         const session: ActiveSession = {
@@ -743,6 +1070,8 @@ export class LiveSession {
             locales,
             assetTypes,
             assetCategories,
+            ui,
+            registries,
             blobsIn: new LiveBlobInbox(),
             blobsOut: new Map(),
             blobsDropped: new Set(),
@@ -760,6 +1089,7 @@ export class LiveSession {
             claimSweep: null,
             divergence: null,
             steps: 0,
+            handover: null,
             stopListening: () => undefined,
             stopWatching: () => undefined,
         };
@@ -776,13 +1106,18 @@ export class LiveSession {
                 locales,
                 assetTypes,
                 assetCategories,
+                ui,
+                registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
+                hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
                 hasAppTag: tagId => this.deps.appTags.hasTag(tagId),
                 hasDlc: dlcId => this.deps.dlc.hasDlc(dlcId),
                 hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
+                hasUIElement: ref => this.deps.ui.hasElement(ref),
+                hasBlueprint: blueprintId => this.deps.ui.hasBlueprint(blueprintId),
                 hasAudioTrack: trackId =>
                     this.deps.audioTracks.tracks()?.some(track => track.id === trackId) ?? false,
                 hasAssetSet: setId => this.deps.assetSets.sets()?.some(set => set.id === setId) ?? false,
@@ -847,28 +1182,73 @@ export class LiveSession {
         this.deps.appTags.setSink(this.librarySinkFor(session));
         this.deps.dlc.setSink(this.librarySinkFor(session));
         this.deps.brand.setSink(this.librarySinkFor(session));
+        this.deps.ui.setSink(this.interfaceSinkFor(session));
         // The three small project tables, through the same sink the libraries use: none of them has
         // a document id this window has to be holding for an operation to be about it.
         this.deps.dictionary.setSink(this.librarySinkFor(session));
         this.deps.audioTracks.setSink(this.librarySinkFor(session));
         this.deps.assetSets.setSink(this.librarySinkFor(session));
+        this.deps.variables.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
             // `after: 0` because a guest that has just joined has applied nothing.
             const resync: LiveResync = { kind: "resync", by: input.self, after: 0 };
             input.rooms.say(input.room.id, resync);
+        } else {
+            // The one fact a session leaves outside itself. A room belongs to the window that opened
+            // it, so a window going away ends it - and from the next launch, that is indistinguishable
+            // from an author having left. See `LiveMemoryPort`.
+            this.deps.memory.remember({ story: input.storyId });
         }
         this.publish(session, {
             phase: role === "host" ? "active" : "catching-up",
             entryFailure: null,
             ended: null,
+            // The room that was expected back IS this one. A window in a session is waiting for
+            // nothing, and a line saying otherwise would be drawn over a session that is running.
+            rejoining: null,
             undoRefusal: null,
             lastRefusal: null,
         });
     }
 
-    private async end(cause: LiveSessionEndCause): Promise<void> {
+    /**
+     * Put this working tree on the version a room is running from, unless it is already there.
+     *
+     * The one step that costs anything on the way in, and the one that makes coming back free.
+     *
+     * **Two acts, and only the second one is the point.** A repository can put down a version it
+     * holds and no other, and a room's version was pushed by another machine seconds ago - so this
+     * syncs first, purely to learn it. Where that sync fast-forwards, it has already done the whole
+     * job and there is nothing to adopt; where it merges cleanly, the tree is a merge of two copies
+     * of the same work and the adoption settles it on the room's; where it cannot merge, the merge
+     * is **thrown away** rather than handed to the author, because what it could not decide is
+     * about to be overwritten by the room's own copy. See `LiveVersionPort.adopt` for why the
+     * second act is an adoption and never a merge.
+     */
+    private async matchRoomRevision(revision: string | undefined): Promise<void> {
+        if (revision === undefined || (await this.deps.version.head()) === revision) {
+            return;
+        }
+        const synced = await this.deps.version.sync();
+        if (synced.conflicts.length > 0) {
+            await this.deps.version.abortMerge();
+        }
+        if ((await this.deps.version.head()) === revision) {
+            return;
+        }
+        await this.deps.version.adopt(revision);
+    }
+
+    /**
+     * Let go of the running session.
+     *
+     * `silently` is for a window that is going away rather than leaving: nothing is published,
+     * nobody is nominated and the room is neither closed nor left, because whether this is a
+     * goodbye or a reload is not knowable here. See {@link dispose}.
+     */
+    private async end(cause: LiveSessionEndCause, options: { silently?: boolean } = {}): Promise<void> {
         const session = this.active;
         if (!session) {
             return;
@@ -885,9 +1265,11 @@ export class LiveSession {
         this.deps.appTags.setSink(null);
         this.deps.dlc.setSink(null);
         this.deps.brand.setSink(null);
+        this.deps.ui.setSink(null);
         this.deps.dictionary.setSink(null);
         this.deps.audioTracks.setSink(null);
         this.deps.assetSets.setSink(null);
+        this.deps.variables.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
         session.blobsDropped.clear();
@@ -896,16 +1278,45 @@ export class LiveSession {
         session.claimSweep?.();
         session.claimSweep = null;
         session.guest?.close();
-        const said = session.role === "host"
-            // A host leaving ends the room: it held the only copy that counts, and there is no
-            // authority left for an intent to reach. Closing says so rather than leaving the server
-            // to work it out from the last member walking away.
-            ? session.rooms.close(session.room.id)
-            : session.rooms.leave(session.room.id);
-        // Lifted here rather than after the server answers. A latch that outlived its session is a
-        // project that refuses to save with nothing on screen to explain why, and whether the
-        // server heard about it changes nothing about this window's own files.
+        // Lifted before anything else is attempted, and before the checkpoint below in particular:
+        // a latch that outlived its session is a project that refuses to save with nothing on screen
+        // to explain why, and the publication that follows has to be able to flush what is owed.
         this.deps.freeze.lift(session.room.id);
+
+        const silent = options.silently === true;
+        if (!silent) {
+            // Asked for, so there is nothing to come back to. Forgotten before anything that can
+            // fail, because a note that outlived the session it describes would reopen a room around
+            // an author who had closed one.
+            this.deps.memory.remember(null);
+        }
+        const closed = !silent && (session.role === "host" || cause === "host-left");
+        // Before the room is closed, because a handover is addressed into a room that still exists.
+        if (!silent && session.role === "host" && cause !== "diverged") {
+            await this.handOver(session);
+        }
+        const said = silent
+            // A window on its way out says nothing. See {@link dispose}.
+            ? Promise.resolve()
+            : session.role === "host"
+                // A host leaving ends the room: it held the only copy that counts, and there is no
+                // authority left for an intent to reach. Closing says so rather than leaving the
+                // server to work it out from the last member walking away. What carries on is a NEW
+                // room, not this one - see {@link handOver}.
+                ? session.rooms.close(session.room.id)
+                : session.rooms.leave(session.room.id);
+        // Only a window whose room closed under it waits for the replacement. A guest that walked
+        // out of a room that is carrying on asked to be out of it, and a machine that left because
+        // its copy stopped matching would be rejoining with the copy that was wrong.
+        const continuation: LiveContinuation | null = closed && session.role === "guest" && cause !== "diverged"
+            ? {
+                previousRoom: session.room.id,
+                story: session.storyId,
+                successor: session.handover?.to ?? null,
+                previousHost: session.room.openedByInstance,
+                since: this.deps.now(),
+            }
+            : null;
         this.set({
             ...IDLE_LIVE_SESSION,
             ended: {
@@ -914,11 +1325,172 @@ export class LiveSession {
                 // A host leaving takes the room with it - that is what `close` above says to the
                 // server - and `host-left` is the same event seen by a guest. Everything else is
                 // one window stepping out of a room that is still there.
-                closed: session.role === "host" || cause === "host-left",
+                closed,
                 ...(session.divergence === null ? {} : { divergence: session.divergence }),
             },
+            ...(continuation === null
+                ? {}
+                : { rejoining: { storyId: session.storyId, since: continuation.since } }),
         });
         await said.catch(() => undefined);
+        if (continuation !== null) {
+            this.carryOn(session, continuation);
+        }
+    }
+
+    /**
+     * Take the collaboration up again once the room that held it has closed.
+     *
+     * Two halves of one act, and which half this window performs is the whole of what the handover
+     * message decides: the machine that was nominated opens the next room, and everybody else waits
+     * to be told that it did. A window that guessed would be a second room about the same story.
+     */
+    private carryOn(session: ActiveSession, continuation: LiveContinuation): void {
+        if (continuation.successor === session.self) {
+            void this.refound(session, continuation);
+            return;
+        }
+        this.startFollowing(session, continuation);
+    }
+
+    /**
+     * Open the room that carries on from the one that just closed, as its nominated successor.
+     *
+     * ⚠ **Adopts the version the leaving host published and opens on that**, rather than publishing
+     * its own. What this window is holding is the same story the host is - effect for effect - so
+     * recording it would be a second history of one afternoon's work, and the two would not merge.
+     * Nothing is pushed here at all: the version the room opens on is already on the server.
+     */
+    private async refound(session: ActiveSession, continuation: LiveContinuation): Promise<void> {
+        const revision = session.handover?.revision;
+        if (revision === undefined) {
+            // The leaving host could not publish, so there is no shared starting point to open on
+            // and nothing this window could invent would be one. Waiting is what is left: if the
+            // host recovers and opens a room, following it still works.
+            this.startFollowing(session, continuation);
+            return;
+        }
+        // Asked while the phase is still `idle`, because that is one of the things it reads.
+        const blocked = this.blocked();
+        if (blocked) {
+            // Something froze this workspace between the room ending and this running. Arming a
+            // session's freeze over it would take that state's latch away rather than adding to it.
+            this.patch({ rejoining: null });
+            this.failEntry(blocked);
+            return;
+        }
+        // Nothing is being waited for any more: this window is the one opening it, so a failure
+        // below leaves a stated reason rather than a line still promising a room.
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        try {
+            const ready = await this.ready();
+            if ("kind" in ready) {
+                this.failEntry(ready);
+                return;
+            }
+            const checkpoint = (await this.deps.version.hasUncommittedChanges())
+                ? await this.deps.version.checkpoint()
+                : null;
+            await this.matchRoomRevision(revision);
+            await this.openRoom({
+                ready,
+                storyId: continuation.story as StoryId,
+                revision,
+                checkpoint,
+                ...(session.room.title === undefined ? {} : { title: session.room.title }),
+            });
+        } catch (error) {
+            this.failEntry({ kind: "failed", detail: describe(error) });
+        }
+    }
+
+    /**
+     * Watch this project's rooms until the one that replaces the closed one appears, then join it.
+     *
+     * Bounded in time by `LIVE_CONTINUATION_MS` and narrowed by `continuesLiveSession` to a room
+     * about the same story opened by the window that was nominated for it. Both of those are the
+     * same restraint: an author whose collaboration was interrupted should find it running again,
+     * and an author who is finished with it should not be pulled into the next one.
+     */
+    private startFollowing(session: ActiveSession, continuation: LiveContinuation): void {
+        this.stopFollowing();
+        const follow = (room: TeamLiveSession): void => {
+            if (this.following === null || !continuesLiveSession(continuation, room, this.deps.now())) {
+                return;
+            }
+            this.stopFollowing();
+            void this.join({ session: room });
+        };
+        const stopWatching = session.rooms.watch(session.project.repositoryId, event => {
+            if (event.kind === "live-opened" || event.kind === "live-changed") {
+                follow(event.session);
+            }
+        });
+        const cancelTimer = this.deps.schedule(LIVE_CONTINUATION_MS, () => {
+            this.stopFollowing();
+            // Said in the view rather than as a notice: nothing failed, and the author has been
+            // looking at a line that says the room is expected back. It stops saying so.
+            this.patch({ rejoining: null });
+        });
+        this.following = () => {
+            stopWatching();
+            cancelTimer();
+        };
+        // ⚠ And a read, because the replacement can be open before the watch is. The successor is
+        // told to take over by the same message that ends the room, so its room can be announced
+        // while this window is still tearing its own session down - and an event nobody was
+        // listening for is a collaboration that stops without anybody being able to say why.
+        void session.rooms.list(session.project.repositoryId).then(listed => {
+            if (listed.ok) {
+                for (const room of listed.value) {
+                    follow(room);
+                }
+            }
+        }).catch(() => undefined);
+    }
+
+    /** Stop waiting for a room to come back. Idempotent, and called before anything that enters one. */
+    private stopFollowing(): void {
+        this.following?.();
+        this.following = null;
+    }
+
+    /**
+     * Publish what the session produced and say who opens the room that carries it on.
+     *
+     * **The room ends and the collaboration does not have to.** A room's authority is the window
+     * that opened it and there is no verb that moves that authority, so continuing means a new room
+     * opened by somebody who is still there - and the only thing that cannot be worked out
+     * independently is which one, because every roster is a different event out of date.
+     *
+     * ⚠ **The publication is not optional and its order is not either.** Exactly one machine records
+     * a session's content; the successor adopts what is published here and opens its room on it. A
+     * successor that recorded its own copy instead would fork the project against the window that
+     * just left it, over a story the two of them hold identically.
+     *
+     * Answers null in a room of one, where there is nobody to hand anything to and nothing to say -
+     * the publication still happens, because the session's work has to be somewhere.
+     */
+    private async handOver(session: ActiveSession): Promise<LiveHandover | null> {
+        const published = await this.publishHead().catch((error: unknown) => {
+            // Reported and carried on from. What is on this disk is the session's work either way,
+            // and a room that will not close because a push failed is worse than a successor that
+            // has to be joined by hand.
+            console.warn("[LiveSession] could not publish what the session produced", error);
+            return { kind: "failed" as const, detail: describe(error) };
+        });
+        const successor = chooseLiveSuccessor(session.room.members, session.self);
+        if (successor === null) {
+            return null;
+        }
+        const handover: LiveHandover = {
+            kind: "handover",
+            to: successor,
+            story: session.storyId,
+            ...("kind" in published ? {} : { revision: published.revision }),
+        };
+        session.rooms.say(session.room.id, handover);
+        return handover;
     }
 
     private onRoomEvent(session: ActiveSession, event: TeamLiveEvent): void {
@@ -960,6 +1532,17 @@ export class LiveSession {
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.
+            return;
+        }
+        if (payload.kind === "handover") {
+            // ⚠ Before the host/guest split, and never through either of them. A handover is about
+            // the room rather than about the document: it takes no sequence number, changes nothing,
+            // and what it decides only matters once the room has closed. See `LiveSession.carryOn`.
+            if (from === session.room.openedByInstance && payload.story === session.storyId) {
+                // From the window that holds the only copy that counts, about the story this room is
+                // about. Anything else is a message from a room this window is not following.
+                session.handover = payload;
+            }
             return;
         }
         if (payload.kind === "blob" || payload.kind === "blob-needed") {
@@ -1071,9 +1654,13 @@ export class LiveSession {
             appTags: this.deps.appTags.document(),
             dlcs: this.deps.dlc.document(),
             brand: this.deps.brand.document(),
+            ui: this.deps.ui.document(),
+            uiGraphs: this.deps.ui.graphs(),
             dictionary: () => this.deps.dictionary.document(),
             audioTracks: () => this.deps.audioTracks.tracks(),
             assetSets: () => this.deps.assetSets.sets(),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1106,6 +1693,10 @@ export class LiveSession {
             case "brand":
                 this.deps.brand.applyOp(op as LiveBrandOp);
                 break;
+            case "ui":
+            case "ui-graphs":
+                touched.push(...this.deps.ui.applyOp(op as LiveUIOp | LiveUIGraphOp));
+                break;
             case "dictionary":
                 this.deps.dictionary.applyOp(op as LiveDictionaryOp);
                 break;
@@ -1114,6 +1705,14 @@ export class LiveSession {
                 break;
             case "asset-sets":
                 this.deps.assetSets.applyOp(op as LiveAssetSetOp);
+                break;
+            case "variables":
+                this.deps.variables.applyOp(op as LiveVariableOp);
+                break;
+            // The named-string registry is applied by the service that owns the translations beside
+            // it - one service, two documents, and they stay two everywhere it matters.
+            case "localization-keys":
+                this.deps.localization.applyOp(op as LiveLocalizationKeyOp);
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1170,6 +1769,11 @@ export class LiveSession {
                 return { doc: "dlc" };
             case "brand":
                 return { doc: "brand" };
+            // One of each per project, so the address is the whole of it - the cast's shape.
+            case "ui":
+                return { doc: "ui" };
+            case "ui-graphs":
+                return { doc: "ui-graphs" };
             // One of each per project, so the kind is the whole address and there is nothing to
             // read off the operation.
             case "dictionary":
@@ -1178,6 +1782,11 @@ export class LiveSession {
                 return { doc: "audio-tracks" };
             case "asset-sets":
                 return { doc: "asset-sets" };
+            // One per project, so the verb is the whole address - with the cast.
+            case "variables":
+                return { doc: "variables" };
+            case "localization-keys":
+                return { doc: "localization-keys" };
         }
     }
 
@@ -1228,6 +1837,21 @@ export class LiveSession {
                 return dlcDigest(this.deps.dlc.document());
             case "brand":
                 return brandDigest(this.deps.brand.document());
+            // ⚠ A Surface, a component or a blueprint this window does not hold hashes to a value
+            // rather than to nothing, with the cast's record and against a missing scene: both
+            // interface documents are in memory before a session can start, so arriving here without
+            // one means this machine failed at something - and answering null would rule
+            // `unproven` on exactly the effect that proves the two copies have parted company.
+            case "ui-surface":
+                return uiSurfaceDigest(this.deps.ui.document(), scope.surfaceId);
+            case "ui-component":
+                return uiComponentDigest(this.deps.ui.document(), scope.componentId);
+            case "ui-shell":
+                return uiShellDigest(this.deps.ui.document());
+            case "ui-blueprint":
+                return uiBlueprintDigest(this.deps.ui.graphs(), scope.blueprintId);
+            case "ui-graph-shell":
+                return uiGraphShellDigest(this.deps.ui.graphs());
             // Whole-document, with the libraries and the asset shards, and absent hashes to a value
             // for their reason: all three are read as the workspace starts, so a machine that
             // reaches an effect without one has failed at something.
@@ -1237,6 +1861,13 @@ export class LiveSession {
                 return audioTracksDigest(this.deps.audioTracks.tracks());
             case "asset-sets":
                 return assetSetsDigest(this.deps.assetSets.sets());
+            // ⚠ An entry that is not there hashes to a value rather than to nothing, the way a
+            // missing character record does: taking a variable back out is an operation like any
+            // other, and the machine that failed to apply it has to be caught rather than excused.
+            case "variable":
+                return variableEntryDigest(this.deps.variables.entry(scope.variableId));
+            case "localization-key":
+                return localizationKeyDigest(this.deps.localization.keys()?.[scope.name] ?? null);
         }
     }
 
@@ -1251,8 +1882,10 @@ export class LiveSession {
      *
      * Confined to the verbs that can actually reach the cap, so an ordinary edit does not pay a JSON
      * encode: a whole character record is bounded by nothing, and a library batch is a whole exchange
-     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. Everything
-     * else is a line of prose and a few ids.
+     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. A named
+     * string's source text and a `json` variable's starting value are bounded by nothing either -
+     * both are boxes an author can paste a document into. Everything else is a line of prose and a
+     * few ids.
      *
      * ⚠ An import too large to travel is refused by name and said out loud, exactly as a fat
      * character record is. It is never split into several operations: an import is one gesture, and
@@ -1263,7 +1896,14 @@ export class LiveSession {
             && op.op !== "set-translations" && op.op !== "set-takes"
             && op.op !== "update-asset" && op.op !== "move-assets"
             && op.op !== "create-assets" && op.op !== "replace-asset-content"
-            && op.op !== "delete-assets" && op.op !== "restore-asset-folder") {
+            && op.op !== "delete-assets" && op.op !== "restore-asset-folder"
+            // ⚠ Both interface verbs, and these are the ones most able to reach the cap: importing
+            // a template restates hundreds of elements, and one graph's wiring is ten kilobytes in
+            // the shipped skeleton. Refused by name rather than split - an interface arriving in
+            // pieces would draw a screen nobody authored.
+            && op.op !== "write-ui" && op.op !== "write-ui-graphs"
+            && op.op !== "set-key"
+            && op.op !== "create-variable" && op.op !== "update-variable") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1463,14 +2103,16 @@ export class LiveSession {
      * **One sink for every document that is not a story and not the cast**, which is the only
      * place in this file documents share one, and they share it because the decision is identical:
      * none of them has a document id this window has to be holding for the operation to be about it
-     * - the operation names its own language or its own asset type, and the three project tables
-     * have only one address each. Six copies of these ten lines would be six places to remember the
-     * size check.
+     * - the operation names its own language or its own asset type, and the project tables and the
+     * two registries have only one address each. Eight copies of these ten lines would be eight
+     * places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
         handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveAppTagOp | LiveDlcOp | LiveBrandOp): boolean;
         handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveDictionaryOp
             | LiveAudioTrackOp | LiveAssetSetOp): boolean;
+        handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp
+            | LiveVariableOp | LiveDictionaryOp | LiveAudioTrackOp | LiveAssetSetOp): boolean;
     } {
         return {
             handle: (op): boolean => {
@@ -1496,6 +2138,43 @@ export class LiveSession {
                 // changing a shared document on its own initiative.
                 return true;
             },
+        };
+    }
+
+    /**
+     * Where the interface editor's and the blueprint canvas's gestures go while this session runs.
+     *
+     * **One sink object holding two, because the two documents are one editing surface.** Their
+     * decision is the cast sink's, twice: a host applies its own operation and broadcasts the
+     * effect, a guest sends an intent and changes nothing. What is not shared is the address, which
+     * is why they are two functions rather than one - a message names one document.
+     */
+    private interfaceSinkFor(session: ActiveSession): { ui: UIOpSink; graphs: UIGraphOpSink } {
+        const take = (op: LiveUIOp | LiveUIGraphOp, document: LiveDocument): boolean => {
+            if (this.active !== session) {
+                // A session that has ended: the caller carries on exactly as it would with no sink.
+                return false;
+            }
+            if (session.host) {
+                this.hostApply(session, op, undefined);
+                return true;
+            }
+            if (this.tooLarge(op)) {
+                // Refused here rather than sent and dropped by the transport. A guest whose intent
+                // never leaves would sit waiting for a receipt that cannot come, re-sending it every
+                // three seconds for the rest of the session.
+                this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
+                return true;
+            }
+            session.guest?.intend(op, document);
+            this.publish(session, {});
+            // True even when the intent is refused later: what must never happen is this window
+            // changing a shared document on its own initiative.
+            return true;
+        };
+        return {
+            ui: { handle: op => take(op, { doc: "ui" }) },
+            graphs: { handle: op => take(op, { doc: "ui-graphs" }) },
         };
     }
 

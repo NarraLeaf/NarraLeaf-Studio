@@ -73,6 +73,8 @@ import {
     resolveBlueprintNodeTitle,
 } from "../../blueprintNodeI18n";
 import { isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiLiveSession";
+import { UINodeClaimMark, useUINodeClaimAt } from "../../blueprintLiveSession";
 
 type BlueprintNodeParamHistoryOptions = { mergeKey?: string; mergeWindowMs?: number };
 type BlueprintNodeParamPatch = (
@@ -2094,7 +2096,7 @@ function BlueprintCommentNodeCard({
     const { t } = useTranslation();
     // The resize corner IS the gesture affordance, so while frozen it is not drawn at all - a grab
     // handle that refuses to move is the half-gesture that reads as a broken editor.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const { getZoom } = useReactFlow();
     /**
      * A group: the same card drawn as a frame around other cards rather than as a note.
@@ -2464,7 +2466,7 @@ function BlueprintImageAssetLiteralNodeCard({
  * toggle writes: which pins are open is stored in the node's params.
  */
 export function BlueprintFlowNode(props: NodeProps) {
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const card = <BlueprintFlowNodeCard {...props} />;
     const body = freeze.frozen ? (
         <fieldset disabled aria-readonly style={{ display: "contents" }}>
@@ -2508,6 +2510,9 @@ function BlueprintFlowNodeBreakpointMarker(props: { nodeId: string; children: Re
 
 function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
     const { t } = useTranslation();
+    // Who else in the room has this node open. Null outside a live session, and null for this
+    // window's own claim - a mark on the card its author selected would read as being about them.
+    const claimedBy = useUINodeClaimAt((data as BlueprintFlowNodeData).nodeId);
     const {
         catalog,
         nodeId,
@@ -2763,7 +2768,12 @@ function BlueprintFlowNodeCard({ data, selected }: NodeProps) {
         >
             <div className="border-b border-edge-subtle px-2 py-1.5">
                 <div className="text-2xs tracking-wide text-fg-subtle">{resolveBlueprintCategoryLabel(catalog.category, t)}</div>
-                <div className="font-medium leading-tight text-fg">{resolveBlueprintNodeTitle(catalog.displayName, t)}</div>
+                <div className="flex items-center gap-1.5">
+                    <div className="min-w-0 flex-1 font-medium leading-tight text-fg">
+                        {resolveBlueprintNodeTitle(catalog.displayName, t)}
+                    </div>
+                    {claimedBy === null ? null : <UINodeClaimMark account={claimedBy} />}
+                </div>
                 {showAnimatePropertyCard && onPatchNodeParam ? (
                     <DisplayableAnimatePropertyCard
                         nodeId={nodeId}

@@ -25,6 +25,7 @@ import { SectionCard } from "@/lib/components/elements/SectionCard";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { interfaceDocumentFreezeScope } from "../ui-editor/uiLiveSession";
 
 /**
  * A text field that keeps what is typed and commits it when focus leaves - the same bargain the
@@ -113,7 +114,7 @@ export function ComponentParamsEditor({
     documentService: UIDocumentService;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const params = useMemo(() => getUIComponentParams(component), [component]);
 
     const write = useCallback(
@@ -198,7 +199,7 @@ export function LinkedComponentParamsField({
     documentService: UIDocumentService;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const link = getUIComponentLink(element);
     const component = link ? documentService.getComponent(link.componentId) : null;
     const params = getUIComponentParams(component);

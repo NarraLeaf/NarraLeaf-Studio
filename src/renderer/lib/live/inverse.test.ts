@@ -6,8 +6,10 @@ import type {
     LiveAssetRecord,
     LiveCharacterOp,
     LiveEffect,
+    LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveOp,
+    LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
 import { insertLiveRecordBefore } from "@shared/live/config";
@@ -19,7 +21,8 @@ import type { CharacterGroup, StoredCharacter } from "@shared/types/character/mo
 import { makeAssetSetAxis, type AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
@@ -1792,5 +1795,148 @@ describe("undoing what this window did to the asset sets", () => {
         tables.sets = tables.sets.filter(set => set.id !== "s1");
 
         expect(invertTable(tables, done)).toEqual({ impossible: "set-gone" });
+    });
+});
+
+/* -------------------------------------------------------------- the two project registries */
+
+function variable(id: string, name = id): VariableRegistryEntry {
+    return { id, name, scope: "saved", valueType: "boolean", storageKey: id };
+}
+
+/** The registry applier this test uses. One entry in, one entry out. */
+function applyVariable(entries: Record<string, VariableRegistryEntry>, op: LiveVariableOp): void {
+    if (op.op === "delete-variable") {
+        delete entries[op.variableId];
+        return;
+    }
+    entries[op.entry.id] = structuredClone(op.entry);
+}
+
+function performVariable(entries: Record<string, VariableRegistryEntry>, op: LiveVariableOp, by = SELF): Done {
+    const before = captureBefore(op, { variables: id => entries[id] ?? null });
+    applyVariable(entries, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document: { doc: "variables" }, op }, before };
+}
+
+function invertVariable(entries: Record<string, VariableRegistryEntry>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, variables: id => entries[id] ?? null });
+}
+
+describe("undoing what this window did to the variable registry", () => {
+    it("puts the entry back to what it held", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, {
+            op: "update-variable",
+            variableId: "v1",
+            entry: { ...variable("v1", "Coins"), valueType: "number", defaultValue: 10 },
+        });
+        expect(entries.v1.name).toBe("Coins");
+
+        applyVariable(entries, asOp(invertVariable(entries, done)) as LiveVariableOp);
+        expect(entries.v1).toEqual(variable("v1", "Gold"));
+    });
+
+    it("takes a creation back with a removal, which is the ONLY way that verb is reached", () => {
+        // An author's own deletion is refused for the length of a session - it also empties the
+        // blueprint nodes that named the variable, and a session does not carry that document. This
+        // one is safe because the entry was declared inside the session, and blueprint editing is
+        // frozen throughout one, so nothing can be pointing at it.
+        const entries: Record<string, VariableRegistryEntry> = {};
+        const done = performVariable(entries, { op: "create-variable", entry: variable("v9", "Route") });
+        expect(entries.v9).toBeDefined();
+
+        const back = asOp(invertVariable(entries, done));
+        expect(back).toEqual({ op: "delete-variable", variableId: "v9" });
+        applyVariable(entries, back as LiveVariableOp);
+        expect(entries.v9).toBeUndefined();
+    });
+
+    it("takes that removal back by declaring the entry again, whole", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "delete-variable", variableId: "v1" });
+        expect(entries.v1).toBeUndefined();
+
+        const back = asOp(invertVariable(entries, done));
+        expect(back).toEqual({ op: "create-variable", entry: variable("v1", "Gold") });
+        applyVariable(entries, back as LiveVariableOp);
+        expect(entries.v1).toEqual(variable("v1", "Gold"));
+    });
+
+    it("refuses when somebody else removed the entry, rather than declaring it again", () => {
+        // With `update-character`: putting back an entry somebody else removed is not undoing an
+        // edit, and every blueprint node that named it was emptied when it went.
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "update-variable", variableId: "v1", entry: variable("v1", "Coins") });
+        delete entries.v1;
+        expect(asImpossible(invertVariable(entries, done))).toBe("variable-gone");
+    });
+
+    it("refuses to declare an entry that is back, which would be a second copy under one id", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "delete-variable", variableId: "v1" });
+        entries.v1 = variable("v1", "Taken by somebody");
+        expect(asImpossible(invertVariable(entries, done))).toBe("variable-restored");
+    });
+});
+
+/* ------------------------------------------------------------------------- the named strings */
+
+function applyKey(keys: Record<string, LocalizationKeyDefinition>, op: LiveLocalizationKeyOp): void {
+    if (op.op === "remove-key") {
+        delete keys[op.name];
+        return;
+    }
+    keys[op.name] = { ...op.definition };
+}
+
+function performKey(keys: Record<string, LocalizationKeyDefinition>, op: LiveLocalizationKeyOp, by = SELF): Done {
+    const before = captureBefore(op, { keys: () => keys });
+    applyKey(keys, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document: { doc: "localization-keys" }, op }, before };
+}
+
+function invertKey(keys: Record<string, LocalizationKeyDefinition>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, keys: () => keys });
+}
+
+describe("undoing what this window did to the named strings", () => {
+    it("puts the source text back to what it held", () => {
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start" } };
+        const done = performKey(keys, { op: "set-key", name: "menu.start", definition: { sourceText: "Begin" } });
+        expect(keys["menu.start"]).toEqual({ sourceText: "Begin" });
+
+        applyKey(keys, asOp(invertKey(keys, done)) as LiveLocalizationKeyOp);
+        expect(keys["menu.start"]).toEqual({ sourceText: "Start" });
+    });
+
+    it("undoes the FIRST declaration of a string by removing it", () => {
+        // The case `null` in the record exists for. One verb creates and replaces, so a record that
+        // could not tell "there was no key" from "nothing was kept" would leave every string's first
+        // declaration impossible to take back.
+        const keys: Record<string, LocalizationKeyDefinition> = {};
+        const done = performKey(keys, { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+        expect(done.before).toEqual({ op: "set-key", definition: null });
+        expect(asOp(invertKey(keys, done))).toEqual({ op: "remove-key", name: "menu.start" });
+    });
+
+    it("takes a removal back by declaring the string again, and the translations were never taken", () => {
+        // The asymmetry a deleted character has and this does not: removing a key leaves every
+        // `key:<name>` entry exactly where it was, so nothing else has to travel back with it.
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start", note: "title" } };
+        const done = performKey(keys, { op: "remove-key", name: "menu.start" });
+        expect(keys["menu.start"]).toBeUndefined();
+
+        const back = asOp(invertKey(keys, done));
+        expect(back).toEqual({ op: "set-key", name: "menu.start", definition: { sourceText: "Start", note: "title" } });
+        applyKey(keys, back as LiveLocalizationKeyOp);
+        expect(keys["menu.start"]).toEqual({ sourceText: "Start", note: "title" });
+    });
+
+    it("refuses to put back a string somebody has declared again", () => {
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start" } };
+        const done = performKey(keys, { op: "remove-key", name: "menu.start" });
+        keys["menu.start"] = { sourceText: "Taken by somebody" };
+        expect(asImpossible(invertKey(keys, done))).toBe("key-restored");
     });
 });
