@@ -43,6 +43,11 @@ export const CONTAINER_APPEARANCE_KEYS = new Set<ContainerAppearancePropertyKey>
 ]);
 
 export const BUTTON_APPEARANCE_KEYS = new Set<ButtonAppearancePropertyKey>([
+    "fontAssetId",
+    "fontSize",
+    "fontWeight",
+    "color",
+    "lineHeight",
     "backgroundColor",
     "fillType",
     "fillOpacity",
