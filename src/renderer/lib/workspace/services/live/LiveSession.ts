@@ -568,7 +568,12 @@ export class LiveSession {
             }
             return "settled";
         } catch (error) {
-            console.warn("[LiveSession] could not take up a room this window was already in", error);
+            // ⚠ Through `failEntry`, not just logged. Taking a room up moves the phase to
+            // `entering` before it can fail, and a throw that only reached the console left a
+            // window saying it was entering a session for the rest of its life - no freeze, no
+            // room, and no way to press anything, because every way in refuses a window that is
+            // already on its way somewhere.
+            this.failEntry({ kind: "failed", detail: describe(error) });
             return "settled";
         }
     }
