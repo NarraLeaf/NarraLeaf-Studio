@@ -202,6 +202,8 @@ export const VcsErrorCode = {
     ProjectPath: "vcs/project-path",
     /** The app is closing and refused to start another call rather than abandoning it. */
     ShuttingDown: "vcs/shutting-down",
+    /** A sync was asked for on a tree with changes nobody has recorded yet. */
+    UncommittedChanges: "vcs/uncommitted-changes",
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];

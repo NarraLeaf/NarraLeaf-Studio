@@ -489,6 +489,9 @@ export const assets = {
     live: {
         recordClaimed: "{name} 正在编辑该资产",
         transferring: "该资产已传输 {percent}%",
+        tooLargeTitle: "未导入到会话",
+        tooLargeDetailOne: "{name} 超过 {size} MB，结束会话后再导入",
+        tooLargeDetailMany: "{count} 个文件超过 {size} MB，结束会话后再导入",
     },
     newTextFile: {
         title: "新建文本文件",

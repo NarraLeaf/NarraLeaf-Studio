@@ -981,335 +981,6 @@
         },
         "bindings": {}
       },
-      "9c2346d1-86fd-43da-8d15-15e3abe84484": {
-        "id": "9c2346d1-86fd-43da-8d15-15e3abe84484",
-        "name": "标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-          "elementId": "d68d4baa-b176-426a-874d-a9c66269e0da"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "0bce3a77-4b73-4022-a00f-8951ae7e97f3"
-            ],
-            "events": {
-              "0bce3a77-4b73-4022-a00f-8951ae7e97f3": {
-                "id": "0bce3a77-4b73-4022-a00f-8951ae7e97f3",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.page.go",
-                      "params": {
-                        "surfaceId": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nQuit": {
-                      "id": "nQuit",
-                      "type": "blueprint.game.quit",
-                      "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": -180
-                        }
-                      }
-                    },
-                    "nConfirmInGame": {
-                      "id": "nConfirmInGame",
-                      "type": "blueprint.game.isInGame",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "nConfirmIf": {
-                      "id": "nConfirmIf",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nConfirm": {
-                      "id": "nConfirm",
-                      "type": "blueprint.layer.confirm",
-                      "params": {
-                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-                        "__confirmButtonPins": [
-                          "button_1_label",
-                          "button_1_pressed",
-                          "button_2_label",
-                          "button_2_pressed"
-                        ],
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "sfx.hoverHead": {
-                      "id": "sfx.hoverHead",
-                      "type": "blueprint.event.head.mouseEnter",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "sfx.hoverPlay": {
-                      "id": "sfx.hoverPlay",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.message": {
-                      "id": "i18n.nConfirm.message",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitle"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 300
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_1_label": {
-                      "id": "i18n.nConfirm.button_1_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitleAnswer"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 450
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_2_label": {
-                      "id": "i18n.nConfirm.button_2_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.cancel"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 600
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmInGame",
-                        "port": "isInGame"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_pressed"
-                      },
-                      "to": {
-                        "nodeId": "nQuit",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.hoverHead",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "message"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_2_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "2409712c-549c-47c3-a4ee-74010201e074": {
         "id": "2409712c-549c-47c3-a4ee-74010201e074",
         "name": "页面标题",
@@ -3262,335 +2933,6 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "5ad517e0-d7be-47a0-bcec-b3d5763edf99": {
-        "id": "5ad517e0-d7be-47a0-bcec-b3d5763edf99",
-        "name": "标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "9a048bdd-8d00-4505-9ab5-832af57ef182",
-          "elementId": "0f7bed84-816e-4cfd-b840-72ffe92356af"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "33de3b37-81a3-4d2b-a1c2-72db7efb2ad6"
-            ],
-            "events": {
-              "33de3b37-81a3-4d2b-a1c2-72db7efb2ad6": {
-                "id": "33de3b37-81a3-4d2b-a1c2-72db7efb2ad6",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.page.go",
-                      "params": {
-                        "surfaceId": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1180,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nQuit": {
-                      "id": "nQuit",
-                      "type": "blueprint.game.quit",
-                      "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 1180,
-                          "y": -180
-                        }
-                      }
-                    },
-                    "nConfirmInGame": {
-                      "id": "nConfirmInGame",
-                      "type": "blueprint.game.isInGame",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "nConfirmIf": {
-                      "id": "nConfirmIf",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nConfirm": {
-                      "id": "nConfirm",
-                      "type": "blueprint.layer.confirm",
-                      "params": {
-                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-                        "__confirmButtonPins": [
-                          "button_1_label",
-                          "button_1_pressed",
-                          "button_2_label",
-                          "button_2_pressed"
-                        ],
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 840,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sfx.hoverHead": {
-                      "id": "sfx.hoverHead",
-                      "type": "blueprint.event.head.mouseEnter",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "sfx.hoverPlay": {
-                      "id": "sfx.hoverPlay",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.message": {
-                      "id": "i18n.nConfirm.message",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitle"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 300
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_1_label": {
-                      "id": "i18n.nConfirm.button_1_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitleAnswer"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 450
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_2_label": {
-                      "id": "i18n.nConfirm.button_2_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.cancel"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 600
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmInGame",
-                        "port": "isInGame"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_pressed"
-                      },
-                      "to": {
-                        "nodeId": "nQuit",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.hoverHead",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "message"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_2_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -10161,32 +9503,6 @@
         },
         "bindings": {}
       },
-      "2815c818-0613-428b-aae2-a1a4d10ee297": {
-        "id": "2815c818-0613-428b-aae2-a1a4d10ee297",
-        "name": "存档位",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "ba89a383-5b28-49e2-931c-6cf443534e70"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "45f81838-3fa7-4b93-951b-2249a62d1ca9": {
         "id": "45f81838-3fa7-4b93-951b-2249a62d1ca9",
         "name": "画廊缩略图说明",
@@ -10194,32 +9510,6 @@
           "kind": "widgetMain",
           "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
           "elementId": "b3dba00f-c94c-4ec5-be9d-187045a5cc1a"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "da25e9f5-7269-4c94-a0ea-801b4c4c14bb": {
-        "id": "da25e9f5-7269-4c94-a0ea-801b4c4c14bb",
-        "name": "画廊缩略图",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "556a42d0-6599-4c87-8682-3a7c8ad0c8e7"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -10265,32 +9555,6 @@
         },
         "bindings": {}
       },
-      "d506aeca-cd50-4744-959e-91a4524c5adf": {
-        "id": "d506aeca-cd50-4744-959e-91a4524c5adf",
-        "name": "导航条条目",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "28fcf25a-af87-4f6b-bb0c-88fc74cb0e99"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "543c3d6b-7abc-41ec-99ad-2af1f84ecb81": {
         "id": "543c3d6b-7abc-41ec-99ad-2af1f84ecb81",
         "name": "分页标签说明",
@@ -10298,32 +9562,6 @@
           "kind": "widgetMain",
           "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
           "elementId": "c8b1060e-2216-48e9-b20e-ef624228369b"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "72496ba0-a8ac-496b-8e66-96e839b2a25c": {
-        "id": "72496ba0-a8ac-496b-8e66-96e839b2a25c",
-        "name": "分页标签",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "117bd54e-96e2-4745-b34d-3c8cfc94151e"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -10369,32 +9607,6 @@
         },
         "bindings": {}
       },
-      "71ee390a-dd76-4c81-85d4-723acc5a8411": {
-        "id": "71ee390a-dd76-4c81-85d4-723acc5a8411",
-        "name": "快捷菜单按钮",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "d083331d-7456-45a6-a2fa-6287efd1e55a"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "cb4387ce-e019-46f1-8a5e-24b9c32d3fee": {
         "id": "cb4387ce-e019-46f1-8a5e-24b9c32d3fee",
         "name": "标题菜单项说明",
@@ -10402,32 +9614,6 @@
           "kind": "widgetMain",
           "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
           "elementId": "3902a77f-b704-4494-b44f-0aeb97337d86"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "493cc299-b64e-4783-86fd-86fde9c3ab6b": {
-        "id": "493cc299-b64e-4783-86fd-86fde9c3ab6b",
-        "name": "标题菜单项",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "baac284f-8e8c-4210-a4a8-3273b43b1ebe"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -10473,32 +9659,6 @@
         },
         "bindings": {}
       },
-      "d48f333f-657d-4d45-afac-0ce923ae3966": {
-        "id": "d48f333f-657d-4d45-afac-0ce923ae3966",
-        "name": "设置行 · 滑块",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "e61e1d9e-7646-41f4-badf-6d08d39fb61e"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "491e8442-4edb-40a7-a9fe-04fa02174c43": {
         "id": "491e8442-4edb-40a7-a9fe-04fa02174c43",
         "name": "设置行 · 选项说明",
@@ -10525,32 +9685,6 @@
         },
         "bindings": {}
       },
-      "1610a8e9-8aed-455a-9c2b-d173e5cc2c49": {
-        "id": "1610a8e9-8aed-455a-9c2b-d173e5cc2c49",
-        "name": "设置行 · 选项",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "b29cf2fb-8f8f-4cb7-b026-3f8065456f59"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "db459880-86bb-492b-b32e-736b5657f202": {
         "id": "db459880-86bb-492b-b32e-736b5657f202",
         "name": "回想条目说明",
@@ -10558,32 +9692,6 @@
           "kind": "widgetMain",
           "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
           "elementId": "4999c96e-a866-4035-bbba-1a58e6a8f5d6"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "7765bc63-648f-460d-8888-db9ec08d6995": {
-        "id": "7765bc63-648f-460d-8888-db9ec08d6995",
-        "name": "回想条目",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "2334bffd-671e-42f4-a1f5-b652b585b92a",
-          "elementId": "677a94b8-3c54-4222-8561-1f82fdd8812f"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -11315,335 +10423,6 @@
                       },
                       "to": {
                         "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "be16bada-d834-4178-a79f-83a2cc0e9b4b": {
-        "id": "be16bada-d834-4178-a79f-83a2cc0e9b4b",
-        "name": "标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "3b48abce-4359-40fc-ad3e-808cc8dc7f05"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "2745ab29-d617-406f-a214-5d4973b4f906"
-            ],
-            "events": {
-              "2745ab29-d617-406f-a214-5d4973b4f906": {
-                "id": "2745ab29-d617-406f-a214-5d4973b4f906",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.page.go",
-                      "params": {
-                        "surfaceId": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nQuit": {
-                      "id": "nQuit",
-                      "type": "blueprint.game.quit",
-                      "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": -180
-                        }
-                      }
-                    },
-                    "nConfirmInGame": {
-                      "id": "nConfirmInGame",
-                      "type": "blueprint.game.isInGame",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "nConfirmIf": {
-                      "id": "nConfirmIf",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nConfirm": {
-                      "id": "nConfirm",
-                      "type": "blueprint.layer.confirm",
-                      "params": {
-                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-                        "__confirmButtonPins": [
-                          "button_1_label",
-                          "button_1_pressed",
-                          "button_2_label",
-                          "button_2_pressed"
-                        ],
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "sfx.hoverHead": {
-                      "id": "sfx.hoverHead",
-                      "type": "blueprint.event.head.mouseEnter",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "sfx.hoverPlay": {
-                      "id": "sfx.hoverPlay",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.message": {
-                      "id": "i18n.nConfirm.message",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitle"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 300
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_1_label": {
-                      "id": "i18n.nConfirm.button_1_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitleAnswer"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 450
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_2_label": {
-                      "id": "i18n.nConfirm.button_2_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.cancel"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 600
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmInGame",
-                        "port": "isInGame"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_pressed"
-                      },
-                      "to": {
-                        "nodeId": "nQuit",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.hoverHead",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "message"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_2_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
                         "port": "in"
                       }
                     }
@@ -13971,335 +12750,6 @@
         },
         "bindings": {}
       },
-      "f24fc292-75ae-4768-abd3-0fe794f3a698": {
-        "id": "f24fc292-75ae-4768-abd3-0fe794f3a698",
-        "name": "标题",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [
-              "04a42e43-5e25-4b85-b1c1-49394bb42153"
-            ],
-            "events": {
-              "04a42e43-5e25-4b85-b1c1-49394bb42153": {
-                "id": "04a42e43-5e25-4b85-b1c1-49394bb42153",
-                "name": "图层 1",
-                "graph": {
-                  "nodes": {
-                    "n1": {
-                      "id": "n1",
-                      "type": "blueprint.event.head.mouseClick",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "n2": {
-                      "id": "n2",
-                      "type": "blueprint.page.go",
-                      "params": {
-                        "surfaceId": ""
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nQuit": {
-                      "id": "nQuit",
-                      "type": "blueprint.game.quit",
-                      "params": {
-                        "surfaceId": "narraleaf-studio:main-surface"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 900,
-                          "y": -180
-                        }
-                      }
-                    },
-                    "nConfirmInGame": {
-                      "id": "nConfirmInGame",
-                      "type": "blueprint.game.isInGame",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "nConfirmIf": {
-                      "id": "nConfirmIf",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "nConfirm": {
-                      "id": "nConfirm",
-                      "type": "blueprint.layer.confirm",
-                      "params": {
-                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
-                        "__confirmButtonPins": [
-                          "button_1_label",
-                          "button_1_pressed",
-                          "button_2_label",
-                          "button_2_pressed"
-                        ],
-                        "__inlineLiteralPins": []
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 560,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "sfx.click": {
-                      "id": "sfx.click",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 150
-                        }
-                      }
-                    },
-                    "sfx.hoverHead": {
-                      "id": "sfx.hoverHead",
-                      "type": "blueprint.event.head.mouseEnter",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "sfx.hoverPlay": {
-                      "id": "sfx.hoverPlay",
-                      "type": "blueprint.sound.play",
-                      "params": {
-                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
-                        "audioTrackId": "sound"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 410
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.message": {
-                      "id": "i18n.nConfirm.message",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitle"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 300
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_1_label": {
-                      "id": "i18n.nConfirm.button_1_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.toTitleAnswer"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 450
-                        }
-                      }
-                    },
-                    "i18n.nConfirm.button_2_label": {
-                      "id": "i18n.nConfirm.button_2_label",
-                      "type": "blueprint.localization.getText",
-                      "params": {
-                        "key": "confirm.cancel"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 600
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "n1",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.click",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmInGame",
-                        "port": "isInGame"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "true"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirmIf",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "n2",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_pressed"
-                      },
-                      "to": {
-                        "nodeId": "nQuit",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.click",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirmIf",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "sfx.hoverHead",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "sfx.hoverPlay",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "message"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_1_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "value"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "button_2_label"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.message",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_1_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "i18n.nConfirm.button_2_label",
-                        "port": "next"
-                      },
-                      "to": {
-                        "nodeId": "nConfirm",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              }
-            },
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
       "ade5e943-95e6-456b-ad4c-6d6532a09abd": {
         "id": "ade5e943-95e6-456b-ad4c-6d6532a09abd",
         "name": "页面标题",
@@ -15705,318 +14155,6 @@
           "kind": "widgetMain",
           "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
           "elementId": "57479b08-44a4-485c-be6c-2ee90357db8c"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "b44a20aa-c48b-4f50-93df-d7f1bfabf308": {
-        "id": "b44a20aa-c48b-4f50-93df-d7f1bfabf308",
-        "name": "存档位 1",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "28bbfab3-f9cb-4721-9733-de7d49454d7a"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "d53e6099-f33a-4d11-af53-6e2e14671943": {
-        "id": "d53e6099-f33a-4d11-af53-6e2e14671943",
-        "name": "存档位 2",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "6be69a94-eda5-4192-88c5-1d0e76bf7507"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "656edef8-e6b9-4da7-844e-ad8af9152da1": {
-        "id": "656edef8-e6b9-4da7-844e-ad8af9152da1",
-        "name": "存档位 3",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "ce5ece18-bbc4-4161-8be5-8bb7be718828"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "528e62cc-6335-4b46-97b1-542ced4f2a72": {
-        "id": "528e62cc-6335-4b46-97b1-542ced4f2a72",
-        "name": "存档位 4",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "1407de5f-8647-42c1-a230-af28fd061132"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "c0651254-0c4e-48d9-94fe-db841367b79a": {
-        "id": "c0651254-0c4e-48d9-94fe-db841367b79a",
-        "name": "存档位 5",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "e7c1f4c7-f458-4c1b-8ba1-5e5100799894"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "770a7813-8e5e-4a2f-9917-b483199f68d9": {
-        "id": "770a7813-8e5e-4a2f-9917-b483199f68d9",
-        "name": "存档位 6",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "f28280e2-8d1c-44cf-bf83-c67e3b877f3e",
-          "elementId": "0fc1e4bc-a093-46c8-9967-bb4d7cad5608"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "0b5eea61-d579-4227-be48-6d5c67fb152a": {
-        "id": "0b5eea61-d579-4227-be48-6d5c67fb152a",
-        "name": "存档位 1",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "bfbfed77-dff9-4977-bb87-fe3195ac72c3"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "d9679a34-d91d-4efb-bbde-f7d69565a20c": {
-        "id": "d9679a34-d91d-4efb-bbde-f7d69565a20c",
-        "name": "存档位 2",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "86ce183f-786c-4a29-8a7d-bb1186ce1979"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "d1280253-37c3-4651-bdbe-ab48520c5935": {
-        "id": "d1280253-37c3-4651-bdbe-ab48520c5935",
-        "name": "存档位 3",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "285780cf-3d7c-4cbc-a644-ae54929daedd"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "dfb40070-c375-456a-9865-5af124b0401d": {
-        "id": "dfb40070-c375-456a-9865-5af124b0401d",
-        "name": "存档位 4",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "d420e296-7ec7-432c-9d81-d75ac171ac01"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "8adbe3f8-9b13-4bfc-aa0c-3ee76da248c4": {
-        "id": "8adbe3f8-9b13-4bfc-aa0c-3ee76da248c4",
-        "name": "存档位 5",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "1afaee8b-f199-44cf-93ef-6b86b8c05a25"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "9064cb8e-1bc9-4261-9012-5efb0e75dda7": {
-        "id": "9064cb8e-1bc9-4261-9012-5efb0e75dda7",
-        "name": "存档位 6",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "001a962d-b7c3-4773-b474-4d123df81402",
-          "elementId": "e91c9b90-44ba-4c6a-a2bc-da76ecc4be8d"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -18346,84 +16484,6 @@
           "kind": "widgetMain",
           "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
           "elementId": "f5a9cfec-c08c-4dbf-82e2-59aca3d9ee65"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "4f802869-9b23-47f5-818b-16d3d04e6f38": {
-        "id": "4f802869-9b23-47f5-818b-16d3d04e6f38",
-        "name": "场景 1",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "92e2f22e-6ced-4b2a-8946-9f234294b7d6"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "703a25d6-0b62-422a-81fa-c274be8099da": {
-        "id": "703a25d6-0b62-422a-81fa-c274be8099da",
-        "name": "场景 2",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "0c09b343-25ce-4f0c-909c-4b49b5d8141f"
-        },
-        "frontend": "visual",
-        "programKind": "graph",
-        "program": {
-          "kind": "graph",
-          "graphs": {
-            "eventIds": [],
-            "events": {},
-            "functionIds": [],
-            "functions": {}
-          }
-        },
-        "members": {
-          "variables": {},
-          "fields": {},
-          "functions": {}
-        },
-        "bindings": {}
-      },
-      "1f9819bf-e637-439a-88f6-0d8d70dd80bf": {
-        "id": "1f9819bf-e637-439a-88f6-0d8d70dd80bf",
-        "name": "场景 3",
-        "owner": {
-          "kind": "widgetMain",
-          "surfaceId": "afa4f872-ce72-4456-a86b-a8edc1594316",
-          "elementId": "21137ab3-ec1a-47cf-a1f4-1a4cc545acf8"
         },
         "frontend": "visual",
         "programKind": "graph",
@@ -22631,6 +20691,335 @@
           "functions": {}
         },
         "bindings": {}
+      },
+      "5107c0a1-0000-4000-8000-000000000210": {
+        "id": "5107c0a1-0000-4000-8000-000000000210",
+        "name": "标题按钮",
+        "owner": {
+          "kind": "componentWidgetMain",
+          "componentId": "5107c0a1-0000-4000-8000-000000000200",
+          "elementId": "5107c0a1-0000-4000-8000-000000000201"
+        },
+        "frontend": "visual",
+        "programKind": "graph",
+        "program": {
+          "kind": "graph",
+          "graphs": {
+            "eventIds": [
+              "5107c0a1-0000-4000-8000-000000000211"
+            ],
+            "events": {
+              "5107c0a1-0000-4000-8000-000000000211": {
+                "id": "5107c0a1-0000-4000-8000-000000000211",
+                "name": "图层 1",
+                "graph": {
+                  "nodes": {
+                    "n1": {
+                      "id": "n1",
+                      "type": "blueprint.event.head.mouseClick",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "n2": {
+                      "id": "n2",
+                      "type": "blueprint.page.go",
+                      "params": {
+                        "surfaceId": ""
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nQuit": {
+                      "id": "nQuit",
+                      "type": "blueprint.game.quit",
+                      "params": {
+                        "surfaceId": "narraleaf-studio:main-surface"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 900,
+                          "y": -180
+                        }
+                      }
+                    },
+                    "nConfirmInGame": {
+                      "id": "nConfirmInGame",
+                      "type": "blueprint.game.isInGame",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "nConfirmIf": {
+                      "id": "nConfirmIf",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "nConfirm": {
+                      "id": "nConfirm",
+                      "type": "blueprint.layer.confirm",
+                      "params": {
+                        "surfaceId": "b7c1f3ae-4d2a-4a1e-9c05-6f8f2a1d4e70",
+                        "__confirmButtonPins": [
+                          "button_1_label",
+                          "button_1_pressed",
+                          "button_2_label",
+                          "button_2_pressed"
+                        ],
+                        "__inlineLiteralPins": []
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 560,
+                          "y": 0
+                        }
+                      }
+                    },
+                    "sfx.click": {
+                      "id": "sfx.click",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "e54ece05-7e8c-4196-85b2-57a356b8e442",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 150
+                        }
+                      }
+                    },
+                    "sfx.hoverHead": {
+                      "id": "sfx.hoverHead",
+                      "type": "blueprint.event.head.mouseEnter",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 0,
+                          "y": 410
+                        }
+                      }
+                    },
+                    "sfx.hoverPlay": {
+                      "id": "sfx.hoverPlay",
+                      "type": "blueprint.sound.play",
+                      "params": {
+                        "soundAssetId": "8ceaaf48-0ba7-4877-b5b7-6d5e3e556f23",
+                        "audioTrackId": "sound"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 410
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.message": {
+                      "id": "i18n.nConfirm.message",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitle"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 300
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_1_label": {
+                      "id": "i18n.nConfirm.button_1_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.toTitleAnswer"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 450
+                        }
+                      }
+                    },
+                    "i18n.nConfirm.button_2_label": {
+                      "id": "i18n.nConfirm.button_2_label",
+                      "type": "blueprint.localization.getText",
+                      "params": {
+                        "key": "confirm.cancel"
+                      },
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 600
+                        }
+                      }
+                    }
+                  },
+                  "edges": [
+                    {
+                      "from": {
+                        "nodeId": "n1",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.click",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmInGame",
+                        "port": "isInGame"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "true"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirmIf",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "n2",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_pressed"
+                      },
+                      "to": {
+                        "nodeId": "nQuit",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.click",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirmIf",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "sfx.hoverHead",
+                        "port": "then"
+                      },
+                      "to": {
+                        "nodeId": "sfx.hoverPlay",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "message"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_1_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "value"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "button_2_label"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.message",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_1_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "i18n.nConfirm.button_2_label",
+                        "port": "next"
+                      },
+                      "to": {
+                        "nodeId": "nConfirm",
+                        "port": "in"
+                      }
+                    }
+                  ],
+                  "meta": {
+                    "graphKind": "event"
+                  }
+                }
+              }
+            },
+            "functionIds": [],
+            "functions": {}
+          }
+        },
+        "members": {
+          "variables": {},
+          "fields": {},
+          "functions": {}
+        },
+        "bindings": {}
       }
     },
     "ownerRecords": {
@@ -22701,13 +21090,6 @@
         "activeBlueprintId": "2677bcbd-8060-4967-883f-94fadb952bfa",
         "privateBlueprintIds": [
           "2677bcbd-8060-4967-883f-94fadb952bfa"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:8a607acd-95dd-4af7-9994-686c20891c18:d68d4baa-b176-426a-874d-a9c66269e0da": {
-        "activeBlueprintId": "9c2346d1-86fd-43da-8d15-15e3abe84484",
-        "privateBlueprintIds": [
-          "9c2346d1-86fd-43da-8d15-15e3abe84484"
         ],
         "initializedFrontend": "visual"
       },
@@ -22799,13 +21181,6 @@
         "activeBlueprintId": "0b660bf4-137f-4058-b2c7-51688b53a694",
         "privateBlueprintIds": [
           "0b660bf4-137f-4058-b2c7-51688b53a694"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:9a048bdd-8d00-4505-9ab5-832af57ef182:0f7bed84-816e-4cfd-b840-72ffe92356af": {
-        "activeBlueprintId": "5ad517e0-d7be-47a0-bcec-b3d5763edf99",
-        "privateBlueprintIds": [
-          "5ad517e0-d7be-47a0-bcec-b3d5763edf99"
         ],
         "initializedFrontend": "visual"
       },
@@ -23425,24 +21800,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:ba89a383-5b28-49e2-931c-6cf443534e70": {
-        "activeBlueprintId": "2815c818-0613-428b-aae2-a1a4d10ee297",
-        "privateBlueprintIds": [
-          "2815c818-0613-428b-aae2-a1a4d10ee297"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:b3dba00f-c94c-4ec5-be9d-187045a5cc1a": {
         "activeBlueprintId": "45f81838-3fa7-4b93-951b-2249a62d1ca9",
         "privateBlueprintIds": [
           "45f81838-3fa7-4b93-951b-2249a62d1ca9"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:556a42d0-6599-4c87-8682-3a7c8ad0c8e7": {
-        "activeBlueprintId": "da25e9f5-7269-4c94-a0ea-801b4c4c14bb",
-        "privateBlueprintIds": [
-          "da25e9f5-7269-4c94-a0ea-801b4c4c14bb"
         ],
         "initializedFrontend": "visual"
       },
@@ -23453,24 +21814,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:28fcf25a-af87-4f6b-bb0c-88fc74cb0e99": {
-        "activeBlueprintId": "d506aeca-cd50-4744-959e-91a4524c5adf",
-        "privateBlueprintIds": [
-          "d506aeca-cd50-4744-959e-91a4524c5adf"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:c8b1060e-2216-48e9-b20e-ef624228369b": {
         "activeBlueprintId": "543c3d6b-7abc-41ec-99ad-2af1f84ecb81",
         "privateBlueprintIds": [
           "543c3d6b-7abc-41ec-99ad-2af1f84ecb81"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:117bd54e-96e2-4745-b34d-3c8cfc94151e": {
-        "activeBlueprintId": "72496ba0-a8ac-496b-8e66-96e839b2a25c",
-        "privateBlueprintIds": [
-          "72496ba0-a8ac-496b-8e66-96e839b2a25c"
         ],
         "initializedFrontend": "visual"
       },
@@ -23481,24 +21828,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:d083331d-7456-45a6-a2fa-6287efd1e55a": {
-        "activeBlueprintId": "71ee390a-dd76-4c81-85d4-723acc5a8411",
-        "privateBlueprintIds": [
-          "71ee390a-dd76-4c81-85d4-723acc5a8411"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:3902a77f-b704-4494-b44f-0aeb97337d86": {
         "activeBlueprintId": "cb4387ce-e019-46f1-8a5e-24b9c32d3fee",
         "privateBlueprintIds": [
           "cb4387ce-e019-46f1-8a5e-24b9c32d3fee"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:baac284f-8e8c-4210-a4a8-3273b43b1ebe": {
-        "activeBlueprintId": "493cc299-b64e-4783-86fd-86fde9c3ab6b",
-        "privateBlueprintIds": [
-          "493cc299-b64e-4783-86fd-86fde9c3ab6b"
         ],
         "initializedFrontend": "visual"
       },
@@ -23509,13 +21842,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:e61e1d9e-7646-41f4-badf-6d08d39fb61e": {
-        "activeBlueprintId": "d48f333f-657d-4d45-afac-0ce923ae3966",
-        "privateBlueprintIds": [
-          "d48f333f-657d-4d45-afac-0ce923ae3966"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:da4c5408-55e0-4bed-bbf0-ed4e34e1494f": {
         "activeBlueprintId": "491e8442-4edb-40a7-a9fe-04fa02174c43",
         "privateBlueprintIds": [
@@ -23523,24 +21849,10 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:b29cf2fb-8f8f-4cb7-b026-3f8065456f59": {
-        "activeBlueprintId": "1610a8e9-8aed-455a-9c2b-d173e5cc2c49",
-        "privateBlueprintIds": [
-          "1610a8e9-8aed-455a-9c2b-d173e5cc2c49"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:4999c96e-a866-4035-bbba-1a58e6a8f5d6": {
         "activeBlueprintId": "db459880-86bb-492b-b32e-736b5657f202",
         "privateBlueprintIds": [
           "db459880-86bb-492b-b32e-736b5657f202"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:2334bffd-671e-42f4-a1f5-b652b585b92a:677a94b8-3c54-4222-8561-1f82fdd8812f": {
-        "activeBlueprintId": "7765bc63-648f-460d-8888-db9ec08d6995",
-        "privateBlueprintIds": [
-          "7765bc63-648f-460d-8888-db9ec08d6995"
         ],
         "initializedFrontend": "visual"
       },
@@ -23597,13 +21909,6 @@
         "activeBlueprintId": "e7ad7d69-c417-4760-8756-886cb4403bb3",
         "privateBlueprintIds": [
           "e7ad7d69-c417-4760-8756-886cb4403bb3"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:3b48abce-4359-40fc-ad3e-808cc8dc7f05": {
-        "activeBlueprintId": "be16bada-d834-4178-a79f-83a2cc0e9b4b",
-        "privateBlueprintIds": [
-          "be16bada-d834-4178-a79f-83a2cc0e9b4b"
         ],
         "initializedFrontend": "visual"
       },
@@ -23824,13 +22129,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:8bad6736-b4c1-4eaf-94e0-3b2fe0b07dc5": {
-        "activeBlueprintId": "f24fc292-75ae-4768-abd3-0fe794f3a698",
-        "privateBlueprintIds": [
-          "f24fc292-75ae-4768-abd3-0fe794f3a698"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:216dc3b7-ec84-4fb0-9135-0babad12b3ef": {
         "activeBlueprintId": "ade5e943-95e6-456b-ad4c-6d6532a09abd",
         "privateBlueprintIds": [
@@ -23926,90 +22224,6 @@
         "activeBlueprintId": "f7b2cd11-1e5f-48d6-ae47-10b18f56828c",
         "privateBlueprintIds": [
           "f7b2cd11-1e5f-48d6-ae47-10b18f56828c"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:28bbfab3-f9cb-4721-9733-de7d49454d7a": {
-        "activeBlueprintId": "b44a20aa-c48b-4f50-93df-d7f1bfabf308",
-        "privateBlueprintIds": [
-          "b44a20aa-c48b-4f50-93df-d7f1bfabf308"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:6be69a94-eda5-4192-88c5-1d0e76bf7507": {
-        "activeBlueprintId": "d53e6099-f33a-4d11-af53-6e2e14671943",
-        "privateBlueprintIds": [
-          "d53e6099-f33a-4d11-af53-6e2e14671943"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:ce5ece18-bbc4-4161-8be5-8bb7be718828": {
-        "activeBlueprintId": "656edef8-e6b9-4da7-844e-ad8af9152da1",
-        "privateBlueprintIds": [
-          "656edef8-e6b9-4da7-844e-ad8af9152da1"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:1407de5f-8647-42c1-a230-af28fd061132": {
-        "activeBlueprintId": "528e62cc-6335-4b46-97b1-542ced4f2a72",
-        "privateBlueprintIds": [
-          "528e62cc-6335-4b46-97b1-542ced4f2a72"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:e7c1f4c7-f458-4c1b-8ba1-5e5100799894": {
-        "activeBlueprintId": "c0651254-0c4e-48d9-94fe-db841367b79a",
-        "privateBlueprintIds": [
-          "c0651254-0c4e-48d9-94fe-db841367b79a"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:f28280e2-8d1c-44cf-bf83-c67e3b877f3e:0fc1e4bc-a093-46c8-9967-bb4d7cad5608": {
-        "activeBlueprintId": "770a7813-8e5e-4a2f-9917-b483199f68d9",
-        "privateBlueprintIds": [
-          "770a7813-8e5e-4a2f-9917-b483199f68d9"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:bfbfed77-dff9-4977-bb87-fe3195ac72c3": {
-        "activeBlueprintId": "0b5eea61-d579-4227-be48-6d5c67fb152a",
-        "privateBlueprintIds": [
-          "0b5eea61-d579-4227-be48-6d5c67fb152a"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:86ce183f-786c-4a29-8a7d-bb1186ce1979": {
-        "activeBlueprintId": "d9679a34-d91d-4efb-bbde-f7d69565a20c",
-        "privateBlueprintIds": [
-          "d9679a34-d91d-4efb-bbde-f7d69565a20c"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:285780cf-3d7c-4cbc-a644-ae54929daedd": {
-        "activeBlueprintId": "d1280253-37c3-4651-bdbe-ab48520c5935",
-        "privateBlueprintIds": [
-          "d1280253-37c3-4651-bdbe-ab48520c5935"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:d420e296-7ec7-432c-9d81-d75ac171ac01": {
-        "activeBlueprintId": "dfb40070-c375-456a-9865-5af124b0401d",
-        "privateBlueprintIds": [
-          "dfb40070-c375-456a-9865-5af124b0401d"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:1afaee8b-f199-44cf-93ef-6b86b8c05a25": {
-        "activeBlueprintId": "8adbe3f8-9b13-4bfc-aa0c-3ee76da248c4",
-        "privateBlueprintIds": [
-          "8adbe3f8-9b13-4bfc-aa0c-3ee76da248c4"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:001a962d-b7c3-4773-b474-4d123df81402:e91c9b90-44ba-4c6a-a2bc-da76ecc4be8d": {
-        "activeBlueprintId": "9064cb8e-1bc9-4261-9012-5efb0e75dda7",
-        "privateBlueprintIds": [
-          "9064cb8e-1bc9-4261-9012-5efb0e75dda7"
         ],
         "initializedFrontend": "visual"
       },
@@ -24216,27 +22430,6 @@
         ],
         "initializedFrontend": "visual"
       },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:92e2f22e-6ced-4b2a-8946-9f234294b7d6": {
-        "activeBlueprintId": "4f802869-9b23-47f5-818b-16d3d04e6f38",
-        "privateBlueprintIds": [
-          "4f802869-9b23-47f5-818b-16d3d04e6f38"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:0c09b343-25ce-4f0c-909c-4b49b5d8141f": {
-        "activeBlueprintId": "703a25d6-0b62-422a-81fa-c274be8099da",
-        "privateBlueprintIds": [
-          "703a25d6-0b62-422a-81fa-c274be8099da"
-        ],
-        "initializedFrontend": "visual"
-      },
-      "widgetMain:afa4f872-ce72-4456-a86b-a8edc1594316:21137ab3-ec1a-47cf-a1f4-1a4cc545acf8": {
-        "activeBlueprintId": "1f9819bf-e637-439a-88f6-0d8d70dd80bf",
-        "privateBlueprintIds": [
-          "1f9819bf-e637-439a-88f6-0d8d70dd80bf"
-        ],
-        "initializedFrontend": "visual"
-      },
       "widgetMain:narraleaf-studio:main-surface:4dd1f9ff-a1ad-42d0-b672-738d9d4d6f47": {
         "activeBlueprintId": "d2f5cfbf-d3a7-4447-8ccc-639ad74fe777",
         "privateBlueprintIds": [
@@ -24360,12 +22553,18 @@
         "privateBlueprintIds": [
           "5107c0a1-0000-4000-8000-000000000110"
         ]
+      },
+      "componentWidgetMain:5107c0a1-0000-4000-8000-000000000200:5107c0a1-0000-4000-8000-000000000201": {
+        "activeBlueprintId": "5107c0a1-0000-4000-8000-000000000210",
+        "privateBlueprintIds": [
+          "5107c0a1-0000-4000-8000-000000000210"
+        ]
       }
     },
     "meta": {}
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-26T00:01:24.077Z"
+    "updatedAt": "2026-08-26T00:38:14.121Z"
   }
 }

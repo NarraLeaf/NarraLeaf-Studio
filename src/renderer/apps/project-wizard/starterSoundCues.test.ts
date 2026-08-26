@@ -4,8 +4,8 @@
  * Three clips ship with the template and for a long time nothing played any of them, which is the
  * failure mode a per-page assertion cannot catch: a screen with no cue reads, on its own, like a
  * screen whose author had not got to it yet. So this sweeps every cue from one list and fails on the
- * count as well as the wiring. The save card is asserted once rather than twelve times, because the
- * save and load pages place one component rather than holding twelve copies of it.
+ * count as well as the wiring. The save card and the Title button are asserted once each rather
+ * than per placement, because the pages place one component rather than holding copies of it.
  *
  * What each one has to prove is not "a Play Sound exists in this graph" but that it is the first
  * thing the interaction runs - a cue behind a `Go Page` is a cue the player never hears, because the
@@ -146,8 +146,14 @@ function assertClickCue(graph: Graph, headType: string, clipName: string): void 
     expect(next(graph, cue.id, "next").type).not.toBe(BLUEPRINT_NODE_TYPE_SOUND_PLAY);
 }
 
-/** The five entries every in-game page rail carries, and the one the Scenes page carries. */
-const FULL_RAIL = ["Save", "Load", "Config", "Back", "Title"];
+/**
+ * The rail entries each in-game page authors for itself, and the one the Scenes page carries.
+ *
+ * Title is not among them: it is the one entry that is the same on every rail - never the page you
+ * are standing on, so never wearing the active look - and the four pages place one component
+ * instead of holding four copies of its graph. Its cues are asserted once, below.
+ */
+const RAIL_ENTRIES = ["Save", "Load", "Config", "Back"];
 
 /** Every button that answers a click, and the clip it uses. Back is the one that means undo. */
 const CLICKS: readonly { page: string; button: string; clip: string }[] = [
@@ -156,7 +162,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
         button,
         clip: "ui-confirm",
     })),
-    ...["Save", "Load", "Config", "Title", "Text", "Sound", "All text", "Read only", "On", "Off"].map(button => ({
+    ...["Save", "Load", "Config", "Text", "Sound", "All text", "Read only", "On", "Off"].map(button => ({
         page: "Config",
         button,
         clip: "ui-confirm",
@@ -164,7 +170,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
     // The Config page's other rail entries are in the block above, among its controls.
     { page: "Config", button: "Back", clip: "ui-back" },
     ...["Log", "Save", "Load"].flatMap(page =>
-        FULL_RAIL.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
+        RAIL_ENTRIES.map(button => ({ page, button, clip: button === "Back" ? "ui-back" : "ui-confirm" })),
     ),
     { page: "Scenes", button: "Back", clip: "ui-back" },
 ];
@@ -172,7 +178,7 @@ const CLICKS: readonly { page: string; button: string; clip: string }[] = [
 /** The entries that answer the pointer arriving. Rails only: a settings toggle is not a menu. */
 const HOVERS: readonly { page: string; button: string }[] = [
     ...["Start", "Continue", "Load", "Config", "Quit", "Scenes"].map(button => ({ page: "Title", button })),
-    ...["Config", "Log", "Save", "Load"].flatMap(page => FULL_RAIL.map(button => ({ page, button }))),
+    ...["Config", "Log", "Save", "Load"].flatMap(page => RAIL_ENTRIES.map(button => ({ page, button }))),
     { page: "Scenes", button: "Back" },
 ];
 
@@ -182,8 +188,11 @@ const SAVE_CARD = "387326a1-5514-4ee2-9d73-48fbe03de0b8";
 /** The card the Scenes page places once per scene. */
 const SCENE_CARD = "03921db3-a8f5-4399-9146-232d076891e1";
 
+/** The button the four in-game page rails all place to get back to the title. */
+const TITLE_BUTTON = "5107c0a1-0000-4000-8000-000000000201";
+
 describe("the sounds the starter template makes", () => {
-    it("makes them in sixty-six places and nowhere else", () => {
+    it("makes them in sixty places and nowhere else", () => {
         const cues = blueprints.flatMap(blueprint =>
             Object.values(blueprint.program.graphs.events).flatMap(event =>
                 Object.values(event.graph.nodes)
@@ -193,9 +202,10 @@ describe("the sounds the starter template makes", () => {
         );
         // Counted rather than sampled: the cases below each know which of these they mean, and this
         // is what says nobody sprinkled one more somewhere outside them.
-        // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers, plus the buttons below.
-        // Each card was one cue per placement while the pages held copies of it; they place it now.
-        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 6);
+        // 1 save/load card + 1 scene card + 2 list rows + 2 dialog answers, plus the Title button's
+        // click and hover, plus the buttons each page still authors for itself. Each of the three
+        // was one cue per placement while the pages held copies of it; they place them now.
+        expect(cues).toHaveLength(CLICKS.length + HOVERS.length + 6 + 2);
     });
 
     it.each(CLICKS)("$page ▸ $button answers a click with $clip, before it acts", ({ page, button, clip }) => {
@@ -204,6 +214,14 @@ describe("the sounds the starter template makes", () => {
 
     it.each(HOVERS)("$page ▸ $button answers the pointer arriving", ({ page, button }) => {
         const graph = graphFor(oneOn(page, button).id);
+        assertCue(next(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER).id, "then"), "ui-hover");
+    });
+
+    it("the title button answers wherever a rail places it", () => {
+        // One button, placed on all four in-game page rails. The cues are on it, so a rail cannot
+        // have a way back to the title that answers and one that does not.
+        const graph = graphFor(TITLE_BUTTON);
+        assertClickCue(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK, "ui-confirm");
         assertCue(next(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_ENTER).id, "then"), "ui-hover");
     });
 

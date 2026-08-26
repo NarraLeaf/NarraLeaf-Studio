@@ -3,6 +3,7 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
 import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
 import { isUIListItemInstanceKeyOf } from "@shared/types/ui-editor/list";
+import { popUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
 import type { UIHostAdapter, UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "../types";
 import {
@@ -206,14 +207,42 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         const visited = new Set<string>([currentId]);
         while (!options?.eventControl?.isPropagationStopped()) {
             const parentId = readRuntimeElement(currentId, options?.componentId)?.parentId;
-            if (!parentId || visited.has(parentId)) {
+            const next = parentId ? { id: parentId, options: leavingListRow(parentId, options) } : leavingComponent(options);
+            if (!next || visited.has(next.id)) {
                 return;
             }
-            visited.add(parentId);
-            options = leavingListRow(parentId, options);
-            await fireElementListeners(parentId, eventName, eventPayload, options);
-            currentId = parentId;
+            visited.add(next.id);
+            options = next.options;
+            await fireElementListeners(next.id, eventName, eventPayload, options);
+            currentId = next.id;
         }
+    };
+
+    /**
+     * Where a click carries on once it has run out of component to climb.
+     *
+     * A definition's root has no parent - it is authored on its own, and which page it ends up on is
+     * the placement's business - so the walk would stop there, and a container that placed a card
+     * would never hear a press on it. The instance key names the element that placed it, so the walk
+     * resumes at that element, on the Surface, with the component's own context shed: past this
+     * point `componentId` would send the lookup back inside the definition, and the params belong to
+     * a drawing the event has just left.
+     *
+     * The same shape as {@link leavingListRow} below, and for the same reason - the difference is
+     * only that a row is inside its list and a definition is not inside anything.
+     */
+    const leavingComponent = (
+        options: UIHostAdapterElementEventOptions | undefined,
+    ): { id: string; options: UIHostAdapterElementEventOptions | undefined } | null => {
+        const popped = popUIComponentInstanceKey(options?.instanceKey);
+        if (!popped) {
+            return null;
+        }
+        const { componentId: _id, componentParams: _params, ...rest } = options ?? {};
+        return {
+            id: popped.instanceElementId,
+            options: { ...rest, instanceKey: popped.outerKey || undefined },
+        };
     };
 
     /**

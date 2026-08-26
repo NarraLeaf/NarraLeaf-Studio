@@ -22,7 +22,7 @@ import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { AssetClaimMark, AssetTransferSweep } from "../assetLiveSession";
+import { AssetClaimMark, AssetTransferSweep, assetLibraryFreezeScope } from "../assetLiveSession";
 
 /** One row of the tree, already flattened. Only the section it belongs to varies. */
 type TreeListRow = ListViewRow<ResolvedAssetSet>;
@@ -64,7 +64,9 @@ export function AssetsListView({
     scrollElement,
 }: AssetsListViewProps) {
     const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
+    // The library's own scope: the three buttons this header carries are import, link and new
+    // folder, and a session carries all three. See `assetLibraryFreezeScope`.
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const {
         filteredAssets,
         filteredGroups,
@@ -258,7 +260,9 @@ function CategoryRows({ category, rows, scrollElement }: {
     rows: TreeListRow[];
     scrollElement: HTMLElement | null;
 }) {
-    const freeze = useFreezeGuard();
+    // Scoped to the library, because what a drop does is file a row, move a folder or import a file
+    // - and a folder that will not light up is a drop the browser never delivers.
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const {
         draggedItem,
         draggedAssetSet,
