@@ -1,4 +1,5 @@
 import { UI_DOCUMENT_PATH } from "./uiDocument";
+import { VARIABLE_REGISTRY_DOCUMENT_PATH } from "./variables";
 import { UI_GRAPHS_DOCUMENT_PATH } from "./uiGraphs";
 
 /**
@@ -14,3 +15,18 @@ import { UI_GRAPHS_DOCUMENT_PATH } from "./uiGraphs";
  * workspace. A path spelled a second time is a path that falls behind the file the service saves to.
  */
 export const INTERFACE_DOCUMENT_PATHS: readonly string[] = [UI_DOCUMENT_PATH, UI_GRAPHS_DOCUMENT_PATH];
+
+/**
+ * The blueprint member tree's three, which are the two above plus the project's variable registry.
+ *
+ * The member tree is one panel over two documents: declaring an event layer writes the blueprint,
+ * and declaring a variable writes `editor/variables.json`. `isFreezeBlocking` is blocked unless
+ * EVERY path in a list is allowed, which is the question this panel has to ask - offering the
+ * variable rows while that registry is refused would be a control that looks available and quietly
+ * discards what it is given.
+ */
+export const BLUEPRINT_MEMBER_TREE_PATHS: readonly string[] = [
+    UI_DOCUMENT_PATH,
+    UI_GRAPHS_DOCUMENT_PATH,
+    VARIABLE_REGISTRY_DOCUMENT_PATH,
+];
