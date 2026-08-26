@@ -255,7 +255,20 @@ function walkStory(
     const seen = new Set<StorySceneId>();
     // Scenes something jumps into and expects to come back from. A scene entered this way that runs
     // out of rows has returned, not stopped, so it is not a place a path runs out.
+    //
+    // Collected from the whole story before the walk begins rather than as the walk meets each call,
+    // and that is the whole point: a scene both called and plain-jumped to would otherwise be judged
+    // on whether the walk happened to have read the caller yet, so swapping two rows in an unrelated
+    // scene would change the verdict on a story nobody edited. The exemption is for the whole scene,
+    // the same reading `story/dead-end` takes, and the two have to agree.
     const calledSceneIds = new Set<StorySceneId>();
+    for (const exits of continuations.values()) {
+        for (const exit of exits) {
+            if (exit.kind === "call") {
+                calledSceneIds.add(exit.target);
+            }
+        }
+    }
     const enter = (sceneId: StorySceneId): void => {
         if (seen.has(sceneId) || !story.document.scenes[sceneId]) {
             return;
@@ -283,8 +296,7 @@ function walkStory(
         for (const exit of exits) {
             if (exit.kind === "call") {
                 // The called scene is entered, so its endings count and its own run-outs are found;
-                // running out of rows in it is the return, which is what this set records.
-                calledSceneIds.add(exit.target);
+                // running out of rows in it is the return, which the set above records.
                 enter(exit.target);
                 continue;
             }
