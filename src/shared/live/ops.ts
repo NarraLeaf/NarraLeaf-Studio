@@ -1,7 +1,18 @@
 import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
 import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import type {
+    AppTagAssetAxes,
+    AppTagEndingSurfaceId,
+    AppTagPluginConfig,
+    AppTagReachableScenes,
+    ProjectAppTag,
+} from "@shared/types/appTag";
+import type { BrandColor } from "@shared/types/brand";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { LocalizationUnit } from "@shared/types/localization";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
@@ -560,6 +571,165 @@ export type LiveAssetFolderOp =
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
       };
 
+/* ------------------------------------------------- the project's configuration tables */
+
+/**
+ * Everything that can be done to the build variants - `editor/app-tags.json`.
+ *
+ * **One row of a project table, and the addressing is the cast's rather than the story's.**
+ * `AppTagService` funnels every gesture through one write path that takes a whole-document mutator
+ * and can therefore state nothing finer than "the document is now this"; the rows themselves are
+ * what the panel edits, one accordion at a time, so a record is the finest thing that can be stated
+ * truthfully and still be about something an author points at. A whole-document verb would be the
+ * last-writer-wins this design refuses: the variant name and the three identity overrides are
+ * blur-committed text fields that re-sync from their props, so the loser of that race loses a name
+ * they had half typed, silently.
+ *
+ * Three verbs plus one, and the plus one is what the release variant is. A project's own plugin
+ * values, asset-axis positions, scene declarations and ending page live at the document root rather
+ * than on a record, because the release variant is synthesized and stores nothing - see
+ * `ProjectAppTagDocument`. They are edited through the same panel rows as a variant's, so they need a
+ * verb of their own; {@link LiveAppTagDefaults} is what it carries.
+ *
+ * ⚠ **Deleting a variant rewrites nothing.** References to it resolve to the release variant from
+ * then on, which is `AppTagService.deleteTag`'s stated behaviour and the reason the panel counts them
+ * before the author presses the button. So there is no sweep to derive and no second document to
+ * fingerprint - unlike deleting a character, which reaches every story that holds a line it spoke.
+ */
+export type LiveAppTagOp =
+    /**
+     * Add a variant. The record arrives whole, with the id its author minted.
+     *
+     * Separate from `update-app-tag` for the reason `create-character` is separate from
+     * `update-character`: an update naming a record that is gone has to be refused so the author
+     * keeps what they just typed, and a single verb that created whatever it could not find would
+     * silently put back a variant somebody else deleted - along with the overrides that decide what
+     * that edition builds as.
+     *
+     * Appended unless `beforeId` says otherwise: `AppTagService.createTag` appends, and every machine
+     * applies the same operations in the same order, so an ordinary creation needs no position at all.
+     *
+     * ⚠ **`beforeId` is reachable only as the inverse of a deletion**, the way `create-character`'s
+     * `rebind` is. Undoing "delete the middle variant" has to put it back where it was; appending it
+     * would be a rearrangement wearing the word "undo", and the author would have to notice. A row
+     * that has gone since is treated as absent and the record lands at the end.
+     */
+    | { op: "create-app-tag"; tag: ProjectAppTag; beforeId?: string }
+    /** Replace a variant's record. The whole record, for {@link LiveCharacterOp}'s reason. */
+    | { op: "update-app-tag"; tagId: string; tag: ProjectAppTag }
+    /** Remove a variant. What pointed at it reads as the release variant from now on. */
+    | { op: "delete-app-tag"; tagId: string }
+    /**
+     * What every variant inherits: the project's own plugin values, axis positions, scene
+     * declarations and ending page.
+     *
+     * Whole rather than one key at a time, because that is what the document holds - four optional
+     * records at its root, normalized as a unit on every write, with an absent key meaning "nothing
+     * declared" rather than "unchanged". A per-key verb would have to invent a spelling for the
+     * difference and every machine would have to agree on it.
+     *
+     * ⚠ `tagPluginConfig` is the one gesture here that reaches the variant records too. Writing a
+     * plugin field that is not per-variant also takes that field off every variant, because such an
+     * entry is inert - resolution never reads it - and leaving it would give one field two stored
+     * answers.
+     */
+    | {
+          op: "set-app-tag-defaults";
+          defaults: LiveAppTagDefaults;
+          /**
+           * The variants whose plugin records this write also rewrites, whole.
+           *
+           * **Carried rather than derived, and the direction is why.** Going down, which entries a
+           * field that is not per-variant makes inert is a question every machine could answer. Going
+           * back up it is not: the entries are gone, and nothing left in the document says what they
+           * were. One field that works in both directions is one statement of one fact; a derived
+           * sweep plus a carried restore would be two, and the inverse of an ordinary build-config
+           * edit would quietly not restore what the edit removed.
+           *
+           * Absent for every other write to the project's own record, which is almost all of them.
+           */
+          tagPluginConfig?: readonly { tagId: string; pluginConfig: AppTagPluginConfig }[];
+      };
+
+/**
+ * The project's own half of `editor/app-tags.json` - what an unstated key on a variant resolves to.
+ *
+ * Spelled as the four optional records rather than as the document, so the operation cannot carry
+ * the variant list: two statements of who the variants are, arriving in one message, is a second
+ * chance for the two to disagree.
+ */
+export type LiveAppTagDefaults = {
+    pluginConfig?: AppTagPluginConfig;
+    assetAxes?: AppTagAssetAxes;
+    reachableScenes?: AppTagReachableScenes;
+    endingSurfaceId?: AppTagEndingSurfaceId;
+};
+
+/**
+ * Everything that can be done to the DLC list - `editor/dlc.json`.
+ *
+ * The variants' mirror, one document along, and deliberately the same three verbs: `DlcService` is
+ * `AppTagService` down to the bookkeeping, its panel is the same accordion of blur-committed text
+ * fields, and its deletion rewrites nothing either - a story marked for a deleted DLC ships with the
+ * base build, which is what the delete confirmation already says.
+ *
+ * ⚠ **`update-dlc` also changes the id**, which is the filename the DLC ships as. It is addressed by
+ * the id it had, and the record it carries may state a different one: `DlcService.changeId` is one
+ * gesture, and splitting it into a delete and a create would make it two operations, two undo steps
+ * and - for the moment between them - a project where the DLC does not exist.
+ */
+export type LiveDlcOp =
+    /** Add a DLC. Appended, and `beforeId` is the inverse of a deletion - see `create-app-tag`. */
+    | { op: "create-dlc"; dlc: ProjectDlc; beforeId?: string }
+    /** Replace a DLC's record, id included. See {@link LiveDlcOp}. */
+    | { op: "update-dlc"; dlcId: string; dlc: ProjectDlc }
+    /** Remove a DLC. The stories marked for it ship with the base build from now on. */
+    | { op: "delete-dlc"; dlcId: string };
+
+/**
+ * Everything that can be done to the project's palette - `editor/brand.json`.
+ *
+ * The document holds two lists that are edited apart, and the verbs follow that split because
+ * `BrandService` does: colours go through `applyColorMutation`, the font stack through
+ * `applyFontMutation`, and neither is ever a step of the other.
+ *
+ * **A colour is a record; the font stack is one value.** A colour has a name somebody typed into a
+ * blur-committed field and a value they picked, and there may be dozens of them - so it is addressed
+ * and it is claimed. The stack is at most a handful of rungs, has nothing typed into it at all (a
+ * picker, two arrows and a set of language checkboxes), and every one of its gestures rewrites the
+ * whole order anyway.
+ *
+ * ⚠ **The seeded entries are records like any other.** Re-pointing `button.primary` is the whole
+ * feature, so `update-brand-color` addresses them exactly as it addresses an author's own; what it
+ * cannot do is delete one, and `BrandService.deleteColor` is where that is refused.
+ */
+export type LiveBrandOp =
+    /**
+     * Add a colour of the author's own. Appended after the seeds, and `beforeId` is the inverse of a
+     * deletion - see `create-app-tag`.
+     */
+    | { op: "create-brand-color"; color: BrandColor; beforeId?: string }
+    /** Replace one colour - its name, its value, or both. */
+    | { op: "update-brand-color"; colorId: string; color: BrandColor }
+    /** Remove one of the author's colours. Links that pointed at it resolve to nothing and are linted. */
+    | { op: "delete-brand-color"; colorId: string }
+    /**
+     * Move a colour to sit before another, or to the end when `beforeId` is null.
+     *
+     * Relative rather than an index, for `LiveBlockTarget`'s reason. Unclaimed, with `move-block` and
+     * `move-assets`: a drag rearranges the palette without touching a word anybody wrote.
+     */
+    | { op: "move-brand-color"; colorId: string; beforeId: string | null }
+    /**
+     * The whole font stack, in priority order.
+     *
+     * The one verb here that is not about a record, and the exception is argued in {@link LiveBrandOp}:
+     * appending a rung, restricting one to some languages, removing one and moving one up or down are
+     * four gestures that all state a new order of at most `PROJECT_FONT_STACK_MAX` entries, and none
+     * of them has a draft layer to lose.
+     */
+    | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] };
+
 /**
  * Everything a session can be asked to do, whichever document it is about.
  *
@@ -573,7 +743,10 @@ export type LiveOp =
     | LiveLocalizationOp
     | LiveVoiceOp
     | LiveAssetOp
-    | LiveAssetFolderOp;
+    | LiveAssetFolderOp
+    | LiveAppTagOp
+    | LiveDlcOp
+    | LiveBrandOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -621,7 +794,18 @@ export type LiveDocument =
      * either type's shard. That asymmetry is the asset browser's own, and following it here keeps one
      * spelling of "which document" rather than two.
      */
-    | { doc: "asset-groups"; category: string };
+    | { doc: "asset-groups"; category: string }
+    /**
+     * The build variants - `editor/app-tags.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, so the kind is the whole
+     * address. The same is true of the two below it.
+     */
+    | { doc: "app-tags" }
+    /** The DLC list - `editor/dlc.json`. */
+    | { doc: "dlc" }
+    /** The palette and the default font stack - `editor/brand.json`. */
+    | { doc: "brand" };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -669,6 +853,21 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "delete-asset-folder":
         case "restore-asset-folder":
             return "asset-groups";
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return "app-tags";
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return "dlc";
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return "brand";
     }
 }
 
@@ -739,6 +938,12 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.doc === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.doc === "app-tags";
+        case "dlc":
+            return right.doc === "dlc";
+        case "brand":
+            return right.doc === "brand";
     }
 }
 
@@ -757,6 +962,12 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `assets ${document.assetType}`;
         case "asset-groups":
             return `asset folders ${document.category}`;
+        case "app-tags":
+            return "build variants";
+        case "dlc":
+            return "DLC";
+        case "brand":
+            return "brand palette";
     }
 }
 
@@ -820,6 +1031,22 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-asset",
     "replace-asset-content",
     "delete-assets",
+    // The three configuration tables, and the same test answers for all of them: every one of their
+    // rows is edited through a field that keeps a draft in its own state until it is blurred and
+    // re-syncs from its props when somebody else's edit arrives. A variant's name and its three
+    // identity overrides, a DLC's name and the filename it ships as, a colour's name - the loser of
+    // any of those races loses what they had half typed, with nothing on screen to say so.
+    //
+    // ⚠ **Creating and rearranging are not here**, with `insert-block` and `move-block`: a creation
+    // names an id nobody else has, and a drag rewrites an order without touching a word anybody
+    // wrote. `set-brand-fonts` is out for the second reason - the stack has no typing on it at all.
+    "update-app-tag",
+    "delete-app-tag",
+    "set-app-tag-defaults",
+    "update-dlc",
+    "delete-dlc",
+    "update-brand-color",
+    "delete-brand-color",
 ]);
 
 /**
@@ -981,6 +1208,38 @@ export function assetClaimKey(assetId: string): LiveClaimKey {
 }
 
 /**
+ * The claim over one build variant's row.
+ *
+ * ⚠ **The project's own defaults are held under {@link APP_TAG_DEFAULTS_CLAIM_ID}**, which is the
+ * release variant's reserved id. That is not a trick: the release variant is what the root records
+ * belong to - it is synthesized and stores nothing of its own - and the panel draws it as a row
+ * beside the others. An id that could collide with a stored one would be, but the release id is
+ * exactly the id the normalizer refuses to store.
+ */
+export function appTagClaimKey(tagId: string): LiveClaimKey {
+    return `app-tag:${tagId}`;
+}
+
+/**
+ * Whose row the project's own defaults are, for a claim.
+ *
+ * The release variant's own id, taken from the model rather than spelled again here: it is the id
+ * the normalizer refuses to store, so nothing this key space holds can ever collide with it - and a
+ * second spelling would be a collision waiting for the day that id changed.
+ */
+export const APP_TAG_DEFAULTS_CLAIM_ID = APP_TAG_ID_RELEASE;
+
+/** The claim over one DLC's row. */
+export function dlcClaimKey(dlcId: string): LiveClaimKey {
+    return `dlc:${dlcId}`;
+}
+
+/** The claim over one colour of the project's palette. */
+export function brandColorClaimKey(colorId: string): LiveClaimKey {
+    return `brand-color:${colorId}`;
+}
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -1044,6 +1303,27 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
             // layer behind it. See {@link CLAIMED_OPS}.
             return [];
+        case "update-app-tag":
+        case "delete-app-tag":
+            return [appTagClaimKey(op.tagId)];
+        case "set-app-tag-defaults":
+            // The release variant's row - see {@link appTagClaimKey}. The panel draws the project's
+            // own values there, so that is the row somebody is inside while they are edited.
+            return [appTagClaimKey(APP_TAG_DEFAULTS_CLAIM_ID)];
+        case "update-dlc":
+        case "delete-dlc":
+            return [dlcClaimKey(op.dlcId)];
+        case "update-brand-color":
+        case "delete-brand-color":
+            return [brandColorClaimKey(op.colorId)];
+        case "create-app-tag":
+        case "create-dlc":
+        case "create-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            // Nothing to hold, for the reasons `create-assets` and `move-assets` give. See
+            // {@link CLAIMED_OPS}.
+            return [];
     }
 }
 
@@ -1101,7 +1381,22 @@ export type LiveDigestScope =
      * The asset shard's counterpart, and whole for the same two reasons - a folder deletion reaches
      * across every folder below it, and a section's folder list is a handful of four-field records.
      */
-    | { of: "asset-groups"; category: string };
+    | { of: "asset-groups"; category: string }
+    /**
+     * The build variants, whole - and the same for the two below it.
+     *
+     * The fourth, fifth and sixth documents to be fingerprinted entire, and `@shared/live/config`
+     * gives the reason the libraries give second: these are the smallest documents in the project.
+     * A palette is a couple of dozen short entries, a variant list and a DLC list are a handful of
+     * records each, and they are edited a few times in a session rather than on every keystroke -
+     * so the encode a whole-document digest pays for is cheaper here than the bookkeeping a
+     * per-record one would need, and it catches a rearrangement no per-record digest would.
+     */
+    | { of: "app-tags" }
+    /** The DLC list, whole. */
+    | { of: "dlc" }
+    /** The palette and the font stack, whole. */
+    | { of: "brand" };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -1164,6 +1459,21 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "delete-asset-folder":
         case "restore-asset-folder":
             return { of: "asset-groups", category: op.category };
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return { of: "app-tags" };
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return { of: "dlc" };
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return { of: "brand" };
     }
 }
 
@@ -1184,6 +1494,12 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.of === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.of === "app-tags";
+        case "dlc":
+            return right.of === "dlc";
+        case "brand":
+            return right.of === "brand";
     }
 }
 
@@ -1352,6 +1668,20 @@ export type LiveRefusalReason =
      * assets that arrived by every other route.
      */
     | "folder-not-empty"
+    /**
+     * The row of a configuration table is gone - a build variant, a DLC, a colour of the palette.
+     *
+     * The three tables' answer to `row-gone` and to `character-gone`, and it carries the same
+     * instruction: the field the author is typing into is theirs to keep. An update that created what
+     * it could not find would put back a variant, a DLC or a colour somebody else deleted - and for
+     * the first two that is an edition of the game, or a file already in players' hands.
+     *
+     * **One reason for the three**, where the cast and the library have one each. What differs
+     * between them is which panel the author is looking at, and the panel is already in front of
+     * them; three sentences saying the same thing about three tables would be three ways to write
+     * "that entry is no longer in this project".
+     */
+    | "config-entry-gone"
     /**
      * The operation will not fit in one payload.
      *

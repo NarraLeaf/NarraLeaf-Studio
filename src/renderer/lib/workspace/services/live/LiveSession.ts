@@ -12,26 +12,33 @@ import { assetsDigest } from "@shared/live/assets";
 import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
+import { appTagsDigest, brandDigest, dlcDigest } from "@shared/live/config";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import { liveSessionWritablePaths, type LiveSessionLocales } from "@shared/live/sharedDocuments";
 import {
+    appTagClaimKey,
     assetClaimKey,
+    brandColorClaimKey,
     characterClaimKey,
+    dlcClaimKey,
     isLiveMessage,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAppTagOp,
     type LiveAssetBytePart,
     type LiveAssetFolderOp,
     type LiveAssetOp,
     type LiveAssetRecord,
     type LiveBlobChunk,
     type LiveBlobNeeded,
+    type LiveBrandOp,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
     type LiveDigestScope,
+    type LiveDlcOp,
     type LiveDocument,
     type LiveEffect,
     type LiveLocalizationOp,
@@ -499,6 +506,32 @@ export class LiveSession {
     }
 
     /**
+     * This window is editing one row of a configuration table, or has stopped.
+     *
+     * Three doors rather than one, because three key spaces are three sets an interface reads back
+     * out by prefix - see `@shared/live/ops`. Held for the span every other claim is held for: while
+     * the row is open in front of somebody, not while their fingers are moving. Every one of these
+     * rows is edited through a field that commits on blur and re-syncs from its props, so a claim
+     * that lapsed on a pause would let somebody else's edit take a half-typed name with it.
+     *
+     * ⚠ The project's own defaults are claimed as `APP_TAG_DEFAULTS_CLAIM_ID`, which is the release
+     * variant's row - see `appTagClaimKey`. The panel draws them there.
+     */
+    public claimAppTag(tagId: string, holding: boolean): void {
+        this.claim(appTagClaimKey(tagId), holding);
+    }
+
+    /** This window is editing one DLC's row, or has stopped. See {@link claimAppTag}. */
+    public claimDlc(dlcId: string, holding: boolean): void {
+        this.claim(dlcClaimKey(dlcId), holding);
+    }
+
+    /** This window is editing one colour of the palette, or has stopped. See {@link claimAppTag}. */
+    public claimBrandColor(colorId: string, holding: boolean): void {
+        this.claim(brandColorClaimKey(colorId), holding);
+    }
+
+    /**
      * Take or give back one claim, whichever kind it is.
      *
      * The one path for both, so the host's record and the broadcast that follows it cannot come to
@@ -623,6 +656,9 @@ export class LiveSession {
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
+            hasAppTag: tagId => this.deps.appTags.hasTag(tagId),
+            hasDlc: dlcId => this.deps.dlc.hasDlc(dlcId),
+            hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -738,6 +774,9 @@ export class LiveSession {
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
+                hasAppTag: tagId => this.deps.appTags.hasTag(tagId),
+                hasDlc: dlcId => this.deps.dlc.hasDlc(dlcId),
+                hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -792,6 +831,13 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        // The three configuration tables share the library sink for its own reason: none of them has
+        // a document id this window has to be holding, so there is nothing left for them to differ
+        // about. Their addresses are fixed - one of each per project - so `documentOf` composes them
+        // from the verb alone.
+        this.deps.appTags.setSink(this.librarySinkFor(session));
+        this.deps.dlc.setSink(this.librarySinkFor(session));
+        this.deps.brand.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -822,6 +868,9 @@ export class LiveSession {
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
+        this.deps.appTags.setSink(null);
+        this.deps.dlc.setSink(null);
+        this.deps.brand.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
         session.blobsDropped.clear();
@@ -1000,6 +1049,11 @@ export class LiveSession {
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
             assetsByType: category => this.assetsOfCategory(category),
+            // Whole documents rather than readers: one of each per project, so there is nothing for
+            // the operation to name. See `LiveBeforeSources`.
+            appTags: this.deps.appTags.document(),
+            dlcs: this.deps.dlc.document(),
+            brand: this.deps.brand.document(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1022,6 +1076,15 @@ export class LiveSession {
                 break;
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
+                break;
+            case "app-tags":
+                this.deps.appTags.applyOp(op as LiveAppTagOp);
+                break;
+            case "dlc":
+                this.deps.dlc.applyOp(op as LiveDlcOp);
+                break;
+            case "brand":
+                this.deps.brand.applyOp(op as LiveBrandOp);
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1071,6 +1134,13 @@ export class LiveSession {
                 return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
+            // One of each per project, so the kind is the whole address - the cast's shape.
+            case "app-tags":
+                return { doc: "app-tags" };
+            case "dlc":
+                return { doc: "dlc" };
+            case "brand":
+                return { doc: "brand" };
         }
     }
 
@@ -1112,6 +1182,15 @@ export class LiveSession {
                 return assetsDigest(this.deps.assets.records(scope.assetType));
             case "asset-groups":
                 return assetGroupsDigest(this.deps.assets.folders(scope.category));
+            // Whole documents, and a table nobody holds hashes to a value too - all three services
+            // read their file as the workspace starts, so arriving here without one means this
+            // machine has failed at something. See `@shared/live/config`.
+            case "app-tags":
+                return appTagsDigest(this.deps.appTags.document());
+            case "dlc":
+                return dlcDigest(this.deps.dlc.document());
+            case "brand":
+                return brandDigest(this.deps.brand.document());
         }
     }
 
@@ -1342,7 +1421,7 @@ export class LiveSession {
      * about. Three copies of these ten lines would be three places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp): boolean;
+        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveAppTagOp | LiveDlcOp | LiveBrandOp): boolean;
     } {
         return {
             handle: (op): boolean => {

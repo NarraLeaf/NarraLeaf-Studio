@@ -1,7 +1,10 @@
 import {
+    appTagsSpec,
     assetGroupsSpec,
     assetsMetadataSpec,
+    brandSpec,
     charactersSpec,
+    dlcSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
     voiceDocumentSpec,
@@ -70,6 +73,28 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * **`editor/localization/keys.json` is NOT here**, and its absence is the invariant working. The
  * named-key registry is a document of its own with no verbs, so declaring a UI string stays frozen
  * for the length of a session and says so - which is the harmless half of the trade.
+ *
+ * **The three configuration tables joined next**: the build variants, the DLC list and the palette.
+ * They are unparameterised, like the cast - one of each per project - and they are here because a
+ * session that is meant to stay open all day cannot be one an author has to end in order to add a
+ * variant or move the brand colour.
+ *
+ * ⚠ **Two configuration documents were considered and are deliberately NOT here**, and their absence
+ * is the same invariant working:
+ *
+ *  - **`editor/save-schema.json`.** Its only editing surface is the popover on a `Save Game` /
+ *    `Get Save Metadata` node card, which is inside the blueprint editor - a document no session
+ *    carries - and its undo rides the blueprint history channel, where `LocalBlueprintService`
+ *    snapshots the graph and the schema together. Sharing the schema alone would give an author a
+ *    Ctrl+Z that also restores a frozen document. It arrives when the blueprints do.
+ *  - **`<projectName>.nlproj`.** Four independent reasons, and the first is enough on its own:
+ *    writability is decided by PATH, so the whole file is shared or none of it is, and its writers
+ *    are every group of the project's settings rather than one panel. Beyond that, some of what it
+ *    holds is deliberately local to a machine (a signing credential is an id into
+ *    `<userData>/signing/`, and the selected build variant is a preference); some of it decides which
+ *    documents a session carries at all (the language list, the plugin list), which is settled when
+ *    the room opens; and renaming the project renames the file, so the writable path would move
+ *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
  */
 
 /** The languages a session carries libraries for. Two lists, because the two are configured apart. */
@@ -165,6 +190,12 @@ export function liveSessionDocuments(
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
         ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
+        // The three configuration tables, unparameterised for the cast's reason: there is one of each
+        // per project, so a session either carries it or the window is not in a session. They need
+        // nothing from the caller for the same reason.
+        { doc: "app-tags" },
+        { doc: "dlc" },
+        { doc: "brand" },
     ];
 }
 
@@ -190,6 +221,12 @@ export function liveDocumentPath(document: LiveDocument): string {
             return assetsMetadataSpec.pathFor({ type: document.assetType });
         case "asset-groups":
             return assetGroupsSpec.pathFor({ category: document.category });
+        case "app-tags":
+            return appTagsSpec.pathFor();
+        case "dlc":
+            return dlcSpec.pathFor();
+        case "brand":
+            return brandSpec.pathFor();
     }
 }
 

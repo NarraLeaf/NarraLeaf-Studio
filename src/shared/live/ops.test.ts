@@ -1,10 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryScene } from "@shared/types/story";
+import { APP_TAG_ID_RELEASE, normalizeProjectAppTags, type ProjectAppTag } from "@shared/types/appTag";
+import type { BrandColor } from "@shared/types/brand";
+import type { ProjectDlc } from "@shared/types/dlc";
 import {
+    APP_TAG_DEFAULTS_CLAIM_ID,
     CLAIMED_OPS,
+    appTagClaimKey,
     assetClaimKey,
+    brandColorClaimKey,
     characterClaimKey,
+    dlcClaimKey,
     isLiveMessage,
     opAddresses,
     opBelongsTo,
@@ -14,6 +21,7 @@ import {
     opDigestScope,
     opDocumentKind,
     opSceneId,
+    sameDigestScope,
     sameLiveDocument,
     storyRowClaimKey,
     type LiveAssetOp,
@@ -143,20 +151,27 @@ describe("the operation vocabulary", () => {
         // its author is mid-paragraph takes the paragraph; renaming a scene under somebody takes a
         // word. The first is worth the ceremony of a claim and the second is not.
         expect([...CLAIMED_OPS].sort()).toEqual([
+            "delete-app-tag",
             "delete-assets",
             "delete-block",
             "delete-blocks",
+            "delete-brand-color",
             "delete-character",
+            "delete-dlc",
             "replace-asset-content",
+            "set-app-tag-defaults",
             "set-block-disabled",
             "set-translation",
             "set-translations",
+            "update-app-tag",
             "update-asset",
             "update-block",
             "update-blocks",
+            "update-brand-color",
             "update-character",
+            "update-dlc",
         ]);
-        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder"] as const) {
+        for (const kind of ["rename-scene", "set-entry-scene", "rename-story", "reorder-chapters", "move-block", "move-blocks", "insert-block", "insert-blocks", "move-assets", "create-assets", "set-asset-folder", "delete-asset-folder", "restore-asset-folder", "create-app-tag", "create-dlc", "create-brand-color", "move-brand-color", "set-brand-fonts"] as const) {
             expect(CLAIMED_OPS.has(kind)).toBe(false);
         }
     });
@@ -430,5 +445,81 @@ describe("the asset operations", () => {
         expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "assets", assetType: "image" })).toBe(true);
         expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "assets", assetType: "audio" })).toBe(false);
         expect(sameLiveDocument({ doc: "assets", assetType: "image" }, { doc: "characters" })).toBe(false);
+    });
+});
+
+describe("the project's three configuration tables", () => {
+    const VARIANT: ProjectAppTag = { id: "tag-1", name: "Demo", overrides: { displayName: "Skeleton Demo" } };
+    const DLC: ProjectDlc = { id: "side", name: "Side Story", attachTo: "release" };
+    const COLOR: BrandColor = { id: "c1a2b3c", name: "Ink", value: "#101318" };
+
+    it("says which document each verb is about, and every verb has one", () => {
+        expect(opDocumentKind({ op: "create-app-tag", tag: VARIANT })).toBe("app-tags");
+        expect(opDocumentKind({ op: "set-app-tag-defaults", defaults: {} })).toBe("app-tags");
+        expect(opDocumentKind({ op: "delete-dlc", dlcId: "side" })).toBe("dlc");
+        expect(opDocumentKind({ op: "move-brand-color", colorId: "c1a2b3c", beforeId: null })).toBe("brand");
+        expect(opDocumentKind({ op: "set-brand-fonts", fonts: [] })).toBe("brand");
+    });
+
+    it("addresses each of them by kind alone, because there is one per project", () => {
+        expect(sameLiveDocument({ doc: "app-tags" }, { doc: "app-tags" })).toBe(true);
+        expect(sameLiveDocument({ doc: "dlc" }, { doc: "brand" })).toBe(false);
+        expect(opBelongsTo({ op: "delete-dlc", dlcId: "side" }, { doc: "dlc" })).toBe(true);
+        expect(opBelongsTo({ op: "delete-dlc", dlcId: "side" }, { doc: "app-tags" })).toBe(false);
+        // Nothing of their own to compare, so the kind agreeing is the whole of the check.
+        expect(opAddresses({ op: "delete-dlc", dlcId: "side" }, { doc: "dlc" })).toBe(true);
+    });
+
+    it("keeps its three key spaces apart, and apart from the four that came before", () => {
+        // Every kind of claim lives in one map, so a bare id shared between two tables would let one
+        // document's claim answer for the other's - the confusion nothing could detect.
+        for (const key of [appTagClaimKey("x"), dlcClaimKey("x"), brandColorClaimKey("x")]) {
+            expect(key.startsWith("x")).toBe(false);
+        }
+        expect(new Set([
+            appTagClaimKey("x"),
+            dlcClaimKey("x"),
+            brandColorClaimKey("x"),
+            storyRowClaimKey("x"),
+            characterClaimKey("x"),
+            assetClaimKey("x"),
+        ]).size).toBe(6);
+    });
+
+    it("holds the project's own defaults under the release variant's reserved id", () => {
+        // Not a trick: the release variant is what the document's root records belong to - it is
+        // synthesized and stores nothing of its own - and the panel draws it as a row beside the
+        // others. The id cannot collide with a stored one, because it is exactly the id the
+        // normalizer refuses to store.
+        expect(APP_TAG_DEFAULTS_CLAIM_ID).toBe(APP_TAG_ID_RELEASE);
+        expect(normalizeProjectAppTags([{ id: APP_TAG_ID_RELEASE, name: "Forged", overrides: {} }])).toEqual([]);
+        expect(opClaimKeys({ op: "set-app-tag-defaults", defaults: {} }))
+            .toEqual([appTagClaimKey(APP_TAG_ID_RELEASE)]);
+    });
+
+    it("claims a row and not a creation or a rearrangement, which is the story's own split", () => {
+        expect(opClaimKeys({ op: "update-app-tag", tagId: "tag-1", tag: VARIANT }))
+            .toEqual([appTagClaimKey("tag-1")]);
+        expect(opClaimKeys({ op: "delete-dlc", dlcId: "side" })).toEqual([dlcClaimKey("side")]);
+        expect(opClaimKeys({ op: "update-brand-color", colorId: "c1a2b3c", color: COLOR }))
+            .toEqual([brandColorClaimKey("c1a2b3c")]);
+        // A creation names an id nobody else has; a drag and the font stack touch nothing typed.
+        expect(opClaimKeys({ op: "create-app-tag", tag: VARIANT })).toEqual([]);
+        expect(opClaimKeys({ op: "create-dlc", dlc: DLC })).toEqual([]);
+        expect(opClaimKeys({ op: "create-brand-color", color: COLOR })).toEqual([]);
+        expect(opClaimKeys({ op: "move-brand-color", colorId: "c1a2b3c", beforeId: null })).toEqual([]);
+        expect(opClaimKeys({ op: "set-brand-fonts", fonts: [] })).toEqual([]);
+    });
+
+    it("fingerprints each table whole, which is what catches a rearrangement", () => {
+        // The one place a per-row digest would say nothing at all: `move-brand-color` names a row it
+        // does not change, and the palette's order is what the panel draws.
+        expect(opDigestScope({ op: "update-app-tag", tagId: "tag-1", tag: VARIANT }, "story-1"))
+            .toEqual({ of: "app-tags" });
+        expect(opDigestScope({ op: "create-dlc", dlc: DLC }, "story-1")).toEqual({ of: "dlc" });
+        expect(opDigestScope({ op: "move-brand-color", colorId: "c1a2b3c", beforeId: null }, "story-1"))
+            .toEqual({ of: "brand" });
+        expect(sameDigestScope({ of: "brand" }, { of: "brand" })).toBe(true);
+        expect(sameDigestScope({ of: "brand" }, { of: "dlc" })).toBe(false);
     });
 });

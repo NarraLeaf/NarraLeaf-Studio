@@ -420,8 +420,8 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations and the asset library.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the stories, the cast, the translations, the asset library, the build variants, the DLC and the palette.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the stories, the cast, the translations, the asset library, the build variants, the DLC and the palette.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -736,6 +736,11 @@ export const workspace = {
             // once, not read a different excuse on each button. The controls are disabled rather
             // than hidden precisely so there is something to hover.
             unavailable: "Unavailable while the project is frozen. Unfreeze the project to use it.",
+            // The same sentence for the one freeze that has no unfreeze. A live session ends by
+            // being left or closed, so telling the author to unfreeze the project would name a
+            // control that is itself unavailable. Which settings a session does leave writable is
+            // said where the session is started or joined, not on every greyed control.
+            unavailableLive: "Unavailable during a live session. Leave the session to use it.",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone

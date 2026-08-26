@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+    appTagsSpec,
     assetGroupsSpec,
     assetsMetadataSpec,
+    brandSpec,
     charactersSpec,
+    dlcSpec,
     localizationDocumentSpec,
     storyDocumentSpec,
     voiceDocumentSpec,
@@ -32,7 +35,13 @@ const ASSET_CATEGORIES = ["image", "media"];
  */
 describe("the documents a session carries", () => {
     it("is every story in the project, the cast, and each language's two libraries", () => {
-        expect(liveSessionDocuments([STORY])).toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }]);
+        expect(liveSessionDocuments([STORY])).toEqual([
+            { doc: "story", storyId: STORY },
+            { doc: "characters" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
+        ]);
         expect(liveSessionDocuments([STORY, "story-2"], LOCALES)).toEqual([
             { doc: "story", storyId: STORY },
             { doc: "story", storyId: "story-2" },
@@ -40,6 +49,9 @@ describe("the documents a session carries", () => {
             { doc: "localization", locale: "ja" },
             { doc: "localization", locale: "fr" },
             { doc: "voice", locale: "ja" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
         ]);
     });
 
@@ -49,6 +61,9 @@ describe("the documents a session carries", () => {
         expect(liveSessionDocuments([], { translations: ["fr"], voice: [] })).toEqual([
             { doc: "characters" },
             { doc: "localization", locale: "fr" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
         ]);
     });
 
@@ -61,6 +76,9 @@ describe("the documents a session carries", () => {
             { doc: "assets", assetType: "audio" },
             { doc: "asset-groups", category: "image" },
             { doc: "asset-groups", category: "media" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
         ]);
     });
 
@@ -74,6 +92,9 @@ describe("the documents a session carries", () => {
             .toBe(assetsMetadataSpec.pathFor({ type: "image" }));
         expect(liveDocumentPath({ doc: "asset-groups", category: "media" }))
             .toBe(assetGroupsSpec.pathFor({ category: "media" }));
+        expect(liveDocumentPath({ doc: "app-tags" })).toBe(appTagsSpec.pathFor());
+        expect(liveDocumentPath({ doc: "dlc" })).toBe(dlcSpec.pathFor());
+        expect(liveDocumentPath({ doc: "brand" })).toBe(brandSpec.pathFor());
     });
 
     it("names paths the repository actually stores, or the freeze would be exempting nothing", () => {
@@ -146,17 +167,30 @@ describe("the documents a session carries", () => {
             { op: "set-take", locale: "ja", unitId: "t", unit: null },
             { op: "update-asset", assetType: "image", assetId: "a", record: {} },
             { op: "set-asset-folder", category: "image", folderId: "g", folder: {} },
+            { op: "create-app-tag", tag: { id: "t", name: "Demo", overrides: {} } },
+            { op: "create-dlc", dlc: { id: "d", name: "Side Story", attachTo: "release" } },
+            { op: "create-brand-color", color: { id: "c", value: "#FFFFFF" } },
         ];
         for (const op of verbs) {
             carried.add(opDocumentKind(op));
         }
-        expect([...carried].sort())
-            .toEqual(["asset-groups", "assets", "characters", "localization", "story", "voice"]);
-        // Two stories, the cast, two translation libraries, one voice library, two asset shards and
-        // two folder shards - every document the vocabulary can carry - plus the three paths no
-        // operation is about: the payload root and the two row orders.
+        expect([...carried].sort()).toEqual([
+            "app-tags",
+            "asset-groups",
+            "assets",
+            "brand",
+            "characters",
+            "dlc",
+            "localization",
+            "story",
+            "voice",
+        ]);
+        // Two stories, the cast, two translation libraries, one voice library, two asset shards,
+        // two folder shards and the three configuration tables - every document the vocabulary
+        // can carry - plus the three paths no operation is about: the payload root and the two
+        // row orders.
         expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES, ASSET_TYPES, ASSET_CATEGORIES))
-            .toHaveLength(10 + 3);
+            .toHaveLength(13 + 3);
     });
 
     it("leaves the named-key registry out, which is the invariant working rather than an omission", () => {

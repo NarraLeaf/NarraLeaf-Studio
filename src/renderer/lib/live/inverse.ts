@@ -1,13 +1,18 @@
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAppTagDefaults,
     LiveAssetFolder,
     LiveAssetRecord,
     LiveDialogueRowRef,
     LiveEffect,
     LiveOp,
 } from "@shared/live/ops";
+import type { AppTagPluginConfig, ProjectAppTag, ProjectAppTagDocument } from "@shared/types/appTag";
+import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { ProjectDlc, ProjectDlcDocument } from "@shared/types/dlc";
 import type { LocalizationUnit } from "@shared/types/localization";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { VoiceUnit } from "@shared/types/voice";
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
@@ -126,7 +131,24 @@ export type LiveInverseReason =
      * the new one. That is a record describing a file that does not exist - the exact state the
      * metadata merge refuses to produce.
      */
-    | "content-replaced";
+    | "content-replaced"
+    /**
+     * The row of a configuration table this operation was about is gone - a build variant, a DLC, a
+     * colour of the palette.
+     *
+     * The three tables' answer to `character-gone`, and refused rather than turned back into a
+     * creation for the same reason: putting a record back that somebody else deleted is not undoing
+     * an edit, it is making a variant, and the author asked for neither. One reason for the three,
+     * with the host's `config-entry-gone`.
+     */
+    | "config-entry-gone"
+    /**
+     * The row this deletion removed is back, so there is nothing left to put back.
+     *
+     * `character-restored` one table along: somebody undid the deletion elsewhere, or redid it here,
+     * and creating the record again would be a second copy of one row under one id.
+     */
+    | "config-entry-restored";
 
 /* ------------------------------------------------------------------------ what to record */
 
@@ -282,7 +304,36 @@ export type LiveBefore =
           op: "delete-asset-folder";
           folders: readonly LiveAssetFolder[];
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
-      };
+      }
+    /**
+     * The record a row of a configuration table held. `update-block`'s shape, four documents along.
+     *
+     * ⚠ **A deletion also keeps the row it sat in front of**, which the story and the cast do not.
+     * Their creations put a row back where an anchor says; a configuration table's creation appends,
+     * so without this an undo of "delete the middle variant" would silently move it to the end. The
+     * neighbour rather than the index, for `LiveBlockTarget`'s reason.
+     */
+    | { op: "update-app-tag"; tag: ProjectAppTag }
+    | { op: "delete-app-tag"; tag: ProjectAppTag; beforeId?: string }
+    /**
+     * The project's own record, and the variants the write also rewrote.
+     *
+     * The second half is present exactly when the operation's own `tagPluginConfig` is, and it is
+     * what stops an undo of a build-config edit leaving the variants as the edit left them.
+     */
+    | {
+          op: "set-app-tag-defaults";
+          defaults: LiveAppTagDefaults;
+          tagPluginConfig?: readonly { tagId: string; pluginConfig: AppTagPluginConfig }[];
+      }
+    | { op: "update-dlc"; dlc: ProjectDlc }
+    | { op: "delete-dlc"; dlc: ProjectDlc; beforeId?: string }
+    | { op: "update-brand-color"; color: BrandColor }
+    | { op: "delete-brand-color"; color: BrandColor; beforeId?: string }
+    /** The colour this one sat in front of, or null for the end of the palette. */
+    | { op: "move-brand-color"; beforeId: string | null }
+    /** The stack as it stood. A `set` states the new order and nothing about the old one. */
+    | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] };
 
 /**
  * Read out of the document everything the inverse of `op` will need.
@@ -586,7 +637,114 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "restore-asset-folder":
             // Its own inverse is a deletion of the folder it put back, which needs nothing kept.
             return null;
+
+        case "create-app-tag":
+        case "create-dlc":
+        case "create-brand-color":
+            // Nothing to keep: what undoes a creation is a deletion of the id the operation itself
+            // names, exactly as an insert's inverse needs nothing kept.
+            return null;
+
+        case "update-app-tag": {
+            const tag = sources.appTags?.tags.find(entry => entry.id === op.tagId);
+            return tag ? { op: "update-app-tag", tag: structuredClone(tag) } : null;
+        }
+
+        case "delete-app-tag": {
+            const tags = sources.appTags?.tags ?? null;
+            const index = tags?.findIndex(entry => entry.id === op.tagId) ?? -1;
+            if (tags === null || index < 0) {
+                return null;
+            }
+            return {
+                op: "delete-app-tag",
+                tag: structuredClone(tags[index]!),
+                ...neighbour(tags, index),
+            };
+        }
+
+        case "set-app-tag-defaults": {
+            const document = sources.appTags ?? null;
+            if (document === null) {
+                return null;
+            }
+            return {
+                op: "set-app-tag-defaults",
+                defaults: structuredClone({
+                    pluginConfig: document.pluginConfig,
+                    assetAxes: document.assetAxes,
+                    reachableScenes: document.reachableScenes,
+                    endingSurfaceId: document.endingSurfaceId,
+                }),
+                // Kept exactly when the operation rewrites the variants too, and read from the same
+                // list it names: a tag the operation does not mention is one the undo must not touch.
+                ...(op.tagPluginConfig
+                    ? {
+                        tagPluginConfig: op.tagPluginConfig.map(entry => ({
+                            tagId: entry.tagId,
+                            pluginConfig: structuredClone(
+                                document.tags.find(tag => tag.id === entry.tagId)?.pluginConfig ?? {},
+                            ),
+                        })),
+                    }
+                    : {}),
+            };
+        }
+
+        case "update-dlc": {
+            const dlc = sources.dlcs?.dlcs.find(entry => entry.id === op.dlcId);
+            return dlc ? { op: "update-dlc", dlc: structuredClone(dlc) } : null;
+        }
+
+        case "delete-dlc": {
+            const dlcs = sources.dlcs?.dlcs ?? null;
+            const index = dlcs?.findIndex(entry => entry.id === op.dlcId) ?? -1;
+            if (dlcs === null || index < 0) {
+                return null;
+            }
+            return { op: "delete-dlc", dlc: structuredClone(dlcs[index]!), ...neighbour(dlcs, index) };
+        }
+
+        case "update-brand-color": {
+            const color = sources.brand?.colors.find(entry => entry.id === op.colorId);
+            return color ? { op: "update-brand-color", color: structuredClone(color) } : null;
+        }
+
+        case "delete-brand-color": {
+            const colors = sources.brand?.colors ?? null;
+            const index = colors?.findIndex(entry => entry.id === op.colorId) ?? -1;
+            if (colors === null || index < 0) {
+                return null;
+            }
+            return {
+                op: "delete-brand-color",
+                color: structuredClone(colors[index]!),
+                ...neighbour(colors, index),
+            };
+        }
+
+        case "move-brand-color": {
+            const colors = sources.brand?.colors ?? null;
+            const index = colors?.findIndex(entry => entry.id === op.colorId) ?? -1;
+            if (colors === null || index < 0) {
+                return null;
+            }
+            // Null rather than absent for the end of the palette: `move-brand-color` reads null as
+            // "last", and an absent field would be a second spelling of it.
+            return { op: "move-brand-color", beforeId: colors[index + 1]?.id ?? null };
+        }
+
+        case "set-brand-fonts": {
+            const fonts = sources.brand?.fonts ?? null;
+            return fonts === null ? null : { op: "set-brand-fonts", fonts: structuredClone(fonts) };
+        }
     }
+}
+
+/** The record after `index`, as the `beforeId` a creation puts one back in front of. Absent at the end. */
+function neighbour<T extends { id: string }>(list: readonly T[], index: number): { beforeId?: string } {
+    const next = list[index + 1]?.id;
+    return next === undefined ? {} : { beforeId: next };
 }
 
 /** One folder and, when asked for, every folder below it. The same walk the applier does. */
@@ -639,6 +797,15 @@ export type LiveBeforeSources = {
      */
     spoke?: readonly LiveDialogueRowRef[];
     /**
+     * The three configuration tables as they stand, or null when this window does not hold one.
+     *
+     * Documents rather than readers, unlike the libraries below: each of them is unparameterised -
+     * one per project - so there is nothing for the operation to name and nothing to look up.
+     */
+    appTags?: ProjectAppTagDocument | null;
+    dlcs?: ProjectDlcDocument | null;
+    brand?: ProjectBrandDocument | null;
+    /**
      * One language's translations as they stand, or null when this machine does not hold them.
      *
      * A reader rather than a document, because which language an operation is about is stated inside
@@ -690,6 +857,16 @@ export type LiveInverseContext = {
     assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
     /** One section's folders as they stand NOW, for the operations that are about them. */
     assetFolders?(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /**
+     * The three configuration tables as they stand NOW.
+     *
+     * Predicates rather than documents, because the only thing an inverse asks of them is whether the
+     * row it is about is still there - the record it puts back comes from {@link before}, which is
+     * the only thing that has it.
+     */
+    hasAppTag?(tagId: string): boolean;
+    hasDlc?(dlcId: string): boolean;
+    hasBrandColor?(colorId: string): boolean;
     /** What {@link captureBefore} read before this effect was applied, or null if nothing was kept. */
     before: LiveBefore | null;
 };
@@ -1310,6 +1487,156 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     members: [...before.members],
                 },
             };
+        }
+
+        // ------------------------------------------------- the three configuration tables
+        //
+        // One shape, three times over, and the shape is the cast's: a creation is undone by deleting
+        // the id it named, an update by writing back the record that was kept, a deletion by putting
+        // that record back where it sat. What differs from the cast is only the position - these
+        // tables' creations append, so the inverse of a deletion carries the neighbour it sat in
+        // front of; see `LiveBefore`.
+
+        case "create-app-tag": {
+            if (context.hasAppTag?.(op.tag.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-app-tag", tagId: op.tag.id } };
+        }
+
+        case "update-app-tag": {
+            if (!before || before.op !== "update-app-tag") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasAppTag?.(op.tagId) === false) {
+                // Refused rather than turned back into a creation, with `update-character`: putting
+                // back a variant somebody else deleted is not undoing an edit, it is making an
+                // edition of the game, and the author asked for neither.
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "update-app-tag", tagId: op.tagId, tag: structuredClone(before.tag) } };
+        }
+
+        case "delete-app-tag": {
+            if (!before || before.op !== "delete-app-tag") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasAppTag?.(op.tagId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-app-tag",
+                    tag: structuredClone(before.tag),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
+        case "set-app-tag-defaults": {
+            if (!before || before.op !== "set-app-tag-defaults") {
+                return { impossible: "no-record" };
+            }
+            // No way to fail: the project's own record is the document's root and exists in every
+            // project. A variant named in `tagPluginConfig` that has gone since is skipped by the
+            // applier rather than refused here - it is a variant somebody deleted, not part of the
+            // edit being taken back.
+            return {
+                op: {
+                    op: "set-app-tag-defaults",
+                    defaults: structuredClone(before.defaults),
+                    ...(before.tagPluginConfig
+                        ? { tagPluginConfig: structuredClone(before.tagPluginConfig) }
+                        : {}),
+                },
+            };
+        }
+
+        case "create-dlc": {
+            if (context.hasDlc?.(op.dlc.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-dlc", dlcId: op.dlc.id } };
+        }
+
+        case "update-dlc": {
+            if (!before || before.op !== "update-dlc") {
+                return { impossible: "no-record" };
+            }
+            // ⚠ Addressed by the id the record has NOW, which an id change moved: `update-dlc` may
+            // have renamed the file this DLC ships as, and the row is under the new id from then on.
+            if (context.hasDlc?.(op.dlc.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "update-dlc", dlcId: op.dlc.id, dlc: structuredClone(before.dlc) } };
+        }
+
+        case "delete-dlc": {
+            if (!before || before.op !== "delete-dlc") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasDlc?.(op.dlcId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-dlc",
+                    dlc: structuredClone(before.dlc),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
+        case "create-brand-color": {
+            if (context.hasBrandColor?.(op.color.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-brand-color", colorId: op.color.id } };
+        }
+
+        case "update-brand-color": {
+            if (!before || before.op !== "update-brand-color") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasBrandColor?.(op.colorId) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return {
+                op: { op: "update-brand-color", colorId: op.colorId, color: structuredClone(before.color) },
+            };
+        }
+
+        case "delete-brand-color": {
+            if (!before || before.op !== "delete-brand-color") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasBrandColor?.(op.colorId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-brand-color",
+                    color: structuredClone(before.color),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
+        case "move-brand-color": {
+            if (!before || before.op !== "move-brand-color") {
+                return { impossible: "no-record" };
+            }
+            // No way to fail: a colour that has gone since makes the move a no-op on every machine,
+            // which is what the applier already does. Refusing would report a conflict over a
+            // rearrangement that cost nobody anything.
+            return { op: { op: "move-brand-color", colorId: op.colorId, beforeId: before.beforeId } };
+        }
+
+        case "set-brand-fonts": {
+            if (!before || before.op !== "set-brand-fonts") {
+                return { impossible: "no-record" };
+            }
+            return { op: { op: "set-brand-fonts", fonts: structuredClone(before.fonts) } };
         }
     }
 }

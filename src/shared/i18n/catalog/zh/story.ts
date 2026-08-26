@@ -113,6 +113,7 @@ export const story = {
         refusedAssetGone: "该资产已不存在，本次修改未生效",
         refusedAssetIdTaken: "该资产已经在这里了，没有导入任何内容",
         refusedFolderNotEmpty: "该分组里还有分组，没有删除任何内容",
+        refusedConfigEntryGone: "该条目已不在此项目中，本次修改未生效",
         refusedTooLarge: "该角色过大，无法在实时会话中共享，本次修改未生效",
         refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
         refusedNotInSession: "本机已不在该会话中",
@@ -132,6 +133,8 @@ export const story = {
         undoCharacterRestored: "该角色已经回到名册中",
         undoAssetGone: "该资产已不存在",
         undoContentReplaced: "替换文件无法撤销",
+        undoConfigEntryGone: "该条目已不在此项目中",
+        undoConfigEntryRestored: "该条目已回到此项目中",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

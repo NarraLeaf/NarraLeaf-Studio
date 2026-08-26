@@ -7,6 +7,9 @@ import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
+import { AppTagService } from "../appTag/AppTagService";
+import { BrandService } from "../brand/BrandService";
+import { DlcService } from "../dlc/DlcService";
 import { CharacterService } from "../core/CharacterService";
 import { VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
@@ -154,6 +157,24 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         this.session?.claimAsset(assetId, holding);
     }
 
+    /**
+     * This window is editing one row of a configuration table, or has stopped.
+     *
+     * Three doors beside the other four, and the same bargain: silent outside a session. See
+     * `LiveSession.claimAppTag` for what a row is and why the project's own defaults are one.
+     */
+    public claimAppTag(tagId: string, holding: boolean): void {
+        this.session?.claimAppTag(tagId, holding);
+    }
+
+    public claimDlc(dlcId: string, holding: boolean): void {
+        this.session?.claimDlc(dlcId, holding);
+    }
+
+    public claimBrandColor(colorId: string, holding: boolean): void {
+        this.session?.claimBrandColor(colorId, holding);
+    }
+
     /** Send the inverse of this window's last operation. False when there is none; the view says why. */
     public undo(): boolean {
         return this.session?.undo() ?? false;
@@ -171,6 +192,9 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
         const assets = (): AssetsService => ctx.services.get<AssetsService>(Services.Assets);
         const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
+        const appTags = (): AppTagService => ctx.services.get<AppTagService>(Services.AppTags);
+        const dlc = (): DlcService => ctx.services.get<DlcService>(Services.Dlc);
+        const brand = (): BrandService => ctx.services.get<BrandService>(Services.Brand);
         const version = (): VersionControlService => ctx.services.get<VersionControlService>(Services.VersionControl);
         const freeze = (): WorkspaceFreezeService => ctx.services.get<WorkspaceFreezeService>(Services.WorkspaceFreeze);
 
@@ -247,6 +271,26 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folderCategories: () => assets().folderCategories(),
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
+            },
+            // The three configuration tables. No load step either, and for the asset library's
+            // reason: all three services read their file as the workspace starts.
+            appTags: {
+                setSink: sink => appTags().setOperationSink(sink),
+                document: () => appTags().liveDocument(),
+                hasTag: tagId => appTags().getTag(tagId) !== undefined,
+                applyOp: op => appTags().applyLiveOp(op),
+            },
+            dlc: {
+                setSink: sink => dlc().setOperationSink(sink),
+                document: () => dlc().liveDocument(),
+                hasDlc: dlcId => dlc().has(dlcId),
+                applyOp: op => dlc().applyLiveOp(op),
+            },
+            brand: {
+                setSink: sink => brand().setOperationSink(sink),
+                document: () => brand().liveDocument(),
+                hasColor: colorId => brand().getColor(colorId) !== undefined,
+                applyOp: op => brand().applyLiveOp(op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,

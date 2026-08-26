@@ -19,6 +19,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Input } from "@/lib/components/elements";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { appTagsDocumentFreezeScope } from "@/apps/workspace/modules/project/configLiveSession";
 import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
 import type { GameBuildPlatform } from "@shared/types/gameBuild";
@@ -157,7 +158,11 @@ function ConfigSlot({
     service: AppTagService | null;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    // Scoped to `editor/app-tags.json`, which is where a plugin build value lands whichever variant
+    // is selected - see `AppTagService.setPluginConfigValue`. A live session carries that document,
+    // so these fields stay live inside one; the rest of the build dialog does not, because the rest
+    // of it writes the project configuration.
+    const freeze = useFreezeGuard(appTagsDocumentFreezeScope());
     const frozen = freeze.writes(!service);
 
     const resolved = service?.resolvePluginConfigValue(appTagId, field, platform)
