@@ -153,6 +153,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -1575,6 +1578,20 @@ function resolveGameNodeOutput(
         return normalizeBlueprintRGBAColor(
             runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
         );
+    }
+    // The three line-scoped readers, node-type gated for the same reason: `text` is one of the most
+    // common port ids in the catalogue, and gating only the one that needs it would leave a rule
+    // whose exception nobody would remember on the next addition.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING && portId === "isWaiting") {
+        // No host, or no line on screen, is "not waiting" rather than `undefined`: the pin is a
+        // non-nullable boolean, and an indicator bound to it must lay out before any game exists.
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isDialogWaiting() === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT && portId === "text") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getDialogText() ?? "";
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR && portId === "isNarrator") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNarrator() === true;
     }
     // Keyed by node type as well as port, because the two playtime readers publish the same shape:
     // matching on the port alone would give whichever ran first to both.
@@ -3557,6 +3574,9 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME ||

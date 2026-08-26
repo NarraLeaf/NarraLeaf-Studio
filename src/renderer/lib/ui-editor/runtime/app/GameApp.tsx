@@ -53,6 +53,9 @@ import {
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
@@ -1248,13 +1251,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         pendingAssetsReadyRef.current.clear();
     }, []);
 
-    const clearCurrentDialogNametag = useCallback(() => {
+    const clearCurrentDialogState = useCallback(() => {
         currentDialogNametagRef.current = null;
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
         // Who was speaking and what colour that made the nametag are part of the same fact; leaving
         // either behind would tint a screen after the game they belonged to is gone.
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+        // The line the dialog was on, for the same reason. `DialogStateBridge` blanks these when it
+        // unmounts, but a session can end without the dialog ever having been mounted, and a title
+        // screen must not read the last playthrough's line back as one still waiting to be advanced.
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
     }, [core]);
 
     const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
@@ -2021,7 +2030,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
         choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        clearCurrentDialogState();
         setGameStageVisible(false);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         // Everything under the page just opened belonged to the run that has ended: the screens the
@@ -2037,7 +2046,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         setNlrSession(null);
         clearGameHiddenStudioPages();
     }, [
-        clearCurrentDialogNametag,
+        clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
         layerStack,
@@ -4113,7 +4122,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        clearCurrentDialogState();
         clearDevModeSavePreviewImages();
         nlrBootStartedRef.current = null;
         gameEnteredRef.current = false;
@@ -4123,7 +4132,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearGameHiddenStudioPages();
     }, [
         bundle.bundleId,
-        clearCurrentDialogNametag,
+        clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
         rejectPendingGameStarts,
@@ -4146,11 +4155,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        clearCurrentDialogState();
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
         pluginHost?.detachSession();
-    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id, pluginHost]);
+    }, [clearCurrentDialogState, detachTextReadTracker, nlrSession?.id, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
