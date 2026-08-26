@@ -719,7 +719,16 @@ function createWindow(world: World, instance: string): Window {
         dictionary: {
             setSink: () => undefined,
             document: () => null,
-            applyOp: () => undefined,
+            // ⚠ Refuses anything that is not a dictionary operation rather than ignoring it, because
+            // the switch that routes an effect to a document is a `switch` with `break`s: a missing
+            // one sends every operation of the case above into this port as well, and a stub that
+            // shrugged would let that reach a real machine. It has: a merge dropped the `break` after
+            // the palette's case, and the only thing that noticed was two windows disagreeing.
+            applyOp: op => {
+                if (!op.op.startsWith("set-dictionary")) {
+                    throw new Error(`the dictionary port was handed ${op.op}`);
+                }
+            },
         },
         audioTracks: {
             setSink: sink => {
