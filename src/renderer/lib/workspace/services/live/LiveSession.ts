@@ -13,6 +13,7 @@ import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { LiveBlobInbox, sliceBlob } from "@shared/live/blobs";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
+import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
     liveSessionWritablePaths,
@@ -34,11 +35,14 @@ import {
     type LiveAssetFolderOp,
     type LiveAssetOp,
     type LiveAssetRecord,
+    type LiveAssetSetOp,
+    type LiveAudioTrackOp,
     type LiveBlobChunk,
     type LiveBlobNeeded,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
+    type LiveDictionaryOp,
     type LiveDigestScope,
     type LiveDocument,
     type LiveEffect,
@@ -662,6 +666,8 @@ export class LiveSession {
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
+            audioTracks: () => this.deps.audioTracks.tracks(),
+            assetSets: () => this.deps.assetSets.sets(),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -785,6 +791,9 @@ export class LiveSession {
                 readAssetFolders: category => this.deps.assets.folders(category),
                 hasUIElement: ref => this.deps.ui.hasElement(ref),
                 hasBlueprint: blueprintId => this.deps.ui.hasBlueprint(blueprintId),
+                hasAudioTrack: trackId =>
+                    this.deps.audioTracks.tracks()?.some(track => track.id === trackId) ?? false,
+                hasAssetSet: setId => this.deps.assetSets.sets()?.some(set => set.id === setId) ?? false,
                 digestOf: scope => this.digestOf(scope),
                 // `derived` is passed through, not applied afterwards: the entries a paste carries
                 // are written by the same call the effect's digests are taken from, so a machine
@@ -840,6 +849,11 @@ export class LiveSession {
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
         this.deps.ui.setSink(this.interfaceSinkFor(session));
+        // The three small project tables, through the same sink the libraries use: none of them has
+        // a document id this window has to be holding for an operation to be about it.
+        this.deps.dictionary.setSink(this.librarySinkFor(session));
+        this.deps.audioTracks.setSink(this.librarySinkFor(session));
+        this.deps.assetSets.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -871,6 +885,9 @@ export class LiveSession {
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
         this.deps.ui.setSink(null);
+        this.deps.dictionary.setSink(null);
+        this.deps.audioTracks.setSink(null);
+        this.deps.assetSets.setSink(null);
         session.blobsIn.clear();
         session.blobsOut.clear();
         session.blobsDropped.clear();
@@ -1051,6 +1068,9 @@ export class LiveSession {
             assetsByType: category => this.assetsOfCategory(category),
             ui: this.deps.ui.document(),
             uiGraphs: this.deps.ui.graphs(),
+            dictionary: () => this.deps.dictionary.document(),
+            audioTracks: () => this.deps.audioTracks.tracks(),
+            assetSets: () => this.deps.assetSets.sets(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1077,6 +1097,14 @@ export class LiveSession {
             case "ui":
             case "ui-graphs":
                 touched.push(...this.deps.ui.applyOp(op as LiveUIOp | LiveUIGraphOp));
+            case "dictionary":
+                this.deps.dictionary.applyOp(op as LiveDictionaryOp);
+                break;
+            case "audio-tracks":
+                this.deps.audioTracks.applyOp(op as LiveAudioTrackOp);
+                break;
+            case "asset-sets":
+                this.deps.assetSets.applyOp(op as LiveAssetSetOp);
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1131,6 +1159,14 @@ export class LiveSession {
                 return { doc: "ui" };
             case "ui-graphs":
                 return { doc: "ui-graphs" };
+            // One of each per project, so the kind is the whole address and there is nothing to
+            // read off the operation.
+            case "dictionary":
+                return { doc: "dictionary" };
+            case "audio-tracks":
+                return { doc: "audio-tracks" };
+            case "asset-sets":
+                return { doc: "asset-sets" };
         }
     }
 
@@ -1187,6 +1223,15 @@ export class LiveSession {
                 return uiBlueprintDigest(this.deps.ui.graphs(), scope.blueprintId);
             case "ui-graph-shell":
                 return uiGraphShellDigest(this.deps.ui.graphs());
+            // Whole-document, with the libraries and the asset shards, and absent hashes to a value
+            // for their reason: all three are read as the workspace starts, so a machine that
+            // reaches an effect without one has failed at something.
+            case "dictionary":
+                return dictionaryDigest(this.deps.dictionary.document());
+            case "audio-tracks":
+                return audioTracksDigest(this.deps.audioTracks.tracks());
+            case "asset-sets":
+                return assetSetsDigest(this.deps.assetSets.sets());
         }
     }
 
@@ -1415,14 +1460,16 @@ export class LiveSession {
     /**
      * Where translation and voice edits go while this session is running.
      *
-     * **One sink for the two libraries and the asset shards**, which is the only place in this file
-     * documents share one, and they share it because the decision is identical: none of them has a
-     * document id this window has to be holding for the operation to be about it - the operation
-     * names its own language, or its own asset type - so there is nothing left for them to differ
-     * about. Three copies of these ten lines would be three places to remember the size check.
+     * **One sink for every document that is not a story and not the cast**, which is the only
+     * place in this file documents share one, and they share it because the decision is identical:
+     * none of them has a document id this window has to be holding for the operation to be about it
+     * - the operation names its own language or its own asset type, and the three project tables
+     * have only one address each. Six copies of these ten lines would be six places to remember the
+     * size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp): boolean;
+        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveDictionaryOp
+            | LiveAudioTrackOp | LiveAssetSetOp): boolean;
     } {
         return {
             handle: (op): boolean => {

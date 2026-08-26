@@ -82,14 +82,17 @@ import { readRepositoryId } from "./localRepositories";
 import { listServerMembers } from "./serverMembers";
 import { signInWithPassword } from "./serverPassword";
 import {
-    createServerProject,
     deleteServerProject,
     getServerProject,
     listServerProjectHistory,
     listServerProjects,
-    type ServerProjectResult,
     type ServerProjectsResult,
 } from "./serverProjects";
+import {
+    createServerProjectOverSession,
+    listServerProjectsOverSession,
+    type TeamSessionCall,
+} from "./serverProjectsSession";
 import { forgetServerToken, recallServerToken, rememberServerToken } from "./serverTokens";
 
 /**
@@ -434,7 +437,21 @@ export class VcsManager extends Manager {
      */
     private shuttingDown = false;
 
-    constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
+    /**
+     * How this manager reaches a server over its session, for the two questions publishing
+     * asks there - what a server already holds, and recording a new project on it.
+     *
+     * Handed in the way {@link flushPendingSaves} is, and for the same reason: this manager
+     * holds a `BaseApp` and the sessions live on the {@link TeamManager}, which is built
+     * after this one. A thunk closes over that manager and reads it when a publish runs,
+     * long after both exist. Absent only in a test that does not publish; the product always
+     * wires it.
+     */
+    constructor(
+        app: BaseApp,
+        private readonly flushPendingSaves?: PendingSaveFlush,
+        private readonly teamSessionCall?: TeamSessionCall,
+    ) {
         super(app);
     }
 
@@ -2144,18 +2161,34 @@ export class VcsManager extends Manager {
             throw new Error(`${root} is not under version control, so there is nothing to publish`);
         }
 
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        // The guard, not the transport: the list and the registration go over the session
+        // now, but this still answers "can this installation reach that server at all" -
+        // no stored record, or no token to be read - before anything is attempted, so a
+        // machine that cannot ask says so rather than opening a socket to find out.
+        if (this.serverCredentials(remoteOrigin) === null) {
+            return { ok: false, problem: { kind: "no-token" } };
+        }
+        const call = this.teamSessionCall;
+        if (call === undefined) {
+            throw new Error("Publishing needs a Team session, which this manager was not given");
+        }
 
         // Asked rather than assumed, and it is the same question the launcher's list
         // answers: a project already on this server is one somebody has published, and
         // registering it a second time is refused by the server anyway.
-        const held = await listServerProjects(credentials);
+        const held = await listServerProjectsOverSession(call, remoteOrigin);
         if (!held.ok) return held;
         const already = held.projects.some((project) => project.id.toLowerCase() === repositoryId);
 
         if (!already) {
-            const registered = await createServerProject({ ...credentials, name, repositoryId });
+            // `clientId` is the repository id: it is stable and unique to this publish, so a
+            // create retried after a dropped session is the same write to the server rather
+            // than a second project under the same repository.
+            const registered = await createServerProjectOverSession(call, remoteOrigin, {
+                name,
+                repositoryId,
+                clientId: repositoryId,
+            });
             if (!registered.ok) return registered;
             this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
         }

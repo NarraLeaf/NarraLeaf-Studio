@@ -109,6 +109,8 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "folder-not-empty": "story.live.refusedFolderNotEmpty",
     "ui-element-gone": "story.live.refusedUIElementGone",
     "ui-blueprint-gone": "story.live.refusedUIBlueprintGone",
+    "track-gone": "story.live.refusedTrackGone",
+    "set-gone": "story.live.refusedSetGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
@@ -168,6 +170,10 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "character-restored": "story.live.undoCharacterRestored",
     "asset-gone": "story.live.undoAssetGone",
     "content-replaced": "story.live.undoContentReplaced",
+    "track-gone": "story.live.undoTrackGone",
+    "track-restored": "story.live.undoTrackRestored",
+    "set-gone": "story.live.undoSetGone",
+    "set-restored": "story.live.undoSetRestored",
 };
 
 export function liveUndoRefusalSentence(reason: LiveUndoRefusalReason): TranslationKey | null {

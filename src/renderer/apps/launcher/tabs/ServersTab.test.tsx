@@ -59,19 +59,54 @@ vi.mock("@/lib/app/bridge", () => ({
             launchProjectWizard: bridge.launchProjectWizard,
         },
         workspace: { launch: bridge.launchWorkspace },
-        // A session that offers nothing, because nothing on this tab is about one. A
-        // capability is checked rather than probed, so an empty list is a section that
-        // is not drawn.
+        // The projects list, the roster and one project's detail all go over the session
+        // now, so `team.call` is where they are answered. It dispatches to the same per-
+        // method fakes the REST wrappers used, and reshapes their answer into what the wire
+        // carries - the collection under its own key, or a coded problem - so a test still
+        // drives one method and asserts on one fake, and the transport is what changed.
         team: {
             open: () => Promise.resolve({
                 success: true,
                 data: { remoteOrigin: "", state: "idle", capabilities: [], since: 0 },
             }),
             connections: () => Promise.resolve({ success: true, data: { connections: [] } }),
-            call: () => Promise.resolve({
-                success: true,
-                data: { ok: false, problem: { kind: "unsupported" } },
-            }),
+            call: async (remoteOrigin: string, method: string, params?: { project?: string }) => {
+                const problem = (kind: string, detail = ""): { kind: string; code?: string; detail?: string } => {
+                    switch (kind) {
+                        case "unreachable": return { kind: "offline", detail };
+                        case "no-token": return { kind: "no-token" };
+                        case "refused": return { kind: "refused", code: "refused", detail };
+                        case "rejected": return { kind: "refused", code: "internal", detail };
+                        default: return { kind: "unsupported" };
+                    }
+                };
+                const answer = (
+                    outcome: { success: boolean; data?: { ok: boolean; problem?: { kind: string; detail?: string } } },
+                    value: unknown,
+                ) => {
+                    if (!outcome?.success) return { success: true, data: { ok: false, problem: { kind: "offline", detail: "" } } };
+                    return outcome.data!.ok
+                        ? { success: true, data: { ok: true, value } }
+                        : { success: true, data: { ok: false, problem: problem(outcome.data!.problem!.kind, outcome.data!.problem!.detail) } };
+                };
+                if (method === "projects.list") {
+                    const out = await bridge.listServerProjects(remoteOrigin);
+                    return answer(out, { projects: out?.data?.projects });
+                }
+                if (method === "members.list") {
+                    const out = await bridge.listServerMembers(remoteOrigin);
+                    return answer(out, { members: out?.data?.members });
+                }
+                if (method === "projects.get") {
+                    const out = await bridge.getServerProject(remoteOrigin, params?.project);
+                    return answer(out, out?.data?.detail);
+                }
+                if (method === "projects.history") {
+                    const out = await bridge.listServerProjectHistory(remoteOrigin, params?.project);
+                    return answer(out, out?.data?.page);
+                }
+                return { success: true, data: { ok: false, problem: { kind: "unsupported" } } };
+            },
             subscribe: () => Promise.resolve({
                 success: true,
                 data: { ok: false, problem: { kind: "unsupported" } },
@@ -453,7 +488,7 @@ describe("what a server offers", () => {
                 serviceAccount: false,
             }] },
         });
-        open([project()], [], ["projects", "members"]);
+        open([project()], [], ["session"]);
 
         await waitFor(() => expect(bridge.listServerMembers).toHaveBeenCalledWith(ORIGIN));
         await waitFor(() => expect(document.querySelector("[data-server-member='ada']")).not.toBeNull());
@@ -468,7 +503,7 @@ describe("what a server offers", () => {
         bridge.listServerProjectHistory.mockResolvedValue({
             success: true, data: { ok: true, page: { more: false } },
         });
-        open([project()], [], ["projects", "project-detail", "project-history"]);
+        open([project()], [], ["session", "project-history"]);
 
         fireEvent.click(await find("[data-project-action='select']"));
 
@@ -486,7 +521,7 @@ describe("what a server offers", () => {
         bridge.getServerProject.mockResolvedValue({
             success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
         });
-        open([project()], [], ["projects", "members", "project-detail"]);
+        open([project()], [], ["session"]);
 
         await waitFor(() => expect(bridge.listServerMembers).toHaveBeenCalledTimes(1));
         fireEvent.click(await find("[data-project-action='select']"));
@@ -549,7 +584,7 @@ describe("one primary control", () => {
 
     it("leaves the reference view with none, because it has nothing to act on", async () => {
         bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
-        open([project()], [], ["projects", "members"]);
+        open([project()], [], ["session"]);
 
         await find("[data-server-project]");
         fireEvent.click(await find("[data-servers-action='people']"));
@@ -569,7 +604,7 @@ describe("one primary control", () => {
 describe("the two views of a server", () => {
     it("names them on one strip and marks the one on screen", async () => {
         bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members: [] } });
-        open([project()], [], ["projects", "members"]);
+        open([project()], [], ["session"]);
 
         const strip = await find("[data-servers-views] [role='tablist']");
         const selected = () => [...strip.querySelectorAll("[role='tab']")]
@@ -615,7 +650,7 @@ describe("who else is on the server", () => {
 
     it("keeps the roster off the screen until it is asked for", async () => {
         bridge.listServerMembers.mockResolvedValue(ROSTER);
-        open([project()], [], ["projects", "members"]);
+        open([project()], [], ["session"]);
 
         // Read with the projects: a reader who presses the control would otherwise be
         // paying for a second visit to the server to see what was already answered.
@@ -636,7 +671,7 @@ describe("who else is on the server", () => {
         bridge.getServerProject.mockResolvedValue({
             success: true, data: { ok: true, detail: { project: project(), file: { readable: false } } },
         });
-        open([project()], [], ["projects", "members", "project-detail"]);
+        open([project()], [], ["session"]);
 
         fireEvent.click(await find("[data-project-action='select']"));
         await waitFor(() => expect(document.querySelector("[data-project-unread]")).not.toBeNull());
