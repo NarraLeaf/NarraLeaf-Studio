@@ -531,24 +531,32 @@ export class LiveSession {
      * Silent about everything it decides not to do. This runs on every workspace that opens, most of
      * which are in no session and never have been, and a failure to reach a server on the way in is
      * not something to put in front of an author who did not ask a question.
+     *
+     * **`ask-again` is not a failure and is the ordinary answer for the first second or two.** This
+     * runs while the workspace is still starting, and the socket to the server is being opened at
+     * the same time - so the first pass usually finds no instance id and no answer, which says
+     * nothing at all about whether there is a room. The caller tries a few more times; see
+     * `LiveSessionService`.
      */
-    public async resume(): Promise<void> {
+    public async resume(): Promise<"settled" | "ask-again"> {
         if (this.active || this.view.phase !== "idle" || this.blocked() !== null) {
-            return;
+            return "settled";
         }
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
-                return;
+                // A project on no server, or no repository at all, is settled: nothing about it will
+                // change by asking again. Not having been given an instance id yet is the opposite.
+                return ready.kind === "no-instance" ? "ask-again" : "settled";
             }
             const listed = await ready.rooms.list(ready.project.repositoryId);
             if (!listed.ok) {
-                return;
+                return "ask-again";
             }
             const mine = listed.value.find(room => room.openedByInstance === ready.instance);
             if (mine) {
                 await this.resumeOwnRoom(ready, mine);
-                return;
+                return "settled";
             }
             const joined = listed.value.find(room =>
                 room.members.some(member => member.instance === ready.instance));
@@ -558,8 +566,10 @@ export class LiveSession {
                 // been all along.
                 await this.join({ session: joined });
             }
+            return "settled";
         } catch (error) {
             console.warn("[LiveSession] could not take up a room this window was already in", error);
+            return "settled";
         }
     }
 
