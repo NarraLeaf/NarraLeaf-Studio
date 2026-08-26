@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { ServerRow, useServers } from "@/lib/vcs/servers";
 import type { TranslationKey } from "@shared/i18n";
+import { serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsServerProject,
     VcsServerProjectsProblem,
@@ -63,17 +64,13 @@ export function ServerProjectPicker({ value, onPick }: ServerProjectPickerProps)
         setLoading(true);
         setProblem(null);
         setProjects(null);
-        const result = await getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
+        const result = await listProjects(remoteOrigin);
         setLoading(false);
-        if (!result?.success) {
-            setProblem("wizard.source.onServerUnknown");
+        if (!result.ok) {
+            setProblem(PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
             return;
         }
-        if (!result.data.ok) {
-            setProblem(PROBLEM_KEYS[result.data.problem.kind]);
-            return;
-        }
-        setProjects(result.data.projects);
+        setProjects(result.value);
     }, []);
 
     useEffect(() => {
