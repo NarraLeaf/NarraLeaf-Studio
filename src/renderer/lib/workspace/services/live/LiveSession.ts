@@ -13,11 +13,13 @@ import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
+import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import {
     liveSessionWritablePaths,
     type LiveSessionInterface,
     type LiveSessionLocales,
+    type LiveSessionRegistries,
 } from "@shared/live/sharedDocuments";
 import { uiBlueprintDigest, uiGraphShellDigest } from "@shared/live/uiGraphParts";
 import { uiComponentDigest, uiShellDigest, uiSurfaceDigest } from "@shared/live/uiParts";
@@ -25,11 +27,13 @@ import {
     assetClaimKey,
     characterClaimKey,
     isLiveMessage,
+    localizationKeyClaimKey,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
     uiElementClaimKey,
     uiNodeClaimKey,
+    variableClaimKey,
     type LiveAssetBytePart,
     type LiveAssetFolderOp,
     type LiveAssetOp,
@@ -44,6 +48,7 @@ import {
     type LiveDocument,
     type LiveEffect,
     type LiveHandover,
+    type LiveLocalizationKeyOp,
     type LiveLocalizationOp,
     type LiveMessage,
     type LiveOp,
@@ -52,6 +57,7 @@ import {
     type LiveStoryOp,
     type LiveUIGraphOp,
     type LiveUIOp,
+    type LiveVariableOp,
     type LiveVoiceOp,
 } from "@shared/live/ops";
 import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
@@ -142,6 +148,12 @@ type ActiveSession = {
      * rest. Both or neither - see `LiveSessionInterface`.
      */
     ui: LiveSessionInterface;
+    /**
+     * Which of the two project-level registries this session carries, settled on the way in with the
+     * rest - and by what this machine could actually READ, for the libraries' reason: a registry that
+     * would not parse is one no effect can be applied to.
+     */
+    registries: LiveSessionRegistries;
     /**
      * How far every file this window is carrying or collecting has got, as last read.
      *
@@ -651,6 +663,7 @@ export class LiveSession {
      * **One method for both roles and for both halves of the statement**, because a give-back that
      * could be wired up without its take - or taken on one role and forgotten on the other - is a
      * row nobody can edit for the rest of the session. A guest sends the message and holds nothing;
+    /**
      * a host records it in its own store, which is the only place a claim exists, and broadcasts
      * the set that resulted.
      *
@@ -733,6 +746,32 @@ export class LiveSession {
      */
     public claimUINode(blueprintId: string, graphId: string, nodeId: string, holding: boolean): void {
         this.claim(uiNodeClaimKey(blueprintId, graphId, nodeId), holding);
+    }
+
+    /**
+     * This window is editing one variable registry entry, or has stopped.
+     *
+     * The registry's door beside the row's, the record's, the translation's and the asset's, and held
+     * for the same span: while the row is open in front of somebody, not while their fingers are
+     * moving. The panel's name and default boxes are controlled inputs that write on every keystroke,
+     * so with a session installed the box's value IS the document - and an edit to the same entry
+     * arriving mid-word lands under the author's cursor and takes what they had typed.
+     *
+     * No project id and no scope, because there is one registry per project.
+     */
+    public claimVariable(variableId: string, holding: boolean): void {
+        this.claim(variableClaimKey(variableId), holding);
+    }
+
+    /**
+     * This window is editing one named string, or has stopped.
+     *
+     * The key registry's door, beside the translation's - and they are held together on a named-key
+     * row, one for the source text and one for each language's box beside it. Addressed by NAME
+     * because the registry is.
+     */
+    public claimLocalizationKey(name: string, holding: boolean): void {
+        this.claim(localizationKeyClaimKey(name), holding);
     }
 
     /**
@@ -862,6 +901,8 @@ export class LiveSession {
             assetFolders: category => this.deps.assets.folders(category),
             audioTracks: () => this.deps.audioTracks.tracks(),
             assetSets: () => this.deps.assetSets.sets(),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
         });
         if ("impossible" in plan) {
             this.patch({ undoRefusal: plan.impossible });
@@ -929,12 +970,20 @@ export class LiveSession {
         // What this asks is whether they are there, which is what the session carries and what the
         // boundary leaves writable - one set, from one call.
         const ui: LiveSessionInterface = { carried: this.deps.ui.held() };
+        // The two project-level registries, and the same rule the libraries follow: what this machine
+        // could READ is what the session carries. The variable registry survives a file it could not
+        // parse - the service keeps an empty stand-in so the project still opens - so "is it there"
+        // is not the question; "is what is in memory the file on disk" is.
+        const registries: LiveSessionRegistries = {
+            variables: this.deps.variables.readable(),
+            localizationKeys: await this.deps.localization.loadKeys(),
+        };
         await this.deps.freeze.arm({
             session: input.room.id,
             // From the one table that also decides what the host will carry, never assembled here.
             // A path allowed by the boundary that the vocabulary cannot carry is an edit that lands
             // on this machine and nowhere else, with no digest over it - see `sharedDocuments`.
-            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories, ui),
+            writable: liveSessionWritablePaths(stories, locales, assetTypes, assetCategories, ui, registries),
         });
 
         const session: ActiveSession = {
@@ -948,6 +997,7 @@ export class LiveSession {
             assetTypes,
             assetCategories,
             ui,
+            registries,
             blobs: new Map(),
             blobPoll: null,
             self: input.self,
@@ -982,8 +1032,10 @@ export class LiveSession {
                 assetTypes,
                 assetCategories,
                 ui,
+                registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
+                hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
                 hasUIElement: ref => this.deps.ui.hasElement(ref),
@@ -1058,6 +1110,7 @@ export class LiveSession {
         this.deps.dictionary.setSink(this.librarySinkFor(session));
         this.deps.audioTracks.setSink(this.librarySinkFor(session));
         this.deps.assetSets.setSink(this.librarySinkFor(session));
+        this.deps.variables.setSink(this.librarySinkFor(session));
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -1135,6 +1188,7 @@ export class LiveSession {
         this.deps.dictionary.setSink(null);
         this.deps.audioTracks.setSink(null);
         this.deps.assetSets.setSink(null);
+        this.deps.variables.setSink(null);
         // ⚠ **The transfers themselves are not stopped.** They belong to the project rather than to
         // the room: a file that was halfway across when a session ended goes on, and is finished or
         // picked up again next time - which is the whole of what "resumed rather than restarted"
@@ -1516,6 +1570,8 @@ export class LiveSession {
             dictionary: () => this.deps.dictionary.document(),
             audioTracks: () => this.deps.audioTracks.tracks(),
             assetSets: () => this.deps.assetSets.sets(),
+            variables: variableId => this.deps.variables.entry(variableId),
+            keys: () => this.deps.localization.keys(),
             // The rows a deletion is about to un-speak, read while they still say whose they are.
             // Only this window needs them - they are what ITS undo would have to put back - so they
             // are read here rather than carried on the effect.
@@ -1551,6 +1607,13 @@ export class LiveSession {
                 break;
             case "asset-sets":
                 this.deps.assetSets.applyOp(op as LiveAssetSetOp);
+            case "variables":
+                this.deps.variables.applyOp(op as LiveVariableOp);
+                break;
+            // The named-string registry is applied by the service that owns the translations beside
+            // it - one service, two documents, and they stay two everywhere it matters.
+            case "localization-keys":
+                this.deps.localization.applyOp(op as LiveLocalizationKeyOp);
                 break;
         }
         this.rememberDerived(session, op, derived);
@@ -1613,6 +1676,11 @@ export class LiveSession {
                 return { doc: "audio-tracks" };
             case "asset-sets":
                 return { doc: "asset-sets" };
+            // One per project, so the verb is the whole address - with the cast.
+            case "variables":
+                return { doc: "variables" };
+            case "localization-keys":
+                return { doc: "localization-keys" };
         }
     }
 
@@ -1678,6 +1746,13 @@ export class LiveSession {
                 return audioTracksDigest(this.deps.audioTracks.tracks());
             case "asset-sets":
                 return assetSetsDigest(this.deps.assetSets.sets());
+            // ⚠ An entry that is not there hashes to a value rather than to nothing, the way a
+            // missing character record does: taking a variable back out is an operation like any
+            // other, and the machine that failed to apply it has to be caught rather than excused.
+            case "variable":
+                return variableEntryDigest(this.deps.variables.entry(scope.variableId));
+            case "localization-key":
+                return localizationKeyDigest(this.deps.localization.keys()?.[scope.name] ?? null);
         }
     }
 
@@ -1692,8 +1767,10 @@ export class LiveSession {
      *
      * Confined to the verbs that can actually reach the cap, so an ordinary edit does not pay a JSON
      * encode: a whole character record is bounded by nothing, and a library batch is a whole exchange
-     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. Everything
-     * else is a line of prose and a few ids.
+     * file folded back in - a translated CSV of a few thousand rows is far past 16 KB. A named
+     * string's source text and a `json` variable's starting value are bounded by nothing either -
+     * both are boxes an author can paste a document into. Everything else is a line of prose and a
+     * few ids.
      *
      * ⚠ An import too large to travel is refused by name and said out loud, exactly as a fat
      * character record is. It is never split into several operations: an import is one gesture, and
@@ -1709,7 +1786,9 @@ export class LiveSession {
             // a template restates hundreds of elements, and one graph's wiring is ten kilobytes in
             // the shipped skeleton. Refused by name rather than split - an interface arriving in
             // pieces would draw a screen nobody authored.
-            && op.op !== "write-ui" && op.op !== "write-ui-graphs") {
+            && op.op !== "write-ui" && op.op !== "write-ui-graphs"
+            && op.op !== "set-key"
+            && op.op !== "create-variable" && op.op !== "update-variable") {
             return false;
         }
         return new TextEncoder().encode(JSON.stringify(op)).length > TEAM_LIVE_PAYLOAD_LIMIT;
@@ -1909,13 +1988,13 @@ export class LiveSession {
      * **One sink for every document that is not a story and not the cast**, which is the only
      * place in this file documents share one, and they share it because the decision is identical:
      * none of them has a document id this window has to be holding for the operation to be about it
-     * - the operation names its own language or its own asset type, and the three project tables
-     * have only one address each. Six copies of these ten lines would be six places to remember the
-     * size check.
+     * - the operation names its own language or its own asset type, and the project tables and the
+     * two registries have only one address each. Eight copies of these ten lines would be eight
+     * places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
-        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveDictionaryOp
-            | LiveAudioTrackOp | LiveAssetSetOp): boolean;
+        handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp
+            | LiveVariableOp | LiveDictionaryOp | LiveAudioTrackOp | LiveAssetSetOp): boolean;
     } {
         return {
             handle: (op): boolean => {

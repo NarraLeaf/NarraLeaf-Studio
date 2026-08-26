@@ -111,6 +111,7 @@ export const story = {
         refusedSceneGone: "该场景已不存在，本次修改未生效",
         refusedCharacterGone: "该角色已不存在，本次修改未生效",
         refusedAssetGone: "该资产已不存在，本次修改未生效",
+        refusedVariableGone: "该变量已不存在，本次修改未生效",
         refusedAssetIdTaken: "该资产已经在这里了，没有导入任何内容",
         refusedFolderNotEmpty: "该分组里还有分组，没有删除任何内容",
         refusedUIElementGone: "该元素已不存在，本次修改未生效",
@@ -142,6 +143,9 @@ export const story = {
         undoTrackRestored: "该音频轨道已经回到混音器中",
         undoSetGone: "该资产集已不存在",
         undoSetRestored: "该资产集已经重新声明",
+        undoVariableGone: "该变量已不存在",
+        undoVariableRestored: "该变量已重新存在",
+        undoKeyRestored: "该字符串已被重新声明",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",

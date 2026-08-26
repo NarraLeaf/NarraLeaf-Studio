@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { assetsDigest } from "@shared/live/assets";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
+import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
 import { sceneDigest } from "@shared/live/sceneDigest";
 import { makeAssetSetAxis } from "@shared/types/assetSet";
 import {
@@ -10,8 +11,10 @@ import {
     characterClaimKey,
     opClaimKeys,
     opDocumentKind,
+    localizationKeyClaimKey,
     storyRowClaimKey,
     translationClaimKey,
+    variableClaimKey,
     type LiveAssetFolder,
     type LiveAssetRecord,
     type LiveDocument,
@@ -23,7 +26,8 @@ import {
     type LiveRefusalReason,
 } from "@shared/live/ops";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
@@ -108,6 +112,10 @@ type World = {
     /** The mixer and the asset sets, two of the three tables a session always carries. */
     tracks: { id: string }[];
     sets: { id: string }[];
+    /** The variable registry this session carries. */
+    variables: Record<string, VariableRegistryEntry>;
+    /** The named-string registry this session carries. */
+    keys: Record<string, LocalizationKeyDefinition>;
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
@@ -200,6 +208,14 @@ const ASSET_TYPES = ["image", "audio"];
 /** The sections every host in these tests carries folders for. */
 const ASSET_CATEGORIES = ["image", "media"];
 
+/** Both project-level registries, which every host in these tests carries. */
+const REGISTRIES = { variables: true, localizationKeys: true };
+
+/** A registry entry with nothing on it but what addresses it and what an edit can move. */
+function variable(id: string, name = id): VariableRegistryEntry {
+    return { id, name, scope: "saved", valueType: "boolean", storageKey: id };
+}
+
 /** An asset record with nothing on it but what addresses it and what an edit can move. */
 function asset(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
     return { id, type: "image", name, hash: `hash-${id}`, tags: [], description: "", ...(groupId ? { groupId } : {}) };
@@ -246,6 +262,10 @@ function makeWorld(options: {
     assets?: Record<string, LiveAssetRecord>;
     /** The image folders this host starts with. */
     folders?: Record<string, LiveAssetFolder>;
+    /** The variable registry entries this host starts with. */
+    variables?: Record<string, VariableRegistryEntry>;
+    /** The named strings this host starts with. */
+    keys?: Record<string, LocalizationKeyDefinition>;
     /** The host's own record, when a test wants to set the clock a claim lapses against. */
     claimStore?: LiveClaimStore;
     /**
@@ -276,6 +296,8 @@ function makeWorld(options: {
     // record is there, and everything else about them is last-writer-wins.
     const tracks: World["tracks"] = [{ id: "bgm" }];
     const sets: World["sets"] = [{ id: "alice" }];
+    const variables: World["variables"] = { ...(options.variables ?? {}) };
+    const keys: World["keys"] = { ...(options.keys ?? {}) };
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -291,6 +313,8 @@ function makeWorld(options: {
         uiGraphs,
         tracks,
         sets,
+        variables,
+        keys,
         applied,
         host: new LiveHost({
             self: "host",
@@ -300,8 +324,10 @@ function makeWorld(options: {
             readScene: (_storyId, id) => scenes[id] ?? null,
             readCharacter: id => cast.characters[id] ?? null,
             hasAsset: (assetType, assetId) => assets[assetType]?.[assetId] !== undefined,
+            hasVariable: variableId => variables[variableId] !== undefined,
             assetCategories: ASSET_CATEGORIES,
             ui: INTERFACE,
+            registries: REGISTRIES,
             readAssetFolders: category => folders[category] ?? null,
             hasUIElement: ref => uiHasElement(ui, ref),
             hasBlueprint: blueprintId => uiHasBlueprint(uiGraphs, blueprintId),
@@ -336,12 +362,18 @@ function makeWorld(options: {
                 if (scope.of === "ui-blueprint") {
                     return uiBlueprintDigest(uiGraphs, scope.blueprintId);
                 }
+                if (scope.of === "variable") {
+                    return variableEntryDigest(variables[scope.variableId] ?? null);
+                }
+                if (scope.of === "localization-key") {
+                    return localizationKeyDigest(keys[scope.name] ?? null);
+                }
                 return castDigest(cast);
             },
             applyOp: op => {
                 applied.push(op);
                 const ownersBefore = uiOwningSurfaceIds(ui);
-                apply(scenes, story, cast, translations, takes, assets, folders, ui, uiGraphs, op);
+                apply(scenes, story, cast, translations, takes, assets, folders, ui, uiGraphs, variables, keys, op);
                 // The interface reports its own units, because which Surface an element is under is
                 // a question about the tree rather than about the message - see `uiPartsTouched`.
                 if (op.op === "write-ui") {
@@ -389,6 +421,8 @@ function apply(
     folders: World["folders"],
     ui: UIDocument,
     uiGraphs: UIGraphDocument,
+    variables: World["variables"],
+    keys: World["keys"],
     op: LiveOp,
 ): void {
     switch (op.op) {
@@ -404,6 +438,21 @@ function apply(
         case "update-asset-set":
         case "delete-asset-sets":
         case "move-asset-sets":
+            return;
+        case "create-variable":
+            variables[op.entry.id] = structuredClone(op.entry);
+            return;
+        case "update-variable":
+            variables[op.variableId] = structuredClone(op.entry);
+            return;
+        case "delete-variable":
+            delete variables[op.variableId];
+            return;
+        case "set-key":
+            keys[op.name] = { ...op.definition };
+            return;
+        case "remove-key":
+            delete keys[op.name];
             return;
         case "create-assets":
             for (const create of op.creates) {
@@ -602,6 +651,10 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "audio-tracks" };
         case "asset-sets":
             return { doc: "asset-sets" };
+        case "variables":
+            return { doc: "variables" };
+        case "localization-keys":
+            return { doc: "localization-keys" };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -1223,13 +1276,23 @@ describe("the claim check", () => {
                 },
                 updates: ["bp-1"],
             },
+            "update-variable": { op: "update-variable", variableId: "v1", entry: variable("v1", "Gold") },
+            "delete-variable": { op: "delete-variable", variableId: "v1" },
+            "set-key": { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } },
+            "remove-key": { op: "remove-key", name: "menu.start" },
         };
         expect(Object.keys(samples).sort()).toEqual([...CLAIMED_OPS].sort());
 
         for (const [kind, op] of Object.entries(samples)) {
             // Held by somebody else, on every key the operation names.
             const claims = Object.fromEntries(opClaimKeys(op).map(key => [key, "guest-2"]));
-            const world = makeWorld({ claims, cast: [record("c1", "Ada")], assets: { a1: asset("a1") } });
+            const world = makeWorld({
+                claims,
+                cast: [record("c1", "Ada")],
+                assets: { a1: asset("a1") },
+                variables: { v1: variable("v1") },
+                keys: { "menu.start": { sourceText: "Start" } },
+            });
             const refusal = asRefusal(send(world, op, "guest-1"));
             expect(refusal.reason, kind).toBe("row-claimed");
             expect(world.applied, kind).toHaveLength(0);
@@ -1916,5 +1979,130 @@ describe("the three project tables", () => {
             { doc: "audio-tracks" },
         );
         expect(answer).toMatchObject({ kind: "refusal", reason: "document-not-shared" });
+    });
+});
+
+/**
+ * The two project-level registries: the variable registry and the named strings.
+ *
+ * One per project, so the host has no address to check beyond the verb - and one refusal apiece that
+ * the story's own vocabulary does not have: an update naming an entry nobody holds.
+ */
+describe("the project registries a session carries", () => {
+    it("replaces one entry whole, because an entry's fields hold each other up", () => {
+        // A retype rewrites the value type and the default together, so a field-level verb would
+        // state half of one gesture and leave every receiving machine to resolve the other half.
+        const world = makeWorld({ variables: { v1: variable("v1", "Gold") } });
+        const effect = asEffect(send(world, {
+            op: "update-variable",
+            variableId: "v1",
+            entry: { ...variable("v1", "Gold"), valueType: "number", defaultValue: 10 },
+        }));
+
+        expect(world.variables.v1).toEqual({ ...variable("v1", "Gold"), valueType: "number", defaultValue: 10 });
+        expect(effect.digests).toEqual([{ scope: { of: "variable", variableId: "v1" }, hash: expect.any(String) }]);
+    });
+
+    it("refuses an update whose entry is gone, and says the entry is gone", () => {
+        // ⚠ Says the ENTRY is gone and nothing about the box the author is typing in. An update that
+        // created what it could not find would put back a variable somebody removed, leaving every
+        // blueprint node that named it still empty.
+        const world = makeWorld();
+        expect(asRefusal(send(world, { op: "update-variable", variableId: "ghost", entry: variable("ghost") })).reason)
+            .toBe("variable-gone");
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("takes a creation without checking for a collision, because the id was minted", () => {
+        // With `create-character`: two ids colliding is a uuid collision rather than a race, and a
+        // retry of one creation is answered by the receipts.
+        const world = makeWorld();
+        expect(asEffect(send(world, { op: "create-variable", entry: variable("v9", "Route") })).seq).toBe(1);
+        expect(world.variables.v9?.name).toBe("Route");
+    });
+
+    it("takes a removal only for an entry that is there, because it is only ever an undo", () => {
+        const world = makeWorld({ variables: { v1: variable("v1") } });
+        asEffect(send(world, { op: "delete-variable", variableId: "v1" }));
+        expect(world.variables.v1).toBeUndefined();
+        expect(asRefusal(send(world, { op: "delete-variable", variableId: "v1" })).reason).toBe("variable-gone");
+    });
+
+    it("forgets the claim on an entry it has just removed", () => {
+        const world = makeWorld({ variables: { v1: variable("v1") } });
+        world.host.claimLocal(variableClaimKey("v1"), true);
+        expect(world.host.claims.snapshot().held[variableClaimKey("v1")]).toBe("host");
+        asEffect(send(world, { op: "delete-variable", variableId: "v1" }, "host"));
+        expect(world.host.claims.snapshot().held[variableClaimKey("v1")]).toBeUndefined();
+    });
+
+    it("declares a named string with one verb, whether or not it was there", () => {
+        // The service's own create-or-replace: the registry is addressed by NAME, and `setKey` writes
+        // whatever name it is given. Splitting it would invent a distinction the document does not
+        // have, and a machine would have to decide which of two operations a typed box produced.
+        const world = makeWorld();
+        const declared = asEffect(send(world, { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } }));
+        expect(world.keys["menu.start"]).toEqual({ sourceText: "Start" });
+        expect(declared.digests)
+            .toEqual([{ scope: { of: "localization-key", name: "menu.start" }, hash: expect.any(String) }]);
+
+        asEffect(send(world, { op: "set-key", name: "menu.start", definition: { sourceText: "Begin" } }));
+        expect(world.keys["menu.start"]).toEqual({ sourceText: "Begin" });
+    });
+
+    it("tolerates removing a named string that is already gone", () => {
+        // With `delete-character-group`: the second of two removals changes nothing, and refusing it
+        // would report a conflict where there is only agreement.
+        const world = makeWorld({ keys: { "menu.start": { sourceText: "Start" } } });
+        asEffect(send(world, { op: "remove-key", name: "menu.start" }));
+        expect(asEffect(send(world, { op: "remove-key", name: "menu.start" })).seq).toBe(2);
+        expect(world.keys["menu.start"]).toBeUndefined();
+    });
+
+    it("forgets the claim on a named string it has just removed", () => {
+        const world = makeWorld({ keys: { "menu.start": { sourceText: "Start" } } });
+        world.host.claimLocal(localizationKeyClaimKey("menu.start"), true);
+        asEffect(send(world, { op: "remove-key", name: "menu.start" }, "host"));
+        expect(world.host.claims.snapshot().held[localizationKeyClaimKey("menu.start")]).toBeUndefined();
+    });
+
+    it("refuses a registry this session does not carry at all", () => {
+        // ⚠ The table's half of the invariant: a machine that could not read the registry carries it
+        // nowhere, and an operation about it is refused rather than applied into a stand-in.
+        const world = makeWorld();
+        const refusal = asRefusal(world.host.receive({
+            kind: "intent",
+            clientId: "c-stray",
+            document: { doc: "variables" },
+            op: { op: "update-variable", variableId: "v1", entry: variable("v1") },
+        }, "guest-1"));
+        expect(refusal.reason).toBe("variable-gone");
+
+        const unshared = new LiveHost({
+            self: "host",
+            stories: [STORY],
+            readScene: () => null,
+            readCharacter: () => null,
+            hasAsset: () => false,
+            hasVariable: () => true,
+            hasUIElement: () => true,
+            hasBlueprint: () => true,
+            readAssetFolders: () => null,
+            digestOf: () => null,
+            applyOp: () => undefined,
+            nextSeq: () => 1,
+        });
+        expect(asRefusal(unshared.receive({
+            kind: "intent",
+            clientId: "c-1",
+            document: { doc: "variables" },
+            op: { op: "update-variable", variableId: "v1", entry: variable("v1") },
+        }, "guest-1")).reason).toBe("document-not-shared");
+        expect(asRefusal(unshared.receive({
+            kind: "intent",
+            clientId: "c-2",
+            document: { doc: "localization-keys" },
+            op: { op: "remove-key", name: "menu.start" },
+        }, "guest-1")).reason).toBe("document-not-shared");
     });
 });
