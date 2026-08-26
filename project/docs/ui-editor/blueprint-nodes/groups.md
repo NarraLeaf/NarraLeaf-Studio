@@ -233,6 +233,7 @@ Input 节点组读取工程声明的输入操作词表。绑定写在词表和�
 
 Input 节点组默认具有：
 - `blueprint.input.isActionHeld` - 指定输入操作当前是否按住，纯节点
+- `blueprint.input.getDevice` - 玩家当前使用的输入设备，纯节点
 
 ## List
 
