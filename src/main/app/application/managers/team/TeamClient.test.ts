@@ -48,7 +48,7 @@ class FakeSocket implements TeamSocketLike {
         this.handlers.onOpen();
         this.say({
             t: "hello",
-            protocol: 1,
+            protocol: 2,
             server: { name: "Nomen", version: "0.1.0" },
             session: "s1",
             account: { id: "u1", username: "ada", displayName: "Ada", operator: false },

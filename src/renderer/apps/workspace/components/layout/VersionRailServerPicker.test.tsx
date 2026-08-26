@@ -49,11 +49,24 @@ vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
-            listServerProjects: bridge.listServerProjects,
             // The add sequence is mounted from the last row of the list now. Nothing here
             // reaches for these until it is pressed, so a stub is enough to keep it honest.
             probeServer: () => Promise.resolve({ success: false }),
             addServer: () => Promise.resolve({ success: false }),
+        },
+        // The dialog reads a server's projects over the session now. The per-origin fake is
+        // still where a test sets the answer; this reshapes it into what the wire carries.
+        team: {
+            call: async (remoteOrigin: string, method: string) => {
+                if (method !== "projects.list") {
+                    return { success: true, data: { ok: false, problem: { kind: "unsupported" } } };
+                }
+                const out = await bridge.listServerProjects(remoteOrigin);
+                if (!out?.success) return { success: true, data: { ok: false, problem: { kind: "offline", detail: "" } } };
+                return out.data.ok
+                    ? { success: true, data: { ok: true, value: { projects: out.data.projects } } }
+                    : { success: true, data: { ok: false, problem: out.data.problem.kind === "unreachable" ? { kind: "offline", detail: "" } : { kind: "refused", code: "refused", detail: "" } } };
+            },
         },
         app: { launchSettings: bridge.launchSettings },
     }),

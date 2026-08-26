@@ -9,7 +9,10 @@ import type {
     ProjectAppTag,
 } from "@shared/types/appTag";
 import type { BrandColor } from "@shared/types/brand";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
 import type { ProjectDlc } from "@shared/types/dlc";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { ProjectFontEntry } from "@shared/types/typography";
@@ -731,6 +734,170 @@ export type LiveBrandOp =
     | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] };
 
 /**
+ * Everything that can be done to the project dictionary.
+ *
+ * **Two verbs for a document with no ids at all**, and that is what shapes both of them. A
+ * dictionary entry is keyed by its own spelling: the term IS the identity, every other field
+ * describes it, and nothing on either side of an edit says that the term on the left and the term
+ * on the right are the same entry. So the address of an entry is a word the author typed, and
+ * renaming one is not a field edit - it is the entry moving house.
+ *
+ * `DictionaryService` reaches its document through one private mutator that takes a function over
+ * the whole list, exactly as the audio mixer and the asset sets do, so the operations here are
+ * stated where the service knows what it MEANS - at `addTerm`, `updateEntry` and `removeTerm` -
+ * rather than at the point the list is rewritten. That is `AssetsService.recordChanged`'s answer to
+ * the same shape of service, one document along.
+ */
+export type LiveDictionaryOp =
+    /**
+     * What the entry at one spelling now is, or that there is none.
+     *
+     * **One verb where the cast has three**, and the reason is the libraries': in this document
+     * "no entry" and "the project does not write that word" are the same state, so a delete verb to
+     * pair with a set verb would invent a distinction the file does not have. `term` is the address
+     * the entry has now; `entry` is what it becomes, and its own `term` may differ - which is what a
+     * rename is, in one operation, because renaming is one gesture in the panel.
+     *
+     * ⚠ **A rename onto a spelling the project already writes is not reachable from Studio** -
+     * `updateEntry` refuses it rather than merging two entries whose readings, variants and notes
+     * would have to be chosen between. A machine that receives one applies it as written, and the
+     * author who sent it keeps the undo entry; see `LiveBefore` for why that undo answers "nothing
+     * was kept".
+     */
+    | { op: "set-dictionary-entry"; term: string; entry: ProjectDictionaryEntry | null }
+    /**
+     * Both of the checks the dictionary drives, as they now stand.
+     *
+     * Whole rather than one switch at a time because they are one record on the document and the
+     * panel writes them through one patch; last-writer-wins, with the story's scene name, since the
+     * loser of that race loses a click.
+     */
+    | { op: "set-dictionary-options"; options: ProjectDictionaryOptions };
+
+/**
+ * Everything that can be done to the project's mixer.
+ *
+ * `AudioTrackService`'s own mutators, one per gesture, for `LiveStoryOp`'s reason: they already
+ * address by id, they already take a relative position, and they are already what every control in
+ * the audio section ends up calling. What they do NOT share is a single point that could state
+ * them - `applyTrackMutation` takes a function over the whole list and can only say "the tracks
+ * changed" - so the operations are stated at the mutators, where the service knows what it meant.
+ *
+ * None of these is claimed. A bus is a name, a fader, a routing choice and a loop switch: nothing
+ * on it accumulates prose, so the loser of a race loses a word or a drag rather than a paragraph
+ * nobody else can see. See {@link CLAIMED_OPS}.
+ */
+export type LiveAudioTrackOp =
+    /**
+     * Add a bus, in front of the sibling named, or last when that is null.
+     *
+     * Separate from `update-audio-track` with `insert-block` and `create-character`, and for their
+     * reason: an update naming a bus that is gone has to be refused so that the author keeps what
+     * they were editing, and one verb that created whatever it could not find would silently bring
+     * back a track somebody else deleted - with every reference that had fallen back to a seeded bus
+     * quietly re-pointing at it.
+     */
+    | {
+          op: "create-audio-track";
+          track: ProjectAudioTrack;
+          /** The bus this one sits in front of in the stored order, or null for last. */
+          beforeId: string | null;
+          /**
+           * Buses to route back into this one, for the creation that undoes a deletion.
+           *
+           * **Carried, where the deletion's own promotion is derived, and the asymmetry is
+           * `create-character.rebind`'s.** Going down, "which buses feed this one" is a question
+           * about the document. Coming back up it is not: those buses now name the deleted track's
+           * own parent, and so do the ones that always did - the two are indistinguishable
+           * afterwards. So the only correct answer is the one recorded when the deletion happened.
+           * Absent for an ordinary creation, which has nothing to reclaim.
+           */
+          reparent?: readonly string[];
+      }
+    /**
+     * Replace one bus's record.
+     *
+     * The whole record rather than a patch, for `update-block`'s reason and one of the mixer's own:
+     * a track's fields hold each other up - a volume is read against the routing it is multiplied
+     * through - and the panel commits a field at a time into a record it then re-normalizes, so a
+     * field-level verb would state something the service never produces.
+     */
+    | { op: "update-audio-track"; trackId: string; track: ProjectAudioTrack }
+    /**
+     * Remove one bus, and let every machine promote what fed into it.
+     *
+     * **One operation for something that rewrites other records, because their share of it is
+     * DERIVED** - the same shape as deleting a character and letting every machine rewrite the rows
+     * that spoke it. The children move to the deleted bus's own parent, which is a fact every
+     * machine can work out from a mixer the room already agrees on, so sending them would be a
+     * second statement of it.
+     *
+     * ⚠ The seeded buses cannot be deleted; a message naming one is refused rather than applied,
+     * because they are where every unresolvable reference lands and what the player's own volume
+     * sliders alias onto.
+     */
+    | { op: "delete-audio-track"; trackId: string }
+    /**
+     * Move one bus in the drawn order, in front of the sibling named or last when that is null.
+     *
+     * Order is not routing - the tree is rebuilt from `parentId`, and re-routing is an
+     * `update-audio-track` - so this changes what the author sees and nothing about what the game
+     * hears.
+     */
+    | { op: "move-audio-track"; trackId: string; beforeId: string | null };
+
+/**
+ * Everything that can be done to the project's asset sets.
+ *
+ * `AssetSetService`'s gestures, and two of them name every set they touch rather than one.
+ * Deleting a set takes the sets drawn inside it, and filing one in a folder takes them along - both
+ * cascades are computable from a document the room already agrees on, so the criterion that decides
+ * a paste's translations would make them derived.
+ *
+ * ⚠ **They are carried anyway, and that is a ruling rather than an oversight.** Neither cascade can
+ * be derived coming BACK: a deletion's records are gone, and a move's old folders are gone with it.
+ * Deriving the forward half while carrying the backward half would be two different answers to
+ * "which sets is this gesture about", and the cascade is a handful of ids in a document whose
+ * digest covers all of it either way. Naming them in both directions is what lets a move be its own
+ * inverse - which is `move-assets`' ruling, one document along.
+ *
+ * None of these is claimed: a set is a name, a filter and an axis, and the loser of a race loses a
+ * word or a drag. See {@link CLAIMED_OPS}.
+ */
+export type LiveAssetSetOp =
+    /**
+     * Declare sets, each in front of the sibling named or last when that is null, as ONE operation.
+     *
+     * The wizard states one. Undoing a deletion states every set the cascade destroyed, which is
+     * why this is plural: a run of single creations would draw a half-restored panel on every other
+     * screen and cost a press per row to take back.
+     */
+    | { op: "create-asset-sets"; creates: readonly { set: AssetSet; beforeId: string | null }[] }
+    /**
+     * Replace one set's record. Renaming, re-filtering and re-axing all write it whole, which is
+     * what `updateSet` is handed - see {@link LiveAudioTrackOp}'s update for the reason.
+     */
+    | { op: "update-asset-set"; setId: string; set: AssetSet }
+    /**
+     * Remove sets, as ONE operation.
+     *
+     * Dissolving a set and deleting a set with its sub-sets are the same edit to this document and
+     * two different things to the author; both arrive here, and the second names every set it
+     * removes. A set that is already gone is not an error - the second of two deletions changes
+     * nothing.
+     */
+    | { op: "delete-asset-sets"; setIds: readonly string[] }
+    /**
+     * File sets, each in its own folder, as ONE operation.
+     *
+     * Each entry carries its own destination so that the operation can also be its own inverse,
+     * which is `move-assets`' shape and its reason: the sets a drag collects were not all in the
+     * same place, and one destination for all of them would make an undo into a rearrangement
+     * nobody asked for.
+     */
+    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] };
+
+/**
  * Everything a session can be asked to do, whichever document it is about.
  *
  * Flat rather than nested by document, because every consumer of this type switches over `op` and a
@@ -746,7 +913,10 @@ export type LiveOp =
     | LiveAssetFolderOp
     | LiveAppTagOp
     | LiveDlcOp
-    | LiveBrandOp;
+    | LiveBrandOp
+    | LiveDictionaryOp
+    | LiveAudioTrackOp
+    | LiveAssetSetOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -805,7 +975,18 @@ export type LiveDocument =
     /** The DLC list - `editor/dlc.json`. */
     | { doc: "dlc" }
     /** The palette and the default font stack - `editor/brand.json`. */
-    | { doc: "brand" };
+    | { doc: "brand" }
+    /**
+     * The project dictionary - `editor/dictionary.json`.
+     *
+     * Unparameterised with the cast, and for its reason: there is one of these per project, so the
+     * kind is the whole address and a session cannot be opened on "some of" it.
+     */
+    | { doc: "dictionary" }
+    /** The project's mixer - `editor/audio-tracks.json`. One per project, with the dictionary. */
+    | { doc: "audio-tracks" }
+    /** The project's asset sets - `editor/asset-sets.json`. One per project. */
+    | { doc: "asset-sets" };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -868,6 +1049,19 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "move-brand-color":
         case "set-brand-fonts":
             return "brand";
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return "dictionary";
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return "audio-tracks";
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return "asset-sets";
     }
 }
 
@@ -944,6 +1138,12 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "dlc";
         case "brand":
             return right.doc === "brand";
+        case "dictionary":
+            return right.doc === "dictionary";
+        case "audio-tracks":
+            return right.doc === "audio-tracks";
+        case "asset-sets":
+            return right.doc === "asset-sets";
     }
 }
 
@@ -968,6 +1168,12 @@ export function describeLiveDocument(document: LiveDocument): string {
             return "DLC";
         case "brand":
             return "brand palette";
+        case "dictionary":
+            return "dictionary";
+        case "audio-tracks":
+            return "audio tracks";
+        case "asset-sets":
+            return "asset sets";
     }
 }
 
@@ -1017,6 +1223,18 @@ export function describeLiveDocument(document: LiveDocument): string {
  * `TextField`s, which commit on blur and re-sync from their props: somebody else's edit to the same
  * record arriving mid-sentence takes the sentence with it, silently, which is the injury this rule
  * exists to name. A drag into a folder writes `groupId` and touches nothing anybody typed.
+ *
+ * **Nothing in the dictionary, the mixer or the asset sets is claimed, and the three answers come
+ * from one reading of the same test.** Every field on them is a word: a term and its reading, a
+ * bus's name and its fader, a set's name and the tag it filters on. A draft layer is there - the
+ * dictionary panel's four boxes commit on blur and re-read themselves from the entry - but what it
+ * drafts is a spelling rather than a paragraph, and the loser reads the winner's answer in the box
+ * the moment it arrives. The take's ruling is the one this follows: a claim is worth its ceremony
+ * where the losing author has typing nobody else can see and nothing else would report, and none of
+ * these three has that. The gesture a session actually produces most is adding a term from the
+ * story editor's spelling popover, which has no draft at all.
+ *
+ * ⚠ That ruling turns over the day one of them grows a field somebody writes paragraphs into.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
@@ -1323,6 +1541,18 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-brand-fonts":
             // Nothing to hold, for the reasons `create-assets` and `move-assets` give. See
             // {@link CLAIMED_OPS}.
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            // Nothing to hold either: every field on these three documents is a word, so the loser
+            // of a race loses a word and reads the winner's. See {@link CLAIMED_OPS}.
             return [];
     }
 }
@@ -1396,7 +1626,26 @@ export type LiveDigestScope =
     /** The DLC list, whole. */
     | { of: "dlc" }
     /** The palette and the font stack, whole. */
-    | { of: "brand" };
+    | { of: "brand" }
+    /**
+     * The project dictionary, whole.
+     *
+     * One of three whole-document scopes added together, and `@shared/live/projectTables` gives the
+     * reasons they share. The dictionary has one of its own: its entries are keyed by the author's
+     * own spelling, so a rename is one unit leaving and another arriving, and a per-entry digest
+     * would have to fingerprint two units for one operation to say anything at all.
+     */
+    | { of: "dictionary" }
+    /**
+     * The project's mixer, whole.
+     *
+     * Its own reason beside the shared two: deleting a bus promotes the buses that fed it, which is
+     * derived work reaching records the operation never names - and a whole-document digest covers
+     * it without the applier having to report what it touched.
+     */
+    | { of: "audio-tracks" }
+    /** The project's asset sets, whole. Its cascades reach across the list for the mixer's reason. */
+    | { of: "asset-sets" };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -1474,6 +1723,21 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "move-brand-color":
         case "set-brand-fonts":
             return { of: "brand" };
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return { of: "dictionary" };
+        // ⚠ A deletion promotes the buses that fed the one it removes, and none of them is named
+        // here - which is exactly why the unit is the whole document rather than one record.
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return { of: "audio-tracks" };
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return { of: "asset-sets" };
     }
 }
 
@@ -1500,6 +1764,12 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "dlc";
         case "brand":
             return right.of === "brand";
+        case "dictionary":
+            return right.of === "dictionary";
+        case "audio-tracks":
+            return right.of === "audio-tracks";
+        case "asset-sets":
+            return right.of === "asset-sets";
     }
 }
 
@@ -1682,6 +1952,22 @@ export type LiveRefusalReason =
      * "that entry is no longer in this project".
      */
     | "config-entry-gone"
+    /**
+     * The bus is gone. Somebody deleted it after the author reached for it.
+     *
+     * The mixer's answer to `row-gone`, carrying the same instruction: the panel the author is
+     * looking at is full of their own typing and it is theirs to keep. An update that created what
+     * it could not find would bring back a bus somebody deleted, and every reference that had fallen
+     * back to a seeded one would quietly re-point at it.
+     */
+    | "track-gone"
+    /**
+     * The asset set is gone. The mixer's `track-gone`, one document along.
+     *
+     * ⚠ Reachable even against a document nobody deleted from: a session opens on a committed
+     * revision, and a set can be missing from this list because the author who joined never had it.
+     */
+    | "set-gone"
     /**
      * The operation will not fit in one payload.
      *

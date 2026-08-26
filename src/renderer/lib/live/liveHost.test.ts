@@ -3,6 +3,7 @@ import { assetsDigest } from "@shared/live/assets";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { sceneDigest } from "@shared/live/sceneDigest";
+import { makeAssetSetAxis } from "@shared/types/assetSet";
 import {
     CLAIMED_OPS,
     appTagClaimKey,
@@ -97,6 +98,9 @@ type World = {
         dlcs: { id: string; name: string; attachTo: string }[];
         colors: { id: string; name?: string; value: string }[];
     };
+    /** The mixer and the asset sets, two of the three tables a session always carries. */
+    tracks: { id: string }[];
+    sets: { id: string }[];
     /** Every operation the applier was actually handed, in order. */
     applied: LiveOp[];
 };
@@ -189,6 +193,10 @@ function makeWorld(options: {
         dlcs: [...(options.dlcs ?? [])],
         colors: [...(options.colors ?? [])],
     };
+    // One of each is enough for the two refusals these documents have: the host asks only whether a
+    // record is there, and everything else about them is last-writer-wins.
+    const tracks: World["tracks"] = [{ id: "bgm" }];
+    const sets: World["sets"] = [{ id: "alice" }];
     const applied: LiveOp[] = [];
     let seq = 0;
 
@@ -201,6 +209,8 @@ function makeWorld(options: {
         assets,
         folders,
         config,
+        tracks,
+        sets,
         applied,
         host: new LiveHost({
             self: "host",
@@ -215,6 +225,8 @@ function makeWorld(options: {
             hasAppTag: tagId => config.appTags.some(tag => tag.id === tagId),
             hasDlc: dlcId => config.dlcs.some(dlc => dlc.id === dlcId),
             hasBrandColor: colorId => config.colors.some(color => color.id === colorId),
+            hasAudioTrack: trackId => tracks.some(track => track.id === trackId),
+            hasAssetSet: setId => sets.some(set => set.id === setId),
             digestOf: scope => {
                 if (scope.of === "scene") {
                     const scene = scenes[scope.sceneId];
@@ -271,6 +283,19 @@ function apply(
     op: LiveOp,
 ): void {
     switch (op.op) {
+        // The three project tables are last-writer-wins apart from the two presence checks above,
+        // so nothing here has to model them - what the tests below read is `world.applied`.
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return;
         case "create-assets":
             for (const create of op.creates) {
                 assets[op.assetType][String(create.record.id)] = structuredClone(create.record) as LiveAssetRecord;
@@ -506,6 +531,12 @@ function documentOf(op: LiveOp): LiveDocument {
             return { doc: "dlc" };
         case "brand":
             return { doc: "brand" };
+        case "dictionary":
+            return { doc: "dictionary" };
+        case "audio-tracks":
+            return { doc: "audio-tracks" };
+        case "asset-sets":
+            return { doc: "asset-sets" };
         default:
             return { doc: "story", storyId: STORY };
     }
@@ -1703,5 +1734,100 @@ describe("the project's three configuration tables", () => {
             op: { op: "delete-dlc", dlcId: "side" },
         }, "guest-1");
         expect(asRefusal(outbound).reason).toBe("document-not-shared");
+    });
+});
+
+describe("the three project tables", () => {
+    /** A message about one of the tables, which are addressed by kind alone. */
+    function say(world: World, op: LiveOp, document: LiveDocument) {
+        return world.host.receive(
+            { kind: "intent", clientId: `c-${op.op}`, document, op },
+            "guest",
+        );
+    }
+
+    it("takes a term nobody has, because in this document absence is a value", () => {
+        // The translation library's rule, one document along: an operation naming a term nobody
+        // holds is an author teaching the project a spelling, which is the ordinary case rather
+        // than a race. There is deliberately no `entry-gone` to pair with `row-gone`.
+        const world = makeWorld();
+        const answer = say(
+            world,
+            { op: "set-dictionary-entry", term: "Nattou", entry: { term: "Nattou" } },
+            { doc: "dictionary" },
+        );
+        expect(answer?.kind).toBe("effect");
+        expect(world.applied).toHaveLength(1);
+    });
+
+    it("fingerprints the dictionary whole, because a rename is one entry leaving and another arriving", () => {
+        const world = makeWorld();
+        const answer = say(
+            world,
+            { op: "set-dictionary-entry", term: "Nattou", entry: { term: "Nattou" } },
+            { doc: "dictionary" },
+        );
+        expect(answer?.kind === "effect" && answer.digests?.map(digest => digest.scope))
+            .toEqual([{ of: "dictionary" }]);
+    });
+
+    it("refuses to write a bus that is gone, and says so by name", () => {
+        const world = makeWorld();
+        const answer = say(
+            world,
+            {
+                op: "update-audio-track",
+                trackId: "missing",
+                track: { id: "missing", name: "x", parentId: null, volume: 1, loop: false },
+            },
+            { doc: "audio-tracks" },
+        );
+        expect(answer).toMatchObject({ kind: "refusal", reason: "track-gone" });
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("refuses to write a set that is gone", () => {
+        const world = makeWorld();
+        const answer = say(
+            world,
+            {
+                op: "update-asset-set",
+                setId: "missing",
+                set: { id: "missing", name: "x", type: "image", filter: [], axis: makeAssetSetAxis("release", []) },
+            },
+            { doc: "asset-sets" },
+        );
+        expect(answer).toMatchObject({ kind: "refusal", reason: "set-gone" });
+    });
+
+    it("refuses a drag whole when one set of it has gone", () => {
+        // The rule every batch follows: half a drag is an arrangement the author never asked for,
+        // and the half that landed would look exactly like the whole of it.
+        const world = makeWorld();
+        const answer = say(
+            world,
+            { op: "move-asset-sets", moves: [{ setId: "alice", groupId: "cast" }, { setId: "missing", groupId: "cast" }] },
+            { doc: "asset-sets" },
+        );
+        expect(answer).toMatchObject({ kind: "refusal", reason: "set-gone" });
+        expect(world.applied).toHaveLength(0);
+    });
+
+    it("takes a deletion of a set that is already gone, because the second one changes nothing", () => {
+        const world = makeWorld();
+        const answer = say(world, { op: "delete-asset-sets", setIds: ["missing"] }, { doc: "asset-sets" });
+        expect(answer?.kind).toBe("effect");
+    });
+
+    it("refuses an operation whose message names a document it cannot be about", () => {
+        // The two halves of a message disagreeing is malformed rather than out of scope, and one
+        // reason covering both would send somebody looking in the wrong place.
+        const world = makeWorld();
+        const answer = say(
+            world,
+            { op: "set-dictionary-options", options: { suggestReadings: false, checkVariants: true } },
+            { doc: "audio-tracks" },
+        );
+        expect(answer).toMatchObject({ kind: "refusal", reason: "document-not-shared" });
     });
 });

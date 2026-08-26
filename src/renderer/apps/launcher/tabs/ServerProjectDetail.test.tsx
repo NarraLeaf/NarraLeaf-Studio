@@ -33,25 +33,20 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const bridge = vi.hoisted(() => ({
-    getServerProject: vi.fn(),
-    listServerProjectHistory: vi.fn(),
     /**
      * What the session offers, which decides whether the conversations are drawn at all.
      *
-     * Empty by default, because these panels are about what the REST API answers and a
-     * deployment that serves no conversations is the ordinary one. A capability is
-     * checked rather than probed, so an empty list is a section that is not there.
+     * Empty by default, because a deployment that serves no conversations is the ordinary
+     * one. A capability is checked rather than probed, so an empty list is a section that
+     * is not there.
      */
     capabilities: [] as string[],
-    teamCall: vi.fn(),
+    /** The whole panel now asks over the session, so one call answers by the method it names. */
+    call: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
-        vcs: {
-            getServerProject: bridge.getServerProject,
-            listServerProjectHistory: bridge.listServerProjectHistory,
-        },
         team: {
             open: () => Promise.resolve({
                 success: true,
@@ -63,7 +58,7 @@ vi.mock("@/lib/app/bridge", () => ({
                 },
             }),
             connections: () => Promise.resolve({ success: true, data: { connections: [] } }),
-            call: bridge.teamCall,
+            call: bridge.call,
             subscribe: () => Promise.resolve({ success: true, data: { ok: true, seq: 0 } }),
             unsubscribe: () => Promise.resolve({ success: true, data: undefined }),
             onEvent: () => ({ cancel: () => undefined }),
@@ -71,6 +66,25 @@ vi.mock("@/lib/app/bridge", () => ({
         },
     }),
 }));
+
+/** What a call over the session answers, by method: merged across setup, applied at once. */
+type CallAnswer = { ok: true; value: unknown } | { ok: false; problem: unknown };
+let dispatch: Record<string, CallAnswer> = {};
+
+/** Point `team.call` at the current dispatch. A method with no answer is unsupported. */
+function applyDispatch(): void {
+    bridge.call.mockImplementation((_origin: string, method: string) =>
+        Promise.resolve({
+            success: true,
+            data: dispatch[method] ?? { ok: false, problem: { kind: "unsupported" } },
+        }),
+    );
+}
+
+/** How many times one method was asked over the session. */
+function timesCalled(method: string): number {
+    return bridge.call.mock.calls.filter((call: unknown[]) => call[1] === method).length;
+}
 
 const ORIGIN = "lore://team.example.lan:41337";
 const SERVER = "Blackwood Studio";
@@ -100,16 +114,15 @@ function open(options: {
     canHistory?: boolean;
     onBack?: () => void;
 }) {
-    bridge.getServerProject.mockResolvedValue(
-        options.detail == null
-            ? { success: true, data: { ok: false, problem: { kind: "unreachable" } } }
-            : { success: true, data: { ok: true, detail: options.detail } },
-    );
-    bridge.listServerProjectHistory.mockResolvedValue(
-        options.page == null
-            ? { success: true, data: { ok: false, problem: { kind: "unreachable" } } }
-            : { success: true, data: { ok: true, page: options.page } },
-    );
+    // An absence over the session is an `offline` problem, which is what the panel reads
+    // as "unreachable" - the same sentence the REST `unreachable` produced.
+    dispatch["projects.get"] = options.detail == null
+        ? { ok: false, problem: { kind: "offline", detail: "" } }
+        : { ok: true, value: options.detail };
+    dispatch["projects.history"] = options.page == null
+        ? { ok: false, problem: { kind: "offline", detail: "" } }
+        : { ok: true, value: options.page };
+    applyDispatch();
     render(
         <ServerProjectDetailView
             remoteOrigin={ORIGIN}
@@ -129,22 +142,15 @@ function panel(): string {
 
 afterEach(() => {
     cleanup();
-    bridge.getServerProject.mockReset();
-    bridge.listServerProjectHistory.mockReset();
+    dispatch = {};
+    bridge.call.mockReset();
     bridge.capabilities = [];
-    bridge.teamCall.mockReset();
 });
 
-/** What a call over the session answered, by the method it was made with. */
+/** Add answers for the discussion's own methods, on top of whatever `open` set. */
 function sessionAnswers(answers: Record<string, unknown>): void {
-    bridge.teamCall.mockImplementation((_origin: string, method: string) =>
-        Promise.resolve({
-            success: true,
-            data: method in answers
-                ? { ok: true, value: answers[method] }
-                : { ok: false, problem: { kind: "unsupported" } },
-        }),
-    );
+    for (const [method, value] of Object.entries(answers)) dispatch[method] = { ok: true, value };
+    applyDispatch();
 }
 
 function thread(overrides: Record<string, unknown> = {}) {
@@ -291,7 +297,6 @@ describe("a project the server has read", () => {
  * to wait behind a clone. So this answer arrives about a project whose title, stage,
  * scene count and asset count the same panel is already displaying.
  */
-const NOT_TO_HAND = { success: true, data: { ok: true, page: { more: false } } } as const;
 
 /** Everything the server read, on a project it has read. */
 const READ = detail({ readable: true, stageWidth: 1920, stageHeight: 1080, scenes: 4, assets: 22 });
@@ -317,16 +322,23 @@ describe("a project the server has read, whose versions it did not give", () => 
         // React mounts every effect twice outside a packaged build, and the second of two
         // reads arriving together is the one that gets refused. The first answer is the
         // one worth keeping, and the ordinary read is the one worth making: one.
-        bridge.getServerProject.mockResolvedValue({ success: true, data: { ok: true, detail: READ } });
-        bridge.listServerProjectHistory
-            .mockResolvedValueOnce({
-                success: true,
-                data: {
-                    ok: true,
-                    page: { revisions: [{ id: "a1b2c3d4e5", message: "Chapter two" }], more: true },
-                },
-            })
-            .mockResolvedValue(NOT_TO_HAND);
+        let historyReads = 0;
+        bridge.call.mockImplementation((_origin: string, method: string) => {
+            if (method === "projects.get") {
+                return Promise.resolve({ success: true, data: { ok: true, value: READ } });
+            }
+            if (method === "projects.history") {
+                historyReads += 1;
+                return Promise.resolve({
+                    success: true,
+                    data: historyReads === 1
+                        ? { ok: true, value: { revisions: [{ id: "a1b2c3d4e5", message: "Chapter two" }], more: true } }
+                        // A second read of a checkout already open is told the page is not to hand.
+                        : { ok: true, value: { more: false } },
+                });
+            }
+            return Promise.resolve({ success: true, data: { ok: false, problem: { kind: "unsupported" } } });
+        });
 
         render(
             <StrictMode>
@@ -343,7 +355,7 @@ describe("a project the server has read, whose versions it did not give", () => 
         );
 
         await settled();
-        expect(bridge.listServerProjectHistory).toHaveBeenCalledTimes(1);
+        expect(timesCalled("projects.history")).toBe(1);
         expect(panel()).toContain("Chapter two");
         expect(document.querySelector("[data-project-unread]")).toBeNull();
         expect(panel()).not.toContain("launcher.servers.detail.versionsUnavailable");
@@ -358,8 +370,8 @@ describe("what the server offers", () => {
         });
 
         await waitFor(() => expect(panel()).toContain("Chapter two"));
-        expect(bridge.getServerProject).not.toHaveBeenCalled();
-        expect(bridge.listServerProjectHistory).toHaveBeenCalledWith(ORIGIN, PROJECT_ID);
+        expect(timesCalled("projects.get")).toBe(0);
+        expect(bridge.call).toHaveBeenCalledWith(ORIGIN, "projects.history", { project: PROJECT_ID });
         // Nothing was asked about the file, so nothing is said about it either way.
         expect(document.querySelector("[data-project-unread]")).toBeNull();
     });
@@ -368,7 +380,7 @@ describe("what the server offers", () => {
         open({ canHistory: false, detail: detail({ readable: true, scenes: 3 }) });
 
         await waitFor(() => expect(panel()).toContain("launcher.servers.detail.scenes"));
-        expect(bridge.listServerProjectHistory).not.toHaveBeenCalled();
+        expect(timesCalled("projects.history")).toBe(0);
         expect(document.querySelector("[data-project-versions]")).toBeNull();
     });
 
@@ -395,9 +407,11 @@ describe("the conversations", () => {
         open({ detail: detail({ readable: false }), page: null });
         await waitFor(() => expect(panel()).toContain("launcher.servers.detail"));
 
-        // Not empty, not disabled, not a sentence about a server that cannot: absent.
+        // Not empty, not disabled, not a sentence about a server that cannot: absent. The
+        // panel's own reads went over the session, but the conversations were never asked
+        // for, because the capability that would draw them is not on this deployment.
         expect(document.querySelector("[data-project-discussion]")).toBeNull();
-        expect(bridge.teamCall).not.toHaveBeenCalled();
+        expect(timesCalled("threads.list")).toBe(0);
     });
 
     it("lists what the server holds, naming who said it", async () => {
@@ -424,7 +438,7 @@ describe("the conversations", () => {
         });
 
         // The next read fails, as it does the moment a server goes away.
-        bridge.teamCall.mockImplementation(() =>
+        bridge.call.mockImplementation(() =>
             Promise.resolve({
                 success: true,
                 data: { ok: false, problem: { kind: "offline", detail: "ECONNREFUSED" } },
@@ -457,7 +471,7 @@ describe("the conversations", () => {
         fireEvent.click(document.querySelector("[data-discussion-action='add']") as HTMLElement);
 
         await waitFor(() => {
-            expect(bridge.teamCall).toHaveBeenCalledWith(
+            expect(bridge.call).toHaveBeenCalledWith(
                 ORIGIN,
                 "threads.create",
                 expect.objectContaining({
