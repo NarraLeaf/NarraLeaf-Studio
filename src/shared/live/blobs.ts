@@ -30,6 +30,62 @@ import { LIVE_BLOB_CHUNK_BYTES, LIVE_BLOB_MAX_BYTES, type LiveBlobChunk } from "
  * operation naming a transfer is refused rather than half-applied when the bytes are short.
  */
 
+/**
+ * How many times one file may be asked for again before a machine stops asking.
+ *
+ * ⚠ **Bounded because nothing here runs on a timer.** A transfer whose sender has left the room can
+ * never complete, and an unbounded repair is a machine asking a room that cannot answer for the rest
+ * of the session. Three covers a lost slice and leaves a dead transfer costing three messages in
+ * total; what remains is a record whose file is missing, which the reference report already says.
+ */
+export const MAX_BLOB_REPAIRS = 3;
+
+/**
+ * Whether a machine that is short of some slices should ask for them again.
+ *
+ * ❗ **The answer is almost always no, and that is the point.** A repair request is answered by the
+ * sender re-sending everything that is missing, so a receiver that asked each time a slice landed
+ * would have a file sent once per slice: twenty-two slices costs a few hundred messages and passes
+ * every small test, and two thousand slices is a room that carries nothing else until it gives up.
+ *
+ * So there are exactly two moments worth asking at, and neither of them is during the flow:
+ *
+ *  - **the sender has sent everything and this file is still short** (`sent`), which is a slice that
+ *    was lost rather than one that has not been sent yet - slices go down one connection in order,
+ *    so the last one landing means they all left;
+ *  - **this file started arriving and then stopped**, which is the case the first cannot see, a
+ *    transfer whose last slice was the one that was lost.
+ *
+ * ⚠ **A file that has not started is never asked about**, and that is what makes an import of forty
+ * files affordable. They are sent one after another, so while the first is arriving the other
+ * thirty-nine have nothing and have had nothing since the last attempt: a rule that read that as a
+ * stall would have every one of them ask for a file the sender is already going to send.
+ *
+ * The first attempt never asks either: it runs while the sender is still sending, and asking then
+ * would have the whole file sent a second time before any of the first had arrived.
+ */
+export function shouldAskForRepair(input: {
+    /** Slices in hand now. */
+    have: number;
+    /** Slices in hand at the previous attempt. Negative when there has not been one. */
+    seen: number;
+    /** Whether the last slice of a file that is still short has arrived. */
+    sent: boolean;
+    /** How many repairs have already been asked for. */
+    asked: number;
+}): boolean {
+    if (input.asked >= MAX_BLOB_REPAIRS) {
+        return false;
+    }
+    if (input.sent) {
+        return true;
+    }
+    if (input.have <= 0) {
+        return false;
+    }
+    return input.seen >= 0 && input.have <= input.seen;
+}
+
 /** The fingerprint of a file's bytes, as {@link LiveAssetBytePart.digest} carries it. */
 export function blobDigest(bytes: Uint8Array): string {
     return fnv1a64BytesHex(bytes);
@@ -142,6 +198,30 @@ export class LiveBlobInbox {
     public isComplete(transferId: string): boolean {
         const transfer = this.transfers.get(transferId);
         return transfer !== undefined && transfer.parts.size === transfer.total;
+    }
+
+    /**
+     * How many slices of a transfer are in hand. Zero for one never seen, and for one already taken.
+     *
+     * What a progress reading is made of: a file arriving is drawn from this and the length the
+     * operation named, so what the author watches is what has actually landed rather than an
+     * estimate of how long it ought to take.
+     */
+    public received(transferId: string): number {
+        return this.transfers.get(transferId)?.parts.size ?? 0;
+    }
+
+    /**
+     * Whether the last slice of a transfer has arrived.
+     *
+     * **What tells a gap from a transfer still in flight.** Slices are sent in order down one
+     * connection, so the last one landing means the sender has sent them all - and a transfer that
+     * is short of a slice after that is short because one was lost, which is the only case worth
+     * asking about. Without this a receiver would either ask for repairs it does not need, on every
+     * slice, or never ask at all.
+     */
+    public sawLast(transferId: string, total: number): boolean {
+        return this.transfers.get(transferId)?.parts.has(total - 1) ?? false;
     }
 
     /**

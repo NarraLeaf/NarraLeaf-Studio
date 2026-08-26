@@ -191,6 +191,15 @@ type ActiveSession = {
  */
 const BLOBS_PER_TURN = 24;
 
+/**
+ * How many missing slices a repair request may name before it asks for the file instead.
+ *
+ * A list of indices is JSON, and one message is 16 KiB: a request naming every slice of a large file
+ * would not fit in the message that carries it. An empty list already means the whole file, which is
+ * the honest answer when that many are gone.
+ */
+const MAX_NAMED_SLICES = 512;
+
 /** The section an asset type is filed under, as the browser files it. */
 function assetCategoryOf(assetType: string): string {
     return categoryOfAssetType(assetType as AssetType);
@@ -1404,10 +1413,17 @@ export class LiveSession {
                     kind: "blob-needed",
                     by: session.self,
                     transferId: part.transferId,
-                    missing,
+                    // ⚠ Named one by one only while the list fits in a message. A file of any size
+                    // has more slices than a `live.say` has room to list, and an empty list already
+                    // means "all of it" - which is also the right answer when that many are missing.
+                    missing: missing.length > MAX_NAMED_SLICES ? [] : missing,
                 };
                 session.rooms.say(session.room.id, needed);
             },
+            arrived: part => ({
+                slices: session.blobsIn.received(part.transferId),
+                sent: session.blobsIn.sawLast(part.transferId, chunkCountOf(part)),
+            }),
         };
     }
 

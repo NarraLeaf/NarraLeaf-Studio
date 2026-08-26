@@ -50,7 +50,7 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { assetLibraryFreezeScope, useAssetClaims } from "./assetLiveSession";
+import { assetLibraryFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
@@ -169,6 +169,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
     // One subscription for every row. Empty outside a live session.
     const assetClaims = useAssetClaims();
+    const assetTransfers = useAssetTransfers();
     const searchBoxRef = useRef<HTMLInputElement>(null);
     /**
      * The panel's scroller.
@@ -1103,6 +1104,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         mediaSupport,
         handleConvertMedia,
         assetClaims,
+        assetTransfers,
     };
 
     return (

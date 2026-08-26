@@ -22,7 +22,7 @@ import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { ASSET_CATEGORY_ICONS, ASSET_TYPE_ICONS } from "../constants";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { AssetClaimMark } from "../assetLiveSession";
+import { AssetClaimMark, AssetTransferSweep } from "../assetLiveSession";
 
 /** One row of the tree, already flattened. Only the section it belongs to varies. */
 type TreeListRow = ListViewRow<ResolvedAssetSet>;
@@ -722,7 +722,8 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     /** The set value this row answers, when it is drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers } = useAssetsPanelContext();
+    const { t } = useTranslation();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
@@ -730,6 +731,9 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     // Who else has this record open in a live session, or null. Read from one subscription for the
     // whole panel; outside a session it is always null and costs a lookup.
     const claimedBy = assetClaims[asset.id] ?? null;
+    // How far this file has got, while it is still coming in over a session. Undefined at every
+    // other moment, which is every moment outside one.
+    const arriving = assetTransfers[asset.id];
     // Inside a set, the row does not leave: which set a file belongs to is written in its tags, so a
     // drop somewhere else would move a row the set goes on drawing exactly where it was.
     const movable = !assetSetValue;
@@ -737,8 +741,12 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     return (
         <div
             draggable={movable}
+            data-tip={arriving === undefined ? undefined : t("assets.live.transferring", { percent: Math.round(arriving * 100) })}
             className={cn(
                 "flex items-center gap-2 px-3 py-1.5 cursor-default hover:bg-fill",
+                // The band the sweep draws is inside this row and under its text: positioned so it
+                // can be, isolated so "under" means under the row rather than under the panel.
+                arriving !== undefined && "relative isolate",
                 movable && "nl-drag-source",
                 isSelected && "bg-primary/20 border-l-2 border-primary",
                 isFocused(`asset:${asset.id}`) && "bg-fill-subtle",
@@ -754,6 +762,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
             onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
             onDragEnd={movable ? () => handleDragEnd?.() : undefined}
         >
+            {arriving !== undefined && <AssetTransferSweep share={arriving} />}
             <Icon className="w-4 h-4 text-fg-muted" />
             <span className="text-sm flex-1 truncate">{asset.name}</span>
             {claimedBy && <AssetClaimMark account={claimedBy} />}
