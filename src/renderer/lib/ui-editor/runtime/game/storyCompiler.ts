@@ -4251,10 +4251,69 @@ function whileLoopCondition(until: (scriptCtx: ScriptCtx) => boolean, blockId: s
     };
 }
 
+/**
+ * Whether this row is a `/jump <scene> return` that is actually in the build.
+ *
+ * The one row whose actions have to stay together, and {@link compileUnchainedGroupBody} is the only
+ * reader. A disabled row compiles to nothing, so it is not one.
+ */
+function isReturnableJump(block: StoryBlock | undefined): block is Extract<StoryBlock, { kind: "jump" }> {
+    return Boolean(block && !block.disabled && block.kind === "jump" && block.payload.returnable);
+}
+
+/**
+ * Compile a group's rows for a body the engine stores UNCHAINED, folding a returnable jump into a
+ * branch of its own.
+ *
+ * `Control.all`, `any`, `allAsync`, `repeat` and `whileLoop` hand the engine a flat array and start
+ * one concurrent branch per action in it, where `Control.do` and `doAsync` link theirs into a single
+ * run. The difference is invisible for a row that compiles to one action, and fatal for the one row
+ * that does not. A returnable jump is three actions - the `control:do` that enters the target,
+ * `scene:callTo`, and the `scene:resume` linked behind it that IS the call's return address - so
+ * spread across three branches the call has nothing behind it and the engine stops the game with
+ * "A scene call has no return address."
+ *
+ * Wrapping that row's actions in a `Control.do` puts the three back into one branch, which the call
+ * can read its return address out of again. Only that row is wrapped: every other row that compiles
+ * to several actions is *meant* to be several branches here, and stories written against that shape
+ * would play differently if it changed. The wrapper carries no link of its own, which the engine
+ * requires of anything it is handed as a branch (`ControlAction.checkActionChain`).
+ *
+ * A compile pass's injections around that row go inside the wrapper with it, because they are what
+ * the pass asked for: "before this happens" and "after this has happened" is a run, not three things
+ * racing. Injections around any other row are untouched.
+ */
+async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    for (const blockId of blockIds) {
+        const block = ctx.scene.blocks[blockId];
+        const compiled = await compileBlock(ctx, blockId);
+        if (compiled.length > 0 && isReturnableJump(block)) {
+            // Recorded against the jump's own row, after the actions that row already emitted. An
+            // action id is numbered within its row alone, so the wrapper takes the next number in
+            // that row's own run and no other row's ids move.
+            statements.push(recordStatement(ctx, Control.do(compiled as any), block));
+        } else {
+            statements.push(...compiled);
+        }
+        // The same stop `compileBlockList` makes: nothing written after an `/ending` row plays.
+        if (endsPlayback(block)) {
+            break;
+        }
+    }
+    return statements;
+}
+
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const children = await compileBlockList(ctx, block.childrenIds);
     const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
+    // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
+    // a stale `mode` on a repeat row never reaches the call.
+    const unchainedBody = payload.control === "repeat" || mode === "all" || mode === "allAsync" || mode === "any";
+    const children = unchainedBody
+        ? await compileUnchainedGroupBody(ctx, block.childrenIds)
+        : await compileBlockList(ctx, block.childrenIds);
     // `until` selects the conditional form. A group that carries one is never a counted repeat, even
     // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
     // has to be true.
