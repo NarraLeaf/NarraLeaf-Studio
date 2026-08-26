@@ -604,6 +604,7 @@ export const assets = {
      */
     live: {
         recordClaimed: "{name} がこのアセットを編集している",
+        transferring: "このアセットは {percent}% 転送済み",
     },
     newTextFile: {
         title: "新規テキストファイル",

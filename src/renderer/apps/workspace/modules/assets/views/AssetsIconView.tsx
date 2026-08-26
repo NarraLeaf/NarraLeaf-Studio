@@ -11,6 +11,7 @@ import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { AssetThumbnail } from "../components/AssetThumbnail";
 import { AssetSupportBadge } from "../components/AssetSupportBadge";
 import { AssetSetIconTile } from "../components/AssetSetRow";
+import { AssetTransferSweep } from "../assetLiveSession";
 import type { ResolvedAssetSet } from "../state/useAssetSets";
 import { cn } from "@/lib/utils/cn";
 import { formatAssetSetCoordinateReading, readAssetSetCoordinate } from "@shared/types/assetSetLabels";
@@ -864,7 +865,7 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
     /** The set value this tile answers, when it is being drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { tn } = useTranslation();
+    const { t, tn } = useTranslation();
     const {
         selectedItems,
         handleItemSelect,
@@ -877,12 +878,16 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
         draggedItem,
         mediaSupport,
         handleConvertMedia,
+        assetTransfers,
     } = useAssetsPanelContext();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isImage = asset.type === AssetType.Image;
     const isSelected = selectedItems.has("asset:" + asset.id);
     const isDragging = !!draggedItem && !draggedItem.isGroup && draggedItem.item.id === asset.id;
     const support = mediaSupport.get(asset.id);
+    // How far this file has got, while it is still coming in over a session. Undefined at every
+    // other moment, which is every moment outside one.
+    const arriving = assetTransfers[asset.id];
     // Inside a set, the tile does not leave: which set a file belongs to is written in its tags, so
     // a drop somewhere else would move a tile the set goes on drawing exactly where it was.
     const movable = !assetSetValue;
@@ -890,7 +895,8 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
     return (
         <div
             draggable={movable}
-            className={`${movable ? "nl-drag-source " : ""}border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
+            data-tip={arriving === undefined ? undefined : t("assets.live.transferring", { percent: Math.round(arriving * 100) })}
+            className={`${movable ? "nl-drag-source " : ""}relative isolate border rounded-lg p-2 bg-fill-subtle flex flex-col gap-2 cursor-pointer hover:border-edge-strong ${
                 isSelected ? "border-primary/80 bg-primary/10" : "border-transparent"
             } ${isDragging ? "opacity-50" : ""} ${
                 clipboard?.type === "cut" && clipboard.assets.some((a) => a.id === asset.id) ? "opacity-40" : ""
@@ -904,6 +910,7 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
             onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
             onDragEnd={movable ? () => handleDragEnd?.() : undefined}
         >
+            {arriving !== undefined && <AssetTransferSweep share={arriving} />}
             {/* The mark sits over the square rather than in the name row: at 120px that row is a
                 name and nothing else fits beside it without truncating the one thing it is for. */}
             <div className="relative">
