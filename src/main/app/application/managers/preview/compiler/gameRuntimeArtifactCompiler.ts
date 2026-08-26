@@ -279,9 +279,9 @@ export type GameRuntimeArtifactCompileInput = {
      * both the pack and the loose app manifest because the runtime checks the two at different
      * moments - the manifest before Chromium starts, the pack once it is open.
      *
-     * Dropped when {@link encryptionKey} is set, and the compile says so: a sealed build refuses a
-     * debugging switch whatever its markers claim, so writing one would only be a promise the
-     * artifact does not keep. See `honoursDebuggableMarker`.
+     * A sealed artifact still carries it, but it means less there: the runtime honours it only
+     * while the app directory is being run by hand, never in the packaged game. The compile says so
+     * rather than leaving the author to discover it. See `honoursDebuggableMarker`.
      */
     debuggable?: boolean;
     /**
@@ -557,16 +557,15 @@ export async function compileGameRuntimeArtifact(
         }
         : { kind: "loose" };
 
-    // Only an unsealed artifact can carry the marker. The runtime refuses it on a sealed build
-    // regardless - the gate that matters runs before the store can be opened, so it reads the loose
-    // manifest, and a text file that opens a debugger port is not something a protected build may
-    // have. Dropping it here keeps the artifact honest rather than shipping a claim the runtime
-    // will ignore.
-    const debuggable = input.debuggable === true && !input.encryptionKey;
-    if (input.debuggable === true && input.encryptionKey) {
+    // The marker is written either way, but on a sealed artifact it reaches only half as far: the
+    // runtime honours it while this app directory is run by hand and refuses it in the packaged
+    // game, because the gate that decides in time reads the loose manifest and a shipped protected
+    // build cannot have a text edit standing between a stranger and its content.
+    const debuggable = input.debuggable === true;
+    if (debuggable && input.encryptionKey) {
         notices.push(
-            "asset protection is on, so this artifact ships without the debuggable marker: "
-            + "a sealed build refuses a debugging switch whatever its markers say",
+            "asset protection is on: this artifact accepts a debugging switch only while its app "
+            + "directory is run directly, never as the packaged game",
         );
     }
 
