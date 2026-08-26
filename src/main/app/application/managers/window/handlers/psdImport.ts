@@ -1,9 +1,10 @@
 import fs from "fs/promises";
 import path from "path";
-import { app, dialog } from "electron";
+import { app } from "electron";
 import { psdTempRoot } from "../../storage/cacheInventory";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import type { PsdBakedLayer, PsdDocument } from "@shared/types/psdImport";
@@ -21,7 +22,7 @@ export class PsdOpenHandler extends IPCHandler<IPCEventType.psdOpen> {
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ filePath: string | null; document: PsdDocument | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Import PSD",
             properties: ["openFile"],
             filters: [{ name: "Photoshop", extensions: ["psd", "psb"] }],
