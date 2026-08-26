@@ -1109,14 +1109,18 @@ export class LiveSession {
             this.startFollowing(session, continuation);
             return;
         }
+        // Asked while the phase is still `idle`, because that is one of the things it reads.
         const blocked = this.blocked();
         if (blocked) {
             // Something froze this workspace between the room ending and this running. Arming a
             // session's freeze over it would take that state's latch away rather than adding to it.
+            this.patch({ rejoining: null });
             this.failEntry(blocked);
             return;
         }
-        this.patch({ phase: "entering", entryFailure: null, ended: null });
+        // Nothing is being waited for any more: this window is the one opening it, so a failure
+        // below leaves a stated reason rather than a line still promising a room.
+        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
