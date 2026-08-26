@@ -1088,9 +1088,24 @@ describe("a live session", () => {
 
         it("does nothing for a window that was in no room", async () => {
             const fresh = createWindow(world, "instance-fresh");
-            await fresh.session.resume();
+            expect(await fresh.session.resume()).toBe("settled");
             expect(fresh.calls).toEqual([]);
             expect(fresh.session.getView()).toEqual(IDLE_LIVE_SESSION);
+        });
+
+        it("asks to be tried again while the server has not answered this window yet", async () => {
+            // The ordinary answer for the first second or two of a workspace opening: the socket is
+            // being opened at the same time, so "no instance id" says nothing about whether there is
+            // a room. A window that gave up here would leave one open with nobody answering in it.
+            const starting = createWindow(world, "instance-starting");
+            starting.instance = null;
+            expect(await starting.session.resume()).toBe("ask-again");
+        });
+
+        it("settles rather than asking again for a project on no server", async () => {
+            const local = createWindow(world, "instance-local");
+            local.hasRepository = false;
+            expect(await local.session.resume()).toBe("settled");
         });
     });
 

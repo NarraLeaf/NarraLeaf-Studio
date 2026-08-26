@@ -74,7 +74,33 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         // Not awaited, and that is the point of it: a workspace must open at the same speed whether
         // or not there is a server to ask, and the answer for nearly every window is "you were in
         // nothing". What it repairs is the room a reload left behind - see `LiveSession.resume`.
-        void this.session.resume();
+        void this.takeUpAnyRoom();
+    }
+
+    /**
+     * How long to keep asking whether this window was already in a room, and how often.
+     *
+     * The socket to the server is opened while the workspace is starting, so the first pass runs
+     * before there is anything to ask - and a window that gave up there would go on holding a room
+     * open on the server with nobody able to answer an intent in it. Four tries over half a minute
+     * covers a connection that is slow rather than absent; a connection that is absent answers
+     * `settled` on the first pass and nothing further is asked.
+     */
+    private static readonly RESUME_DELAYS_MS = [0, 2_000, 6_000, 20_000] as const;
+
+    private async takeUpAnyRoom(): Promise<void> {
+        for (const delay of LiveSessionService.RESUME_DELAYS_MS) {
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            if (this.session === null) {
+                // The window closed while this was waiting.
+                return;
+            }
+            if (await this.session.resume() === "settled") {
+                return;
+            }
+        }
     }
 
     public override dispose(_ctx: WorkspaceContext): void {
