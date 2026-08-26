@@ -385,6 +385,20 @@ export type LiveHistoryPort = {
      * deleting everything they wrote, with nothing on either screen reporting it.
      */
     forgetStoryScenes(storyId: StoryId): void;
+    /**
+     * Throw away every Surface and blueprint stack.
+     *
+     * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
+     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * One applied - during a session or after it - would put the screen back the way it was before
+     * anybody else joined, deleting everything they have added since, with nothing on either machine
+     * reporting it.
+     *
+     * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
+     * scenes are at risk; the interface is one document with every Surface in it, and every stack
+     * over it is about to become historical.
+     */
+    forgetInterfaceEditors(): void;
 };
 
 /** Everything {@link LiveSession} needs from the world. */
