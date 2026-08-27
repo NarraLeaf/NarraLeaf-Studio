@@ -299,6 +299,8 @@ export const build = {
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
         "lossy-images": "图像将以质量 {quality} 重新编码，细节不可恢复",
+        "lossy-audio": "音频将以质量 {quality} 重新编码，细节不可恢复",
+        "lossy-video": "视频将以质量 {quality} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目资产体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",

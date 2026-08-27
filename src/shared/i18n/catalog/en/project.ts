@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, signing, optimization, and mobile",
+            description: "Security, signing, compression, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -59,7 +59,7 @@ export const project = {
         linting: "Project check",
         security: "Security",
         signing: "Signing",
-        optimization: "Optimization",
+        compression: "Compression",
         crash: "Crashes",
         mobile: "Mobile",
     },
@@ -452,10 +452,18 @@ export const project = {
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
-        lossyImagesTitle: "Recompress images",
-        lossyImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
-        lossyQualityTitle: "Image quality",
-        lossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
+        compressImagesTitle: "Compress images",
+        compressImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        imageQualityTitle: "Image quality",
+        imageQualityDescription: "Quality used when compressing images, from 1 to 100.",
+        compressAudioTitle: "Compress audio",
+        compressAudioDescription: "Re-encode audio as AAC, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        audioQualityTitle: "Audio quality",
+        audioQualityDescription: "Quality used when compressing audio, from 1 to 100.",
+        compressVideoTitle: "Compress video",
+        compressVideoDescription: "Re-encode video as VP9, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        videoQualityTitle: "Video quality",
+        videoQualityDescription: "Quality used when compressing video, from 1 to 100.",
         // Not "Mobile orientation": it sits under the Mobile heading, and the repeated word cost the
         // label a second line in a 318px panel.
         orientationTitle: "Orientation",

@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
 import { planAssetImageTranscode, assetImageWorthKeeping } from "@shared/utils/assetImageOptimization";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
 import { stripImageMetadata } from "@shared/utils/assetImageMetadata";
@@ -73,7 +73,7 @@ export type AssetImageOptimizationInput = {
     projectPath: string;
     /** Where re-encoded images are kept between builds. Studio's, never the project's. */
     cacheDir: string;
-    config: AssetOptimizationConfiguration;
+    config: AssetCompressionConfiguration;
     /**
      * Opened on the first image that actually needs encoding, so a build whose
      * images are all in the cache never starts a codec window at all - and a
@@ -153,7 +153,7 @@ export async function optimizeProjectImages(
      * metadata a re-encode had removed anyway.
      */
     const stripOnly = async (id: string, bytes: Buffer): Promise<void> => {
-        const key = cacheKey(bytes, "strip", input.config.lossyQuality);
+        const key = cacheKey(bytes, "strip", input.config.imageQuality);
         const cached = await readCached(input.cacheDir, key, "strip");
         if (cached === "rejected") {
             return;
@@ -213,7 +213,7 @@ export async function optimizeProjectImages(
             return;
         }
 
-        const key = cacheKey(bytes, plan.action, input.config.lossyQuality);
+        const key = cacheKey(bytes, plan.action, input.config.imageQuality);
         const cached = await readCached(input.cacheDir, key, plan.action);
         if (cached === "rejected") {
             result.keptOriginal += 1;
@@ -233,7 +233,7 @@ export async function optimizeProjectImages(
             bytes,
             sourceType,
             lossless: plan.action === "lossless",
-            ...(plan.action === "lossy" ? { quality: input.config.lossyQuality } : {}),
+            ...(plan.action === "lossy" ? { quality: input.config.imageQuality } : {}),
         });
         if (!encoded) {
             await writeRejected(input.cacheDir, key);
