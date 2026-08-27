@@ -7,6 +7,7 @@ import {
     type LiveDivergence,
 } from "@/lib/live";
 import { captureBefore, type LiveBefore } from "@/lib/live/inverse";
+import { assertionAddress, composeAssertedRecord } from "@shared/live/compose";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import { assetsDigest } from "@shared/live/assets";
 import { assetGroupsDigest } from "@shared/live/assetGroups";
@@ -23,7 +24,13 @@ import {
     type LiveSessionRegistries,
 } from "@shared/live/sharedDocuments";
 import { uiBlueprintDigest, uiGraphShellDigest } from "@shared/live/uiGraphParts";
-import { uiComponentDigest, uiShellDigest, uiSurfaceDigest } from "@shared/live/uiParts";
+import {
+    composeUIParts,
+    uiComponentDigest,
+    uiShellDigest,
+    uiSurfaceDigest,
+    type LiveUIElementRef,
+} from "@shared/live/uiParts";
 import {
     appTagClaimKey,
     assetClaimKey,
@@ -200,6 +207,15 @@ type ActiveSession = {
      * applied - one behind a gap that a catch-up filled another way - must not be kept for ever.
      */
     mine: WeakMap<LiveOp, LiveEffect>;
+    /**
+     * What this window has said about a unit and not yet been answered about, by address.
+     *
+     * A guest's only. The point of it is composition, not display: nothing is applied any earlier
+     * than it was, and what is held here is folded into the NEXT gesture about the same unit so
+     * that the two do not overwrite each other. See {@link LiveSession.sendIntent}, and
+     * `@shared/live/compose` for the defect and the rule.
+     */
+    asserted: Map<string, { op: LiveOp; outstanding: Set<string> }>;
     /** What `captureBefore` read for the operation being applied right now. See {@link applyOp}. */
     pendingBefore: LiveBefore | null;
     /** The host's application order. */
@@ -967,6 +983,122 @@ export class LiveSession {
         session.rooms.say(session.room.id, claims);
     }
 
+    /* ---------------------------------------------------------- what has been said */
+
+    /**
+     * Send one intent, composed with whatever this window has already said about the same unit.
+     *
+     * ⚠ **The one place a guest's operation leaves, and it exists for one defect.** A guest changes
+     * nothing on its own initiative, so the owning service reads the record as the gesture would
+     * have written it, hands it over, and puts the record back. A SECOND gesture inside the same
+     * round trip therefore reads a record with the first one missing - and states it whole. The
+     * host applies both in order and the first is gone, silently, while somebody is still typing.
+     *
+     * So what was asserted is held until it is answered, and the next gesture is composed against
+     * it: see `@shared/live/compose` for the three-sided rule and for why this is not optimistic
+     * application. Verbs that name their own change - insert this row, rename this scene - have no
+     * address here and are sent exactly as they were built.
+     */
+    private sendIntent(
+        session: ActiveSession,
+        op: LiveOp,
+        document: LiveDocument,
+        derived?: LiveDerived,
+    ): void {
+        const guest = session.guest;
+        if (!guest) {
+            return;
+        }
+        const address = assertionAddress(op);
+        const sent = address === null ? op : this.composeWithAssertion(session, address, op);
+        const intent = guest.intend(sent, document, derived);
+        if (address !== null) {
+            const held = session.asserted.get(address);
+            const outstanding = held?.outstanding ?? new Set<string>();
+            outstanding.add(intent.clientId);
+            session.asserted.set(address, { op: sent, outstanding });
+        }
+    }
+
+    /**
+     * One operation, with what this window has already said about the same unit folded into it.
+     *
+     * The base is the record as the DOCUMENT holds it, which is what the gesture was measured
+     * against - the service put it back before the sink was called - so a field that differs from
+     * it is a field this gesture touched. Everything else comes from the assertion.
+     */
+    private composeWithAssertion(session: ActiveSession, address: string, op: LiveOp): LiveOp {
+        const held = session.asserted.get(address)?.op;
+        if (held === undefined) {
+            return op;
+        }
+        if (op.op === "write-ui" && held.op === "write-ui") {
+            // A delta composes record by record, so there is no base to read - see `composeUIParts`.
+            // `updates` is the union: an element either delta says it is CHANGING rather than
+            // creating is one the host has to find, and dropping half of that answer would put a
+            // deleted element back on every screen.
+            const updates = [...(held.updates ?? []), ...(op.updates ?? [])];
+            return {
+                ...op,
+                parts: composeUIParts(held.parts, op.parts),
+                ...(updates.length === 0 ? {} : { updates: dedupeElementRefs(updates) }),
+            };
+        }
+        if (op.op === "update-character" && held.op === "update-character") {
+            return {
+                ...op,
+                character: composeAssertedRecord(
+                    held.character,
+                    this.deps.cast.view().characters[op.characterId] ?? null,
+                    op.character,
+                ),
+            };
+        }
+        if (op.op === "update-asset" && held.op === "update-asset") {
+            return {
+                ...op,
+                record: composeAssertedRecord(
+                    held.record,
+                    this.deps.assets.records(op.assetType)?.[op.assetId] ?? null,
+                    op.record,
+                ),
+            };
+        }
+        if (op.op === "set-translation" && held.op === "set-translation") {
+            return {
+                ...op,
+                unit: composeAssertedRecord(
+                    held.unit,
+                    this.deps.localization.units(op.locale)?.[op.unitId] ?? null,
+                    op.unit,
+                ),
+            };
+        }
+        // Two verbs at one address that are not the same verb. Nothing composes them, and the newer
+        // one is what the author asked for.
+        return op;
+    }
+
+    /**
+     * Forget an assertion, now that the room has answered about it.
+     *
+     * **Only when nothing else about that unit is outstanding.** A second gesture sent while the
+     * first is still in flight was composed from the assertion, so releasing on the first answer
+     * would leave the third gesture composing against a document that holds only the first - and
+     * the second would be lost exactly as before.
+     */
+    private releaseAssertion(session: ActiveSession, clientId: string): void {
+        for (const [address, held] of session.asserted) {
+            if (!held.outstanding.delete(clientId)) {
+                continue;
+            }
+            if (held.outstanding.size === 0) {
+                session.asserted.delete(address);
+            }
+            return;
+        }
+    }
+
     /* ---------------------------------------------------------------------- undo */
 
     /**
@@ -1121,6 +1253,7 @@ export class LiveSession {
             effects: new LiveEffectHistory(),
             derivedByBlock: new Map(),
             mine: new WeakMap(),
+            asserted: new Map(),
             pendingBefore: null,
             seq: 0,
             claimsSeq: 0,
@@ -1202,6 +1335,10 @@ export class LiveSession {
                 onRefusal: (refusal, intent) => {
                     if (intent) {
                         session.effects.abandon(intent.clientId);
+                        // Nothing was applied anywhere, so the assertion describes a state no
+                        // document has. Kept, and the next gesture would compose against a value
+                        // the room refused.
+                        this.releaseAssertion(session, intent.clientId);
                     }
                     this.noteRefusal(session, refusal, intent?.op.op ?? null);
                 },
@@ -1653,6 +1790,14 @@ export class LiveSession {
             // are read here rather than carried on the effect.
             ...(op.op === "delete-character" ? { spoke: this.deps.story.rowsSpokenBy(op.characterId) } : {}),
         });
+        // Answered: this operation is one of this window's own and it has now landed, so what was
+        // asserted for that unit is the document's own answer from here on. Released on APPLY
+        // rather than on arrival, because an effect can wait behind a gap for a catch-up to fill
+        // and a gesture in that stretch would compose against a document that has not got it yet.
+        const answered = session.mine.get(op)?.clientId;
+        if (answered !== undefined) {
+            this.releaseAssertion(session, answered);
+        }
         const touched: LiveDigestScope[] = [];
         switch (document.doc) {
             case "characters":
@@ -2056,7 +2201,7 @@ export class LiveSession {
                     this.hostApply(session, op, derived, undefined, document);
                     return true;
                 }
-                session.guest?.intend(op, document, derived);
+                this.sendIntent(session, op, document, derived);
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on
@@ -2092,7 +2237,7 @@ export class LiveSession {
                     this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
                     return true;
                 }
-                session.guest?.intend(op, { doc: "characters" });
+                this.sendIntent(session, op, { doc: "characters" });
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on
@@ -2137,7 +2282,7 @@ export class LiveSession {
                     this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
                     return true;
                 }
-                session.guest?.intend(op, this.documentOf(session, op));
+                this.sendIntent(session, op, this.documentOf(session, op));
                 this.publish(session, {});
                 // True even when the intent is refused later: what must never happen is this window
                 // changing a shared document on its own initiative.
@@ -2171,7 +2316,7 @@ export class LiveSession {
                 this.noteRefusal(session, { kind: "refusal", clientId: "", reason: "too-large" }, op.op);
                 return true;
             }
-            session.guest?.intend(op, document);
+            this.sendIntent(session, op, document);
             this.publish(session, {});
             // True even when the intent is refused later: what must never happen is this window
             // changing a shared document on its own initiative.
@@ -2593,4 +2738,25 @@ export class LiveSession {
 
 function describe(error: unknown): string {
     return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * One list of element references with the repeats taken out.
+ *
+ * Two deltas of this window's own routinely name the same element - dragging it and then resizing
+ * it - and `updates` is read as a set by whoever checks it. Sent as one so the message does not
+ * carry the same answer twice.
+ */
+function dedupeElementRefs(refs: readonly LiveUIElementRef[]): LiveUIElementRef[] {
+    const seen = new Set<string>();
+    const unique: LiveUIElementRef[] = [];
+    for (const ref of refs) {
+        const key = `${ref.componentId ?? ""}\u0000${ref.elementId}`;
+        if (seen.has(key)) {
+            continue;
+        }
+        seen.add(key);
+        unique.push(ref);
+    }
+    return unique;
 }
