@@ -35,7 +35,9 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 const world = vi.hoisted(() => ({
     view: {} as LiveSessionView,
     listeners: new Set<(view: LiveSessionView) => void>(),
-    show: vi.fn(),
+    show: vi.fn(() => "notice-1"),
+    close: vi.fn(),
+    answerRequest: vi.fn(() => Promise.resolve(true)),
 }));
 
 // One workspace object for the whole file: the real one is a React context value and is stable for
@@ -50,10 +52,11 @@ vi.mock("@/apps/workspace/context", () => {
                         world.listeners.add(handler);
                         return () => world.listeners.delete(handler);
                     },
+                    answerRequest: world.answerRequest,
                 };
             }
             if (id === Services.UI) {
-                return { notifications: { show: world.show } };
+                return { notifications: { show: world.show, close: world.close } };
             }
             return null;
         },
@@ -68,6 +71,8 @@ beforeEach(() => {
     world.view = IDLE_LIVE_SESSION;
     world.listeners.clear();
     world.show.mockClear();
+    world.close.mockClear();
+    world.answerRequest.mockClear();
 });
 
 afterEach(cleanup);
@@ -143,6 +148,24 @@ describe("what a live session tells the author", () => {
         // already looking.
         expect(notice.actions.map((action: { label: string }) => action.label))
             .toEqual(["workspace.shell.team.liveAdmit", "workspace.shell.team.liveTurnAway"]);
+    });
+
+    it("takes the question away when it is answered, because it no longer has one", () => {
+        // The other half of keeping it up: a sticky question that survives its own answer is a
+        // control the author has already used still sitting there asking to be used again.
+        render(<LiveSessionNotices />);
+        publish({
+            ...IDLE_LIVE_SESSION,
+            phase: "active",
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+
+        const [notice] = world.show.mock.calls.map(call => call[0]);
+        act(() => notice.actions[0].onClick());
+
+        expect(world.close).toHaveBeenCalledWith("notice-1");
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", true);
     });
 
     it("says why an undo sent nothing, and stays quiet at the end of the stack", () => {

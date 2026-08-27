@@ -165,7 +165,14 @@ export function LiveSessionNotices(): null {
                 continue;
             }
             announced.current.add(`asked:${member.instance}`);
-            notifications.show({
+            // Answering has to take the question away with it, which means knowing which notice
+            // this is - so the id is captured before the handlers that close it are built.
+            let notice = "";
+            const answer = (admit: boolean) => {
+                notifications.close(notice);
+                void live?.answerRequest(member.instance, admit);
+            };
+            notice = notifications.show({
                 type: NotificationType.Info,
                 message: say.current("workspace.shell.team.liveAsked", { name: member.account }),
                 // ⚠ **Kept up until it is answered.** Every other notice here reports something
@@ -178,11 +185,11 @@ export function LiveSessionNotices(): null {
                     {
                         label: say.current("workspace.shell.team.liveAdmit"),
                         primary: true,
-                        onClick: () => void live?.answerRequest(member.instance, true),
+                        onClick: () => answer(true),
                     },
                     {
                         label: say.current("workspace.shell.team.liveTurnAway"),
-                        onClick: () => void live?.answerRequest(member.instance, false),
+                        onClick: () => answer(false),
                     },
                 ],
             });
