@@ -261,6 +261,10 @@ export const settings = {
             description:
                 "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         },
+        zigMirror: {
+            label: "Compiler toolchain mirror",
+            description: "Mirror for the compiler toolchain a build downloads.",
+        },
         downloadRewrites: {
             label: "Download address rewrites",
         },
@@ -489,6 +493,10 @@ export const settings = {
                 buildDependencies: {
                     label: "Plugin build files",
                     description: "Archives that plugins download to include in a built game.",
+                },
+                toolchains: {
+                    label: "Compiler toolchains",
+                    description: "Compilers downloaded for a build. Downloaded again the next time one needs them.",
                 },
                 browser: {
                     label: "Interface cache",

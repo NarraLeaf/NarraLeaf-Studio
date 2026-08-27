@@ -19,6 +19,7 @@ export const CACHE_BUCKET_IDS = [
     "optimizedImages",
     "compressedMedia",
     "buildDependencies",
+    "toolchains",
     "electronBuilder",
     "browser",
     "psdImports",

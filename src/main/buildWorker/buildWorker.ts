@@ -5,6 +5,7 @@ import type {
     GameBuildWorkerInboundMessage,
     GameBuildWorkerOutboundMessage,
 } from "./protocol";
+import { setDownloadReporter } from "./downloadReporting";
 import { runGameBuild } from "./runGameBuild";
 
 /**
@@ -24,6 +25,11 @@ const parentPort = (process as unknown as { parentPort: ParentPort }).parentPort
 function send(message: GameBuildWorkerOutboundMessage): void {
     parentPort.postMessage(message);
 }
+
+// Anything this worker fetches itself - the code-signing bundle, on a host that has to be handed
+// one - reaches the status bar through here. What electron-builder downloads on its own account
+// does not: nothing inside this process can see those, and they are read off its output instead.
+setDownloadReporter(event => send({ type: "download", event }));
 
 parentPort.on("message", event => {
     const message = event.data as GameBuildWorkerInboundMessage;

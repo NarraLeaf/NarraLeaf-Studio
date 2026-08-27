@@ -1150,6 +1150,69 @@ export function sceneWritesAsUncertain(
 }
 
 /**
+ * The writes that can have run by the time one row of a scene is reached, or `null` when the scene's
+ * shape does not let that be decided.
+ *
+ * The bound {@link widenRangeAcrossScene} produces holds every write in the scene, which is correct
+ * and blunt: a guard written as `if affection >= 50 { affection += 100 }` is judged against a range
+ * that already contains the `+100` its own arm applies, and so can never be found impossible. Reading
+ * the rows in order removes the two writes that could not have run - the ones after the guard, and
+ * the ones inside the arm the guard opens - and those are the two that most often defeat the check.
+ *
+ * Certainty follows the arm chain, exactly as `traversalEffects` decides it: a write whose enclosing
+ * arms all enclose the guard as well ran on the way here, so it is certain; anything else is a write
+ * on a path this row may or may not have come by, so it widens both ways.
+ *
+ * **`null` where order is not a straight line.** Three shapes, and the third was found by running
+ * this over a real project rather than by reasoning about it:
+ *
+ *  - A `goto` can send the run backwards, so any row can precede any other.
+ *  - A guard *inside* a `repeat` is re-tested after its own body has run a lap.
+ *  - **A `repeat`'s own `until` condition is the loop's stop test**, evaluated after each lap of the
+ *    body - so the body's writes precede it even though every one of them is written below it.
+ *    `/repeat until gold >= 10` around rows that earn gold reads, in document order, as a condition
+ *    tested with gold at its starting value, and reporting it would be reporting the loop working.
+ *
+ * In all three the caller falls back to the whole-scene reading, which is always safe.
+ */
+export function sceneWritesBefore(
+    document: StoryDocument,
+    sceneId: StorySceneId,
+    guardBlockId: StoryBlockId,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): SceneFlowVariableEffect[] | null {
+    const scene = document.scenes[sceneId];
+    const guard = scene?.blocks[guardBlockId];
+    if (!scene || !guard) {
+        return null;
+    }
+    const ordered = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => block.disabled === true });
+    if (ordered.some(block => block.kind === "control" && block.payload.control === "goto")) {
+        return null;
+    }
+    const guardAncestry = readAncestry(scene, guard);
+    // `insideRepeat` answers for the ancestors; a `repeat` carrying an `until` is its own case.
+    if (guardAncestry.insideRepeat || isRepeat(guard)) {
+        return null;
+    }
+    const position = new Map(ordered.map((block, index) => [block.id, index]));
+    const guardIndex = position.get(guardBlockId);
+    if (guardIndex === undefined) {
+        return null;
+    }
+
+    const effects: SceneFlowVariableEffect[] = [];
+    for (const write of documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? []) {
+        const index = position.get(write.blockId);
+        if (index === undefined || index > guardIndex) {
+            continue;
+        }
+        effects.push(effectOf(write, isChainSuffix(write.armChain, guardAncestry.armChain)));
+    }
+    return effects;
+}
+
+/**
  * The widest value a variable can hold at *any* row of one scene.
  *
  * {@link computeVariableRanges} answers "on arrival", which is the number an author reading a scene

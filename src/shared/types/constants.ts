@@ -98,4 +98,14 @@ export enum CacheNamespace {
      * one they would rather keep.
      */
     CompressedMedia = "compressed-media",
+    /**
+     * Compiler toolchains a build downloads because the host has none, one
+     * directory per toolchain and version.
+     *
+     * Listed on its own rather than folded into the build dependencies beside it,
+     * for the reason the media cache is kept apart from the images: a Zig
+     * toolchain is a few hundred megabytes even pruned, and an author deciding
+     * what to reclaim needs to see that number by itself.
+     */
+    Toolchains = "toolchains",
 }
