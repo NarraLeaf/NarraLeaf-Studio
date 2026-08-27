@@ -934,17 +934,19 @@ export function RunControl() {
                             </>
                         )}
 
-                        {/* Which DLC the run has installed. Alongside the edition above because they
-                            are the same kind of choice - what this run IS - and separate because they
-                            are not the same question: a build is one variant, and has any number of
-                            DLC beside it. Only where the project ships some.
+                        {/* Which DLC the run has installed. It sits with the edition above, without a
+                            rule between them, because the two rows answer one question together -
+                            what this run IS. Only where the project ships some.
+
+                            The rule appears only when there is no edition row above, where it is what
+                            keeps DLC off the run modes.
 
                             Multi-select, so the row states a count rather than a name: "1 of 3" is
                             the only summary of a set that does not grow with it. None are on until an
                             author ticks one - a run is the game a player bought. */}
                         {dlcs.length > 0 && (
                             <>
-                                <div className="my-1 mx-2 h-px bg-fill-strong" />
+                                {variants.length === 0 && <div className="my-1 mx-2 h-px bg-fill-strong" />}
                                 <button
                                     type="button"
                                     role="menuitem"
