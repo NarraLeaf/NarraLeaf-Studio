@@ -2057,6 +2057,25 @@ describe("a live session", () => {
             stop();
         });
 
+        it("takes back a step on another story the session carries", async () => {
+            // ⚠ The regression. The history asked for one document - the one the room is named
+            // after - so an inverse for a step on any other story was read against the wrong file
+            // and refused as `scene-gone`. Both stories are in the session's writable set and both
+            // are edited through it, so an undo that only worked on one of them was an editor that
+            // silently stopped taking gestures back once an author opened a second document.
+            const other = host.story.createStory("Another");
+            const sceneId = host.story.getStoryDocument(other.id).chapters[0].sceneIds[0];
+            await openRoom();
+
+            host.story.renameScene(other.id, sceneId, "Renamed on its own");
+            await drain(world.bus);
+            expect(host.session.undo()).toBe(true);
+            await drain(world.bus);
+
+            expect(host.story.getStoryDocument(other.id).scenes[sceneId].name).not.toBe("Renamed on its own");
+            expect(host.session.getView().undoRefusal).toBeNull();
+        });
+
         it("is refused when it is about a story the room never carried", async () => {
             // A story made after the room opened is in nobody else's copy - the set was settled on
             // the way in - so the operation is refused rather than written here alone.

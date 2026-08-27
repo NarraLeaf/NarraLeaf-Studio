@@ -78,6 +78,20 @@ export const project = {
     subPage: {
         backAria: "Back to project overview",
     },
+    /**
+     * Said at the top of a project page when its settings are read-only.
+     *
+     * The project's configuration is one file that no freeze lets through, so all of these fields
+     * grey out together - and a tooltip on a disabled field is awkward to reach at all.
+     *
+     * ⚠ The live sentence does NOT list what is still editable. Three tables reachable from these
+     * pages have documents of their own that a session carries, and naming them here would be a
+     * list that falls behind the vocabulary; "what the session carries" cannot.
+     */
+    frozen: {
+        live: "The project's own settings are read-only during a live session. What is still editable here is what the session carries.",
+        frozen: "The project's own settings are read-only while the project is frozen.",
+    },
     details: {
         nameLabel: "Application Name",
         namePlaceholder: "Application name",
