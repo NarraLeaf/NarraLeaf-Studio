@@ -303,6 +303,70 @@ export function uiPartsElements(parts: LiveUIParts): readonly LiveUIElementRef[]
 }
 
 /**
+ * Two deltas of this window's own, as one.
+ *
+ * **The interface's half of the composition a guest needs** - see `@shared/live/compose` for the
+ * defect. A delta names complete records, so two of them compose record by record with the later
+ * one winning: a record only the earlier delta names was not restated by the second gesture and
+ * stands, and a record both name was read by the second gesture from a document holding neither of
+ * them, so its version is the one that describes what the author asked for.
+ *
+ * ⚠ **Not a merge of two authors' deltas**, which would be a different question with a different
+ * answer. Both of these are this window's, taken a few hundred milliseconds apart, and the elements
+ * they name are claimed by it - so there is no third state either of them could be wrong about.
+ *
+ * `surfaceOrder` and `componentOrder` travel with their maps and are taken from whichever delta
+ * carries one, later first: they are whole lists rather than records, and a list stated by the
+ * second gesture already contains what the first did to it.
+ */
+export function composeUIParts(earlier: LiveUIParts, later: LiveUIParts): LiveUIParts {
+    const composed: LiveUIParts = {};
+    const elements = { ...earlier.elements, ...later.elements };
+    if (Object.keys(elements).length > 0) {
+        composed.elements = elements;
+    }
+    const componentElements: Record<UIComponentId, Record<UIElementId, UIElement | null>> = {};
+    for (const [componentId, delta] of Object.entries(earlier.componentElements ?? {})) {
+        componentElements[componentId] = { ...delta };
+    }
+    for (const [componentId, delta] of Object.entries(later.componentElements ?? {})) {
+        componentElements[componentId] = { ...componentElements[componentId], ...delta };
+    }
+    if (Object.keys(componentElements).length > 0) {
+        composed.componentElements = componentElements;
+    }
+    const surfaces = { ...earlier.surfaces, ...later.surfaces };
+    if (Object.keys(surfaces).length > 0) {
+        composed.surfaces = surfaces;
+        const order = later.surfaceOrder ?? earlier.surfaceOrder;
+        if (order) {
+            composed.surfaceOrder = order;
+        }
+    }
+    const components = { ...earlier.components, ...later.components };
+    if (Object.keys(components).length > 0) {
+        composed.components = components;
+        const order = later.componentOrder ?? earlier.componentOrder;
+        if (order) {
+            composed.componentOrder = order;
+        }
+    }
+    const structs = { ...earlier.structs, ...later.structs };
+    if (Object.keys(structs).length > 0) {
+        composed.structs = structs;
+    }
+    const actions = { ...earlier.actions, ...later.actions };
+    if (Object.keys(actions).length > 0) {
+        composed.actions = actions;
+    }
+    const name = later.name ?? earlier.name;
+    if (name !== undefined) {
+        composed.name = name;
+    }
+    return composed;
+}
+
+/**
  * The elements a delta CHANGES rather than creates, as the state it was computed against had them.
  *
  * **What the host checks before applying, and the interface document's answer to `row-gone`.** A

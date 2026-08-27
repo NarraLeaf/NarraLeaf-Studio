@@ -2303,6 +2303,76 @@ describe("a live session", () => {
             });
         });
 
+        it("folds two gestures made inside one round trip together instead of burying the first", async () => {
+            // ⚠ The defect. A guest changes nothing on its own initiative, so `CharacterService`
+            // reads the record as the gesture would have written it, hands it to the sink and puts
+            // the record back. The SECOND gesture therefore measures against a record with the
+            // first one missing - and `update-character` states a record whole - so the host
+            // applied both in order and the first one was gone, silently, mid-typing.
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            const held = guest.cast.characters.c1 as StoredCharacter;
+
+            edit(guest, {
+                op: "update-character",
+                characterId: "c1",
+                character: { profile: { ...held.profile, name: "Ada Lovelace" } },
+            });
+            // No drain: the first intent has not been answered, so the panel is still showing -
+            // and the service still holds - the record this second gesture is built from.
+            edit(guest, {
+                op: "update-character",
+                characterId: "c1",
+                character: { profile: { ...held.profile, description: "Mathematician" } },
+            });
+            await drain(world.bus);
+
+            expect(host.cast.characters.c1?.profile.name).toBe("Ada Lovelace");
+            expect(host.cast.characters.c1?.profile.description).toBe("Mathematician");
+            expect(guest.cast.characters.c1?.profile.name).toBe("Ada Lovelace");
+            expect(guest.cast.characters.c1?.profile.description).toBe("Mathematician");
+        });
+
+        it("stops folding once the room has answered about that record", async () => {
+            // The assertion is held only while it is unanswered. Kept longer, a later gesture would
+            // be composed against a value the document already has - harmless here, and a lie about
+            // a field somebody else changed in between.
+            await openRoom();
+            await joinRoom();
+            edit(host, { op: "create-character", character: record("c1", "Ada") });
+            await drain(world.bus);
+            const held = guest.cast.characters.c1 as StoredCharacter;
+            edit(guest, {
+                op: "update-character",
+                characterId: "c1",
+                character: { profile: { ...held.profile, name: "Ada Lovelace" } },
+            });
+            await drain(world.bus);
+
+            // Somebody else's edit to a field this window never asserted, and then this window's
+            // own next gesture, built from what it now holds.
+            edit(host, {
+                op: "update-character",
+                characterId: "c1",
+                character: {
+                    profile: { ...held.profile, name: "Ada Lovelace", description: "Host's note" },
+                },
+            });
+            await drain(world.bus);
+            const now = guest.cast.characters.c1 as StoredCharacter;
+            edit(guest, {
+                op: "update-character",
+                characterId: "c1",
+                character: { profile: { ...now.profile, tags: ["poet"] } },
+            });
+            await drain(world.bus);
+
+            expect(host.cast.characters.c1?.profile.description).toBe("Host's note");
+            expect(host.cast.characters.c1?.profile.tags).toEqual(["poet"]);
+        });
+
         it("takes a cast edit back by sending its inverse, like any other operation", async () => {
             await openRoom();
             await joinRoom();
