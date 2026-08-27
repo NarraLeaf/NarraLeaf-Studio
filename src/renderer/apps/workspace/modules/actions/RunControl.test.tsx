@@ -30,6 +30,10 @@ import { RunControl } from "./RunControl";
 let operationsFrozen = false;
 vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     useWorkspaceOperationsFrozen: () => operationsFrozen,
+    // Read by `useFreezeUnavailableReason`, which picks the sentence a greyed row shows. Null is
+    // "no freeze", which is the right answer for a test that sets `operationsFrozen` by hand: the
+    // ordinary sentence is what a manual freeze and a revision both show.
+    useWorkspaceFreeze: () => null,
 }));
 
 vi.mock("../../context", () => ({

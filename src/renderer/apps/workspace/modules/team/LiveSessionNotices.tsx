@@ -45,16 +45,7 @@ export function LiveSessionNotices(): null {
         [context, isInitialized],
     );
 
-    const { lastRefusal, undoRefusal, ended, rejoining } = view;
-    /*
-     * Whether the room is expected back, held rather than depended on.
-     *
-     * The ending and the expectation are published together, so reading it out of a ref keeps the
-     * effect below keyed on the ending alone - which is what makes it say one thing per ending
-     * rather than one thing per render.
-     */
-    const carryingOn = useRef(false);
-    carryingOn.current = rejoining !== null;
+    const { lastRefusal, undoRefusal, ended } = view;
 
     /*
      * Each of the three keys on the value the session published, not on a render.
@@ -92,7 +83,7 @@ export function LiveSessionNotices(): null {
         if (!notifications || ended === null) {
             return;
         }
-        const key = liveEndSentence(ended, carryingOn.current);
+        const key = liveEndSentence(ended);
         if (key === null) {
             // The author left. They pressed the control and watched the row change.
             return;

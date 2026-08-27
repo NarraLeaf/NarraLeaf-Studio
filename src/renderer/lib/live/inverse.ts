@@ -1,11 +1,15 @@
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAppTagDefaults,
     LiveAssetFolder,
     LiveAssetRecord,
     LiveDialogueRowRef,
     LiveEffect,
     LiveOp,
+    LiveSceneFields,
 } from "@shared/live/ops";
+import type { AppTagPluginConfig, ProjectAppTag, ProjectAppTagDocument } from "@shared/types/appTag";
+import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import {
     uiGraphPartsBefore,
     uiGraphPartsRestored,
@@ -15,13 +19,23 @@ import { uiPartsBefore, uiPartsRestored, type LiveUIParts } from "@shared/live/u
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
+import type { ProjectDlc, ProjectDlcDocument } from "@shared/types/dlc";
 import type { ProjectDictionaryDocument, ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
-import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
+import type {
+    StoryBlock,
+    StoryBlockId,
+    StoryChapter,
+    StoryDocument,
+    StoryScene,
+    StorySceneId,
+    StorySceneSnapshot,
+} from "@shared/types/story";
 import { DeletedPositions, type LivePosition } from "./deletedPositions";
 
 /**
@@ -80,6 +94,28 @@ export type LiveInverseReason =
     | "no-record"
     /** The scene the operation was about is gone, and everything in it with it. */
     | "scene-gone"
+    /**
+     * The scene this deletion removed is in the document again, so there is nothing left to put back.
+     *
+     * `row-restored` one level up: a redo of the deletion, or somebody re-creating a scene under the
+     * same id, and creating it again would write over rows they have since put in it.
+     */
+    | "scene-restored"
+    /**
+     * The chapter the operation was about is gone.
+     *
+     * The outline's `scene-gone`, and it is what stops a restored scene being filed into a chapter
+     * somebody deleted in the meantime - a scene in `scenes` that no chapter claims is one the
+     * outline never draws, which reads as an undo that did nothing.
+     */
+    | "chapter-gone"
+    /**
+     * The chapter this deletion removed is in the outline again, so there is nothing left to put back.
+     *
+     * `scene-restored` one level up, and the same danger: re-creating it would write over the scenes
+     * somebody has since filed under it.
+     */
+    | "chapter-restored"
     /** The row is gone. Somebody deleted it after the operation landed. */
     | "row-gone"
     /** The row this delete removed is in the scene again, so there is nothing left to put back. */
@@ -139,6 +175,23 @@ export type LiveInverseReason =
      * metadata merge refuses to produce.
      */
     | "content-replaced"
+    /**
+     * The row of a configuration table this operation was about is gone - a build variant, a DLC, a
+     * colour of the palette.
+     *
+     * The three tables' answer to `character-gone`, and refused rather than turned back into a
+     * creation for the same reason: putting a record back that somebody else deleted is not undoing
+     * an edit, it is making a variant, and the author asked for neither. One reason for the three,
+     * with the host's `config-entry-gone`.
+     */
+    | "config-entry-gone"
+    /**
+     * The row this deletion removed is back, so there is nothing left to put back.
+     *
+     * `character-restored` one table along: somebody undid the deletion elsewhere, or redid it here,
+     * and creating the record again would be a second copy of one row under one id.
+     */
+    | "config-entry-restored"
     /**
      * The bus is gone. Somebody deleted it after the operation landed.
      *
@@ -247,6 +300,53 @@ export type LiveBefore =
     /** The chapter order. */
     | { op: "reorder-chapters"; chapterIds: readonly string[] }
     /**
+     * The scene itself, whole, where it was filed, and whether the story started at it.
+     *
+     * ⚠ **The whole scene, rows included, and that is the point of recording it here.** A deletion
+     * names an id; by the time an undo runs the scene is gone from the document and no message in
+     * the session carries it, so this is the only copy of what was destroyed. A record holding the
+     * scene's name and nothing else would put back an empty shell and look as though it had worked -
+     * the interface document learned that one the hard way, one round earlier.
+     *
+     * `entry` is here for a reason of its own: a deletion re-points the story's entry only when the
+     * scene it removed was the entry, and afterwards the pointer is somewhere else with nothing in
+     * the document saying where it had been.
+     */
+    | {
+          op: "delete-scene";
+          scene: StoryScene;
+          /** The chapter that claimed it, or null for a scene none did. */
+          chapterId: string | null;
+          /** The sibling it sat in front of there, or null for the end of the chapter. */
+          beforeSceneId: StorySceneId | null;
+          /** Whether the story started at this scene. */
+          entry: boolean;
+      }
+    /** The scene's own fields. An update states the new ones and nothing about the old. */
+    | { op: "update-scene"; fields: LiveSceneFields }
+    /** Where the scene was filed before it moved. A move states its destination only. */
+    | { op: "move-scene"; chapterId: string | null; beforeSceneId: StorySceneId | null }
+    /** The snapshots the scene held. The operation states the new list and nothing about the old. */
+    | { op: "set-scene-snapshots"; snapshots: readonly StorySceneSnapshot[] }
+    /** The chapter's name. */
+    | { op: "rename-chapter"; name: string }
+    /**
+     * The chapter itself, where it sat, every scene that left with it, and the entry it moved.
+     *
+     * `delete-scene`'s record one level up and for its reasons, with the cascade added: the scenes
+     * are not recoverable from anywhere after the chapter is gone, and putting back a chapter
+     * without them would be an empty chapter where an afternoon's work used to be.
+     */
+    | {
+          op: "delete-chapter";
+          chapter: StoryChapter;
+          /** The chapter it sat in front of, or null for the end of the outline. */
+          beforeChapterId: string | null;
+          scenes: readonly StoryScene[];
+          /** The scene the story started at, or null when it was not one of these. */
+          entry: StorySceneId | null;
+      }
+    /**
      * The record the character held. An update states the new record and nothing about the old one -
      * the same shape as `update-block`, one document along.
      */
@@ -331,6 +431,35 @@ export type LiveBefore =
           folders: readonly LiveAssetFolder[];
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
       }
+    /**
+     * The record a row of a configuration table held. `update-block`'s shape, four documents along.
+     *
+     * ⚠ **A deletion also keeps the row it sat in front of**, which the story and the cast do not.
+     * Their creations put a row back where an anchor says; a configuration table's creation appends,
+     * so without this an undo of "delete the middle variant" would silently move it to the end. The
+     * neighbour rather than the index, for `LiveBlockTarget`'s reason.
+     */
+    | { op: "update-app-tag"; tag: ProjectAppTag }
+    | { op: "delete-app-tag"; tag: ProjectAppTag; beforeId?: string }
+    /**
+     * The project's own record, and the variants the write also rewrote.
+     *
+     * The second half is present exactly when the operation's own `tagPluginConfig` is, and it is
+     * what stops an undo of a build-config edit leaving the variants as the edit left them.
+     */
+    | {
+          op: "set-app-tag-defaults";
+          defaults: LiveAppTagDefaults;
+          tagPluginConfig?: readonly { tagId: string; pluginConfig: AppTagPluginConfig }[];
+      }
+    | { op: "update-dlc"; dlc: ProjectDlc }
+    | { op: "delete-dlc"; dlc: ProjectDlc; beforeId?: string }
+    | { op: "update-brand-color"; color: BrandColor }
+    | { op: "delete-brand-color"; color: BrandColor; beforeId?: string }
+    /** The colour this one sat in front of, or null for the end of the palette. */
+    | { op: "move-brand-color"; beforeId: string | null }
+    /** The stack as it stood. A `set` states the new order and nothing about the old one. */
+    | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] }
     /**
      * The interface records the delta named, as they stood.
      *
@@ -588,6 +717,101 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
         case "reorder-chapters":
             return { op: "reorder-chapters", chapterIds: document.chapters.map(chapter => chapter.id) };
 
+        case "create-scene":
+        case "create-chapter":
+            // Nothing, with `insert-block`: the inverse is a deletion of what the effect already
+            // names, and nothing about the document before it is needed to build one.
+            return null;
+
+        case "delete-scene": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return null;
+            }
+            const owner = document.chapters.find(chapter => chapter.sceneIds.includes(op.sceneId)) ?? null;
+            const at = owner === null ? -1 : owner.sceneIds.indexOf(op.sceneId);
+            return {
+                op: "delete-scene",
+                // A copy, because the document is mutated in place: a reference would describe the
+                // scene after the deletion, which is the one mistake this module exists to avoid.
+                scene: structuredClone(scene),
+                chapterId: owner === null ? null : owner.id,
+                beforeSceneId: owner === null ? null : owner.sceneIds[at + 1] ?? null,
+                entry: document.entrySceneId === op.sceneId,
+            };
+        }
+
+        case "update-scene": {
+            const scene = document.scenes[op.sceneId];
+            if (!scene) {
+                return null;
+            }
+            // Built the way the operation states them, keys and all: an absent field is what "the
+            // scene has none" looks like on disk, and a record that wrote `undefined` into one would
+            // invert into an operation the canonical encoder refuses.
+            return {
+                op: "update-scene",
+                fields: {
+                    name: scene.name,
+                    runtimeName: scene.runtimeName,
+                    ...(scene.description === undefined ? {} : { description: scene.description }),
+                    ...(scene.defaultBackgroundAssetId === undefined
+                        ? {}
+                        : { defaultBackgroundAssetId: scene.defaultBackgroundAssetId }),
+                    ...(scene.bgm === undefined ? {} : { bgm: structuredClone(scene.bgm) }),
+                },
+            };
+        }
+
+        case "move-scene": {
+            if (!document.scenes[op.sceneId]) {
+                return null;
+            }
+            const owner = document.chapters.find(chapter => chapter.sceneIds.includes(op.sceneId)) ?? null;
+            const at = owner === null ? -1 : owner.sceneIds.indexOf(op.sceneId);
+            return {
+                op: "move-scene",
+                chapterId: owner === null ? null : owner.id,
+                beforeSceneId: owner === null ? null : owner.sceneIds[at + 1] ?? null,
+            };
+        }
+
+        case "set-scene-snapshots": {
+            const scene = document.scenes[op.sceneId];
+            return scene
+                ? { op: "set-scene-snapshots", snapshots: structuredClone(scene.sceneSnapshots ?? []) }
+                : null;
+        }
+
+        case "rename-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            return chapter ? { op: "rename-chapter", name: chapter.name } : null;
+        }
+
+        case "delete-chapter": {
+            const index = document.chapters.findIndex(item => item.id === op.chapterId);
+            if (index === -1) {
+                return null;
+            }
+            const chapter = document.chapters[index];
+            // Copies of every scene the cascade is about to destroy. Read here because this is the
+            // last moment they exist at all - the chapter's own `sceneIds` names them, and after the
+            // deletion neither the chapter nor the scenes are anywhere to be found.
+            const scenes = chapter.sceneIds
+                .map(sceneId => document.scenes[sceneId])
+                .filter((scene): scene is StoryScene => scene !== undefined)
+                .map(scene => structuredClone(scene));
+            return {
+                op: "delete-chapter",
+                chapter: structuredClone(chapter),
+                beforeChapterId: document.chapters[index + 1]?.id ?? null,
+                scenes,
+                entry: document.entrySceneId !== undefined && chapter.sceneIds.includes(document.entrySceneId)
+                    ? document.entrySceneId
+                    : null,
+            };
+        }
+
         case "set-translation": {
             const units = sources.translations?.(op.locale) ?? null;
             // Null is the library not being held, which is a different fact from the entry being
@@ -760,6 +984,106 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
             // Its own inverse is a deletion of the folder it put back, which needs nothing kept.
             return null;
 
+        case "create-app-tag":
+        case "create-dlc":
+        case "create-brand-color":
+            // Nothing to keep: what undoes a creation is a deletion of the id the operation itself
+            // names, exactly as an insert's inverse needs nothing kept.
+            return null;
+
+        case "update-app-tag": {
+            const tag = sources.appTags?.tags.find(entry => entry.id === op.tagId);
+            return tag ? { op: "update-app-tag", tag: structuredClone(tag) } : null;
+        }
+
+        case "delete-app-tag": {
+            const tags = sources.appTags?.tags ?? null;
+            const index = tags?.findIndex(entry => entry.id === op.tagId) ?? -1;
+            if (tags === null || index < 0) {
+                return null;
+            }
+            return {
+                op: "delete-app-tag",
+                tag: structuredClone(tags[index]!),
+                ...neighbour(tags, index),
+            };
+        }
+
+        case "set-app-tag-defaults": {
+            const document = sources.appTags ?? null;
+            if (document === null) {
+                return null;
+            }
+            return {
+                op: "set-app-tag-defaults",
+                defaults: structuredClone({
+                    pluginConfig: document.pluginConfig,
+                    assetAxes: document.assetAxes,
+                    reachableScenes: document.reachableScenes,
+                    endingSurfaceId: document.endingSurfaceId,
+                }),
+                // Kept exactly when the operation rewrites the variants too, and read from the same
+                // list it names: a tag the operation does not mention is one the undo must not touch.
+                ...(op.tagPluginConfig
+                    ? {
+                        tagPluginConfig: op.tagPluginConfig.map(entry => ({
+                            tagId: entry.tagId,
+                            pluginConfig: structuredClone(
+                                document.tags.find(tag => tag.id === entry.tagId)?.pluginConfig ?? {},
+                            ),
+                        })),
+                    }
+                    : {}),
+            };
+        }
+
+        case "update-dlc": {
+            const dlc = sources.dlcs?.dlcs.find(entry => entry.id === op.dlcId);
+            return dlc ? { op: "update-dlc", dlc: structuredClone(dlc) } : null;
+        }
+
+        case "delete-dlc": {
+            const dlcs = sources.dlcs?.dlcs ?? null;
+            const index = dlcs?.findIndex(entry => entry.id === op.dlcId) ?? -1;
+            if (dlcs === null || index < 0) {
+                return null;
+            }
+            return { op: "delete-dlc", dlc: structuredClone(dlcs[index]!), ...neighbour(dlcs, index) };
+        }
+
+        case "update-brand-color": {
+            const color = sources.brand?.colors.find(entry => entry.id === op.colorId);
+            return color ? { op: "update-brand-color", color: structuredClone(color) } : null;
+        }
+
+        case "delete-brand-color": {
+            const colors = sources.brand?.colors ?? null;
+            const index = colors?.findIndex(entry => entry.id === op.colorId) ?? -1;
+            if (colors === null || index < 0) {
+                return null;
+            }
+            return {
+                op: "delete-brand-color",
+                color: structuredClone(colors[index]!),
+                ...neighbour(colors, index),
+            };
+        }
+
+        case "move-brand-color": {
+            const colors = sources.brand?.colors ?? null;
+            const index = colors?.findIndex(entry => entry.id === op.colorId) ?? -1;
+            if (colors === null || index < 0) {
+                return null;
+            }
+            // Null rather than absent for the end of the palette: `move-brand-color` reads null as
+            // "last", and an absent field would be a second spelling of it.
+            return { op: "move-brand-color", beforeId: colors[index + 1]?.id ?? null };
+        }
+
+        case "set-brand-fonts": {
+            const fonts = sources.brand?.fonts ?? null;
+            return fonts === null ? null : { op: "set-brand-fonts", fonts: structuredClone(fonts) };
+        }
         case "write-ui": {
             const document = sources.ui ?? null;
             if (document === null) {
@@ -880,6 +1204,12 @@ export function captureBefore(op: LiveOp, sources: LiveBeforeSources): LiveBefor
     }
 }
 
+/** The record after `index`, as the `beforeId` a creation puts one back in front of. Absent at the end. */
+function neighbour<T extends { id: string }>(list: readonly T[], index: number): { beforeId?: string } {
+    const next = list[index + 1]?.id;
+    return next === undefined ? {} : { beforeId: next };
+}
+
 /** One folder and, when asked for, every folder below it. The same walk the applier does. */
 function folderIdsUnder(
     folders: Readonly<Record<string, LiveAssetFolder>>,
@@ -948,6 +1278,15 @@ export type LiveBeforeSources = {
      * project could not be exercised without one.
      */
     spoke?: readonly LiveDialogueRowRef[];
+    /**
+     * The three configuration tables as they stand, or null when this window does not hold one.
+     *
+     * Documents rather than readers, unlike the libraries below: each of them is unparameterised -
+     * one per project - so there is nothing for the operation to name and nothing to look up.
+     */
+    appTags?: ProjectAppTagDocument | null;
+    dlcs?: ProjectDlcDocument | null;
+    brand?: ProjectBrandDocument | null;
     /**
      * One language's translations as they stand, or null when this machine does not hold them.
      *
@@ -1030,6 +1369,16 @@ export type LiveInverseContext = {
     assets?(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
     /** One section's folders as they stand NOW, for the operations that are about them. */
     assetFolders?(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /**
+     * The three configuration tables as they stand NOW.
+     *
+     * Predicates rather than documents, because the only thing an inverse asks of them is whether the
+     * row it is about is still there - the record it puts back comes from {@link before}, which is
+     * the only thing that has it.
+     */
+    hasAppTag?(tagId: string): boolean;
+    hasDlc?(dlcId: string): boolean;
+    hasBrandColor?(colorId: string): boolean;
     /** The mixer as it stands NOW, for the operations that are about it. */
     audioTracks?(): readonly ProjectAudioTrack[] | null;
     /** The asset sets as they stand NOW, for the operations that are about them. */
@@ -1375,6 +1724,142 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                 return { impossible: "chapters-changed" };
             }
             return { op: { op: "reorder-chapters", chapterIds: [...before.chapterIds] } };
+        }
+
+        case "create-scene": {
+            if (!document.scenes[op.scene.id]) {
+                return { impossible: "scene-gone" };
+            }
+            return { op: { op: "delete-scene", sceneId: op.scene.id } };
+        }
+
+        case "delete-scene": {
+            if (!before || before.op !== "delete-scene" || before.scene.id !== op.sceneId) {
+                return { impossible: "no-record" };
+            }
+            if (document.scenes[op.sceneId]) {
+                // Somebody redid the deletion elsewhere, or made a scene under the same id. Writing
+                // the recorded copy over it would take whatever has been written in it since.
+                return { impossible: "scene-restored" };
+            }
+            if (before.chapterId !== null && !document.chapters.some(item => item.id === before.chapterId)) {
+                // The chapter it lived in has gone too. A scene filed nowhere is one the outline
+                // never draws, so putting it back there would read as an undo that did nothing.
+                return { impossible: "chapter-gone" };
+            }
+            // The sibling is NOT checked, with `delete-block`'s: a scene whose neighbour has since
+            // gone lands at the end of the chapter it belonged to, which is where the author is
+            // looking - never in another document.
+            //
+            // A copy, because applying a creation writes the scene into the document. Handing over
+            // the record itself would leave a redo holding a scene that belongs to the story.
+            return {
+                op: {
+                    op: "create-scene",
+                    scene: structuredClone(before.scene),
+                    chapterId: before.chapterId,
+                    beforeSceneId: before.beforeSceneId,
+                    ...(before.entry ? { entry: true } : {}),
+                },
+            };
+        }
+
+        case "update-scene": {
+            if (!before || before.op !== "update-scene") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            return { op: { op: "update-scene", sceneId: op.sceneId, fields: structuredClone(before.fields) } };
+        }
+
+        case "move-scene": {
+            if (!before || before.op !== "move-scene") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            if (before.chapterId !== null && !document.chapters.some(item => item.id === before.chapterId)) {
+                return { impossible: "chapter-gone" };
+            }
+            return {
+                op: {
+                    op: "move-scene",
+                    sceneId: op.sceneId,
+                    chapterId: before.chapterId,
+                    beforeSceneId: before.beforeSceneId,
+                },
+            };
+        }
+
+        case "set-scene-snapshots": {
+            if (!before || before.op !== "set-scene-snapshots") {
+                return { impossible: "no-record" };
+            }
+            if (!document.scenes[op.sceneId]) {
+                return { impossible: "scene-gone" };
+            }
+            return {
+                op: {
+                    op: "set-scene-snapshots",
+                    sceneId: op.sceneId,
+                    snapshots: structuredClone(before.snapshots),
+                },
+            };
+        }
+
+        case "rename-chapter": {
+            if (!before || before.op !== "rename-chapter") {
+                return { impossible: "no-record" };
+            }
+            if (!document.chapters.some(item => item.id === op.chapterId)) {
+                return { impossible: "chapter-gone" };
+            }
+            return { op: { op: "rename-chapter", chapterId: op.chapterId, name: before.name } };
+        }
+
+        case "create-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapter.id);
+            if (!chapter) {
+                return { impossible: "chapter-gone" };
+            }
+            // ⚠ Only a chapter still holding exactly what it was created with may be taken back,
+            // because the inverse is a deletion and a deletion takes the scenes inside. A chapter
+            // somebody else has filed a scene into is their work sitting in a box this author
+            // happened to make - which is `container-filled`, one level up from the row it names.
+            const own = new Set((op.scenes ?? []).map(scene => scene.id));
+            if (chapter.sceneIds.some(sceneId => !own.has(sceneId))) {
+                return { impossible: "container-filled" };
+            }
+            return { op: { op: "delete-chapter", chapterId: op.chapter.id } };
+        }
+
+        case "delete-chapter": {
+            if (!before || before.op !== "delete-chapter" || before.chapter.id !== op.chapterId) {
+                return { impossible: "no-record" };
+            }
+            if (document.chapters.some(item => item.id === op.chapterId)) {
+                return { impossible: "chapter-restored" };
+            }
+            for (const scene of before.scenes) {
+                if (document.scenes[scene.id]) {
+                    // One of the scenes is back under its own id. Writing the recorded copy over it
+                    // would take whatever has been written in it since - `scene-restored`'s injury,
+                    // reached through the chapter that held it.
+                    return { impossible: "scene-restored" };
+                }
+            }
+            return {
+                op: {
+                    op: "create-chapter",
+                    chapter: structuredClone(before.chapter),
+                    beforeChapterId: before.beforeChapterId,
+                    ...(before.scenes.length === 0 ? {} : { scenes: structuredClone(before.scenes) }),
+                    ...(before.entry === null ? {} : { entry: before.entry }),
+                },
+            };
         }
 
         case "create-character": {
@@ -1800,6 +2285,50 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
 
+        // ------------------------------------------------- the three configuration tables
+        //
+        // One shape, three times over, and the shape is the cast's: a creation is undone by deleting
+        // the id it named, an update by writing back the record that was kept, a deletion by putting
+        // that record back where it sat. What differs from the cast is only the position - these
+        // tables' creations append, so the inverse of a deletion carries the neighbour it sat in
+        // front of; see `LiveBefore`.
+
+        case "create-app-tag": {
+            if (context.hasAppTag?.(op.tag.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-app-tag", tagId: op.tag.id } };
+        }
+
+        case "update-app-tag": {
+            if (!before || before.op !== "update-app-tag") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasAppTag?.(op.tagId) === false) {
+                // Refused rather than turned back into a creation, with `update-character`: putting
+                // back a variant somebody else deleted is not undoing an edit, it is making an
+                // edition of the game, and the author asked for neither.
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "update-app-tag", tagId: op.tagId, tag: structuredClone(before.tag) } };
+        }
+
+        case "delete-app-tag": {
+            if (!before || before.op !== "delete-app-tag") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasAppTag?.(op.tagId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-app-tag",
+                    tag: structuredClone(before.tag),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
         case "write-ui": {
             if (!before || before.op !== "write-ui") {
                 return { impossible: "no-record" };
@@ -1846,6 +2375,25 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
             };
         }
 
+        case "set-app-tag-defaults": {
+            if (!before || before.op !== "set-app-tag-defaults") {
+                return { impossible: "no-record" };
+            }
+            // No way to fail: the project's own record is the document's root and exists in every
+            // project. A variant named in `tagPluginConfig` that has gone since is skipped by the
+            // applier rather than refused here - it is a variant somebody deleted, not part of the
+            // edit being taken back.
+            return {
+                op: {
+                    op: "set-app-tag-defaults",
+                    defaults: structuredClone(before.defaults),
+                    ...(before.tagPluginConfig
+                        ? { tagPluginConfig: structuredClone(before.tagPluginConfig) }
+                        : {}),
+                },
+            };
+        }
+
         case "write-ui-graphs": {
             if (!before || before.op !== "write-ui-graphs") {
                 return { impossible: "no-record" };
@@ -1857,6 +2405,93 @@ export function inverseOf(effect: LiveEffect, context: LiveInverseContext): Live
                     updates: uiGraphPartsRestored(before.parts),
                 },
             };
+        }
+
+        case "create-dlc": {
+            if (context.hasDlc?.(op.dlc.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-dlc", dlcId: op.dlc.id } };
+        }
+
+        case "update-dlc": {
+            if (!before || before.op !== "update-dlc") {
+                return { impossible: "no-record" };
+            }
+            // ⚠ Addressed by the id the record has NOW, which an id change moved: `update-dlc` may
+            // have renamed the file this DLC ships as, and the row is under the new id from then on.
+            if (context.hasDlc?.(op.dlc.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "update-dlc", dlcId: op.dlc.id, dlc: structuredClone(before.dlc) } };
+        }
+
+        case "delete-dlc": {
+            if (!before || before.op !== "delete-dlc") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasDlc?.(op.dlcId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-dlc",
+                    dlc: structuredClone(before.dlc),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
+        case "create-brand-color": {
+            if (context.hasBrandColor?.(op.color.id) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return { op: { op: "delete-brand-color", colorId: op.color.id } };
+        }
+
+        case "update-brand-color": {
+            if (!before || before.op !== "update-brand-color") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasBrandColor?.(op.colorId) === false) {
+                return { impossible: "config-entry-gone" };
+            }
+            return {
+                op: { op: "update-brand-color", colorId: op.colorId, color: structuredClone(before.color) },
+            };
+        }
+
+        case "delete-brand-color": {
+            if (!before || before.op !== "delete-brand-color") {
+                return { impossible: "no-record" };
+            }
+            if (context.hasBrandColor?.(op.colorId) === true) {
+                return { impossible: "config-entry-restored" };
+            }
+            return {
+                op: {
+                    op: "create-brand-color",
+                    color: structuredClone(before.color),
+                    ...(before.beforeId === undefined ? {} : { beforeId: before.beforeId }),
+                },
+            };
+        }
+
+        case "move-brand-color": {
+            if (!before || before.op !== "move-brand-color") {
+                return { impossible: "no-record" };
+            }
+            // No way to fail: a colour that has gone since makes the move a no-op on every machine,
+            // which is what the applier already does. Refusing would report a conflict over a
+            // rearrangement that cost nobody anything.
+            return { op: { op: "move-brand-color", colorId: op.colorId, beforeId: before.beforeId } };
+        }
+
+        case "set-brand-fonts": {
+            if (!before || before.op !== "set-brand-fonts") {
+                return { impossible: "no-record" };
+            }
+            return { op: { op: "set-brand-fonts", fonts: structuredClone(before.fonts) } };
         }
 
         case "delete-variable": {

@@ -1219,6 +1219,15 @@ export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SHOW_DIALOG = "blueprint.game.showDialog" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG = "blueprint.game.hideDialog" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_TOGGLE_DIALOG_DISPLAY = "blueprint.game.toggleDialogDisplay" as const;
+/**
+ * Whether the dialog box is on screen - the value the three nodes above write.
+ *
+ * It is the `showDialog` preference read back, so it answers for every way the box was hidden: the
+ * hold gesture, a quick menu button, a settings row. A graph that has to behave differently while
+ * the box is away - a click that restores it rather than advancing the line - asks this rather than
+ * remembering what it last did, because the player has other ways to change it in between.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN = "blueprint.game.isDialogShown" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SET_SENTENCE_SPEED = "blueprint.game.setSentenceSpeed" as const;
 
 /**

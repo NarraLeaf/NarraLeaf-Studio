@@ -29,6 +29,8 @@ const ANOTHER_STORY = "chapter-two";
 const IN_A_SESSION = "Unavailable in a live session. Choose an existing character.";
 /** The workspace's own one string, for the freezes that switch the whole editor off. */
 const FROZEN = "Unavailable while the project is frozen. Unfreeze the project to use it.";
+/** The same string for the one freeze that is left rather than unfrozen. */
+const FROZEN_LIVE = "Unavailable during a live session. Leave the session to use it.";
 
 const liveSession = (storyId: string): WorkspaceFreezeReason => ({
     kind: "live-session",
@@ -157,13 +159,14 @@ describe("the speaker nametag under a freeze that covers this story too", () => 
     });
 
     it("does not open the picker when the session is on some other story", () => {
-        // A scope is a claim about which document is writable, not a way out of a freeze.
+        // A scope is a claim about which document is writable, not a way out of a freeze - and the
+        // sentence still names the freeze that is standing in the way, which is the session.
         freeze = liveSession(ANOTHER_STORY);
         renderNametag();
 
         openPicker();
 
         expect(pickerPanel()).toBeNull();
-        expect(nametag().getAttribute("data-tip")).toBe(FROZEN);
+        expect(nametag().getAttribute("data-tip")).toBe(FROZEN_LIVE);
     });
 });

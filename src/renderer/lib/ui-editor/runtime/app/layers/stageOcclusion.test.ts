@@ -13,7 +13,7 @@ function runningGame(entryKeys: readonly string[]) {
         pageEntries: entryKeys.map(key => ({ key })),
         pagesHiddenForGame: true,
         gameHiddenKeys: new Set(entryKeys),
-        layers: [] as { modal: boolean }[],
+        layers: [] as { modal: boolean; surfaceId: string }[],
     };
 }
 
@@ -82,13 +82,58 @@ describe("isStageCovered", () => {
 
     it("counts a modal layer, which makes everything below it inert", () => {
         const state = runningGame(["title:1"]);
-        expect(isStageCovered({ ...state, layers: [{ modal: true }] })).toBe(true);
+        expect(isStageCovered({ ...state, layers: [{ modal: true, surfaceId: "confirm" }] })).toBe(true);
     });
 
     it("ignores a layer that never asked for the screen", () => {
         // A toast or a HUD over a running story. The stage stays exactly as live as it was, and a
         // skip that stopped for one would stop for a notification the story itself raised.
         const state = runningGame(["title:1"]);
-        expect(isStageCovered({ ...state, layers: [{ modal: false }] })).toBe(false);
+        expect(isStageCovered({ ...state, layers: [{ modal: false, surfaceId: "toast" }] })).toBe(false);
+    });
+});
+
+/**
+ * The stacks and the screen are not the same thing, and the story is held by the screen.
+ *
+ * MEASURED: the in-game Save panel opened and closed again left one suspension out on the live
+ * `GameState` for the rest of the playthrough - the stage click, the advance key and auto-forward
+ * all dead - with nothing at all drawn over the stage. The suspension is handed back by the effect
+ * that took it, on the edge where "covered" goes false, so a cover that the surface stack is not
+ * drawing and never will is a hold nothing can end.
+ *
+ * Both halves below are the same rule: a cover counts when it is on the screen, not when it is on a
+ * stack.
+ */
+describe("isStageCovered counts what is on the screen", () => {
+    it("asks the entry the page lane is settling on, not every entry under it", () => {
+        // The surface stack draws the entry the lane settles on (and, mid-transition, the one
+        // leaving); it never draws one buried below them. Whenever the entries the game hid are the
+        // prefix they are built to be, this is the same answer as asking the whole stack - the two
+        // only differ once the stack says something the screen does not, and then the screen wins.
+        const buried = {
+            pageEntries: [{ key: "config:2" }, { key: "title:1" }],
+            pagesHiddenForGame: true,
+            gameHiddenKeys: new Set(["title:1"]),
+            layers: [],
+        };
+        expect(isStageCovered(buried)).toBe(false);
+    });
+
+    it("ignores a modal layer the running bundle has no page for", () => {
+        // A layer naming a surface this bundle does not contain is filtered out of the render: the
+        // stack says it is present while nothing of it is drawn. The layer stack already tracks
+        // exactly that (see its `unrenderedKeys`); this is the same fact told to the predicate.
+        const state = runningGame(["title:1"]);
+        expect(isStageCovered({
+            ...state,
+            layers: [{ modal: true, surfaceId: "deleted-page" }],
+            drawableSurfaceIds: new Set(["confirm"]),
+        })).toBe(false);
+        expect(isStageCovered({
+            ...state,
+            layers: [{ modal: true, surfaceId: "confirm" }],
+            drawableSurfaceIds: new Set(["confirm"]),
+        })).toBe(true);
     });
 });

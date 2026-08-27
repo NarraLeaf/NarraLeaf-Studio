@@ -70,6 +70,8 @@ export class SurfaceLifecycleOrchestrator {
     private readonly unmountReason: string;
     /** Scopes whose enter animation has completed (afterSurfaceEnter fired) this generation. */
     private readonly enteredScopes = new Set<string>();
+    /** How many mounted layers are drawing each scope; see {@link scopeHeld}. */
+    private readonly scopeHolders = new Map<string, number>();
 
     constructor(options?: { resetPolicy?: SurfaceResetPolicy; unmountReason?: string }) {
         this.manager = new SurfaceLifecycleManager(options?.resetPolicy);
@@ -94,8 +96,33 @@ export class SurfaceLifecycleOrchestrator {
         return commands;
     }
 
+    /**
+     * A layer has mounted and is drawing this scope, and will call {@link surfaceUnmounted} when it
+     * goes. Optional: a scope nobody announces closes on the first unmount, as it always did.
+     *
+     * A scope belongs to a surface, and a Game UI slot surface can be drawn by more than one layer
+     * at a time - every scene on the stage renders the dialog slot, so a scene parked behind a
+     * returnable jump and the scene it called have one each, and two concurrent branches that both
+     * speak do too. Closing the scope when *a* layer left aborted every blueprint dispatch the
+     * remaining layer made, and an aborted dispatch is a cancellation rather than an error: the box
+     * stayed on screen, kept drawing the line, and quietly stopped answering the click that
+     * advances it.
+     */
+    public scopeHeld(scopeId: string): void {
+        this.scopeHolders.set(scopeId, (this.scopeHolders.get(scopeId) ?? 0) + 1);
+    }
+
     /** The surface layer unmounted from the tree. */
     public surfaceUnmounted(scopeId: string, surfaceId: string): LifecycleCommand[] {
+        const holders = this.scopeHolders.get(scopeId);
+        if (holders !== undefined) {
+            if (holders > 1) {
+                this.scopeHolders.set(scopeId, holders - 1);
+                // Another layer still draws this surface. The layer left; the surface did not.
+                return [];
+            }
+            this.scopeHolders.delete(scopeId);
+        }
         this.manager.onSurfaceExit(scopeId);
         this.enteredScopes.delete(scopeId);
         return [
@@ -143,5 +170,6 @@ export class SurfaceLifecycleOrchestrator {
     public sessionReset(): void {
         this.manager.reset();
         this.enteredScopes.clear();
+        this.scopeHolders.clear();
     }
 }

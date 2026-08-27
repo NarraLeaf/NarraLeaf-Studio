@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveStoryOp } from "@shared/live/ops";
-import type { StoryDocument, StoryId, StoryNoteBlock, StorySceneId } from "@shared/types/story";
+import type { StoryDocument, StoryId, StoryNoteBlock, StoryScene, StorySceneId } from "@shared/types/story";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
 import { Services } from "../services";
@@ -354,5 +354,178 @@ describe("applying an operation that arrived", () => {
 
         expect(restoring).toEqual([false, true]);
         expect(recorded).toEqual([true, false]);
+    });
+});
+
+/**
+ * The outline's own gestures, which used to reach the document with no operation behind them.
+ *
+ * They are in a block of their own rather than folded into `editEverything` above because they are
+ * the half of the vocabulary that arrived later, and what they have to prove is exactly what the
+ * rows already proved: with a sink installed the document does not move, and the operation says
+ * enough for every other machine to arrive at the same document.
+ */
+describe("a story service whose sink takes a structural gesture", () => {
+    let harness: ReturnType<typeof createHarness>;
+
+    beforeEach(() => {
+        harness = createHarness();
+    });
+
+    it("hands every scene and chapter gesture over and touches nothing", async () => {
+        const { service } = harness;
+        const ids = await seed(service);
+        const snapshotId = service.createSceneSnapshot(ids.storyId, ids.sceneId, "Snap");
+        const sink = takingSink();
+        service.setOperationSink(sink);
+        const before = JSON.stringify(service.getStoryDocument(ids.storyId));
+
+        const scene = service.createScene(ids.storyId, { chapterId: ids.chapterIds[0], name: "New" });
+        service.updateScene(ids.storyId, ids.sceneId, { description: "quiet" });
+        service.moveScene(ids.storyId, ids.sceneId, { chapterId: ids.chapterIds[1] });
+        service.renameSceneSnapshot(ids.storyId, ids.sceneId, snapshotId ?? "", "Snap 2");
+        service.deleteSceneSnapshot(ids.storyId, ids.sceneId, snapshotId ?? "");
+        const chapter = service.createChapter(ids.storyId, "Three");
+        service.renameChapter(ids.storyId, ids.chapterIds[1], "Two-ish");
+        service.deleteChapter(ids.storyId, ids.chapterIds[1]);
+        service.deleteScene(ids.storyId, ids.sceneId);
+
+        expect(sink.ops.map(entry => entry.op.op)).toEqual([
+            "create-scene",
+            "update-scene",
+            "move-scene",
+            "set-scene-snapshots",
+            "set-scene-snapshots",
+            "create-chapter",
+            "rename-chapter",
+            "delete-chapter",
+            "delete-scene",
+        ]);
+        // The creation states the whole record and the chapter it lands in, because both ids were
+        // minted here: a machine deriving its own would file a different scene somewhere else.
+        expect(sink.ops[0].op).toMatchObject({
+            op: "create-scene",
+            scene: { id: scene.id, name: "New" },
+            chapterId: ids.chapterIds[0],
+            beforeSceneId: null,
+        });
+        expect(sink.ops[5].op).toMatchObject({ op: "create-chapter", chapter: { id: chapter.id, name: "Three" } });
+        // Nothing moved. The document is the one `seed` left behind, byte for byte.
+        expect(JSON.stringify(service.getStoryDocument(ids.storyId))).toBe(before);
+    });
+
+    it("hands a declaration row over as the row operation it is", async () => {
+        // A scene variable IS a row, so it needs no verb of its own - it needs the row verbs it
+        // always had, and to stop going round them.
+        const { service } = harness;
+        const ids = await seed(service);
+        const sink = takingSink();
+        service.setOperationSink(sink);
+        const before = JSON.stringify(service.getStoryDocument(ids.storyId));
+
+        const created = service.createSceneVariable(ids.storyId, ids.sceneId, { name: "flag", valueType: "boolean" });
+
+        expect(created).not.toBeNull();
+        expect(sink.ops.map(entry => entry.op.op)).toEqual(["insert-block"]);
+        expect(sink.ops[0].op).toMatchObject({
+            op: "insert-block",
+            sceneId: ids.sceneId,
+            block: { kind: "declaration", payload: { scope: "scene", name: "flag" } },
+        });
+        expect(JSON.stringify(service.getStoryDocument(ids.storyId))).toBe(before);
+    });
+
+    it("writes nothing when a whole scene is replaced, and says so", async () => {
+        // The one story gesture with no verb. A script import and a NarraLang commit both end here,
+        // and what they state - "here is the scene now" - is the whole-document last-writer-wins the
+        // vocabulary refuses. False is the answer, and the document is untouched.
+        const { service } = harness;
+        const ids = await seed(service);
+        const sink = takingSink();
+        service.setOperationSink(sink);
+        const before = JSON.stringify(service.getStoryDocument(ids.storyId));
+        const scene = service.getStoryDocument(ids.storyId).scenes[ids.sceneId];
+
+        const wrote = service.replaceScene(ids.storyId, ids.sceneId, { ...scene, name: "Rewritten" });
+
+        expect(wrote).toBe(false);
+        expect(sink.ops).toEqual([]);
+        expect(JSON.stringify(service.getStoryDocument(ids.storyId))).toBe(before);
+    });
+});
+
+describe("a story service applying a structural operation", () => {
+    let harness: ReturnType<typeof createHarness>;
+
+    beforeEach(() => {
+        harness = createHarness();
+    });
+
+    it("puts a deleted scene back whole, rows and all", async () => {
+        // The one thing this has to prove. A record that kept the scene's name would restore an
+        // empty shell and look as though it had worked; what the author deleted was three rows.
+        const { service } = harness;
+        const ids = await seed(service);
+        const before = service.getStoryDocument(ids.storyId).scenes[ids.sceneId];
+        const copy = JSON.parse(JSON.stringify(before)) as typeof before;
+
+        service.applyLiveOp(ids.storyId, { op: "delete-scene", sceneId: ids.sceneId });
+        expect(service.getStoryDocument(ids.storyId).scenes[ids.sceneId]).toBeUndefined();
+        expect(service.getStoryDocument(ids.storyId).chapters[0].sceneIds).not.toContain(ids.sceneId);
+
+        service.applyLiveOp(ids.storyId, {
+            op: "create-scene",
+            scene: copy,
+            chapterId: ids.chapterIds[0],
+            beforeSceneId: null,
+            entry: true,
+        });
+
+        const restored = service.getStoryDocument(ids.storyId).scenes[ids.sceneId];
+        expect(restored.rootBlockIds).toEqual(["a", "b", "c"]);
+        expect(restored.blocks.b.payload).toEqual(note("b").payload);
+        expect(service.getStoryDocument(ids.storyId).chapters[0].sceneIds).toContain(ids.sceneId);
+        expect(service.getStoryDocument(ids.storyId).entrySceneId).toBe(ids.sceneId);
+    });
+
+    it("puts a deleted chapter back with every scene that left with it", async () => {
+        const { service } = harness;
+        const ids = await seed(service);
+        const document = service.getStoryDocument(ids.storyId);
+        const chapter = JSON.parse(JSON.stringify(document.chapters[1])) as (typeof document.chapters)[number];
+        const scenes = chapter.sceneIds.map(id => JSON.parse(JSON.stringify(document.scenes[id])) as StoryScene);
+
+        service.applyLiveOp(ids.storyId, { op: "delete-chapter", chapterId: ids.chapterIds[1] });
+        expect(service.getStoryDocument(ids.storyId).scenes[ids.otherSceneId]).toBeUndefined();
+
+        service.applyLiveOp(ids.storyId, {
+            op: "create-chapter",
+            chapter,
+            beforeChapterId: null,
+            scenes,
+        });
+
+        const after = service.getStoryDocument(ids.storyId);
+        expect(after.chapters.map(item => item.id)).toContain(ids.chapterIds[1]);
+        expect(after.scenes[ids.otherSceneId]).toBeDefined();
+    });
+
+    it("clears a scene field an update leaves out", async () => {
+        // An absent field is what "the scene has none" looks like on disk, so the applier removes
+        // the key rather than leaving the old value standing.
+        const { service } = harness;
+        const ids = await seed(service);
+        service.updateScene(ids.storyId, ids.sceneId, { description: "quiet" });
+        expect(service.getStoryDocument(ids.storyId).scenes[ids.sceneId].description).toBe("quiet");
+
+        service.applyLiveOp(ids.storyId, {
+            op: "update-scene",
+            sceneId: ids.sceneId,
+            fields: { name: "Corridor", runtimeName: "corridor" },
+        });
+
+        const scene = service.getStoryDocument(ids.storyId).scenes[ids.sceneId];
+        expect(scene.name).toBe("Corridor");
+        expect("description" in scene).toBe(false);
     });
 });

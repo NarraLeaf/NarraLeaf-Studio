@@ -11,6 +11,7 @@ import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import { assetsDigest } from "@shared/live/assets";
 import { assetGroupsDigest } from "@shared/live/assetGroups";
 import { castDigest, characterAt, characterRecordDigest } from "@shared/live/cast";
+import { appTagsDigest, brandDigest, dlcDigest } from "@shared/live/config";
 import { takesDigest, translationsDigest } from "@shared/live/libraries";
 import { assetSetsDigest, audioTracksDigest, dictionaryDigest } from "@shared/live/projectTables";
 import { localizationKeyDigest, variableEntryDigest } from "@shared/live/registries";
@@ -24,13 +25,17 @@ import {
 import { uiBlueprintDigest, uiGraphShellDigest } from "@shared/live/uiGraphParts";
 import { uiComponentDigest, uiShellDigest, uiSurfaceDigest } from "@shared/live/uiParts";
 import {
+    appTagClaimKey,
     assetClaimKey,
+    brandColorClaimKey,
     characterClaimKey,
+    dlcClaimKey,
     isLiveMessage,
     localizationKeyClaimKey,
     opDocumentKind,
     storyRowClaimKey,
     translationClaimKey,
+    type LiveAppTagOp,
     uiElementClaimKey,
     uiNodeClaimKey,
     variableClaimKey,
@@ -40,14 +45,15 @@ import {
     type LiveAssetRecord,
     type LiveAssetSetOp,
     type LiveAudioTrackOp,
+    type LiveBrandOp,
     type LiveCharacterOp,
     type LiveClaimKey,
     type LiveDerived,
     type LiveDictionaryOp,
     type LiveDigestScope,
+    type LiveDlcOp,
     type LiveDocument,
     type LiveEffect,
-    type LiveHandover,
     type LiveLocalizationKeyOp,
     type LiveLocalizationOp,
     type LiveMessage,
@@ -74,13 +80,10 @@ import type { UIOpSink } from "../ui-editor/UIDocumentService";
 import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
 import {
-    chooseLiveSuccessor,
-    continuesLiveSession,
     decideLiveRole,
-    LIVE_CONTINUATION_MS,
+    LIVE_HOSTED_NOTE_MS,
     planLiveGhostRoom,
     planLiveJoin,
-    type LiveContinuation,
 } from "./liveEntry";
 import type { LiveProjectIdentity, LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
 import {
@@ -215,13 +218,18 @@ type ActiveSession = {
     /** How many undo or redo steps this window has sent, for the keys their answers arrive under. */
     steps: number;
     /**
-     * The last thing the host said about who carries the room on, or null while nobody has.
+     * Where this window's own work was when it joined, for a guest to be put back on. Host: null.
      *
-     * Kept rather than acted on where it arrives, because it is about what happens AFTER the room
-     * closes and the room has not closed yet: acting on it early would be a second room opening
-     * beside one that is still running.
+     * **What a room ends with, rather than what it started with.** A guest edits by sending intents
+     * at the host's copy; the document under its own editor for the length of the session is the
+     * room's, adopted on the way in. So when the room ends there is exactly one honest answer to
+     * "whose are these bytes" - the host's - and exactly one thing to do with this disk, which is
+     * to put back what was on it. See {@link end}.
+     *
+     * The checkpoint recorded on the way in when there was something to record, and otherwise the
+     * revision the tree was already sitting on. Null only where there was no revision at all.
      */
-    handover: LiveHandover | null;
+    restore: string | null;
     stopListening: () => void;
     stopWatching: () => void;
 };
@@ -245,15 +253,6 @@ export class LiveSession {
     private view: LiveSessionView = IDLE_LIVE_SESSION;
     private readonly listeners = new Set<(view: LiveSessionView) => void>();
     private active: ActiveSession | null = null;
-    /**
-     * Stops watching for the room that carries on from one that closed, or null when nothing is.
-     *
-     * Outside {@link ActiveSession} because it is the one thing that outlives a session on purpose:
-     * a window follows a collaboration from one room into the next, and the stretch in between is
-     * exactly the stretch in which there is no session to hang it off.
-     */
-    private following: (() => void) | null = null;
-
     public constructor(private readonly deps: LiveSessionDeps) {}
 
     /* ------------------------------------------------------------------- reading */
@@ -296,8 +295,7 @@ export class LiveSession {
         if (blocked) {
             return this.failEntry(blocked);
         }
-        this.stopFollowing();
-        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
@@ -428,8 +426,7 @@ export class LiveSession {
         if (blocked) {
             return this.failEntry(blocked);
         }
-        this.stopFollowing();
-        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        this.patch({ phase: "entering", entryFailure: null, ended: null });
         try {
             const ready = await this.ready();
             if ("kind" in ready) {
@@ -464,6 +461,11 @@ export class LiveSession {
                 });
             }
             const checkpoint = plan.checkpoint ? await this.deps.version.checkpoint() : null;
+            // Read BEFORE the room's version is written over this tree, because afterwards there is
+            // nothing on this machine that remembers where its own work was. The checkpoint when one
+            // was recorded, and otherwise the revision the tree is already sitting on - a clean tree
+            // needs no checkpoint but is still somewhere this author was. See `giveBackOwnWork`.
+            const restore = checkpoint ?? await this.deps.version.head();
             await this.matchRoomRevision(room.revision);
             if (this.deps.story.document(storyId) === null) {
                 // The adoption has landed, so this IS the tree the room opened on and the document
@@ -482,6 +484,7 @@ export class LiveSession {
                 self: ready.instance,
                 storyId,
                 checkpoint,
+                restore,
             });
             return null;
         } catch (error) {
@@ -491,9 +494,6 @@ export class LiveSession {
 
     /** Leave. The freeze lifts and what is on disk is this author's own, committable as usual. */
     public async leave(): Promise<void> {
-        // Asked for, so nothing is waited for afterwards: a window whose author has stepped out of a
-        // room must not be pulled back into the one that replaces it.
-        this.stopFollowing();
         await this.end("left");
     }
 
@@ -516,7 +516,6 @@ export class LiveSession {
      * an author who pressed Ctrl+R meant.
      */
     public dispose(): void {
-        this.stopFollowing();
         void this.end("left", { silently: true });
     }
 
@@ -591,9 +590,9 @@ export class LiveSession {
      * because from the next launch a reload and a goodbye look the same. So the one window that
      * knows leaves itself a note, and this is where it is read - and thrown away.
      *
-     * Bounded by {@link LIVE_CONTINUATION_MS}, which is the same window the guests are watching for
-     * the room in. A note older than that is a session that ended some time ago, and a workspace
-     * opening on it must not start a room around an author who came back the next morning.
+     * Bounded by {@link LIVE_HOSTED_NOTE_MS}. A note older than that is a session that ended some
+     * time ago, and a workspace opening on it must not start a room around an author who came back
+     * the next morning.
      */
     private async reopenWhatWasHosted(
         ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
@@ -603,10 +602,10 @@ export class LiveSession {
             return;
         }
         this.deps.memory.remember(null);
-        if (this.deps.now() - hosted.at > LIVE_CONTINUATION_MS) {
+        if (this.deps.now() - hosted.at > LIVE_HOSTED_NOTE_MS) {
             return;
         }
-        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        this.patch({ phase: "entering", entryFailure: null, ended: null });
         const published = await this.publishHead();
         if ("kind" in published) {
             this.failEntry(published);
@@ -624,9 +623,14 @@ export class LiveSession {
      * What to do about a room this window opened and then vanished from.
      *
      * Re-founded where somebody is still in it and closed where nobody is - see `planLiveGhostRoom`
-     * for why those are the only two answers. Re-founding is the same act a handover performs, and
-     * for the same reason: the old room opened on a version that no longer holds the work done in
-     * it, so continuing means a new room on what this window publishes now.
+     * for why those are the only two answers. A NEW room rather than the old one taken up again,
+     * because the old one opened on a version that no longer holds the work done in it: continuing
+     * means a room on what this window publishes now.
+     *
+     * ⚠ **This is the one re-founding there is, and it is this window's own.** A window that reloads
+     * is still the host it was, which is the whole of why it may open the room again - and why
+     * nobody else may. The others were in a room that ended; they are offered this one rather than
+     * put back into it, and their own work came back to them meanwhile. See {@link giveBackOwnWork}.
      */
     private async resumeOwnRoom(
         ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
@@ -640,7 +644,7 @@ export class LiveSession {
         if (plan.kind === "close" || storyId === undefined) {
             return;
         }
-        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
+        this.patch({ phase: "entering", entryFailure: null, ended: null });
         const published = await this.publishHead();
         if ("kind" in published) {
             this.failEntry(published);
@@ -724,6 +728,32 @@ export class LiveSession {
      */
     public claimAsset(assetId: string, holding: boolean): void {
         this.claim(assetClaimKey(assetId), holding);
+    }
+
+    /**
+     * This window is editing one row of a configuration table, or has stopped.
+     *
+     * Three doors rather than one, because three key spaces are three sets an interface reads back
+     * out by prefix - see `@shared/live/ops`. Held for the span every other claim is held for: while
+     * the row is open in front of somebody, not while their fingers are moving. Every one of these
+     * rows is edited through a field that commits on blur and re-syncs from its props, so a claim
+     * that lapsed on a pause would let somebody else's edit take a half-typed name with it.
+     *
+     * ⚠ The project's own defaults are claimed as `APP_TAG_DEFAULTS_CLAIM_ID`, which is the release
+     * variant's row - see `appTagClaimKey`. The panel draws them there.
+     */
+    public claimAppTag(tagId: string, holding: boolean): void {
+        this.claim(appTagClaimKey(tagId), holding);
+    }
+
+    /** This window is editing one DLC's row, or has stopped. See {@link claimAppTag}. */
+    public claimDlc(dlcId: string, holding: boolean): void {
+        this.claim(dlcClaimKey(dlcId), holding);
+    }
+
+    /** This window is editing one colour of the palette, or has stopped. See {@link claimAppTag}. */
+    public claimBrandColor(colorId: string, holding: boolean): void {
+        this.claim(brandColorClaimKey(colorId), holding);
     }
 
     /**
@@ -899,6 +929,9 @@ export class LiveSession {
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
+            hasAppTag: tagId => this.deps.appTags.hasTag(tagId),
+            hasDlc: dlcId => this.deps.dlc.hasDlc(dlcId),
+            hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
             audioTracks: () => this.deps.audioTracks.tracks(),
             assetSets: () => this.deps.assetSets.sets(),
             variables: variableId => this.deps.variables.entry(variableId),
@@ -911,7 +944,10 @@ export class LiveSession {
         if (session.host) {
             const key = `step:${(session.steps += 1)}`;
             session.effects.expect(key, plan);
-            const answer = this.hostApply(session, plan.op, plan.derived, key);
+            // The document the step's own effect named, never one composed here: a session carries
+            // every story in the project, so an inverse addressed to the room's story would take a
+            // rename back on the wrong file.
+            const answer = this.hostApply(session, plan.op, plan.derived, key, plan.document);
             if (answer.kind === "refusal") {
                 session.effects.abandon(key);
                 return false;
@@ -923,7 +959,7 @@ export class LiveSession {
         if (!guest) {
             return false;
         }
-        const intent = guest.intend(plan.op, this.documentOf(session, plan.op), plan.derived);
+        const intent = guest.intend(plan.op, plan.document, plan.derived);
         // Settled when the effect answering it comes back, never on sending: the host may refuse,
         // and a cursor that had already moved would leave the author one press further back than
         // the document is.
@@ -941,6 +977,8 @@ export class LiveSession {
         self: string;
         storyId: StoryId;
         checkpoint: string | null;
+        /** A guest's own last progress, to be given back when the room ends. Null for a host. */
+        restore?: string | null;
     }): Promise<void> {
         const role = decideLiveRole(input.room, input.self);
         // Before a single operation can arrive. Every entry in those stacks is a whole-scene
@@ -1014,7 +1052,7 @@ export class LiveSession {
             claimSweep: null,
             divergence: null,
             steps: 0,
-            handover: null,
+            restore: input.restore ?? null,
             stopListening: () => undefined,
             stopWatching: () => undefined,
         };
@@ -1034,10 +1072,15 @@ export class LiveSession {
                 ui,
                 registries,
                 readScene: (storyId, sceneId) => this.deps.story.document(storyId)?.scenes[sceneId] ?? null,
+                readChapter: (storyId, chapterId) =>
+                    this.deps.story.document(storyId)?.chapters.find(chapter => chapter.id === chapterId) ?? null,
                 readCharacter: characterId => this.deps.cast.view().characters[characterId] ?? null,
                 hasVariable: variableId => this.deps.variables.entry(variableId) !== null,
                 hasAsset: (assetType, assetId) => this.deps.assets.hasRecord(assetType, assetId),
                 readAssetFolders: category => this.deps.assets.folders(category),
+                hasAppTag: tagId => this.deps.appTags.hasTag(tagId),
+                hasDlc: dlcId => this.deps.dlc.hasDlc(dlcId),
+                hasBrandColor: colorId => this.deps.brand.hasColor(colorId),
                 hasUIElement: ref => this.deps.ui.hasElement(ref),
                 hasBlueprint: blueprintId => this.deps.ui.hasBlueprint(blueprintId),
                 hasAudioTrack: trackId =>
@@ -1088,8 +1131,8 @@ export class LiveSession {
             });
         }
 
-        session.stopListening = input.rooms.listen(input.room.id, (payload, from) =>
-            this.onMessage(session, payload, from));
+        session.stopListening = input.rooms.listen(input.room.id, (payload, from, account) =>
+            this.onMessage(session, payload, from, account));
         session.stopWatching = input.rooms.watch(input.project.repositoryId, event =>
             this.onRoomEvent(session, event));
         this.deps.story.setSink(this.sinkFor(session));
@@ -1097,6 +1140,13 @@ export class LiveSession {
         this.deps.localization.setSink(this.librarySinkFor(session));
         this.deps.voice.setSink(this.librarySinkFor(session));
         this.deps.assets.setSink(this.assetSinkFor(session), this.blobPortFor(session));
+        // The three configuration tables share the library sink for its own reason: none of them has
+        // a document id this window has to be holding, so there is nothing left for them to differ
+        // about. Their addresses are fixed - one of each per project - so `documentOf` composes them
+        // from the verb alone.
+        this.deps.appTags.setSink(this.librarySinkFor(session));
+        this.deps.dlc.setSink(this.librarySinkFor(session));
+        this.deps.brand.setSink(this.librarySinkFor(session));
         this.deps.ui.setSink(this.interfaceSinkFor(session));
         // Whatever this project left half-carried, in an earlier session or an earlier run. Asked
         // for on the way in rather than on the way out, because a transfer needs a window that has
@@ -1110,7 +1160,14 @@ export class LiveSession {
         this.deps.dictionary.setSink(this.librarySinkFor(session));
         this.deps.audioTracks.setSink(this.librarySinkFor(session));
         this.deps.assetSets.setSink(this.librarySinkFor(session));
-        this.deps.variables.setSink(this.librarySinkFor(session));
+        // The registry's sink is the libraries' with one answer added: whether a deletion can travel.
+        // It reaches a second document - the blueprint nodes that named the variable - and a session
+        // that could not read the two interface documents carries neither, so there is nowhere for
+        // that sweep to land. See `VariableOpSink.canDelete`.
+        this.deps.variables.setSink({
+            ...this.librarySinkFor(session),
+            canDelete: () => this.deps.ui.held(),
+        });
 
         if (role === "guest") {
             // Everything the host has done since the room opened, before this window follows along.
@@ -1127,9 +1184,6 @@ export class LiveSession {
             phase: role === "host" ? "active" : "catching-up",
             entryFailure: null,
             ended: null,
-            // The room that was expected back IS this one. A window in a session is waiting for
-            // nothing, and a line saying otherwise would be drawn over a session that is running.
-            rejoining: null,
             undoRefusal: null,
             lastRefusal: null,
         });
@@ -1166,9 +1220,9 @@ export class LiveSession {
     /**
      * Let go of the running session.
      *
-     * `silently` is for a window that is going away rather than leaving: nothing is published,
-     * nobody is nominated and the room is neither closed nor left, because whether this is a
-     * goodbye or a reload is not knowable here. See {@link dispose}.
+     * `silently` is for a window that is going away rather than leaving: nothing is published, the
+     * room is neither closed nor left, and no tree is put back, because whether this is a goodbye or
+     * a reload is not knowable here. See {@link dispose} and {@link giveBackOwnWork}.
      */
     private async end(cause: LiveSessionEndCause, options: { silently?: boolean } = {}): Promise<void> {
         const session = this.active;
@@ -1184,6 +1238,9 @@ export class LiveSession {
         this.deps.localization.setSink(null);
         this.deps.voice.setSink(null);
         this.deps.assets.setSink(null, null);
+        this.deps.appTags.setSink(null);
+        this.deps.dlc.setSink(null);
+        this.deps.brand.setSink(null);
         this.deps.ui.setSink(null);
         this.deps.dictionary.setSink(null);
         this.deps.audioTracks.setSink(null);
@@ -1214,9 +1271,16 @@ export class LiveSession {
             this.deps.memory.remember(null);
         }
         const closed = !silent && (session.role === "host" || cause === "host-left");
-        // Before the room is closed, because a handover is addressed into a room that still exists.
         if (!silent && session.role === "host" && cause !== "diverged") {
-            await this.handOver(session);
+            // What the session produced, recorded and put on the server before the room goes. The
+            // host held the only copy that counted, so this is where an afternoon's work becomes a
+            // version anybody else can fetch - and nobody else is in a position to record it.
+            await this.publishHead().catch((error: unknown) => {
+                // Reported and carried on from: what is on this disk is the session's work either
+                // way, and a room that will not close because a push failed leaves everybody in it
+                // sending intents at a window that has gone.
+                console.warn("[LiveSession] could not publish what the session produced", error);
+            });
         }
         const said = silent
             // A window on its way out says nothing. See {@link dispose}.
@@ -1224,22 +1288,11 @@ export class LiveSession {
             : session.role === "host"
                 // A host leaving ends the room: it held the only copy that counts, and there is no
                 // authority left for an intent to reach. Closing says so rather than leaving the
-                // server to work it out from the last member walking away. What carries on is a NEW
-                // room, not this one - see {@link handOver}.
+                // server to work it out from the last member walking away. Nothing carries on: the
+                // room does not outlive its host, and a host that comes back opens a new one the
+                // others are offered rather than pulled into.
                 ? session.rooms.close(session.room.id)
                 : session.rooms.leave(session.room.id);
-        // Only a window whose room closed under it waits for the replacement. A guest that walked
-        // out of a room that is carrying on asked to be out of it, and a machine that left because
-        // its copy stopped matching would be rejoining with the copy that was wrong.
-        const continuation: LiveContinuation | null = closed && session.role === "guest" && cause !== "diverged"
-            ? {
-                previousRoom: session.room.id,
-                story: session.storyId,
-                successor: session.handover?.to ?? null,
-                previousHost: session.room.openedByInstance,
-                since: this.deps.now(),
-            }
-            : null;
         this.set({
             ...IDLE_LIVE_SESSION,
             ended: {
@@ -1251,169 +1304,57 @@ export class LiveSession {
                 closed,
                 ...(session.divergence === null ? {} : { divergence: session.divergence }),
             },
-            ...(continuation === null
-                ? {}
-                : { rejoining: { storyId: session.storyId, since: continuation.since } }),
         });
         await said.catch(() => undefined);
-        if (continuation !== null) {
-            this.carryOn(session, continuation);
-        }
+        await this.giveBackOwnWork(session, cause, silent);
     }
 
     /**
-     * Take the collaboration up again once the room that held it has closed.
+     * Put a guest's tree back on the work that was its own before it joined.
      *
-     * Two halves of one act, and which half this window performs is the whole of what the handover
-     * message decides: the machine that was nominated opens the next room, and everybody else waits
-     * to be told that it did. A window that guessed would be a second room about the same story.
+     * **The other half of adopting the room's version on the way in, and it is not optional.** For
+     * the length of a session a guest's editor is showing the host's document: it was written over
+     * this tree when the room was joined, and everything this author did to it since went out as an
+     * intent and came back as the host's effect. So the bytes on this disk when the room ends are
+     * the host's work, sitting in a repository belonging to somebody who was never its author - and
+     * leaving them there asks that author the one question nobody in the room can answer, which is
+     * which parts of this are theirs to keep.
+     *
+     * **A machine that arrived by cloning is not a special case.** It had no work of its own, so
+     * what it came by IS its own from here: `restore` is the revision it cloned, putting it back on
+     * itself. The same rule, producing the answer that costs nothing.
+     *
+     * Silent endings are exempt, and that is most of why they are told apart at all: a window that
+     * is reloading comes straight back, and rolling its tree back underneath it would undo the
+     * session around an author who never left it. So is divergence, where what is on this disk is
+     * already being kept deliberately for somebody to look at.
+     *
+     * ⚠ **The editors are re-read as part of this, not afterwards and not by the caller.** `adopt`
+     * is the version rail's own restore, which rewrites the working tree from the main process and
+     * then makes every document service read the disk again - see `VersionControlService`. Without
+     * that half, this window would go on showing the room's document over a tree holding this
+     * author's, and the next save would put the room's copy back.
      */
-    private carryOn(session: ActiveSession, continuation: LiveContinuation): void {
-        if (continuation.successor === session.self) {
-            void this.refound(session, continuation);
+    private async giveBackOwnWork(
+        session: ActiveSession,
+        cause: LiveSessionEndCause,
+        silent: boolean,
+    ): Promise<void> {
+        if (silent || session.role !== "guest" || cause === "diverged" || session.restore === null) {
             return;
         }
-        this.startFollowing(session, continuation);
-    }
-
-    /**
-     * Open the room that carries on from the one that just closed, as its nominated successor.
-     *
-     * ⚠ **Adopts the version the leaving host published and opens on that**, rather than publishing
-     * its own. What this window is holding is the same story the host is - effect for effect - so
-     * recording it would be a second history of one afternoon's work, and the two would not merge.
-     * Nothing is pushed here at all: the version the room opens on is already on the server.
-     */
-    private async refound(session: ActiveSession, continuation: LiveContinuation): Promise<void> {
-        const revision = session.handover?.revision;
-        if (revision === undefined) {
-            // The leaving host could not publish, so there is no shared starting point to open on
-            // and nothing this window could invent would be one. Waiting is what is left: if the
-            // host recovers and opens a room, following it still works.
-            this.startFollowing(session, continuation);
+        if ((await this.deps.version.head().catch(() => null)) === session.restore) {
+            // Already there: a guest that joined a room opened on the version it was holding anyway,
+            // which is the ordinary case for two machines that were in step. Adopting would record
+            // a revision saying that nothing happened.
             return;
         }
-        // Asked while the phase is still `idle`, because that is one of the things it reads.
-        const blocked = this.blocked();
-        if (blocked) {
-            // Something froze this workspace between the room ending and this running. Arming a
-            // session's freeze over it would take that state's latch away rather than adding to it.
-            this.patch({ rejoining: null });
-            this.failEntry(blocked);
-            return;
-        }
-        // Nothing is being waited for any more: this window is the one opening it, so a failure
-        // below leaves a stated reason rather than a line still promising a room.
-        this.patch({ phase: "entering", entryFailure: null, ended: null, rejoining: null });
-        try {
-            const ready = await this.ready();
-            if ("kind" in ready) {
-                this.failEntry(ready);
-                return;
-            }
-            const checkpoint = (await this.deps.version.hasUncommittedChanges())
-                ? await this.deps.version.checkpoint()
-                : null;
-            await this.matchRoomRevision(revision);
-            await this.openRoom({
-                ready,
-                storyId: continuation.story as StoryId,
-                revision,
-                checkpoint,
-                ...(session.room.title === undefined ? {} : { title: session.room.title }),
-            });
-        } catch (error) {
-            this.failEntry({ kind: "failed", detail: describe(error) });
-        }
-    }
-
-    /**
-     * Watch this project's rooms until the one that replaces the closed one appears, then join it.
-     *
-     * Bounded in time by `LIVE_CONTINUATION_MS` and narrowed by `continuesLiveSession` to a room
-     * about the same story opened by the window that was nominated for it. Both of those are the
-     * same restraint: an author whose collaboration was interrupted should find it running again,
-     * and an author who is finished with it should not be pulled into the next one.
-     */
-    private startFollowing(session: ActiveSession, continuation: LiveContinuation): void {
-        this.stopFollowing();
-        const follow = (room: TeamLiveSession): void => {
-            if (this.following === null || !continuesLiveSession(continuation, room, this.deps.now())) {
-                return;
-            }
-            this.stopFollowing();
-            void this.join({ session: room });
-        };
-        const stopWatching = session.rooms.watch(session.project.repositoryId, event => {
-            if (event.kind === "live-opened" || event.kind === "live-changed") {
-                follow(event.session);
-            }
+        await this.deps.version.adopt(session.restore).catch((error: unknown) => {
+            // Said in the log rather than on screen. The session is over either way, and what is
+            // left is a tree holding the room's version - recoverable by hand from the checkpoint,
+            // and not something an author can act on in the moment.
+            console.warn("[LiveSession] could not put this tree back on its own work", error);
         });
-        const cancelTimer = this.deps.schedule(LIVE_CONTINUATION_MS, () => {
-            this.stopFollowing();
-            // Said in the view rather than as a notice: nothing failed, and the author has been
-            // looking at a line that says the room is expected back. It stops saying so.
-            this.patch({ rejoining: null });
-        });
-        this.following = () => {
-            stopWatching();
-            cancelTimer();
-        };
-        // ⚠ And a read, because the replacement can be open before the watch is. The successor is
-        // told to take over by the same message that ends the room, so its room can be announced
-        // while this window is still tearing its own session down - and an event nobody was
-        // listening for is a collaboration that stops without anybody being able to say why.
-        void session.rooms.list(session.project.repositoryId).then(listed => {
-            if (listed.ok) {
-                for (const room of listed.value) {
-                    follow(room);
-                }
-            }
-        }).catch(() => undefined);
-    }
-
-    /** Stop waiting for a room to come back. Idempotent, and called before anything that enters one. */
-    private stopFollowing(): void {
-        this.following?.();
-        this.following = null;
-    }
-
-    /**
-     * Publish what the session produced and say who opens the room that carries it on.
-     *
-     * **The room ends and the collaboration does not have to.** A room's authority is the window
-     * that opened it and there is no verb that moves that authority, so continuing means a new room
-     * opened by somebody who is still there - and the only thing that cannot be worked out
-     * independently is which one, because every roster is a different event out of date.
-     *
-     * ⚠ **The publication is not optional and its order is not either.** Exactly one machine records
-     * a session's content; the successor adopts what is published here and opens its room on it. A
-     * successor that recorded its own copy instead would fork the project against the window that
-     * just left it, over a story the two of them hold identically.
-     *
-     * Answers null in a room of one, where there is nobody to hand anything to and nothing to say -
-     * the publication still happens, because the session's work has to be somewhere.
-     */
-    private async handOver(session: ActiveSession): Promise<LiveHandover | null> {
-        const published = await this.publishHead().catch((error: unknown) => {
-            // Reported and carried on from. What is on this disk is the session's work either way,
-            // and a room that will not close because a push failed is worse than a successor that
-            // has to be joined by hand.
-            console.warn("[LiveSession] could not publish what the session produced", error);
-            return { kind: "failed" as const, detail: describe(error) };
-        });
-        const successor = chooseLiveSuccessor(session.room.members, session.self);
-        if (successor === null) {
-            return null;
-        }
-        const handover: LiveHandover = {
-            kind: "handover",
-            to: successor,
-            story: session.storyId,
-            ...("kind" in published ? {} : { revision: published.revision }),
-        };
-        session.rooms.say(session.room.id, handover);
-        return handover;
     }
 
     private onRoomEvent(session: ActiveSession, event: TeamLiveEvent): void {
@@ -1451,25 +1392,14 @@ export class LiveSession {
 
     /* -------------------------------------------------------------- the messages */
 
-    private onMessage(session: ActiveSession, payload: unknown, from: string): void {
+    private onMessage(session: ActiveSession, payload: unknown, from: string, account: string): void {
         if (this.active !== session || !isLiveMessage(payload)) {
             // Not a message this build understands. Dropped where it lands rather than thrown on:
             // the payload comes from another Studio, which may be a different version.
             return;
         }
-        if (payload.kind === "handover") {
-            // ⚠ Before the host/guest split, and never through either of them. A handover is about
-            // the room rather than about the document: it takes no sequence number, changes nothing,
-            // and what it decides only matters once the room has closed. See `LiveSession.carryOn`.
-            if (from === session.room.openedByInstance && payload.story === session.storyId) {
-                // From the window that holds the only copy that counts, about the story this room is
-                // about. Anything else is a message from a room this window is not following.
-                session.handover = payload;
-            }
-            return;
-        }
         if (session.host) {
-            const answer = session.host.receive(payload, from);
+            const answer = session.host.receive(payload, from, account);
             if (answer) {
                 // Nothing is adopted here. The entries a paste carries are written inside
                 // {@link applyOp}, along with everything else that effect changed, because the
@@ -1565,6 +1495,11 @@ export class LiveSession {
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
             assetsByType: category => this.assetsOfCategory(category),
+            // Whole documents rather than readers: one of each per project, so there is nothing for
+            // the operation to name. See `LiveBeforeSources`.
+            appTags: this.deps.appTags.document(),
+            dlcs: this.deps.dlc.document(),
+            brand: this.deps.brand.document(),
             ui: this.deps.ui.document(),
             uiGraphs: this.deps.ui.graphs(),
             dictionary: () => this.deps.dictionary.document(),
@@ -1595,6 +1530,15 @@ export class LiveSession {
             case "story":
                 this.deps.story.applyOp(document.storyId, op as LiveStoryOp);
                 break;
+            case "app-tags":
+                this.deps.appTags.applyOp(op as LiveAppTagOp);
+                break;
+            case "dlc":
+                this.deps.dlc.applyOp(op as LiveDlcOp);
+                break;
+            case "brand":
+                this.deps.brand.applyOp(op as LiveBrandOp);
+                break;
             case "ui":
             case "ui-graphs":
                 touched.push(...this.deps.ui.applyOp(op as LiveUIOp | LiveUIGraphOp));
@@ -1607,8 +1551,12 @@ export class LiveSession {
                 break;
             case "asset-sets":
                 this.deps.assetSets.applyOp(op as LiveAssetSetOp);
+                break;
             case "variables":
-                this.deps.variables.applyOp(op as LiveVariableOp);
+                // ⚠ Reported, not merely done. A deletion sweeps the blueprint nodes that named the
+                // variable, and that sweep is derived on every machine from this one effect - so it
+                // is exactly the work that has to be fingerprinted rather than assumed.
+                touched.push(...this.deps.variables.applyOp(op as LiveVariableOp));
                 break;
             // The named-string registry is applied by the service that owns the translations beside
             // it - one service, two documents, and they stay two everywhere it matters.
@@ -1663,6 +1611,13 @@ export class LiveSession {
                 return { doc: "asset-groups", category: (op as LiveAssetFolderOp).category };
             case "story":
                 return { doc: "story", storyId: session.storyId };
+            // One of each per project, so the kind is the whole address - the cast's shape.
+            case "app-tags":
+                return { doc: "app-tags" };
+            case "dlc":
+                return { doc: "dlc" };
+            case "brand":
+                return { doc: "brand" };
             // One of each per project, so the address is the whole of it - the cast's shape.
             case "ui":
                 return { doc: "ui" };
@@ -1722,6 +1677,15 @@ export class LiveSession {
                 return assetsDigest(this.deps.assets.records(scope.assetType));
             case "asset-groups":
                 return assetGroupsDigest(this.deps.assets.folders(scope.category));
+            // Whole documents, and a table nobody holds hashes to a value too - all three services
+            // read their file as the workspace starts, so arriving here without one means this
+            // machine has failed at something. See `@shared/live/config`.
+            case "app-tags":
+                return appTagsDigest(this.deps.appTags.document());
+            case "dlc":
+                return dlcDigest(this.deps.dlc.document());
+            case "brand":
+                return brandDigest(this.deps.brand.document());
             // ⚠ A Surface, a component or a blueprint this window does not hold hashes to a value
             // rather than to nothing, with the cast's record and against a missing scene: both
             // interface documents are in memory before a session can start, so arriving here without
@@ -1800,6 +1764,14 @@ export class LiveSession {
         op: LiveOp,
         derived: LiveDerived | undefined,
         key?: string,
+        /**
+         * The document this operation is about, when the caller knows better than the verb does.
+         *
+         * Only the story documents need it: there is one of every other kind per project, so the
+         * verb IS the address, while a story operation names a scene and every story in the project
+         * is shared. Absent means "compose it" - see {@link documentOf}.
+         */
+        document?: LiveDocument,
     ): LiveEffect | LiveRefusal {
         const host = session.host;
         if (!host) {
@@ -1811,7 +1783,7 @@ export class LiveSession {
             this.noteRefusal(session, refusal, op.op);
             return refusal;
         }
-        const answer = host.applyLocal(op, this.documentOf(session, op), derived);
+        const answer = host.applyLocal(op, document ?? this.documentOf(session, op), derived);
         if (answer.kind === "refusal") {
             session.pendingBefore = null;
             this.noteRefusal(session, answer, op.op);
@@ -1927,16 +1899,23 @@ export class LiveSession {
     private sinkFor(session: ActiveSession): StoryOpSink {
         return {
             handle: (storyId, op, derived): boolean => {
-                if (this.active !== session || storyId !== session.storyId) {
-                    // Another story, or a session that has ended: the mutator carries on exactly as
-                    // it would with no sink at all.
+                if (this.active !== session) {
+                    // A session that has ended: the mutator carries on exactly as it would with no
+                    // sink at all.
                     return false;
                 }
+                // ⚠ **Every story the session carries, not only the one the room is named after.**
+                // A session leaves every story document in the project writable - deleting a
+                // character rewrites the rows that spoke it wherever the author put them - so a sink
+                // that declined the others would let an edit to a second story be written into this
+                // machine's copy and into nobody else's, with no digest over it and nothing anywhere
+                // reporting it. See `@shared/live/sharedDocuments`.
+                const document: LiveDocument = { doc: "story", storyId };
                 if (session.host) {
-                    this.hostApply(session, op, derived);
+                    this.hostApply(session, op, derived, undefined, document);
                     return true;
                 }
-                session.guest?.intend(op, { doc: "story", storyId }, derived);
+                session.guest?.intend(op, document, derived);
                 this.publish(session, {});
                 // True even when the intent is refused later, and even for a session with neither
                 // half built: what must never happen is this window changing a shared document on
@@ -1993,6 +1972,9 @@ export class LiveSession {
      * places to remember the size check.
      */
     private librarySinkFor(session: ActiveSession): {
+        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveAppTagOp | LiveDlcOp | LiveBrandOp): boolean;
+        handle(op: LiveLocalizationOp | LiveVoiceOp | LiveAssetOp | LiveDictionaryOp
+            | LiveAudioTrackOp | LiveAssetSetOp): boolean;
         handle(op: LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp | LiveAssetOp
             | LiveVariableOp | LiveDictionaryOp | LiveAudioTrackOp | LiveAssetSetOp): boolean;
     } {

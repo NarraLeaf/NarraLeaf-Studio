@@ -31,6 +31,7 @@ import {
     createNlrGameWithGameUi,
 } from "@/lib/ui-editor/runtime/app/gameUiSlots";
 import { audioTracksToBusDeclarations } from "@/lib/ui-editor/runtime/app/audioBusRuntime";
+import { createDialogClickTargets } from "@/lib/ui-editor/runtime/app/dialogClickTargets";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -108,7 +109,7 @@ export function useStoryPreviewGameUi(input: {
     // Refs shared by the Game UI slots and the LiveGame callbacks across a session.
     const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
     const currentDialogNametagRef = useRef<string | null>(null);
-    const dialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const dialogClickTargets = useMemo(() => createDialogClickTargets(), []);
 
     const designSize = useMemo(() => {
         if (!context) {
@@ -220,14 +221,14 @@ export function useStoryPreviewGameUi(input: {
         const activeCore: BlueprintRuntimeCore | null = core;
         choiceRuntimeRef.current = null;
         currentDialogNametagRef.current = null;
-        dialogVirtualClickTargetRef.current = null;
+        dialogClickTargets.clear();
 
         const liveGameCallbacks = createLiveGameUiCallbacks({
             requireLiveGame: gameInput.requireLiveGame,
             getLiveGame: gameInput.getLiveGame,
             choiceRuntimeRef,
             currentDialogNametagRef,
-            dialogVirtualClickTargetRef,
+            dialogClickTargets,
         });
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);
@@ -286,7 +287,7 @@ export function useStoryPreviewGameUi(input: {
             logLabel: "story-preview",
             slotHostOptions,
             setDialogVirtualClickTarget: target => {
-                dialogVirtualClickTargetRef.current = target;
+                dialogClickTargets.set(target);
             },
             setChoiceRuntime: runtime => {
                 choiceRuntimeRef.current = runtime;

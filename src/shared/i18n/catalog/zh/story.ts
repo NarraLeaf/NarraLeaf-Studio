@@ -109,11 +109,15 @@ export const story = {
         refusedRowGone: "该行已不存在，本次修改未生效",
         refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
         refusedSceneGone: "该场景已不存在，本次修改未生效",
+        // 大纲对「场景已不存在」的那一句。不属于任何章节的场景在大纲里画不出来，
+        // 所以整条请求被拒绝，而不是应用一半。
+        refusedChapterGone: "该章节已不存在，本次修改未生效",
         refusedCharacterGone: "该角色已不存在，本次修改未生效",
         refusedAssetGone: "该资产已不存在，本次修改未生效",
         refusedVariableGone: "该变量已不存在，本次修改未生效",
         refusedAssetIdTaken: "该资产已经在这里了，没有导入任何内容",
         refusedFolderNotEmpty: "该分组里还有分组，没有删除任何内容",
+        refusedConfigEntryGone: "该条目已不在此项目中，本次修改未生效",
         refusedUIElementGone: "该元素已不存在，本次修改未生效",
         refusedUIBlueprintGone: "该蓝图已不存在，本次修改未生效",
         refusedElementClaimed: "{name} 正在编辑该元素，本次修改未生效",
@@ -130,6 +134,11 @@ export const story = {
         undoSceneGone: "该场景已不存在",
         undoRowGone: "该行已不存在",
         undoRowRestored: "该行已重新回到场景中",
+        // 结构性步骤。每一条点名让这次删除无从恢复的状态：场景或章节已经回来了，
+        // 或者它原来所在的位置已经没有了。
+        undoSceneRestored: "该场景已重新回到故事中",
+        undoChapterGone: "该章节已不存在",
+        undoChapterRestored: "该章节已重新回到故事中",
         undoContainerGone: "该行所在的区块已不存在",
         undoAnchorGone: "该行原来的位置已不存在",
         undoContainerFilled: "该区块中现在已有其他行",
@@ -139,6 +148,8 @@ export const story = {
         undoCharacterRestored: "该角色已经回到名册中",
         undoAssetGone: "该资产已不存在",
         undoContentReplaced: "替换文件无法撤销",
+        undoConfigEntryGone: "该条目已不在此项目中",
+        undoConfigEntryRestored: "该条目已回到此项目中",
         undoTrackGone: "该音频轨道已不存在",
         undoTrackRestored: "该音频轨道已经回到混音器中",
         undoSetGone: "该资产集已不存在",

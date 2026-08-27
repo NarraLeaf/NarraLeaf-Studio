@@ -32,6 +32,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_FADE_DURATION,
     BLUEPRINT_NODE_TYPE_GAME_GET_VOICE_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_HIDE_DIALOG,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN,
     BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
@@ -151,10 +152,8 @@ const sentenceCpsIn: BlueprintNodePinDef = {
 const GRAPH_KINDS = ["event", "macro"] as const;
 const PURE_GRAPH_KINDS = ["event", "function", "macro"] as const;
 
-type GamePreferenceNodeKey = Exclude<BlueprintGamePreferenceKey, "showDialog">;
-
 type GamePreferenceNodeMeta = {
-    key: GamePreferenceNodeKey;
+    key: BlueprintGamePreferenceKey;
     getterType: string;
     setterType?: string;
     getterDisplayName: string;
@@ -238,6 +237,25 @@ const GAME_PREFERENCE_NODE_META: readonly GamePreferenceNodeMeta[] = [
         valueType: "boolean",
         defaultValue: false,
         keywords: ["game", "preference", "skip", "skipping", "mode", "hold", "fast", "forward"],
+    },
+    {
+        // The only row with no setter, and deliberately: writing this preference already has three
+        // nodes of its own (`Show Dialog`, `Hide Dialog`, `Toggle Dialog Display`), so a fourth
+        // spelling would only make an author choose between identical things. Reading it had none,
+        // which is what a graph needs to tell "the box is hidden" apart from "the box is waiting" -
+        // the hold gesture, a quick menu button and a settings row all move the same value, so a
+        // graph that remembered its own last write would be wrong as soon as another one fired.
+        key: "showDialog",
+        getterType: BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_SHOWN,
+        getterDisplayName: "Is Dialog Shown",
+        pinId: "isShown",
+        pinLabel: "Is Shown",
+        valueType: "boolean",
+        defaultValue: true,
+        keywords: [
+            "game", "dialog", "dialogue", "shown", "show", "hidden", "hide", "visible",
+            "visibility", "box", "window", "cg", "restore", "nlr",
+        ],
     },
     {
         key: "gameSpeed",
