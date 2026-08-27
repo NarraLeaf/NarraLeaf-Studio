@@ -68,6 +68,7 @@ import {
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
+import { countBuildStep } from "../../../../../buildWorker/stepProgress";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
@@ -1386,12 +1387,31 @@ async function copyProjectAssets(input: {
     assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
+    /*
+     * Every type's registry is read before any asset moves, so the count is known
+     * before the first copy rather than discovered while copying.
+     *
+     * This is the step a protected build spends its time in - the library is
+     * where the gigabytes are - so it is the one worth being able to report a
+     * real fraction for. The registries are small JSON files listing what the
+     * project owns; reading them up front costs nothing and is what turns "still
+     * working" into "412 of 900".
+     */
+    const registries: Array<[typeof ASSET_TYPES[number], Record<string, AssetMetadataRecord>]> = [];
     for (const type of ASSET_TYPES) {
         const metadataPath = path.join(input.projectPath, "assets", `assets.metadata.${type}.json`);
         const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(metadataPath);
-        if (!metadata) {
-            continue;
+        if (metadata) {
+            registries.push([type, metadata]);
         }
+    }
+    /* Counted the same way the loop below decides, so the denominator describes
+     * the work that will actually happen rather than the library's size. */
+    const shipping = registries.reduce((sum, [, metadata]) => sum + Object.keys(metadata)
+        .filter(assetId => !input.include || input.include.has(assetId)).length, 0);
+    const counted = countBuildStep(shipping, "file");
+    try {
+    for (const [type, metadata] of registries) {
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
             if (input.include && !input.include.has(assetId)) {
                 continue;
@@ -1406,6 +1426,9 @@ async function copyProjectAssets(input: {
                     sourceDir: sourcePath,
                     authoredEntry: readAuthoredBundleEntry(rawAsset),
                 }));
+                /* A bundle is one library entry however many files it expands
+                 * into, which is what the denominator counted. */
+                counted.advance();
                 continue;
             }
             const sourceLabel = normalized.source === "remote" ? "remote asset" : "local asset";
@@ -1450,7 +1473,13 @@ async function copyProjectAssets(input: {
                 ext,
                 mimeType,
             };
+            counted.advance();
         }
+    }
+    } finally {
+        /* Ends the step whether the copy finished or threw: a bar left at 412 of
+         * 900 after a failed build describes a build that is still running. */
+        counted.end();
     }
     return manifest;
 }

@@ -1,4 +1,5 @@
 import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type {
     GameRuntimeArtifactCompileInput,
     GameRuntimeArtifactCompileResult,
@@ -63,9 +64,25 @@ export type CompileWorkerDownloadMessage = {
     event: DownloadProgressEvent;
 };
 
+/**
+ * How far through a countable step of the compile this worker is, or `null` for a stretch that has
+ * no denominator.
+ *
+ * The compile is mostly one long stretch of reading the project and writing a pack, which nothing
+ * here can put a number on. What it does contain are passes over a list that exists before the pass
+ * starts, and those are what fill a bar: a step opens a counter with `countBuildStep` in
+ * `stepProgress`, advances it once per item, and closes it, at which point this goes back to `null`
+ * and the window goes back to a sweep.
+ */
+export type CompileWorkerProgressMessage = {
+    type: "progress";
+    progress: StudioTaskProgress | null;
+};
+
 export type CompileWorkerInboundMessage = CompileWorkerStartMessage;
 
 export type CompileWorkerOutboundMessage =
     | CompileWorkerDoneMessage
     | CompileWorkerDownloadMessage
+    | CompileWorkerProgressMessage
     | CompileWorkerErrorMessage;

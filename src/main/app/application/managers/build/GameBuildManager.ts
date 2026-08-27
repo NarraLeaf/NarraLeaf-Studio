@@ -37,6 +37,7 @@ import {
     type LastGameBuildRun,
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import {
     readAssetCompressionConfiguration,
     resolveAudioCompression,
@@ -500,7 +501,7 @@ export class GameBuildManager {
     constructor(private readonly app: App) {}
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
-        return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle" };
+        return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
     }
 
     /**
@@ -883,6 +884,11 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             snapshot: {
                 status: "preparing",
+                // Nothing to count. Preparing is a handful of single answers - the project's
+                // configuration, the variant, the credentials this build needs - rather than a
+                // pass over a list, so there is no denominator to report. The first count of a
+                // run arrives with the asset passes, once compiling has begun.
+                progress: null,
                 startedAt: Date.now(),
                 // Deduplicated: one platform can appear as several targets (a zip and an installer
                 // are two entries), and the snapshot names what is being built, not how many ways.
@@ -906,6 +912,7 @@ export class GameBuildManager {
             // toolchain instead of at the revision they are reading.
             session.snapshot = {
                 status: "error",
+                progress: null,
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: session.snapshot.platforms,
@@ -923,7 +930,7 @@ export class GameBuildManager {
     public cancel(projectPath: string): GameBuildStateSnapshot {
         const session = this.sessions.get(this.projectKey(projectPath));
         if (!session || !isActiveStatus(session.snapshot.status)) {
-            return session?.snapshot ?? { status: "idle" };
+            return session?.snapshot ?? { status: "idle", progress: null };
         }
         session.cancelled = true;
         // Before the worker, because for the length of a bake there IS no worker: the clips a pack
@@ -964,7 +971,7 @@ export class GameBuildManager {
         const session: BuildSession = {
             id: crypto.randomUUID(),
             projectPath: normalizedProjectPath,
-            snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
+            snapshot: { status: "preparing", progress: null, startedAt: Date.now(), platforms: [] },
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
@@ -978,6 +985,7 @@ export class GameBuildManager {
             const message = workspaceFrozenMessage(frozen, "patch export");
             session.snapshot = {
                 status: "error",
+                progress: null,
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: [],
@@ -1142,6 +1150,7 @@ export class GameBuildManager {
             assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
+            onProgress: progress => this.reportProgress(session, progress),
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
             onAudit: report => { contentAudit = report; },
@@ -1189,6 +1198,7 @@ export class GameBuildManager {
         const artifactSizes = await measureBuildArtifacts([outputFile]);
         await this.finishSession(session, {
             status: "done",
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: [],
@@ -1315,6 +1325,7 @@ export class GameBuildManager {
                 assetReplacements: options.assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
             });
@@ -1408,6 +1419,7 @@ export class GameBuildManager {
             assetReplacements: options.assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
+            onProgress: progress => this.reportProgress(session, progress),
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
         });
@@ -1867,6 +1879,7 @@ export class GameBuildManager {
                 assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { contentAudit = report; },
@@ -1920,6 +1933,7 @@ export class GameBuildManager {
                 assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { webContentAudit = report; },
@@ -2069,6 +2083,7 @@ export class GameBuildManager {
         const artifactSizes = await measureBuildArtifacts(artifacts);
         await this.finishSession(session, {
             status: "done",
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
@@ -2941,8 +2956,10 @@ export class GameBuildManager {
                 session.worker = null;
                 // A killed worker sends no closing line for whatever it was in the middle of
                 // fetching, so the end of the packaging step is what closes those - otherwise a
-                // cancelled build would leave the strip claiming a download forever.
+                // cancelled build would leave the strip claiming a download forever. A step count
+                // it was in the middle of ends the same way.
                 downloads.endAll();
+                this.reportProgress(session, null);
                 fn();
             };
             worker.stdout?.on("data", chunk => this.emitProcessOutput(session, "info", chunk, watcher));
@@ -2954,6 +2971,10 @@ export class GameBuildManager {
                 }
                 if (message.type === "download") {
                     downloads.accept(message.event);
+                    return;
+                }
+                if (message.type === "progress") {
+                    this.reportProgress(session, message.progress);
                     return;
                 }
                 if (message.type === "done") {
@@ -3168,10 +3189,16 @@ export class GameBuildManager {
         projectConfig: ProjectConfigData | null,
     ): Promise<Record<string, OptimizedAssetFile>> {
         const config = this.assetCompressionConfig(projectConfig);
-        return {
-            ...await this.optimizeImages(session, projectPath, config),
-            ...await this.compressMedia(session, projectPath, config),
-        };
+        const images = await this.optimizeImages(session, projectPath, config);
+        const media = await this.compressMedia(session, projectPath, config);
+        // Two passes, two counts, one after the other: each reads its own half of the library and
+        // neither knows the other's length before it runs, so the readout fills twice rather than
+        // once. Summing them would mean walking both libraries up front to produce a number that
+        // is only the same number, later.
+        //
+        // Cleared here rather than by either pass, because what follows them is the compile.
+        this.reportProgress(session, null);
+        return { ...images, ...media };
     }
 
     /**
@@ -3199,6 +3226,7 @@ export class GameBuildManager {
                 app: this.app,
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
+                onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
             });
             if (result.stripped > 0) {
                 this.emit(session, {
@@ -3254,6 +3282,7 @@ export class GameBuildManager {
                 openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
+                onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
             });
             if (result.stripped > 0) {
                 this.emit(session, {
@@ -3458,6 +3487,19 @@ export class GameBuildManager {
         };
     }
 
+    /**
+     * Publish how far through a countable step this run is, onto the snapshot the window polls.
+     *
+     * Every producer goes through here - the asset passes on this process, and both workers over
+     * their protocols - so there is one place that decides what a build's readout says, and one
+     * place to look when it says something wrong. `null` is the ordinary state: it means the build
+     * is somewhere that has no denominator, which is most of a build, and it must be published
+     * rather than left behind by whatever counted last.
+     */
+    private reportProgress(session: BuildSession, progress: StudioTaskProgress | null): void {
+        session.snapshot = { ...session.snapshot, progress };
+    }
+
     /** The variant this run resolved to, kept for the record it will leave behind. */
     private noteRunVariant(session: BuildSession, variant: ProjectAppTag): void {
         session.appTagName = variant.name;
@@ -3478,6 +3520,9 @@ export class GameBuildManager {
         }
         session.snapshot = {
             status: "error",
+            // A run that stopped counts nothing. A fraction left over from the step it stopped in
+            // would go on describing a pass that ended when the build did.
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,

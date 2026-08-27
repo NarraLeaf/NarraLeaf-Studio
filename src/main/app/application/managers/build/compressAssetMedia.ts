@@ -92,6 +92,14 @@ export type AssetMediaCompressionInput = {
     app: FfmpegResolverApp;
     log: AssetMediaCompressionLog;
     cancelled?: () => boolean;
+    /**
+     * How far through the library this pass is, once per file.
+     *
+     * A callback rather than a channel of its own, for the reason the image pass gives: this runs
+     * on the main process, beside the build that wants the number. Both metadata files are read
+     * before the first probe, so the total is a fact rather than a guess that grows.
+     */
+    onProgress?: (done: number, total: number) => void;
     /** Injected in tests; how the vendored binaries are located. */
     ffmpeg?: FfmpegResolveOptions;
     /** Injected in tests; defaults to running the resolved ffprobe. */
@@ -167,8 +175,10 @@ export async function compressProjectMedia(
 
     let binary: string | null = null;
     // Latched, so a host with no FFmpeg looks for it once and says so once,
-    // rather than repeating itself for every file in the library.
+    // rather than repeating itself for every file in the library. Two of them,
+    // because the two binaries are staged and can go missing independently.
     let encoderUnavailable = false;
+    let probeUnavailable = false;
     let failureWarnings = 0;
 
     /**
@@ -255,7 +265,11 @@ export async function compressProjectMedia(
             return;
         }
 
-        if (!compressing) {
+        if (!compressing || probeUnavailable) {
+            // A host with no ffprobe still gets the metadata pass, which needs no
+            // binary at all - and it is checked before the file is hashed, because
+            // hashing a voice library to ask a question already answered is the
+            // expensive way to do nothing.
             await stripOnly(id, sourcePath, byteLength);
             return;
         }
@@ -267,6 +281,10 @@ export async function compressProjectMedia(
 
         const report = await describe(sourcePath, digest);
         if (report === null) {
+            // No verdict, so nothing to re-encode - but the metadata pass reads
+            // the bytes itself and does not care what ffprobe thinks, so the file
+            // still gets that half rather than shipping exactly as it arrived.
+            await stripOnly(id, sourcePath, byteLength);
             return;
         }
         const plan = planAssetMediaCompression(
@@ -299,7 +317,7 @@ export async function compressProjectMedia(
             return;
         }
 
-        if (encoderUnavailable) {
+        if (encoderUnavailable || probeUnavailable) {
             return;
         }
         if (binary === null) {
@@ -416,9 +434,19 @@ export async function compressProjectMedia(
             ...(input.probeRun ? { run: input.probeRun } : {}),
         });
         if (outcome.status !== "probed") {
-            if (outcome.status === "unavailable" && failureWarnings < MAX_FAILURE_WARNINGS) {
+            if (outcome.status === "unavailable") {
+                // Latched, and latched separately from the per-file warnings: a
+                // host with no ffprobe has one thing wrong with it, not one thing
+                // wrong per file in the library.
+                if (!probeUnavailable) {
+                    probeUnavailable = true;
+                    input.log("warning", `media compression is unavailable on this host: ${outcome.detail}`);
+                }
+                return null;
+            }
+            if (failureWarnings < MAX_FAILURE_WARNINGS) {
                 failureWarnings += 1;
-                input.log("warning", `media compression is unavailable on this host: ${outcome.detail}`);
+                input.log("warning", `"${sourcePath}" could not be read: ${outcome.detail}`);
             }
             return null;
         }
@@ -433,11 +461,23 @@ export async function compressProjectMedia(
         return outcome.report;
     };
 
-    for (const type of MEDIA_ASSET_TYPES) {
-        const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
+    // Both listings first, then the work: a total that arrived only when the video listing was
+    // reached would make the readout jump backwards halfway through a project that has both.
+    const listings = await Promise.all(MEDIA_ASSET_TYPES.map(async type => ({
+        type,
+        records: Object.entries(await readOptionalJson<Record<string, AssetMetadataRecord>>(
             path.join(input.projectPath, "assets", `assets.metadata.${type}.json`),
-        );
-        for (const [assetKey, record] of Object.entries(metadata ?? {})) {
+        ) ?? {}),
+    })));
+    const total = listings.reduce((sum, listing) => sum + listing.records.length, 0);
+    let considered = 0;
+    if (total > 0) {
+        // A project with no sound and no video opens no count: zero of zero is not a fraction.
+        input.onProgress?.(0, total);
+    }
+
+    for (const { type, records } of listings) {
+        for (const [assetKey, record] of records) {
             if (input.cancelled?.()) {
                 break;
             }
@@ -446,6 +486,8 @@ export async function compressProjectMedia(
             if (sourcePath) {
                 await consider(id, sourcePath, assetName(record, id), type);
             }
+            considered += 1;
+            input.onProgress?.(considered, total);
         }
     }
 

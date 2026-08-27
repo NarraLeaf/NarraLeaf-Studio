@@ -15,6 +15,7 @@ import {
     type ApkSigningIdentity,
 } from "./signingIdentity";
 import type { ZipEntrySource } from "./zipWriter";
+import { countBuildStep } from "../stepProgress";
 import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
 /**
@@ -94,6 +95,11 @@ async function siteEntries(
     contentKey: string | undefined,
 ): Promise<SiteEntry[]> {
     const entries: SiteEntry[] = [];
+    // Counted only when there is a key, because only then is there any work here to count: without
+    // one this loop builds a stream descriptor per file and is over in a moment, and a bar that
+    // fills and empties inside one frame reports nothing anybody can read. With one it is a read
+    // and an encryption of every file in the game, which is minutes for a voiced project.
+    const counted = countBuildStep(contentKey ? files.length : 0, "file");
     for (const file of files) {
         if (contentKey) {
             // Read and protect one file at a time. The package is assembled in
@@ -101,6 +107,7 @@ async function siteEntries(
             // file beyond that, not the whole payload at once.
             const data = protectBuffer(await fs.readFile(file.absolutePath), contentKey);
             entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+            counted.advance();
         } else {
             entries.push({
                 relativePath: file.relativePath,
@@ -121,6 +128,7 @@ async function siteEntries(
     } else {
         entries.push(overrideEntry);
     }
+    counted.end();
     return entries;
 }
 

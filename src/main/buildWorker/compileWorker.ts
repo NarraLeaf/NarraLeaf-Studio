@@ -6,6 +6,7 @@ import type {
     ShippedContentAuditReport,
 } from "./compileWorkerProtocol";
 import { setDownloadReporter } from "./downloadReporting";
+import { setStepProgressReporter } from "./stepProgress";
 
 /**
  * Artifact-compile worker entry, forked as an Electron utility process. Running
@@ -37,6 +38,12 @@ function send(message: CompileWorkerOutboundMessage): void {
 // toolchain a protected build compiles with. Registered at load rather than per compile because the
 // downloaders sit several layers in, none of which has any business carrying a progress channel.
 setDownloadReporter(event => send({ type: "download", event }));
+
+// How far through a countable step of the compile this is. Registered at load for the same reason,
+// and it is the seam a pass over a known list reports through: `countBuildStep` in `stepProgress`,
+// advanced once per item, closed when the pass ends. A pass that cannot say how much work it has
+// before it starts opens no counter, and the window keeps its sweep.
+setStepProgressReporter(progress => send({ type: "progress", progress }));
 
 /**
  * Load and run the audit bundle sitting beside this one.

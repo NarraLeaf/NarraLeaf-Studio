@@ -1220,8 +1220,8 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
-        // Read by `zigToolchain.zigMirror`, ahead of the NARRALEAF_ZIG_MIRROR environment
-        // variable. A third field for the reason the second one exists: the layout is
+        // Read by `zigToolchain.zigMirror`, and the only way to point that download
+        // somewhere else. A third field for the reason the second one exists: the layout is
         // `<mirror><version>/<archive>`, which neither of the two above can be made to produce.
         key: "build.zigMirror",
         category: "network",
