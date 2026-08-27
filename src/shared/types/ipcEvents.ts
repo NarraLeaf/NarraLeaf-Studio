@@ -232,6 +232,7 @@ export enum IPCEventType {
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
     workspaceLiveIntentTaken = "workspace.liveIntentTaken",
+    workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
@@ -3555,6 +3556,21 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { view: WorkspaceViewRequest },
+        response: never;
+    };
+    /**
+     * Main telling the already-open workspace which live session to join.
+     *
+     * The other half of the `joinLive` window prop, and needed for the same reason Settings needs
+     * `settingsHighlight`: one project is one window, so a launcher asking to join a room in a
+     * project this machine already has open reaches a window that exists - and a prop is read once,
+     * at load. Without this the intent would be dropped in silence, which is the commonest case of
+     * all now that the workspace has no join control of its own.
+     */
+    [IPCEventType.workspaceJoinLive]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]> },
         response: never;
     };
     /**
