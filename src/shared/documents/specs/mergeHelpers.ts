@@ -142,6 +142,28 @@ export function mergeKeyed<V>(
     return {merged, rows};
 }
 
+/**
+ * Which of the three words a merged row gets: added, removed, or changed.
+ *
+ * ⚠ **Decided by the BASE, never by which side is empty.** "Theirs does not have this key" is an
+ * addition by me when the base did not have it either, and a removal by them when it did, and the
+ * two are indistinguishable from the sides alone. Every spec that merges a keyed collection needs
+ * this rule and each one that wrote it out again was a chance to get it backwards - a row labelled
+ * "added" over a deletion is an author pressing "keep mine" to save work that is not there.
+ *
+ * Only ever called for a row that exists at all, which means the two sides disagree - so "both
+ * absent" cannot reach here, and all three present is the only way to have changed something.
+ */
+export function keyedRowLabel(
+    row: Pick<KeyedMergeRow<unknown>, "mine" | "theirs" | "base">,
+    labels: {added: string; removed: string; changed: string},
+): string {
+    if (row.mine.present && row.theirs.present && row.base.present) {
+        return labels.changed;
+    }
+    return row.base.present ? labels.removed : labels.added;
+}
+
 /** Build a decision row, leaving out what there is nothing to put in. */
 export function decision(
     path: readonly string[],

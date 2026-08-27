@@ -3,7 +3,9 @@ import {
     LocalizationKeysDocument,
     normalizeLocalizationKeysDocument,
 } from "../../types/localization";
+import {DocumentMerge3, DocumentMergeDecision} from "../diff";
 import {defineDocumentSpec} from "../registry";
+import {countConflicts, decision, keyedRowLabel, mergeKeyed} from "./mergeHelpers";
 import {rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
 
 /**
@@ -30,4 +32,48 @@ export const localizationKeysSpec = defineDocumentSpec<LocalizationKeysDocument>
         title: "",
         counts: [{key: "localizationKeys", value: Object.keys(document.keys).length}],
     }),
+    merge3: merge3LocalizationKeys,
 });
+
+const LABEL = {
+    added: "documentDiff.localizationKeys.added",
+    removed: "documentDiff.localizationKeys.removed",
+    changed: "documentDiff.localizationKeys.changed",
+} as const;
+
+/**
+ * Three-way merge of the named-string registry - keyed by the name the developer typed.
+ *
+ * The one map in the project whose keys are authored rather than generated, which is what makes
+ * both halves of this work: two people adding `menu.start` and `menu.load` merge with nothing to
+ * decide, and the one row they both touched is named by something they will recognise on sight.
+ *
+ * **A whole definition per decision.** An entry is a source text and a note about it, and a note
+ * kept from one side over the other side's rewritten source is a translator's instruction about a
+ * line that no longer says that.
+ *
+ * ⚠ **A key that both sides added with different source texts is a conflict, not a duplicate.**
+ * The name IS the identity here - it is what every `t()` call and every translation unit points at
+ * - so two definitions of one name cannot both survive under different keys the way two assets
+ * with the same file name can.
+ */
+export function merge3LocalizationKeys(
+    base: LocalizationKeysDocument | undefined,
+    mine: LocalizationKeysDocument,
+    theirs: LocalizationKeysDocument,
+): DocumentMerge3<LocalizationKeysDocument> {
+    const keys = mergeKeyed(base?.keys, mine.keys, theirs.keys);
+    const decisions: DocumentMergeDecision[] = keys.rows.map(row =>
+        decision(["keys", row.key], row, {
+            label: keyedRowLabel(row, LABEL),
+            // The key itself, which is the rare case where the map's key IS the author's word for
+            // the row: `menu.start` was typed by whoever declared it.
+            subject: row.key,
+        }));
+
+    return {
+        document: {schemaVersion: mine.schemaVersion, keys: keys.merged},
+        decisions,
+        conflicts: countConflicts(decisions),
+    };
+}
