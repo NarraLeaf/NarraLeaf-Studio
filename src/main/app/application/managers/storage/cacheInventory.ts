@@ -51,6 +51,7 @@ const SPELLCHECK_DICTIONARIES_RELATIVE = path.join(
 
 /** Re-encoded build images; must agree with `optimizeProjectImages`. */
 const OPTIMIZED_IMAGES_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.OptimizedImages);
+const COMPRESSED_MEDIA_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.CompressedMedia);
 
 /** Compiler toolchains fetched for a build; must agree with `zigCacheRoot`. */
 const TOOLCHAINS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.Toolchains);
@@ -120,6 +121,11 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             id: "optimizedImages",
             dirs: [path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE)],
             displayPath: path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE),
+        },
+        {
+            id: "compressedMedia",
+            dirs: [path.join(userDataDir, COMPRESSED_MEDIA_RELATIVE)],
+            displayPath: path.join(userDataDir, COMPRESSED_MEDIA_RELATIVE),
         },
         {
             id: "buildDependencies",

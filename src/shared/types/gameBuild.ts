@@ -254,7 +254,13 @@ export type BuildPreflightCode =
      * shared file to write, and the mobile shells serve that same page.
      */
     | "progress-carry-unsupported"
+    // One per track, because turning compression on for recorded voice says
+    // nothing about whether the artwork may be re-encoded too. Each carries the
+    // quality it will use, since that is the part of the decision an author is
+    // most likely to have forgotten.
     | "lossy-images"
+    | "lossy-audio"
+    | "lossy-video"
     | "mobile-template-missing"
     | "mobile-payload-too-large"
     | "version-uncodable"

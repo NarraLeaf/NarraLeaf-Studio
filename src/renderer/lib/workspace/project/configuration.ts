@@ -30,7 +30,7 @@ import type { SigningPlatform } from "@shared/types/signing";
 import type { WindowConfiguration } from "@shared/types/appWindow";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
 import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -62,13 +62,15 @@ export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
 export type { WindowConfiguration } from "@shared/types/appWindow";
 export {
-    ASSET_LOSSY_QUALITY_MAX,
-    ASSET_LOSSY_QUALITY_MIN,
-    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
-    normalizeAssetOptimizationConfiguration,
-    readAssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
-export type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+    ASSET_COMPRESSION_TRACKS,
+    ASSET_QUALITY_MAX,
+    ASSET_QUALITY_MIN,
+    DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    assetTrackCompression,
+    normalizeAssetCompressionConfiguration,
+    readAssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
+export type { AssetCompressionConfiguration, AssetCompressionTrack } from "@shared/types/assetCompression";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -423,8 +425,8 @@ export type ProjectAppConfiguration = {
     security?: SecurityConfiguration;
     /** What the shipped game does when it stops working; absent until configured. */
     crash?: CrashConfiguration;
-    /** What a build may do to the author's artwork, on every target; absent until configured. */
-    assetOptimization?: AssetOptimizationConfiguration;
+    /** What a build may discard from the project's media, on every target; absent until configured. */
+    assetCompression?: AssetCompressionConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
     /** What the shipped game's window does; absent until configured (see the defaults). */

@@ -4,6 +4,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+    compressionArgs,
     createProgressParser,
     startMediaTranscode,
     transcodeArgs,
@@ -166,6 +167,89 @@ describe("transcodeArgs / image", () => {
         for (const knob of ["-crf", "-q:v", "-qscale", "-qscale:v", "-b:v", "-compression_level"]) {
             expect(args, knob).not.toContain(knob);
         }
+    });
+});
+
+describe("compressionArgs", () => {
+    it("writes audio as AAC in MP4 at the authored bitrate", () => {
+        const args = compressionArgs(
+            { action: "audio", bitrateKbps: 168, sampleRateHz: null },
+            "/in/line.wav",
+            "/out/tmp.part",
+        );
+        expect(valueAfter(args, "-c:a")).toBe("aac");
+        expect(valueAfter(args, "-b:a")).toBe("168k");
+        expect(valueAfter(args, "-f")).toBe("mp4");
+        // Faststart is what lets a browser begin a track before the whole file
+        // has arrived, which is the deployment this container exists to serve.
+        expect(valueAfter(args, "-movflags")).toBe("+faststart");
+    });
+
+    it("brands an audio-only MP4 as one", () => {
+        // The major brand is the only thing in an ISO base media file that says whether it holds a
+        // picture, and a protected pack is served by sniffing its bytes rather than by reading a
+        // manifest. Branded `isom`, a voice line reaches the page as video/mp4.
+        const args = compressionArgs(
+            { action: "audio", bitrateKbps: 128, sampleRateHz: null },
+            "/in/line.wav",
+            "/out/tmp.part",
+        );
+        expect(valueAfter(args, "-brand")).toBe("M4A ");
+    });
+
+    it("maps only the audio, so a track's album art is not carried into the package", () => {
+        const args = compressionArgs(
+            { action: "audio", bitrateKbps: 128, sampleRateHz: null },
+            "/in/theme.mp3",
+            "/out/tmp.part",
+        );
+        expect(args.filter(arg => arg === "-map")).toHaveLength(1);
+        expect(valueAfter(args, "-map")).toBe("0:a");
+    });
+
+    it("resamples only when a rate was asked for", () => {
+        expect(compressionArgs(
+            { action: "audio", bitrateKbps: 128, sampleRateHz: 48_000 },
+            "/in/master.flac",
+            "/out/tmp.part",
+        )).toContain("-ar");
+        expect(compressionArgs(
+            { action: "audio", bitrateKbps: 128, sampleRateHz: null },
+            "/in/line.wav",
+            "/out/tmp.part",
+        )).not.toContain("-ar");
+    });
+
+    it("writes video as VP9 at the authored CRF, in constant-quality mode", () => {
+        const args = compressionArgs({ action: "video", crf: 28 }, "/in/clip.mp4", "/out/tmp.part");
+        expect(valueAfter(args, "-c:v")).toBe("libvpx-vp9");
+        expect(valueAfter(args, "-crf")).toBe("28");
+        // Without `-b:v 0` libvpx runs in constrained quality and treats its
+        // default bitrate as a cap, which produces a much worse file than the
+        // CRF asked for.
+        expect(valueAfter(args, "-b:v")).toBe("0");
+        expect(valueAfter(args, "-f")).toBe("webm");
+    });
+
+    it("carries none of the source's metadata into the shipped copy", () => {
+        // FFmpeg copies tags from input to output by default, so without this
+        // every shipped voice line would arrive with whatever the recording
+        // software wrote into it: the performer, the studio, the session path.
+        for (const plan of [
+            { action: "audio", bitrateKbps: 128, sampleRateHz: null } as const,
+            { action: "video", crf: 30 } as const,
+        ]) {
+            const args = compressionArgs(plan, "/in/a", "/out/b");
+            expect(valueAfter(args, "-map_metadata")).toBe("-1");
+            expect(valueAfter(args, "-map_chapters")).toBe("-1");
+        }
+    });
+
+    it("never puts the compression path on the fast encoder settings", () => {
+        // What this loses is lost permanently, and it runs once per build rather
+        // than once per slider move.
+        expect(valueAfter(compressionArgs({ action: "video", crf: 32 }, "/in/a", "/out/b"), "-deadline"))
+            .toBe("good");
     });
 });
 

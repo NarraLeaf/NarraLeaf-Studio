@@ -21,8 +21,10 @@ import {
     type StoryVariableRef,
 } from "@shared/types/story";
 import {
+    applyVariableEffects,
     collectBlueprintVariableWrites,
     computeVariableRanges,
+    sceneWritesBefore,
     widenRangeAcrossScene,
     type SceneFlowRange,
 } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
@@ -961,7 +963,14 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                                 return null;
                             }
                             const arrival = arrivalRanges(key).get(scene.id) ?? { kind: "unknown" as const };
-                            const bound = widenRangeAcrossScene(arrival, entry.document, scene.id, key, blueprintWrites);
+                            // The rows above this guard have run and the rows below it have not, so
+                            // the writes that can have moved the counter are the ones before it -
+                            // which is what stops `if x >= 50 { x += 100 }` being judged against its
+                            // own arm's work. Where row order cannot be read, the whole scene stands.
+                            const before = sceneWritesBefore(entry.document, scene.id, guard.blockId, blueprintWrites);
+                            const bound = before
+                                ? applyVariableEffects(arrival, before, key)
+                                : widenRangeAcrossScene(arrival, entry.document, scene.id, key, blueprintWrites);
                             if (bound.kind === "known" && culpritName === null) {
                                 const ref = guardVariableRefs(condition).find(
                                     candidate => storyVariableRefKey(candidate) === key,

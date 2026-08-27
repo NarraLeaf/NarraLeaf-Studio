@@ -86,15 +86,19 @@ const GLOBAL_ARGS: readonly string[] = [
  * produces a file Chromium may decode on the developer's desktop and a player's device may not.
  * Profile 0 is the one every VP9 decoder is required to have.
  *
- * ## Why the speed is a parameter and the rest is not
+ * ## Why the speed and the quality are parameters and the rest is not
  *
- * Everything except `-deadline`/`-cpu-used` decides what the file IS - the codec, the profile, the
- * quality it was asked for - and that is one decision for the whole project, which is why
- * {@link VP9_ARGS} is exported rather than restated wherever a video is made. The speed decides only
- * how long libvpx looked for a smaller way to say the same thing, and there the callers genuinely
- * differ: an author's imported clip is converted once and keeps whatever quality it is given
- * forever, while a weather clip made for a Dev Mode session is thrown away the next time the author
- * moves a slider. So {@link vp9Args} takes that one axis and nothing else.
+ * The codec and the profile decide what kind of file this is at all, and that is one decision for
+ * every video Studio writes. The other two vary because the callers genuinely differ.
+ *
+ * The **speed** decides only how long libvpx looked for a smaller way to say the same thing: an
+ * author's imported clip is converted once and keeps whatever quality it is given forever, while a
+ * weather clip made for a Dev Mode session is thrown away the next time the author moves a slider.
+ *
+ * The **quality** defaults to the one number an import gets, because an import is a repair - the
+ * file did not play and now it does - and no author asked for a quality on the way in. The build's
+ * compression pass is the opposite: the author turned it on and set the number, and it applies to
+ * the shipped copy while the imported file stays where it is.
  *
  * **The transcode path is not on the fast axis and must not be put there.** A conversion happens
  * once per imported file, its content is arbitrary (faces, gradients, film grain - the material
@@ -115,11 +119,14 @@ const VP9_SPEED_ARGS: Readonly<Record<Vp9Speed, readonly string[]>> = {
     realtime: ["-deadline", "realtime", "-cpu-used", "4"],
 };
 
-export function vp9Args(speed: Vp9Speed): readonly string[] {
+/** The CRF an import and a Dev Mode bake get, neither of which asked an author for a number. */
+export const DEFAULT_VP9_CRF = 32;
+
+export function vp9Args(speed: Vp9Speed, crf: number = DEFAULT_VP9_CRF): readonly string[] {
     return [
         "-c:v", "libvpx-vp9",
         "-b:v", "0",
-        "-crf", "32",
+        "-crf", String(crf),
         "-row-mt", "1",
         ...VP9_SPEED_ARGS[speed],
         "-pix_fmt", "yuv420p",
@@ -192,6 +199,67 @@ export function transcodeArgs(target: MediaConvertTarget, sourcePath: string, ou
     }
     args.push(...containerFlags(target.container));
     args.push("-f", MUXER_FOR_CONTAINER[target.container], outputPath);
+    return args;
+}
+
+/**
+ * The argv for one build-time compression, excluding the binary itself.
+ *
+ * Separate from {@link transcodeArgs} because the two answer different questions. That one repairs
+ * a file that would not play, at settings nobody chose; this one shrinks a copy of a file that
+ * plays perfectly well, at a quality the author set and only for the package being built. The
+ * author's own file is never an output path here.
+ *
+ * Two shapes, and what each leaves out is deliberate:
+ *
+ *  - **audio** maps `0:a` alone. Nothing else in the file is wanted - album art in particular is
+ *    a picture nothing in a game ever displays, and dropping it is bytes off every track that has
+ *    one. `+faststart` is what lets a browser start a track before the whole file has arrived.
+ *  - **video** maps picture and sound and re-encodes both, because WebM cannot carry AAC and a
+ *    stream copy of the audio would need a container the video cannot go in. The audio side is left
+ *    at the quality every Studio-written WebM uses: in a file whose picture is being re-encoded at
+ *    an authored CRF, the soundtrack is not where the bytes are.
+ *
+ * Both drop the source's metadata and chapters. FFmpeg copies tags from input to output by default,
+ * so without saying otherwise every shipped track would carry whatever the recording software wrote
+ * into it - the performer's name, the studio, the path the session lived at. That belongs to the
+ * pack-time half of content protection: information that is not in the file cannot be recovered
+ * from it by anyone, on any machine.
+ */
+export function compressionArgs(
+    plan:
+        | { action: "audio"; bitrateKbps: number; sampleRateHz: number | null }
+        | { action: "video"; crf: number },
+    sourcePath: string,
+    outputPath: string,
+): string[] {
+    const args = [
+        ...GLOBAL_ARGS, "-i", sourcePath,
+        "-map_metadata", "-1", "-map_chapters", "-1",
+        // Bitexact suppresses the muxer's own version stamp, which is both one
+        // more thing nobody needs to know about the machine that built the game
+        // and the reason two builds of an unchanged file would otherwise differ:
+        // a patch compares digests, and an FFmpeg upgrade would look like every
+        // track in the project having been re-recorded.
+        "-fflags", "+bitexact",
+    ];
+    if (plan.action === "audio") {
+        args.push("-map", "0:a", "-c:a", "aac", "-b:a", `${plan.bitrateKbps}k`);
+        if (plan.sampleRateHz !== null) {
+            args.push("-ar", String(plan.sampleRateHz));
+        }
+        // `M4A ` rather than the muxer's default `isom`, because the major brand is the only thing
+        // in an ISO base media file that says whether it holds a picture, and a shipped protected
+        // pack is served by sniffing its bytes: entries there are stored under an asset id with no
+        // extension and no recorded media type, so a track branded `isom` is handed to the page as
+        // `video/mp4`. The trailing space is part of the four-character brand.
+        args.push("-brand", "M4A ");
+        args.push(...containerFlags("mp4"), "-f", MUXER_FOR_CONTAINER.mp4, outputPath);
+        return args;
+    }
+    args.push("-map", "0:V?", ...vp9Args("good", plan.crf));
+    args.push("-map", "0:a?", ...VORBIS_ARGS);
+    args.push("-f", MUXER_FOR_CONTAINER.webm, outputPath);
     return args;
 }
 
@@ -392,7 +460,29 @@ export type MediaTranscodeOptions = {
 };
 
 /**
- * Convert one file.
+ * One run of ffmpeg, described without reference to why it is being run.
+ *
+ * The import flow and the build's compression pass want the same process discipline - a temporary
+ * file in the destination directory, a target that is never overwritten, a stderr tail kept for the
+ * log, a cancel that leaves nothing behind - and different arguments. So the arguments are the
+ * parameter: {@link transcodeArgs} builds them for an import, and the build builds its own from the
+ * quality an author set.
+ */
+export type MediaEncodeRequest = {
+    sourcePath: string;
+    /** Where the finished file goes. Refused rather than overwritten if it is already there. */
+    targetPath: string;
+    /**
+     * The argv after the binary. Called with the temporary path the output must be written to,
+     * because that name is generated here and the encoder has to be told about it.
+     */
+    buildArgs: (outputPath: string) => string[];
+    /** For the progress fraction; `null` when the source has no duration to divide by. */
+    durationUs: number | null;
+};
+
+/**
+ * Convert one file, with the arguments already decided.
  *
  * Returns synchronously with a handle, before the pre-flight checks have run, so that a caller can
  * cancel a conversion it started a millisecond ago. Cancelling during the checks means no process is
@@ -402,9 +492,9 @@ export type MediaTranscodeOptions = {
  * clock long enough not to kill that one is too long to be a useful safety net for a stuck one. What
  * makes a stuck conversion recoverable is cancellation, which is a control the author has.
  */
-export function startMediaTranscode(
+export function startMediaEncode(
     binaryPath: string,
-    request: MediaConvertRequest,
+    request: MediaEncodeRequest,
     options: MediaTranscodeOptions = {},
 ): MediaTranscodeHandle {
     let cancelled = false;
@@ -458,12 +548,8 @@ export function startMediaTranscode(
             `.nls-convert-${crypto.randomBytes(8).toString("hex")}.part`,
         );
 
-        const args = transcodeArgs(request.target, request.sourcePath, tempPath);
-        // A still image has no duration, so it never gets a percentage - regardless of what the
-        // probe may have said. ffprobe reports a nominal fraction of a second for a single-frame
-        // input, and dividing by that would produce a bar that jumps to 100% and waits.
-        const durationUs = request.target.kind === "image" ? null : request.durationUs;
-        const parser = createProgressParser(durationUs);
+        const args = request.buildArgs(tempPath);
+        const parser = createProgressParser(request.durationUs);
 
         const exit = await new Promise<{ code: number | null; signal: string | null; error: Error | null; stderr: string }>(
             resolve => {
@@ -559,6 +645,28 @@ export function startMediaTranscode(
         }
         return { status: "done", outputPath: request.targetPath };
     }
+}
+
+/**
+ * Convert one imported file.
+ *
+ * The import flow's entry point: it decides the arguments from the target the triage picked, and
+ * leaves the running to {@link startMediaEncode}.
+ */
+export function startMediaTranscode(
+    binaryPath: string,
+    request: MediaConvertRequest,
+    options: MediaTranscodeOptions = {},
+): MediaTranscodeHandle {
+    return startMediaEncode(binaryPath, {
+        sourcePath: request.sourcePath,
+        targetPath: request.targetPath,
+        buildArgs: outputPath => transcodeArgs(request.target, request.sourcePath, outputPath),
+        // A still image has no duration, so it never gets a percentage - regardless of what the
+        // probe may have said. ffprobe reports a nominal fraction of a second for a single-frame
+        // input, and dividing by that would produce a bar that jumps to 100% and waits.
+        durationUs: request.target.kind === "image" ? null : request.durationUs,
+    }, options);
 }
 
 /** `null` when the source is a readable file, an error result when it is not. */

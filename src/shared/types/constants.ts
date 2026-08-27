@@ -89,13 +89,23 @@ export enum CacheNamespace {
      */
     OptimizedImages = "optimized-images",
     /**
+     * Sound and video a game build re-encoded, keyed the same way and kept apart
+     * from the images for one reason: size.
+     *
+     * A project's artwork cache is measured in tens of megabytes and its voice
+     * cache in whole gigabytes, so an author looking at what Studio is holding
+     * has to be able to see and clear the expensive one without losing the cheap
+     * one they would rather keep.
+     */
+    CompressedMedia = "compressed-media",
+    /**
      * Compiler toolchains a build downloads because the host has none, one
      * directory per toolchain and version.
      *
-     * The largest thing in here by a wide margin - a Zig toolchain is a few
-     * hundred megabytes even pruned - which is exactly why it is listed as its
-     * own bucket rather than folded into the build dependencies beside it: an
-     * author deciding what to reclaim needs to see that number on its own.
+     * Listed on its own rather than folded into the build dependencies beside it,
+     * for the reason the media cache is kept apart from the images: a Zig
+     * toolchain is a few hundred megabytes even pruned, and an author deciding
+     * what to reclaim needs to see that number by itself.
      */
     Toolchains = "toolchains",
 }

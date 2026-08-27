@@ -343,18 +343,23 @@ export type GameRuntimeArtifactCompileInput = {
      * them is what a player receives, and re-encoding artwork nobody will keep is
      * time an author is waiting through.
      */
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 };
 
 /**
- * One image the build already re-encoded: the file to copy in place of the
+ * One asset the build already re-encoded: the file to copy in place of the
  * project's, and what those bytes are.
+ *
+ * Written by two passes with nothing in common but this shape - one re-encodes
+ * images in a hidden Chromium window, the other runs sound and video through
+ * FFmpeg - and read here as a single table, so that a compile never has to know
+ * which of them produced a given entry.
  *
  * Declared here rather than imported from the build manager because this module
  * runs in a utility process, and the value arrives across that boundary as
  * plain data.
  */
-export type OptimizedAssetImageInput = {
+export type OptimizedAssetFile = {
     path: string;
     /**
      * Both absent when the replacement is the same kind of file as the source -
@@ -528,7 +533,7 @@ export async function compileGameRuntimeArtifact(
             assembled,
             input.runtimePlugins ?? [],
             message => notices.push(message),
-            input.assetImages,
+            input.assetReplacements,
         )
         : null;
     const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
@@ -581,7 +586,7 @@ export async function compileGameRuntimeArtifact(
             assetsDir,
             target,
             include: shipped?.include ?? null,
-            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
+            ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -592,7 +597,7 @@ export async function compileGameRuntimeArtifact(
             target,
             manifest: assetManifest,
             characterIds: shipped?.characterIds ?? null,
-            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
+            ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
         });
         // Weather clips are derived the same way and are invisible to the sweep for a stronger
         // reason: the id that addresses one is COMPUTED by the running game rather than written in
@@ -1062,7 +1067,7 @@ async function planShippedAssets(
     bundle: DevModeBundle,
     runtimePlugins: readonly GameRuntimePluginSource[],
     onNotice?: (message: string) => void,
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>,
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>,
 ): Promise<{
     bundle: DevModeBundle;
     include: Set<string>;
@@ -1114,7 +1119,7 @@ async function planShippedAssets(
             include,
             characters: bundle.storyLibrary?.characters ?? [],
             shippedCharacterIds: cast.characterIds,
-            ...(assetImages ? { assetImages } : {}),
+            ...(assetReplacements ? { assetReplacements } : {}),
         }),
     };
 }
@@ -1135,7 +1140,7 @@ async function describeShippedAssets(input: {
     include: ReadonlySet<string>;
     characters: readonly { id: string; name?: string }[];
     shippedCharacterIds: ReadonlySet<string>;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<ShippedAssetReport> {
     const included: ShippedAssetReportEntry[] = [];
     const excluded: ShippedAssetReportEntry[] = [];
@@ -1145,7 +1150,7 @@ async function describeShippedAssets(input: {
         // not: a re-encoded image ships as the smaller file, and reporting its source size would
         // credit the build with bytes it never wrote.
         const measured = carried
-            ? input.assetImages?.[assetId]?.path ?? record.sourcePath
+            ? input.assetReplacements?.[assetId]?.path ?? record.sourcePath
             : record.sourcePath;
         const bytes = await measureAssetBytes(measured);
         const entry: ShippedAssetReportEntry = {
@@ -1378,7 +1383,7 @@ async function copyProjectAssets(input: {
      * can have lost its last reference, and narrowing there could only ever take something away.
      */
     include: ReadonlySet<string> | null;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
     for (const type of ASSET_TYPES) {
@@ -1410,7 +1415,7 @@ async function copyProjectAssets(input: {
             // file in the author's project this asset came from, which is exactly
             // as true afterwards, and they are the only trail from a shipped
             // asset back to its source. See `optimizeProjectImages`.
-            const optimized = input.assetImages?.[normalized.id];
+            const optimized = input.assetReplacements?.[normalized.id];
             const payloadPath = optimized?.path ?? sourcePath;
             const ext = optimized?.ext ?? normalized.ext;
             // The MIME type is derived from the extension, not from where the
@@ -1607,7 +1612,7 @@ async function copyBakedCharacterAvatars(input: {
      * sits on disk, and this walk would copy every one of them into a demo.
      */
     characterIds: ReadonlySet<string> | null;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<void> {
     const root = path.join(input.projectPath, "resources", "characters", "avatars");
     let characterDirs: string[];
@@ -1631,7 +1636,7 @@ async function copyBakedCharacterAvatars(input: {
             const sourcePath = path.join(dir, fileName);
             // Re-encoded like any other image, and by the same pass: a bake is a
             // PNG shown on almost every line of dialogue.
-            const optimized = input.assetImages?.[id];
+            const optimized = input.assetReplacements?.[id];
             const payloadPath = optimized?.path ?? sourcePath;
             const ext = optimized?.ext ?? "png";
             let relativePath: string;

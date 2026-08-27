@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
-    type AssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
+    DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    type AssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
 import {
     jpegHasIccProfile,
     planAssetImageTranscode,
@@ -64,7 +64,7 @@ function webp(): Uint8Array {
     return Uint8Array.from(bytes);
 }
 
-const LOSSY: AssetOptimizationConfiguration = { ...DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, lossyImages: true };
+const LOSSY: AssetCompressionConfiguration = { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true };
 
 /** Manifest keys for ordinary assets are UUIDs, so a "/" only ever means a bundle member. */
 const ASSET_ID = "3f2a1c04-5b6d-4e7f-8a9b-0c1d2e3f4a5b";
@@ -134,12 +134,12 @@ describe("planAssetImageTranscode", () => {
     // The lossless arm answers to nothing in the configuration, which is the whole reason it is
     // not a setting: there is no policy under which a PNG is left as it is.
     it("converts a plain PNG losslessly, with nothing in the policy turned on", () => {
-        expect(planAssetImageTranscode(candidate(png()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(png()), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "lossless" });
     });
 
     it("leaves a JPEG alone unless lossy is on, because lossless WebP of one is bigger", () => {
-        expect(planAssetImageTranscode(candidate(jpeg()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(jpeg()), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "not-enabled" });
     });
 
@@ -155,7 +155,7 @@ describe("planAssetImageTranscode", () => {
 
     it("refuses a colour-managed image in either mode", () => {
         const managed = png([chunk("iCCP", ascii("Display P3"))]);
-        expect(planAssetImageTranscode(candidate(managed), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(managed), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "color-managed" });
         expect(planAssetImageTranscode(candidate(jpeg([app2("ICC_PROFILE")])), LOSSY))
             .toEqual({ action: "skip", reason: "color-managed" });
