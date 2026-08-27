@@ -5,6 +5,7 @@ import {
     type StudioTaskClaim,
     type StudioTaskId,
     type StudioTaskKind,
+    type StudioTaskLane,
     type StudioTaskOverview,
     type StudioTaskPriority,
     type StudioTaskProgress,
@@ -16,10 +17,15 @@ import {
  *
  * ## One at a time, and why that is the design rather than a limitation
  *
- * Every task here is CPU-bound and already occupies the machine. Running two encodes in parallel
- * finishes neither sooner, and it makes the readout meaningless — "clip 2 of 3" only means something
- * when there is one thing in flight. So the scheduler runs exactly one task and keeps the rest in
- * order, which is also what lets a waiting author be told there is more behind this one.
+ * The queued work here is CPU-bound and already occupies the machine. Running two encodes in
+ * parallel finishes neither sooner, and it makes the readout meaningless — "clip 2 of 3" only means
+ * something when there is one thing in flight. So the scheduler runs exactly one such task and keeps
+ * the rest in order, which is also what lets a waiting author be told there is more behind this one.
+ *
+ * A download is the exception, and it is an exception to the premise rather than to the rule: it
+ * spends a socket, not the cores, so nothing is finished sooner by making it wait — and one a build
+ * worker has already started cannot be made to wait at all. Those run in their own lane, beside the
+ * queue rather than in it. See {@link StudioTaskLane}.
  *
  * ## Deduplication is the feature, not an optimisation
  *
@@ -69,6 +75,14 @@ export type StudioTaskRequest<T> = {
     key: string;
     priority: StudioTaskPriority;
     /**
+     * Which resource this spends. Defaults to `machine`, which is the lane the queue is for.
+     *
+     * `network` work starts the moment it is submitted rather than taking its turn - see
+     * {@link StudioTaskLane} for why waiting would be both pointless and, for work another process
+     * has already started, a false readout.
+     */
+    lane?: StudioTaskLane;
+    /**
      * Do the work. `report` is how progress reaches the snapshot; a task that cannot measure itself
      * simply never calls it, and its progress stays null.
      */
@@ -106,11 +120,20 @@ type Entry = {
     unclaimed: boolean;
     cancelled: boolean;
     stop: (() => void) | null;
+    lane: StudioTaskLane;
 };
 
 export class StudioTaskScheduler {
     private readonly queue: Entry[] = [];
     private active: Entry | null = null;
+    /**
+     * Network tasks, which run as soon as they are submitted and therefore never sit in the queue.
+     *
+     * A set rather than a single slot because two downloads genuinely can overlap - a build that
+     * needs both a toolchain and a plugin's redistributable fetches them independently - and
+     * because, unlike the bakes, nothing is gained by making one of them wait.
+     */
+    private readonly live = new Set<Entry>();
     private readonly listeners = new Set<(overview: StudioTaskOverview) => void>();
     private draining = false;
 
@@ -126,7 +149,7 @@ export class StudioTaskScheduler {
     public submit<T>(request: StudioTaskRequest<T>): Promise<StudioTaskOutcome<T>> {
         const joined = this.enter<T>(request, null);
         this.publish();
-        void this.drain();
+        this.pump();
         return joined;
     }
 
@@ -151,7 +174,7 @@ export class StudioTaskScheduler {
             this.supersede(claim);
         }
         this.publish();
-        void this.drain();
+        this.pump();
         return Promise.all(joined);
     }
 
@@ -169,7 +192,7 @@ export class StudioTaskScheduler {
      */
     public supersede(claim: StudioTaskClaim): void {
         // A copy: cancelling a queued task splices the queue underneath this loop.
-        for (const entry of [this.active, ...this.queue]) {
+        for (const entry of [this.active, ...this.queue, ...this.live]) {
             if (!entry) {
                 continue;
             }
@@ -214,8 +237,15 @@ export class StudioTaskScheduler {
             unclaimed: false,
             cancelled: false,
             stop: null,
+            lane: request.lane ?? "machine",
         };
         this.stake(entry, claim);
+        if (entry.lane === "network") {
+            // Not queued at all: it contends with nothing, and for a download another process has
+            // already opened it would be a wait that is not happening. Started by the pump below.
+            this.live.add(entry);
+            return this.join<T>(entry);
+        }
         // Blocking work goes ahead of speculation, and behind other blocking work: someone is waiting
         // on each of those too, and reordering among them would only move the wait around.
         if (request.priority === "blocking") {
@@ -250,7 +280,10 @@ export class StudioTaskScheduler {
         }
         entry.cancelled = true;
         entry.stop?.();
-        if (entry !== this.active) {
+        // A task already under way settles where it is: the run function sees `cancelled` and
+        // whatever it registered through `onCancel` has been called. Only one that has not started
+        // can be taken off the board here, and a network task starts the instant it is submitted.
+        if (entry !== this.active && entry.snapshot.status === "queued") {
             this.remove(entry);
             this.settle(entry, { status: "cancelled" }, "cancelled");
             this.publish();
@@ -258,13 +291,22 @@ export class StudioTaskScheduler {
     }
 
     public getOverview(): StudioTaskOverview {
-        if (!this.active && this.queue.length === 0) {
+        const running = [this.active, ...this.live].filter((entry): entry is Entry => entry !== null);
+        if (running.length === 0 && this.queue.length === 0) {
             return EMPTY_STUDIO_TASK_OVERVIEW;
         }
-        const blocking = [this.active, ...this.queue].some(entry => entry?.snapshot.priority === "blocking");
+        const blocking = [...running, ...this.queue].some(entry => entry.snapshot.priority === "blocking");
+        // Waiting on something beats doing something early, which is the distinction `priority`
+        // exists for; a download breaks a remaining tie because it is never speculative, so of two
+        // tasks that both claim to be blocking it is the one that certainly is.
+        const shown = running.find(entry => entry.lane === "network" && entry.snapshot.priority === "blocking")
+            ?? running.find(entry => entry.snapshot.priority === "blocking")
+            ?? running.find(entry => entry.lane === "network")
+            ?? running[0]
+            ?? null;
         return {
-            active: this.active ? this.active.snapshot : null,
-            queued: this.queue.length,
+            active: shown ? shown.snapshot : null,
+            queued: this.queue.length + running.length - (shown ? 1 : 0),
             blocking,
         };
     }
@@ -279,6 +321,11 @@ export class StudioTaskScheduler {
     private find(key: string): Entry | null {
         if (this.active?.key === key) {
             return this.active;
+        }
+        for (const entry of this.live) {
+            if (entry.key === key) {
+                return entry;
+            }
         }
         return this.queue.find(entry => entry.key === key) ?? null;
     }
@@ -303,9 +350,15 @@ export class StudioTaskScheduler {
         if (index !== -1) {
             this.queue.splice(index, 1);
         }
+        this.live.delete(entry);
     }
 
     private settle(entry: Entry, outcome: StudioTaskOutcome<unknown>, status: StudioTaskSnapshot["status"]): void {
+        // Off the board before anyone is told, because waiters resolve synchronously: a caller that
+        // looks at the overview the moment its download finishes must not still be shown that
+        // download. The machine lane has already been taken off the queue by then, so this is the
+        // network lane's removal in practice.
+        this.remove(entry);
         entry.snapshot = {
             ...entry.snapshot,
             status,
@@ -316,6 +369,23 @@ export class StudioTaskScheduler {
         for (const waiter of waiters) {
             waiter(outcome);
         }
+    }
+
+    /** Start everything that is now allowed to start, in both lanes. */
+    private pump(): void {
+        for (const entry of this.live) {
+            if (entry.snapshot.status === "queued") {
+                void this.launch(entry);
+            }
+        }
+        void this.drain();
+    }
+
+    /** A network task, from submission to settled. Nothing waits for it, including this. */
+    private async launch(entry: Entry): Promise<void> {
+        await this.execute(entry);
+        // `settle` has already taken it out of the live set; this is the announcement that it has.
+        this.publish();
     }
 
     private async drain(): Promise<void> {
@@ -330,53 +400,63 @@ export class StudioTaskScheduler {
                     break;
                 }
                 this.active = entry;
-                entry.snapshot = { ...entry.snapshot, status: "running" };
-                this.publish();
-
-                const context: StudioTaskRunContext = {
-                    report: progress => {
-                        // Dropped once the task is over: a worker can deliver a buffered report after
-                        // it has already finished, and it must not reopen a task the readout is done
-                        // with.
-                        if (this.active === entry && entry.snapshot.status === "running") {
-                            entry.snapshot = { ...entry.snapshot, progress };
-                            this.publish();
-                        }
-                    },
-                    get cancelled() {
-                        return entry.cancelled;
-                    },
-                    onCancel: stop => {
-                        entry.stop = stop;
-                        if (entry.cancelled) {
-                            stop();
-                        }
-                    },
-                };
-
-                try {
-                    const value = await entry.run(context);
-                    this.settle(entry, entry.cancelled ? { status: "cancelled" } : { status: "done", value }, entry.cancelled ? "cancelled" : "done");
-                } catch (error) {
-                    if (entry.cancelled) {
-                        // What a stopped task throws on its way out is the stop, not a finding: an
-                        // encoder that was killed reports, correctly, that it failed. Retiring a claim
-                        // now cancels tasks routinely, so logging those as failures would bury the
-                        // real ones under the ordinary consequence of typing a third digit.
-                        this.settle(entry, { status: "cancelled" }, "cancelled");
-                    } else {
-                        const detail = error instanceof Error ? error.message : String(error);
-                        // Logged here rather than by every task: a rejection escaping a background job
-                        // is the one failure with nobody on screen to notice it.
-                        logger.warn(`${entry.snapshot.kind} task failed: ${detail}`);
-                        this.settle(entry, { status: "error", error: detail }, "error");
-                    }
-                }
+                await this.execute(entry);
                 this.active = null;
                 this.publish();
             }
         } finally {
             this.draining = false;
+        }
+    }
+
+    /**
+     * Run one task and settle it, whichever lane it came from.
+     *
+     * The lanes differ in when a task is allowed to start and in what it displaces; once running,
+     * everything about it - the progress channel, the cancel handshake, the reading of a rejection -
+     * is the same, and two copies of that would be two places for those judgements to drift apart.
+     */
+    private async execute(entry: Entry): Promise<void> {
+        entry.snapshot = { ...entry.snapshot, status: "running" };
+        this.publish();
+
+        const context: StudioTaskRunContext = {
+            report: progress => {
+                // Dropped once the task is over: a worker can deliver a buffered report after it has
+                // already finished, and it must not reopen a task the readout is done with.
+                if (entry.snapshot.status === "running") {
+                    entry.snapshot = { ...entry.snapshot, progress };
+                    this.publish();
+                }
+            },
+            get cancelled() {
+                return entry.cancelled;
+            },
+            onCancel: stop => {
+                entry.stop = stop;
+                if (entry.cancelled) {
+                    stop();
+                }
+            },
+        };
+
+        try {
+            const value = await entry.run(context);
+            this.settle(entry, entry.cancelled ? { status: "cancelled" } : { status: "done", value }, entry.cancelled ? "cancelled" : "done");
+        } catch (error) {
+            if (entry.cancelled) {
+                // What a stopped task throws on its way out is the stop, not a finding: an encoder
+                // that was killed reports, correctly, that it failed. Retiring a claim now cancels
+                // tasks routinely, so logging those as failures would bury the real ones under the
+                // ordinary consequence of typing a third digit.
+                this.settle(entry, { status: "cancelled" }, "cancelled");
+            } else {
+                const detail = error instanceof Error ? error.message : String(error);
+                // Logged here rather than by every task: a rejection escaping a background job is the
+                // one failure with nobody on screen to notice it.
+                logger.warn(`${entry.snapshot.kind} task failed: ${detail}`);
+                this.settle(entry, { status: "error", error: detail }, "error");
+            }
         }
     }
 

@@ -1,3 +1,4 @@
+import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
 import type {
     GameBuildArch,
     GameBuildDesktopPlatform,
@@ -402,6 +403,20 @@ export type GameBuildWorkerLogMessage = {
     message: string;
 };
 
+/**
+ * A file this worker is pulling down, so the window can show that the build is waiting on a network
+ * rather than merely being slow.
+ *
+ * Separate from the log channel because it is not prose: it carries a byte count the main process
+ * turns into a task, and the words an author reads are picked there, in the language that window is
+ * showing. What electron-builder downloads on its own account does not come through here - nothing
+ * in this process can see those - and is read off the worker's own output instead.
+ */
+export type GameBuildWorkerDownloadMessage = {
+    type: "download";
+    event: DownloadProgressEvent;
+};
+
 export type GameBuildWorkerDoneMessage = {
     type: "done";
     /** Absolute paths of the artifacts electron-builder reported. */
@@ -417,5 +432,6 @@ export type GameBuildWorkerInboundMessage = GameBuildWorkerStartMessage;
 
 export type GameBuildWorkerOutboundMessage =
     | GameBuildWorkerLogMessage
+    | GameBuildWorkerDownloadMessage
     | GameBuildWorkerDoneMessage
     | GameBuildWorkerErrorMessage;

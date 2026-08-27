@@ -45,7 +45,7 @@ export type StudioTaskId = string;
  * A closed set rather than free text, because the renderer turns it into words and an unknown kind
  * would have none. Adding one is a member here plus a translation.
  */
-export const STUDIO_TASK_KINDS = ["weatherBake"] as const;
+export const STUDIO_TASK_KINDS = ["weatherBake", "toolchainDownload", "pluginDownload"] as const;
 
 export type StudioTaskKind = (typeof STUDIO_TASK_KINDS)[number];
 
@@ -67,8 +67,28 @@ export type StudioTaskStatus = "queued" | "running" | "done" | "error" | "cancel
 export type StudioTaskProgress = {
     done: number;
     total: number;
-    unit: "clip" | "frame" | "file" | "step";
+    unit: "clip" | "frame" | "file" | "step" | "byte";
 };
+
+/**
+ * Which of the machine's resources a task spends, which is what decides whether it can be made to
+ * wait.
+ *
+ * `machine` work is the reason the queue exists: it is CPU-bound, it already occupies the host, and
+ * two of them at once finish neither sooner. `network` work spends a socket instead. Two facts
+ * follow from that, and both matter:
+ *
+ * - It does not contend with a bake, so making it wait behind one buys nothing and costs the author
+ *   the wait.
+ * - It is often ALREADY IN FLIGHT by the time this hears about it. A packaging worker that has
+ *   started pulling an Electron dist cannot be told to hold; the only choice left is whether to say
+ *   what is happening. A task queued in that state would report, in order, a wait that is not
+ *   happening and then a download that has already finished.
+ *
+ * So network work runs where it is submitted. Studio never downloads speculatively, so there is no
+ * network equivalent of a pre-bake to keep out of the author's way.
+ */
+export type StudioTaskLane = "machine" | "network";
 
 /**
  * Urgency, which is the whole point of the concept.
@@ -106,11 +126,24 @@ export type StudioTaskSnapshot = {
  * is waiting on one thing at a time, and a strip that grew a cell per task would describe the
  * implementation. `queued` is carried so a readout can say there is more behind this one without
  * enumerating it.
+ *
+ * One task is shown even though two lanes can run at once (see {@link StudioTaskLane}). The one
+ * picked is a task someone is waiting on, in preference to speculation, which is the same judgement
+ * `blocking` already encodes; a download wins a tie because a download is never speculative, while
+ * the bake beside it usually is.
  */
 export type StudioTaskOverview = {
     /** The task being worked on, or null when nothing is. */
     active: StudioTaskSnapshot | null;
-    /** How many more are waiting behind it, `active` excluded. */
+    /**
+     * How much more Studio has in hand, `active` excluded: what is waiting, plus anything running
+     * in the other lane.
+     *
+     * Not strictly "behind" any more, now that a download runs alongside a bake rather than after
+     * it. What a reader does with the number is unchanged - it says there is more than the one
+     * thing named - and counting a concurrent task as zero would make the busiest moment of a build
+     * read as the quietest.
+     */
     queued: number;
     /**
      * Whether anything is being waited ON, as opposed to merely being done early.

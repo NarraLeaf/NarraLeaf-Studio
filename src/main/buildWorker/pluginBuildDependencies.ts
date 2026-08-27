@@ -3,8 +3,10 @@ import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";
+import { readBodyWithProgress } from "@shared/types/downloadProgress";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { describeRewrite, rewriteDownloadUrl } from "@shared/utils/downloadSource";
+import { reportDownload } from "./downloadReporting";
 import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from "./mobile/zipModel";
 
 /**
@@ -77,6 +79,7 @@ const PROBE_TIMEOUT_MS = 5000;
 
 /** Distinguishes concurrent staging directories within one process. */
 let stagingSequence = 0;
+
 
 export function buildDependencyCacheRoot(userDataDir: string): string {
     return path.join(userDataDir, CACHE_DIR_NAME, CACHE_BUCKET_NAME);
@@ -292,7 +295,22 @@ async function downloadSource(
     if (!response.ok) {
         throw new Error(`${where}: download of ${target.url} failed with HTTP ${response.status}`);
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
+    // The declared URL rather than the rewritten one, so a mirror does not turn one dependency into
+    // two transfers as far as the readout is concerned.
+    const transferId = `buildDependency:${target.url}`;
+    reportDownload({ phase: "start", id: transferId, kind: "pluginDownload" });
+    let buffer: Buffer;
+    try {
+        // Chunk by chunk rather than `arrayBuffer()`, which yields the body in one step and can
+        // therefore report nothing while a redistributable of tens of megabytes comes down.
+        buffer = await readBodyWithProgress(response, (done, total) => {
+            reportDownload({ phase: "advance", id: transferId, done, total });
+        });
+    } finally {
+        // Closed either way: a transfer that failed is no longer happening, and the reason is thrown
+        // to the caller, which puts it in front of the author as a build error.
+        reportDownload({ phase: "end", id: transferId });
+    }
     const digest = createHash("sha256").update(buffer).digest("hex");
     const expected = target.sha256.trim().toLowerCase();
     if (digest !== expected) {
