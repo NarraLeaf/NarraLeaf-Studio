@@ -15,6 +15,7 @@ import {
     type ProjectDictionaryEntry,
     type ProjectDictionaryOptions,
 } from "@shared/types/dictionary";
+import type { LiveDictionaryOp } from "@shared/live/ops";
 import { SPELLCHECK_LANGUAGE_KEY, type SpellcheckStatus } from "@shared/types/spellcheck";
 import { getInterface } from "@/lib/app/bridge";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
@@ -26,6 +27,31 @@ import { DEFAULT_AUTOSAVE_DELAY_MS, DEFAULT_AUTOSAVE_MAX_WAIT_MS, DebouncedSaver
 import { registerAutoSaver, reportUnreadableDocument } from "../autosave/SaveStatusService";
 import { LocalizationService } from "../localization/LocalizationService";
 import { EventEmitter } from "../ui/EventEmitter";
+
+/**
+ * Somewhere a dictionary edit can go instead of into the document.
+ *
+ * **The seam a live session hangs the dictionary off, and the reason the dictionary panel needs no
+ * live-session code.** The shape is `StoryOpSink`'s and the bargain is the same: with a sink
+ * installed an edit becomes an operation and the document is not touched; the list moves when the
+ * operation comes back as somebody's effect and {@link DictionaryService.applyLiveOp} applies it.
+ * Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * ⚠ **Asked from the mutators rather than from {@link DictionaryService.applyMutation}, which is
+ * where every edit really does converge.** That method takes a function over the whole list and can
+ * only say "the entries changed" - which is whole-document last-writer-wins, the one verb the
+ * session vocabulary refuses. The mutators know what they meant, so that is where they say it. It is
+ * `AssetsService.recordChanged`'s answer to the same shape of service.
+ */
+export type DictionaryOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveDictionaryOp): boolean;
+};
 
 type DictionaryServiceEvents = {
     /** The terms, the readings, the variants or the options moved. Carries the whole list. */
@@ -65,6 +91,8 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
     private dirty = false;
     private revision = 0;
     private status: SpellcheckStatus | null = null;
+    /** Where dictionary edits go instead of into the document, when something else owns them. */
+    private opSink: DictionaryOpSink | null = null;
     private unsubscribeSourceLocale: (() => void) | null = null;
     private unsubscribeSetting: (() => void) | null = null;
     private unsubscribeFocus: (() => void) | null = null;
@@ -226,6 +254,12 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
             return false;
         }
         const entry = applyPatch({ term: normalized }, patch ?? {});
+        // The sink is asked with the entry as it WOULD have been written, never with the patch: a
+        // patch states an intention and every machine would resolve it against its own copy. See
+        // {@link DictionaryOpSink}.
+        if (this.opSink?.handle({ op: "set-dictionary-entry", term: normalized, entry })) {
+            return true;
+        }
         this.applyMutation(entries => [...entries, entry]);
         return true;
     }
@@ -250,6 +284,11 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
             return false;
         }
         const updated = applyPatch({ ...existing, term: renamed ?? existing.term }, patch);
+        // `term` is where the entry is now and `updated.term` is where it ends up, which is what
+        // makes a rename one operation rather than a removal followed by an addition.
+        if (this.opSink?.handle({ op: "set-dictionary-entry", term: existing.term, entry: updated })) {
+            return true;
+        }
         this.applyMutation(entries => entries.map(entry => (entry.term === existing.term ? updated : entry)));
         return true;
     }
@@ -259,6 +298,11 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
         const existing = this.getEntry(term);
         if (!existing) {
             return false;
+        }
+        // Nothing rather than a delete verb of its own: in this document an entry that is not there
+        // and a word the project does not write are the same state. See {@link LiveDictionaryOp}.
+        if (this.opSink?.handle({ op: "set-dictionary-entry", term: existing.term, entry: null })) {
+            return true;
         }
         this.applyMutation(entries => entries.filter(entry => entry.term !== existing.term));
         return true;
@@ -272,8 +316,60 @@ export class DictionaryService extends Service<DictionaryService> implements IDi
             && next.checkVariants === document.options.checkVariants) {
             return;
         }
+        if (this.opSink?.handle({ op: "set-dictionary-options", options: next })) {
+            return;
+        }
         this.document = { ...document, options: next };
         this.bump();
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send dictionary edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: DictionaryOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /** The document as it stands, or null before this window has read one. What a digest reads. */
+    public documentOrNull(): ProjectDictionaryDocument | null {
+        return this.document;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the list is
+     * finally allowed to move.
+     *
+     * ⚠ **The entry is written at `entry.term`, not at `term`**, and the two differ exactly when the
+     * operation is a rename. Both are done as one write so that no machine ever holds the entry
+     * under both spellings, however the normalizer would have merged them.
+     */
+    public applyLiveOp(op: LiveDictionaryOp): void {
+        switch (op.op) {
+            case "set-dictionary-entry": {
+                const entry = op.entry;
+                this.applyMutation(entries => {
+                    const rest = entries.filter(candidate =>
+                        candidate.term !== op.term && candidate.term !== entry?.term);
+                    return entry ? [...rest, entry] : rest;
+                });
+                return;
+            }
+            case "set-dictionary-options": {
+                const document = this.getDocument();
+                this.document = { ...document, options: normalizeDictionaryOptions(op.options) };
+                this.bump();
+                return;
+            }
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
+                // other machine in the room and not on this one, and nothing says so until a digest
+                // disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live dictionary operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
     }
 
     /** Replace the whole document (history restore). Sets, publishes and emits without touching history. */

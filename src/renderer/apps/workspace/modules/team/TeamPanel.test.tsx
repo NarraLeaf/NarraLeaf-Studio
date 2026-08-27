@@ -35,14 +35,12 @@ vi.mock("@/apps/workspace/context", () => ({ useWorkspace: () => ({ context: nul
 const bridge = vi.hoisted(() => ({
     servers: [] as VcsServerSession[],
     launchSettings: vi.fn(),
-    listServerProjects: vi.fn(),
     teamCall: vi.fn(),
 }));
 vi.mock("@/lib/app/bridge", () => ({
     getInterface: () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
-            listServerProjects: bridge.listServerProjects,
             // Reached only once the add row is pressed; a stub keeps the mount honest.
             probeServer: () => Promise.resolve({ success: false }),
             addServer: () => Promise.resolve({ success: false }),
@@ -58,10 +56,6 @@ afterEach(() => {
     cleanup();
     bridge.servers = [];
     bridge.launchSettings.mockClear();
-    bridge.listServerProjects.mockReset().mockResolvedValue({
-        success: true,
-        data: { ok: true, projects: [] },
-    });
     bridge.teamCall.mockReset().mockResolvedValue({ success: true, data: { ok: true, value: null } });
 });
 
@@ -326,7 +320,7 @@ describe("what the server answered", () => {
         expect(seam("collaboration")).toBeNull();
     });
 
-    it("counts the machines on this project, and says when it is alone", () => {
+    it("counts the machines on this project once there is more than this one", () => {
         panel({}, team({
             canSeeClients: true,
             clients: [
@@ -337,65 +331,25 @@ describe("what the server answered", () => {
         expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereMany");
 
         cleanup();
+        // Alone with nothing attached, the section has nothing to report and is not drawn. It used
+        // to say "only this machine" every working day, under a heading, beside a room row.
         panel({}, team({ canSeeClients: true, clients: [{ id: "a", account: "ada", label: "Nomen", agent: "", since: 1 }] }));
-        expect(seam("clients")?.textContent).toContain("workspace.shell.team.hereAlone");
+        expect(seam("collaboration")).toBeNull();
     });
 
-    it("offers a live session where the server has rooms, and opens one at the read head", () => {
+    /*
+     * ⚠ **The live session is not in this dialog and must not come back to it.**
+     *
+     * It was one row here, with the only deliberate act in the panel drawn smaller than the address
+     * above it, behind two clicks, in a dialog that is shut for the whole of a working day. A
+     * session is a mode the window is in and it outlives every tab, so it belongs to the title bar
+     * and to a surface of its own - `LiveSessionPresence` and `LiveSessionDialog`, whose own file
+     * holds everything that used to be pinned here.
+     */
+    it("says nothing about live sessions", () => {
         panel({}, team({ canLive: true, head: "rev-9" }));
-        const open = seam("live-open");
-        expect(open?.textContent).toBe("workspace.shell.team.liveOpen");
-
-        fireEvent.click(open as HTMLElement);
-        expect(bridge.teamCall).toHaveBeenCalledWith(
-            ONE,
-            "live.open",
-            // The version the server last read, which is what everybody in the room has in
-            // common. Never one this side invented.
-            { project: "abc", revision: "rev-9" },
-        );
-    });
-
-    it("offers to join a room this window is not in", () => {
-        panel({}, team({
-            canLive: true,
-            live: [{
-                id: "room-1",
-                project: "abc",
-                title: "act one",
-                openedBy: "bob",
-                openedByInstance: "bob-1",
-                openedAt: 1,
-                members: [{ instance: "bob-1", account: "bob", label: "iMac", joinedAt: 1 }],
-            }],
-        }));
-        expect(seam("live")?.textContent).toContain("act one");
-        fireEvent.click(seam("live-join") as HTMLElement);
-        expect(bridge.teamCall).toHaveBeenCalledWith(ONE, "live.join", { session: "room-1" });
-    });
-
-    it("offers to leave the room it is in, and to end only the one it opened", () => {
-        const room = {
-            id: "room-1",
-            project: "abc",
-            openedBy: "ada",
-            openedByInstance: "mine",
-            openedAt: 1,
-            members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }],
-        };
-        panel({}, team({ canLive: true, instance: "mine", live: [room] }));
-        expect(seam("live-leave")).not.toBeNull();
-        expect(seam("live-end")).not.toBeNull();
-
-        cleanup();
-        // The same room, opened by somebody else. Leaving is still offered; ending is not.
-        panel({}, team({
-            canLive: true,
-            instance: "mine",
-            live: [{ ...room, openedByInstance: "theirs", members: [...room.members] }],
-        }));
-        expect(seam("live-leave")).not.toBeNull();
-        expect(seam("live-end")).toBeNull();
+        expect(seam("live")).toBeNull();
+        expect(seam("live-open")).toBeNull();
     });
 
     it("counts what is attached, and how much of it is about an older version", () => {

@@ -52,5 +52,21 @@ export const game = {
         // Shown under every policy: a player who is not being told what went wrong is the one
         // who most needs to be able to hand the file to somebody who can read it.
         logAt: "The report is in {path}",
+        // The failure itself where the page came up but its preload did not, so there is no way
+        // through to the pack, the saves or anything else. Named the way the process's own report
+        // of a dead renderer is, because both are read by whoever the player sends them to.
+        bridgeUnavailable: "The game's runtime bridge did not load",
+    },
+    /**
+     * The web export refusing to be a second copy of a game that is already open.
+     *
+     * Two tabs of one export share a single store, so the second one would be writing over the
+     * first one's saves. Nothing is said about that: what the player needs is the state and the way
+     * out of it, and both fit in a line.
+     */
+    session: {
+        title: "The game is already open",
+        detail: "It is running in another browser tab. Close that tab, then reload this page.",
+        reload: "Reload",
     },
 } as const;

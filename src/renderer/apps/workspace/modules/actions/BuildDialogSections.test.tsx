@@ -57,6 +57,7 @@ const neverRemoves = async (_credential: SigningCredential) => false;
 
 /** A project called "My Game", with only the release variant and no plugin asking for anything. */
 const info: BuildDialogInfo = {
+    dlcs: [],
     hostPlatform: "macos",
     hostArch: "arm64",
     productName: "My Game",
@@ -607,4 +608,14 @@ vi.mock("@/lib/app/bridge", () => ({
 let frozen = false;
 vi.mock("../../hooks/useWorkspaceFrozen", () => ({
     useWorkspaceFrozen: () => frozen,
+    // The guard reads the whole reason now, so it can ask whether a partial freeze spares the
+    // document a surface names. Nothing in this dialog names one, so any kind will do.
+    useWorkspaceFreeze: () => (frozen ? { kind: "manual" } : null),
+}));
+
+// The plugins page names `editor/app-tags.json`, which a live session carries - so its fields read
+// the claims on it. Outside a workspace there is no session and nothing is claimed, which is what an
+// absent context already means.
+vi.mock("../../context", () => ({
+    useWorkspace: () => ({ context: null, isInitialized: false }),
 }));

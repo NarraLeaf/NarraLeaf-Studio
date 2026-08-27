@@ -210,6 +210,39 @@ describe("SaveStatusService while the workspace is frozen", () => {
         expect(service.getStatus()).toBe("clean");
     });
 
+    it("does not tell a live session that nothing is being saved", async () => {
+        // The one partial freeze. The story it is about goes on saving, so the usual title is false
+        // about the file the author is most likely typing into - and telling somebody their work is
+        // being discarded while it is not is the kind of wrong that stops them working.
+        const { showSticky } = await makeHarness();
+        freezeProjectWrites({
+            projectPath: PROJECT,
+            reason: { kind: "live-session", session: "room-1", writable: ["editor/story/stories/s1/storydoc.json"] },
+        });
+
+        refuseFrozenWrite(`${PROJECT}/editor/characters/index.json`);
+
+        expect(showSticky).toHaveBeenCalledTimes(1);
+        const shown = showSticky.mock.calls[0][0] as { message: string; detail: string };
+        expect(shown.message).toBe("That file is not being saved");
+        // Says which file, and that the session is saving what it carries - never that nothing is.
+        expect(shown.detail).toContain("only the documents it carries are saved");
+        // "Unfreeze the workspace" names a control a session does not have; the way out is leaving it.
+        expect(shown.detail).not.toContain("Unfreeze");
+        expect(shown.detail).toContain("Leave the session");
+    });
+
+    it("goes on saving the session's own document rather than refusing it", async () => {
+        const { showSticky } = await makeHarness();
+        freezeProjectWrites({
+            projectPath: PROJECT,
+            reason: { kind: "live-session", session: "room-1", writable: ["editor/story/stories/s1/storydoc.json"] },
+        });
+
+        expect(refuseFrozenWrite(`${PROJECT}/editor/story/stories/s1/storydoc.json`)).toBeNull();
+        expect(showSticky).not.toHaveBeenCalled();
+    });
+
     it("takes the notice down when the workspace thaws", async () => {
         const { close } = await makeHarness();
         freezeProjectWrites({ projectPath: PROJECT, reason: { kind: "manual" } });

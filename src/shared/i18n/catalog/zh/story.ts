@@ -7,6 +7,10 @@ export const story = {
         emptyStories: "此项目中还没有故事",
         storyActions: "故事操作",
         setDefault: "设为默认",
+            dlc: {
+                title: "所属",
+                base: "游戏本体",
+            },
         outline: "大纲",
         newChapter: "新建章节",
         newSceneInChapter: "在章节中新建场景",
@@ -90,6 +94,69 @@ export const story = {
             unplaceableLine: "此处无法放置新的一行",
             speakerUnresolved: "这一行没有绑定角色，说话人名字保持原样，正文的修改仍然生效",
         },
+    },
+    // 因为实时会话而无法动作的控件所显示的话。会话能带走的故事操作只有固定的一组，这一组之外的
+    // 编辑只写在本机、传不到任何别处。每个界面被拿掉的都是同一样东西，所以只用一句话说，不按面
+    // 各写各的托词。
+    live: {
+        editUnavailable: "实时会话期间不可用，退出会话后再修改",
+        // 该行正被他人书写时那个标记的悬停文字。要点名到人：标记旁边没有写名字的宽度，
+        // 而截断的名字谁也认不出。
+        rowClaimed: "{name} 正在写这一行",
+        // 会话主持方拒绝的修改。作者已经打出来的文字原样留在屏幕上——被拒绝的那一行，
+        // 屏幕上的内容就是它唯一的一份——所以这几条只说发生了什么。
+        refusedRowClaimed: "{name} 正在写该行，本次修改未生效",
+        refusedRowGone: "该行已不存在，本次修改未生效",
+        refusedAnchorGone: "移动的目标行已不存在，本次修改未生效",
+        refusedSceneGone: "该场景已不存在，本次修改未生效",
+        // 大纲对「场景已不存在」的那一句。不属于任何章节的场景在大纲里画不出来，
+        // 所以整条请求被拒绝，而不是应用一半。
+        refusedChapterGone: "该章节已不存在，本次修改未生效",
+        refusedCharacterGone: "该角色已不存在，本次修改未生效",
+        refusedAssetGone: "该资产已不存在，本次修改未生效",
+        refusedVariableGone: "该变量已不存在，本次修改未生效",
+        refusedAssetIdTaken: "该资产已经在这里了，没有导入任何内容",
+        refusedFolderNotEmpty: "该分组里还有分组，没有删除任何内容",
+        refusedConfigEntryGone: "该条目已不在此项目中，本次修改未生效",
+        refusedUIElementGone: "该元素已不存在，本次修改未生效",
+        refusedUIBlueprintGone: "该蓝图已不存在，本次修改未生效",
+        refusedElementClaimed: "{name} 正在编辑该元素，本次修改未生效",
+        refusedNodeClaimed: "{name} 正在编辑该节点，本次修改未生效",
+        refusedTooLarge: "本次修改过大，无法在实时会话中共享，未生效",
+        refusedTrackGone: "该音频轨道已不存在，本次修改未生效",
+        refusedSetGone: "该资产集已不存在，本次修改未生效",
+        refusedDocumentNotShared: "实时会话不共享该文档，本次修改未生效",
+        refusedNotInSession: "本机已不在该会话中",
+        refusedUnknownOp: "该会话没有接受这次修改",
+        // 上一次撤销或重做没有发出任何内容的原因，每一条点名让该步骤无法回退的状态。
+        undoNotMine: "该步骤是他人所做",
+        undoNoRecord: "该步骤已无法撤销",
+        undoSceneGone: "该场景已不存在",
+        undoRowGone: "该行已不存在",
+        undoRowRestored: "该行已重新回到场景中",
+        // 结构性步骤。每一条点名让这次删除无从恢复的状态：场景或章节已经回来了，
+        // 或者它原来所在的位置已经没有了。
+        undoSceneRestored: "该场景已重新回到故事中",
+        undoChapterGone: "该章节已不存在",
+        undoChapterRestored: "该章节已重新回到故事中",
+        undoContainerGone: "该行所在的区块已不存在",
+        undoAnchorGone: "该行原来的位置已不存在",
+        undoContainerFilled: "该区块中现在已有其他行",
+        undoSubtreeLost: "其中原有的行无法恢复",
+        undoChaptersChanged: "章节与该步骤记录的那一份不一致",
+        undoCharacterGone: "该角色已不存在",
+        undoCharacterRestored: "该角色已经回到名册中",
+        undoAssetGone: "该资产已不存在",
+        undoContentReplaced: "替换文件无法撤销",
+        undoConfigEntryGone: "该条目已不在此项目中",
+        undoConfigEntryRestored: "该条目已回到此项目中",
+        undoTrackGone: "该音频轨道已不存在",
+        undoTrackRestored: "该音频轨道已经回到混音器中",
+        undoSetGone: "该资产集已不存在",
+        undoSetRestored: "该资产集已经重新声明",
+        undoVariableGone: "该变量已不存在",
+        undoVariableRestored: "该变量已重新存在",
+        undoKeyRestored: "该字符串已被重新声明",
     },
     narralang: {
         exportScene: "导出为 NarraLang…",
@@ -195,6 +262,8 @@ export const story = {
         },
         bulkConfirmDetail: "这些行会加在当前行下方，算作一次撤销",
         scriptFile: "这是故事脚本文件，请用「导入脚本」把它导回来",
+        // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
+        sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
         translationsCarried: {
             other: "已带入 {count} 条译文",
         },
@@ -363,6 +432,26 @@ export const story = {
         clickHint: "等待玩家点击后继续",
         remove: "移除暂停",
     },
+    /**
+     * 需要选值的三个行内标记：字旁的着重号、这一段的字号、以及它打出来的速度。
+     */
+    textType: {
+        emphasis: "着重号",
+        emphasisNone: "无",
+        emphasisDot: "行上实心点",
+        emphasisCircle: "行上空心圈",
+        emphasisSesame: "行上胡麻点",
+        emphasisUnderDot: "行下实心点",
+        /** 着重号按钮上用来演示的字。 */
+        emphasisSample: "文",
+        size: "字号",
+        sizeSmaller: "调小",
+        sizeLarger: "调大",
+        sizeUnit: "级",
+        speed: "打字速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "整行",
+    },
     ruby: {
         title: "注音",
         placeholder: "读音",
@@ -404,6 +493,8 @@ export const story = {
         insertExpression: "插入表情切换",
         ruby: "注音",
         rubyHint: "注音（先选中要注音的文字）",
+        type: "文字",
+        typeHint: "文字（先选中要设置的文字）",
         tools: "富文本工具",
         pauseClick: "暂停（等待点击）",
         pauseSeconds: "暂停 {seconds} 秒",
@@ -484,6 +575,7 @@ export const story = {
         waitFor: "秒数或 click",
         fade: "淡入淡出秒数",
         loop: "循环",
+        returnable: "返回",
         vol: "音量",
         volume: "音量",
         rate: "速度",
@@ -552,6 +644,7 @@ export const story = {
         fade: "淡变",
         // "淡变"是相对词，换到差分上指的是另一种做法；这个词只指交叉溶解，在哪儿写都一样。
         dissolve: "溶解",
+        "fade-in": "淡入",
         slide: "推移",
         "slide-left": "左滑",
         "slide-right": "右滑",
@@ -804,6 +897,8 @@ export const story = {
         cutPointInactiveTitle: "这一行截断的变体已被删除，因此它不再截断任何内容",
         tempSpeaker: "仅名字",
         createCharacter: "创建角色「{name}」",
+        // 上面那一项变灰时的悬停提示，也用在粘贴向导的「新建角色」上：同一件事的两个入口。
+        createCharacterUnavailable: "实时会话期间不可用，改选已有角色",
         voiceOutdated: "配音待更新，打开配音表",
         voiceManage: "打开配音表",
         voicePlay: "试听配音",
@@ -950,7 +1045,7 @@ export const story = {
     pluginActionFallbackDetail: "插件故事动作",
     command: {
         background: { label: "背景", detail: "设置场景背景图片或颜色" },
-        jump: { label: "跳转", detail: "前往另一个场景，当前场景会被卸载" },
+        jump: { label: "跳转", detail: "前往另一个场景，未带「返回」时当前场景会被卸载" },
         wait: { label: "等待", detail: "等待数秒，或等待点击" },
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
         show: { label: "显示", detail: "显示角色或舞台对象" },

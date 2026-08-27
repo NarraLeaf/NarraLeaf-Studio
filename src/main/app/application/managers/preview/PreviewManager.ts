@@ -17,9 +17,11 @@ import { ATOMIC_WRITE_TEMP_PATTERN } from "@shared/utils/fs";
 import { buildDependencyPlatformKey } from "../build/preflight";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { type GameRuntimeArtifactCompileResult } from "./compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "./compiler/compileGameRuntimeArtifactInWorker";
+import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { selectRuntimePluginsForPack, type RuntimePluginPackSelection } from "./selectRuntimePlugins";
@@ -151,7 +153,7 @@ export class PreviewManager {
      */
     public launch(projectPath: string, entry: GameRuntimeLaunchEntry): Promise<PreviewStatus> {
         const frozen = getWorkspaceFreeze(projectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "preview");
             emitWorkspaceConsoleLog(this.app, projectPath, { level: "error", source: "Preview", message });
             return Promise.reject(new Error(message));
@@ -302,6 +304,7 @@ export class PreviewManager {
             }
             this.ensureNotCancelled(attempt);
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), normalizedProjectPath);
+            const runDlc = await resolveRunDlc(this.app.getGlobalState(), normalizedProjectPath);
             // Compiled in a forked utility process, not on the main thread:
             // sealing a protected pack drives the native codec through many
             // seconds of synchronous CPU that would otherwise freeze Studio.
@@ -322,6 +325,9 @@ export class PreviewManager {
                 // the three launch surfaces keep the shapes they had. `packaging` stays off - this
                 // folds the variant without planning what a package would leave out.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
+                // Which DLC this run has installed, from the same machine setting the variant comes
+                // from. Empty until the author ticks one, so a preview is the base game by default.
+                includedDlc: runDlc,
                 encryptionKey,
                 // A preview runs on this machine, so it ships this machine's
                 // sidecars. Without this the preview would be the one shell that

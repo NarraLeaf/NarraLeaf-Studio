@@ -1,8 +1,14 @@
 import type { DocumentMergeDecision, DocumentMergeSide } from "@shared/documents/diff";
 import { mergeDecisionKey, type DocumentMergeSideName } from "@shared/documents/mergeApply";
 import type { TranslationKey } from "@shared/i18n";
-import type { VcsMergeDocument, VcsMergeDocumentBlocker, VcsMergeSideChoice } from "@shared/types/vcs";
+import type {
+    VcsMergeDocument,
+    VcsMergeDocumentBlocker,
+    VcsMergeSideChoice,
+    VcsMergeState,
+} from "@shared/types/vcs";
 import type { LabelTranslator } from "./documentChangeView";
+import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
 
 /**
  * Reading a three-way merge's decisions as rows, without a component in the picture.
@@ -93,7 +99,20 @@ export type MergeFileDecision = VcsMergeSideChoice | "per-change" | "none";
 
 /** One conflicted file, as the index draws it and as the finish button counts it. */
 export interface ConflictRowView {
+    /**
+     * Where the merge reported this conflict. The address every verb takes, and NOT what the row
+     * says: see {@link name}.
+     */
     readonly path: string;
+    /**
+     * What the author calls the thing in conflict: a scene's title, an asset's name, the name of
+     * its kind.
+     *
+     * The same four-state answer the comparison index carries, from the same module, because a
+     * merge is the one surface where naming a file after its file name is worst: `storydoc.json`
+     * twice over is the moment an author has to decide which of two versions of their work to keep.
+     */
+    readonly name: DocumentName;
     readonly decision: MergeFileDecision;
     /**
      * Whether this file has an answer the author gave.
@@ -114,9 +133,14 @@ export interface ConflictRowView {
     readonly undecidedChanges: number;
 }
 
+/**
+ * `names` is required and has no default, for `buildChangeIndex`'s reason: a default would be a
+ * quiet way back to file names, on the surface that can least afford one.
+ */
 export function buildConflictRows(
     paths: readonly string[],
     state: MergeChoiceState,
+    names: DocumentNameContext,
 ): ConflictRowView[] {
     return paths.map(path => {
         const whole = state.decisions[path];
@@ -129,6 +153,7 @@ export function buildConflictRows(
             : 0;
         return {
             path,
+            name: documentNameOf(path, names),
             decision: whole ?? (merging ? "per-change" : "none"),
             // Per-change counts only when every `conflict` inside has a side; an `auto-*` row needs
             // nothing, because the merge already had a right answer for it. A blocked document can
@@ -197,10 +222,10 @@ export interface MergeValueLine {
  * What one side holds, as lines.
  *
  * **Fields, not JSON.** A decision is taken on one entry of a keyed collection, so the value is a
- * record - a translation unit, an asset's metadata - and the question the author is answering is
- * which of two `target` strings to keep. Printing `{"target":"你好","status":"translated",…}` puts
- * the answer inside punctuation; one line per field puts the two translations opposite each other,
- * which is the act of choosing.
+ * record - a translation unit, an asset's metadata, a row of a script - and the question the author
+ * is answering is which of two `target` strings to keep. Printing
+ * `{"target":"你好","status":"translated",…}` puts the answer inside punctuation; one line per field
+ * puts the two translations opposite each other, which is the act of choosing.
  *
  * Nothing is filtered by name. A heuristic that promoted "the important field" would be inventing
  * an opinion about formats this module does not know, and the field it dropped would be the one
@@ -216,29 +241,149 @@ export interface MergeValueView {
     readonly hidden: number;
 }
 
-export function describeMergeSide(side: DocumentMergeSide): MergeValueView {
-    if (!side.present) {
-        return { absent: true, lines: [], hidden: 0 };
+/**
+ * How far into a value the field names go before what is left becomes one line of JSON.
+ *
+ * Deep enough for the shape these documents actually have. A story row's payload keeps the line the
+ * author wrote at `text.value`, one level below the fields that say what kind of row it is, so a
+ * flattening that stopped at the top would put the only thing worth reading inside the braces it is
+ * meant to be taken out of. Bounded, because a name long enough to need its own line is no longer
+ * telling the author where they are.
+ */
+export const MERGE_VALUE_MAX_DEPTH = 3;
+
+/**
+ * Both sides of one decision, as two lists that line up.
+ *
+ * **Described together, which is the whole point of the function taking two arguments.** Two sides
+ * described apart list whatever fields each happens to hold, in whatever order each happens to be
+ * built in, so the two columns of a chooser stop being rows of each other: `status` on the left sits
+ * opposite `target` on the right, and the author compares two things that are not the same thing.
+ * One field list, in one order, drawn by both.
+ *
+ * **The fields the two sides disagree about come first.** A decision exists because the sides
+ * differ; the fields they agree on are the part that is not the question, and leading with them
+ * pushes the answer past the row's limit on exactly the documents whose payload carries its identity
+ * at the top and its content underneath. A field one side does not have counts as a disagreement,
+ * because taking the other side adds or removes it.
+ *
+ * The remaining order is the order the value states, first side first: within "differs" and within
+ * "agrees", nothing here reorders what the document says.
+ */
+export function describeMergeSides(
+    mine: DocumentMergeSide,
+    theirs: DocumentMergeSide,
+): { readonly mine: MergeValueView; readonly theirs: MergeValueView } {
+    const ABSENT: MergeValueView = { absent: true, lines: [], hidden: 0 };
+    if (!mine.present && !theirs.present) {
+        return { mine: ABSENT, theirs: ABSENT };
     }
-    const value = side.value;
+
+    const flat = flattenPair(
+        mine.present ? { value: mine.value } : null,
+        theirs.present ? { value: theirs.value } : null,
+    );
+    const differs = (name: string) => flat.mine.get(name) !== flat.theirs.get(name);
+    const ordered = [...flat.names.filter(differs), ...flat.names.filter(name => !differs(name))];
+    const shown = ordered.slice(0, MERGE_VALUE_FIELD_LIMIT);
+    const hidden = Math.max(0, ordered.length - shown.length);
+
+    const view = (fields: ReadonlyMap<string, string>, present: boolean): MergeValueView => {
+        if (!present) {
+            return ABSENT;
+        }
+        return {
+            absent: false,
+            // A name a side does not hold draws as an empty value rather than as a missing row: the
+            // two columns have to stay rows of each other, and "this side has nothing here" is the
+            // fact the author is choosing about.
+            lines: shown.map(name => ({ ...(name ? { name } : {}), text: fields.get(name) ?? "" })),
+            hidden,
+        };
+    };
+    return {
+        mine: view(flat.mine, mine.present),
+        theirs: view(flat.theirs, theirs.present),
+    };
+}
+
+/** A value that is there, as distinct from a name neither side reaches. */
+interface Held {
+    readonly value: unknown;
+}
+
+/**
+ * Both values as named fields, walked in step.
+ *
+ * **In step, not one after the other.** Two values flattened apart produce two name lists that have
+ * to be reconciled afterwards, and they cannot be: a side holding `tags: {}` and a side holding
+ * `tags: {a: 1}` end up with the names `tags` and `tags.a`, and each column then draws a blank
+ * where the other has a value, saying that a side which does hold `tags` does not. Walked together,
+ * a name stops being split the moment either side has nothing left to split, so the two columns are
+ * always the same names and the same rows.
+ *
+ * A scalar answers with the single nameless entry the row draws bare - there is no field to name
+ * when the value IS the field. Everything else descends: objects by key, arrays by index, joined
+ * with dots, to {@link MERGE_VALUE_MAX_DEPTH}. An empty object or array is a leaf rather than
+ * nothing, because "this side holds an empty list" is a state and drawing no line for it would read
+ * as the side not holding the field at all.
+ */
+function flattenPair(mine: Held | null, theirs: Held | null): {
+    readonly names: string[];
+    readonly mine: ReadonlyMap<string, string>;
+    readonly theirs: ReadonlyMap<string, string>;
+} {
+    const names: string[] = [];
+    const mineFields = new Map<string, string>();
+    const theirsFields = new Map<string, string>();
+
+    const walk = (left: Held | null, right: Held | null, name: string, depth: number): void => {
+        const leftChildren = left ? childEntries(left.value) : null;
+        const rightChildren = right ? childEntries(right.value) : null;
+        const splits = (held: Held | null, children: ReturnType<typeof childEntries>) =>
+            held === null || (children !== null && children.length > 0);
+        if (depth >= MERGE_VALUE_MAX_DEPTH
+            || !splits(left, leftChildren)
+            || !splits(right, rightChildren)) {
+            names.push(name);
+            if (left) mineFields.set(name, scalarText(left.value));
+            if (right) theirsFields.set(name, scalarText(right.value));
+            return;
+        }
+        const keys: string[] = [];
+        for (const [key] of [...(leftChildren ?? []), ...(rightChildren ?? [])]) {
+            if (!keys.includes(key)) {
+                keys.push(key);
+            }
+        }
+        const at = (children: ReturnType<typeof childEntries>, key: string): Held | null => {
+            const found = children?.find(entry => entry[0] === key);
+            return found ? { value: found[1] } : null;
+        };
+        for (const key of keys) {
+            walk(at(leftChildren, key), at(rightChildren, key), name ? `${name}.${key}` : key, depth + 1);
+        }
+    };
+
+    walk(mine, theirs, "", 0);
+    return { names, mine: mineFields, theirs: theirsFields };
+}
+
+/** The named children of a value, or null for something with none to descend into. */
+function childEntries(value: unknown): (readonly [string, unknown])[] | null {
     if (value === null || typeof value !== "object") {
-        return { absent: false, lines: [{ text: scalarText(value) }], hidden: 0 };
+        return null;
     }
-    const entries = Array.isArray(value)
+    return Array.isArray(value)
         ? value.map((element, index) => [String(index), element] as const)
         : Object.entries(value as Record<string, unknown>);
-    const lines = entries.slice(0, MERGE_VALUE_FIELD_LIMIT).map(([name, element]) => ({
-        name,
-        text: scalarText(element),
-    }));
-    return { absent: false, lines, hidden: Math.max(0, entries.length - lines.length) };
 }
 
 /**
  * One field as text.
  *
- * A nested object collapses to compact JSON rather than to a placeholder: it is rare in these
- * formats, and "{…}" would tell the author the two sides differ somewhere they cannot see.
+ * A value too deep to keep naming collapses to compact JSON rather than to a placeholder: "{…}"
+ * would tell the author the two sides differ somewhere they cannot see.
  */
 function scalarText(value: unknown): string {
     const text = typeof value === "string" ? value
@@ -255,6 +400,25 @@ function scalarText(value: unknown): string {
  * "there is nothing left to decide here" as the same blank space, and the author's only way to
  * tell them apart would be to finish the merge and look at the file.
  */
+/**
+ * What the resolve panel's strip says about the merge it is showing.
+ *
+ * **A surface may not go on asserting a state it can see has ended.** The strip used to name the
+ * merge unconditionally, so an author who had just finished one was left reading "the two versions
+ * of this project are being merged" directly above the panel's own body reporting - correctly -
+ * that no merge is in progress. One screen, two answers, and the wrong one on top.
+ *
+ * Where there is no merge it falls back to the panel's own name, which asserts nothing. That is
+ * also the right answer BEFORE the first read comes back, and the reason this takes the state
+ * rather than a boolean: `null` is "nobody has asked yet", and collapsing it into "there is none"
+ * would put a claim on screen that is merely likely.
+ */
+export function mergeHeadingKey(state: VcsMergeState | null): TranslationKey {
+    return (state?.inProgress
+        ? "documentDiff.resolve.merging"
+        : "documentDiff.resolve.tab") as TranslationKey;
+}
+
 export function mergeDocumentBlockedKey(blocker: VcsMergeDocumentBlocker): TranslationKey {
     switch (blocker) {
         case "no-spec":

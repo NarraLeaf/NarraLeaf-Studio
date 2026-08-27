@@ -1,5 +1,14 @@
-import type { DocumentChangeKind, DocumentDiffEntry, DocumentDiffTier } from "@shared/documents/diff";
+import {
+    countDocumentChanges,
+    type DocumentChange,
+    type DocumentChangeKind,
+    type DocumentDiffEntry,
+    type DocumentDiffTier,
+} from "@shared/documents/diff";
+import { assetStorageIdFromContentPath } from "@shared/utils/assetStorageId";
+import { joinAssetEntries, type ChangeIndexUnit } from "./assetRows";
 import { CHANGE_CATEGORY_ORDER, changeCategoryOf, type ChangeCategory } from "./changeCategory";
+import { documentNameOf, type DocumentName, type DocumentNameContext } from "./documentName";
 import { isWholeDocumentChange } from "./documentChangeView";
 
 /**
@@ -10,7 +19,10 @@ import { isWholeDocumentChange } from "./documentChangeView";
  * question an author has - "did anything happen to the story?" - could only be answered by scrolling
  * past the assets. This builds the other half of the answer: headings, and one line per file.
  *
- * **One line per file, whatever is inside it.** Nothing here knows about tiers, labels or values;
+ * **One line per thing the author has a name for, whatever is inside it.** That is one file for
+ * almost everything, and one ASSET where an asset is stored as a record in a shard plus a file of
+ * bytes - `assetRows.ts` folds those two back together before anything here counts them. Nothing
+ * here knows about tiers, labels or values;
  * that is the detail pane's business, and the moment an index row can grow with what it stands for,
  * the index is a report again. Everything a group needs to be honest about - how a file was compared,
  * what was left out - is summed onto the GROUP, once, rather than repeated onto every row.
@@ -19,14 +31,35 @@ import { isWholeDocumentChange } from "./documentChangeView";
  * `documentChangeView.ts` is a module of its own.
  */
 
-/** One file, as one line. Deliberately holds nothing that could render as a second line. */
+/** One file or one asset, as one line. Holds nothing that could render as a second line. */
 export interface ChangeIndexRow {
-    /** The document path: unique within a comparison, so it is also the selection handle. */
+    /**
+     * What the selection is on. **Not a path, and not an address.**
+     *
+     * The path used to be both, and it stopped being able to be: an asset is drawn as one row and is
+     * stored as a record inside a shard plus a file of bytes (`assetRows.ts`), so several rows of one
+     * comparison share the shard's path. A handle of its own is what lets {@link path} go on meaning
+     * the file this row is reported at. It lives and dies with this pane - nothing writes it down,
+     * and no producer, merger or resolver has ever seen it.
+     */
+    readonly key: string;
+    /**
+     * Where the comparison reported this row. Not unique across rows, and not what the row says.
+     *
+     * **Demoted to the tooltip.** It used to be the row: the title was the path's last segment, so
+     * every story in a project was a line reading `storydoc.json` under a dim uuid. A path is where
+     * a thing is stored, which an author needs about once a month and never navigates by, so it is
+     * one hover away rather than in the column the eye scans. See {@link name}.
+     */
     readonly path: string;
-    /** The file name - what identifies a document in this project. */
-    readonly name: string;
-    /** Where it sits, or null at the project root. Shown dimmed beside the name, never instead. */
-    readonly directory: string | null;
+    /**
+     * What the author calls this thing: a scene's title, an asset's name, or the name of its kind.
+     *
+     * Resolved rather than a plain string, so a surface can tell a name from a stand-in for one -
+     * `documentName.ts` holds the rule that a name nobody could read is never quietly replaced by
+     * something that reads like one.
+     */
+    readonly name: DocumentName;
     /** What happened to the file itself, as opposed to what changed inside it. */
     readonly kind: DocumentChangeKind;
     /** Changes this file stands for - `DocumentDiff.total`, including any the producer dropped. */
@@ -45,7 +78,8 @@ export interface ChangeIndexRow {
      * Zero for the ordinary document, which is one file and has nothing to add. Above zero for a
      * document set (`@shared/documents/documentSet.ts`), where {@link path} is the manifest and the
      * files that changed are its members - so the name on the row is sometimes a file that did not
-     * itself change.
+     * itself change. One for an asset whose bytes were replaced, where the second file is the
+     * content shard {@link member} points at.
      *
      * **The row still stays one line.** The count belongs in the tooltip beside the path, not on a
      * second line and not as a nested list: the moment a row can grow with what it stands for the
@@ -56,6 +90,21 @@ export interface ChangeIndexRow {
     readonly memberCount: number;
     /** The entry itself, for the detail pane. Carried rather than re-looked-up by path. */
     readonly entry: DocumentDiffEntry;
+    /**
+     * The one record inside {@link entry} this row stands for, when the row is an asset.
+     *
+     * Absent for an ordinary document, whose row stands for the whole file. Present, the detail
+     * pane scopes itself to this change rather than drawing every asset in the shard.
+     */
+    readonly change?: DocumentChange;
+    /**
+     * The file holding this row's bytes, when they are not in {@link entry} itself.
+     *
+     * An asset's contents are stored under its id rather than beside its record, so the picture,
+     * the sound or the typeface a row is about is in a different file from the one the row is
+     * reported at. A presenter that shows the file rather than describing it reads THIS one.
+     */
+    readonly member?: DocumentDiffEntry;
 }
 
 /**
@@ -137,6 +186,23 @@ export interface BuildChangeIndexOptions {
     readonly rowBudget: number;
     /** Overrides {@link GROUP_COLLAPSE_THRESHOLD}; the tests set it, the tab does not. */
     readonly collapseThreshold?: number;
+    /**
+     * Whether the comparison listed every document that changed. Defaults to false.
+     *
+     * Passed straight through to {@link joinAssetEntries}, where it decides whether a content file
+     * with no record beside it may be called one. Defaulting to false rather than true is the whole
+     * point: a caller that has not said cannot have its silence read as a guarantee.
+     */
+    readonly complete?: boolean;
+    /**
+     * What the rows are named from, beyond their own paths.
+     *
+     * Required rather than defaulted, and that is the point: a caller that has not read the story
+     * index has not read it, and `NO_DOCUMENT_NAMES` says so in one word at the call site. A default
+     * here would let a surface lose every title in the project by leaving one argument out, with
+     * nothing on screen or in a type to report it.
+     */
+    readonly names: DocumentNameContext;
 }
 
 /**
@@ -153,27 +219,34 @@ export function buildChangeIndex(
 ): ChangeIndex {
     const budget = Math.max(0, options.rowBudget);
     const threshold = options.collapseThreshold ?? GROUP_COLLAPSE_THRESHOLD;
-    const listed = entries.slice(0, budget);
+    // Folded before anything is counted, so the budget is spent on lines an author will see and a
+    // group heading counts the same things its rows are.
+    const units = joinAssetEntries(entries, { complete: options.complete ?? false });
+    const listed = units.slice(0, budget);
 
     const byCategory = new Map<ChangeCategory, ChangeIndexRow[]>();
     const tiersByCategory = new Map<ChangeCategory, Set<DocumentDiffTier>>();
     const partialByCategory = new Map<ChangeCategory, number>();
 
-    for (const entry of listed) {
-        const category = changeCategoryOf(entry);
+    for (const unit of listed) {
+        const category = changeCategoryOf(unit.entry);
         const rows = byCategory.get(category) ?? [];
-        rows.push(indexRow(entry));
+        rows.push(indexRow(unit, options.names));
         byCategory.set(category, rows);
 
         // The tier set is the evidence behind the count and is gated on the same answer, so a
         // group cannot report a caveat's tier while reporting nothing to caveat about.
-        const partial = isPartial(entry);
-        if (partial && entry.diff.tier !== "semantic") {
-            const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
-            tiers.add(entry.diff.tier);
-            tiersByCategory.set(category, tiers);
+        const shortfall = comparisonsBehind(unit).filter(isPartial);
+        for (const compared of shortfall) {
+            if (compared.diff.tier !== "semantic") {
+                const tiers = tiersByCategory.get(category) ?? new Set<DocumentDiffTier>();
+                tiers.add(compared.diff.tier);
+                tiersByCategory.set(category, tiers);
+            }
         }
-        if (partial) {
+        // Once per ROW, however many files that row stands for: the number under a heading is read
+        // as "this many lines here are not the whole story", and it counts lines.
+        if (shortfall.length > 0) {
             partialByCategory.set(category, (partialByCategory.get(category) ?? 0) + 1);
         }
     }
@@ -200,7 +273,7 @@ export function buildChangeIndex(
     return {
         groups,
         rows: groups.flatMap(group => group.rows),
-        omitted: Math.max(0, entries.length - listed.length),
+        omitted: Math.max(0, units.length - listed.length),
     };
 }
 
@@ -225,18 +298,69 @@ function isPartial(entry: DocumentDiffEntry): boolean {
     return entry.diff.tier !== "semantic" || !entry.diff.complete;
 }
 
-function indexRow(entry: DocumentDiffEntry): ChangeIndexRow {
-    const { directory, name } = splitDocumentPath(entry.path);
+/**
+ * The comparisons a row's caveat is about.
+ *
+ * An ordinary row stands for one comparison of one file and answers with it. An asset row stands
+ * for two files compared separately, and only one of them can have fallen short: the metadata half
+ * is read record by record, at the semantic tier and in full - `joinAssetEntries` declines to split
+ * a shard that is none of those - so what is left to caveat about is how the BYTES were compared,
+ * which for a content file with no extension is a header read at best. An asset whose bytes did not
+ * change has no second file and nothing to say.
+ */
+function comparisonsBehind(unit: ChangeIndexUnit): readonly DocumentDiffEntry[] {
+    if (unit.change) {
+        return unit.member ? [unit.member] : [];
+    }
+    return [unit.entry];
+}
+
+function indexRow(unit: ChangeIndexUnit, names: DocumentNameContext): ChangeIndexRow {
+    const { entry, change, member } = unit;
+    // The record's own kind, never the file's: an asset added to a shard that was merely changed is
+    // an addition, and the shard's `changed` would draw it as an edit of something already there.
+    const kind = change?.kind ?? entry.kind;
     return {
+        key: unit.key,
         path: entry.path,
-        name,
-        directory,
-        kind: entry.kind,
-        changeCount: entry.diff.total,
-        wholeDocument: isWholeDocumentChange(entry.kind),
-        memberCount: entry.members?.length ?? 0,
+        name: rowName(unit, names),
+        kind,
+        changeCount: change ? countDocumentChanges([change]) : entry.diff.total,
+        wholeDocument: isWholeDocumentChange(kind),
+        // One for a joined asset - the file its bytes are in - and the producer's own count for a
+        // document stored as several files. Never both: no document set is stored as an asset.
+        memberCount: member ? 1 : entry.members?.length ?? 0,
         entry,
+        ...(change ? { change } : {}),
+        ...(member ? { member } : {}),
     };
+}
+
+/**
+ * What one row is called.
+ *
+ * Three sources in one place, so the index cannot end up calling one thing two things. The asset
+ * fold has already answered for the rows it owns - the name the author gave the asset, or the label
+ * for a content file no record claims - and everything else is named from its path by the layer all
+ * four version-control surfaces share.
+ *
+ * The orphan content file is qualified by its storage id here rather than left as a bare label. The
+ * label alone is true and is not enough: a project can hold several of them at once, which is
+ * exactly the state a bad merge leaves behind, and a column of identical rows is a list an author
+ * cannot work through.
+ */
+function rowName(unit: ChangeIndexUnit, names: DocumentNameContext): DocumentName {
+    if (unit.name) {
+        return { source: "authored", text: unit.name };
+    }
+    if (unit.nameKey) {
+        return {
+            source: "kind",
+            key: unit.nameKey,
+            qualifier: assetStorageIdFromContentPath(unit.entry.path),
+        };
+    }
+    return documentNameOf(unit.entry.path, names);
 }
 
 /**

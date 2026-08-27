@@ -118,6 +118,11 @@ export const lint = {
             description: "场景中部分路径跳转离开，仍有路径的末尾没有子节点",
             message: "该行没有子节点，执行到此处即越过场景末尾",
         },
+        storyCallCycle: {
+            title: "循环的调用",
+            description: "带返回的跳转所到的场景，能够反过来调用它所在的场景",
+            message: "该行调用的场景能够反过来调用本场景",
+        },
         storyUnreachableScene: {
             title: "无法到达的场景",
             description: "从起始场景出发无法到达",
@@ -201,6 +206,8 @@ export const lint = {
             messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
+            messageDlc: "指向的 DLC 在工程中不存在",
+            messageInputAction: "指向的输入操作在工程中未声明",
         },
         blueprintElementRefMissing: {
             title: "控件缺失",
@@ -219,6 +226,11 @@ export const lint = {
             title: "无法到达的节点",
             description: "图中没有任何入口可以到达该节点",
             message: "没有任何路径可以到达该节点，它不会被执行",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "没有守卫的 DLC 入口",
+            description: "开始了属于 DLC 的故事，却没有任何地方问过这个 DLC 在不在",
+            message: "这张图里没有任何节点问过这个 DLC 是否已安装",
         },
         blueprintEmptyEvent: {
             title: "空事件",
@@ -254,6 +266,11 @@ export const lint = {
             title: "条目字段不存在",
             description: "控件绑定的条目字段，在画它的列表里没有声明",
             message: "这里绑定的条目字段列表没有声明，每一行都会显示同样的内容",
+        },
+        uiGestureAnsweredTwice: {
+            title: "被响应两次的手势",
+            description: "控件自己有指针事件，而它所在页面的动作也响应同一个手势",
+            message: "本页的 {action} 与该控件响应同一个手势，两边都会执行",
         },
         blueprintSaveFieldEmpty: {
             title: "未填写的存档字段",
@@ -301,6 +318,11 @@ export const lint = {
             title: "译文过期",
             description: "原文在翻译之后发生过修改",
             message: "{locale} 译文比原文旧",
+        },
+        localizationMarkup: {
+            title: "译文未带样式",
+            description: "原文带有样式，译文按纯文本呈现",
+            message: "{locale} 译文没有带上这一行的样式",
         },
         localizationOrphan: {
             title: "孤立的译文",

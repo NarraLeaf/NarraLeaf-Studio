@@ -1,3 +1,5 @@
+import { resolveDocumentSpecForPath } from "@shared/documents/registry";
+import { localizationDocumentSpec, voiceDocumentSpec } from "@shared/documents/specs";
 import type { RevisionId } from "@shared/types/vcs";
 import { isVersioned } from "@shared/vcs/workingSet";
 import { sep } from "@shared/utils/path";
@@ -11,6 +13,13 @@ import { sep } from "@shared/utils/path";
  * forgetting is the auto-saver writing a historical document over the author's working tree. That is
  * data loss inside a feature called freeze. So the guarantee lives here, at the write boundary, and
  * a component that slipped through gets a harmless no-op plus a visible notice instead.
+ *
+ * **A partial freeze is still that guarantee.** One reason - a live session - leaves a single
+ * document writable, and the exemption is applied here, by {@link freezeAllowsWrite}, for exactly
+ * the argument above: "the localization panel checks a flag before saving" is a promise made by
+ * every panel that remembers to, and the ones that forget produce the same data loss with a
+ * collaborator's name on it. A component that keeps writing gets the same harmless no-op and the
+ * same visible notice it always did; only the set of paths that reach the notice has narrowed.
  *
  * **What counts as project data is not decided here.** {@link isVersioned} is the single source of
  * truth for what the repository stores, and this module only turns that predicate into a gate. So
@@ -59,7 +68,26 @@ export type WorkspaceFreezeReason =
      * The lore actions the recovery panel offers are unaffected: those run in the main process,
      * which is not behind this gate.
      */
-    | { kind: "recovery" };
+    | { kind: "recovery" }
+    /**
+     * A live session is open on this project, and only its story document may be written.
+     *
+     * **The one freeze that is partial.** Every other kind here is all-or-nothing over
+     * {@link isVersioned}; this one carries the set of project-relative paths that are still
+     * writable - the story document the session is about - and refuses the rest. The reason is that
+     * only story operations travel between the people in a session, so a character created here
+     * would never reach them, and the row referring to it would point at nothing on their machines.
+     *
+     * `session` is the room's id. Held so a stale freeze can be told from the current one: the latch
+     * is module-level, and a session that ended while a slower path was still finishing must not be
+     * able to arm one for a room nobody is in.
+     */
+    | {
+        kind: "live-session";
+        session: string;
+        /** Project-relative, in the repository's own spelling - the input {@link isVersioned} takes. */
+        writable: readonly string[];
+    };
 
 export type WorkspaceFreeze = {
     /** The project whose data is frozen. Writes anywhere else are none of this module's business. */
@@ -111,6 +139,37 @@ let frozen: WorkspaceFreeze | null = null;
  */
 let reloadHold: { projectPath: string; depth: number } | null = null;
 
+/**
+ * The one window in which a live session may write more than the document it is about: a broadcast
+ * effect is being applied right now, and the libraries that effect derives have to move with it.
+ *
+ * The mirror image of {@link reloadHold} - counted the same way, released the same way - except
+ * that it opens a window rather than closing one, which is why everything about it is narrower.
+ *
+ * **Why the libraries are not simply more entries in `writable`.** A path exemption would also
+ * allow an edit typed into the localization panel, and that edit has no broadcast effect behind
+ * it: the other participants are sent nothing to derive it from, so their libraries and this one
+ * diverge on the spot and nothing anywhere notices. Scoping the exemption to the moment an effect
+ * is being applied is what keeps every byte written here a byte the other machines write too.
+ */
+let derivedHold: { projectPath: string; depth: number } | null = null;
+
+/**
+ * The libraries a live session's participants each rebuild for themselves from one broadcast
+ * effect: the translation library and the voice library for whichever language the effect touches.
+ *
+ * **Named by document kind rather than by paths copied into this module**, because a copied path is
+ * the drift this gate cannot survive. `LocalizationService` and `VoiceService` address their files
+ * through these same two specs (`spec.pathFor({ locale })`), and `defineDocumentSpec` builds a
+ * spec's patterns and its path builder from one `paths` array - so a library that moves takes this
+ * gate with it, and there is no second spelling of `editor/localization/<locale>.json` here to fall
+ * behind the one those services actually save to.
+ */
+const DERIVED_LIBRARY_KINDS: ReadonlySet<string> = new Set([
+    localizationDocumentSpec.kind,
+    voiceDocumentSpec.kind,
+]);
+
 const freezeObservers = new Set<(freeze: WorkspaceFreeze | null) => void>();
 const refusalObservers = new Set<(refusal: RefusedWrite) => void>();
 
@@ -157,7 +216,7 @@ export function thawForeignProjectWrites(projectPath: string): void {
     if (!frozen) {
         return;
     }
-    if (fold(canonical(frozen.projectPath)) === fold(canonical(projectPath))) {
+    if (sameProject(frozen.projectPath, projectPath)) {
         return;
     }
     thawProjectWrites();
@@ -202,6 +261,48 @@ export function isProjectWriteReloadHeld(): boolean {
     return reloadHold !== null;
 }
 
+/**
+ * Widen a live session's writable set to the derived libraries until the returned function is
+ * called, because one broadcast effect is being applied. See {@link derivedHold}.
+ *
+ * Returns the release rather than exposing an `end` of its own, so the window cannot outlive its
+ * caller's `finally` - the same shape as {@link holdProjectWritesForReload}, for a stronger reason:
+ * a hold leaked there costs a write that would have been refused anyway, while one leaked here
+ * leaves the localization panel quietly writable for the rest of the session.
+ *
+ * Re-entrant: applying an effect that applies another counts, and only the last release closes the
+ * window. Each release is idempotent.
+ *
+ * **Widens a `live-session` freeze and nothing else.** Under `revision`, `manual`, `merge` or
+ * `recovery` there is no session and nothing is deriving anything from anything, so a hold taken
+ * while one of those is armed changes nothing at all - it must never be able to turn a total freeze
+ * into a partial one.
+ */
+export function holdDerivedProjectWrites(projectPath: string): () => void {
+    if (derivedHold && sameProject(derivedHold.projectPath, projectPath)) {
+        derivedHold.depth += 1;
+    } else {
+        // A window is one project (see the multi-project window model), so a hold naming a
+        // different project is a stale one from a project that has already closed.
+        derivedHold = { projectPath, depth: 1 };
+    }
+    const held = derivedHold;
+    let released = false;
+    return () => {
+        if (released || derivedHold !== held) {
+            // Identity, not merely "some hold exists": a release arriving after the window was
+            // replaced - a project closed and another opened mid-effect - would otherwise decrement
+            // a hold it never took and close somebody else's window early.
+            return;
+        }
+        released = true;
+        held.depth -= 1;
+        if (held.depth <= 0) {
+            derivedHold = null;
+        }
+    };
+}
+
 /** Watch freeze and thaw. Returns an unsubscribe. */
 export function observeProjectWriteFreeze(observer: (freeze: WorkspaceFreeze | null) => void): () => void {
     freezeObservers.add(observer);
@@ -225,12 +326,67 @@ export function observeRefusedWrites(observer: (refusal: RefusedWrite) => void):
 }
 
 /**
+ * Whether a freeze lets this project-relative path be written.
+ *
+ * The one predicate both halves of the policy ask - the gate below, and the interface that has to
+ * decide whether what it is showing can still be changed. Exported so there is a single answer: a
+ * surface offering an edit this gate then refuses is the "quietly discarding everything" failure
+ * with an encouraging cursor on top of it.
+ *
+ * Written over every `kind` with no `default` on purpose. A freeze kind added later must not
+ * inherit "total" or "partial" by accident; it has to fail to compile here until somebody has
+ * decided which of the two it is.
+ */
+export function freezeAllowsWrite(reason: WorkspaceFreezeReason, projectRelativePath: string): boolean {
+    switch (reason.kind) {
+        // The total freezes. Nothing the author can do inside one of them produces a write that
+        // belongs in the working tree, so none of them has a path to exempt.
+        case "revision":
+        case "manual":
+        case "merge":
+        case "recovery":
+            return false;
+        case "live-session": {
+            // Compared the way this module compares every other pair of paths: {@link canonical}
+            // for the separator and trailing-slash spellings the two sides arrive in, {@link fold}
+            // for the Windows rule that one file answers to several names. A second comparison here
+            // that folded differently would make the same file writable through one spelling and
+            // refused through another - the two sides of one predicate disagreeing, which
+            // `shared/vcs/workingSet.ts` calls the worst outcome this policy can produce.
+            //
+            // Folding is right here and wrong above `FOLD_CASE` because the questions differ. There
+            // the relative path is an input to {@link isVersioned}, the repository's own table, and
+            // folding it would widen an exclusion list. Here it is one file named twice - once by
+            // the write, once by the session - and on Windows those really are the same file.
+            const target = fold(canonical(projectRelativePath));
+            return reason.writable.some((writable) => {
+                const allowed = fold(canonical(writable));
+                // ⚠ **An entry stands for itself and for everything under it.** Every entry used to
+                // be one document, and comparing whole paths was the same question either way; a
+                // session that carries the asset library also leaves `assets/content` writable, and
+                // an asset's bytes live several directories down inside it. A file entry has nothing
+                // under it, so this is exactly as strict for the documents it always was strict for -
+                // and it is a prefix at a separator, never a string prefix, so `assets/contentious`
+                // is not inside `assets/content`.
+                return target === allowed || target.startsWith(`${allowed}/`);
+            });
+        }
+    }
+}
+
+/**
  * The gate. Answers the active freeze when one of `paths` is project data that may not be written
  * right now, and announces the refusal on the way out; answers null when the write may proceed.
  *
  * Takes several paths because the verbs that move bytes have two ends and both of them are
  * mutations: `moveFile` and `rename` unlink the source as well as creating the destination, so a
  * check on the destination alone would let a frozen workspace delete a versioned file.
+ *
+ * Project data the freeze allows - the story document a live session is about, and the libraries a
+ * broadcast effect is deriving while {@link holdDerivedProjectWrites} is held - proceeds without a
+ * refusal being announced, because nothing was refused. Everything else the repository stores still
+ * reaches {@link observeRefusedWrites}: a write that misses the writable set is a component that
+ * did not know about the session, and the author has to be told it was dropped.
  */
 export function refuseFrozenWrite(...paths: (string | null | undefined)[]): WorkspaceFreeze | null {
     const active = frozen;
@@ -238,12 +394,66 @@ export function refuseFrozenWrite(...paths: (string | null | undefined)[]): Work
         return null;
     }
     for (const path of paths) {
-        if (typeof path === "string" && isFrozenProjectData(active.projectPath, path)) {
-            announceRefusal({ path, reason: active.reason });
-            return active;
+        if (typeof path !== "string") {
+            continue;
         }
+        // Taken from the module that owns the project-root comparison rather than re-derived: this
+        // is the same relative path {@link isVersioned} judged, in the same spelling.
+        const relative = versionedProjectRelativePath(active.projectPath, path);
+        if (relative === null) {
+            // Not project data - editor state, a cache, an export to the author's desktop.
+            continue;
+        }
+        if (freezeAllowsWrite(active.reason, relative) || derivedWriteAllowed(active, relative)) {
+            continue;
+        }
+        announceRefusal({ path, reason: active.reason });
+        return active;
     }
     return null;
+}
+
+/**
+ * Whether an open derived-write window covers this path.
+ *
+ * Three conditions and all of them are load-bearing: the freeze is a session (see
+ * {@link holdDerivedProjectWrites} - the other kinds derive nothing), a window is open for that
+ * same project, and the path is one of the libraries an effect produces rather than any other file
+ * the author might have open.
+ */
+function derivedWriteAllowed(active: WorkspaceFreeze, projectRelativePath: string): boolean {
+    if (active.reason.kind !== "live-session") {
+        return false;
+    }
+    const hold = derivedHold;
+    return hold !== null
+        && sameProject(hold.projectPath, active.projectPath)
+        && isDerivedLibrary(projectRelativePath);
+}
+
+/**
+ * Whether a project-relative path is one of {@link DERIVED_LIBRARY_KINDS}.
+ *
+ * Asks which spec OWNS the path rather than which specs match it, and the difference is the whole
+ * reason this is not two `spec.matches` calls: `editor/localization/keys.json` matches
+ * `editor/localization/<locale>.json` with a locale of `keys`, and the registry is what resolves
+ * that overlap in favour of the more specific pattern. The keys registry is a developer-authored
+ * list of named strings, not something an effect derives, and a window that let it through would be
+ * exactly the divergence this whole mechanism is narrow to avoid.
+ *
+ * Case-sensitive, because the registry is: a spec matches the casing a document was committed with.
+ * That is also the conservative direction for a rule that widens - a library named with unexpected
+ * casing is refused and announced, rather than slipped through a window sized for one write.
+ */
+function isDerivedLibrary(projectRelativePath: string): boolean {
+    try {
+        const owner = resolveDocumentSpecForPath(projectRelativePath);
+        return owner !== undefined && DERIVED_LIBRARY_KINDS.has(owner.spec.kind);
+    } catch {
+        // The registry rejects a path the document model cannot address at all. That is not a
+        // derived library, and this gate may never turn a malformed path into a thrown write.
+        return false;
+    }
 }
 
 /**
@@ -308,6 +518,18 @@ function repositoryRelative(projectPath: string, absolutePath: string): string |
         return null;
     }
     return target.slice(root.length + 1);
+}
+
+/**
+ * Whether two spellings name one project directory.
+ *
+ * The project arrives here spelled several ways - the main process uses the platform separator, the
+ * renderer's comes out of the project config, and Windows hands the same directory out under more
+ * than one casing - so every comparison of two project roots in this module goes through here. A
+ * second one written inline would be the place the spellings stopped agreeing.
+ */
+function sameProject(a: string, b: string): boolean {
+    return fold(canonical(a)) === fold(canonical(b));
 }
 
 /** Separators and trailing slashes only. Casing is the author's and is left alone. */

@@ -21,6 +21,8 @@ import type {
 } from "../framework/types";
 import { SurfaceBlueprintEntrySection } from "../blueprint/SurfaceBlueprintEntrySection";
 import { SurfaceBackgroundImageField } from "../fields/SurfaceBackgroundImageField";
+import { SurfaceInputActionsField } from "../fields/SurfaceInputActionsField";
+import { UI_SURFACE_DEFAULT_INPUT_MODE, normalizeUISurfaceInputMode } from "@shared/types/ui-editor/inputAction";
 import { PageAnimationEditor } from "@/lib/ui-editor/widget-modules/shared/page-animation/PageAnimationEditor";
 import { normalizeUIPageAnimationSettings, type UIPageAnimationSettings } from "@shared/types/ui-editor/pageAnimation";
 import type { Translator } from "@shared/i18n";
@@ -186,6 +188,51 @@ export const scenePropertySchema = (t: TranslateFn) =>
                 });
             },
             hidden: data => !isGameUi(data.surface),
+        }),
+        defineField<SceneEditorContext, SectionFieldDefinition<SceneEditorContext>>({
+            id: "scene.input",
+            type: "section",
+            title: t("properties.scene.input.title"),
+            fields: [
+                defineField<SceneEditorContext, SelectFieldDefinition<SceneEditorContext>>({
+                    id: "scene.input.mode",
+                    type: "select",
+                    label: t("properties.scene.input.mode"),
+                    // The hint rides on the option rather than sitting under the control, because
+                    // the question "what does Pass through do" is asked while the menu is open.
+                    options: [
+                        {
+                            value: "capture",
+                            label: t("properties.scene.input.modeCapture"),
+                            secondaryLabel: t("properties.scene.input.modeHintCapture"),
+                        },
+                        {
+                            value: "pass",
+                            label: t("properties.scene.input.modePass"),
+                            secondaryLabel: t("properties.scene.input.modeHintPass"),
+                        },
+                        {
+                            value: "none",
+                            label: t("properties.scene.input.modeNone"),
+                            secondaryLabel: t("properties.scene.input.modeHintNone"),
+                        },
+                    ],
+                    getValue: data => data.surface.input ?? UI_SURFACE_DEFAULT_INPUT_MODE,
+                    setValue: (data, value) => {
+                        const next = normalizeUISurfaceInputMode(value);
+                        if (next === (data.surface.input ?? UI_SURFACE_DEFAULT_INPUT_MODE)) {
+                            return;
+                        }
+                        data.documentService.setSurfaceInputMode(data.surface.id, next);
+                    },
+                }),
+                defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
+                    id: "scene.input.actions",
+                    type: "custom",
+                    label: t("properties.scene.input.actions"),
+                    component: SurfaceInputActionsField,
+                }),
+            ],
         }),
         defineField<SceneEditorContext, CustomFieldDefinition<SceneEditorContext>>({
             id: "scene.blueprintEntry",

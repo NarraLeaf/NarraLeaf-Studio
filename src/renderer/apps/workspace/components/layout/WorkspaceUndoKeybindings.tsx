@@ -5,6 +5,7 @@ import { useFreezeGuard } from "../ui/freezeGuard";
 import { HistoryService } from "@/lib/workspace/services/history/HistoryService";
 import { projectHistoryScope } from "@/lib/workspace/services/history/historyScopes";
 import { resolveWorkspaceUndoScope } from "@/lib/workspace/services/history/workspaceUndoTarget";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types";
@@ -31,6 +32,18 @@ import { FocusArea, type FocusContext } from "@/lib/workspace/services/ui/types"
  * This used to call `projectHistoryScope()` directly, which is how the two answers drifted apart
  * without anyone noticing: the menu offered "Undo change background colour" while the keystroke
  * beside it reached an empty stack and did nothing.
+ *
+ * ⚠ **Inside a live session none of that applies and this sends an inverse instead.** Two things
+ * would otherwise be wrong at once. The stacks here hold whole-document snapshots taken before
+ * anybody else joined, so applying one would delete every edit the others have made since - the
+ * catastrophe the session's own undo exists to avoid. And the freeze guard below would refuse the
+ * keystroke outright, which is what it was observed doing on a real machine: an author who created a
+ * character in a session and pressed Ctrl+Z got nothing at all, with no way to tell whether the
+ * stack was empty or the press had been swallowed.
+ *
+ * Which document the inverse is about is not this binding's business. A session keeps one stack per
+ * WINDOW - "my last operation", whatever panel it was made in - so undo means the same thing here as
+ * it does in the story editor, which routes to the same place for the same reason.
  */
 export function WorkspaceUndoKeybindings() {
     const { context } = useWorkspace();
@@ -39,6 +52,21 @@ export function WorkspaceUndoKeybindings() {
         () => (context ? context.services.get<HistoryService>(Services.History) : null),
         [context],
     );
+    const live = useMemo(
+        () => (context ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context],
+    );
+    const [inSession, setInSession] = useState(false);
+
+    useEffect(() => {
+        if (!live) {
+            setInSession(false);
+            return;
+        }
+        const read = () => setInSession(live.getView().phase !== "idle");
+        read();
+        return live.onChanged(read);
+    }, [live]);
     const [focus, setFocus] = useState<FocusContext | null>(null);
 
     useEffect(() => {
@@ -67,21 +95,32 @@ export function WorkspaceUndoKeybindings() {
                 key: "mod+z",
                 description: "Undo the last project-level change",
                 when: outsideAnEditor,
-                handler: freeze.run(() => {
-                    history?.undo(scopeId);
-                }),
+                // Deliberately outside `freeze.run` in a session: the freeze is the session's own,
+                // and sending the inverse of one's own operation is the one write it exists to
+                // allow. Everywhere else the guard still refuses, which is what a frozen project is.
+                handler: inSession
+                    ? () => {
+                        live?.undo();
+                    }
+                    : freeze.run(() => {
+                        history?.undo(scopeId);
+                    }),
             },
             {
                 id: "redo",
                 key: "mod+shift+z",
                 description: "Redo the last project-level change",
                 when: outsideAnEditor,
-                handler: freeze.run(() => {
-                    history?.redo(scopeId);
-                }),
+                handler: inSession
+                    ? () => {
+                        live?.redo();
+                    }
+                    : freeze.run(() => {
+                        history?.redo(scopeId);
+                    }),
             },
         ],
-        [freeze, history, outsideAnEditor, scopeId],
+        [freeze, history, inSession, live, outsideAnEditor, scopeId],
     );
 
     useKeybindings({ keybindings, idPrefix: "workspace-history", catalogPrefix: "workspace." });

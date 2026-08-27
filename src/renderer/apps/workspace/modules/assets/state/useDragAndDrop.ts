@@ -12,6 +12,7 @@ import {
 } from "@/apps/workspace/modules/assets/dnd/assetDragContract";
 import { applyMultiAssetDragImage } from "@/apps/workspace/modules/assets/dnd/multiAssetDragImage";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 
 /** Report ids moved by an in-panel drop so cut-clipboard styling can be updated. */
 export interface InternalAssetDropCompletedInfo {
@@ -79,6 +80,14 @@ export function useDragAndDrop({
     // and killing it would break a read-only gesture in the name of a freeze. So `handleDragStart` is
     // deliberately left alone and only the drop targets stop lighting up.
     const freeze = useFreezeGuard();
+    /**
+     * The asset library's own guard: filing rows, moving folders, and importing from the desktop.
+     *
+     * All three write the library and a session carries all three, so they share one answer. What
+     * still reads {@link freeze} is the asset SET drop beside them, which writes a different document
+     * that has no verbs.
+     */
+    const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
     const [draggedItem, setDraggedItem] = useState<DraggedItemState | null>(null);
     const [draggedAssetSet, setDraggedAssetSet] = useState<DraggedAssetSetState | null>(null);
     const [dropTargetId, setDropTargetId] = useState<string | null>(null);
@@ -167,7 +176,10 @@ export function useDragAndDrop({
         event.preventDefault();
         event.stopPropagation();
 
-        if (freeze.frozen) {
+        // The looser of the two, because this only lights a target up: the drop itself asks the
+        // guard that matches what is being dropped, and a target that never lit would make filing a
+        // row inside a session look broken rather than refused.
+        if (freeze.frozen && libraryFreeze.frozen) {
             return;
         }
         const isExternalFiles = event.dataTransfer.types.includes("Files");
@@ -183,14 +195,18 @@ export function useDragAndDrop({
                 event.dataTransfer.dropEffect = "copy";
             }
         }
-    }, [draggedItem, freeze]);
+    }, [draggedItem, freeze, libraryFreeze]);
 
     const handleDropOnItem = useCallback(
         async (event: DragEvent, targetCategory: AssetCategory, targetGroup: AssetGroup | null) => {
             event.preventDefault();
             event.stopPropagation();
 
-            if (!context || freeze.frozen) return;
+            // ⚠ Not `freeze.frozen` alone. The branches below split into three drops with three
+            // answers - a set's files and an import write bytes, a folder move writes the folder
+            // tree, and filing rows writes the metadata a session carries - so each asks its own
+            // guard rather than one answer standing for all of them.
+            if (!context || (freeze.frozen && libraryFreeze.frozen)) return;
 
             // A set first: it is its own drag, and the branches below all read `draggedItem`.
             if (draggedAssetSet) {
@@ -198,7 +214,7 @@ export function useDragAndDrop({
                 setDraggedAssetSet(null);
                 setDragOver(false);
                 setDropTargetId(null);
-                if (category === targetCategory) {
+                if (category === targetCategory && !freeze.frozen) {
                     await onAssetSetDrop?.(setId, targetCategory, targetGroup?.id);
                 }
                 return;
@@ -256,16 +272,17 @@ export function useDragAndDrop({
                     return;
                 }
 
-                const movedAssetIds: string[] = [];
-                for (const asset of candidates) {
-                    const status = await assetsService.moveAssetToGroup(asset, targetGroup?.id);
-                    if (!status.success) {
-                        setDragOver(false);
-                        setDropTargetId(null);
-                        return;
-                    }
-                    movedAssetIds.push(asset.id);
+                // One call for the whole selection, which is what makes it one operation inside a
+                // session: the service groups the rows by type and states one per shard. Sent row by
+                // row it would be a press per row to take back, and every other screen in the room
+                // would draw the library half-filed.
+                const status = await assetsService.moveAssetsToGroup(candidates, targetGroup?.id);
+                if (!status.success) {
+                    setDragOver(false);
+                    setDropTargetId(null);
+                    return;
                 }
+                const movedAssetIds = candidates.map(asset => asset.id);
                 setDraggedItem(null);
                 onWorkspaceDragSessionEnd?.();
                 onDropCompleted({ movedAssetIds, movedGroupIds: [] });
@@ -281,6 +298,7 @@ export function useDragAndDrop({
             filteredAssets,
             filteredGroups,
             freeze,
+            libraryFreeze,
             groups,
             isDescendantGroup,
             onAssetSetDrop,

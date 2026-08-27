@@ -47,6 +47,7 @@ import {
     debugUIDoubleClick,
     describeDoubleClickTarget,
 } from "@/lib/ui-editor/interaction/doubleClickDebug";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const OPENING_BLUR_GRACE_MS = 300;
 const BUTTON_LABEL_PROP_PATH = "label";
@@ -264,32 +265,47 @@ export function ButtonRenderer(props: WidgetRendererProps) {
     const showLabel = displayLabel.trim().length > 0;
     const hasChildNodes = children != null && Children.count(children) > 0;
 
-    // The label colour can be a brand link, so it is read before it is painted: passing the
-    // stored string in as `hex` would leave `normalizeHex` to reject it and paint white.
-    const color = colorValueToCss(parseColorValue(p.color, { hex: "#FFFFFF", alpha: 1 }));
-    const { cssFamily: editorFontFamily } = useEditorFontFamily(p.fontAssetId);
+    // Read off the resolved visuals, not the flat props: the label's type is variant material now,
+    // so a hovered or selected state may say something different about it than the element does.
+    // The colour can be a brand link, so it is read before it is painted - passing the stored
+    // string in as `hex` would leave `normalizeHex` to reject it and paint white.
+    const color = colorValueToCss(parseColorValue(v.color, { hex: "#FFFFFF", alpha: 1 }));
+    const { cssFamily: editorFontFamily } = useEditorFontFamily(v.fontAssetId);
     const labelTextShadow = effectShadowStoredToCss(v.effects.effectTextShadow, "outer");
     const labelTypography: CSSProperties = {
         margin: 0,
         width: "100%",
         boxSizing: "border-box",
-        fontSize: p.fontSize,
-        fontWeight: p.fontWeight,
+        fontSize: v.fontSize,
+        fontWeight: v.fontWeight,
         color,
+        // Alignment and wrapping are not variant material - see `ButtonAppearancePropertyKey`.
         textAlign: p.textAlign,
-        lineHeight: p.lineHeight,
+        lineHeight: v.lineHeight,
         ...lineWrapCss(p.textWrapMode),
         overflow: labelTextShadow ? "visible" : "hidden",
         ...(labelTextShadow ? { textShadow: labelTextShadow } : {}),
         ...(editorFontFamily ? { fontFamily: editorFontFamily } : {}),
     };
 
-    const labelTextShadowTransition = firstTransitionForKeys(appearanceTransitions, ["effectTextShadow"]);
+    // The label's type tweens the way its shadow already did, and on the same terms: a key animates
+    // only where the variant declares a transition for it, so a state change with none stays
+    // instant. Weight and font asset are absent on purpose - neither has anything to tween through.
+    const LABEL_MOTION_KEYS = [
+        { appearance: "color", css: "color", value: () => color },
+        { appearance: "fontSize", css: "fontSize", value: () => `${v.fontSize}px` },
+        { appearance: "lineHeight", css: "lineHeight", value: () => String(v.lineHeight) },
+        { appearance: "effectTextShadow", css: "textShadow", value: () => labelTextShadow || "none" },
+    ] as const;
     const labelTextAnimate: Record<string, string> = {};
     const labelTextTransition: Record<string, unknown> = {};
-    if (labelTextShadowTransition) {
-        labelTextAnimate.textShadow = labelTextShadow || "none";
-        labelTextTransition.textShadow = toRuntimeMotionTransition(labelTextShadowTransition);
+    for (const key of LABEL_MOTION_KEYS) {
+        const transition = firstTransitionForKeys(appearanceTransitions, [key.appearance]);
+        if (!transition) {
+            continue;
+        }
+        labelTextAnimate[key.css] = key.value();
+        labelTextTransition[key.css] = toRuntimeMotionTransition(transition);
     }
     const labelTextMotionActive = Object.keys(labelTextTransition).length > 0;
 
@@ -351,6 +367,9 @@ export function ButtonRenderer(props: WidgetRendererProps) {
 
     const handleTextareaKeyDown = useCallback(
         (e: KeyboardEvent<HTMLTextAreaElement>) => {
+            if (isImeKeyEvent(e)) {
+                return;
+            }
             if (e.key === "Escape") {
                 e.preventDefault();
                 skipBlurCommitRef.current = true;

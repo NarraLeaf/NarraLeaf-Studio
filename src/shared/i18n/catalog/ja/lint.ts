@@ -125,6 +125,11 @@ export const lint = {
             description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
             message: "この行に子ノードがなく、ここでシーンの末尾を越える",
         },
+        storyCallCycle: {
+            title: "循環する呼び出し",
+            description: "戻り付きのジャンプが、その行のあるシーンを呼び出せるシーンに達している",
+            message: "この行が呼び出すシーンから、このシーンが呼び出される",
+        },
         storyUnreachableScene: {
             title: "到達できないシーン",
             description: "開始地点から到達できないシーン",
@@ -205,6 +210,8 @@ export const lint = {
             messageEnding: "指しているエンディングが存在しない",
             messageCharacter: "指しているキャラクターが存在しない",
             messageTextKey: "指しているテキストキーはプロジェクトで宣言されていない",
+            messageDlc: "指している DLC はプロジェクトに存在しない",
+            messageInputAction: "指している入力アクションはプロジェクトで宣言されていない",
         },
         blueprintElementRefMissing: {
             title: "ウィジェットの欠落",
@@ -223,6 +230,11 @@ export const lint = {
             title: "到達できないノード",
             description: "グラフのどの入口からも到達できないノード",
             message: "このノードへ到達する経路がなく、実行されない",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "ガードのない DLC 入口",
+            description: "DLC のストーリーを開始しているが、その DLC があるかどうかをどこも確かめていない",
+            message: "このグラフには DLC がインストール済みか確かめるノードがない",
         },
         blueprintEmptyEvent: {
             title: "空のイベント",
@@ -258,6 +270,11 @@ export const lint = {
             title: "項目が見つかりません",
             description: "描画元のリストが宣言していない項目に紐づいたウィジェット",
             message: "リストが宣言していない項目に紐づいているため、どの行も同じ内容になります",
+        },
+        uiGestureAnsweredTwice: {
+            title: "二重に反応する操作",
+            description: "独自のポインター処理を持つウィジェットが、同じ操作に反応するページに置かれている",
+            message: "このページの {action} とこのウィジェットが同じ操作に反応するため、両方が実行される",
         },
         blueprintSaveFieldEmpty: {
             title: "未入力のセーブ項目",
@@ -305,6 +322,11 @@ export const lint = {
             title: "古い翻訳",
             description: "翻訳した後に原文が変わっている",
             message: "{locale} の翻訳が原文より古い",
+        },
+        localizationMarkup: {
+            title: "訳文に文字装飾がない",
+            description: "原文には装飾があり、訳文はそれを持たずに表示される",
+            message: "{locale} の訳文がこの行の装飾を持っていない",
         },
         localizationOrphan: {
             title: "対応する行のない翻訳",

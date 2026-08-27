@@ -48,6 +48,11 @@ function jump(id: string, targetSceneId: string): StoryBlock {
     return block({ id, kind: "jump", payload: { targetSceneId } });
 }
 
+/** A returnable jump: the run goes to the named scene and comes back to the row after this one. */
+function call(id: string, targetSceneId: string): StoryBlock {
+    return block({ id, kind: "jump", payload: { targetSceneId, returnable: true } });
+}
+
 function scene(id: string, blocks: StoryBlock[], rootBlockIds: string[]): StoryScene {
     return {
         id,
@@ -200,5 +205,56 @@ describe("collectUncutForks", () => {
             sceneId: "s1",
             uncutBranches: 1,
         })]);
+    });
+});
+
+describe("cut points around a call", () => {
+    it("says a cut written after a call removes what follows it", () => {
+        // The run comes back from the call to this row, so the rows after it are rows this variant
+        // would lose - a call before it changes nothing about that.
+        const built = story([
+            scene("s1", [call("c1", "s2"), cut("c"), line("b")], ["c1", "c", "b"]),
+            scene("s2", [line("a")], ["a"]),
+        ]);
+
+        expect(collectCutPoints(built)[0]).toEqual(expect.objectContaining({ sceneId: "s1", blockId: "c", removes: true }));
+    });
+
+    it("says a cut written inside a called scene removes what follows it there", () => {
+        // A cut is a full stop for the variant: the story ends on the row and the call never returns,
+        // so the rows after it in the called scene are what it takes away.
+        const built = story([
+            scene("s1", [call("c1", "s2"), line("after")], ["c1", "after"]),
+            scene("s2", [line("a"), cut("c"), line("b")], ["a", "c", "b"]),
+        ]);
+
+        expect(collectCutPoints(built).map(entry => entry.blockId)).toEqual(["c"]);
+        expect(collectInertCutPoints(built, DEMO)).toEqual([]);
+    });
+
+    it("does not read a scene that calls one scene and leaves for another as a fork", () => {
+        // Both "branches" continue into the same rows: the call comes back and the run carries on to
+        // the jump. Counting the call as a route would report the scene as disagreeing with itself.
+        const built = story([
+            scene("s1", [call("c1", "s2"), jump("j1", "s3")], ["c1", "j1"]),
+            scene("s2", [line("a"), cut("c"), line("b")], ["a", "c", "b"]),
+            scene("s3", [line("d")], ["d"]),
+        ], "s1");
+
+        expect(collectUncutForks(built, DEMO)).toEqual([]);
+    });
+
+    it("still finds a cut that a branch only reaches through a call", () => {
+        // `s2` is a real branch of the fork, and the cut it reaches sits in the scene it calls. The
+        // reach walk follows the call like any other jump, which is what keeps the two halves of this
+        // file - what a cut removes, and which branches it ends - reading the same story.
+        const built = story([
+            scene("s1", [jump("j1", "s2"), jump("j2", "s3")], ["j1", "j2"]),
+            scene("s2", [call("c1", "s4"), line("back")], ["c1", "back"]),
+            scene("s3", [line("d")], ["d"]),
+            scene("s4", [line("a"), cut("c"), line("b")], ["a", "c", "b"]),
+        ], "s1");
+
+        expect(collectUncutForks(built, DEMO)).toEqual([expect.objectContaining({ sceneId: "s1", uncutBranches: 1 })]);
     });
 });

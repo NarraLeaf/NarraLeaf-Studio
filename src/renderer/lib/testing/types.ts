@@ -288,7 +288,14 @@ export type TestRunContext = {
 /** Everything `checkAvailability` is allowed to look at - deliberately cheap, it runs on every picker open. */
 export type TestAvailabilityContext = {
     readonly projectPath: string;
-    /** A frozen workspace (VCS revision view or a manual freeze) forbids launching a game. */
+    /**
+     * Whether a freeze that forbids launching a game is in force - a revision view, a manual
+     * freeze, an open merge, recovery mode.
+     *
+     * False during a live session even though the workspace IS frozen: what a session shows every
+     * participant is the working tree, so a game launched from it runs what everybody is looking at
+     * and there is nothing for the refusal to protect.
+     */
     readonly frozen: boolean;
 };
 

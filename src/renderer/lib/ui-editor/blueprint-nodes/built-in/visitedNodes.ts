@@ -25,7 +25,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
     BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
 } from "@shared/types/blueprint/graph";
-import type { BlueprintNodeDef } from "../types";
+import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import { requireHostApi } from "./hostApi";
 
 /**
@@ -38,6 +38,22 @@ import { requireHostApi } from "./hostApi";
  */
 const STORY_SCENE_OPTIONS_SOURCE = "storyScenes";
 const STORY_CHOICE_OPTIONS_SOURCE = "storyChoiceOptions";
+
+/**
+ * The wired half of a target, beside the picker that names it on the card.
+ *
+ * A picker is what an author wants nine times out of ten - it lists the project's own scenes, and
+ * it cannot be spelled wrong. The tenth time the scene is not known when the graph is written: one
+ * gallery card placed once per scene reads which scene it is from its own params, and a card that
+ * could only name a scene on the card would have to be copied once per scene. Wired wins over
+ * picked, the way `Start Story` already resolves the same pair.
+ */
+function visitedTargetPins(key: string, label: string): BlueprintNodePinDef[] {
+    return [
+        { id: "storyId", kind: "input", semantic: "data", valueType: "string", label: "Story Id", optional: true },
+        { id: key, kind: "input", semantic: "data", valueType: "string", label, optional: true },
+    ];
+}
 
 /** Present on both readers so the dependent picker below has a story to filter against. */
 const storyParam = {
@@ -57,6 +73,7 @@ export const visitedBlueprintNodes: BlueprintNodeDef[] = [
         isPure: true,
         isLatent: false,
         pins: [
+            ...visitedTargetPins("sceneId", "Scene Id"),
             {
                 id: "isVisited",
                 kind: "output",
@@ -96,6 +113,7 @@ export const visitedBlueprintNodes: BlueprintNodeDef[] = [
         isPure: true,
         isLatent: false,
         pins: [
+            ...visitedTargetPins("optionId", "Option Id"),
             {
                 id: "isPicked",
                 kind: "output",

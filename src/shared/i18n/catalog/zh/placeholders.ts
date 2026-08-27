@@ -34,5 +34,6 @@ export const placeholders = {
         // 面板里三段分别叫「存档变量 / 全局变量 / 场景变量」，标题就是它们共同的那个词，不另造新词
         variables: "变量",
         dictionary: "词典",
+        collaboration: "协作",
     },
 } satisfies LocaleNamespace<"placeholders">;

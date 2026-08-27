@@ -27,6 +27,8 @@ const vcs = vi.hoisted(() => ({
     readBlob: vi.fn(),
     getChangedPaths: vi.fn(),
     restoreRevision: vi.fn(),
+    sync: vi.fn(),
+    getMergeState: vi.fn(),
 }));
 
 vi.mock("@/lib/app/bridge", () => ({
@@ -839,6 +841,12 @@ function createRestoreHarness(options: { frozen: boolean }) {
             trace.push(holds > 0 ? "thaw-WHILE-HELD" : "thaw");
             frozen = false;
         },
+        // The paths travel in the trace because WHICH list is handed over is the assertion: the
+        // repository's, not the sync result's.
+        showMergeConflicts: async (conflicts: readonly string[]) => {
+            trace.push(`merge:${conflicts.join(",")}`);
+            frozen = true;
+        },
     };
     const reload = {
         reload: async (cause: string) => {
@@ -864,6 +872,10 @@ async function createServiceWith(context: WorkspaceContext): Promise<VersionCont
     const service = new VersionControlService();
     await service.initialize(context, async () => undefined);
     return service;
+}
+
+function syncResult(overrides: Record<string, unknown> = {}) {
+    return { alreadyCurrent: false, received: 2, conflicts: [] as string[], ...overrides };
 }
 
 function restoreResult() {
@@ -926,5 +938,107 @@ describe("VersionControlService restore", () => {
         // hold is gone, or leaving it by hand would be refused for the rest of the session.
         expect(harness.trace).toEqual(["hold", "release"]);
         expect(harness.isHeld()).toBe(false);
+    });
+});
+
+
+/**
+ * What a sync does to the workspace when the revisions it brought down could not all be merged.
+ *
+ * **The hole this closes was visible on screen.** A conflicted sync leaves files carrying all three
+ * sides on disk (docs §4.23), and this window used to re-read them verbatim: the story panel came up
+ * empty and the dashboard reported no scenes, over a project whose files were intact. Reopening the
+ * same project was fine, because `workspaceProjectPreflight` arms the substitution and the freeze
+ * before anything parses - so the merge was one thing to a window that had rejoined it and another
+ * to the window that had just made it.
+ */
+describe("VersionControlService sync into a merge", () => {
+    function mergeState(conflicts: string[], inProgress = true) {
+        return { success: true, data: { inProgress, conflicts } };
+    }
+
+    it("enters the merge instead of thawing into the conflict markers", async () => {
+        const harness = createRestoreHarness({ frozen: true });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult({ conflicts: ["editor/story/index.json"] }) });
+        vcs.getMergeState.mockResolvedValue(mergeState(["editor/story/index.json"]));
+
+        await service.sync();
+
+        // No `thaw`: that lifts the latch and re-reads the disk, which is the state being fixed.
+        expect(harness.trace).toEqual(["hold", "release", "merge:editor/story/index.json"]);
+    });
+
+    /**
+     * The paths come from the repository even though the sync result carries a list of its own, so
+     * that syncing into a merge and reopening a project already in one are the same question with
+     * the same answer. The sync's copy is also the more perishable: it arrives on an event stream
+     * that is gone by the next call (docs §4.24) while the repository recovers it from disk.
+     */
+    it("substitutes the paths the repository names, not the ones the sync reported", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult({ conflicts: ["editor/story/index.json"] }) });
+        vcs.getMergeState.mockResolvedValue(mergeState(["editor/story/index.json", "editor/ui/uidoc.json"]));
+
+        await service.sync();
+
+        expect(harness.trace).toEqual(["hold", "release", "merge:editor/story/index.json,editor/ui/uidoc.json"]);
+    });
+
+    it("re-reads the ordinary way when the sync merged everything", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult() });
+        vcs.getMergeState.mockResolvedValue(mergeState([], false));
+
+        await service.sync();
+
+        expect(harness.trace).toEqual(["hold", "release", "reload:restore"]);
+    });
+
+    /**
+     * An automerge that settled everything leaves nothing unparseable, and its result on disk is
+     * what the closing commit will record - freezing that would take the project away from an author
+     * who has nothing to decide. The same line `prepareForOpenMerge` draws, drawn here too.
+     */
+    it("does not freeze a merge that left nothing to decide", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult() });
+        vcs.getMergeState.mockResolvedValue(mergeState([]));
+
+        await service.sync();
+
+        expect(harness.trace).toEqual(["hold", "release", "reload:restore"]);
+    });
+
+    it("asks nothing and re-reads nothing when the sync found this project already current", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult({ alreadyCurrent: true, received: 0 }) });
+
+        await service.sync();
+
+        expect(harness.trace).toEqual(["hold", "release"]);
+        expect(vcs.getMergeState).not.toHaveBeenCalled();
+    });
+
+    /**
+     * A merge is what the resolve surface draws, and a sync is one of the two things that can create
+     * one. Emitted before the re-read for `completeMerge`'s reason: the surfaces must not still be
+     * showing the old answer while the documents underneath them are being replaced.
+     */
+    it("announces that what the merge is has changed", async () => {
+        const harness = createRestoreHarness({ frozen: false });
+        const service = await createServiceWith(harness.context);
+        vcs.sync.mockResolvedValue({ success: true, data: syncResult({ conflicts: ["editor/story/index.json"] }) });
+        vcs.getMergeState.mockResolvedValue(mergeState(["editor/story/index.json"]));
+        const announced: string[] = [];
+        service.onMergeChanged(() => announced.push(harness.trace.join("|")));
+
+        await service.sync();
+
+        expect(announced).toEqual(["hold|release"]);
     });
 });

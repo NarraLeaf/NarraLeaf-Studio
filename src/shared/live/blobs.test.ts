@@ -1,0 +1,92 @@
+import { describe, expect, it } from "vitest";
+
+import {
+    bundlePathIsInside,
+    TRANSFER_ATTEMPT_LIMIT,
+    transferRetryDelayMs,
+    transferShare,
+} from "./blobs";
+
+/**
+ * What is left in this module once a file travels over its own request rather than as messages.
+ *
+ * All three of these guard something an author sees or something that decides where bytes land, and
+ * none of them can be checked by looking at a running transfer: a band that draws past the end of a
+ * row, a retry that never stops, and a path from another machine that names somewhere else.
+ */
+
+describe("how far along a transfer looks", () => {
+    it("draws the fraction that has moved", () => {
+        expect(transferShare(0, 100)).toBe(0);
+        expect(transferShare(25, 100)).toBe(0.25);
+        expect(transferShare(100, 100)).toBe(1);
+    });
+
+    it("never draws past the end of a row, whatever the two numbers disagree about", () => {
+        // The total comes from the operation that named the file and the count from a transport
+        // still running. A band at 104% reads as a defect in the import rather than as a rounding.
+        expect(transferShare(120, 100)).toBe(1);
+        expect(transferShare(-5, 100)).toBe(0);
+        expect(transferShare(Number.NaN, 100)).toBe(0);
+        expect(transferShare(10, Number.POSITIVE_INFINITY)).toBe(0);
+    });
+
+    it("calls a file of no length complete, because an empty file is one an author may import", () => {
+        expect(transferShare(0, 0)).toBe(1);
+    });
+
+    it("draws nothing for a length that makes no sense", () => {
+        expect(transferShare(10, -1)).toBe(0);
+    });
+});
+
+describe("picking an interrupted transfer up again", () => {
+    it("backs off, so a server that is down is not asked twice a second", () => {
+        expect(transferRetryDelayMs(0)).toBe(500);
+        expect(transferRetryDelayMs(1)).toBe(1000);
+        expect(transferRetryDelayMs(3)).toBe(4000);
+    });
+
+    it("stops backing off, so the last wait is a wait rather than an hour", () => {
+        expect(transferRetryDelayMs(20)).toBe(30_000);
+    });
+
+    it("treats a nonsense attempt as the first one", () => {
+        expect(transferRetryDelayMs(-3)).toBe(500);
+    });
+
+    it("gives up, because the sender may have closed and nothing can answer then", () => {
+        expect(TRANSFER_ATTEMPT_LIMIT).toBeGreaterThan(1);
+        expect(TRANSFER_ATTEMPT_LIMIT).toBeLessThan(20);
+    });
+});
+
+describe("where a bundle's files may land", () => {
+    it("takes a path inside the bundle, because a model bundle is a directory", () => {
+        expect(bundlePathIsInside("model.moc3")).toBe(true);
+        expect(bundlePathIsInside("textures/00.png")).toBe(true);
+        expect(bundlePathIsInside("textures\\00.png")).toBe(true);
+    });
+
+    it("refuses one that climbs out of it", () => {
+        expect(bundlePathIsInside("../secrets.txt")).toBe(false);
+        expect(bundlePathIsInside("textures/../../secrets.txt")).toBe(false);
+        expect(bundlePathIsInside("textures\\..\\..\\secrets.txt")).toBe(false);
+    });
+
+    it("refuses one that names somewhere of its own", () => {
+        expect(bundlePathIsInside("/etc/passwd")).toBe(false);
+        expect(bundlePathIsInside("\\\\server\\share\\x")).toBe(false);
+        expect(bundlePathIsInside("C:/Windows/System32/x")).toBe(false);
+    });
+
+    it("refuses an empty path and one long enough to be an attack on the filesystem", () => {
+        expect(bundlePathIsInside("")).toBe(false);
+        expect(bundlePathIsInside("a/".repeat(400))).toBe(false);
+    });
+
+    it("refuses a path with an empty or bare segment in it", () => {
+        expect(bundlePathIsInside("textures//00.png")).toBe(false);
+        expect(bundlePathIsInside("./00.png")).toBe(false);
+    });
+});

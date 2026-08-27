@@ -9,7 +9,13 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type { BlueprintDebugEvent } from "./blueprint/debug";
 import type { BlueprintOpenExternalRequest, BlueprintOpenExternalResult } from "./blueprint/externalLink";
@@ -97,9 +103,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
-    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
-    VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
@@ -117,6 +121,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -282,6 +287,9 @@ export enum IPCEventType {
     gameBuildExportPatch = "gameBuild.exportPatch",
     gameBuildSelectPatchFile = "gameBuild.selectPatchFile",
     gameBuildSelectPatchBaseline = "gameBuild.selectPatchBaseline",
+    gameBuildReadPatchBaseline = "gameBuild.readPatchBaseline",
+    gameBuildReadLastRun = "gameBuild.readLastRun",
+    gameBuildRevealOutput = "gameBuild.revealOutput",
 
     signingList = "signing.list",
     signingImport = "signing.import",
@@ -308,7 +316,6 @@ export enum IPCEventType {
 
     serverTrustPrompt = "serverTrust.prompt",
 
-    onboardingPreviewOpen = "onboarding.previewOpen",
 
     pluginPermissionPromptLaunch = "plugin.permissionPrompt.launch",
     pluginPermissionGrant = "plugin.permission.grant",
@@ -391,11 +398,6 @@ export enum IPCEventType {
     vcsAddServer = "vcs.addServer",
     vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
-    vcsListServerProjects = "vcs.listServerProjects",
-    vcsGetServerProject = "vcs.getServerProject",
-    vcsDeleteServerProject = "vcs.deleteServerProject",
-    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
-    vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
@@ -433,6 +435,21 @@ export enum IPCEventType {
     teamEvent = "team.event",
     /** Pushed: a session opened, dropped, or was refused. */
     teamConnectionChanged = "team.connectionChanged",
+    /**
+     * Bytes, which is the one thing the five above cannot carry.
+     *
+     * ⚠ **A sixth, and deliberately the only one.** `teamCall` is a named method with JSON on
+     * either side, and a file is none of that: it runs for minutes, says how far it has got, can be
+     * stopped, and above all must never have its contents put through a message - the renderer may
+     * not reach the network, and a file crossing here would be a copy of itself in a second heap on
+     * its way to a third. So this carries a **path and a count**, never a byte, and the main
+     * process does the reading, the writing and the connection.
+     *
+     * It is one event rather than four for {@link teamCall}'s reason: the action is named inside
+     * it. Anything that has to move bytes to a server later - and there will be something - asks
+     * here rather than adding a seventh.
+     */
+    teamTransfer = "team.transfer",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -475,8 +492,11 @@ export type BlueprintPersistenceProjectRef = {
  * ("leave the revision" vs "unfreeze"). The revision id and label are the renderer's business.
  * A third kind added to the reason will fail to compile at the reporting call site, which is the
  * right place to be asked what to say about it.
+ *
+ * `live-session` is the one kind main does **not** refuse operations for; the reasoning and the
+ * predicate that says so are in `main/.../utils/workspaceFreeze.ts`.
  */
-export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery";
+export type WorkspaceFreezeKind = "revision" | "manual" | "merge" | "recovery" | "live-session";
 
 /**
  * Which part of the close a workspace is currently waiting on.
@@ -1057,7 +1077,7 @@ export type IPCEvents = {
         data: Record<string, never>;
         response: { canceled: boolean; filePath?: string; content?: string };
     };
-} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents & IPCOnboardingEvents;
+} & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
 
 /**
  * Version control. Every event carries `projectPath`: Studio is
@@ -1415,73 +1435,6 @@ export type IPCVcsEvents = {
         response: { servers: VcsServerSession[] };
     };
     /**
-     * What one server holds, asked of that server.
-     *
-     * **Goes to the network**, and answers with the list or with a coded reason it
-     * has none. The token it is asked with never crosses this boundary in either
-     * direction: the main process sealed it when the server was added.
-     */
-    [IPCEventType.vcsListServerProjects]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerProjectsOutcome;
-    };
-    /**
-     * What one server knows about one of its projects.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-detail`.
-     * A `file` that is not readable is a complete answer rather than a failure, and the
-     * server's own explanation for it is deliberately not carried across: it is an
-     * English sentence about the server's internals, and Studio has its own line for
-     * this in every language it speaks.
-     */
-    [IPCEventType.vcsGetServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDetailOutcome;
-    };
-    /**
-     * Take one project off a server.
-     *
-     * **Goes to the network**, and it is the one call here that changes what a server
-     * holds rather than reading it. What it changes is the list: the server stops
-     * carrying the project, and the repository keeps its store and every revision in it.
-     * Nothing here destroys an author's work, and no argument to it would.
-     */
-    [IPCEventType.vcsDeleteServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDeleteOutcome;
-    };
-    /**
-     * The latest revisions on one of a server's projects, newest first.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-history`.
-     * An answer with no `revisions` field at all is the ordinary one for a project the
-     * server has not read, and it is not an empty history.
-     */
-    [IPCEventType.vcsListServerProjectHistory]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
-        response: VcsServerProjectHistoryOutcome;
-    };
-    /**
-     * Who has an account on one server.
-     *
-     * **Goes to the network**, and only to a server that advertised `members`. Takes no
-     * project, like the calls above it: a roster belongs to the server.
-     */
-    [IPCEventType.vcsListServerMembers]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerMembersOutcome;
-    };
-    /**
      * Exchange a username and password for a token, on a server that offers it.
      *
      * **Goes to the network**, and it is the one call here that carries no token — this
@@ -1647,6 +1600,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Client,
         data: { connection: TeamConnection },
         response: never;
+    };
+    [IPCEventType.teamTransfer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamTransferRequest,
+        response: TeamTransferOutcome;
     };
 };
 
@@ -2746,6 +2705,65 @@ export type IPCGameBuildEvents = {
             path: string | null;
         };
     };
+    /**
+     * What a build folder says about itself, so the patch dialog can state which edition a patch
+     * made against it installs into rather than asking the author to remember.
+     *
+     * Fails, with the reason, on a path that is not a build of a game: the export would fail on the
+     * same path later, and hearing it while the folder is being chosen is the point.
+     */
+    [IPCEventType.gameBuildReadPatchBaseline]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            path: string;
+        };
+        response: {
+            /**
+             * The variant this build was compiled as, or null on a build made before builds stated
+             * it. Null is not the release variant - it is "this build does not say", which is why
+             * the dialog asks rather than assuming.
+             */
+            appTagId: string | null;
+            /** The application name and version the build carries, for confirming it is the right one. */
+            productName: string | null;
+            version: string | null;
+            /** When the build was compiled, ISO-8601. */
+            builtAt: string | null;
+        };
+    };
+    /**
+     * What this project's last run of the build pipeline came to, read off disk.
+     *
+     * Answers null for a project that has never been built, and for one whose record cannot be
+     * read - a report has nothing useful to say about either, and neither is an error.
+     */
+    [IPCEventType.gameBuildReadLastRun]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            run: LastGameBuildRun | null;
+        };
+    };
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The caller names the project, never a folder: the path opened is the one the pipeline
+     * recorded for itself. `revealed` is false where there is no run or it wrote nowhere.
+     */
+    [IPCEventType.gameBuildRevealOutput]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            projectPath: string;
+        };
+        response: {
+            revealed: boolean;
+        };
+    };
     /** Where to write a patch. Answers null when the author closes the dialog. */
     [IPCEventType.gameBuildSelectPatchFile]: {
         type: IPCMessageType.request,
@@ -3108,24 +3126,6 @@ export type IPCServerTrustEvents = {
             props: WindowProps[WindowAppType.ServerTrustPrompt];
         },
         response: { trusted: boolean };
-    };
-};
-
-/**
- * First-run setup asking for its own preview at full size, in a window of its own.
- *
- * Answers nothing: the window draws the same sample the setup screen does, from preferences it
- * reads for itself, and all it is told is which surface to open on. Raised rather than returned,
- * because it is something to look at rather than a question waiting for an answer.
- */
-export type IPCOnboardingEvents = {
-    [IPCEventType.onboardingPreviewOpen]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: {
-            props: WindowProps[WindowAppType.OnboardingPreview];
-        },
-        response: void;
     };
 };
 

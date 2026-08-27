@@ -10,7 +10,7 @@ import {
     subscribeCommandPaletteSession,
     type PaletteSessionState,
 } from "./commandPaletteController";
-import { compositionHandlers, isComposingText } from "./imeComposition";
+import { compositionHandlers, isComposingText } from "@/lib/utils/imeComposition";
 import { useProjectDisplayName } from "../../hooks";
 import type { ChangeEvent, CompositionEvent } from "react";
 

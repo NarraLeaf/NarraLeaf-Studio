@@ -87,6 +87,11 @@ export const dashboard = {
         },
     },
 
+    lastBuild: {
+        title: "最近一次构建",
+        openReport: "打开报告",
+    },
+
     builds: {
         title: "构建记录",
         ok: "成功",

@@ -4,6 +4,7 @@
  */
 
 import type { AssetVariantMap } from "@shared/types/assetSet";
+import { isUIListScrolledToEnd, isUIListScrolledToStart } from "@shared/types/ui-editor/list";
 import { resolveNodeStoredAssetSet } from "./nodeAssetSets";
 import {
     BLUEPRINT_NODE_TYPE_BROADCAST_GET_LISTENER_COUNT,
@@ -120,6 +121,12 @@ import {
     BLUEPRINT_NODE_TYPE_FLOW_FOR_EACH,
     BLUEPRINT_NODE_TYPE_FLOW_FOR_LOOP,
     BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS,
+    BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE,
+    BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE,
+    BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_LAYER_IS_MOUNTED,
     BLUEPRINT_NODE_TYPE_LAYER_SHOW,
@@ -147,6 +154,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
+    BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_DELAY,
     BLUEPRINT_NODE_TYPE_GAME_GET_SKIP_ENABLED,
@@ -167,6 +177,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG,
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED,
     BLUEPRINT_NODE_TYPE_GAME_GET_ENDINGS,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
@@ -212,6 +223,14 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_GET_LENGTH,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_ITEM,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START,
     BLUEPRINT_NODE_TYPE_LOCAL_GET,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
     BLUEPRINT_NODE_TYPE_LOCALIZATION_FORMAT_TEXT,
@@ -356,6 +375,7 @@ import {
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { BLUEPRINT_APP_TAG_OUTPUT_PIN_ID } from "./appTagNodes";
+import type { BlueprintInputActionHostApi } from "./inputActionNodes";
 import type { BehaviorGraphValueExecution } from "../../behavior-graph/BehaviorNodeRegistry";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import { findItemIndexByField, readUIStructFieldValue } from "@shared/types/ui-editor/struct";
@@ -373,7 +393,7 @@ import {
     normalizeBlueprintElementRefValue,
     readBlueprintElementRefParams,
 } from "./elementRefUtils";
-import { readBlueprintAudioTrackParam } from "./audioTrackParams";
+import { BLUEPRINT_SOUND_PARAM_TRACK, readBlueprintAudioTrackParam } from "./audioTrackParams";
 import {
     readBlueprintDurationStyle,
     readBlueprintRelativeStyle,
@@ -1560,6 +1580,20 @@ function resolveGameNodeOutput(
             runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getSpeakerColor(),
         );
     }
+    // The three line-scoped readers, node-type gated for the same reason: `text` is one of the most
+    // common port ids in the catalogue, and gating only the one that needs it would leave a rule
+    // whose exception nobody would remember on the next addition.
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING && portId === "isWaiting") {
+        // No host, or no line on screen, is "not waiting" rather than `undefined`: the pin is a
+        // non-nullable boolean, and an indicator bound to it must lay out before any game exists.
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isDialogWaiting() === true;
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT && portId === "text") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.getDialogText() ?? "";
+    }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR && portId === "isNarrator") {
+        return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game.isNarrator() === true;
+    }
     // Keyed by node type as well as port, because the two playtime readers publish the same shape:
     // matching on the port alone would give whichever ran first to both.
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME) {
@@ -1623,15 +1657,30 @@ function resolveGameNodeOutput(
  * wiring the page.
  */
 function resolveGetTrackVolumeNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
     nodeType: string,
     portId: string,
     params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
     if (nodeType !== BLUEPRINT_NODE_TYPE_GAME_GET_TRACK_VOLUME || portId !== "volume") {
         return undefined;
     }
-    const trackId = readBlueprintAudioTrackParam(params);
+    // Wired wins over picked, as everywhere else the pair exists: a settings row placed once per
+    // track reads which track it governs from its own params.
+    const wired = resolveDataPinValue(
+        graph,
+        nodeId,
+        BLUEPRINT_SOUND_PARAM_TRACK,
+        params,
+        blueprintLocals,
+        depth + 1,
+        runtime,
+    );
+    const trackId = (typeof wired === "string" ? wired.trim() : "") || readBlueprintAudioTrackParam(params);
     if (!trackId) {
         return 1;
     }
@@ -1691,18 +1740,31 @@ function resolveTextReadByIdNodeOutput(
  * boolean, and "not visited" is the correct answer for a gallery row that is not wired yet.
  */
 function resolveVisitedNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
     nodeType: string,
     portId: string,
     params: Record<string, unknown>,
+    blueprintLocals: Record<string, unknown> | undefined,
+    depth: number,
     runtime?: DataPinResolveRuntime,
 ): unknown {
     const game = runtime?.hostAdapter?.blueprintRuntime?.hostApi?.game;
+    // Wired wins over picked, the same resolution `Start Story` gives the same pair: the picker is
+    // what an author reaches for, and the pin is what a card placed once per scene reads its own
+    // scene from.
+    const target = (key: string): string =>
+        String(
+            resolveDataPinValue(graph, nodeId, key, params, blueprintLocals, depth + 1, runtime)
+                ?? params[key]
+                ?? "",
+        ).trim();
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED && portId === "isVisited") {
-        const sceneId = String(params.sceneId ?? "").trim();
+        const sceneId = target("sceneId");
         return sceneId ? game?.isSceneVisited(sceneId) === true : false;
     }
     if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED && portId === "isPicked") {
-        const optionId = String(params.optionId ?? "").trim();
+        const optionId = target("optionId");
         return optionId ? game?.isOptionPicked(optionId) === true : false;
     }
     return undefined;
@@ -1740,6 +1802,10 @@ function resolveEndingNodeOutput(
         const storyId = String(params.storyId ?? "").trim();
         return storyId ? game?.listEndings(storyId) ?? [] : [];
     }
+    if (nodeType === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED && portId === "isInstalled") {
+        const dlcId = String(params.dlcId ?? "").trim();
+        return dlcId ? game?.isDlcInstalled(dlcId) === true : false;
+    }
     return undefined;
 }
 
@@ -1775,6 +1841,43 @@ function resolveLayerMountedNodeOutput(
         return false;
     }
     return runtime?.hostAdapter?.blueprintRuntime?.hostApi?.layers?.isMounted(handle) === true;
+}
+
+/**
+ * The `Input` family's pure reads - `Is Action Held` and `Get Input Device`.
+ *
+ * The router that knows lives on the runtime side of the boundary, so it is asked for structurally
+ * (see {@link BlueprintInputActionHostApi}) rather than through a declared host-API family. A host
+ * that has no input router answers with the family's neutral reading rather than nothing, because
+ * `undefined` here would travel silently down every wire that consumes it.
+ *
+ * For `Is Action Held` that reading is **false**: the pin is a non-nullable boolean, and "nobody is
+ * holding anything" is honest in an editor preview with no player at the keyboard. For
+ * `Get Input Device` it is **"pointer"**, which is the same answer the device tracker itself gives
+ * on a machine with no coarse pointer before the player has touched anything - so an author never
+ * has to write a separate arm for "the device could not be read".
+ */
+function resolveInputActionNodeOutput(
+    nodeType: string,
+    portId: string,
+    params: Record<string, unknown>,
+    runtime?: DataPinResolveRuntime,
+): unknown {
+    const hostApi = runtime?.hostAdapter?.blueprintRuntime?.hostApi as
+        | { input?: BlueprintInputActionHostApi }
+        | undefined;
+    if (nodeType === BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE && portId === "device") {
+        const device = hostApi?.input?.getDevice?.();
+        return device ? String(device) : "pointer";
+    }
+    if (nodeType !== BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD || portId !== "held") {
+        return undefined;
+    }
+    const actionId = String(params[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? "").trim();
+    if (!actionId) {
+        return false;
+    }
+    return hostApi?.input?.isActionHeld?.(actionId) === true;
 }
 
 /**
@@ -2408,6 +2511,10 @@ function resolveListNodeOutput(
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SELECTED_ITEM ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_LENGTH ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEM_AT ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END ||
+        type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START ||
         type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_FIND_ITEM_BY_FIELD;
     const elementId = resolveListElementIdInput(
         graph,
@@ -2431,6 +2538,23 @@ function resolveListNodeOutput(
 
     if ((type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEMS || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_ITEMS) && portId === "items") {
         return props.items;
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS) && portId === "progress") {
+        return props.scroll.progress;
+    }
+    if (type === BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET) {
+        if (portId === "offset") {
+            return props.scroll.offset;
+        }
+        if (portId === "maxOffset") {
+            return props.scroll.maxOffset;
+        }
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END) && portId === "atEnd") {
+        return isUIListScrolledToEnd(props.scroll);
+    }
+    if ((type === BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START || type === BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START) && portId === "atStart") {
+        return isUIListScrolledToStart(props.scroll);
     }
     if (
         (type === BLUEPRINT_NODE_TYPE_LIST_GET_SELECTED_INDEX ||
@@ -3190,6 +3314,10 @@ function resolveSelfOutput(
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET ||
             selfNode.type === BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET_FUTURE ||
             selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN ||
+            // The window's size and the sizes it may be set to, onto `scale` and `scales`.
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS ||
+            selfNode.type === BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE ||
             // Sound transport: Play Sound publishes `handle`, Is Sound Playing
             // publishes `isPlaying`.
             selfNode.type === BLUEPRINT_NODE_TYPE_SOUND_PLAY ||
@@ -3213,6 +3341,10 @@ function resolveSelfOutput(
             portId === "preview" ||
             portId === "entries" ||
             portId === "isFullscreen" ||
+            portId === "scale" ||
+            portId === "scales" ||
+            portId === "width" ||
+            portId === "height" ||
             portId === "handle" ||
             portId === "isPlaying" ||
             portId === "count")
@@ -3398,9 +3530,13 @@ function resolveSelfOutput(
         return textReadByIdOutput;
     }
     const visitedOutput = resolveVisitedNodeOutput(
+        graph,
+        nodeId,
         selfNode.type,
         portId,
         selfNode.params ?? {},
+        blueprintLocals,
+        depth,
         runtime,
     );
     if (visitedOutput !== undefined) {
@@ -3428,6 +3564,15 @@ function resolveSelfOutput(
     if (layerMountedOutput !== undefined) {
         return layerMountedOutput;
     }
+    const inputActionOutput = resolveInputActionNodeOutput(
+        selfNode.type,
+        portId,
+        selfNode.params ?? {},
+        runtime,
+    );
+    if (inputActionOutput !== undefined) {
+        return inputActionOutput;
+    }
     const appTagOutput = resolveAppTagNodeOutput(selfNode.type, portId);
     if (appTagOutput !== undefined) {
         return appTagOutput;
@@ -3442,9 +3587,13 @@ function resolveSelfOutput(
         return getCharacterOutput;
     }
     const trackVolumeOutput = resolveGetTrackVolumeNodeOutput(
+        graph,
+        nodeId,
         selfNode.type,
         portId,
         selfNode.params ?? {},
+        blueprintLocals,
+        depth,
         runtime,
     );
     if (trackVolumeOutput !== undefined) {
@@ -3454,6 +3603,9 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT ||
+        selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_IS_GAME_OVERLAY ||
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME ||
@@ -3605,6 +3757,37 @@ function resolveSelfOutput(
     );
 }
 
+/**
+ * The value a node the host did not define published on one of its data output pins.
+ *
+ * `resolveSelfOutput` is a whitelist of built-in node types and their output port ids, and that is
+ * deliberate: it computes most outputs from a node's own inputs, so reading a value back out of one
+ * execution's output store is opt-in per node type, and the registry sweep in
+ * `graphParamResolvers.test.ts` keeps every built-in honest about opting in.
+ *
+ * A plugin's node cannot opt in - the whitelist lives here, in the host - and nothing here can
+ * compute its output either, so what `execute()` published is the only answer that exists. Reading
+ * it is narrow in a way a blanket fallback would not be: the lookup is keyed by this node's own id
+ * and its own port, so it can only ever answer for the node that published, and built-in types are
+ * excluded, so the whitelist stays their only route and the sweep keeps its teeth.
+ *
+ * In a shipped game this is also the only route there could be. A runtime plugin entry registers
+ * `type` / `displayName` / `execute` and no pins at all, so the node has no catalogue there and
+ * `isOutputPort` cannot recognise the pin.
+ */
+function resolveNonBuiltInNodeOutput(
+    graph: DataPinGraph,
+    nodeId: string,
+    portId: string,
+    blueprintLocals: Record<string, unknown> | undefined,
+): unknown {
+    const type = graph.nodes?.[nodeId]?.type;
+    if (!type || blueprintNodeRegistry.isBuiltIn(type)) {
+        return undefined;
+    }
+    return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+}
+
 function isOutputPort(
     graph: DataPinGraph,
     nodeId: string,
@@ -3642,6 +3825,10 @@ export function resolveDataPinValue(
 
     const edge = graph.edges?.find(e => e.to.nodeId === consumerNodeId && e.to.port === consumerPortId);
     if (!edge) {
+        const nonBuiltInOutput = resolveNonBuiltInNodeOutput(graph, consumerNodeId, consumerPortId, blueprintLocals);
+        if (nonBuiltInOutput !== undefined) {
+            return nonBuiltInOutput;
+        }
         if (isOutputPort(graph, consumerNodeId, consumerPortId, params)) {
             const selfOutput = resolveSelfOutput(
                 graph,

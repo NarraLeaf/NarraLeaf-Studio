@@ -2,6 +2,7 @@ import { useMemo, useRef, useState, type CSSProperties, type ReactNode } from "r
 import { BookOpen, ChevronRight, Code, FileText, Filter, MonitorPlay, Quote, Rows3 } from "lucide-react";
 import { useCommandTranslation, useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { SOURCE_LOCALE, type TranslationKey } from "@shared/i18n";
 import { getCommandGroup } from "@/apps/workspace/modules/story/scene-editor/storyCommandCategories";
 import type { StoryPreferences } from "../onboardingPreferences";
@@ -359,6 +360,12 @@ export function StoryScenePreview({ story, textStyle }: StoryScenePreviewProps) 
                                         setInsertFocused(true);
                                     }}
                                     onKeyDown={event => {
+                                        // Escape, Enter and the arrows all belong to the candidate
+                                        // window while an input method is composing - which is the
+                                        // one place a Japanese or Chinese author meets this field.
+                                        if (isImeKeyEvent(event)) {
+                                            return;
+                                        }
                                         // `""` is a command line with nothing typed after the
                                         // trigger, which is exactly when the menu is longest.
                                         if (commandQuery === null) {

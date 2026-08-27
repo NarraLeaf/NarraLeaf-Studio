@@ -36,8 +36,10 @@ export const project = {
     group: {
         details: "Details",
         appTags: "Build variants",
+        dlc: "DLC",
         userData: "Player files",
         icons: "Icons",
+        window: "Window",
         screenEffects: "Screen effects",
         dependencies: "Dependencies",
         saving: "Saving",
@@ -188,6 +190,34 @@ export const project = {
         deleteDetailCuts: {
             one: "{count} cut point stays in the script and stops taking effect.",
             other: "{count} cut points stay in the script and stop taking effect.",
+        },
+    },
+    dlc: {
+        add: "Add DLC",
+        // Names for the undo steps these leave behind ("Undo delete DLC Summer Route").
+        history: {
+            add: "add DLC {name}",
+            rename: "rename DLC to {name}",
+            delete: "delete DLC {name}",
+            edit: "edit DLC",
+        },
+        newDlcName: "New DLC",
+        nameTitle: "Name",
+        // The id is the filename, so the field says what the file will be called rather than
+        // explaining what an id is. It is the one thing here a player ever sees.
+        idTitle: "Id",
+        idFile: "Ships as {file}",
+        // Changing it is allowed and is not a rename: copies already delivered keep the old name.
+        idChangeConfirm: "Change the id to \"{id}\"?",
+        idChangeDetail: "Copies already delivered keep the old filename, and a story marked for the old id stops naming this DLC.",
+        idChangeAction: "Change",
+        // Which builds this DLC loads into. A build of another variant refuses it.
+        attachTitle: "Loads into",
+        delete: "Delete",
+        deleteConfirm: "Delete \"{name}\"?",
+        deleteDetail: {
+            one: "{count} story goes back into the base build.",
+            other: "{count} stories go back into the base build.",
         },
     },
     assets: {
@@ -464,6 +494,14 @@ export const project = {
     // Project -> App -> Screen effects. The `/vfx` sources Studio makes for a project, and the one
     // decision that is the same for all of them. What the rate costs is the `screenEffects` help
     // topic, reached by the `?` on this heading.
+    window: {
+        resizableTitle: "Resizable window",
+        resizableDescription: "The player may drag the window to a size of their own. The stage keeps its shape inside it.",
+        rememberTitle: "Remember the window",
+        rememberDescription: "The game reopens at the size, position and screen mode it was last closed at.",
+        fullscreenTitle: "Start full-screen",
+        fullscreenDescription: "The game opens full-screen on a first launch.",
+    },
     screenEffects: {
         // Named for the sources this reaches rather than for the command they belong to. A clip the
         // author imported plays at the rate it was made at, and nothing here changes that.
@@ -511,5 +549,14 @@ export const project = {
                 other: "{count} actions",
             },
         },
+    },
+    // What a live session changes about this page. The build variants, the DLC and the palette are
+    // three of the documents a session carries, so all three stay editable - and a row somebody else
+    // is inside is read-only while they are in it, which is what the mark says.
+    live: {
+        // On the mark a row wears while somebody else is inside it, and on the row's own fields. A
+        // person is named: there is no width for a name beside the monogram, and a truncated one
+        // names nobody. One sentence for the three tables - the page already says which it is.
+        entryClaimed: "{name} is editing this entry",
     },
 } as const;

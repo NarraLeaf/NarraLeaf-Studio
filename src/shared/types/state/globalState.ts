@@ -1,5 +1,9 @@
 import { ACCENT_COLOR_DEFAULT } from "@shared/constants/accent";
-import { CONFIRM_QUIT_DEFAULT } from "@shared/constants/quit";
+import {
+    CONFIRM_QUIT_DEFAULT,
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+} from "@shared/constants/quit";
 import {
     SCREEN_EFFECT_QUALITY_DEFAULT,
     SCREEN_EFFECT_QUALITY_KEY,
@@ -364,6 +368,21 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "versionControl.checkpointOnClose": boolean;
     /**
+     * How long a quit waits for those checkpoints, in seconds; 0 records none on the way out.
+     *
+     * Its own key rather than a constant because the wait is the author's to spend: quitting
+     * closes every project at once, and how long that is worth holding the exit for depends on
+     * how large the projects are and how much of the session is worth recording.
+     *
+     * The shutdown deadline is this plus what closing the version-control stores is allowed, so
+     * raising it buys time for the checkpoints instead of taking it from the stores. A project
+     * whose checkpoint outlasts the budget is left unrecorded rather than holding the quit.
+     *
+     * Read by the main process in `App.checkpointOpenWorkspacesForShutdown`. Ignored when
+     * `versionControl.checkpointOnClose` is off, which turns the checkpoint off for both exits.
+     */
+    [QUIT_CHECKPOINT_TIMEOUT_KEY]: number;
+    /**
      * Name recorded as the author on commits and checkpoints; "" = unset.
      *
      * The interim answer to Lore's `identity` global, which is per-call rather than
@@ -437,6 +456,21 @@ export interface GlobalStateType extends Record<string, any> {
      * team's server has somewhere to say so.
      */
     "team.machineLabel": string;
+    /**
+     * The live session a window was hosting when it went away, by repository id.
+     *
+     * **The one thing about a session that has to survive a window, and only for a minute.** A room
+     * lives in a server's memory and belongs to the window that opened it, so the moment that window
+     * goes - a reload, a crash, a laptop closing - the server ends it, and everybody in it is told.
+     * Nothing left anywhere else says the collaboration was meant to carry on, so a reload used to
+     * be indistinguishable from a goodbye.
+     *
+     * Written when a window becomes a host and cleared when its author leaves on purpose, so what is
+     * here means "this stopped without anybody asking". `at` is what keeps it from meaning anything
+     * else: a record older than a couple of minutes is a session that ended some time ago, and a
+     * workspace opening on it must not start a room around an author who came back tomorrow.
+     */
+    "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
 }
 
 export type GlobalStateKeys = string;
@@ -499,6 +533,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "project.defaultAuthor": "",
     "versionControl.checkpointIntervalMinutes": 15,
     "versionControl.checkpointOnClose": true,
+    [QUIT_CHECKPOINT_TIMEOUT_KEY]: QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
     "versionControl.authorName": "",
     "versionControl.authorEmail": "",
     "versionControl.serverSessions": [],
@@ -507,6 +542,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.
     "team.machineLabel": "",
+    "team.hostedLiveSessions": {},
 };
 
 /**

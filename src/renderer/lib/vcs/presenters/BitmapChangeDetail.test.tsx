@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { DocumentDiffEntry } from "@shared/documents/diff";
+import type { DocumentChangeKind, DocumentDiffEntry } from "@shared/documents/diff";
 import { ChangeDetailHost } from "./ChangeDetailHost";
 import type { ComparisonSides, SideBytes } from "./comparisonSide";
 
@@ -27,9 +27,12 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 }));
 
 const sideStates = vi.hoisted(() => new Map<string, unknown>());
+/** Every read the presenter asked for: which side, and which file. */
+const reads = vi.hoisted(() => [] as { at: string | null; path: string }[]);
 const ABSENT = { status: "absent", url: null, size: 0, error: null };
 vi.mock("./comparisonSide", () => ({
-    useSideObjectUrl: (side: { at: string } | null) => {
+    useSideObjectUrl: (side: { at: string } | null, path: string) => {
+        reads.push({ at: side?.at ?? null, path });
         if (!side) return ABSENT;
         return sideStates.get(side.at === "revision" ? "before" : "after") ?? ABSENT;
     },
@@ -94,6 +97,7 @@ beforeEach(() => {
     vi.stubGlobal("Image", FakeImage);
     decoded.clear();
     sideStates.clear();
+    reads.length = 0;
 });
 
 afterEach(() => {
@@ -268,5 +272,88 @@ describe("when an image cannot be shown", () => {
         const { container } = draw();
 
         await waitFor(() => expect(container.textContent).toContain("documentDiff.presenter.image.unreadable"));
+    });
+});
+
+/**
+ * An asset is one row and two files, and the picture is in the file the row is NOT named after.
+ *
+ * The row is a record inside `assets/assets.metadata.image.json`; the bytes are at
+ * `assets/content/<shard>/<shard>/<id>`. A presenter that read the row's own path would ask the
+ * repository for a shard of JSON and draw nothing.
+ */
+describe("an image drawn from a row that is not the file", () => {
+    const RECORD_ID = "99553d15-abb5-4213-bad7-203798a1adc4";
+
+    function shard(kind: DocumentChangeKind): DocumentDiffEntry {
+        return {
+            path: "assets/assets.metadata.image.json",
+            kind: "changed",
+            documentKind: "assets-metadata",
+            diff: {
+                changes: [{
+                    path: ["assets", RECORD_ID],
+                    kind,
+                    label: { key: "documentDiff.assets.changed" },
+                    subject: "Hero portrait",
+                }],
+                complete: true,
+                total: 1,
+                tier: "semantic",
+            },
+        };
+    }
+
+    it("reads the member's bytes on both sides, and never the record's path", () => {
+        const bytes = entry();
+        sideStates.set("before", ready("blob:before"));
+        sideStates.set("after", ready("blob:after"));
+        decoded.set("blob:before", { width: 800, height: 600 });
+        decoded.set("blob:after", { width: 800, height: 600 });
+
+        const { container } = render(
+            <ChangeDetailHost
+                entry={shard("changed")}
+                change={shard("changed").diff.changes[0]}
+                member={bytes}
+                name="Hero portrait"
+                sides={SIDES}
+            />,
+        );
+
+        // The class of a thing is settled from its contents, so the presenter has to be chosen by
+        // the member: asking the JSON record would put the generic list in front of every asset.
+        expect(container.querySelector("[data-change-presenter]")?.getAttribute("data-change-presenter"))
+            .toBe("bitmap");
+        expect(new Set(reads.map(read => read.path))).toEqual(new Set([bytes.path]));
+        expect(new Set(reads.map(read => read.at))).toEqual(new Set(["revision", "working-tree"]));
+    });
+
+    it("takes which sides hold the file from the member, not from the record", () => {
+        // The hazard this pins: an asset re-imported under an id the shard did not have is `added`
+        // as a record while its bytes are a file that already existed and merely `changed`. Reading
+        // the record's kind would ask only for the newer side and draw one frame of two.
+        render(
+            <ChangeDetailHost
+                entry={shard("added")}
+                change={shard("added").diff.changes[0]}
+                member={entry({ kind: "changed" })}
+                sides={SIDES}
+            />,
+        );
+
+        expect(new Set(reads.map(read => read.at))).toEqual(new Set(["revision", "working-tree"]));
+    });
+
+    it("falls back to the list of rows for a row with no bytes to draw", () => {
+        // A rename touches the record and nothing else, so there is no second file at all. The
+        // detail is then the asset's own change, through the presenter that can always draw one.
+        const { container } = render(
+            <ChangeDetailHost entry={shard("changed")} change={shard("changed").diff.changes[0]} sides={SIDES} />,
+        );
+
+        expect(container.querySelector("[data-change-presenter]")?.getAttribute("data-change-presenter"))
+            .toBe("generic");
+        expect(reads).toHaveLength(0);
     });
 });

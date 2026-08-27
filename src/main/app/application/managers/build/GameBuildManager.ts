@@ -33,6 +33,9 @@ import {
     type GameBuildStateSnapshot,
     type GameBuildTarget,
     type GamePatchExportRequest,
+    type GameBuildRunKind,
+    type LastGameBuildRun,
+    type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
     readAssetOptimizationConfiguration,
@@ -74,6 +77,7 @@ import {
     signingReachesNetwork,
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
+import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -95,10 +99,14 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
 import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
 import { formatBytes } from "@shared/utils/formatBytes";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
+import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { readDistributionKey } from "@shared/utils/distributionKey";
+import { diffPack, PACK_DELTA_VERSION } from "@shared/utils/packDelta";
+import { dlcArtifactFileName, dlcDirectoryName, resolveDlcDeliveryPath } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME, resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
+import { dlcForAppTag, findDlc, type ProjectDlc } from "@shared/types/dlc";
+import { readProjectDlcFromDir } from "../../utils/dlcFile";
 import { digestPayload, openPayload, patchCarriesEntry } from "./patchPayload";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { getMainLocale, getMainTranslator } from "../../i18n";
@@ -118,11 +126,15 @@ import {
 import type { NormalizedPluginManifestV2 } from "@shared/types/plugins";
 import { collectPluginBuildConfigFields, pluginBuildConfigSlots } from "@shared/utils/pluginBuildConfig";
 import { emitWorkspaceConsoleLog } from "../../utils/workspaceConsole";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { certificateContainer, certificateExpiry, inspectCertificateFile } from "../security/certificateInspect";
 import { resolvePackEncryptionKey } from "../security/packKeyService";
 import { SigningVault, type SecretSealer } from "../security/signingVault";
-import { type GameRuntimeArtifactCompileResult } from "../preview/compiler/gameRuntimeArtifactCompiler";
+import {
+    type GameRuntimeArtifactCompileResult,
+    type GameRuntimePluginSource,
+} from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
 import { formatPreviewProcessOutput } from "../preview/PreviewManager";
@@ -155,6 +167,23 @@ type BuildSession = {
      */
     abandonWeatherBake: (() => void) | null;
     cancelled: boolean;
+    /** Which pipeline this session is running, so the record it leaves says which. */
+    kind: GameBuildRunKind;
+    /**
+     * The variant this run resolved to, filled in once it has. Blank until then, which is what a
+     * run that failed before reading the project has to say - it never got as far as an edition.
+     */
+    appTagId?: string;
+    appTagName: string;
+    /**
+     * What the compile carried out of the asset library, held until the run finishes so the
+     * published snapshot can carry it.
+     *
+     * A run may compile more than once - the desktop targets and the web export are two compiles of
+     * one request - and both narrow from the same bundle under the same variant, so the second
+     * answer replaces the first rather than being merged with it.
+     */
+    assetReport: ShippedAssetReport | null;
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
@@ -196,20 +225,6 @@ export function resolveElectronDistDirForApp(
 export { deriveGameAppId };
 
 /**
- * Whether this build ships a sidecar that runs as JavaScript rather than as its own executable.
- *
- * Such a sidecar is started by running the game's own Electron binary as a Node interpreter, which
- * is a thing `ELECTRON_RUN_AS_NODE` asks for and the `runAsNode` fuse can refuse - so the fuse and
- * the feature cannot both be absolute. Asked of the compiled pack rather than of the project,
- * because the pack is what actually shipped: a plugin declaring a sidecar for another platform
- * contributes nothing to this artifact and must not cost it a fuse.
- */
-export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined): boolean {
-    return (pack?.plugins ?? []).some(plugin =>
-        (plugin.sidecars ?? []).some(sidecar => sidecar.kind === "node"));
-}
-
-/**
  * Hardening fuse set for shipped games; not user-configurable. Two of the fuses answer to what the
  * build actually is rather than being fixed, and both parameters exist for that reason.
  *
@@ -221,39 +236,40 @@ export function packShipsNodeSidecar(pack: GameRuntimePackV1 | null | undefined)
  * which ships outside the asar with its own protection. So it stays off until real code signing is
  * configured, at which point it earns its keep. (Linux has no asar-integrity support regardless.)
  *
- * `shipsNodeSidecar` gates `runAsNode`; see the comment on that field.
  *
  * `debuggable` is the experimental `debuggable-build` condition and answers over the top of the
  * signing question: an artifact meant to be inspected cannot carry a fuse that hard-quits it the
  * moment a debugger rewrites anything in the archive. It reaches here only from an unpackaged
  * Studio launched with the mode's flags (BaseApp.getExperimentalState), so no build an author makes
  * can be one.
+ *
+ * `sealed` takes that back. A protected game refuses a debugging switch however it is marked, so
+ * there is nothing to attach to the packaged artifact and no reason to give up its tamper-evidence
+ * - and integrity is exactly what makes editing the marker into the archive expensive, which is the
+ * edit this whole area exists to price out.
  */
 export function gameFusesForPlatform(
     platform: GameBuildDesktopPlatform,
     hasSigningIdentity: boolean,
-    shipsNodeSidecar = false,
     debuggable = false,
+    sealed = false,
 ): GameBuildWorkerFuses {
     return {
         /*
-         * Off unless something in this build needs it on.
+         * Off, always.
          *
-         * `ELECTRON_RUN_AS_NODE` is how a `kind: "node"` plugin sidecar starts: the runtime spawns
-         * the game's own binary with that variable set and the sidecar's .js as its argument. With
-         * the fuse off, the variable is ignored and that spawn silently launches a second copy of
-         * the game instead of a Node process - and only in a packaged build, since preview is not
-         * fused, so the failure appears after shipping and nowhere before it.
+         * `ELECTRON_RUN_AS_NODE` turns the game's executable into a general Node interpreter that
+         * runs whatever script is named on its command line, with the app's own native modules
+         * loadable and none of the main script's guards on the way - including the one route that
+         * steps around asar integrity, because nothing loads the app at all.
          *
-         * The alternative, Electron's `utilityProcess`, is not one here: the sidecar wire protocol
-         * is NDJSON over stdin/stdout with EOF as the shutdown signal, a utility process has no
-         * stdin, and executable sidecars speak the same protocol and cannot move with it.
-         *
-         * So the fuse follows the build. A game that ships no node sidecar - nearly all of them -
-         * is unchanged and keeps the variable refused. One that does has already had its author
-         * accept that plugin's sidecar permission, and relaxes exactly this one fuse to honour it.
+         * It used to follow the build, because a `kind: "node"` plugin sidecar started by spawning
+         * the game's binary with that variable set. Those run as utility processes now, which
+         * Electron starts itself: they read their frames from `process.parentPort` rather than
+         * stdin, which is the one thing a utility process cannot have. So no build needs the fuse
+         * and none gets it. See `src/runtime/main/sidecarUtilityProcess.ts`.
          */
-        runAsNode: shipsNodeSidecar,
+        runAsNode: false,
         // Left off deliberately: a game stores no Chromium cookies (saves and
         // persistence are its own JSON stores), and enabling OS cookie
         // encryption makes the first launch prompt for keychain/secret-store
@@ -261,7 +277,7 @@ export function gameFusesForPlatform(
         enableCookieEncryption: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,
-        enableEmbeddedAsarIntegrityValidation: !debuggable && hasSigningIdentity && platform !== "linux",
+        enableEmbeddedAsarIntegrityValidation: (!debuggable || sealed) && hasSigningIdentity && platform !== "linux",
         onlyLoadAppFromAsar: true,
         grantFileProtocolExtraPrivileges: false,
         resetAdHocDarwinSignature: platform === "macos",
@@ -843,10 +859,13 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "build",
+            appTagName: "",
+            assetReport: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "production build");
             // Refused before anything happens - before the checkpoint, before the
             // compile. Recorded on the session so the build dialog shows the
@@ -917,10 +936,13 @@ export class GameBuildManager {
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
+            kind: "patch",
+            appTagName: "",
+            assetReport: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             const message = workspaceFrozenMessage(frozen, "patch export");
             session.snapshot = {
                 status: "error",
@@ -945,14 +967,27 @@ export class GameBuildManager {
     ): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
-        const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
+        // Read before the variant, because a DLC decides which variant this is: the record is the
+        // one place that says where the DLC belongs, and letting the dialog say it too would make
+        // "sealed for the demo, declared for the release" a state an author could reach.
+        const dlc = await this.resolveExportedDlc(projectPath, request);
+        const appTag = await this.resolveBuildVariant(
+            session,
+            projectPath,
+            dlc ? { appTagId: dlc.attachTo } : request,
+        );
+        // The edition the file installs into, not the one whose content it carries: what a reader of
+        // the record wants to know is which builds this run produced something for.
+        this.noteRunVariant(session, appTag);
         // What the patch carries, which is not always the edition it attaches to. The identity below
         // stays with `appTag` - it is what decides whether the player's build can open the file at
         // all - while everything about the payload is read from this one.
-        const contentTag = request.contentAppTagId?.trim() && request.contentAppTagId.trim() !== appTag.id
+        // A DLC adds content to the edition it attaches to; it is never the other edition's content
+        // carried across, which is what the second variant is for.
+        const contentTag = !dlc && request.contentAppTagId?.trim() && request.contentAppTagId.trim() !== appTag.id
             ? await this.resolveBuildVariant(session, projectPath, { appTagId: request.contentAppTagId })
             : appTag;
         const appTagDocument = await readProjectAppTagDocumentFromDir(projectPath).catch(() => null);
@@ -964,6 +999,16 @@ export class GameBuildManager {
                 level: "info",
                 source: "Build",
                 message: `patch carries the "${contentTag.name}" content for the "${appTag.name}" build`,
+            });
+        } else if (request.baselineFromBuild && !request.baselineAppDir && !dlc) {
+            // Both sides of the comparison are the same edition of the same project, so the file
+            // produced is a valid patch that changes nothing. Said here rather than refused: the
+            // export still runs, and an author testing the delivery path has a reason to want it.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `the content and the build this patch updates are both "${appTag.name}", `
+                    + "so this patch carries no changes",
             });
         }
 
@@ -997,6 +1042,36 @@ export class GameBuildManager {
         // has it - under the extension the pack no longer names.
         const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
+
+        /**
+         * The build this patch updates, compiled here rather than named on disk.
+         *
+         * What an author who is shipping an edition upgrade or a DLC has is the project, not a copy
+         * of the edition the player installed - and that edition is reproducible from the project,
+         * so asking them to keep one around was asking them to keep something the export can make.
+         * A folder they did name wins: it is the build that actually shipped, while this one is the
+         * project as it stands now.
+         *
+         * Compiled with the DLC left out and under the edition the patch installs into, so what the
+         * comparison below reports as changed is exactly what this patch adds.
+         */
+        const builtBaseline = !request.baselineAppDir && request.baselineFromBuild
+            ? await this.compilePatchBaseline(session, {
+                projectPath,
+                entry,
+                appTag,
+                appTagDocument,
+                runtimePlugins: pluginSelection.selected,
+                debuggable,
+                identity,
+                distribution,
+                projectConfig,
+                assetImages,
+                ...(encryptionKey ? { encryptionKey } : {}),
+            })
+            : null;
+        const baselineAppDir = request.baselineAppDir || builtBaseline;
+
         let contentAudit: ShippedContentAuditReport | null = null;
         const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
             projectPath,
@@ -1017,6 +1092,9 @@ export class GameBuildManager {
             // The payload a player receives, so it plans a scene drop and refuses a
             // graph it cannot fold - exactly as the build it patches did.
             packaging: true,
+            // The base game's content plus this one DLC's, so the difference from the build being
+            // updated is exactly what the DLC adds. An ordinary patch gets the base game's alone.
+            includedDlc: dlc ? [dlc.id] : [],
             locale: getMainLocale(this.app),
             ...(encryptionKey ? { encryptionKey } : {}),
             appId: identity.appId,
@@ -1042,35 +1120,63 @@ export class GameBuildManager {
             source: "Build",
             message: `game compiled (${artifact.copiedAssetCount} asset(s))`,
         });
+        this.reportShippedAssets(session, artifact.assetReport ?? null, pluginSelection.selected);
         this.reportShippedContentAudit(session, contentAudit);
         this.ensureNotCancelled(session);
 
         session.snapshot = { ...session.snapshot, status: "packaging" };
-        // Always inside a `patch` folder: that folder is what the author zips and
-        // what the player extracts, so a patch written loose beside it would be a
-        // patch nobody can deliver.
-        const outputFile = resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
-        const summary = await this.sealPatch(session, artifact.appDir, request, outputFile, distribution);
+        // Always inside the delivery folder: that folder is what the author ships and what the
+        // player ends up with, so a file written loose beside it would be one nobody can deliver.
+        // The name comes from the DLC's id rather than from the dialog, because it is the name the
+        // player sees beside their game and the author has already chosen it once.
+        const outputFile = dlc
+            ? resolveDlcDeliveryPath(
+                path.join(path.dirname(request.outputFile), dlcArtifactFileName(dlc.id)),
+                process.platform,
+                path.join,
+                path.dirname,
+                path.basename,
+            )
+            : resolvePatchDeliveryPath(request.outputFile, path.join, path.dirname, path.basename);
+        const summary = await this.sealPatch(
+            session,
+            artifact.appDir,
+            request,
+            baselineAppDir,
+            outputFile,
+            distribution,
+            dlc,
+            appTag.id,
+        );
         this.ensureNotCancelled(session);
 
         const outputDir = path.dirname(outputFile);
-        session.snapshot = {
+        // Measured like a build's artifacts and for the same reason: what a patch came to is the
+        // first thing an author checks about one, and a finished run that could not say would be
+        // the only one of the two that cannot.
+        const artifactSizes = await measureBuildArtifacts([outputFile]);
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: [],
             artifacts: [outputFile],
+            artifactSizes,
             outputDir,
-        };
+            ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+        });
+        const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
             level: "success",
             source: "Build",
-            message: `patch written: ${PATCH_DIRECTORY_NAME}/${path.basename(outputFile)} (${summary})`,
+            message: `${dlc ? "DLC" : "patch"} written: ${folder}/${path.basename(outputFile)} (${summary})`,
         });
         this.emit(session, {
             level: "info",
             source: "Build",
-            message: `deliver it by zipping the ${PATCH_DIRECTORY_NAME} folder; a player extracts it into the game's own folder`,
+            message: dlc
+                ? `deliver the ${folder} folder as this DLC's download; it lands in the game's own folder`
+                : `deliver it by zipping the ${folder} folder; a player extracts it into the game's own folder`,
         });
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
@@ -1078,14 +1184,206 @@ export class GameBuildManager {
     }
 
     /**
-     * Seal the freshly compiled payload into one patch file, carrying only what
-     * the baseline does not already have.
+     * Compile the build a patch is measured against.
      *
-     * The pack descriptor always goes in. It is what a new scene arrives in, it is
-     * small next to any asset, and it is rewritten on every compile anyway - so
-     * comparing it would only ever answer "changed" while costing a reader the
-     * doubt about whether it might not have.
+     * Not a build in any sense the author sees: nothing is packaged, signed or given an icon, and
+     * the directory is overwritten by the next export. It exists to be read entry by entry and
+     * compared, so it has to be compiled the way the shipped build was - the same protection
+     * setting, the same identity, the same image re-encoding - or every entry would read as changed
+     * and the patch would carry the whole game.
+     *
+     * Its own staging directory, never the one the payload compiles into: that one holds the patch
+     * being made, and comparing a compile against itself produces a patch that installs and changes
+     * nothing.
      */
+    /**
+     * Every DLC of the variant this build is, sealed against the payload the build just made.
+     *
+     * One folder per DLC rather than one folder holding all of them, because a storefront uploads a
+     * folder as one download: a shared folder would put every DLC into whichever one the author
+     * uploaded first, and the player would receive content they did not buy. The folder inside it is
+     * the delivery folder, so the ContentRoot an author points at is `dlc/<id>` and what lands in
+     * the game's own folder is `DLC/<id>_DLC.pak`.
+     *
+     * Nothing here fails the build. A project with no distribution key, a variant with no DLC, one
+     * DLC that will not compile - each is reported and the others carry on, because the installers
+     * are already written and refusing them now would throw away a build that worked.
+     */
+    private async buildVariantDlc(
+        session: BuildSession,
+        options: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            appTag: ProjectAppTag;
+            appTagDocument: ProjectAppTagDocument | null;
+            runtimePlugins: RuntimePluginPackSelection["selected"];
+            debuggable: boolean;
+            identity: { appId: string; productName: string; identifier?: string };
+            projectConfig: ProjectConfigData | null;
+            assetImages: AssetImageOptimizationResult["images"];
+            encryptionKey?: string;
+            /** The payload this build produced - what a player has before installing any of these. */
+            baselineAppDir: string;
+            outputDir: string;
+        },
+    ): Promise<string[]> {
+        const { appTag, identity, projectPath } = options;
+        const dlcs = dlcForAppTag(await readProjectDlcFromDir(projectPath).catch(() => []), appTag.id);
+        if (dlcs.length === 0) {
+            return [];
+        }
+        const distributionKey = readDistributionKey(options.projectConfig?.app);
+        if (!distributionKey) {
+            // The same sentence the patch export refuses with, said as a thing to go and do - but a
+            // note here rather than a refusal: the game itself built fine.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${dlcs.length} DLC not built: this project has no distribution key. `
+                    + "Create one in Project > Project, then build again.",
+            });
+            return [];
+        }
+        const distribution = { key: distributionKey, titleId: identity.appId };
+        const declaredScenes = resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes);
+        const assetAxes = resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes);
+
+        const written: string[] = [];
+        for (const dlc of dlcs) {
+            this.ensureNotCancelled(session);
+            this.emit(session, { level: "info", source: "Build", message: `building DLC "${dlc.name}"` });
+            const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+                projectPath,
+                entry: options.entry,
+                runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+                runtimeVersion: this.readRuntimeVersion(),
+                // Per DLC, so one compile cannot be handed the previous one's leftovers.
+                outputRoot: path.join(projectPath, ".nlstudio", "build", "dlc", dlc.id),
+                runtimePlugins: options.runtimePlugins,
+                mode: "production",
+                ...(options.debuggable ? { debuggable: true } : {}),
+                appTag: { id: appTag.id, name: appTag.name },
+                declaredScenes,
+                assetAxes,
+                packaging: true,
+                // The base game plus this one DLC, so the difference from the build above is exactly
+                // what this DLC adds.
+                includedDlc: [dlc.id],
+                locale: getMainLocale(this.app),
+                ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+                appId: identity.appId,
+                productName: identity.productName,
+                ...(identity.identifier ? { identifier: identity.identifier } : {}),
+                distribution,
+                ...(patchPlatforms(options.projectConfig).length > 0
+                    ? { platforms: patchPlatforms(options.projectConfig) }
+                    : {}),
+                hostUserDataDir: this.app.getUserDataDir(),
+                downloadRewrites: currentDownloadRewrites(),
+                assetImages: options.assetImages,
+            }, {
+                onStart: worker => { session.worker = worker; },
+                onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
+                cancelled: () => session.cancelled,
+            });
+            session.worker = null;
+            this.ensureNotCancelled(session);
+
+            const outputFile = resolveDlcDeliveryPath(
+                path.join(options.outputDir, "dlc", dlc.id, dlcArtifactFileName(dlc.id)),
+                process.platform,
+                path.join,
+                path.dirname,
+                path.basename,
+            );
+            const summary = await this.sealPatch(
+                session,
+                artifact.appDir,
+                { outputFile, name: dlc.name },
+                options.baselineAppDir,
+                outputFile,
+                distribution,
+                dlc,
+                appTag.id,
+            );
+            written.push(outputFile);
+            this.emit(session, {
+                level: "success",
+                source: "Build",
+                message: `DLC written: ${path.relative(options.outputDir, outputFile)} (${summary})`,
+            });
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: "each DLC folder is one download: upload dlc/<id> as that DLC's content",
+        });
+        return written;
+    }
+
+    private async compilePatchBaseline(
+        session: BuildSession,
+        options: {
+            projectPath: string;
+            entry: GameRuntimeLaunchEntry;
+            appTag: ProjectAppTag;
+            appTagDocument: ProjectAppTagDocument | null;
+            runtimePlugins: RuntimePluginPackSelection["selected"];
+            debuggable: boolean;
+            identity: { appId: string; productName: string; identifier?: string };
+            distribution: { key: string; titleId: string };
+            projectConfig: ProjectConfigData | null;
+            assetImages: AssetImageOptimizationResult["images"];
+            encryptionKey?: string;
+        },
+    ): Promise<string> {
+        const { appTag, identity } = options;
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `building the "${appTag.name}" game to compare against`,
+        });
+        const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
+            projectPath: options.projectPath,
+            entry: options.entry,
+            runtimeDistDir: path.join(this.app.getDistDir(), "runtime"),
+            runtimeVersion: this.readRuntimeVersion(),
+            outputRoot: path.join(options.projectPath, ".nlstudio", "build", "patch-baseline"),
+            runtimePlugins: options.runtimePlugins,
+            mode: "production",
+            ...(options.debuggable ? { debuggable: true } : {}),
+            appTag: { id: appTag.id, name: appTag.name },
+            declaredScenes: resolveAppTagReachableScenes(appTag, options.appTagDocument?.reachableScenes),
+            assetAxes: resolveAppTagAssetAxes(appTag, options.appTagDocument?.assetAxes),
+            packaging: true,
+            // Read back entry by entry, then left for the next export to overwrite. Nothing here is
+            // delivered, which is what lets the audit be skipped - see `forComparison`.
+            forComparison: true,
+            // No DLC, whatever this export is. The game a player has before installing this file is
+            // the game without it, and that is the only thing worth comparing against.
+            includedDlc: [],
+            locale: getMainLocale(this.app),
+            ...(options.encryptionKey ? { encryptionKey: options.encryptionKey } : {}),
+            appId: identity.appId,
+            productName: identity.productName,
+            ...(identity.identifier ? { identifier: identity.identifier } : {}),
+            distribution: options.distribution,
+            ...(patchPlatforms(options.projectConfig).length > 0
+                ? { platforms: patchPlatforms(options.projectConfig) }
+                : {}),
+            hostUserDataDir: this.app.getUserDataDir(),
+            downloadRewrites: currentDownloadRewrites(),
+            assetImages: options.assetImages,
+        }, {
+            onStart: worker => { session.worker = worker; },
+            onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
+            cancelled: () => session.cancelled,
+        });
+        session.worker = null;
+        this.ensureNotCancelled(session);
+        return artifact.appDir;
+    }
+
     /**
      * Say what this patch does to saves players already have.
      *
@@ -1157,24 +1455,50 @@ export class GameBuildManager {
         }
     }
 
+    /**
+     * Seal the freshly compiled payload into one patch file, carrying only what
+     * the baseline does not already have.
+     *
+     * The game's content - the story, the pages, the translations, the compiled scripts - travels
+     * as the difference from the baseline rather than as a pack of its own, so that two patches
+     * installed on one build both take effect. A baseline that predates that reads a whole pack and
+     * nothing else, and gets one.
+     */
     private async sealPatch(
         session: BuildSession,
         appDir: string,
         request: GamePatchExportRequest,
+        /**
+         * The build being updated, already resolved: the folder the author named, or the one the
+         * export compiled for them. One value rather than two readings of the request, so the two
+         * ways of arriving at a baseline cannot behave differently from here on.
+         */
+        baselineAppDir: string | null | undefined,
         outputFile: string,
         distribution: { key: string; titleId: string },
+        dlc: ProjectDlc | null,
+        appTagId: string,
     ): Promise<string> {
         const payload = await openPayload(appDir);
         let baseline: Map<string, string> | null = null;
-        if (request.baselineAppDir) {
-            const previous = await openPayload(request.baselineAppDir).catch((error: unknown) => {
+        /**
+         * The pack of the build being patched, kept past the reader that produced it.
+         *
+         * It is what the patch states its content changes against, so that installing this patch
+         * beside another one leaves both installed rather than the later file deciding the whole
+         * story, every page and every translation on its own.
+         */
+        let baselinePack: GameRuntimePackV1 | null = null;
+        if (baselineAppDir) {
+            const previous = await openPayload(baselineAppDir).catch((error: unknown) => {
                 throw new Error(
-                    `Could not read the build this patch is for at ${request.baselineAppDir}: `
+                    `Could not read the build this patch is for at ${baselineAppDir}: `
                     + `${error instanceof Error ? error.message : String(error)}`,
                 );
             });
             try {
                 baseline = await digestPayload(previous);
+                baselinePack = previous.pack;
                 // Before anything is written: what this patch does to saves is the author's to know
                 // while they can still decide not to ship it. A warning, never a refusal - a patch
                 // that breaks saves is sometimes exactly the patch an author means to make, and a
@@ -1189,6 +1513,11 @@ export class GameBuildManager {
                 source: "Build",
                 message: "no previous build to compare against, so nothing was checked about existing saves",
             });
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "this patch replaces the game content whole; what another patch installed beside it changes there is not kept",
+            });
         }
 
         try {
@@ -1197,20 +1526,66 @@ export class GameBuildManager {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
             });
+            // Zero is the default the reader already applies, so it is left unsaid rather than
+            // written out; a negative layer is a patch the author means to sit under the others.
+            const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
             const descriptor = {
-                ...(request.name?.trim() ? { name: request.name.trim() } : {}),
-                ...(request.order ? { order: request.order } : {}),
+                // A DLC's own name when the dialog offers none: the author already wrote one on the
+                // record, and it is what the game's log and the player's folder both want.
+                ...(request.name?.trim() || dlc ? { name: request.name?.trim() || dlc?.name } : {}),
+                ...(order !== 0 ? { order } : {}),
+                // The edition, taken from the tag this file was actually sealed under rather than
+                // from the record a second time - the two are the same by construction above, and
+                // stating the resolved one is what makes that checkable from the file alone.
+                ...(dlc ? { dlc: { id: dlc.id, attachTo: appTagId } } : {}),
             };
             await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+
+            /*
+             * What this patch changes about the game's content, rather than a pack of its own.
+             *
+             * Only for a build that says it composes them. A build made before that reads one name
+             * and one only, so a patch that carried a delta to it would install and change nothing
+             * about the story - which is the failure this whole seam has to avoid. Such a build
+             * gets the whole pack, exactly as it always did.
+             */
+            const composesDeltas = (baselinePack?.addOns?.packDeltaVersion ?? 0) >= PACK_DELTA_VERSION;
+            if (baselinePack && composesDeltas) {
+                const delta = diffPack(baselinePack, payload.pack);
+                await writer.add(
+                    GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
+                    Buffer.from(JSON.stringify(delta), "utf-8"),
+                );
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: delta.ops.length > 0
+                        ? `${delta.ops.length} content change(s) carried; other patches installed beside this one keep theirs`
+                        : "no content changes; this patch carries files only",
+                });
+            } else if (baselinePack) {
+                this.emit(session, {
+                    level: "warning",
+                    source: "Build",
+                    message: "the build this patch updates predates layered content, so the patch carries the "
+                        + "game content whole; what another patch changes there is not kept",
+                });
+            }
 
             let carried = 0;
             let skipped = 0;
             let bytes = 0;
             for (const name of payload.names) {
-                if (name === LAYER_DESCRIPTOR_ENTRY) {
-                    // A payload cannot carry this name, but a future one that did
-                    // would collide with the descriptor written above rather than
-                    // being noticed, so it is dropped here instead.
+                if (name === LAYER_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
+                    // A payload cannot carry either name, but a future one that did
+                    // would collide with what was written above rather than being
+                    // noticed, so both are dropped here instead.
+                    continue;
+                }
+                if (name === GAME_RUNTIME_BUNDLE_PACK_ENTRY && baselinePack && composesDeltas) {
+                    // The delta above says everything this pack would, addressed so that a patch
+                    // beside this one keeps its own changes. Carrying both would hand the reader two
+                    // answers, and the whole one is the answer that erases the other patch.
                     continue;
                 }
                 const data = await payload.read(name);
@@ -1281,11 +1656,11 @@ export class GameBuildManager {
     private async run(session: BuildSession, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         if (targets.length === 0) {
@@ -1324,6 +1699,7 @@ export class GameBuildManager {
             );
         }
         const appTag = await this.resolveBuildVariant(session, projectPath, request);
+        this.noteRunVariant(session, appTag);
         // What the author says each mechanism the build cannot read can start. Read here rather than
         // inside the compile because both compiles below are the same game under one variant, and two
         // reads of the same file could straddle a write.
@@ -1433,6 +1809,11 @@ export class GameBuildManager {
                 // The one compile that produces something a player receives, so the one that plans a
                 // scene drop and refuses a graph it cannot fold.
                 packaging: true,
+                // None of them: this is the package a player buys first. Stated rather than left
+                // out, because absent means "every DLC the project has" - which for a base build
+                // would be the author's whole extra content shipped inside the thing they sell
+                // separately.
+                includedDlc: [],
                 // The compile can refuse this build (a blueprint whose variant test does not come out
                 // a constant), and that sentence is the author's to read.
                 locale: getMainLocale(this.app),
@@ -1471,6 +1852,11 @@ export class GameBuildManager {
         // exports, so both read one compile. Selecting web and Android together
         // must not compile the game twice.
         let webArtifact: GameRuntimeArtifactCompileResult | null = null;
+        // The web package is a second artifact, not a second reading of the first: it is written
+        // loose where the desktop one may be sealed, and it is what a browser and both mobile
+        // shells serve. A narrowed package that nothing checked is the dangerous half of trimming
+        // whichever package it is, so this one is audited on its own terms.
+        let webContentAudit: ShippedContentAuditReport | null = null;
         if (webTarget || mobileTargets.length > 0) {
             webArtifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath,
@@ -1484,6 +1870,11 @@ export class GameBuildManager {
                 declaredScenes,
                 assetAxes,
                 packaging: true,
+                // None of them: this is the package a player buys first. Stated rather than left
+                // out, because absent means "every DLC the project has" - which for a base build
+                // would be the author's whole extra content shipped inside the thing they sell
+                // separately.
+                includedDlc: [],
                 locale: getMainLocale(this.app),
                 // The browser export and both mobile repacks read this one compile, so all three are
                 // what a platform-scoped plugin field has to agree across.
@@ -1499,6 +1890,7 @@ export class GameBuildManager {
                 onStart: worker => { session.worker = worker; },
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
+                onAudit: report => { webContentAudit = report; },
             });
             session.worker = null;
             this.emit(session, {
@@ -1506,6 +1898,7 @@ export class GameBuildManager {
                 source: "Build",
                 message: `${webTarget ? "web export" : "game site"} compiled (${webArtifact.copiedAssetCount} asset(s))`,
             });
+            this.reportShippedContentAudit(session, webContentAudit, webTarget ? "web export" : "game site");
             this.ensureNotCancelled(session);
         }
         // From one compile only: both read the same project under the same variant, so the second
@@ -1513,6 +1906,13 @@ export class GameBuildManager {
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
         }
+        // Same rule, and the same reason: what the library came to is a fact about the project under
+        // this variant, not about which package was written from it.
+        this.reportShippedAssets(
+            session,
+            (desktopArtifact ?? webArtifact)?.assetReport ?? null,
+            pluginSelection.selected,
+        );
         // The player-facing notice, written once and shipped by every target that has a place to
         // put it. Into the web site's root directly, since that root IS what gets served; for the
         // desktop packages it is handed to electron-builder as an extra file, which is what puts
@@ -1573,8 +1973,8 @@ export class GameBuildManager {
                 fuses: gameFusesForPlatform(
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
-                    packShipsNodeSidecar(desktopArtifact?.pack),
                     debuggable,
+                    Boolean(encryptionKey),
                 ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -1612,11 +2012,30 @@ export class GameBuildManager {
         const artifacts = await this.runWorker(session, workerConfig);
         // A cancel that raced the worker's completion must win over "done".
         this.ensureNotCancelled(session);
+        // After the installers, not before: the DLC files are compared against the payload this
+        // build just made, so they cannot be produced until there is one.
+        if (request.includeDlc && desktopArtifact) {
+            artifacts.push(...await this.buildVariantDlc(session, {
+                projectPath,
+                entry,
+                appTag,
+                appTagDocument,
+                runtimePlugins: pluginSelection.selected,
+                debuggable,
+                identity,
+                projectConfig,
+                assetImages,
+                ...(encryptionKey ? { encryptionKey } : {}),
+                baselineAppDir: desktopArtifact.appDir,
+                outputDir,
+            }));
+            this.ensureNotCancelled(session);
+        }
         // Measured before the snapshot is published so the console line below and anything else
         // reading the finished build report the same numbers off one walk of the output. Sizing is
         // best-effort and cannot reject, so a build that packaged successfully still finishes here.
         const artifactSizes = await measureBuildArtifacts(artifacts);
-        session.snapshot = {
+        await this.finishSession(session, {
             status: "done",
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
@@ -1624,7 +2043,8 @@ export class GameBuildManager {
             artifacts,
             artifactSizes,
             outputDir,
-        };
+            ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+        });
         this.emit(session, {
             level: "success",
             source: "Build",
@@ -1638,6 +2058,37 @@ export class GameBuildManager {
         if (request.openWhenDone !== false) {
             this.revealOutput(outputDir);
         }
+    }
+
+    /**
+     * What this project's last run came to, read off disk rather than out of a session.
+     *
+     * The session is gone by the time an author opens yesterday's report, and the record is what
+     * outlives it.
+     */
+    public readLastRun(projectPath: string): Promise<LastGameBuildRun | null> {
+        return readLastGameBuildRun(path.resolve(projectPath));
+    }
+
+    /**
+     * Show the last run's output folder in the desktop's file manager.
+     *
+     * The folder comes from the record this pipeline wrote, and the caller names only the project.
+     * A window therefore cannot ask for an arbitrary directory to be opened - the only paths that
+     * reach the shell here are ones a build of this project chose for itself, which is the same
+     * folder the build already reveals when it finishes.
+     *
+     * False when there is no run, or the run wrote nowhere: a report with no folder to show is a
+     * button that does nothing rather than an error to report.
+     */
+    public async revealLastOutput(projectPath: string): Promise<boolean> {
+        const run = await this.readLastRun(projectPath);
+        const outputDir = run?.state.outputDir?.trim();
+        if (!outputDir) {
+            return false;
+        }
+        this.revealOutput(outputDir);
+        return true;
     }
 
     private revealOutput(outputDir: string): void {
@@ -2491,6 +2942,27 @@ export class GameBuildManager {
      * reading the tag again somewhere else, and a build whose identity, whose file names and whose
      * story disagreed about which variant it is is exactly the failure this is all about.
      */
+    /**
+     * The DLC this export is for, or null for an ordinary patch.
+     *
+     * Refuses an id the project does not have rather than falling back to "no DLC": the fallback
+     * would produce a perfectly good patch under a DLC's name, holding none of its content.
+     */
+    private async resolveExportedDlc(
+        projectPath: string,
+        request: GamePatchExportRequest,
+    ): Promise<ProjectDlc | null> {
+        const requested = request.dlcId?.trim();
+        if (!requested) {
+            return null;
+        }
+        const dlc = findDlc(await readProjectDlcFromDir(projectPath), requested);
+        if (!dlc) {
+            throw new Error(`The project has no DLC "${requested}". Pick one in the DLC dialog.`);
+        }
+        return dlc;
+    }
+
     private async resolveBuildVariant(
         session: BuildSession,
         projectPath: string,
@@ -2715,9 +3187,24 @@ export class GameBuildManager {
      * difference this makes to the output - no asar integrity, a runtime that will attach - is not
      * one anybody can see by looking at the file.
      */
-    private reportDebuggableBuild(session: BuildSession): boolean {
+    private reportDebuggableBuild(session: BuildSession, sealed: boolean): boolean {
         if (!this.app.hasExperimentalCondition("debuggable-build")) {
             return false;
+        }
+        if (sealed) {
+            // Half the condition, and the half that is kept is the useful one. A protected game
+            // refuses a debugging switch (see `honoursDebuggableMarker`), so the packaged artifact
+            // is no more inspectable than a production one - which is also why it keeps asar
+            // integrity here rather than giving up the fuse for a capability it will not have.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "experimental condition debuggable-build: this project protects its assets, "
+                    + "so the packaged game still refuses a debugging switch and keeps asar "
+                    + "integrity. Run the built app directory directly to attach to it. Do not "
+                    + "distribute it.",
+            });
+            return true;
         }
         this.emit(session, {
             level: "warning",
@@ -2728,7 +3215,65 @@ export class GameBuildManager {
         return true;
     }
 
-    private reportShippedContentAudit(session: BuildSession, report: ShippedContentAuditReport | null): void {
+    /**
+     * Say what this build left out of the asset library, and hold the list for the finished build.
+     *
+     * Two lines at most, because the console is not where four hundred asset names belong: the
+     * count and what leaving them out saved. The list itself travels on the snapshot, where a
+     * report an author opens can show it.
+     *
+     * The plugin line is the one blind spot in this whole mechanism said out loud. An asset ships
+     * because its id occurs in the bytes that ship; a plugin that builds an id while the game runs
+     * writes that id nowhere, so nothing here can see the reference. It is a warning rather than a
+     * refusal because the plugins that declare this capability are mostly reading assets the story
+     * already names, and refusing would mean no project with one could ever be built.
+     */
+    private reportShippedAssets(
+        session: BuildSession,
+        report: ShippedAssetReport | null,
+        plugins: readonly GameRuntimePluginSource[],
+    ): void {
+        if (!report) {
+            return;
+        }
+        session.assetReport = report;
+        if (report.excluded.length === 0 && report.excludedCharacters.length === 0) {
+            return;
+        }
+        this.emit(session, {
+            level: "info",
+            source: "Build",
+            message: `${report.excluded.length} asset(s) are not referenced by this build and were `
+                + `left out, saving ${formatBytes(report.excludedBytes)}`,
+        });
+        if (report.excludedCharacters.length > 0) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: `${report.excludedCharacters.length} character(s) are not referenced by this `
+                    + `build and were left out: ${report.excludedCharacters.map(entry => entry.name).join(", ")}`,
+            });
+        }
+        const assetPlugins = plugins
+            .filter(plugin => plugin.manifest.contributes.runtimeCapabilities?.includes("assets"))
+            .map(plugin => plugin.manifest.name ?? plugin.manifest.id);
+        if (assetPlugins.length > 0) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: `${assetPlugins.join(", ")} can request assets while the game runs; an asset `
+                    + "only that plugin names is not in the package. Name it somewhere the build can "
+                    + "read to keep it.",
+            });
+        }
+    }
+
+    private reportShippedContentAudit(
+        session: BuildSession,
+        report: ShippedContentAuditReport | null,
+        /** Which package was read, where a build writes more than one. */
+        subject = "package",
+    ): void {
         if (!report) {
             return;
         }
@@ -2757,8 +3302,38 @@ export class GameBuildManager {
         this.emit(session, {
             level: "info",
             source: "Build",
-            message: `content check passed (${report.checkedAssetCount} asset(s) resolved in the package)`,
+            message: `content check passed (${report.checkedAssetCount} asset(s) resolved in the ${subject})`,
         });
+    }
+
+    /**
+     * Write down what this run came to, and only then publish the finished snapshot.
+     *
+     * That order is the whole point: a window watching the status sees `done` and opens the report,
+     * so the record has to be on disk before the status says so. Publishing first would leave a
+     * window in which the finished run reads as "there is no report".
+     */
+    private async finishSession(session: BuildSession, snapshot: GameBuildStateSnapshot): Promise<void> {
+        await writeLastGameBuildRun(session.projectPath, this.runRecord(session, snapshot));
+        session.snapshot = snapshot;
+    }
+
+    private runRecord(session: BuildSession, snapshot: GameBuildStateSnapshot): LastGameBuildRun {
+        return {
+            kind: session.kind,
+            ...(session.appTagId ? { appTagId: session.appTagId } : {}),
+            appTagName: session.appTagName,
+            cancelled: session.cancelled,
+            state: snapshot,
+        };
+    }
+
+    /** The variant this run resolved to, kept for the record it will leave behind. */
+    private noteRunVariant(session: BuildSession, variant: ProjectAppTag): void {
+        session.appTagName = variant.name;
+        if (!isBuiltinAppTagId(variant.id)) {
+            session.appTagId = variant.id;
+        }
     }
 
     private ensureNotCancelled(session: BuildSession): void {
@@ -2782,6 +3357,10 @@ export class GameBuildManager {
             this.app.logger.error("[Build] failed", message);
             this.emit(session, { level: "error", source: "Build", message: `build failed: ${message}` });
         }
+        // Not awaited, unlike the finished path: this is reached from synchronous callers - the
+        // cancel handler answers with the snapshot it just set - and a failed run is not one anybody
+        // is about to open a report for in the same instant.
+        void writeLastGameBuildRun(session.projectPath, this.runRecord(session, session.snapshot));
     }
 
     private emitProcessOutput(session: BuildSession, level: DevModeConsoleLogPayload["level"], chunk: Buffer): void {

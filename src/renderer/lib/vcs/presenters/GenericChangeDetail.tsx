@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { countDocumentChanges, type DocumentDiff } from "@shared/documents/diff";
-import { DocumentChangeList } from "../DocumentChangeList";
+import { countDocumentChanges, type DocumentChange, type DocumentDiff } from "@shared/documents/diff";
+import { DocumentChangeList, type RowReveal } from "../DocumentChangeList";
 import { isWholeDocumentChange } from "../documentChangeView";
 import type { ChangePresenter, ChangePresenterProps } from "./registry";
 
@@ -26,7 +26,18 @@ import type { ChangePresenter, ChangePresenterProps } from "./registry";
  */
 export const DOCUMENT_ROW_CEILING = 200;
 
-export function GenericChangeDetail({ entry, change }: ChangePresenterProps) {
+/**
+ * What a canvas above this list adds to it: rows that can be clicked to go and look.
+ *
+ * Optional and absent everywhere else, which is the point - this is the list the version rail and
+ * every format without a canvas draw, and none of them has anywhere to send the author.
+ */
+export interface RevealableRows {
+    readonly reveal?: RowReveal;
+    readonly activeChange?: DocumentChange | null;
+}
+
+export function GenericChangeDetail({ entry, change, reveal, activeChange }: ChangePresenterProps & RevealableRows) {
     /**
      * One change selected out of the document reads as a diff of its own.
      *
@@ -55,6 +66,8 @@ export function GenericChangeDetail({ entry, change }: ChangePresenterProps) {
             // it; the caption would otherwise claim it was unreadable. Suppressed only for the whole
             // document, never when one change inside it is selected.
             wholeDocument={change === undefined && isWholeDocumentChange(entry.kind)}
+            reveal={reveal}
+            activeChange={activeChange}
         />
     );
 }

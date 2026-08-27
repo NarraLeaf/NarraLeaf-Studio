@@ -27,6 +27,7 @@ let exportDir: string;
 function makeWindow(overrides: { protectedPath?: boolean } = {}) {
     return {
         win: {},
+        getApp: () => ({ hasExperimentalCondition: () => false }),
         app: {
             storageManager: {
                 isPathProtected: vi.fn(async () => overrides.protectedPath ?? false),

@@ -3,7 +3,9 @@ import type { BlueprintGraphIr, BlueprintGraphNode } from "@shared/types/bluepri
 import {
     BLUEPRINT_NODE_TYPE_FN_HEAD,
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
     isBlueprintEventDispatchHeadType,
     isStoryActionCallHeadType,
 } from "@shared/types/blueprint/graph";
@@ -68,7 +70,9 @@ import type { LintFinding, LintLocation, LintRule } from "../types";
 // ---------------------------------------------------------------------------
 
 /** What kind of thing a dangling id was supposed to name; picks the sentence. */
-type BlueprintReferenceKind = "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey";
+type BlueprintReferenceKind =
+    | "surface" | "story" | "scene" | "choice" | "ending" | "character" | "textKey" | "dlc"
+    | "inputAction";
 
 /**
  * Select params whose options are project entities, keyed by the `dynamicOptionsSource` the node
@@ -87,6 +91,14 @@ export const REFERENCE_KIND_BY_OPTIONS_SOURCE: Readonly<Record<string, Blueprint
     storyEndings: "ending",
     characters: "character",
     localizationKeys: "textKey",
+    // A DLC an author deleted leaves every `Is DLC Installed` that named it answering false
+    // forever, so the entrance behind it is never drawn again and nothing else says why.
+    dlc: "dlc",
+    // The action vocabulary is one table for the whole project, so this is checkable here in a way
+    // the surface-scoped and list-scoped sources below are not. An `On Action` head naming a
+    // deleted action is silent twice over: nothing raises that name any more, and the head looks
+    // exactly like one that is simply waiting for its gesture.
+    inputActions: "inputAction",
 };
 
 /**
@@ -128,6 +140,8 @@ const REFERENCE_MESSAGE_KEY: Readonly<Record<BlueprintReferenceKind, Translation
     ending: "lint.rule.blueprintReferenceMissing.messageEnding" as TranslationKey,
     character: "lint.rule.blueprintReferenceMissing.messageCharacter" as TranslationKey,
     textKey: "lint.rule.blueprintReferenceMissing.messageTextKey" as TranslationKey,
+    dlc: "lint.rule.blueprintReferenceMissing.messageDlc" as TranslationKey,
+    inputAction: "lint.rule.blueprintReferenceMissing.messageInputAction" as TranslationKey,
 };
 
 /**
@@ -143,11 +157,18 @@ type BlueprintReferenceUniverse = Partial<Record<BlueprintReferenceKind, Readonl
 function buildReferenceUniverse(ctx: LintContext): BlueprintReferenceUniverse {
     const universe: BlueprintReferenceUniverse = {
         character: new Set(ctx.characters.map(character => character.id)),
+        // Always present, unlike the documents below: the registry is absent-is-empty by
+        // construction, so "this project ships no DLC" and "the list could not be read" are not two
+        // states this can be in.
+        dlc: new Set(ctx.dlcs.map(dlc => dlc.id)),
     };
     if (ctx.uiDocument) {
         universe.surface = new Set(
             ctx.uiDocument.surfaces.filter(surface => surface.kind === "appSurface").map(surface => surface.id),
         );
+        // Keyed by the table's key, which is the identity a graph stores - the same reading
+        // `normalizeUIInputActionLibrary` takes.
+        universe.inputAction = new Set(Object.keys(ctx.uiDocument.actions ?? {}));
     }
     if (ctx.storiesComplete) {
         const stories = new Set<string>();
@@ -498,6 +519,74 @@ function runEmptyEvent(ctx: LintContext): LintFinding[] {
 }
 
 // ---------------------------------------------------------------------------
+// blueprint/dlc-entrance-unguarded
+// ---------------------------------------------------------------------------
+
+/**
+ * A `Start Story` into a DLC's story, in a graph that never asks whether the DLC is here.
+ *
+ * The base build does not carry a DLC's story, so the entrance is a button that fails when a player
+ * who has not bought it presses it - and the author cannot see that on their own machine, because
+ * Dev Mode carries every story the project has. This is the one fault in the DLC seam that is
+ * invisible from the inside.
+ *
+ * **Per graph, and a warning.** Guarding it somewhere else is legitimate - a menu can hide the whole
+ * row before this graph ever runs - so a rule that could only see one graph must not refuse a build
+ * over what it cannot see. What it can say is that nothing in reach asks the question.
+ *
+ * The guard is `Is DLC Installed` and deliberately not the Steam plugin's `Owns DLC`: ownership can
+ * only be asked of a storefront that is running, and content gated on it disappears for an offline
+ * player. See the node's own comment.
+ */
+function runDlcEntranceUnguarded(ctx: LintContext): LintFinding[] {
+    registerCoreBlueprintNodes();
+    const dlcByStory = new Map<string, string>();
+    for (const story of ctx.stories) {
+        if (story.dlcId) {
+            dlcByStory.set(story.id, story.dlcId);
+        }
+    }
+    if (dlcByStory.size === 0) {
+        return [];
+    }
+
+    const findings: LintFinding[] = [];
+    for (const site of listBlueprintGraphSites(ctx.blueprintDocument)) {
+        const nodes = Object.values(site.ir.nodes ?? {});
+        const guarded = new Set(
+            nodes
+                .filter(node => node.type === BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED)
+                .map(node => String(node.params?.dlcId ?? "").trim()),
+        );
+        for (const node of nodes) {
+            if (node.type !== BLUEPRINT_NODE_TYPE_GAME_START_STORY) {
+                continue;
+            }
+            // The picked value only. A wired Story Id pin is a story this rule cannot name, and
+            // guessing would report a graph that is fine - the same reading `planSceneDrop` takes.
+            const storyId = String(node.params?.storyId ?? "").trim();
+            const dlcId = storyId ? dlcByStory.get(storyId) : undefined;
+            if (!dlcId || guarded.has(dlcId)) {
+                continue;
+            }
+            findings.push({
+                ruleId: "blueprint/dlc-entrance-unguarded",
+                messageKey: "lint.rule.blueprintDlcEntranceUnguarded.message" as TranslationKey,
+                location: {
+                    kind: "blueprint",
+                    blueprintId: site.blueprintId,
+                    blueprintName: site.blueprintName,
+                    graphId: site.graphId,
+                    nodeId: node.id,
+                },
+                target: blueprintNodeJumpTarget(site, node.id),
+            });
+        }
+    }
+    return findings;
+}
+
+// ---------------------------------------------------------------------------
 // blueprint/save-field-empty
 // ---------------------------------------------------------------------------
 
@@ -612,6 +701,14 @@ export const BLUEPRINT_LINT_RULES: readonly LintRule[] = [
         defaultSeverity: "info",
         slug: "blueprintEmptyEvent",
         run: ctx => runEmptyEvent(ctx),
+    },
+    {
+        id: "blueprint/dlc-entrance-unguarded",
+        category: "blueprint",
+        // A warning, not an error: the guard may legitimately be somewhere this rule cannot see.
+        defaultSeverity: "warning",
+        slug: "blueprintDlcEntranceUnguarded",
+        run: ctx => runDlcEntranceUnguarded(ctx),
     },
     {
         id: "blueprint/save-field-empty",

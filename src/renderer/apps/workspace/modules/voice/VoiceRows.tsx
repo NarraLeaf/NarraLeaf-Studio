@@ -7,11 +7,13 @@
  * Comments in English per project convention.
  */
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 export type VoiceTableRow = {
     unitId: string;
@@ -49,6 +51,8 @@ type VoiceRowStrings = {
 
 type VoiceRowProps = {
     row: VoiceTableRow;
+    /** The language this table is for. What the freeze scope is addressed by. */
+    locale: string;
     speaker: string;
     state: VoiceUnitState;
     /** Resolved audio asset for the linked clip, or null when the clip is missing / unlinked. */
@@ -79,12 +83,38 @@ const STATUS_DOT: Record<VoiceUnitState, string> = {
 
 export function VoiceRow(props: VoiceRowProps) {
     const { row, speaker, state, asset, mode, isPlaying, strings } = props;
-    // Assigning, removing, approving and returning write the locale voice document. Playing the clip
-    // and reading the row do not, so auditioning a frozen revision still works.
-    const freeze = useFreezeGuard();
+    // Assigning, removing, approving and returning write THIS language's voice library. Playing the
+    // clip and reading the row do not, so auditioning a frozen revision still works.
+    //
+    // Scoped rather than guarded by any freeze at all: a live session carries this document, so a
+    // guard with no scope would grey the whole table out inside a session that was carrying its
+    // edits perfectly well. There is no claim to consult here - a take is dropped and approved
+    // rather than typed, and `CLAIMED_OPS` says why that is the whole answer.
+    const freeze = useFreezeGuard(voiceDocumentFreezeScope(props.locale));
     const assignRef = useRef<HTMLButtonElement | null>(null);
+    const noteRef = useRef<HTMLInputElement | null>(null);
     const [dragOver, setDragOver] = useState(false);
     const hasClip = state !== "missing";
+
+    /**
+     * Take somebody else's note only while nobody is typing into this box.
+     *
+     * ⚠ **The box is uncontrolled and used to carry `key={props.note}`, which remounted it on every
+     * incoming change** - so a note arriving from another machine in a live session wiped whatever
+     * the director was halfway through writing, silently. A take is deliberately unclaimed (see
+     * `CLAIMED_OPS`), which is defensible only because the loser of that race can read the winner's
+     * note in the box; it stops being defensible the moment the race also eats their own sentence.
+     *
+     * Writing the DOM node rather than lifting the value into state keeps the field uncontrolled,
+     * which is what a composing IME needs: a controlled value re-rendered mid-composition drops the
+     * pre-edit string on several platforms.
+     */
+    useEffect(() => {
+        const field = noteRef.current;
+        if (field && document.activeElement !== field) {
+            field.value = props.note;
+        }
+    }, [props.note]);
 
     const statusLabel =
         state === "approved" ? strings.statusApproved
@@ -153,18 +183,21 @@ export function VoiceRow(props: VoiceRowProps) {
                         director is judging takes. Same borderless-until-hover input as the cast name. */}
                     {mode === "audition" ? (
                         <input
+                            ref={noteRef}
                             className="h-6 w-40 shrink-0 rounded-md border border-transparent bg-transparent px-1 text-2xs text-fg-subtle outline-none hover:border-edge focus:border-primary/50 focus:text-fg"
                             readOnly={freeze.frozen}
                             data-tip={freeze.frozen ? freeze.reason : undefined}
                             placeholder={strings.notePlaceholder}
                             defaultValue={props.note}
-                            key={props.note}
                             onBlur={event => {
                                 if (event.target.value.trim() !== props.note) {
                                     props.onNoteChange(event.target.value);
                                 }
                             }}
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Enter") {
                                     (event.target as HTMLInputElement).blur();
                                 }

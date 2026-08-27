@@ -5,6 +5,9 @@ const path = require('path');
 const esbuild = require('esbuild');
 const { rootDir, isDev } = require('./utils');
 const { postcssPlugin } = require('./postCss-plugin');
+// The runtime's import boundary. Kept in its own module so the vitest guard can load the same
+// allow lists this build enforces (see src/renderer/lib/ui-editor/runtime/app/importBoundary.test.ts).
+const { runtimeAliasPlugin } = require('./runtime-alias-plugin');
 
 const runtimeSourceDir = path.join(rootDir, 'src', 'runtime');
 const runtimeOutDir = path.join(rootDir, 'dist', 'runtime');
@@ -15,8 +18,13 @@ function runtimeHtml() {
     // injected into <head> at serve time by the runtime main process
     // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
     // project's per-launch `allowHttp` flag which is only known at runtime.
+    // No `lang`: this document is built once and shipped inside every game, so it cannot name a
+    // language any of them is in, and `en` was answering for all of them - the attribute picks the
+    // Han forms a fallback font draws, so a Japanese title was being set in an English page's face.
+    // The renderer writes the real one as soon as the game publishes it (see the runtime's
+    // `documentLanguage`); until then the document says nothing, which is what it knows.
     return `<!doctype html>
-<html lang="en">
+<html>
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -40,100 +48,6 @@ function runtimeHtml() {
 </body>
 </html>
 `;
-}
-
-function runtimeAliasPlugin() {
-    const shim = name => path.join(runtimeSourceDir, 'renderer', 'shims', name);
-    const exactAliases = new Map([
-        [
-            '@/lib/i18n',
-            shim('i18n.ts'),
-        ],
-        [
-            '@/lib/ui-editor/hooks/useEnteredElementState',
-            shim('useEnteredElementState.ts'),
-        ],
-        [
-            '@/lib/workspace/hooks/useAssetObjectUrl',
-            shim('useAssetObjectUrl.ts'),
-        ],
-        [
-            '@/lib/workspace/hooks/useEditorFontFamily',
-            shim('useEditorFontFamily.ts'),
-        ],
-        [
-            '@/lib/workspace/hooks/useSurfacePuppetSession',
-            shim('useSurfacePuppetSession.ts'),
-        ],
-        [
-            '@/apps/workspace/modules/properties/framework/utils/colorUtils',
-            shim('colorUtils.ts'),
-        ],
-        [
-            '@/lib/workspace/services/ui-editor/UIEditorStateService',
-            shim('UIEditorStateService.ts'),
-        ],
-        [
-            '@/lib/workspace/services/ui-editor/UIDocumentService',
-            shim('UIDocumentService.ts'),
-        ],
-        [
-            '@/lib/workspace/services/ui/UIStore',
-            shim('UIStore.ts'),
-        ],
-        [
-            '@/lib/ui-editor/interaction/inlineTextEdit',
-            shim('inlineTextEdit.ts'),
-        ],
-        [
-            '@/lib/ui-editor/interaction/containerDrillSelection',
-            shim('containerDrillSelection.ts'),
-        ],
-        [
-            '@/lib/ui-editor/interaction/surfaceInlineTextEditActivation',
-            shim('surfaceInlineTextEditActivation.ts'),
-        ],
-        [
-            '@/lib/ui-editor/interaction/doubleClickDebug',
-            shim('doubleClickDebug.ts'),
-        ],
-    ]);
-    // The game runtime bundle may only reach Studio renderer code through:
-    //   1. an explicit shim alias above,
-    //   2. the shared ui-editor tree, or
-    //   3. a triaged pure module (functions/constants over @shared types only).
-    // Everything else is a Studio module and must fail the build instead of
-    // silently falling through to the tsconfig "@/*" path mapping.
-    const allowedPrefixes = ['@/lib/ui-editor/'];
-    const allowedExact = new Set([
-        // Pure blueprint helpers (no services, no state); candidates to move
-        // under @/lib/ui-editor or @shared eventually.
-        '@/lib/workspace/services/ui-editor/blueprint/blueprintVariableRefs',
-        '@/lib/workspace/services/ui-editor/blueprint/fieldEvaluation',
-        '@/lib/workspace/services/ui-editor/blueprint/fnCatalog',
-        '@/lib/workspace/services/ui-editor/blueprint/ownerKeys',
-    ]);
-    return {
-        name: 'runtime-alias',
-        setup(build) {
-            build.onResolve({ filter: /^@\/(?:apps|lib)\/.*$/ }, args => {
-                const target = exactAliases.get(args.path);
-                if (target) {
-                    return { path: target };
-                }
-                if (allowedPrefixes.some(prefix => args.path.startsWith(prefix)) || allowedExact.has(args.path)) {
-                    return undefined; // fall through to tsconfig paths
-                }
-                return {
-                    errors: [{
-                        text: `Runtime bundle must not import "${args.path}" (imported by ${args.importer}). ` +
-                            `Add a shim under src/runtime/renderer/shims + an alias in build-runtime.js, ` +
-                            `or move the code into a shared module under @/lib/ui-editor.`,
-                    }],
-                };
-            });
-        },
-    };
 }
 
 /**

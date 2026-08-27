@@ -260,12 +260,52 @@ export function createCarriedVoicePort(
 }
 
 /**
- * Carry the takes of rows copied WITHIN one project - what pasting rows into another scene, and
- * duplicating them where they are, both need.
+ * What this project holds for the lines a paste has just renamed, planned onto the new ids.
+ *
+ * The read half of {@link carryVoiceWithinProject}, standing on its own because a paste inside a
+ * live session needs the takes as a *value* before anything is written: they travel in the effect so
+ * that every machine writes the same ones, and a plan that only existed inside the writer could not
+ * travel anywhere.
  *
  * `oldTextIds` are the ids the lines had before the paste renamed them, and `textIdMap` is that
  * renaming. Both come from the paste itself, so nothing here has to trust a payload: a take is only
- * ever read out of, and written back into, the project the author is looking at.
+ * ever read out of the project the author is looking at.
+ *
+ * `frozen` says the workspace froze while a library was being opened. The plan is empty then, and
+ * the caller must not write - the same bargain every other await in this file makes.
+ */
+export async function planVoiceWithinProject(
+    documents: VoiceDocuments,
+    port: CarriedVoicePort,
+    oldTextIds: readonly string[],
+    textIdMap: ReadonlyMap<string, string>,
+): Promise<{ plan: CarriedVoicePlan; frozen: boolean }> {
+    const empty: CarriedVoicePlan = { writes: [], carried: 0 };
+    if (oldTextIds.length === 0 || textIdMap.size === 0) {
+        return { plan: empty, frozen: false };
+    }
+    const locales = readVoicedLocales(documents);
+    if (locales.length === 0) {
+        return { plan: empty, frozen: false };
+    }
+    const { opened, frozen } = await openVoiceLibraries(port, locales);
+    if (frozen) {
+        return { plan: empty, frozen: true };
+    }
+    const carried = collectVoiceTakes(
+        oldTextIds,
+        opened,
+        locale => documents.getDocumentIfLoaded(locale)?.units,
+    );
+    return { plan: planCarriedVoice(carried, textIdMap), frozen: false };
+}
+
+/**
+ * Carry the takes of rows copied WITHIN one project - what pasting rows into another scene, and
+ * duplicating them where they are, both need.
+ *
+ * Reads through {@link planVoiceWithinProject} rather than repeating it, so a paste that broadcasts
+ * its takes and one that simply writes them are looking at the same set.
  */
 export async function carryVoiceWithinProject(
     documents: VoiceDocuments,
@@ -276,21 +316,11 @@ export async function carryVoiceWithinProject(
     if (oldTextIds.length === 0 || textIdMap.size === 0) {
         return { written: 0, frozen: false };
     }
-    const locales = readVoicedLocales(documents);
-    if (locales.length === 0) {
-        return { written: 0, frozen: false };
-    }
     const port = createCarriedVoicePort(documents, isFrozen);
-    const { opened, frozen } = await openVoiceLibraries(port, locales);
+    const { plan, frozen } = await planVoiceWithinProject(documents, port, oldTextIds, textIdMap);
     if (frozen) {
         return { written: 0, frozen: true };
     }
-    const carried = collectVoiceTakes(
-        oldTextIds,
-        opened,
-        locale => documents.getDocumentIfLoaded(locale)?.units,
-    );
-    const plan = planCarriedVoice(carried, textIdMap);
     if (plan.carried === 0) {
         return { written: 0, frozen: false };
     }

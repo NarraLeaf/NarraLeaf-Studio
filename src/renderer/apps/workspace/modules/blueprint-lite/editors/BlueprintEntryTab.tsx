@@ -29,6 +29,8 @@ import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagService";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import { DLC_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/dlcNodes";
 import { BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/soundNodes";
 import { BLUEPRINT_COMPONENT_PARAM_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/componentNodes";
 import { LocalizationService } from "@/lib/workspace/services/localization/LocalizationService";
@@ -46,6 +48,10 @@ import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { uiStructFieldLabel } from "@shared/types/ui-editor/struct";
 import { BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE } from "@/lib/ui-editor/blueprint-nodes/built-in/listNodes";
+import {
+    BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE,
+    listBlueprintInputActionOptions,
+} from "@/lib/ui-editor/blueprint-nodes/built-in/inputActionNodes";
 import { blueprintNodeRegistry } from "@/lib/ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import type { BlueprintInspectorParamDef } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
@@ -57,6 +63,12 @@ import {
 } from "@/lib/workspace/services/ui-editor/blueprint/graphEditing";
 import { buildBlueprintPaletteContext } from "@/lib/ui-editor/behavior-graph/nodeEditorCatalog";
 import { useBlueprintDocumentRevision } from "../hooks/useBlueprintDocumentRevision";
+import {
+    BlueprintGraphAddressProvider,
+    UINodeClaimsProvider,
+    useUINodeClaimHold,
+} from "../blueprintLiveSession";
+import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import {
     normalizeBlueprintMinimapPreference,
     type BlueprintMinimapPreference,
@@ -94,6 +106,7 @@ import type {
 import { BLUEPRINT_NODE_PARAM_SHOW_MAGIC_ELEMENT_TARGET_PIN } from "@/lib/ui-editor/blueprint-nodes/types";
 import {
     BLUEPRINT_NODE_PARAM_FN_REF,
+    BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_PARAMS_FN_SIGNATURE_SNAPSHOT,
     BLUEPRINT_NODE_TYPE_DISPLAYABLE_SET_VARIANT,
     BLUEPRINT_NODE_TYPE_ELEMENT_DISPLAYABLE_SET_VARIANT,
@@ -155,6 +168,7 @@ import {
     BLUEPRINT_FRAME_TARGET_SURFACE_OPTIONS_SOURCE,
     listBlueprintSetFramePageTargetOptions,
 } from "@/lib/ui-editor/blueprint-nodes/frameTargetSurfaceOptions";
+import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../../ui-editor/uiLiveSession";
 
 function getActiveIr(bp: Blueprint, view: BlueprintEditorGraphView | null): BlueprintGraphIr | null {
     if (!view || bp.program.kind !== "graph") {
@@ -518,7 +532,12 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const revision = useBlueprintDocumentRevision();
     // The canvas and its cards carry their own clamp (`BlueprintFlowCanvas`, `BlueprintFlowNode`);
     // what is left in this file is the keyboard, the empty state and one on-open normalisation.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const undoOverride = useLiveUndoOverride();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
 
     if (!isInitialized || !context || !payload?.blueprintId) {
         return (
@@ -548,6 +567,14 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     const variableRegistry = context.services.get<VariableRegistryService>(Services.VariableRegistry);
     const audioTrackService = context.services.get<AudioTrackService>(Services.AudioTracks);
     const appTagService = context.services.get<AppTagService>(Services.AppTags);
+    const dlcService = context.services.get<DlcService>(Services.Dlc);
+    // DLC live in a project document of their own, so adding or renaming one has to reach the
+    // `Is DLC Installed` picker without anything touching the blueprint.
+    const [dlcRevision, setDlcRevision] = useState(0);
+    useEffect(
+        () => dlcService.onDlcChanged(() => setDlcRevision(r => r + 1)),
+        [dlcService],
+    );
     // The declared addresses live in the variants document, so adding one has to reach the
     // `Open Link` picker without anything touching the blueprint.
     const [appTagRevision, setAppTagRevision] = useState(0);
@@ -668,6 +695,25 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
     );
 
     const editor = useBlueprintEditorState(payload, { eventIds, functionIds });
+    /**
+     * Which graph the canvas is drawing, for the cards to resolve their own claims against.
+     *
+     * Node ids are not unique across the document - the seeded entry nodes use fixed ids, and
+     * `global.appBoot` is in every project - so a card asking "is anybody in me" has to name the
+     * blueprint and the graph as well as itself.
+     */
+    const graphAddress = useMemo(
+        () => (editor.graphView ? { blueprintId: payload.blueprintId, graphId: editor.graphView.graphId } : null),
+        [editor.graphView, payload.blueprintId],
+    );
+    // One node, the first of a selection: a rubber-band over forty cards is a gesture about their
+    // arrangement rather than about anything written in them. Silent outside a session.
+    useUINodeClaimHold({
+        service: live,
+        blueprintId: graphAddress?.blueprintId ?? null,
+        graphId: graphAddress?.graphId ?? null,
+        nodeId: editor.selectedNodeIds.length === 1 ? editor.selectedNodeIds[0] : null,
+    });
     const diagnostics = useBlueprintDiagnostics(doc, payload.blueprintId, revision + registryRevision, {
         widgetElement,
         widgetSurfaceId: payload.surfaceId,
@@ -903,18 +949,31 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 id: "undo",
                 key: "mod+z",
                 handler: freeze.run(() => {
-                    if (!isTypingInField()) {
-                        localBp.undoBlueprint(payload.blueprintId);
+                    if (isTypingInField()) {
+                        return;
                     }
+                    if (undoOverride) {
+                        // A live session owns undo. This editor's own stack holds whole-blueprint
+                        // snapshots of a document only this author ever had, so restoring one would
+                        // delete every node anybody else has added since. See `useLiveUndoOverride`.
+                        undoOverride.undo();
+                        return;
+                    }
+                    localBp.undoBlueprint(payload.blueprintId);
                 }),
             },
             {
                 id: "redo",
                 key: "mod+shift+z",
                 handler: freeze.run(() => {
-                    if (!isTypingInField()) {
-                        localBp.redoBlueprint(payload.blueprintId);
+                    if (isTypingInField()) {
+                        return;
                     }
+                    if (undoOverride) {
+                        undoOverride.redo();
+                        return;
+                    }
+                    localBp.redoBlueprint(payload.blueprintId);
                 }),
             },
             {
@@ -940,6 +999,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             localBp,
             pasteGraphNodes,
             payload.blueprintId,
+            undoOverride,
         ],
     );
 
@@ -1602,6 +1662,17 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         let characterOptions: BlueprintInspectorParamSelectOption[] | null = null;
         for (const node of Object.values(activeIr.nodes ?? {})) {
             const def = blueprintNodeRegistry.get(node.type);
+            if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE)) {
+                out[node.id] = {
+                    [BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE]: listBlueprintInputActionOptions({
+                        document: currentDocument,
+                        pickedId: String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? ""),
+                        unnamedLabel: t("blueprint.options.unnamedInputAction"),
+                        missingLabel: id => t("blueprint.options.missingInputAction", { id }),
+                    }),
+                };
+                continue;
+            }
             if (def?.inspectorParams?.some((param: BlueprintInspectorParamDef) => param.dynamicOptionsSource === BLUEPRINT_LIST_ITEM_FIELD_OPTIONS_SOURCE)) {
                 const listElement = resolveFieldPickerList(node);
                 const structId = (listElement?.props as Record<string, unknown> | undefined)?.itemStructId;
@@ -1842,6 +1913,10 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             storyScenes: storySceneOptions,
             storyChoiceOptions,
             storyEndings,
+            // The `Is DLC Installed` picker. Author order, and the label is the DLC's name while the
+            // stored value is its id - the id is the filename a player already has, so renaming a
+            // DLC must not unpoint a graph.
+            [DLC_OPTIONS_SOURCE]: dlcService.list().map(dlc => ({ value: dlc.id, label: dlc.name })),
             characters: characterOptions,
             localizationKeys: localizationKeyOptions,
             // The `Play Sound` Track picker. Author order, built-ins first - the same order the
@@ -1901,6 +1976,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         characterLibraryRevision,
         audioTrackService,
         audioTrackRevision,
+        dlcRevision,
+        dlcService,
         appTagService,
         appTagRevision,
         nodeCatalog,
@@ -2157,6 +2234,8 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         );
 
     return (
+        <UINodeClaimsProvider>
+        <BlueprintGraphAddressProvider value={graphAddress}>
         <div
             className="h-full min-h-0"
             onMouseDownCapture={focusBlueprintEditor}
@@ -2190,5 +2269,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 diagnostics={<BlueprintDiagnosticsPanel diagnostics={diagnostics} onPick={onDiagnosticPick} />}
             />
         </div>
+        </BlueprintGraphAddressProvider>
+        </UINodeClaimsProvider>
     );
 }

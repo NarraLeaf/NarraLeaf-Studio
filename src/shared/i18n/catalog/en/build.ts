@@ -134,21 +134,59 @@ export const build = {
     },
         patch: {
             title: "Export patch",
-            variantLabel: "Variant",
-            variantHint: "A patch opens only in builds of the variant it was exported for.",
+            // What this dialog is exporting. Only offered where the project has DLC to offer.
+            kindLabel: "Export",
+            kindPatch: "Patch",
+            // Stated rather than picked: the DLC record says which build it loads into, and a
+            // second place to say it is a second place for the two to disagree.
+            dlcVariantHint: "Set on the DLC in Project \u25B8 App.",
+            dlcOutputHint: "Written as {file}, in the DLC folder beside the path above.",
+            // The first question: which build this file installs into, and how that build is
+            // arrived at. Building it here is the answer for an edition upgrade or a DLC; naming a
+            // folder is the answer for a fix to something that already shipped.
+            baselineModeLabel: "Build this patch updates",
+            baselineModeVariant: "Built as part of this export",
+            baselineModeArtifact: "An existing build folder",
+            baselineModeVariantHint: "The variant below is built first, and the patch carries what differs from it.",
+            baselineModeArtifactHint: "The patch carries only what differs from that folder.",
+            targetLabel: "Variant it installs into",
+            targetHint: "A patch opens only in builds of the variant it was exported for.",
+            artifactLabel: "Build folder",
+            artifactPlaceholder: "Leave empty to include the whole game",
+            artifactReading: "Reading the build\u2026",
+            // Two spellings rather than a placeholder for an absent version: a build made before
+            // the project had one would otherwise read as a product called "Skeleton \u2014".
+            artifactRead: "{product}, built {date}",
+            artifactReadVersioned: "{product} {version}, built {date}",
+            artifactVariantStated: "Read from the build folder.",
+            artifactVariantUnknown: "This build does not state its variant. Select it below.",
+            artifactVariantMismatch: "This build is {build}. The DLC attaches to {variant}.",
+            artifactWholeGame: "The patch includes the whole game.",
             /** The second question: whose content goes in. Only asked where a project has variants. */
-            contentLabel: "Content from",
+            contentLabel: "Variant the content comes from",
             contentHint: "The scenes, variant conditions and art of this variant go into the patch.",
-            baselineLabel: "Build this patch updates",
-            baselinePlaceholder: "Leave empty to include the whole game",
-            baselineHint: "The desktop build folder an earlier build produced. Only the files that differ from it are included.",
+            sameVariant: "The content and the build it updates are the same variant. The patch carries no changes.",
             outputLabel: "Save as",
             nameLabel: "Name",
             namePlaceholder: "Shown in the game's log",
+            layerLabel: "Layer",
+            layerHint: "Where two patches change the same thing, the higher layer applies over the lower one.",
             browse: "Browse…",
+            // Why the export cannot start, shown beside the button rather than on it - a disabled
+            // control takes no pointer events, so a tooltip there reaches nobody.
+            blocked: {
+                output: "Choose where to write the file.",
+                reading: "Reading the build folder.",
+                artifact: "That folder holds no build of this game.",
+                dlcBaseline: "Select the build this DLC adds to.",
+                dlcVariant: "That build is not the variant this DLC attaches to.",
+            },
             exportAction: "Export",
             busy: "A build is already running.",
-            noKey: "This project has no distribution key. Create one on the Project page, then build the game again. Only builds produced after the key exists accept patches.",
+            noKey: "This project has no distribution key. Create one, then build the game again. Only builds produced after the key exists accept patches.",
+            // The notification carries the way there, so the message above no longer has to
+            // name the page.
+            noKeyAction: "Open the Project page",
         },
     signing: {
         empty: "Select a target that can be signed.",
@@ -221,6 +259,11 @@ export const build = {
     output: {
         artifacts: "Artifacts",
         artifactsEmpty: "Select a target to list the files it produces.",
+            includeDlc: "Build this variant's DLC too",
+            includeDlcHint: {
+                one: "{count} DLC, into its own folder beside the installers.",
+                other: "{count} DLC, each into its own folder beside the installers.",
+            },
         openWhenDone: "Open the output folder when done",
     },
     /**
@@ -332,6 +375,51 @@ export const build = {
         submitted: "Build started. Progress is in the console.",
         done: "Build finished.",
         failed: "Build failed.",
+        patchDone: "Patch exported.",
+        patchFailed: "Patch export failed.",
+        // Buttons on the notification. The message above each one stands without it: the
+        // notifications panel keeps the message and drops the button.
+        openReport: "Open report",
+    },
+    /**
+     * The build report: one finished run, what it produced, and what it carried out of the asset
+     * library. Opened from the notification that run posts.
+     *
+     * Two words are used precisely and mean different things: an artifact is a file the build wrote,
+     * an asset is an entry of the project's library. The report states both.
+     */
+    report: {
+        title: "Build report",
+        empty: "No finished build to report.",
+        outcome: {
+            done: "Succeeded",
+            error: "Failed",
+            cancelled: "Stopped",
+        },
+        kind: {
+            build: "Production build",
+            patch: "Patch export",
+        },
+        summary: "Summary",
+        variant: "Variant",
+        platforms: "Platforms",
+        duration: "Duration",
+        artifacts: "Artifacts",
+        artifactsEmpty: "This run wrote no artifacts.",
+        outputDir: "Output folder",
+        durationSeconds: "{seconds}s",
+        durationMinutes: "{minutes}m {seconds}s",
+        includedTitle: "Assets carried",
+        includedEmpty: "This run carried no assets.",
+        excludedTitle: "Assets left out",
+        excludedEmpty: "This run left no assets out.",
+        charactersTitle: "Characters left out",
+        // Shown in place of both asset lists for a run that packaged the library as it stands.
+        wholeLibrary: "This run carried the asset library whole.",
+        search: "Search assets",
+        noMatches: "No asset matches this search.",
+        showAll: "Show all {count}",
+        failure: "Reason",
     },
     invalidCommand: "Invalid command in {story} / {scene}: {source}",
     invalidCommandSummary: {
@@ -401,6 +489,14 @@ export const build = {
      * resolve.
      */
     contentCoverageGap: "{location} could not be read, so what the {variant} build leaves out cannot be decided.",
+    // The one construct the asset sweep cannot read, refused for every build rather than only for
+    // the ones that also drop scenes: every package carries the assets its bytes name, and a pin fed
+    // by a computed value names none.
+    contentComputedPinGap: "{location} receives its asset from a computed value, so this build cannot tell which asset it needs.",
+    contentComputedPinSummary: {
+        one: "Build stopped: {count} pin receives its asset from a computed value. Select the asset on the pin. See the console.",
+        other: "Build stopped: {count} pins receive their asset from a computed value. Select the asset on each pin. See the console.",
+    },
     /** What `{location}` becomes for a gap that is the whole index rather than one document. */
     contentCoverageWholeProject: "The project",
     contentCoverageSummary: {

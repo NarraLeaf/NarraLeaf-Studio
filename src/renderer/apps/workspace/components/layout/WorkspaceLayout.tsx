@@ -15,6 +15,7 @@ import { useMenuBarModeContextMenu } from "./useMenuBarModeContextMenu";
 import { MENU_BAR_MODE_DEFAULT, MENU_BAR_MODE_KEY, MenuBarMode, resolveMenuBarMode } from "@/lib/settings/menuBarOptions";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ControlBar } from "./ControlBar";
+import { LiveSessionPresence, TeamProjectProvider } from "../../modules/team";
 import { NotificationContainer } from "../ui/NotificationContainer";
 import { DialogContainer } from "../ui/DialogContainer";
 import { ResizableHandle } from "../ui/ResizableHandle";
@@ -27,6 +28,7 @@ import { WorkspaceEditorQuickSwitch } from "./WorkspaceEditorQuickSwitch";
 import { CommandPalette } from "./CommandPalette";
 import { EditorCommands } from "./EditorCommands";
 import { WorkspaceFreezeCommands } from "./WorkspaceFreezeCommands";
+import { LiveSessionFreezeCommands } from "./LiveSessionFreezeCommands";
 import { LintCommands } from "../../modules/lint/LintCommands";
 import { StoryScriptCommands } from "../../modules/story/script/StoryScriptCommands";
 import { NarralangCommands } from "../../modules/story/narralang/NarralangCommands";
@@ -808,210 +810,220 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
     const { settings: backgroundSettings, url: backgroundUrl } = useWorkspaceBackgroundImage();
 
     return (
-        <div
-            {...windowRootProps}
-            className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
-        >
-            <TooltipHost />
-            {backgroundUrl && (
-                <div
-                    aria-hidden
-                    className="pointer-events-none fixed inset-0 overflow-hidden"
-                    style={{ zIndex: -1, backgroundColor: "rgb(var(--nl-surface))" }}
-                >
-                    <div className="absolute" style={backgroundLayerStyle(backgroundSettings, backgroundUrl)} />
-                </div>
-            )}
-            {/* Title Bar with Action Bar and Control Bar */}
-            <TitleBar
-                title=""
-                iconSrc={iconSrc}
-                center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
-                actionBar={
-                    /* One bar, so only one of its menus is ever on screen, the pointer and the
-                       arrow keys walk between the action groups, and Alt reaches them directly.
-                       Its keyboard stands down while a dialog is up, which is the same gate
-                       `KeybindingService` puts on its own bindings.
-
-                       It is still one bar when the menus are collapsed: the hamburger is a member
-                       like any other, and it declares the accelerators of the groups it swallowed,
-                       so Alt+F reaches the File menu in either arrangement.
-
-                       Right-clicking the cluster offers where the main menu goes — the gesture is
-                       on the strip the setting moves, which is the only way back for an author who
-                       has just collapsed their File menu into the hamburger. */
-                    <TitleBarMenus
-                        className="flex items-center gap-0.5"
-                        suspended={dialogs.length > 0}
-                        onContextMenu={isMac ? undefined : menuBarModeMenu.openMenu}
+        <TeamProjectProvider surface={versionSurface}>
+            <div
+                {...windowRootProps}
+                className={`relative isolate h-screen w-screen flex flex-col bg-surface text-fg${backgroundUrl ? " nl-has-workspace-bg" : ""}`}
+            >
+                <TooltipHost />
+                {backgroundUrl && (
+                    <div
+                        aria-hidden
+                        className="pointer-events-none fixed inset-0 overflow-hidden"
+                        style={{ zIndex: -1, backgroundColor: "rgb(var(--nl-surface))" }}
                     >
-                        {/* Every registered menu, collapsed into one button at the far left, where a
-                            window's own menu belongs. The bar's dropdowns are dropped in that mode
-                            rather than doubled (`hideAllGroups`). */}
-                        {menusInHamburger && <MainMenuButton />}
-                        {/* The window's identity, and the version control menu inside it — one reader
-                            for both, handed down. The rail below gets the SAME object: a second
-                            `useVersionSurface()` would be a second answer to "which version is this",
-                            and that has already been on screen once (rail `#3`, status cell `#2`). */}
-                        <ProjectSwitcher versionSurface={versionSurface} />
-                        <ActionBar hideAllGroups={isMac || menusInHamburger} />
-                        {!isMac && menuBarModeMenu.menu}
-                    </TitleBarMenus>
-                }
-                controlBar={
-                    <ControlBar
-                        leftSidebarVisible={leftSidebarVisible}
-                        rightSidebarVisible={rightSidebarVisible}
-                        bottomPanelVisible={bottomPanelVisible}
-                        onToggleLeftSidebar={toggleLeftSidebar}
-                        onToggleRightSidebar={toggleRightSidebar}
-                        onToggleBottomPanel={toggleBottomPanel}
-                    />
-                }
-            />
+                        <div className="absolute" style={backgroundLayerStyle(backgroundSettings, backgroundUrl)} />
+                    </div>
+                )}
+                {/* Title Bar with Action Bar and Control Bar */}
+                <TitleBar
+                    title=""
+                    iconSrc={iconSrc}
+                    center={titleBarSearchVisible ? <TitleBarSearchBox /> : undefined}
+                    actionBar={
+                        /* One bar, so only one of its menus is ever on screen, the pointer and the
+                           arrow keys walk between the action groups, and Alt reaches them directly.
+                           Its keyboard stands down while a dialog is up, which is the same gate
+                           `KeybindingService` puts on its own bindings.
 
-            <RecoveryBanner />
+                           It is still one bar when the menus are collapsed: the hamburger is a member
+                           like any other, and it declares the accelerators of the groups it swallowed,
+                           so Alt+F reaches the File menu in either arrangement.
 
-            <ExperimentalNotice />
-
-            {/* Main Content */}
-            <div className="flex-1 flex overflow-hidden">
-                {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
-                    a past version the author still needs the sidebar, the assets and the scene tree.
-                    Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
-                <VersionRail
-                    surface={versionSurface}
-                    presence={railPresence}
-                    onExpandedChange={setVersionRailExpanded}
-                />
-
-                {/* Left Sidebar Selector */}
-                <LeftSidebarSelector
-                    visible={leftSidebarVisible}
-                    activeId={activeLeftPanelId}
-                    onToggleVisibility={() => setLeftSidebarVisible(!leftSidebarVisible)}
-                    onSelectPanel={setActiveLeftPanelId}
-                />
-
-                {/* Left Sidebar - Always rendered, controlled by CSS visibility. Collapsing it
-                    hides the panel without unmounting it, so anything the panel portalled to the
-                    body would stay on screen; `HostVisibility` is what tells those layers. */}
-                <div 
-                    className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
-                >
-                    <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
-                        <LeftSidebar
-                            panelId={activeLeftPanelId || ""}
-                            onClose={() => setLeftSidebarVisible(false)}
-                            width={effective.left}
-                        />
-                    </HostVisibility>
-                    <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
-                </div>
-
-                {/* Center Area (min-w-0/min-h-0 so it can shrink below content in the flex chain) */}
-                <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
-                    {/* Main Editor Area — its layout box may shrink to any size (even 0 when the
-                        bottom panel covers it), but the editor CONTENT is floored at EDITOR_FLOOR
-                        and cropped by overflow-hidden, so it is never rendered at a deformed size. */}
-                    <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
-                        <div
-                            className="w-full h-full overflow-hidden"
-                            style={{ minWidth: EDITOR_FLOOR.width, minHeight: EDITOR_FLOOR.height }}
+                           Right-clicking the cluster offers where the main menu goes — the gesture is
+                           on the strip the setting moves, which is the only way back for an author who
+                           has just collapsed their File menu into the hamburger. */
+                        <TitleBarMenus
+                            className="flex items-center gap-0.5"
+                            suspended={dialogs.length > 0}
+                            onContextMenu={isMac ? undefined : menuBarModeMenu.openMenu}
                         >
-                            <MainEditorArea />
+                            {/* Every registered menu, collapsed into one button at the far left, where a
+                                window's own menu belongs. The bar's dropdowns are dropped in that mode
+                                rather than doubled (`hideAllGroups`). */}
+                            {menusInHamburger && <MainMenuButton />}
+                            {/* The window's identity, and the version control menu inside it — one reader
+                                for both, handed down. The rail below gets the SAME object: a second
+                                `useVersionSurface()` would be a second answer to "which version is this",
+                                and that has already been on screen once (rail `#3`, status cell `#2`). */}
+                            <ProjectSwitcher versionSurface={versionSurface} />
+                            <ActionBar hideAllGroups={isMac || menusInHamburger} />
+                            {!isMac && menuBarModeMenu.menu}
+                        </TitleBarMenus>
+                    }
+                    controlBar={
+                        <>
+                            {/* Who is in this project with you, left of the window's own controls -
+                                where an application puts the people you are in a document with. It is
+                                the only always-visible statement that a live session is running, and a
+                                session outlives every tab. */}
+                            <LiveSessionPresence />
+                            <ControlBar
+                                leftSidebarVisible={leftSidebarVisible}
+                                rightSidebarVisible={rightSidebarVisible}
+                                bottomPanelVisible={bottomPanelVisible}
+                                onToggleLeftSidebar={toggleLeftSidebar}
+                                onToggleRightSidebar={toggleRightSidebar}
+                                onToggleBottomPanel={toggleBottomPanel}
+                            />
+                        </>
+                    }
+                />
+
+                <RecoveryBanner />
+
+                <ExperimentalNotice />
+
+                {/* Main Content */}
+                <div className="flex-1 flex overflow-hidden">
+                    {/* Version rail — the far left of the window, LEFT of the sidebar selector, because in
+                        a past version the author still needs the sidebar, the assets and the scene tree.
+                        Its width is in the dock account above (dockEnv.versionRailWidth), never outside it. */}
+                    <VersionRail
+                        surface={versionSurface}
+                        presence={railPresence}
+                        onExpandedChange={setVersionRailExpanded}
+                    />
+
+                    {/* Left Sidebar Selector */}
+                    <LeftSidebarSelector
+                        visible={leftSidebarVisible}
+                        activeId={activeLeftPanelId}
+                        onToggleVisibility={() => setLeftSidebarVisible(!leftSidebarVisible)}
+                        onSelectPanel={setActiveLeftPanelId}
+                    />
+
+                    {/* Left Sidebar - Always rendered, controlled by CSS visibility. Collapsing it
+                        hides the panel without unmounting it, so anything the panel portalled to the
+                        body would stay on screen; `HostVisibility` is what tells those layers. */}
+                    <div 
+                        className={leftSidebarVisible && activeLeftPanelId ? "flex" : "hidden"}
+                    >
+                        <HostVisibility visible={!!(leftSidebarVisible && activeLeftPanelId)}>
+                            <LeftSidebar
+                                panelId={activeLeftPanelId || ""}
+                                onClose={() => setLeftSidebarVisible(false)}
+                                width={effective.left}
+                            />
+                        </HostVisibility>
+                        <ResizableHandle direction="horizontal" onResize={handleLeftSidebarResize} />
+                    </div>
+
+                    {/* Center Area (min-w-0/min-h-0 so it can shrink below content in the flex chain) */}
+                    <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+                        {/* Main Editor Area — its layout box may shrink to any size (even 0 when the
+                            bottom panel covers it), but the editor CONTENT is floored at EDITOR_FLOOR
+                            and cropped by overflow-hidden, so it is never rendered at a deformed size. */}
+                        <div className="flex-1 min-w-0 min-h-0 overflow-hidden">
+                            <div
+                                className="w-full h-full overflow-hidden"
+                                style={{ minWidth: EDITOR_FLOOR.width, minHeight: EDITOR_FLOOR.height }}
+                            >
+                                <MainEditorArea />
+                            </div>
+                        </div>
+
+                        {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
+                            its height so the editor above yields space instead of the panel collapsing. */}
+                        <div
+                            className={bottomPanelVisible && activeBottomPanelId ? "shrink-0" : "hidden"}
+                            style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
+                        >
+                            <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
+                            <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
+                                <BottomPanel
+                                    panelId={activeBottomPanelId || ""}
+                                    onClose={() => setBottomPanelVisible(false)}
+                                    height={effective.bottom}
+                                />
+                            </HostVisibility>
                         </div>
                     </div>
 
-                    {/* Bottom Panel - Always rendered, controlled by CSS visibility. shrink-0 keeps
-                        its height so the editor above yields space instead of the panel collapsing. */}
-                    <div
-                        className={bottomPanelVisible && activeBottomPanelId ? "shrink-0" : "hidden"}
-                        style={{ height: bottomPanelVisible && activeBottomPanelId ? `${effective.bottom}px` : 0 }}
+                    {/* Right Sidebar - Always rendered, controlled by CSS visibility */}
+                    <div 
+                        className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
                     >
-                        <ResizableHandle direction="vertical" onResize={handleBottomPanelResize} />
-                        <HostVisibility visible={!!(bottomPanelVisible && activeBottomPanelId)}>
-                            <BottomPanel
-                                panelId={activeBottomPanelId || ""}
-                                onClose={() => setBottomPanelVisible(false)}
-                                height={effective.bottom}
+                        <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
+                        <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
+                            <RightSidebar
+                                panelId={activeRightPanelId || ""}
+                                onClose={() => setRightSidebarVisible(false)}
+                                width={effective.right}
                             />
                         </HostVisibility>
                     </div>
+
+                    {/* Right Sidebar Selector */}
+                    <RightSidebarSelector
+                        visible={rightSidebarVisible}
+                        activeId={activeRightPanelId}
+                        onToggleVisibility={() => setRightSidebarVisible(!rightSidebarVisible)}
+                        onSelectPanel={setActiveRightPanelId}
+                    />
                 </div>
 
-                {/* Right Sidebar - Always rendered, controlled by CSS visibility */}
-                <div 
-                    className={rightSidebarVisible && activeRightPanelId ? "flex" : "hidden"}
-                >
-                    <ResizableHandle direction="horizontal" onResize={handleRightSidebarResize} />
-                    <HostVisibility visible={!!(rightSidebarVisible && activeRightPanelId)}>
-                        <RightSidebar
-                            panelId={activeRightPanelId || ""}
-                            onClose={() => setRightSidebarVisible(false)}
-                            width={effective.right}
-                        />
-                    </HostVisibility>
+                {/* Status Bar */}
+                {statusBarVisible && <StatusBar />}
+
+                {/* Bottom Panel Selector — in the SELECTOR rail's column, just above the status bar, so its
+                    triggers line up with the left dock's. Absolutely positioned, so unlike every column in
+                    the flex row above it has to be told where that column starts: `left-0` was right until
+                    the version rail appeared to the left of the selector rail, and then the bottom triggers
+                    sat in the version rail's column while the left dock's stayed one column over (measured
+                    in the running app at x≈29 against x≈90). One column holds both docks' items; the
+                    version rail is a column of its own and does not adopt them. */}
+                <div className="absolute" style={{ bottom: statusBarHeight, left: railColumnOffsets(dockEnv).sidebarRail }}>
+                    <BottomPanelSelector
+                        visible={bottomPanelVisible}
+                        activeId={activeBottomPanelId}
+                        onToggleVisibility={() => setBottomPanelVisible(!bottomPanelVisible)}
+                        onSelectPanel={setActiveBottomPanelId}
+                        onActivatePanelForDrop={activateBottomPanelForDrop}
+                    />
                 </div>
 
-                {/* Right Sidebar Selector */}
-                <RightSidebarSelector
-                    visible={rightSidebarVisible}
-                    activeId={activeRightPanelId}
-                    onToggleVisibility={() => setRightSidebarVisible(!rightSidebarVisible)}
-                    onSelectPanel={setActiveRightPanelId}
-                />
+                {/* UI Overlays */}
+                <BackgroundImageDialog />
+                <WorkspaceEditorQuickSwitch />
+                {/* The palette and quick-open are absent in a recovery window, and not merely as
+                    tidiness: both walk the story library, the cast and the interface documents to build
+                    their entries, and in this mode those are exactly the services that may never have
+                    started. `WorkspaceCommands` goes with them because half of what it registers writes
+                    to a project this window is holding read-only. */}
+                {!recovery && (
+                    <>
+                        <CommandPalette />
+                        <QuickOpenPicker />
+                        <WorkspaceCommands />
+                    </>
+                )}
+                <EditorCommands />
+                <WorkspaceFreezeCommands />
+                <LiveSessionFreezeCommands />
+                <LintCommands />
+                <StoryScriptCommands />
+                <NarralangCommands />
+                <KeybindingCheatSheet />
+                {/* Present in a recovery window too: that is the one place an author most needs to be
+                    told what is going on, and help reads nothing from the project. */}
+                <WorkspaceHelp />
+                <EditorClosedTabsKeybinding />
+                <WorkspaceUndoKeybindings />
+                <WorkspaceHistoryMenu />
+                <NotificationContainer />
+                <DialogContainer />
             </div>
-
-            {/* Status Bar */}
-            {statusBarVisible && <StatusBar />}
-
-            {/* Bottom Panel Selector — in the SELECTOR rail's column, just above the status bar, so its
-                triggers line up with the left dock's. Absolutely positioned, so unlike every column in
-                the flex row above it has to be told where that column starts: `left-0` was right until
-                the version rail appeared to the left of the selector rail, and then the bottom triggers
-                sat in the version rail's column while the left dock's stayed one column over (measured
-                in the running app at x≈29 against x≈90). One column holds both docks' items; the
-                version rail is a column of its own and does not adopt them. */}
-            <div className="absolute" style={{ bottom: statusBarHeight, left: railColumnOffsets(dockEnv).sidebarRail }}>
-                <BottomPanelSelector
-                    visible={bottomPanelVisible}
-                    activeId={activeBottomPanelId}
-                    onToggleVisibility={() => setBottomPanelVisible(!bottomPanelVisible)}
-                    onSelectPanel={setActiveBottomPanelId}
-                    onActivatePanelForDrop={activateBottomPanelForDrop}
-                />
-            </div>
-
-            {/* UI Overlays */}
-            <BackgroundImageDialog />
-            <WorkspaceEditorQuickSwitch />
-            {/* The palette and quick-open are absent in a recovery window, and not merely as
-                tidiness: both walk the story library, the cast and the interface documents to build
-                their entries, and in this mode those are exactly the services that may never have
-                started. `WorkspaceCommands` goes with them because half of what it registers writes
-                to a project this window is holding read-only. */}
-            {!recovery && (
-                <>
-                    <CommandPalette />
-                    <QuickOpenPicker />
-                    <WorkspaceCommands />
-                </>
-            )}
-            <EditorCommands />
-            <WorkspaceFreezeCommands />
-            <LintCommands />
-            <StoryScriptCommands />
-            <NarralangCommands />
-            <KeybindingCheatSheet />
-            {/* Present in a recovery window too: that is the one place an author most needs to be
-                told what is going on, and help reads nothing from the project. */}
-            <WorkspaceHelp />
-            <EditorClosedTabsKeybinding />
-            <WorkspaceUndoKeybindings />
-            <WorkspaceHistoryMenu />
-            <NotificationContainer />
-            <DialogContainer />
-        </div>
+        </TeamProjectProvider>
     );
 }

@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { MotionConfig } from "motion/react";
 import {
     DevTools,
@@ -282,6 +282,38 @@ export function NlrStageLayer(props: {
             onFirstSceneReady(sessionId);
         })();
     }, [onFirstSceneReady, session]);
+
+    /**
+     * Silence the run this layer was showing, on the way out.
+     *
+     * Web Audio outlives React. The clips a playthrough starts are nodes on an audio context, held
+     * by the engine's `AudioManager` and addressable only through it — so unmounting the Player
+     * drops the only handle on them while they keep playing. MEASURED: Return to title, then New
+     * Game, and two copies of the scene's music play over each other, because the second run's
+     * `newGame()` resets ITS manager and the first run's was thrown away still holding a live
+     * source. Nothing downstream can recover from that: the clip has no owner left to stop it.
+     *
+     * Every teardown, not just Quit Game — a session replaced by a reload leaks exactly the same
+     * way, which is why this hangs off the session rather than off this component's own unmount:
+     * `Quit Game` hands us a null session and leaves the layer standing. Deliberately narrow: this
+     * stops sound, it does not reset the game. Anything wider would be writing state into a tree
+     * that is already coming down.
+     */
+    useEffect(() => {
+        return () => {
+            const gameState = gameStateRef.current;
+            gameStateRef.current = null;
+            if (!gameState) {
+                return;
+            }
+            try {
+                gameState.audioManager.reset();
+            } catch {
+                // A manager that never became ready has nothing playing to stop, and an unmount is
+                // no place to raise anything: the stage is already gone.
+            }
+        };
+    }, [session?.id]);
 
     if (!session) {
         return null;

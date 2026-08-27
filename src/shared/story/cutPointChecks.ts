@@ -79,7 +79,16 @@ export function collectUncutForks(document: StoryDocument, appTagId: string): Un
         const targets: StorySceneId[] = [];
         const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: block => Boolean(block.disabled) });
         for (const block of blocks) {
-            const target = block.kind === "jump" ? block.payload.targetSceneId : undefined;
+            // A returnable jump is not a branch of the story: the run goes there and comes back, so
+            // both "branches" continue into the same rows and a scene making one is not a fork.
+            // Counting it as one would report a disagreement between a route and itself.
+            //
+            // A `/cut` written inside a called scene is a real cut for that variant - the story ends
+            // there and the call never returns - and it is found by the reach walk below through the
+            // edge the call still contributes, exactly as one in a jumped-to scene is.
+            const target = block.kind === "jump" && !block.payload.returnable
+                ? block.payload.targetSceneId
+                : undefined;
             // Distinct targets the document actually has: two rows jumping to the same scene are one
             // route, and a jump to a scene that is gone is not a route at all.
             if (target && document.scenes?.[target] && !targets.includes(target)) {

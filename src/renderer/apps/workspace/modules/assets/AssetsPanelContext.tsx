@@ -6,6 +6,7 @@ import type { AssetSetAxisNaming } from '@shared/types/assetSetLabels';
 import type { ResolvedAssetSet } from './state/useAssetSets';
 import { ClipboardState } from './state/useClipboard';
 import { DraggedAssetSetState, DraggedItemState } from './state/useDragAndDrop';
+import type { AssetClaims, AssetTransfers } from './assetLiveSession';
 
 /** Breadcrumb shown in the panel toolbar center when the assets panel uses a compact (bottom) toolbar. */
 export interface AssetsIconViewToolbarCenter {
@@ -30,6 +31,21 @@ export interface AssetSetRevealState {
 }
 
 interface AssetsPanelContextType {
+    /**
+     * Asset id to the account editing that record in a live session, for every record somebody else
+     * has open. Empty outside one.
+     *
+     * Here rather than in a context of its own so that one subscription serves every row: a session
+     * publishes on every operation anybody in the room applies.
+     */
+    assetClaims: AssetClaims;
+    /**
+     * How far each file that is still arriving has got, by asset id. Empty when none is.
+     *
+     * Alongside the claims and for the same reason: the service reports progress in steps, and a row
+     * that subscribed for itself would be one subscription per row of a library that has hundreds.
+     */
+    assetTransfers: AssetTransfers;
     /**
      * Keyed by sidebar section. The assets inside still carry their own `type`; what a section, a
      * folder and a drop target belong to is the category.

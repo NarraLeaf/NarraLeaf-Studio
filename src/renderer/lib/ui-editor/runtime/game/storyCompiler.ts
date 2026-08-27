@@ -41,6 +41,7 @@ import type { DevModeCharacterSummary } from "@shared/types/devMode";
 import type { DialogAvatarResolverContext } from "narraleaf-react";
 import { resolvePoseEntry, resolveTagSelection } from "@shared/utils/characterVariant";
 import { parseStoryEasing } from "@shared/utils/storyEasing";
+import { storyMarksToWordConfig } from "@shared/utils/storyTextMarks";
 import {
     characterAvatarKeyFromTags,
     resolveCharacterAvatarAssetId,
@@ -125,7 +126,7 @@ import {
     resolveAudioTrackChain,
     resolveAudioTrackPlayback,
 } from "@shared/types/audioTrack";
-import { parseTranslatedText } from "@shared/utils/localizationText";
+import { parseTranslatedRuns } from "@shared/utils/localizationText";
 import { resolveStoryAssetVariant, type StoryAssetVariants } from "@shared/types/story";
 import {
     composeStoryFilter,
@@ -2460,7 +2461,12 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
+        const transition = await createTransition(block.payload.transition, ctx, block.id);
+        // A returnable jump takes the config object, because that is where the flag lives; a plain
+        // one keeps handing the transition straight in, which is the call every existing row makes.
+        const chain = block.payload.returnable
+            ? ctx.nlrScene.jumpTo(target, { returnable: true, ...(transition ? { transition } : {}) } as any)
+            : ctx.nlrScene.jumpTo(target, transition as any);
         return [recordStatement(ctx, chain, block)];
     }
 
@@ -2649,10 +2655,21 @@ function buildSentenceParts(
 /**
  * Localization-aware variant of {@link buildSentencePrompt}. When the segment has
  * at least one translation, the whole line compiles to a single dynamic Word that
- * re-resolves per render: the current locale's translation (with `{n}` placeholders
- * mapped back to the source line's interpolation Words), or the original
+ * re-resolves per render: the current locale's translation, or the original
  * source-language prompt when no translation applies. Untranslated segments keep
  * their plain compiled form - zero overhead.
+ *
+ * A translation is rebuilt into the same three kinds of token the source line compiles to:
+ *
+ *  - `{n}` resolves to the source line's nth interpolation Word, which already carries whatever
+ *    styling the author put on the value itself.
+ *  - `‹i›…‹/i›` puts run i's marks on the characters the translator wrapped, so emphasis, colour,
+ *    ruby and a size step survive into every language.
+ *  - `‹i›` alone drops run i in where the translation asks for it, which is how an inline pause or a
+ *    reveal-time event keeps its beat when the word order changes.
+ *
+ * A translation that names none of them renders exactly as it did before run tags existed: plain
+ * text with its values in it.
  */
 function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTextSegment, blockId: string, eventMap?: Map<StoryRichRun, TextEvent>): string | unknown[] {
     const { prompt, interpolationWords } = buildSentenceParts(segment, ctx, blockId, eventMap);
@@ -2661,19 +2678,50 @@ function buildLocalizedSentencePrompt(ctx: SceneCompileContext, segment: StoryTe
         return prompt;
     }
     const textId = segment.textId;
-    // KNOWN LIMITATION (Pause family): a translated line is rebuilt from the translation string, which
-    // carries only text and `{n}` interpolation placeholders. Zero-width reveal-time tokens - inline
-    // `Pause`s and inline events (`TextEvent`) - have no placeholder in the translation, so they are
-    // dropped from the translated rendering and survive only in the source-language prompt above. Not
-    // fixed here: recovering them needs a token-preserving translation format. See the migration report.
+    const sourceRuns = segment.rich ?? [];
+    /**
+     * The zero-width tokens a run tag can name, compiled once and re-used at every render.
+     *
+     * `Pause` is a value object and `TextEvent` carries its own fired-once guard keyed on the token
+     * identity, so handing back the same instance is what makes a translated line replay the way the
+     * source line does rather than re-firing on every re-render.
+     */
+    const tokensByRun = new Map<number, unknown>();
+    for (let index = 0; index < sourceRuns.length; index += 1) {
+        const run = sourceRuns[index];
+        if ("pause" in run) {
+            tokensByRun.set(index, run.pause === true ? new Pause() : Pause.wait(run.pause));
+        } else if ("event" in run) {
+            const event = eventMap?.get(run);
+            if (event) {
+                tokensByRun.set(index, event);
+            }
+        }
+    }
     const resolveDynamic = () => {
         const target = localization.resolve(textId);
         if (target === null) {
             return prompt as never;
         }
-        return parseTranslatedText(target).map(part =>
-            part.kind === "text" ? part.text : (interpolationWords[part.index] ?? ""),
-        ) as never;
+        const out: unknown[] = [];
+        for (const part of parseTranslatedRuns(target, sourceRuns)) {
+            if (part.kind === "placeholder") {
+                out.push(interpolationWords[part.index] ?? "");
+                continue;
+            }
+            if (part.kind === "run") {
+                const token = tokensByRun.get(part.runIndex);
+                if (token) {
+                    out.push(token);
+                }
+                continue;
+            }
+            const marks = part.runIndex === undefined
+                ? undefined
+                : (sourceRuns[part.runIndex] as { marks?: StoryTextMarks } | undefined)?.marks;
+            out.push(buildWord(part.text, marks));
+        }
+        return out as never;
     };
     return [new Word((resolveDynamic as unknown) as any)];
 }
@@ -2888,13 +2936,7 @@ function buildWord(text: string, marks: StoryTextMarks | undefined): string | Wo
     if (!marks) {
         return text;
     }
-    const config: Record<string, unknown> = {};
-    if (marks.bold) config.bold = true;
-    if (marks.italic) config.italic = true;
-    if (marks.color) config.color = marks.color;
-    if (marks.ruby) config.ruby = marks.ruby;
-    if (typeof marks.cps === "number") config.cps = marks.cps;
-    if (typeof marks.fontSize === "number") config.fontSize = marks.fontSize;
+    const config = storyMarksToWordConfig(marks);
     return Object.keys(config).length > 0 ? new Word(text, config as any) : text;
 }
 
@@ -3682,7 +3724,14 @@ async function compileImageAction(
         : payload.color;
 
     if ((payload.operation === "create" || payload.operation === "setSource") && src) {
-        statements.push(recordStatement(ctx, image.char(src as any, await createTransition(payload.transition, ctx, block.id) as any), block));
+        // A transition only on the swap. A create DECLARES - the object is mounted at opacity zero
+        // and nothing is looking at it until a `/show` reveals it - so a transition here plays out
+        // in full on an invisible element and changes nothing that reaches the player. The property
+        // editor offers it on the swap alone for the same reason.
+        const transition = payload.operation === "setSource"
+            ? await createTransition(payload.transition, ctx, block.id)
+            : undefined;
+        statements.push(recordStatement(ctx, image.char(src as any, transition as any), block));
     } else if ((payload.operation === "create" || payload.operation === "setSource") && !src) {
         diagnostic(ctx, "warning", block.id, `Image "${payload.objectName}" has no asset or color source.`);
     }
@@ -4202,10 +4251,69 @@ function whileLoopCondition(until: (scriptCtx: ScriptCtx) => boolean, blockId: s
     };
 }
 
+/**
+ * Whether this row is a `/jump <scene> return` that is actually in the build.
+ *
+ * The one row whose actions have to stay together, and {@link compileUnchainedGroupBody} is the only
+ * reader. A disabled row compiles to nothing, so it is not one.
+ */
+function isReturnableJump(block: StoryBlock | undefined): block is Extract<StoryBlock, { kind: "jump" }> {
+    return Boolean(block && !block.disabled && block.kind === "jump" && block.payload.returnable);
+}
+
+/**
+ * Compile a group's rows for a body the engine stores UNCHAINED, folding a returnable jump into a
+ * branch of its own.
+ *
+ * `Control.all`, `any`, `allAsync`, `repeat` and `whileLoop` hand the engine a flat array and start
+ * one concurrent branch per action in it, where `Control.do` and `doAsync` link theirs into a single
+ * run. The difference is invisible for a row that compiles to one action, and fatal for the one row
+ * that does not. A returnable jump is three actions - the `control:do` that enters the target,
+ * `scene:callTo`, and the `scene:resume` linked behind it that IS the call's return address - so
+ * spread across three branches the call has nothing behind it and the engine stops the game with
+ * "A scene call has no return address."
+ *
+ * Wrapping that row's actions in a `Control.do` puts the three back into one branch, which the call
+ * can read its return address out of again. Only that row is wrapped: every other row that compiles
+ * to several actions is *meant* to be several branches here, and stories written against that shape
+ * would play differently if it changed. The wrapper carries no link of its own, which the engine
+ * requires of anything it is handed as a branch (`ControlAction.checkActionChain`).
+ *
+ * A compile pass's injections around that row go inside the wrapper with it, because they are what
+ * the pass asked for: "before this happens" and "after this has happened" is a run, not three things
+ * racing. Injections around any other row are untouched.
+ */
+async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    for (const blockId of blockIds) {
+        const block = ctx.scene.blocks[blockId];
+        const compiled = await compileBlock(ctx, blockId);
+        if (compiled.length > 0 && isReturnableJump(block)) {
+            // Recorded against the jump's own row, after the actions that row already emitted. An
+            // action id is numbered within its row alone, so the wrapper takes the next number in
+            // that row's own run and no other row's ids move.
+            statements.push(recordStatement(ctx, Control.do(compiled as any), block));
+        } else {
+            statements.push(...compiled);
+        }
+        // The same stop `compileBlockList` makes: nothing written after an `/ending` row plays.
+        if (endsPlayback(block)) {
+            break;
+        }
+    }
+    return statements;
+}
+
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const children = await compileBlockList(ctx, block.childrenIds);
     const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
+    // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
+    // a stale `mode` on a repeat row never reaches the call.
+    const unchainedBody = payload.control === "repeat" || mode === "all" || mode === "allAsync" || mode === "any";
+    const children = unchainedBody
+        ? await compileUnchainedGroupBody(ctx, block.childrenIds)
+        : await compileBlockList(ctx, block.childrenIds);
     // `until` selects the conditional form. A group that carries one is never a counted repeat, even
     // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
     // has to be true.
@@ -5317,8 +5425,11 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 duration,
                 easing,
                 color: stringProp(props, "color", "#000"),
-                hold: numberProp(props, "hold", 30) / 100,
+                // Absent leaves the engine's own 30%-of-the-run default in place, which is what a row
+                // that has never been given a hold has always played.
+                ...(transition.holdMs === undefined ? {} : { holdMs: Math.max(0, transition.holdMs) }),
                 ...throughColorPattern(props),
+                ...throughColorUncover(props),
             });
         case "exposure":
             // Stops, not a multiplier: the gain is `2 ** ev`, so a linear-looking slider stays
@@ -5333,7 +5444,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 ev: Math.min(12, Math.max(0, numberProp(props, "ev", 4.6))),
                 lift: Math.min(1, Math.max(0, numberProp(props, "lift", 0.04))),
-                hold: Math.min(1, Math.max(0, numberProp(props, "hold", 0) / 100)),
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "ruleReveal": {
             // The only transition that reads an asset, which is why this factory is async. A rule
@@ -5368,6 +5479,9 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
                 easing,
                 from: Math.min(1, Math.max(0, numberProp(props, "from", 1))),
                 to: Math.min(1, Math.max(0, numberProp(props, "to", 0))),
+                // Held at `from`, where the image swap happens - the window the swap hides in, which
+                // is the same thing the other two transitions call a hold.
+                holdMs: Math.max(0, transition.holdMs ?? 0),
             });
         case "custom":
             // The union's escape hatch: a transition that is nothing but its `props`, with no engine
@@ -5413,20 +5527,56 @@ function reportUnplayableTransition(ctx: SceneCompileContext, blockId: string, k
     return undefined;
 }
 
-/** Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair. */
+/**
+ * Map a stored `throughColor` pattern prop to the native `ThroughColor` `pattern`/`inverted` pair.
+ *
+ * The geometries are the {@link Mask} catalogue, the same one `Reveal` draws its kinds from - the
+ * colour covers through a shape, and there is no shape it can cover through that a direct cut cannot
+ * reveal through. Offering four of the seven made "cover the frame with a clock" unreachable while
+ * "cut to the new frame with a clock" was one menu item away.
+ *
+ * `inverted` defaults to `true` for the iris and `false` for the rest, which is the orientation each
+ * is asked for: an iris that closes rim-in is the classic iris-to-black, while a wipe or a clock
+ * covering in reverse is the exception. A row that states `inverted` gets what it states.
+ */
 function throughColorPattern(props: Record<string, StoryLiteralValue>): { pattern?: MaskPattern; inverted?: boolean } {
-    switch (stringProp(props, "pattern", "plain")) {
+    const kind = stringProp(props, "pattern", "plain");
+    const center = () => stringProp(props, "center", "50% 50%");
+    const inverted = (fallback: boolean) => ({ inverted: props.inverted === undefined ? fallback : props.inverted === true });
+    switch (kind) {
         case "linear":
-            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) };
+            return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
         case "blinds":
-            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) };
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }), ...inverted(false) };
         case "iris":
-            // The old iris pattern covered rim-in - the pattern's inverted orientation.
-            return { pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12) }), inverted: true };
+            // Rim-in by default: the colour closes over the frame, which is the iris-to-black every
+            // document written before this option existed was getting.
+            return { pattern: Mask.iris({ center: center(), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }), ...inverted(true) };
+        case "barnDoor":
+            return { pattern: Mask.barnDoor({ axis: stringProp(props, "axis", "horizontal") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
+        case "clock":
+            return { pattern: Mask.clock({ center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 24), direction: stringProp(props, "direction", "clockwise") as any }), ...inverted(false) };
+        case "fan":
+            return { pattern: Mask.fan({ blades: numberProp(props, "blades", 4), center: center(), from: numberProp(props, "from", 0), feather: numberProp(props, "feather", 10) }), ...inverted(false) };
+        case "dots":
+            return { pattern: Mask.dots({ rows: numberProp(props, "rows", 6), cols: numberProp(props, "cols", 10), feather: numberProp(props, "feather", 20), stagger: numberProp(props, "stagger", 0) }), ...inverted(false) };
         default:
-            // "plain" → no pattern: the colour simply fades in and out (flash with hold 0).
+            // "plain" → no pattern: the colour simply fades in and out (flash with no hold).
             return {};
     }
+}
+
+/**
+ * How the colour comes back off the frame: `retreat` backs the pattern out the way it came,
+ * `continue` keeps the edge travelling so the geometry passes through - a wipe exits out the far
+ * side, a clock hand completes a second lap.
+ *
+ * Ignored by the engine without a pattern, and left unstated when the row says nothing, so a plain
+ * fade's compiled options are unchanged.
+ */
+function throughColorUncover(props: Record<string, StoryLiteralValue>): { uncover?: "retreat" | "continue" } {
+    const uncover = stringProp(props, "uncover", "retreat");
+    return uncover === "continue" ? { uncover: "continue" } : {};
 }
 
 /**

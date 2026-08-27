@@ -43,6 +43,8 @@ import {
     type PluginBuildConfigField,
 } from "@shared/types/plugins";
 import type { TranslationKey } from "@shared/i18n";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import type { LiveAppTagDefaults, LiveAppTagOp } from "@shared/live/ops";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -59,6 +61,27 @@ import { EventEmitter } from "../ui/EventEmitter";
 type AppTagServiceEvents = {
     tagsChanged: ProjectAppTag[];
     dirtyChanged: boolean;
+};
+
+/**
+ * Somewhere a variant edit can go instead of into the document.
+ *
+ * The seam a live session hangs this table off; see `DlcOpSink`, which is the same bargain one
+ * document along. With a sink installed an edit becomes an operation and the document is not
+ * touched; the panel changes when the operation comes back as somebody's effect and
+ * {@link AppTagService.applyLiveOp} applies it.
+ *
+ * ⚠ **Offered by each mutator rather than by the one write path they share.** `applyDocumentMutation`
+ * takes a whole-document closure and can state nothing finer than "the document is now this", which
+ * is the last-writer-wins this design refuses - and this table's rows are edited through
+ * blur-committed text fields, so the loser of that race would lose a name they had half typed.
+ */
+export type AppTagOpSink = {
+    /**
+     * Take one operation, or decline it. True means the document must not be touched at all; false
+     * is the ordinary answer outside a session.
+     */
+    handle(op: LiveAppTagOp): boolean;
 };
 
 /**
@@ -112,6 +135,8 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
     private readonly events = new EventEmitter<AppTagServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Where variant edits go instead of into the document, when something else owns them. */
+    private opSink: AppTagOpSink | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -286,6 +311,20 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         const document = this.getDocument();
         const before = structuredClone(document);
         mutate(document);
+        this.normalizeDocument(document);
+        this.commitMutation();
+        this.recordUndoStep(before, structuredClone(document), label);
+    }
+
+    /**
+     * Put the document into the shape every reader expects, in place.
+     *
+     * Held apart from {@link applyDocumentMutation} because a live effect goes through the same
+     * normalization and none of the rest: it must not record an undo step for somebody else's edit,
+     * and it must not take a snapshot pair around one. Two spellings of this would be two shapes on
+     * disk, and the digest would report them as a disagreement nobody could act on.
+     */
+    private normalizeDocument(document: ProjectAppTagDocument): void {
         document.tags = normalizeProjectAppTags(document.tags);
         const pluginConfig = normalizeAppTagPluginConfig(document.pluginConfig);
         if (hasAppTagPluginConfig(pluginConfig)) {
@@ -309,8 +348,6 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             // on the project's own record "picks none" and "the key is absent" are one fact.
             delete document.endingSurfaceId;
         }
-        this.commitMutation();
-        this.recordUndoStep(before, structuredClone(document), label);
     }
 
     /**
@@ -369,6 +406,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             name: uniqueAppTagName(this.takenNames(null), input?.name ?? ""),
             overrides: {},
         };
+        if (this.offer({ op: "create-app-tag", tag })) {
+            // ⚠ Inside a session the record handed back is NOT in the list yet - it is what this
+            // window has asked for, and it lands when the effect comes back. The panel only reads its
+            // id, to open the row it just asked for.
+            return tag;
+        }
         this.applyTagMutation(tags => [...tags, tag], appTagLabel("add", tag.name));
         return this.getTag(tag.id) ?? tag;
     }
@@ -402,11 +445,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             return false;
         }
         const unique = uniqueAppTagName(this.takenNames(id), next);
-        this.applyTagMutation(
-            tags => tags.map(tag => (tag.id === id ? { ...tag, name: unique } : tag)),
-            appTagLabel("rename", unique),
-        );
-        return true;
+        return this.writeTag(id, tag => ({ ...tag, name: unique }), appTagLabel("rename", unique));
     }
 
     /**
@@ -418,13 +457,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (!next) {
             return this.clearOverride(id, key);
         }
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyTagMutation(tags => tags.map(tag => (
-            tag.id === id ? { ...tag, overrides: { ...tag.overrides, [key]: next } } : tag
-        )));
-        return true;
+        return this.writeTag(id, tag => ({ ...tag, overrides: { ...tag.overrides, [key]: next } }));
     }
 
     /**
@@ -434,27 +467,16 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * next edit to the project would leave this tag quietly saying the old thing.
      */
     public clearOverride(id: string, key: AppTagOverrideKey): boolean {
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyTagMutation(tags => tags.map(tag => {
-            if (tag.id !== id) {
-                return tag;
-            }
+        return this.writeTag(id, tag => {
             const overrides = { ...tag.overrides };
             delete overrides[key];
             return { ...tag, overrides };
-        }));
-        return true;
+        });
     }
 
     /** Restore every key. Same delete rule as {@link clearOverride}, applied across the record. */
     public clearAllOverrides(id: string): boolean {
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyTagMutation(tags => tags.map(tag => (tag.id === id ? { ...tag, overrides: {} } : tag)));
-        return true;
+        return this.writeTag(id, tag => ({ ...tag, overrides: {} }));
     }
 
     /** Which keys this tag states itself, in declaration order. */
@@ -537,13 +559,7 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
 
     /** Restore every plugin value this variant states. Same delete rule, applied across the record. */
     public clearAllPluginConfig(id: string): boolean {
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyTagMutation(tags => tags.map(tag => (
-            tag.id === id ? { ...tag, pluginConfig: {} } : tag
-        )));
-        return true;
+        return this.writeTag(id, tag => ({ ...tag, pluginConfig: {} }));
     }
 
     /**
@@ -573,33 +589,40 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (!onProject && !this.getTag(trimmedId)) {
             return false;
         }
+        if (!onProject) {
+            return this.writeTag(trimmedId, tag => ({
+                ...tag,
+                pluginConfig: writePluginValue(tag.pluginConfig ?? {}, field.pluginId, storageKey, value),
+            }));
+        }
+        // Writing a field no variant may state also takes it off every variant, because such an entry
+        // is inert and leaving it would give one field two stored answers. Computed here, where the
+        // field's declaration is - the machine applying the effect may not have that plugin at all.
+        const swept = isVariantScopedBuildConfig(field.scope)
+            ? undefined
+            : this.getDocument().tags.map(tag => ({
+                tagId: tag.id,
+                pluginConfig: variantStorablePluginConfig(tag.pluginConfig ?? {}, [field]),
+            }));
+        const defaults: LiveAppTagDefaults = {
+            ...this.projectDefaults(),
+            pluginConfig: writePluginValue(this.getDocument().pluginConfig ?? {}, field.pluginId, storageKey, value),
+        };
+        if (this.offer({
+            op: "set-app-tag-defaults",
+            defaults,
+            ...(swept ? { tagPluginConfig: swept } : {}),
+        })) {
+            return true;
+        }
         this.applyDocumentMutation(document => {
-            if (onProject) {
-                document.pluginConfig = writePluginValue(
-                    document.pluginConfig ?? {},
-                    field.pluginId,
-                    storageKey,
-                    value,
-                );
-                if (!isVariantScopedBuildConfig(field.scope)) {
-                    document.tags = document.tags.map(tag => ({
-                        ...tag,
-                        pluginConfig: variantStorablePluginConfig(tag.pluginConfig ?? {}, [field]),
-                    }));
-                }
-                return;
+            document.pluginConfig = defaults.pluginConfig;
+            if (swept) {
+                const byTag = new Map(swept.map(entry => [entry.tagId, entry.pluginConfig]));
+                document.tags = document.tags.map(tag => (byTag.has(tag.id)
+                    ? { ...tag, pluginConfig: byTag.get(tag.id)! }
+                    : tag));
             }
-            document.tags = document.tags.map(tag => (tag.id === trimmedId
-                ? {
-                    ...tag,
-                    pluginConfig: writePluginValue(
-                        tag.pluginConfig ?? {},
-                        field.pluginId,
-                        storageKey,
-                        value,
-                    ),
-                }
-                : tag));
         });
         return true;
     }
@@ -629,16 +652,12 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
             return false;
         }
         const next = normalizeAppTagEndingSurfaceId(surfaceId);
-        this.applyDocumentMutation(document => {
-            if (onProject) {
-                document.endingSurfaceId = next;
-                return;
-            }
-            document.tags = document.tags.map(tag => (
-                tag.id === trimmedId ? { ...tag, endingSurfaceId: next } : tag
-            ));
+        if (!onProject) {
+            return this.writeTag(trimmedId, tag => ({ ...tag, endingSurfaceId: next }));
+        }
+        return this.writeProjectDefaults({ ...this.projectDefaults(), endingSurfaceId: next }, document => {
+            document.endingSurfaceId = next;
         });
-        return true;
     }
 
     /**
@@ -649,19 +668,10 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
      * tag, which has nothing to restore to.
      */
     public clearEndingSurface(id: string): boolean {
-        if (isBuiltinAppTagId(id) || !this.getTag(id)) {
-            return false;
-        }
-        this.applyDocumentMutation(document => {
-            document.tags = document.tags.map(tag => {
-                if (tag.id !== id) {
-                    return tag;
-                }
-                const { endingSurfaceId: _dropped, ...rest } = tag;
-                return rest;
-            });
+        return this.writeTag(id, tag => {
+            const { endingSurfaceId: _dropped, ...rest } = tag;
+            return rest;
         });
-        return true;
     }
 
     /**
@@ -720,16 +730,16 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (!onProject && !this.getTag(trimmedId)) {
             return false;
         }
-        this.applyDocumentMutation(document => {
-            if (onProject) {
-                document.reachableScenes = writeDeclaration(document.reachableScenes ?? {}, key, scenes);
-                return;
-            }
-            document.tags = document.tags.map(tag => (tag.id === trimmedId
-                ? { ...tag, reachableScenes: writeDeclaration(tag.reachableScenes ?? {}, key, scenes) }
-                : tag));
+        if (!onProject) {
+            return this.writeTag(trimmedId, tag => ({
+                ...tag,
+                reachableScenes: writeDeclaration(tag.reachableScenes ?? {}, key, scenes),
+            }));
+        }
+        const next = writeDeclaration(this.getDocument().reachableScenes ?? {}, key, scenes);
+        return this.writeProjectDefaults({ ...this.projectDefaults(), reachableScenes: next }, document => {
+            document.reachableScenes = next;
         });
-        return true;
     }
 
     /**
@@ -779,16 +789,16 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (!onProject && !this.getTag(trimmedId)) {
             return false;
         }
-        this.applyDocumentMutation(document => {
-            if (onProject) {
-                document.assetAxes = writeAxisPosition(document.assetAxes ?? {}, key, value);
-                return;
-            }
-            document.tags = document.tags.map(tag => (tag.id === trimmedId
-                ? { ...tag, assetAxes: writeAxisPosition(tag.assetAxes ?? {}, key, value) }
-                : tag));
+        if (!onProject) {
+            return this.writeTag(trimmedId, tag => ({
+                ...tag,
+                assetAxes: writeAxisPosition(tag.assetAxes ?? {}, key, value),
+            }));
+        }
+        const next = writeAxisPosition(this.getDocument().assetAxes ?? {}, key, value);
+        return this.writeProjectDefaults({ ...this.projectDefaults(), assetAxes: next }, document => {
+            document.assetAxes = next;
         });
-        return true;
     }
 
     /**
@@ -803,11 +813,149 @@ export class AppTagService extends Service<AppTagService> implements IAppTagServ
         if (isBuiltinAppTagId(id) || !this.getTag(id)) {
             return false;
         }
+        if (this.offer({ op: "delete-app-tag", tagId: id })) {
+            return true;
+        }
         this.applyTagMutation(
             tags => tags.filter(tag => tag.id !== id),
             appTagLabel("delete", this.resolveTag(id).name),
         );
         return true;
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /**
+     * Send variant edits somewhere else, or take them back. Null restores the ordinary behaviour.
+     */
+    public setOperationSink(sink: AppTagOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * The document as it stands, or null before it has been read.
+     *
+     * What a digest is taken over. Null rather than the throw {@link getDocument} makes, because the
+     * caller is a fingerprint and "this window does not hold the table" has to be hashable.
+     */
+    public liveDocument(): ProjectAppTagDocument | null {
+        return this.document;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam, and nothing here enters this author's undo stack: an effect is
+     * somebody's edit landing on this machine. See `DlcService.applyLiveOp`.
+     */
+    public applyLiveOp(op: LiveAppTagOp): void {
+        const document = this.getDocument();
+        switch (op.op) {
+            case "create-app-tag": {
+                const tag = structuredClone(op.tag) as ProjectAppTag;
+                document.tags = hasAppTag(document.tags, tag.id)
+                    // A creation for a record already here is a retry that escaped the receipts.
+                    ? document.tags.map(entry => (entry.id === tag.id ? tag : entry))
+                    : insertLiveRecordBefore(document.tags, tag, op.beforeId);
+                break;
+            }
+            case "update-app-tag": {
+                if (!hasAppTag(document.tags, op.tagId)) {
+                    // The host refuses an update naming a record it cannot find, so reaching this is
+                    // this machine having missed the creation. The digest on this effect reports it.
+                    break;
+                }
+                const tag = structuredClone(op.tag) as ProjectAppTag;
+                document.tags = document.tags.map(entry => (entry.id === op.tagId ? tag : entry));
+                break;
+            }
+            case "delete-app-tag":
+                document.tags = document.tags.filter(entry => entry.id !== op.tagId);
+                break;
+            case "set-app-tag-defaults": {
+                const defaults = structuredClone(op.defaults) as LiveAppTagDefaults;
+                document.pluginConfig = defaults.pluginConfig;
+                document.assetAxes = defaults.assetAxes;
+                document.reachableScenes = defaults.reachableScenes;
+                document.endingSurfaceId = defaults.endingSurfaceId;
+                if (op.tagPluginConfig) {
+                    // The variants this write also rewrites - see `LiveAppTagOp`. A tag named here
+                    // that has gone since is skipped rather than re-created: it is a variant somebody
+                    // deleted, not one this write is about.
+                    const byTag = new Map(op.tagPluginConfig.map(entry => [entry.tagId, entry.pluginConfig]));
+                    document.tags = document.tags.map(tag => (byTag.has(tag.id)
+                        ? { ...tag, pluginConfig: structuredClone(byTag.get(tag.id)!) }
+                        : tag));
+                }
+                break;
+            }
+            default: {
+                // ⚠ The switch is exhaustive by construction, and this is what says so. A verb added
+                // with no case here would be a silent no-op: the effect would land on every other
+                // machine in the room and not on this one.
+                const unapplied: never = op;
+                return unapplied;
+            }
+        }
+        this.normalizeDocument(document);
+        this.commitMutation();
+    }
+
+    /**
+     * The project's own half of the document, as an operation carries it.
+     *
+     * Read rather than assembled by each caller, so the four keys are stated in one place: an
+     * operation that omitted one would be saying "nothing is declared here", which is a value.
+     */
+    private projectDefaults(): LiveAppTagDefaults {
+        const document = this.getDocument();
+        return {
+            pluginConfig: document.pluginConfig,
+            assetAxes: document.assetAxes,
+            reachableScenes: document.reachableScenes,
+            endingSurfaceId: document.endingSurfaceId,
+        };
+    }
+
+    /**
+     * Replace one variant's record - through the session when there is one, in the document when
+     * there is not.
+     *
+     * The one door every per-variant mutator goes through, so a mutator cannot state the operation
+     * and the local write differently: `next` is computed once and used for both.
+     */
+    private writeTag(
+        id: string,
+        next: (tag: ProjectAppTag) => ProjectAppTag,
+        label: HistoryLabel = APP_TAG_EDIT_LABEL,
+    ): boolean {
+        const current = this.getTag(id);
+        if (isBuiltinAppTagId(id) || !current) {
+            return false;
+        }
+        const tag = next(current);
+        if (this.offer({ op: "update-app-tag", tagId: id, tag })) {
+            return true;
+        }
+        this.applyTagMutation(tags => tags.map(entry => (entry.id === id ? tag : entry)), label);
+        return true;
+    }
+
+    /** {@link writeTag} for the project's own record. `apply` is the local half of the same write. */
+    private writeProjectDefaults(
+        defaults: LiveAppTagDefaults,
+        apply: (document: ProjectAppTagDocument) => void,
+    ): boolean {
+        if (this.offer({ op: "set-app-tag-defaults", defaults })) {
+            return true;
+        }
+        this.applyDocumentMutation(apply);
+        return true;
+    }
+
+    /** Hand one operation to the sink, or say that there is none. See {@link AppTagOpSink}. */
+    private offer(op: LiveAppTagOp): boolean {
+        return this.opSink?.handle(op) ?? false;
     }
 
     private setDirty(value: boolean): void {

@@ -11,6 +11,7 @@ import {
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import {
     ServerRow,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
@@ -221,18 +222,14 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 const answered = await bridge.vcs.refreshServer(chosen).catch(() => null);
                 if (answered?.success) await reload();
             }
-            const result = await bridge.vcs.listServerProjects(chosen).catch(() => null);
+            const result = await listProjects(chosen);
             if (ticket !== latest.current) return;
             setReading(false);
-            if (!result?.success) {
-                setProblem("launcher.servers.problem.unknown");
+            if (!result.ok) {
+                setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            if (!result.data.ok) {
-                setProblem(SERVER_PROBLEM_KEYS[result.data.problem.kind]);
-                return;
-            }
-            setProjects(result.data.projects);
+            setProjects(result.value);
         })();
     }, [chosen, reload]);
 
@@ -244,9 +241,15 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
     // What this server offers, read off what it last said about itself rather than found
     // out by asking. See `serverCan`: a deployment that does not do one of these has no
     // section for it, which is not the same thing as a section that failed.
-    const canDetail = serverCan(session, "project-detail");
+    //
+    // A project's detail and the member roster are answered by the session's own routes now,
+    // so what gates them is `session` - the capability a reachable server always advertises.
+    // Their reads still go over the REST routes, which the server still serves; the gate only
+    // decides whether the surface is drawn at all. Recent revisions are the one thing here a
+    // deployment can genuinely lack, so that stays its own gate.
+    const canDetail = serverCan(session, "session");
     const canHistory = serverCan(session, "project-history");
-    const canMembers = serverCan(session, "members");
+    const canMembers = serverCan(session, "session");
     // A server with no roster has one view, and one tab is not a choice. The strip is then
     // not drawn at all, so the view cannot be anything but the projects.
     const current: ServersView = canMembers ? view : "projects";

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
+import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
 import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
 import { createInputDialog } from "@/lib/components/dialogs";
@@ -9,6 +9,8 @@ import { PanelStateService } from "@/lib/workspace/services/core/PanelStateServi
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
+import type { DlcService } from "@/lib/workspace/services/dlc/DlcService";
+import type { ProjectDlc } from "@shared/types/dlc";
 import { useWorkspace } from "../../../context";
 import { useRegistry } from "../../../registry";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
@@ -16,6 +18,8 @@ import type { PanelComponentProps } from "../../types";
 import { closeStoryEditorTabs, closeStorySceneEditorTabs } from "./closeStoryEditorTabs";
 import { createStorySceneEditorTab } from "../scene-editor/openStorySceneEditorTab";
 import { getStorySceneEditorTabId } from "../scene-editor/storySceneEditorTabId";
+import { storyDocumentFreezeScope } from "../scene-editor/storySceneReadOnly";
+import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
@@ -52,9 +56,13 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
-    // Creating, renaming and deleting write the story document; opening a scene, opening the flow,
-    // exporting a script and picking which story is selected do not, and stay live so a frozen
-    // project can still be read.
+    // Opening a scene, opening the flow, exporting a script and picking which story is selected write
+    // nothing, and stay live so a frozen project can still be read. What does write is split in two,
+    // because this panel edits at two levels and only one of them is a story document.
+    //
+    // The library: creating, renaming and deleting a story, and choosing the default. All four write
+    // `StoryService`'s index - a separate document that no partial freeze leaves writable - so they
+    // name no scope and stay frozen by any freeze at all.
     const freeze = useFreezeGuard();
     const { beginExport: beginScriptExport, beginImport: beginScriptImport, dialogs: scriptDialogs } = useStoryScriptIo();
     const { beginExport: beginNarralangExport, dialogs: narralangDialogs } = useNarralangExport();
@@ -69,6 +77,29 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
     const [stateReady, setStateReady] = useState(false);
     const [disableAccordionAnimation, setDisableAccordionAnimation] = useState(true);
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    /**
+     * The other half of the freeze answer: the outline - chapters and scenes - which lives inside the
+     * selected story's own document.
+     *
+     * Scoped to that document, so a freeze that leaves it writable leaves the outline editable:
+     * renaming a scene here writes the same file as typing a line into it, and a panel that refused
+     * the first while the editor allowed the second would be saying two things about one document.
+     * `undefined` while no story is selected, which is the conservative answer and also the state in
+     * which none of these controls is reachable.
+     */
+    const outlineFreeze = useFreezeGuard(storyDocumentFreezeScope(selectedStoryId ?? undefined));
+    /**
+     * The outline splits again inside a live session, and along a different line: not which file is
+     * written, but which edits reach the other people in the room.
+     *
+     * Renaming a scene, renaming the story, reordering chapters and choosing the entry scene are
+     * operations a session carries, so they keep the answer above and stay live. Creating and
+     * deleting a scene or a chapter are not - the vocabulary a session speaks has no word for them
+     * (`@shared/live/ops`) - so they are written here and nowhere else, and the copies part company
+     * with nothing on screen to say so. Those controls ask {@link outlineStructure} instead.
+     */
+    const liveSession = useStoryLiveSessionGuard(selectedStoryId ?? undefined);
+    const outlineStructure = storyEditGuard(outlineFreeze, liveSession);
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -83,6 +114,29 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         }
         return context.services.get<UIService>(Services.UI);
     }, [context, isInitialized]);
+
+    const dlcService = useMemo(() => {
+        if (!context || !isInitialized) {
+            return null;
+        }
+        return context.services.get<DlcService>(Services.Dlc);
+    }, [context, isInitialized]);
+
+    /**
+     * The project's DLC, for the row that says which one ships a story.
+     *
+     * Watched rather than read once: making a DLC and marking a story for it is one flow, and an
+     * author who adds one in Project comes straight back here to use it.
+     */
+    const [dlcs, setDlcs] = useState<ProjectDlc[]>([]);
+    useEffect(() => {
+        if (!dlcService) {
+            setDlcs([]);
+            return;
+        }
+        setDlcs(dlcService.list());
+        return dlcService.onDlcChanged(setDlcs);
+    }, [dlcService]);
 
     const inputDialog = useMemo(() => {
         return uiService ? createInputDialog(uiService) : null;
@@ -107,7 +161,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             const next: Record<string, string[]> = {};
             Object.entries(saved.chapterOpenItemsByStoryId).forEach(([storyId, chapterIds]) => {
                 if (typeof storyId === "string" && storyId && Array.isArray(chapterIds)) {
-                    next[storyId] = chapterIds.filter(id => typeof id === "string" && id.length > 0);
+                    const ids = chapterIds.filter(id => typeof id === "string" && id.length > 0);
+                    // An entry that names no chapter is not restored, so the story comes back to the
+                    // expanded default rather than to an outline with nothing under any heading.
+                    // Collapsing every chapter still holds for as long as the panel is open; it just
+                    // is not a state worth carrying across sessions, and a stored empty list is also
+                    // what older builds wrote when a story switch mixed two documents up.
+                    if (ids.length > 0) {
+                        next[storyId] = ids;
+                    }
                 }
             });
             setChapterOpenItemsByStoryId(next);
@@ -197,8 +259,19 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         };
     }, [storyService, selectedStoryId, uiService]);
 
+    /**
+     * A story the panel has not shown before opens with every chapter expanded: an outline that
+     * hides its own scenes is a list of chapter names, and nobody picked that.
+     *
+     * Guarded on the document belonging to the selected story, because it does not while a switch
+     * is in flight - `document` still holds the story being left until the new one finishes
+     * loading. Without the guard this effect read the outgoing story's chapter ids, stored them
+     * under the incoming story's id, and then, when the real document arrived, filtered that list
+     * against chapters it shared none of and settled on the empty set. Every switch landed on a
+     * fully collapsed outline, and the empty set was persisted, so it stayed that way.
+     */
     useEffect(() => {
-        if (!document || !selectedStoryId) {
+        if (!document || !selectedStoryId || document.id !== selectedStoryId) {
             return;
         }
         setChapterOpenItemsByStoryId(prev => {
@@ -331,6 +404,36 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     void handleRenameStory(entry);
                 },
             },
+            /*
+             * Which DLC ships this story - shown only once the project has one, because until then
+             * there is one answer and a row offering it says nothing.
+             *
+             * A submenu rather than a dialog: it is a choice from a short list the author already
+             * wrote, and the tick says which one is in force without opening anything.
+             */
+            ...(dlcs.length > 0
+                ? [{
+                    id: "story-dlc",
+                    label: t("story.panel.dlc.title"),
+                    submenuIconsEnabled: true,
+                    submenu: [
+                        {
+                            id: "story-dlc-none",
+                            label: t("story.panel.dlc.base"),
+                            ...(entry.dlcId ? {} : { icon: <Check className="h-3.5 w-3.5" /> }),
+                            ...freeze.menuRow(),
+                            onClick: () => { storyService?.setStoryDlc(entry.id, null); },
+                        },
+                        ...dlcs.map(dlc => ({
+                            id: `story-dlc-${dlc.id}`,
+                            label: dlc.name,
+                            ...(entry.dlcId === dlc.id ? { icon: <Check className="h-3.5 w-3.5" /> } : {}),
+                            ...freeze.menuRow(),
+                            onClick: () => { storyService?.setStoryDlc(entry.id, dlc.id); },
+                        })),
+                    ],
+                }]
+                : []),
             { id: "story-script-separator", separator: true },
             {
                 id: "export-story-script",
@@ -345,6 +448,9 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 onClick: () => beginNarralangExport({ storyId: entry.id, sceneId: null }),
             },
             {
+                // Unscoped for two reasons: this row names whichever story was right-clicked rather
+                // than the selected one, and an import replaces whole scenes from a file on this
+                // machine's disk - see the same row on a scene.
                 id: "import-story-script",
                 label: t("story.script.import"),
                 ...freeze.menuRow(),
@@ -360,7 +466,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, defaultStoryId, dlcs, freeze, handleDeleteStory, handleOpenSceneFlow, handleRenameStory, handleSetDefaultStory, storyService, t]);
 
     /**
      * The developer section, wired the same way for all three of this panel's menus: what the row
@@ -505,7 +611,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "set-entry-scene",
                 label: t("story.panel.setEntryScene"),
-                ...freeze.menuRow(isEntry),
+                ...outlineFreeze.menuRow(isEntry),
                 onClick: () => handleSetEntryScene(scene),
             },
             { id: "scene-script-separator", separator: true },
@@ -530,6 +636,11 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 // Story-scoped despite sitting on a scene row: the file decides which scenes it
                 // carries, and the confirm dialog names every one of them before anything is written.
+                //
+                // The one outline row that keeps the unscoped answer. What it writes is the story
+                // document, so a partial freeze would allow it - but it replaces whole scenes from a
+                // file on this machine's disk, and inside a live session the other participants have
+                // nothing to derive that from. Left conservative until a session has a way to carry it.
                 id: "import-scene-script",
                 label: t("story.script.import"),
                 ...freeze.menuRow(),
@@ -543,7 +654,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "rename-scene",
                 label: t("common.rename"),
-                ...freeze.menuRow(),
+                ...outlineFreeze.menuRow(),
                 onClick: () => {
                     void handleRenameScene(scene);
                 },
@@ -551,28 +662,30 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
             {
                 id: "delete-scene",
                 label: t("common.delete"),
-                ...freeze.menuRow(),
+                ...outlineStructure.menuRow(),
                 onClick: () => {
                     void handleDeleteScene(scene);
                 },
             },
         ];
-    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, selectedStoryId, t]);
+    }, [beginNarralangExport, beginScriptExport, beginScriptImport, document?.entrySceneId, freeze, handleDeleteScene, handleOpenScene, handleRenameScene, handleSetEntryScene, outlineFreeze, outlineStructure, selectedStoryId, t]);
 
     const buildChapterContextMenu = useCallback((chapter: StoryChapter): ContextMenuDef => [
         {
             id: "new-scene-in-chapter",
             label: t("story.panel.newSceneInChapter"),
-            ...freeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleCreateScene(chapter.id);
             },
         },
         { id: "chapter-actions-separator", separator: true },
         {
+            // A chapter's name is not a scene's: a session carries `rename-scene` and has no word
+            // for renaming a chapter, so this one comes off with the rest of the structure.
             id: "rename-chapter",
             label: t("common.rename"),
-            ...freeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleRenameChapter(chapter);
             },
@@ -580,12 +693,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         {
             id: "delete-chapter",
             label: t("common.delete"),
-            ...freeze.menuRow(),
+            ...outlineStructure.menuRow(),
             onClick: () => {
                 void handleDeleteChapter(chapter);
             },
         },
-    ], [freeze, handleCreateScene, handleDeleteChapter, handleRenameChapter, t]);
+    ], [handleCreateScene, handleDeleteChapter, handleRenameChapter, outlineStructure, t]);
 
     const handleOpenChapterMenu = useCallback((event: React.MouseEvent, chapter: StoryChapter) => {
         event.preventDefault();
@@ -603,7 +716,12 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         showMenu(event);
     }, [buildSceneContextMenu, showMenu, withDeveloperRows]);
 
-    const chapterOpenItems = selectedStoryId ? chapterOpenItemsByStoryId[selectedStoryId] ?? [] : [];
+    // The same default as the effect above, applied a render earlier so the first paint after a
+    // switch is already expanded instead of expanding a frame later. A deliberately emptied outline
+    // is a stored `[]` and survives this, since only a missing entry falls back.
+    const chapterOpenItems = selectedStoryId && document?.id === selectedStoryId
+        ? chapterOpenItemsByStoryId[selectedStoryId] ?? document.chapters.map(chapter => chapter.id)
+        : [];
 
     const handleRootOpenChange = useCallback((nextOpenItems: string[]) => {
         setRootOpenItems(filterStoryRootOpenItems(nextOpenItems));
@@ -715,7 +833,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     <button
                                         type="button"
                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                        {...freeze.writes(false, t("story.panel.newChapter"))}
+                                        {...outlineStructure.writes(false, t("story.panel.newChapter"))}
                                         onClick={handleCreateChapter}
                                     >
                                         <Plus className="h-3 w-3" />
@@ -750,7 +868,7 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                                     <button
                                                         type="button"
                                                         className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                                        {...freeze.writes(false, t("story.panel.newSceneInChapter"))}
+                                                        {...outlineStructure.writes(false, t("story.panel.newSceneInChapter"))}
                                                         onClick={() => handleCreateScene(chapter.id)}
                                                     >
                                                         <Plus className="h-3 w-3" />

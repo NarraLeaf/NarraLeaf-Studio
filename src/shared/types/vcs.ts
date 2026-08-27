@@ -12,6 +12,10 @@
 // definition of a change for the same renderer to draw.
 import type { DocumentDiffEntry, DocumentMergeDecision } from "../documents/diff";
 import type { DocumentKind } from "../documents/types";
+// The capability vocabulary is one list, advertised identically by a server's discovery
+// document and its session's opening frame. So the names a version-control screen may gate
+// on are the names the socket gates on - see `TeamCapability`, of which this is the alias.
+import type { TeamCapability, TeamProblem } from "./team";
 
 /** A revision identifier. Opaque to the renderer; hex at the transport layer. */
 export type RevisionId = string;
@@ -202,6 +206,18 @@ export const VcsErrorCode = {
     ProjectPath: "vcs/project-path",
     /** The app is closing and refused to start another call rather than abandoning it. */
     ShuttingDown: "vcs/shutting-down",
+    /** A sync was asked for on a tree with changes nobody has recorded yet. */
+    UncommittedChanges: "vcs/uncommitted-changes",
+    /**
+     * This branch and the server's have both moved on, so a push would not be a fast-forward.
+     *
+     * The backend's own sentence names the remedy, and for a long time that was the argument for
+     * passing it through - but it names it in English, prefixed with the internal verb that failed
+     * (`branchPush: Branch has diverged, sync to merge remote changes`), and that reached authors
+     * as red text in a Chinese panel. The situation is one this interface has words for, so it is
+     * named here and said in the reader's language like the four above it.
+     */
+    BranchDiverged: "vcs/branch-diverged",
 } as const;
 
 export type VcsErrorCode = (typeof VcsErrorCode)[keyof typeof VcsErrorCode];
@@ -228,7 +244,16 @@ export type VcsCheckpointReason =
      * that writes over files the author has not seen recorded anywhere. It is also the
      * reason a restore is safe to offer at all, which is why the confirmation says so.
      */
-    | "restore";
+    | "restore"
+    /**
+     * A live session is about to put this tree on the version the room is running from.
+     *
+     * Taken for `restore`'s reason and at the same moment - immediately before files the author may
+     * never have recorded are written over - and named separately because the two acts are not the
+     * same one seen twice. Nobody restored anything: the author joined a room, and this is where
+     * whatever they had before that went.
+     */
+    | "live-session";
 
 export interface VcsCommitOptions {
     /** Recorded verbatim on the revision. Empty means the default for the kind. */
@@ -267,7 +292,20 @@ export interface VcsRestoreOptions {
      */
     label?: string;
     identity?: string;
+    /**
+     * What this rewrite is for, which is what the two revisions it records say.
+     *
+     * The mechanics are identical either way - enumerate a version, checkpoint, write the working
+     * tree to match, record the result - and the sentences are not. `Restore version #12` on the
+     * revision a live session recorded would tell a collaborator reading the history that somebody
+     * went back to an old version, when what happened is that they joined a room. Absent means
+     * `restore`, which is what every surface that offers this to an author asks for.
+     */
+    purpose?: VcsRestorePurpose;
 }
+
+/** Why the working tree is being written to match a version. See {@link VcsRestoreOptions.purpose}. */
+export type VcsRestorePurpose = "restore" | "live-session";
 
 /**
  * What a restore did.
@@ -723,29 +761,26 @@ export interface VcsServerDescription {
 }
 
 /**
- * The capability names Studio knows how to use.
+ * The capability names Studio knows how to gate on.
  *
- * **Not the set a server may advertise** - `capabilities` stays `string[]` precisely
- * because a name this Studio does not know is still worth recording. This is the other
- * half: the names a call site is allowed to gate on, so that asking for one is checked
- * against something rather than spelled from memory.
+ * **The same vocabulary the socket uses**, because a server advertises one list in its
+ * discovery document and the same list in its opening frame - so this is {@link
+ * TeamCapability} rather than a second enumeration that could name a thing the wire never
+ * says. `capabilities` on a discovery or a session stays `string[]` precisely because a
+ * name this Studio does not know is still worth recording; this is the other half, the
+ * names a call site is allowed to check against rather than spell from memory.
  *
  * A server that does not advertise one is not asked, and the surface that would have
  * shown the answer is simply not there. That is not a failure and never reads as one:
  * the deployment does not offer it, which is a fact about the server rather than about
  * this machine, and there is nothing for an author to do about it.
+ *
+ * **The project list, one project's detail and the member roster are not on this list.**
+ * They are answered by the session's own methods now, so the surviving thing to gate them
+ * on is `session` - a reachable server always has it. Only what is genuinely optional
+ * across deployments - `project-history`, `password-sign-in` - is a gate that can be off.
  */
-export type VcsServerCapability =
-    /** Lists projects, and makes them. Every server that answers this API at all. */
-    | "projects"
-    /** Answers what it knows about one project, including what it read inside the file. */
-    | "project-detail"
-    /** Answers a project's recent revisions. */
-    | "project-history"
-    /** Answers who has an account on it. */
-    | "members"
-    /** Mints a token from a username and password, rather than only accepting a pasted one. */
-    | "password-sign-in";
+export type VcsServerCapability = TeamCapability;
 
 /**
  * What reaching an address came to, before anything has been added.
@@ -987,15 +1022,39 @@ export type VcsServerProjectsProblem =
     | { kind: "wrong-repository" }
     | { kind: "unknown" };
 
-/** What a server answered when asked for its projects. */
-export type VcsServerProjectsOutcome =
-    | { ok: true; projects: VcsServerProject[] }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
-/** What a server answered when asked to make one. */
-export type VcsServerProjectOutcome =
-    | { ok: true; project: VcsServerProject }
-    | { ok: false; problem: VcsServerProjectsProblem };
+/**
+ * The same refusal, whether it came back over the socket or over the REST route.
+ *
+ * The server-project screens read one problem vocabulary - the one they have sentences for
+ * in every language. A session answers in {@link TeamProblem}'s terms instead, so this is
+ * the one place the two are lined up, rather than every caller learning the socket's set.
+ *
+ * The mapping is what each pair actually means, not a lookup invented here. A host that is
+ * not answering is `unreachable`; a token this installation cannot present is `no-token`;
+ * the server declining the account, or saying it is not signed in, is `refused`. Everything
+ * left - a method a server too old to speak does not offer, a coded refusal that is none of
+ * the above, a server Studio has no record of - lands on `unknown`, which is the sentence a
+ * reader is given for "this could not be read" with nothing more specific to act on. The
+ * server's own English detail is kept on `rejected` for a log, never for a screen.
+ */
+export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsProblem {
+    switch (problem.kind) {
+        case "no-token":
+            return { kind: "no-token" };
+        case "offline":
+            return { kind: "unreachable" };
+        case "refused":
+            // The two coded refusals a credential is behind read as one refusal, the way the
+            // REST 401/403 did. Anything else the server coded is its own sentence, kept for
+            // a log on `rejected` and drawn as the general case.
+            return problem.code === "unauthenticated" || problem.code === "refused"
+                ? { kind: "refused" }
+                : { kind: "rejected", detail: problem.detail };
+        case "no-server":
+        case "unsupported":
+            return { kind: "unknown" };
+    }
+}
 
 /**
  * How putting a project on to a server ended.
@@ -1044,11 +1103,6 @@ export interface VcsServerMember {
     /** When it was made. Epoch ms; absent from a server that did not say. */
     createdAt?: number;
 }
-
-/** What a server answered when asked who is on it. */
-export type VcsServerMembersOutcome =
-    | { ok: true; members: VcsServerMember[] }
-    | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
  * Why a username and password did not produce a token.
@@ -1103,27 +1157,6 @@ export interface VcsServerProjectDetail {
     file: VcsServerProjectFile;
 }
 
-/** What a server answered when asked about one project. */
-export type VcsServerProjectDetailOutcome =
-    | { ok: true; detail: VcsServerProjectDetail }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
-/**
- * How taking a project off a server ended.
- *
- * **What it removes is the project, not the work.** The server stops listing it and
- * stops answering for it; the repository keeps its store and every revision in it, so a
- * project taken off by mistake is published again under the same repository id and comes
- * back with its history. Nothing here destroys anything an author wrote, and nothing on
- * this side is a way to ask for that.
- *
- * The success carries nothing because there is nothing to carry: what a reader wants
- * afterwards is the list, which is fetched again rather than patched from here.
- */
-export type VcsServerProjectDeleteOutcome =
-    | { ok: true }
-    | { ok: false; problem: VcsServerProjectsProblem };
-
 /**
  * One revision on a server's copy of a project.
  *
@@ -1154,11 +1187,6 @@ export interface VcsServerProjectHistoryPage {
     /** Whether older revisions exist beyond this page. */
     more: boolean;
 }
-
-/** What a server answered when asked for one project's recent versions. */
-export type VcsServerProjectHistoryOutcome =
-    | { ok: true; page: VcsServerProjectHistoryPage }
-    | { ok: false; problem: VcsServerProjectsProblem };
 
 /**
  * The server a project synchronises with, as the author configured it.

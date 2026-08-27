@@ -3,6 +3,7 @@ import { AssetCategory, AssetType } from "@/lib/workspace/services/assets/assetT
 import { Asset, AssetGroup, AssetSource } from "@/lib/workspace/services/assets/types";
 import {
     contextMenuActsOnSelection,
+    contextMenuTargetIsArriving,
     resolveAssetActionTargets,
     type ContextMenuTargetState,
 } from "./assetActionTargets";
@@ -134,5 +135,31 @@ describe("contextMenuActsOnSelection", () => {
     it("is true when no row was right-clicked", () => {
         expect(contextMenuActsOnSelection(null, new Set(["asset:a1"]))).toBe(true);
         expect(contextMenuActsOnSelection(menuOn(null), new Set(["asset:a1"]))).toBe(true);
+    });
+});
+
+describe("the menu on a file that has not arrived yet", () => {
+    const FILE = asset("a-1", "backdrop.png");
+
+    function targetOn(item: Asset | AssetGroup, isGroup: boolean): ContextMenuTargetState {
+        return { category: AssetCategory.Image, item, isGroup };
+    }
+
+    it("says so for the row whose file is still coming in", () => {
+        expect(contextMenuTargetIsArriving(targetOn(FILE, false), { "a-1": 0.4 })).toBe(true);
+    });
+
+    it("says nothing for a row whose file is here, which is every ordinary row", () => {
+        expect(contextMenuTargetIsArriving(targetOn(FILE, false), {})).toBe(false);
+        expect(contextMenuTargetIsArriving(targetOn(FILE, false), { "a-2": 0.4 })).toBe(false);
+    });
+
+    it("never says so for a folder, which has no bytes to be waiting for", () => {
+        const folder = group("g-1", "Cast");
+        expect(contextMenuTargetIsArriving(targetOn(folder, true), { "g-1": 0.4 })).toBe(false);
+    });
+
+    it("says nothing when the menu is not open on anything", () => {
+        expect(contextMenuTargetIsArriving(null, { "a-1": 0.4 })).toBe(false);
     });
 });

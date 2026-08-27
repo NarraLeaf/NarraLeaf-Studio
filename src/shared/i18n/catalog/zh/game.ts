@@ -35,5 +35,11 @@ export const game = {
         copied: "已复制到剪贴板",
         copyFailed: "复制失败：{error}",
         logAt: "报告位于 {path}",
+        bridgeUnavailable: "游戏的运行时桥接未能加载",
+    },
+    session: {
+        title: "游戏已经打开",
+        detail: "它正在另一个浏览器标签页中运行。关闭那个标签页，然后重新载入本页。",
+        reload: "重新载入",
     },
 } satisfies LocaleNamespace<"game">;

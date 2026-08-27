@@ -18,19 +18,25 @@ import {
     GitMerge,
     History,
     Loader2,
+    LogOut,
     Pin,
     PinOff,
     Plus,
+    Share2,
     RefreshCw,
     TriangleAlert,
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsServerProject, VcsServerSession, VcsSyncState } from "@shared/types/vcs";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
+import type { DocumentNameContext } from "@/lib/vcs/documentName";
+import { documentNameOf, renderDocumentName } from "@/lib/vcs/documentName";
+import { useDocumentNames } from "@/lib/vcs/storyTitles";
 import type { TranslationKey } from "@shared/i18n";
 import { Input, TextArea } from "@/lib/components/elements/Input";
 import { Modal, dialogFooterButtonClass } from "@/lib/components/elements/Modal";
@@ -42,6 +48,10 @@ import { getInterface } from "@/lib/app/bridge";
 import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
+import { openLiveSessionDialog } from "../../modules/team/liveSessionController";
+import { liveLeaveAct } from "../../modules/team/liveSessionText";
+import { useLiveSession } from "../../modules/team/useLiveSession";
+import { LiveMemberAvatars } from "../../modules/team/LiveMemberAvatars";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import {
     VERSION_RAIL_COLLAPSED_WIDTH,
@@ -61,7 +71,6 @@ import {
     revisionMessageLine,
     serverFace,
     shortRevision,
-    splitChangePath,
     versionFace,
     type FlatHistoryEntry,
     type VersionRailPresence,
@@ -108,6 +117,18 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
     const { context } = useWorkspace();
     const { state, busy, failure, history } = surface;
     const onRevision = state.kind === "revision";
+    /*
+     * The live session, for the frozen strip alone.
+     *
+     * The strip is the only part of the window that is always visible while a session is running,
+     * so it is where the session's identity and its exit belong. Read here rather than passed in
+     * because the rail's caller holds a version surface, and a session is not one of its facts.
+     */
+    const live = useLiveSession();
+    const inSession = surface.frozen === "live-session";
+    // Named after what it does: a host walking out of a room with somebody else in it hands it over,
+    // and the strip and the dialog have to say the same thing about the same press.
+    const leaveSessionLabel = t(liveLeaveAct(live.view).key);
     const visible = isVersionSurfaceVisible(state);
     const open = presence === "panel";
 
@@ -153,6 +174,10 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
         // The strip only exists while project data is frozen, so it is ALWAYS tinted and ALWAYS
         // carries the way out. Nothing else on screen has to be coloured for the author to know their
         // project is not being saved.
+        // Named after the mode it leaves. `returnToCurrent` is the way out of exactly one freeze -
+        // a version on screen - and it was being offered as the way out of all of them: during a
+        // live session the strip said "Exit history view" and, pressed, did nothing at all. A live
+        // session leaves through the session, so that branch is drawn below rather than here.
         const escapeLabel = surface.frozen === "manual"
             ? t("workspace.shell.freeze.release")
             : t("workspace.shell.versionControl.returnToCurrent");
@@ -166,17 +191,38 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                 className="flex shrink-0 flex-col items-center gap-1 bg-primary/15 px-1 py-2"
                 style={{ width: VERSION_RAIL_COLLAPSED_WIDTH }}
             >
-                <button
-                    type="button"
-                    onClick={() => onExpandedChange(true)}
-                    data-tip={onRevision
-                        ? t("workspace.shell.versionControl.viewingVersion", { version: shownName(state) })
-                        : t("workspace.shell.freeze.enteredTitle")}
-                    aria-label={t("workspace.shell.versionControl.open")}
-                    className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
-                >
-                    {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
-                </button>
+                {/* **A live session is a different mode wearing the same strip.** The strip is
+                    what says project data is not being saved and carries the way out, and during a
+                    session both halves of that are the session's: what it opens is the session
+                    dialog, and the way out is leaving the room. A history clock over a control
+                    that called `returnToCurrent` told an author in a session that they were
+                    looking at an old version, and then did nothing when pressed. */}
+                {inSession ? (
+                    <button
+                        type="button"
+                        onClick={openLiveSessionDialog}
+                        data-tip={t("workspace.shell.team.liveFrozenTitle")}
+                        aria-label={t("workspace.shell.team.livePresence")}
+                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
+                    >
+                        {/* Not the history clock the other freezes wear. The strip is the same
+                            column in both cases and the tint is the same, so the glyph is the only
+                            thing saying which mode this is. */}
+                        <Share2 className="h-4 w-4" />
+                    </button>
+                ) : (
+                    <button
+                        type="button"
+                        onClick={() => onExpandedChange(true)}
+                        data-tip={onRevision
+                            ? t("workspace.shell.versionControl.viewingVersion", { version: shownName(state) })
+                            : t("workspace.shell.freeze.enteredTitle")}
+                        aria-label={t("workspace.shell.versionControl.open")}
+                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill"
+                    >
+                        {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <History className="h-4 w-4" />}
+                    </button>
+                )}
 
                 {/* **A merge is the one freeze with no way out through `thaw`.** Leaving would
                     re-read a working tree whose conflicted documents are still unparseable - the
@@ -188,7 +234,21 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                     rewriting, and the editors would hold a project that is part one version and
                     part another. Every other busy state is a read, and an escape hatch that greys
                     out whenever anything is loading is not an escape hatch. */}
-                {surface.frozen === "merge" && context ? (
+                {inSession ? (
+                    <button
+                        type="button"
+                        onClick={live.leave}
+                        disabled={live.busy || live.view.phase === "leaving"}
+                        data-tip={leaveSessionLabel}
+                        aria-label={leaveSessionLabel}
+                        className="flex h-10 w-10 items-center justify-center rounded-md text-primary transition-colors cursor-default hover:bg-fill disabled:opacity-50"
+                    >
+                        {/* Leaving a mode, not undoing anything - the same reasoning as the `X`
+                            below, and a door rather than a cross because for a host this control
+                            closes the room for everybody rather than merely stepping out of it. */}
+                        <LogOut className="h-4 w-4" />
+                    </button>
+                ) : surface.frozen === "merge" && context ? (
                     <button
                         type="button"
                         onClick={() => openVcsChangesTab(context, { mode: "resolve" })}
@@ -213,6 +273,19 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
                             the most expensive thing to get wrong. */}
                         <X className="h-4 w-4" />
                     </button>
+                )}
+
+                {/* **Who is in the room, down the strip.** The stack was in the title bar, which is
+                    the scarcest row in the window on a small screen; this column is the session's
+                    own, is drawn for the whole of one, and has height to spend. The title bar keeps
+                    it only for a room this window has been offered, where there is no strip. */}
+                {inSession && live.view.session !== null && live.view.session.members.length > 0 && (
+                    <LiveMemberAvatars
+                        vertical
+                        className="mt-1"
+                        members={live.view.session.members}
+                        host={live.view.session.openedBy}
+                    />
                 )}
 
                 {onRevision && (
@@ -548,7 +621,19 @@ function formatRevisionTime(timestamp: number, locale: string): string | null {
  * the refresh is the way to the other half. The rail therefore runs no document comparison at all,
  * rather than running one whenever a row was opened.
  */
+/**
+ * The one side this rail is ever about.
+ *
+ * The rail lists what has changed on disk, so the titles it needs are the ones on disk. Held as a
+ * module constant rather than written at the call site because `useDocumentNames` keys its read on
+ * the identity of the sides it is given.
+ */
+const WORKING_TREE_SIDES = { before: null, after: { at: "working-tree" } } as const;
+
 export function ChangesSection({ surface }: { surface: VersionSurface }) {
+    // Named the way the comparison names them, so one story is not `Demo` in the comparison and an
+    // id in the rail beside it.
+    const names = useDocumentNames(WORKING_TREE_SIDES);
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const { status } = surface;
@@ -571,10 +656,13 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
                             type="button"
                             onClick={() => openVcsChangesTab(context, {
                                 mode: "working-tree",
-                                // What this panel is calling the head right now, so the tab's
-                                // heading says the same `#36` the block above it does.
-                                headLabel: surface.state.kind === "current" && surface.state.number !== null
-                                    ? revisionLabel(surface.state.number)
+                                // The head this panel is showing right now, so the tab's heading
+                                // opens on the same `#36` the block above it does. The tab reads
+                                // the head for itself afterwards, so this is a head start rather
+                                // than the answer - and nothing is passed when there is none, which
+                                // the tab reads as "ask", not as "name it by hash".
+                                headNumber: surface.state.kind === "current" && surface.state.number !== null
+                                    ? surface.state.number
                                     : undefined,
                             })}
                             data-tip={t("documentDiff.rail.compareWithPrevious")}
@@ -606,7 +694,7 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
             {view !== null && view.rows.length > 0 && (
                 <div className="-mx-1 mt-1 max-h-64 overflow-y-auto">
                     {view.rows.map(file => (
-                        <ChangeRow key={file.path} file={file} />
+                        <ChangeRow key={file.path} file={file} names={names} />
                     ))}
                     {view.hidden > 0 && (
                         <p className="px-1 pt-1 text-2xs text-fg-subtle">
@@ -642,9 +730,12 @@ export function ChangesSection({ surface }: { surface: VersionSurface }) {
  * narraleaf-react injects a Tailwind v4 sheet over this app and betting on generated utilities here
  * has burned us before.
  */
-function ChangeRow({ file }: { file: VcsFileChange }) {
+function ChangeRow({ file, names }: { file: VcsFileChange; names: DocumentNameContext }) {
     const { t } = useTranslation();
-    const { directory, name } = splitChangePath(file.path);
+    // What the author calls this thing, not the file it is stored in. The rail has no comparison
+    // to read a story's title out of, so a document that has a name of its own is qualified by its
+    // id rather than given a title this surface cannot see - the whole path is in the tooltip.
+    const name = renderDocumentName(documentNameOf(file.path, names), t);
     const Icon = CHANGE_ICONS[file.kind];
     // Not cast to `TranslationKey`: the template resolves to a union of the five literal keys, so a
     // renamed or missing one is a type error here rather than a string that renders as itself.
@@ -668,16 +759,6 @@ function ChangeRow({ file }: { file: VcsFileChange }) {
                 className={cn("h-3 w-3 shrink-0", CHANGE_TINTS[file.kind])}
                 aria-label={kindLabel}
             />
-            {/* Shrinks first and by a wide margin, so the file name only starts to give way once the
-                directory has nothing left to give. */}
-            {directory !== null && (
-                <span
-                    className="overflow-hidden whitespace-nowrap text-2xs text-fg-subtle"
-                    style={{ direction: "rtl", textOverflow: "ellipsis", flexShrink: 999, minWidth: 0 }}
-                >
-                    <span style={{ direction: "ltr", unicodeBidi: "embed" }}>{directory}/</span>
-                </span>
-            )}
             <span className="min-w-0 truncate text-2xs text-fg-muted">{name}</span>
             {file.conflictUnresolved && (
                 <TriangleAlert
@@ -933,21 +1014,21 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
 
         const answer = outstanding.current?.key === remoteOrigin
             ? outstanding.current.answer
-            : getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
+            : listProjects(remoteOrigin);
         outstanding.current = { key: remoteOrigin, answer };
 
         void answer.then(result => {
             if (!live) return;
-            const read = result as Awaited<ReturnType<ReturnType<typeof getInterface>["vcs"]["listServerProjects"]>> | null;
-            if (read === null || !read.success) {
-                setHeld({ reading: false, projects: null, problem: "launcher.servers.problem.unknown" });
+            const read = result as Awaited<ReturnType<typeof listProjects>>;
+            if (!read.ok) {
+                setHeld({
+                    reading: false,
+                    projects: null,
+                    problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                });
                 return;
             }
-            if (!read.data.ok) {
-                setHeld({ reading: false, projects: null, problem: SERVER_PROBLEM_KEYS[read.data.problem.kind] });
-                return;
-            }
-            setHeld({ reading: false, projects: read.data.projects, problem: null });
+            setHeld({ reading: false, projects: read.value, problem: null });
         });
 
         return () => { live = false; };
@@ -1265,6 +1346,16 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
     const { t } = useTranslation();
     const { remote, syncState, busy } = surface;
     const running = busy !== null;
+    /*
+     * ⚠ **Both buttons below move the working tree, and a live session IS that tree.**
+     *
+     * A session opens on a committed revision and everybody in it applies the host's operations to
+     * their own copy of it. Sending puts a half-written session on the server under the others;
+     * getting rewrites the very document the room is editing, under this window's own feet. Neither
+     * is refused by the write boundary - they go through the version backend rather than through a
+     * document write - so this is the only thing that stops them.
+     */
+    const inSession = surface.frozen === "live-session";
 
     if (remote === null) {
         return (
@@ -1348,7 +1439,8 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
                 <button
                     type="button"
                     onClick={() => void surface.pushToRemote()}
-                    disabled={running}
+                    disabled={running || inSession}
+                    data-tip={inSession ? t("workspace.shell.team.liveUnavailableHere") : undefined}
                     data-vcs-seam="server-push"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
@@ -1360,7 +1452,8 @@ export function ServerSection({ surface }: { surface: VersionSurface }) {
                 <button
                     type="button"
                     onClick={() => void surface.syncFromRemote()}
-                    disabled={running}
+                    disabled={running || inSession}
+                    data-tip={inSession ? t("workspace.shell.team.liveUnavailableHere") : undefined}
                     data-vcs-seam="server-sync"
                     className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-edge px-2 text-2xs text-fg transition-colors cursor-default hover:bg-fill disabled:opacity-50"
                 >
@@ -1505,6 +1598,15 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
     const { state, compareBase: base } = surface;
     const focused = state.kind === "revision" ? state.revision : state.kind === "current" ? state.head : null;
     const [query, setQuery] = useState("");
+    /*
+     * ⚠ **Showing a past version during a live session takes the session's freeze away.**
+     *
+     * The freeze is a module-level latch holding one reason, so arming the revision freeze on top
+     * REPLACES the session's - and leaving the revision view then thaws the workspace entirely
+     * while the room is still open, with Commit offered again and the write boundary no longer
+     * holding the session's set of writable paths. Measured on a real machine before this line.
+     */
+    const inSession = surface.frozen === "live-session";
     const rows = useMemo(() => filterHistoryRows(allRows, query, t), [allRows, query, t]);
     // Read once per render rather than per row, so a list drawn across midnight cannot label two
     // adjacent days "Today". Not state: nothing here re-renders on the hour, and a list whose
@@ -1653,7 +1755,7 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                         <button
                             type="button"
                             onClick={() => surface.showRevision(row.revision, revisionLabel(row.number))}
-                            disabled={isFocused || surface.busy !== null}
+                            disabled={isFocused || surface.busy !== null || inSession}
                             // The whole message plus the hash, because the row shows one truncated line of
                             // the first and none of the second. Without it a version whose message is
                             // longer than the column is a version the author cannot read at all.
@@ -1664,7 +1766,9 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                 headline.isIdentity ? null : headline.text,
                                 headline.original === headline.text ? null : headline.original,
                                 shortRevision(row.revision),
-                                isFocused ? null : t("workspace.shell.versionControl.showVersion"),
+                                inSession
+                                    ? t("workspace.shell.team.liveUnavailableHere")
+                                    : isFocused ? null : t("workspace.shell.versionControl.showVersion"),
                             ].filter(Boolean).join("\n")}
                             className={cn(
                                 "flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors cursor-default",
@@ -1792,8 +1896,11 @@ function HistoryList({ surface, rows: allRows }: { surface: VersionSurface; rows
                                             // deletion.
                                             from: against.number < row.number ? against.revision : row.revision,
                                             to: against.number < row.number ? row.revision : against.revision,
-                                            fromLabel: against.number < row.number ? against.label : revisionLabel(row.number),
-                                            toLabel: against.number < row.number ? revisionLabel(row.number) : against.label,
+                                            // The same order, as numbers: the tab renders `#12 → #17`
+                                            // from these, so what it calls the two versions cannot
+                                            // drift from what this row calls them.
+                                            fromNumber: against.number < row.number ? against.number : row.number,
+                                            toNumber: against.number < row.number ? row.number : against.number,
                                         })}
                                         data-tip={against.title}
                                         aria-label={against.title}

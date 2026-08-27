@@ -234,6 +234,40 @@ export class CharacterProfile {
         };
     }
 
+    /**
+     * Replace every field from a stored record, **without telling anybody**. See
+     * {@link CharacterAppearance.adopt} for why it is silent, and why it writes in place.
+     *
+     * Goes through {@link CharacterProfile.fromJSON}'s own cloning rather than assigning the argument,
+     * so the record a message carried cannot be aliased into the document: the sender may still be
+     * holding it, and every mutable field on it would then be shared with another machine's copy.
+     *
+     * The id is deliberately not writable - it addresses the record, so adopting one under a
+     * different id would move a character rather than change it - and a mismatch is a caller bug
+     * loud enough to throw for, because the alternative is a cast with two members answering to one
+     * id and nothing saying which is which.
+     */
+    public adopt(config: CharacterProfileConfig): void {
+        if (config.id !== this.profile.id) {
+            throw new Error(
+                `Cannot adopt character ${config.id} into the record for ${this.profile.id}: `
+                + "a record's id is its address, not one of its fields.",
+            );
+        }
+        const cloned = CharacterProfile.fromJSON(config).toJSON();
+        for (const key of Object.keys(this.profile) as (keyof CharacterEditorProfile)[]) {
+            // Cleared first, so a field the arriving record does not have goes away instead of
+            // surviving from whatever this record held before. `toJSON` spells an absent optional by
+            // leaving it out, so the difference between "absent" and "unchanged" is exactly this
+            // loop - and an accent colour that came back after being cleared is the kind of thing
+            // nobody reports and everybody sees.
+            delete (this.profile as unknown as Record<string, unknown>)[key];
+        }
+        const { appearance, ...fields } = cloned;
+        Object.assign(this.profile, fields);
+        this.appearance.adopt(appearance);
+    }
+
     private notifyChange(): void {
         if (this.onChange) {
             this.onChange();

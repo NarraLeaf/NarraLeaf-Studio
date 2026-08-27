@@ -92,6 +92,12 @@ export const workspace = {
             reviewAllClear: "没有待校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
             placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
+            tagsLabel: "标记",
+            applyStyle: "把这个样式给选中的文字",
+            placeToken: "把它放在这里",
+            clearStyle: "去掉选中文字的样式",
+            clearStyleShort: "纯文本",
+            runTagHint: "把 ‹n› 标记抄到对应的词上，它们带着样式、停顿与立绘切换",
             emptyStory: "该故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
             noStories: "请先创建故事；故事中的台词会显示在这里供翻译",
@@ -100,6 +106,10 @@ export const workspace = {
             statusTranslated: "已翻译",
             statusReviewed: "已校对",
             statusStale: "待复查",
+        },
+        live: {
+            entryClaimed: "{name} 正在翻译该行",
+            keyClaimed: "{name} 正在编辑该字符串",
         },
     },
     voice: {
@@ -325,6 +335,90 @@ export const workspace = {
         liveJoin: "加入",
         liveLeave: "离开",
         liveEnd: "结束",
+        // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
+        liveBlockedRevision: "离开正在查看的版本后才能开始或加入实时会话",
+        liveBlockedManual: "解除工作区冻结后才能开始或加入实时会话",
+        liveBlockedMerge: "完成合并后才能开始或加入实时会话",
+        liveBlockedRecovery: "恢复模式下无法使用实时会话",
+        liveBlockedSession: "该工作区已在一场实时会话中",
+        // 本窗口在会话中的位置，占的是不在会话时显示人数的那个位置。
+        liveHost: "主持",
+        liveGuest: "参与",
+        liveEntering: "正在进入",
+        liveLeaving: "正在离开",
+        // 已加入，正在把加入之前会话里发生的事全部应用完。
+        liveCatchingUp: "正在跟上会话进度",
+        // 开始或加入之前必须先满足的条件，每一条点名其中一件。
+        liveNoStory: "先添加一个故事才能开始实时会话",
+        liveNoServer: "先把项目连接到服务器才能开始或加入实时会话",
+        liveNoInstance: "该服务器还没有回应本机",
+        liveNoRepository: "此项目没有版本历史",
+        liveNoRevision: "先记录一个版本才能开始实时会话",
+        liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
+        // 只有开始会话才会遇到：加入会直接对齐房间开始时的版本，不再存在「够不到」的副本。
+        liveVersionMismatch: "此项目与服务器都有对方没有的版本",
+        // 补救办法与分叉那条一样写成第二行，而不是把第一行拉长。
+        liveVersionMismatchNext: "先从服务器获取版本并处理差异，然后再试一次",
+        liveRoomGone: "该会话已经关闭",
+        liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
+        liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
+        liveStoryNotHere: "该会话所改的故事不在此项目中",
+        liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
+        liveRefused: "服务器拒绝了这场会话",
+        liveRefusedNext: "等服务器恢复响应后再试一次",
+        liveFailed: "无法开始实时会话",
+        liveFailedNext: "再试一次",
+        liveNoInstanceNext: "检查与该服务器的连接，然后再试一次",
+        liveNoRepositoryNext: "先为此项目启用版本控制，然后再试一次",
+        liveMergeConflictsNext: "先完成合并，然后再试一次",
+        // 会话结束的两种情形，都不是作者自己决定的。主动离开不作声。
+        liveEndedHostLeft: "主持方已离开，会话结束",
+        // 同一件事，但房间会回来：主持方交接或重载时房间会关闭，几秒后由别人重新开启。
+        liveEndedHandedOver: "主持方已离开，会话将由其他成员重新开启",
+        // 等待期间显示在房间那一行的位置上。
+        liveRejoining: "会话重新开启后将自动加入",
+        // 说的是本机这份副本发生了什么，不是道别：会话没了，而且这块磁盘上的内容
+        // 已经不是其他人正在看的那一份。
+        liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
+        liveEndedDivergedNext: "重新加入前先从服务器获取",
+        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的工程都画这个控件，
+        // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
+        // 所以它改为置灰并说明自己在等哪一个答复。
+        livePresence: "实时会话",
+        liveConnecting: "正在连接该服务器",
+        liveUnsupported: "该服务器不提供实时会话",
+        liveNobody: "此项目没有进行中的实时会话",
+        liveRoomOpen: "{name} 开着一场实时会话",
+        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
+        liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
+        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除会话所携带的文档以外的一切",
+        // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
+        liveStory: "故事",
+        liveHostedBy: "主持方 {name}",
+        // 房间里有谁，按账号。主持方要标出来：那扇窗口离开的含义不同，它会替所有人结束房间。
+        liveMembersLabel: "会话成员",
+        liveThisMachine: "本机",
+        // 进入会话时未提交的内容去了哪里。一个说不出名字的检查点等于回不去，
+        // 所以这里直接陈述，而不是留给作者去版本面板里找。
+        liveCheckpoint: "检查点",
+        liveCheckpointAt: "进入会话前未提交的内容已记录在 {version}",
+        liveCheckpointNone: "进入会话时没有未提交的内容",
+        // 参与方自己的往返。只在不为零时画出来：主持方答复之前文档不会在参与方手下变化，
+        // 不写出来的话，这与编辑器停止工作在屏幕上是同一件事。
+        livePendingOne: "1 项修改正在等待主持方",
+        livePendingMany: "{count} 项修改正在等待主持方",
+        // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
+        liveFrozenWhat: "会话期间保存故事、角色、译文与配音、整个资产库（含文件本身），以及项目自身的表（词典、音频轨道、资产集、变量、命名字符串、变体、DLC 与配色）；其余内容是当前的，且为只读",
+        liveUnavailableHere: "实时会话期间不可用",
+        // 别人正在写的行，集中在一处读，不必逐行去找标记。
+        liveClaimsLabel: "正在被编辑的行",
+        liveClaimOne: "{name} 正在写 1 行",
+        liveClaimMany: "{name} 正在写 {count} 行",
+        // 版本轨道冻结条上离开会话的出口。按它离开的模式命名，也按离开对本窗口的含义命名。
+        liveFrozenTitle: "实时会话进行中",
+        liveLeaveSession: "离开实时会话",
+        liveEndSession: "结束实时会话",
+        liveHandOverSession: "交接实时会话",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",
@@ -540,6 +634,10 @@ export const workspace = {
             frozenTitle: "当前不保存任何改动",
             frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存",
             frozenDetailManual: "工作区已冻结，解除冻结后恢复保存",
+            // 实时会话只保存自己携带的文档，其余一律拒绝，所以上面那个标题
+            // 对作者正在打字的那份文件是假的。
+            frozenTitleSession: "该文件不会被保存",
+            frozenDetailSession: "实时会话进行中，只保存会话携带的文档；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -553,6 +651,7 @@ export const workspace = {
                 variables: "变量注册表",
                 audioTracks: "音频轨道",
                 appTags: "变体",
+                dlc: "DLC",
                 assetSets: "资产集",
                 brand: "配色方案",
                 dictionary: "工程词典",
@@ -583,6 +682,7 @@ export const workspace = {
             // 「冻结的项目就是这个样子」，而不是在每个按钮上读一套不同的说辞。控件是禁用而不是
             // 隐藏，正是为了给这句话留一个可悬浮的落点。
             unavailable: "项目冻结期间不可用，解除冻结后恢复使用",
+            unavailableLive: "实时会话期间不可用，离开会话后恢复使用",
         },
         // 用真编辑器浏览历史，在版本轨道做出来之前的入口。故意只做「上一个版本」而不是选择器：
         // 选版本需要一份列表，那份列表就是轨道本身；而一个人手上够不着的里程碑没法验收。
@@ -689,6 +789,8 @@ export const workspace = {
             // 这个界面绝不自己发起。
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
+            commitBeforeSync: "从服务器获取之前先提交版本",
+            branchDiverged: "本工程与服务器都有新的版本，先获取服务器的版本再发送",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
@@ -741,6 +843,8 @@ export const workspace = {
                 checkpointClose: "关闭工程前的检查点",
                 checkpointBuild: "构建前的检查点",
                 checkpointRestore: "还原前的检查点",
+                checkpointLiveSession: "实时会话前的检查点",
+                liveSessionMatched: "已对齐实时会话的版本",
                 restored: "还原到 {version}",
             },
             // 版本控制是**可选能力**——Epic 不为 macOS Intel 与 Windows ARM64 提供原生后端——所以

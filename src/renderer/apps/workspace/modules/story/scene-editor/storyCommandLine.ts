@@ -813,6 +813,19 @@ function ruleArg(
     });
 }
 
+/**
+ * `hold=` — the seconds the change sits at its extreme, printed only when the row states one.
+ *
+ * Beside `d=` and never inside it: the hold is taken out of the duration, so the two numbers are a
+ * pair an author reads together. A row that has never been given one prints nothing here and gets
+ * the transition's own default, which is how every existing line stays byte-identical.
+ */
+function holdArg<P extends { transition?: StoryTransitionRef }>(payload: P): Arg | null {
+    return arg("hold", seconds(payload.transition?.holdMs), {
+        apply: next => patchTransition(payload, { holdMs: msOf(next) }),
+    });
+}
+
 /** A whole-screen or character `t=` — the stored kind, named by the word an author would type. */
 function transitionWord(kind: StoryTransitionRef["kind"] | undefined, context: "scene" | "character" | "expression"): string | undefined {
     if (kind === undefined) {
@@ -951,6 +964,7 @@ function characterSentence(
     const swapDuration = arg("d", seconds(payload.transition?.durationMs), {
         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
     });
+    const swapHold = holdArg(payload);
     switch (payload.operation) {
         case "enter":
             return {
@@ -964,7 +978,7 @@ function characterSentence(
             // reads back as the row that writes one. `/transform` names its subject `target`.
             return { commandId, args: [positional("target", name, who), placement, duration] };
         case "expression":
-            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration] };
+            return { commandId, args: [positional("character", name, who), form, swapTransition, swapDuration, swapHold] };
         case "setMotion":
         case "setSkin":
             // The two puppet-only channels: their value is the model's own string, never a project ref.
@@ -1105,7 +1119,24 @@ function imageSentence(
         };
     }
     if (payload.operation === "setSource") {
-        return { commandId, args: [positional("target", name, object), positional("content", asset ?? payload.color, swapAsset)] };
+        // `char(src, transition)` is what this row compiles to, so it plays a transition exactly the
+        // way `/face` does - and until these slots existed, one set in the inspector was a setting the
+        // line could not say.
+        return {
+            commandId,
+            args: [
+                positional("target", name, object),
+                positional("content", asset ?? payload.color, swapAsset),
+                arg("t", transitionWord(payload.transition?.kind, "expression"), {
+                    enum: true,
+                    apply: next => patchTransition(payload, { kind: transitionKindFor("expression", next) ?? "fadeIn" }),
+                }),
+                arg("d", seconds(payload.transition?.durationMs), {
+                    apply: next => patchTransition(payload, { durationMs: msOf(next) }),
+                }),
+                holdArg(payload),
+            ],
+        };
     }
     return {
         commandId,
@@ -1531,6 +1562,7 @@ function actionSentence(
                     arg("d", seconds(payload.transition?.durationMs), {
                         apply: next => patchTransition(payload, { durationMs: msOf(next) }),
                     }),
+                    holdArg(payload),
                 ],
             };
         case "character":
@@ -1652,6 +1684,13 @@ function blockSentence(block: StoryBlock, lookups: StoryCommandLineLookups): Sen
                 ruleArg(payload, lookups),
                 arg("d", seconds(payload.transition?.durationMs), {
                     apply: next => patchTransition(payload, { durationMs: msOf(next) }),
+                }),
+                holdArg(payload),
+                // Printed only when it is on, and spelled out as `return=true` the way every bare
+                // flag reads back. A row that has never been flagged prints the line it has always
+                // printed, so an existing project's jumps are untouched by the flag existing.
+                arg("return", payload.returnable ? "true" : undefined, {
+                    apply: next => ({ ...payload, returnable: next === "true" ? true : undefined }),
                 }),
             ],
         };

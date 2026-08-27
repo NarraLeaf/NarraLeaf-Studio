@@ -60,6 +60,7 @@ export const storyInspector = {
         stagger: "Stagger",
         shape: "Shape",
         pattern: "Pattern",
+        uncover: "Uncover",
         kind: "Kind",
         effect: "Effect",
         character: "Character",
@@ -134,7 +135,6 @@ export const storyInspector = {
         fadeIn: "Fade in",
         maskCircle: "Mask circle",
         softIris: "Soft iris",
-        maskWipe: "Slide reveal",
         softWipe: "Soft wipe",
         blinds: "Blinds",
         barnDoor: "Barn door",
@@ -151,7 +151,6 @@ export const storyInspector = {
         startX: "Start X",
         startY: "Start Y",
         blurPx: "Blur px",
-        holdPct: "Hold %",
         darknessFrom: "From darkness 0-1",
         darknessTo: "To darkness 0-1",
     },
@@ -160,9 +159,8 @@ export const storyInspector = {
         dissolve: "Crossfades from the previous image to the new one.",
         blurDissolve: "Crossfades while blurring, for flashbacks and dream states.",
         fadeIn: "Fades the new image in from a start position offset.",
-        maskCircle: "A hard-edged circle opens or closes over the frame.",
+        maskCircle: "A hard-edged circle opens over the frame.",
         softIris: "The same circle with a feathered edge.",
-        maskWipe: "A straight edge sweeps across, uncovering the new image.",
         softWipe: "The same sweep with a soft gradient edge.",
         blinds: "Slats widen to uncover the new image.",
         barnDoor: "Two soft edges close from opposite sides toward the centre.",
@@ -170,8 +168,8 @@ export const storyInspector = {
         fan: "Several blades sweep in parallel around the centre.",
         dots: "A grid of dots grows until the cells flood together.",
         slide: "The new image slides in from one edge as the old one slides out.",
-        darkness: "Swaps images at the starting darkness, then animates to the ending one. 1 → 0 emerges out of black, 0 → 1 dims into it.",
-        throughColor: "Covers the frame with a color, holds, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (hold 0).",
+        darkness: "Swaps images at the starting darkness, then lifts to the ending one. 1 → 0 emerges out of black; the brightness lasts only as long as the change.",
+        throughColor: "Covers the frame with a color, holds it there, then uncovers on the new image. Use it for fade to black or white, iris to black, and flash (no hold).",
         exposure: "Burns the frame out to white, highlights first and shadows last, then settles back down onto the new one; at lift 0 black never whitens.",
         ruleReveal: "Changes the frame over in the order a greyscale picture dictates: dark areas first, bright areas last.",
     },
@@ -203,6 +201,11 @@ export const storyInspector = {
         linear: "Soft edge",
         blinds: "Blinds",
         iris: "Iris",
+    },
+
+    throughColorUncover: {
+        retreat: "Back out",
+        continue: "Keep going",
     },
 
     imageOperation: {
@@ -442,6 +445,7 @@ export const storyInspector = {
 
     jump: {
         targetScene: "Target scene",
+        returnable: "Return after the target scene",
     },
 
     note: {

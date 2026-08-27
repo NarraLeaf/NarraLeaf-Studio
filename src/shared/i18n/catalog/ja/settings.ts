@@ -275,6 +275,11 @@ export const settings = {
             label: "ワークスペースを閉じるときにチェックポイントを記録",
             description: "上の間隔とは別に、ウィンドウを閉じる時点で記録する",
         },
+        quitCheckpointTimeout: {
+            label: "終了時のチェックポイントの制限時間",
+            description:
+                "終了時に開いているすべてのプロジェクトのチェックポイントを待つ時間。これを超えたプロジェクトは記録しない。0 にすると終了時は記録しない",
+        },
         projectDefaultAuthor: {
             label: "新規プロジェクトの既定の作者",
             description: "プロジェクト作成時に作者欄へ入る。既存のプロジェクトはそのまま",

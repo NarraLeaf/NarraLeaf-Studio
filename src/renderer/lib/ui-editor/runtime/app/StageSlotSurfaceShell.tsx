@@ -60,6 +60,11 @@ export type GameUiSlotHostOptions = {
     /** Hosts without a real application window (story preview) leave these unset. */
     getFullscreen?: () => Promise<boolean>;
     setFullscreen?: (fullscreen: boolean) => Promise<void>;
+    getWindowScaleOptions?: () => Promise<number[]>;
+    getWindowScale?: () => Promise<number>;
+    setWindowScale?: (scale: number) => Promise<void>;
+    getWindowSize?: () => Promise<{ width: number; height: number }>;
+    setWindowSize?: (width: number, height: number) => Promise<void>;
     startStoryInGame: (request: DevModeStartStoryRequest) => Promise<void>;
     writeSaveInGame: (id: string, metadata?: unknown, screenshot?: boolean) => Promise<void>;
     /** Resolves false when the save was not applied; `Load Save` routes that to its `Failed` pin. */
@@ -231,6 +236,11 @@ export function useStageSlotSurfaceRuntime(input: {
             onQuitApplication: options.quitApplication,
             onGetFullscreen: options.getFullscreen,
             onSetFullscreen: options.setFullscreen,
+            onGetWindowScaleOptions: options.getWindowScaleOptions,
+            onGetWindowScale: options.getWindowScale,
+            onSetWindowScale: options.setWindowScale,
+            onGetWindowSize: options.getWindowSize,
+            onSetWindowSize: options.setWindowSize,
             onStartStory: options.startStoryInGame,
             onWriteSave: options.writeSaveInGame,
             onLoadSave: options.loadSaveInGame,

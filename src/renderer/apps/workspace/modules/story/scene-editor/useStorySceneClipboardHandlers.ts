@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, type ClipboardEvent, type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { AssetTransferEntry, AssetTransferManifestEntry } from "@shared/types/assetTransfer";
+import type { LiveDerived } from "@shared/live/ops";
 import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId } from "@shared/types/story";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { getInterface } from "@/lib/app/bridge";
@@ -31,12 +32,19 @@ import {
 } from "@/lib/story/paste/storyPasteTypes";
 import { createBlockForCommand } from "./storyActionCommands";
 import {
+    classifyStoryPaste,
+    derivedWritesFrozen,
+    liveDerivedFor,
+    liveSessionOnProject,
+    rowsOnlyPayload,
+    takeSessionRowsOnlyNotice,
+} from "./storyLivePaste";
+import {
     collectStoryAssetIds,
     collectStoryCharacterIds,
     collectSubtreeBlocks,
     countUnresolvedAssetSites,
     importTransferredAssets,
-    isStoryPasteFromAnotherProject,
     listSerializedBlocks,
     treatForeignCharacterRefs,
 } from "./storyForeignPaste";
@@ -45,7 +53,7 @@ import {
     cloneSerializedBlock,
     exportBlockPlainText,
     getPasteAnchorId,
-    insertSerializedClone,
+    flattenSerializedClone,
     isStoryClipboardPayload,
     listBlockTextIds,
     parseDialogueLine,
@@ -59,9 +67,15 @@ import {
     planCarriedTranslations,
     readProjectLocales,
     writeCarriedTranslations,
+    type CarriedTranslationPlan,
     type CarriedTranslationPort,
 } from "./storyTranslationTransfer";
-import { carryVoiceWithinProject } from "./storyVoiceTransfer";
+import {
+    carryVoiceWithinProject,
+    createCarriedVoicePort,
+    planVoiceWithinProject,
+    type CarriedVoicePlan,
+} from "./storyVoiceTransfer";
 import type {
     EditorMode,
     SerializedStoryBlock,
@@ -190,18 +204,16 @@ export function useStorySceneClipboardHandlers(params: {
     /**
      * Insert already-built blocks in order, under ONE history entry recorded by the caller.
      *
-     * There is no batch insert API, so this is N `documentChanged` events; the single `recordHistory`
-     * in front of it is what makes the whole paste one undo step. The `target` is reused unmutated,
-     * which is what keeps the pasted order: every insert goes before the same following sibling.
+     * One operation for the lot: one `documentChanged`, one undo step, and inside a live session one
+     * effect rather than a row-by-row run of them. The `target` is reused unmutated, which is what
+     * keeps the pasted order: every insert goes before the same following sibling.
      */
     const insertPastedBlocks = useCallback((blocks: StoryBlock[], target: StoryBlockTarget) => {
         const { storyService, storyId, sceneId } = params;
         if (!storyService || !storyId || !sceneId || blocks.length === 0) {
             return;
         }
-        for (const block of blocks) {
-            storyService.insertBlock(storyId, sceneId, block, target);
-        }
+        storyService.insertBlocks(storyId, sceneId, blocks.map(block => ({ block, target })));
         if (pasteMayTakeFocus()) {
             params.setActiveBlockId(blocks[0].id);
             params.setSelectedBlockIds(new Set(blocks.map(block => block.id)));
@@ -209,36 +221,74 @@ export function useStorySceneClipboardHandlers(params: {
     }, [params, pasteMayTakeFocus]);
 
     /**
-     * Clone the payload's rows into the scene as one undo step. Null when nothing could be written.
+     * Mint the rows a paste will write, **without writing them**.
      *
-     * The `textIds` it returns are the renaming the clone performed, old id → new id. Every pasted
-     * line gets a fresh one, so it is the only thing that can still tell which line over there
-     * became which line here - which is what the translations travelling with the rows are keyed by,
-     * and what the takes are found under (see `storyVoiceTransfer`).
+     * Split from the insert below because of one ordering: what a paste derives is keyed by the ids
+     * minted here, and inside a live session those entries have to be known before the rows are
+     * handed to the room - they travel with the operation that carries the rows, and an operation
+     * has left by the time it can be answered. Outside a session the two halves still run back to
+     * back and nothing about the paste changes.
+     *
+     * The `textIds` are the renaming the clone performed, old id → new id. Every pasted line gets a
+     * fresh one, so it is the only thing that can still tell which line over there became which line
+     * here - which is what the translations travelling with the rows are keyed by, and what the
+     * takes are found under (see `storyVoiceTransfer`).
      */
-    const pasteBlocks = useCallback((
+    const cloneForPaste = useCallback((
         roots: SerializedStoryBlock[],
-        target: StoryBlockTarget,
-    ): { textIds: Map<string, string> } | null => {
-        const { storyService, uuidService, storyId, sceneId } = params;
-        if (!storyService || !uuidService || !storyId || !sceneId) {
+    ): { clones: SerializedStoryBlock[]; textIds: Map<string, string> } | null => {
+        const { uuidService, storyService, storyId, sceneId } = params;
+        if (!storyService || !uuidService || !storyId || !sceneId || roots.length === 0) {
             return null;
         }
-        params.recordHistory();
-        const insertedRoots: StoryBlockId[] = [];
         const textIds = new Map<string, string>();
-        for (const root of roots) {
-            const cloned = cloneSerializedBlock(root, () => uuidService.generate(), textIds);
-            insertSerializedClone(storyService, storyId, sceneId, cloned, target);
-            insertedRoots.push(cloned.block.id);
+        const clones = roots.map(root => cloneSerializedBlock(root, () => uuidService.generate(), textIds));
+        return { clones, textIds };
+    }, [params]);
+
+    /**
+     * Write rows already minted into the scene, as one undo step.
+     *
+     * `derived` is what the paste derives - the translations and takes re-keyed onto the ids these
+     * rows now carry - and it travels on the one operation the whole paste becomes. It belongs to
+     * the gesture rather than to any row of it, which is what makes every machine in a session
+     * write the same entries from the same message; see `StoryOpSink.handle`. Undefined outside a
+     * session and for a project that is neither translated nor dubbed.
+     */
+    const insertClones = useCallback((
+        clones: SerializedStoryBlock[],
+        target: StoryBlockTarget,
+        derived?: LiveDerived,
+    ): boolean => {
+        const { storyService, storyId, sceneId } = params;
+        if (!storyService || !storyId || !sceneId || clones.length === 0) {
+            return false;
         }
+        params.recordHistory();
+        // One list, one call, one operation: a paste is one gesture, so it is one undo step here
+        // and one effect in a live session rather than a row-by-row run of either.
+        const inserts = clones.flatMap(cloned => flattenSerializedClone(cloned, target));
+        storyService.insertBlocks(storyId, sceneId, inserts, derived);
+        const insertedRoots = clones.map(cloned => cloned.block.id);
         if (insertedRoots[0] && pasteMayTakeFocus()) {
             params.setActiveBlockId(insertedRoots[0]);
             params.setSelectedBlockIds(new Set(insertedRoots));
             params.setEditorMode({ kind: "idle" });
         }
-        return insertedRoots.length > 0 ? { textIds } : null;
+        return insertedRoots.length > 0;
     }, [params, pasteMayTakeFocus]);
+
+    /** Clone and write in one step: every paste that derives nothing anybody else has to compute. */
+    const pasteBlocks = useCallback((
+        roots: SerializedStoryBlock[],
+        target: StoryBlockTarget,
+    ): { textIds: Map<string, string> } | null => {
+        const minted = cloneForPaste(roots);
+        if (!minted || !insertClones(minted.clones, target)) {
+            return null;
+        }
+        return { textIds: minted.textIds };
+    }, [cloneForPaste, insertClones]);
 
     /**
      * The one-line paste, unchanged: it still guesses a `Name: text` line against the cast.
@@ -492,6 +542,83 @@ export function useStorySceneClipboardHandlers(params: {
     }, [params]);
 
     /**
+     * The translations and takes of a paste inside a live session, as entries every machine writes.
+     *
+     * The same two sets the ordinary paste writes, assembled instead of written: the translations
+     * that travelled on the clipboard, re-keyed onto the ids this paste minted, and the takes read
+     * out of this project's own voice libraries under the ids the lines had before it renamed them.
+     * The entries themselves - not the ids to look them up under - because the copier read them out
+     * of its own memory at the moment of copying, and no other machine has that memory.
+     *
+     * **Read and handed over; nothing is written here.** The entries go out with the operation that
+     * carries the rows and come back as an effect, and every machine in the room - this one included
+     * - writes them through the one applier that applies an effect. A paster that wrote from memory
+     * as well would be a second implementation for the libraries to disagree through, and it would
+     * be the implementation that skips the field-by-field reading the wire value gets.
+     */
+    const sessionDerivedFor = useCallback(async (
+        payload: StoryClipboardPayload,
+        textIds: ReadonlyMap<string, string>,
+    ): Promise<LiveDerived | undefined> => {
+        const { localizationService, voiceService, projectPath } = params;
+        // A session freezes everything but its story document, so the ordinary freeze answer would
+        // stop these before they were even read. This is the question the write boundary asks.
+        const frozen = () => derivedWritesFrozen(projectPath);
+        const voicePort = voiceService ? createCarriedVoicePort(voiceService, frozen) : null;
+        try {
+            const translations = localizationService
+                ? planCarriedTranslations(
+                    payload.translations,
+                    textIds,
+                    new Set(readProjectLocales(localizationService)),
+                )
+                : EMPTY_TRANSLATION_PLAN;
+            const voice = voiceService && voicePort
+                ? (await planVoiceWithinProject(voiceService, voicePort, [...textIds.keys()], textIds)).plan
+                : EMPTY_VOICE_PLAN;
+            return liveDerivedFor(translations, voice);
+        } catch (error) {
+            // The rows are pasted either way, and a translation or a recording that could not follow
+            // them is one re-link - not something to raise a dialog over a Ctrl+V for.
+            console.warn("[storyClipboard] could not derive the pasted rows' translations and takes", error);
+            return undefined;
+        }
+    }, [params]);
+
+    /**
+     * Rows from outside, pasted into a project a live session is open on: **the rows and nothing
+     * else.**
+     *
+     * Not conservatism. A translation on the clipboard, the bytes of another project's files and a
+     * take in another project's audio library all exist on this machine only, so no effect can carry
+     * the rest of the room to the same result - and a library written here and nowhere else is the
+     * divergence the whole session is arranged to avoid.
+     *
+     * The rows land holding references that resolve to nothing. Nothing here says so, and nothing
+     * here should: `assets/missing` and its neighbours report every site with a jump to the row and
+     * refuse a build, which is a better report than a count in a toast. The one thing said is what
+     * an author cannot find out any other way - that this paste left things behind - and it is said
+     * once for the session.
+     */
+    const pasteRowsOnly = useCallback((
+        payload: StoryClipboardPayload,
+        target: StoryBlockTarget,
+        session: string,
+    ) => {
+        const rows = rowsOnlyPayload(payload);
+        const treatment = treatForeignCharacterRefs(rows.roots, {
+            knownCharacterIds: params.knownCharacterIds,
+            characterNames: readClipboardCharacterNames(rows.characterNames),
+        });
+        if (!pasteBlocks(treatment.roots, target)) {
+            return;
+        }
+        if (takeSessionRowsOnlyNotice(session)) {
+            params.uiService?.showNotification(translate("story.paste.sessionRowsOnly"), "info");
+        }
+    }, [params, pasteBlocks]);
+
+    /**
      * A paste of rows written by another project.
      *
      * Asynchronous because the files those rows reference are imported first: the rows are pasted
@@ -561,6 +688,10 @@ export function useStorySceneClipboardHandlers(params: {
      * Translations first, then takes: a take is a recording of the line as the actor for that
      * language reads it, which is the translation where there is one, so a take that landed first
      * would read as stale until its translation caught up.
+     *
+     * Outside a live session only. Inside one the same two sets travel with the rows instead of
+     * being written from here, and are written by whatever applies the effect - see
+     * {@link sessionDerivedFor} and the session branch of {@link routePaste}.
      */
     const pasteOwnUnits = useCallback(async (
         payload: StoryClipboardPayload,
@@ -597,13 +728,36 @@ export function useStorySceneClipboardHandlers(params: {
                     if (!isStoryClipboardPayload(parsed)) {
                         return false;
                     }
+                    const session = liveSessionOnProject(params.projectPath);
                     // Rows from this same project - or from a Studio that predates the source field,
                     // which can only be this machine - paste exactly as they always have.
-                    if (!isStoryPasteFromAnotherProject(parsed, params.projectPath)) {
+                    if (classifyStoryPaste(parsed, params.projectPath) === "own") {
+                        if (session !== null) {
+                            // ⚠ Minted, then derived, then written - in that order and not the
+                            // obvious one. What this paste derives is keyed by the ids it mints, and
+                            // it has to be known BEFORE the rows are handed to the room: the entries
+                            // travel with the operation that carries them, and an operation cannot
+                            // be added to once it has gone. The rows therefore appear a beat later
+                            // inside a session than outside one, which is the price of everybody
+                            // else getting the same translations from the same message.
+                            const minted = cloneForPaste(parsed.roots);
+                            if (minted) {
+                                void sessionDerivedFor(parsed, minted.textIds).then(derived => {
+                                    insertClones(minted.clones, anchor.target, derived);
+                                });
+                            }
+                            return true;
+                        }
                         const pasted = pasteBlocks(parsed.roots, anchor.target);
                         if (pasted) {
                             void pasteOwnUnits(parsed, pasted.textIds);
                         }
+                        return true;
+                    }
+                    if (session !== null) {
+                        // Nothing the rest of the room could derive travels with these, so nothing
+                        // does. Outside a session the ordinary cross-project paste is unchanged.
+                        pasteRowsOnly(parsed, anchor.target, session);
                         return true;
                     }
                     void pasteForeignBlocks(parsed, anchor.target);
@@ -638,7 +792,7 @@ export function useStorySceneClipboardHandlers(params: {
             default:
                 return false;
         }
-    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnUnits, pasteSingleLine, pastePlain, resolveAnchor]);
+    }, [params, pasteBlocks, pasteForeignBlocks, pasteOwnUnits, pasteRowsOnly, pasteSingleLine, pastePlain, resolveAnchor]);
 
     const copySelectionToClipboard = useCallback((event: ClipboardEvent<HTMLDivElement>) => {
         if (isTextInputActive()) {
@@ -721,6 +875,16 @@ export function useStorySceneClipboardHandlers(params: {
 function isMultiLine(text: string): boolean {
     return /\r?\n/.test(text.trim());
 }
+
+/**
+ * What a paste derives when the workspace has no service to derive it from.
+ *
+ * Stated rather than left to a null check at each use, so a paste inside a session assembles one
+ * shape whether the localization and voice services are up yet or not - a window still starting
+ * costs a paste its translations and its takes, and nothing else.
+ */
+const EMPTY_TRANSLATION_PLAN: CarriedTranslationPlan = { writes: [], carried: 0, droppedLocales: 0 };
+const EMPTY_VOICE_PLAN: CarriedVoicePlan = { writes: [], carried: 0 };
 
 /**
  * The shape a plain paste copies from the row the caret was in.

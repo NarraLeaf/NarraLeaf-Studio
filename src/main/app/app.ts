@@ -1,6 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { screen, session } from "electron";
+import {
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+} from "@shared/constants/quit";
 import { IPCEventType, WorkspaceCloseStage } from "@shared/types/ipcEvents";
 import { WindowAppType, WindowControlPolicy, WindowProps } from "@shared/types/window";
 import { BaseApp, BaseAppConfig } from "./application/baseApp";
@@ -37,6 +43,8 @@ import { resolveStartupProject } from "./application/startupProject";
 import { CommandLineBuildRun } from "./application/commandLineBuild";
 import { DeferredWindowShow, createDeferredWindowShow } from "./application/deferredWindowShow";
 import { handOverWorkspace } from "./application/workspaceHandOver";
+import { decideReopenAction } from "./application/reopenAction";
+import { shouldCheckpointOnClose } from "./application/closeCheckpoint";
 
 export interface AppConfig extends BaseAppConfig {
 }
@@ -53,14 +61,20 @@ export interface AppConfig extends BaseAppConfig {
 const CLOSE_CHECKPOINT_TIMEOUT_MS = 30_000;
 
 /**
- * How long {@link App.drainForShutdown} may spend putting the profile down before the exit goes
- * ahead without it.
+ * What {@link App.drainForShutdown} is allowed on top of the checkpoint budget before the exit
+ * goes ahead without it.
+ *
+ * The deadline is a sum rather than one fixed number, and that is what makes the checkpoint budget
+ * safe to configure: raising `versionControl.quitCheckpointTimeoutSeconds` buys the checkpoints
+ * more time instead of taking it from the stores, and a version-control call still in flight when
+ * Node destroys the environment aborts the process. With the default budget the total is the
+ * twenty seconds a quit was allowed before any of it was configurable.
  *
  * Generous, because everything it is waiting on is work that would otherwise be lost. Bounded,
  * because both callers are exits: a Cmd+Q that hangs on a network fetch, and a build job that never
  * returns an exit code, are worse outcomes than losing the last few seconds.
  */
-const SHUTDOWN_DEADLINE_MS = 20_000;
+const SHUTDOWN_BASE_DEADLINE_MS = 10_000;
 
 /**
  * How far a workspace opening beside another one is stepped from it, so the new window is visibly
@@ -191,12 +205,19 @@ export class App extends BaseApp {
         // stages, and only the window layer can ask a window to do that. Handed in as a
         // function because VcsManager holds a BaseApp: without it a commit would still
         // succeed and would describe a document that is about to change on disk.
-        this.vcsManager = new VcsManager(this, async projectPath => {
-            const workspace = this.findWorkspaceForProject(projectPath);
-            if (workspace) {
-                await this.flushWorkspacePendingSaves(workspace);
-            }
-        });
+        this.vcsManager = new VcsManager(
+            this,
+            async projectPath => {
+                const workspace = this.findWorkspaceForProject(projectPath);
+                if (workspace) {
+                    await this.flushWorkspacePendingSaves(workspace);
+                }
+            },
+            // Publishing lists a server's projects and records a new one over the session the
+            // TeamManager holds, rather than a second request that presents the token afresh.
+            // That manager is constructed just below, so this reads it when a publish runs.
+            (remoteOrigin, method, params) => this.teamManager.call(remoteOrigin, method, params),
+        );
 
         // A server is now a place Studio holds a session with, and that is a thing of
         // its own rather than a corner of version control. It is given the list of
@@ -526,11 +547,37 @@ export class App extends BaseApp {
     }
 
     /**
+     * macOS: the Dock icon was clicked, or Studio was otherwise reopened while already running.
+     *
+     * The rule, and why it is not simply "show the home screen", is in `decideReopenAction`. All
+     * this adds is the reading of the windows it decides from, and the raising of the most recently
+     * opened one when the reopen brought nothing forward by itself.
+     */
+    public handleReopen(hasVisibleWindows: boolean): void {
+        const onScreen = this.windowManager.getWindows()
+            .filter(window => !window.isClosed() && (window.win.isVisible() || window.win.isMinimized()));
+        const action = decideReopenAction({ hasVisibleWindows, windowsOnScreen: onScreen.length });
+
+        if (action === "launcher") {
+            void this.revealLauncher();
+            return;
+        }
+        if (action === "raise") {
+            const front = onScreen[onScreen.length - 1];
+            if (front.win.isMinimized()) {
+                front.win.restore();
+            }
+            front.focus();
+        }
+    }
+
+    /**
      * Bring the home screen in front of the user, opening it if they closed everything.
      *
      * The entry point for every "get me back into Studio" gesture now that closing the last
-     * window no longer ends the session: the tray item and its Open Launcher row, macOS's dock
-     * `activate`, and a second launch handing its intent to the running instance.
+     * window no longer ends the session: the tray item and its Open Launcher row, a second launch
+     * handing its intent to the running instance, and a macOS reopen that found nothing to come
+     * back to (see {@link handleReopen}).
      *
      * Restores before focusing because a minimized window is the common case for the tray - and
      * `focus()` alone leaves a minimized window minimized.
@@ -767,24 +814,31 @@ export class App extends BaseApp {
      * not a gap in this method - see `workspace.reopenLastProject`, which is off by default.
      */
     /**
-     * Put this profile down: the saves, the game processes, then version control.
+     * Put this profile down: the saves, the game processes, the checkpoints, then version control.
      *
      * One list, because there are two exits that need it. The quit path holds `before-quit` open
      * while this runs; a command-line build cannot use that path at all, because carrying an exit
      * code means `exit()`, which skips `before-quit` entirely. Two copies of the list would drift,
-     * and the way they would drift is that the exit nobody watches stops doing one of the three.
+     * and the way they would drift is that the exit nobody watches stops doing one of the four.
      *
-     * Order is load-bearing and none of the three may skip another. The saves are debounced, so a
+     * Order is load-bearing and none of the four may skip another. The saves are debounced, so a
      * process ending 300ms after the last write loses exactly that write. The runtimes are separate
-     * processes that macOS and Linux reparent rather than reap. And every version-control call is a
-     * koffi `async` call delivered by calling back into JS - one still in flight when Node destroys
-     * the environment aborts the process, which is how a clean-looking exit produces a crash report.
+     * processes that macOS and Linux reparent rather than reap. The checkpoint has to see a flushed
+     * tree and a store that is still open, which is what puts it third: ahead of version control
+     * closing, and behind the process kills so that a long commit cannot leave a game running with
+     * nothing left to stop it from. And every version-control call is a koffi `async` call
+     * delivered by calling back into JS - one still in flight when Node destroys the environment
+     * aborts the process, which is how a clean-looking exit produces a crash report.
      *
      * Nothing here throws: a failed flush is still an exit that has to close what it started. And
      * nothing here waits forever - the deadline is a bounded exit, not a safe one, but the
      * alternative is an app that cannot be quit and a build job that never returns.
      */
     public async drainForShutdown(): Promise<void> {
+        // Read once, so the deadline and the step it is bounding cannot disagree - a Settings
+        // change landing between the two would otherwise produce a drain whose parts do not add up.
+        const checkpointBudgetMs = this.resolveQuitCheckpointTimeoutMs();
+        const deadlineMs = SHUTDOWN_BASE_DEADLINE_MS + checkpointBudgetMs;
         const teardown = (async () => {
             await this.flushAllWorkspacesPendingSaves().catch(error => {
                 this.logger.warn('Failed to flush pending saves before quit:', error);
@@ -792,11 +846,14 @@ export class App extends BaseApp {
             await this.stopAllProjectRuntimes().catch(error => {
                 this.logger.warn('Failed to stop the running game processes before quit:', error);
             });
+            await this.checkpointOpenWorkspacesForShutdown(checkpointBudgetMs).catch(error => {
+                this.logger.warn('Failed to check point the open projects before quit:', error);
+            });
             await this.getVcsManager().dispose().catch(error => {
                 this.logger.warn('Failed to close version control before quit:', error);
             });
         })();
-        const deadline = new Promise<void>(resolve => setTimeout(resolve, SHUTDOWN_DEADLINE_MS));
+        const deadline = new Promise<void>(resolve => setTimeout(resolve, deadlineMs));
         await Promise.race([teardown, deadline]);
         // Expiring here means ending with Lore work still running, which is exactly the abort the
         // drain exists to avoid. Nothing better is available - the alternative is a quit that hangs
@@ -804,7 +861,7 @@ export class App extends BaseApp {
         // names koffi and says nothing about why the call was still open.
         if (this.getVcsManager().busy) {
             this.logger.warn(
-                `Shutting down with version control still busy after ${SHUTDOWN_DEADLINE_MS}ms;`
+                `Shutting down with version control still busy after ${deadlineMs}ms;`
                 + ' a call that outlives this may take the process down on the way out.',
             );
         }
@@ -1153,6 +1210,23 @@ export class App extends BaseApp {
     }
 
     /**
+     * Whether this closing workspace is going to be check pointed at all.
+     *
+     * Asked by every close path before it says so on screen, as well as by the checkpoint itself:
+     * telling the author a checkpoint is being recorded and then recording nothing is the one way
+     * this can be wrong that they can see. The rule, and the lock wait that made it necessary, is
+     * in {@link shouldCheckpointOnClose}.
+     */
+    private wantsCheckpointOnClose(window: AppWindow<WindowAppType.Workspace>): boolean {
+        const projectPath = window.getProps().projectPath;
+        return shouldCheckpointOnClose({
+            enabled: this.globalState.get("versionControl.checkpointOnClose") !== false,
+            projectPath: typeof projectPath === "string" ? projectPath : null,
+            workspaceLoaded: window.hasLoadedWorkspace(),
+        });
+    }
+
+    /**
      * Record a checkpoint for a project that is about to be closed.
      *
      * The point of it: after this returns, nothing is watching the working tree, so an
@@ -1167,26 +1241,30 @@ export class App extends BaseApp {
      * this does not silence the interval. Defaults on, which is what it did before it
      * was a choice.
      *
-     * Never throws and never blocks the close - the second half enforced by
-     * {@link CLOSE_CHECKPOINT_TIMEOUT_MS} rather than assumed. A project with no repository, a host
+     * Never throws and never blocks the close - the second half enforced by a deadline
+     * ({@link CLOSE_CHECKPOINT_TIMEOUT_MS}, or `versionControl.quitCheckpointTimeoutSeconds` when
+     * the whole app is going away) rather than assumed. A project with no repository, a host
      * with no backend, and a tree that has not changed all answer "nothing to do" rather than
      * failing (see VcsManager.checkpoint); a repository somebody else has locked answers nothing at
      * all, and used to leave the window unclosable.
      *
-     * Deliberately NOT wired into the app-quit flush as well. That path runs under a
-     * hard deadline whose purpose is a bounded teardown, and a commit's duration is a
-     * function of how much the author changed; hanging Cmd+Q on it would trade a
-     * bounded "lost the last few seconds" for an unbounded wait. Closing a workspace
-     * window comes through here first, which is the exit an author takes deliberately.
+     * The app quitting runs this as well, over every open workspace - see
+     * {@link App.checkpointOpenWorkspacesForShutdown}. It used to be left out, on the reasoning
+     * that a commit's duration is a function of how much the author changed and that hanging
+     * Cmd+Q on it would trade a bounded "lost the last few seconds" for an unbounded wait. The
+     * deadline above is what settles that: the wait is bounded whichever exit asks for it, and
+     * the alternative was that quitting - the way a session actually ends, and the one exit that
+     * closes every project at once - recorded nothing, while the setting said a workspace that
+     * closes is check pointed.
      */
-    private async checkpointBeforeClose(window: AppWindow<WindowAppType.Workspace>): Promise<void> {
-        // Only an explicit `false` skips it. A missing or non-boolean value means the author never
-        // answered, and the answer they never gave must not be the one that loses their session.
-        if (this.globalState.get("versionControl.checkpointOnClose") === false) {
-            return;
-        }
+    private async checkpointBeforeClose(
+        window: AppWindow<WindowAppType.Workspace>,
+        timeoutMs: number = CLOSE_CHECKPOINT_TIMEOUT_MS,
+    ): Promise<void> {
         const projectPath = window.getProps().projectPath;
-        if (typeof projectPath !== "string" || projectPath.length === 0) {
+        // The `typeof` is what narrows the path for the call below; the rule it repeats is
+        // `wantsCheckpointOnClose`'s, which every caller has already asked.
+        if (!this.wantsCheckpointOnClose(window) || typeof projectPath !== "string") {
             return;
         }
         try {
@@ -1195,8 +1273,8 @@ export class App extends BaseApp {
             await Promise.race([
                 this.vcsManager.checkpoint(projectPath, "project-close"),
                 new Promise<void>((_, reject) => setTimeout(
-                    () => reject(new Error(`the checkpoint did not finish within ${CLOSE_CHECKPOINT_TIMEOUT_MS}ms`)),
-                    CLOSE_CHECKPOINT_TIMEOUT_MS,
+                    () => reject(new Error(`the checkpoint did not finish within ${timeoutMs}ms`)),
+                    timeoutMs,
                 ).unref?.()),
             ]);
         } catch (error) {
@@ -1268,13 +1346,78 @@ export class App extends BaseApp {
         ]);
     }
 
-    /** Flush every open workspace concurrently. Used on the way out of the app. */
-    public async flushAllWorkspacesPendingSaves(): Promise<void> {
-        const workspaces = this.windowManager.getWindows().filter(
+    /**
+     * The workspaces still on screen, in the order the window manager holds them.
+     *
+     * Both halves of the shutdown ask the same question, and asking it twice in two places is how
+     * one of them would end up covering a different set of windows than the other.
+     */
+    private liveWorkspaceWindows(): AppWindow<WindowAppType.Workspace>[] {
+        return this.windowManager.getWindows().filter(
             (window): window is AppWindow<WindowAppType.Workspace> =>
                 !window.isClosed() && window.getWindowType() === WindowAppType.Workspace,
         );
+    }
+
+    /** Flush every open workspace concurrently. Used on the way out of the app. */
+    public async flushAllWorkspacesPendingSaves(): Promise<void> {
+        const workspaces = this.liveWorkspaceWindows();
+        for (const window of workspaces) {
+            this.reportWorkspaceCloseStage(window, "saving");
+        }
         await Promise.allSettled(workspaces.map(window => this.flushWorkspacePendingSaves(window)));
+    }
+
+    /**
+     * The configured checkpoint budget for a quit, in milliseconds.
+     *
+     * Clamped rather than trusted. Global state is a file on disk and the Settings row is not the
+     * only way into it; a value edited by hand into something enormous would be an application
+     * that cannot be quit, which is the one outcome the deadline exists to rule out.
+     */
+    private resolveQuitCheckpointTimeoutMs(): number {
+        const stored = this.globalState.get(QUIT_CHECKPOINT_TIMEOUT_KEY);
+        const seconds = typeof stored === "number" && Number.isFinite(stored)
+            ? stored
+            : QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS;
+        const clamped = Math.min(
+            Math.max(seconds, QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS),
+            QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+        );
+        return Math.round(clamped * 1000);
+    }
+
+    /**
+     * Check point every open workspace on the way out of the app.
+     *
+     * Quitting does not come through the window close guard: `isQuitting()` makes every guard
+     * stand aside, so that a confirmation sheet cannot cancel a quit half-way through. That is
+     * what this exists for. Without it, Cmd+Q, the Quit menu item and the tray's Quit - the exits
+     * that close every project at once - were the exits that recorded nothing, while
+     * `versionControl.checkpointOnClose` told the author a closing workspace is check pointed.
+     *
+     * Which workspaces are check pointed is decided before the stage is announced rather than
+     * inside the checkpoint, so that a window that is going to skip it - the author turned it off,
+     * or the workspace never finished opening - is not shown a card telling them one is being
+     * recorded. See {@link App.wantsCheckpointOnClose}.
+     *
+     * Concurrent, because Lore queues per project and two projects do not contend; bounded per
+     * project by `timeoutMs`, so one repository somebody else has locked cannot spend the whole
+     * shutdown deadline on behalf of the others. A budget of nothing skips the step: it is how
+     * `versionControl.quitCheckpointTimeoutSeconds` says that a quit is not the moment to wait,
+     * and it leaves a workspace closed by hand recording its checkpoint as before.
+     */
+    public async checkpointOpenWorkspacesForShutdown(timeoutMs: number): Promise<void> {
+        if (timeoutMs <= 0) {
+            return;
+        }
+        const workspaces = this.liveWorkspaceWindows().filter(window => this.wantsCheckpointOnClose(window));
+        for (const window of workspaces) {
+            this.reportWorkspaceCloseStage(window, "checkpoint");
+        }
+        await Promise.allSettled(
+            workspaces.map(window => this.checkpointBeforeClose(window, timeoutMs)),
+        );
     }
 
 
@@ -1307,8 +1450,10 @@ export class App extends BaseApp {
 
         // Flush first, check point second: the checkpoint's whole value is that it
         // records what is on disk, and the flush is what puts the last edit there.
-        this.reportWorkspaceCloseStage(window, "checkpoint");
-        await this.checkpointBeforeClose(window);
+        if (this.wantsCheckpointOnClose(window)) {
+            this.reportWorkspaceCloseStage(window, "checkpoint");
+            await this.checkpointBeforeClose(window);
+        }
 
         // The app may have started quitting, or the window may be gone, while the sheet was up.
         // Reopening the launcher now would resurrect a window in the middle of a quit.
@@ -1622,8 +1767,10 @@ export class App extends BaseApp {
                 const workspace = opener as AppWindow<WindowAppType.Workspace>;
                 this.reportWorkspaceCloseStage(workspace, "saving");
                 await this.flushWorkspacePendingSaves(workspace);
-                this.reportWorkspaceCloseStage(workspace, "checkpoint");
-                await this.checkpointBeforeClose(workspace);
+                if (this.wantsCheckpointOnClose(workspace)) {
+                    this.reportWorkspaceCloseStage(workspace, "checkpoint");
+                    await this.checkpointBeforeClose(workspace);
+                }
             }
             if (!opener.isClosed()) {
                 opener.forceClose();
@@ -2017,73 +2164,6 @@ export class App extends BaseApp {
         window.showWhenReady();
 
         await window.loadFile(this.getAppEntry(WindowAppType.ServerTrustPrompt));
-
-        return window;
-    }
-
-    /**
-     * First-run setup's preview, at full size.
-     *
-     * The setup screen has room for the left quarter of a Studio window; this is the rest of it.
-     * An ordinary resizable window rather than a modal: it is something to look at while answering
-     * the questions behind it, so both have to be usable at once, and closing setup while it is
-     * open must not strand it.
-     *
-     * Independent of whoever raised it for that reason - `setParentWindow(null)` once both exist,
-     * the same treatment the project wizard gets - so the launcher retiring itself does not take
-     * the preview with it.
-     */
-    async launchOnboardingPreview(
-        parent: AppWindow,
-        props: WindowProps[WindowAppType.OnboardingPreview] = {},
-        options: Partial<Electron.BrowserWindowConstructorOptions> = {},
-    ): Promise<AppWindow<WindowAppType.OnboardingPreview>> {
-        const surface = props.surface ?? "story";
-        const existing = this.windowManager.getWindows().find(window =>
-            !window.isClosed() && window.getWindowType() === WindowAppType.OnboardingPreview
-        ) as AppWindow<WindowAppType.OnboardingPreview> | undefined;
-        if (existing) {
-            // One preview at a time: two copies of one sample would disagree the moment a
-            // preference changed in only one of them. Asking for the surface it is already showing
-            // raises it; asking for another builds it again, because the surface travels on the
-            // window's props and a built window cannot be told a new one.
-            if (existing.getProps()?.surface === surface) {
-                existing.getBrowserWindow().focus();
-                return existing;
-            }
-            existing.close();
-        }
-
-        const config: WindowConfig<WindowAppType.OnboardingPreview> = {
-            windowType: WindowAppType.OnboardingPreview,
-            isolated: true,
-            autoFocus: true,
-            preload: this.getPreloadScript(),
-            windowControlPolicy: WindowControlPolicy.Standard,
-            options: {
-                // The size it falls back to when the maximized state is left; a workspace's own
-                // defaults, so un-maximizing lands on a window Studio would have opened.
-                width: 1180,
-                height: 760,
-                minWidth: 760,
-                minHeight: 520,
-                frame: false,
-                titleBarStyle: "hidden",
-                show: false,
-                ...options,
-            },
-        };
-        const window = new AppWindow<WindowAppType.OnboardingPreview>(this, config, { surface });
-        window.setTitle("Preview - NarraLeaf Studio");
-        this.applyWindowIcon(window);
-        // Maximized, and registered before the show below so it lands in that state rather than
-        // appearing at its constructed size and jumping. The question this window is opened to
-        // answer is how big the interface is drawn, and that cannot be judged in a small window.
-        window.onReady(() => window.getBrowserWindow().maximize());
-        window.showWhenReady();
-
-        await window.loadFile(this.getAppEntry(WindowAppType.OnboardingPreview));
-        void parent;
 
         return window;
     }

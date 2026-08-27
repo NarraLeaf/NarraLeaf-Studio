@@ -173,6 +173,10 @@ const TRANSFORM_TAIL: readonly NarralangSlotSyntax[] = [
  */
 const TRANSITION_TAIL: readonly NarralangSlotSyntax[] = [
     { slot: "transition", lead: "with", value: "timedWord" },
+    // Its own slot and not part of the timed word, because it is a second time on the same change:
+    // the word carries how long the whole change takes, this carries how much of that is spent
+    // sitting still in the middle of it.
+    { slot: "transitionHold", lead: "hold", value: "seconds" },
     { slot: "transitionEasing", lead: "ease", value: "name" },
 ];
 
@@ -218,8 +222,13 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
             { mark: "bold", tag: "b" },
             { mark: "italic", tag: "i" },
             { mark: "color", tag: "color", arg: "raw" },
+            // `size` is an absolute pixel size and nothing in the editor writes one any more; a
+            // script that spells it still round-trips. `step` is what the size control writes: how
+            // many steps away from the line's own size this run is set, positive for larger.
             { mark: "fontSize", tag: "size", arg: "number" },
+            { mark: "fontSizeStep", tag: "step", arg: "number" },
             { mark: "cps", tag: "cps", arg: "number" },
+            { mark: "emphasis", tag: "em", arg: "raw" },
             // Innermost, because it annotates the base text rather than styling it.
             { mark: "ruby", tag: "ruby", arg: "raw" },
         ],
@@ -253,7 +262,13 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
 
         // --- Scene ---------------------------------------------------------------------------------
         background: { keyword: "bg", slots: [{ slot: "source", value: ["name", "color"] }, ...TRANSITION_TAIL] },
-        jump: { keyword: "jump", slots: [{ slot: "scene", value: "name" }, ...TRANSITION_TAIL] },
+        // `returns` sits between the scene and the transition tail, as a bare word: `jump "Title
+        // card" return with fade 0.6`. A word rather than a lead-and-value pair because there is only
+        // one thing it can say, which is the shape `loop` takes on an audio line.
+        jump: {
+            keyword: "jump",
+            slots: [{ slot: "scene", value: "name" }, { slot: "returns", value: "word" }, ...TRANSITION_TAIL],
+        },
         wait: { keyword: "wait", slots: [{ slot: "amount", value: ["word", "seconds"] }] },
         nvl: { keyword: "nvl", slots: TRANSFORM_TAIL },
 
@@ -264,7 +279,10 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
         },
         characterExit: { keyword: "hide", slots: [SUBJECT, ...TRANSFORM_TAIL, ...TRANSITION_TAIL] },
         characterMove: { keyword: "move", slots: [SUBJECT, ...TRANSFORM_TAIL] },
-        characterExpression: { keyword: "face", slots: [SUBJECT, { slot: "appearance", value: "names" }] },
+        // The transition tail belongs here more than anywhere: `/face` is the ONE character row the
+        // compiler plays a `StoryTransitionRef` on (`char(src, transition)`), while `enter` and
+        // `exit` animate through their transform and carry the tail only for the rows that set one.
+        characterExpression: { keyword: "face", slots: [SUBJECT, { slot: "appearance", value: "names" }, ...TRANSITION_TAIL] },
         characterRename: { keyword: "rename", slots: [SUBJECT, { slot: "displayName", value: "name" }] },
         characterMotion: { keyword: "motion", slots: [SUBJECT, { slot: "appearance", value: "names" }] },
         characterSkin: { keyword: "skin", slots: [SUBJECT, { slot: "appearance", value: "names" }] },

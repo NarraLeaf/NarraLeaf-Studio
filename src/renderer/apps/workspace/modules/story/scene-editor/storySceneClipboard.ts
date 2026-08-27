@@ -1,5 +1,4 @@
 import type { StoryBlock, StoryBlockId, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
-import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { Character } from "@/lib/workspace/services/character/Character";
 import { describeBlock, getBlockBadgeInfo, getCharacterName } from "./storySceneBlockUtils";
 import type { SerializedStoryBlock, StoryBlockTarget, StoryClipboardPayload, VisibleStoryRow } from "./storySceneEditorTypes";
@@ -60,17 +59,24 @@ export function listBlockTextIds(blocks: Iterable<StoryBlock>): string[] {
     return ids;
 }
 
-export function insertSerializedClone(
-    storyService: StoryService,
-    storyId: string,
-    sceneId: string,
+/**
+ * One cloned subtree as a flat list of insertions, **a container before the rows inside it**.
+ *
+ * The order is what lets the whole tree be one operation rather than one per row: every entry after
+ * the first may name an earlier entry as its parent, and both the document mutator and a live
+ * session's host rely on the parent being placed by the time its child is. See
+ * `StoryService.insertBlocks`.
+ */
+export function flattenSerializedClone(
     source: SerializedStoryBlock,
     target: StoryBlockTarget,
-): void {
-    storyService.insertBlock(storyId, sceneId, source.block, target);
+    into: { block: StoryBlock; target: StoryBlockTarget }[] = [],
+): { block: StoryBlock; target: StoryBlockTarget }[] {
+    into.push({ block: source.block, target });
     for (const child of source.children) {
-        insertSerializedClone(storyService, storyId, sceneId, child, { parentId: source.block.id });
+        flattenSerializedClone(child, { parentId: source.block.id }, into);
     }
+    return into;
 }
 
 export function exportBlockPlainText(block: StoryBlock, characters: Character[], scenes?: Record<StorySceneId, StoryScene>): string {

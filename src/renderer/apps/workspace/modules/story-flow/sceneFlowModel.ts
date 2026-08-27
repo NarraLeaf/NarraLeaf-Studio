@@ -74,6 +74,15 @@ export type SceneFlowJumpRef = {
      * in the map because the author wrote it, not because a player can take it.
      */
     disabled: boolean;
+    /**
+     * The jump comes back: the scene it is written in is suspended for the length of the one it
+     * names, and the run resumes at the row after it.
+     *
+     * It is still an edge - the target really is entered from here, which is what keeps it out of
+     * `story/unreachable-scene` - but it is not a way *out* of the source scene, which is what every
+     * reader asking "where can a run go from here" has to know.
+     */
+    returnable: boolean;
 };
 
 export type SceneFlowNodeModel = {
@@ -106,6 +115,14 @@ export type SceneFlowEdgeModel = {
      * and one disabled one is not faded - a player can still get there.
      */
     disabled: boolean;
+    /**
+     * Every jump on this edge comes back, so the run leaves for the target and returns here. Drawn
+     * as a call rather than as a way out.
+     *
+     * `every`, like `conditional` and `disabled` beside it: one plain jump on the same pair of
+     * scenes means a run really can leave this way, and the line has to read as one that leaves.
+     */
+    returns: boolean;
     /**
      * The distinct forks that reach this target, in document order — what the collapsed line hides.
      * Deduplicated, so two options worded the same read as one path (they are, to a reader of the
@@ -566,6 +583,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
                 blockId: block.id,
                 conditional: branch !== null,
                 disabled: !liveBlockIds.has(block.id),
+                returnable: block.payload.returnable === true,
                 ...(branch ? { branch } : {}),
             };
             const existing = edgeByKey.get(key);
@@ -579,6 +597,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
                     jumps: [jump],
                     conditional: false,
                     disabled: false,
+                    returns: false,
                     branches: [],
                 });
             }
@@ -600,7 +619,11 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
             left.node.forkOrder - right.node.forkOrder || left.node.order - right.node.order);
         for (const arm of arms) {
             arm.node.targets = Array.from(arm.jumpsByTarget.keys());
-            arm.node.fallsThrough = arm.node.targets.length === 0 && arm.node.danglingJumpCount === 0;
+            // An arm whose every jump comes back has not taken the run anywhere: control returns to
+            // the arm and carries on past the fork, which is exactly what falling through means.
+            const leaves = Array.from(arm.jumpsByTarget.values())
+                .some(jumps => jumps.some(jump => !jump.returnable));
+            arm.node.fallsThrough = !leaves && arm.node.danglingJumpCount === 0;
             branches.push(arm.node);
             for (const [target, jumps] of arm.jumpsByTarget) {
                 branchEdges.push({
@@ -633,6 +656,7 @@ export function buildSceneFlowGraph(document: StoryDocument, options?: SceneFlow
             ...edge,
             conditional: edge.jumps.every(jump => jump.conditional),
             disabled: edge.jumps.every(jump => jump.disabled),
+            returns: edge.jumps.every(jump => jump.returnable),
             branches,
         };
     });

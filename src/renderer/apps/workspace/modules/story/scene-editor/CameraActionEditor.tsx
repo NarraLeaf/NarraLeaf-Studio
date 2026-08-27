@@ -11,6 +11,7 @@ import { useWorkspace } from "@/apps/workspace/context";
 import { MotionField } from "../../story-motion";
 import { resolveStoryMotionStageSize } from "../../story-motion/StoryMotionEditorTab";
 import { TransformChannelEditor } from "./TransformChannelEditor";
+import { BeyondStoryDocumentClamp } from "./storyInspectorFreeze";
 import { SampleStage } from "@/lib/story/previewSubject";
 import { EasingField, FieldGrid, SecondsField, SegToggle, Section } from "./inspectorFieldKit";
 
@@ -114,18 +115,23 @@ export function CameraActionEditor(props: {
             }
         >
             {mode === "motion" ? (
-                <MotionField
-                    value={payload.transform}
-                    targetKind="camera"
-                    motionLabel={t("storyInspector.motionTarget.camera")}
-                    actionContext={{
-                        storyId: props.storyId,
-                        sceneId: props.sceneId,
-                        blockId: props.blockId,
-                        storyName: props.storyName,
-                    }}
-                    onChange={setTransform}
-                />
+                // The picker behind this field mints motions of its own - see the same clamp around
+                // the displayable transform's `MotionField` - and a story animation is not the story
+                // document a live session leaves writable.
+                <BeyondStoryDocumentClamp>
+                    <MotionField
+                        value={payload.transform}
+                        targetKind="camera"
+                        motionLabel={t("storyInspector.motionTarget.camera")}
+                        actionContext={{
+                            storyId: props.storyId,
+                            sceneId: props.sceneId,
+                            blockId: props.blockId,
+                            storyName: props.storyName,
+                        }}
+                        onChange={setTransform}
+                    />
+                </BeyondStoryDocumentClamp>
             ) : mode === "reset" ? (
                 <div className="grid grid-cols-1 gap-2">
                     <p className="text-2xs text-fg-subtle">{t("storyInspector.cameraResetHint")}</p>

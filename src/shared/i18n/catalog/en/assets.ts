@@ -470,6 +470,9 @@ export const assets = {
         /** Other only: the one asset an author can make rather than import. */
         newTextFile: "New Text File",
         importAssets: "Import Assets…",
+        // The only row a file that is still arriving offers. Says what stops, not what is deleted:
+        // an import that has not landed is not something the author has.
+        cancelTransfer: "Cancel import",
         replaceContent: "Replace File…",
         copyCount: {
             one: "Copy {count} item",
@@ -652,6 +655,29 @@ export const assets = {
      * Creating a text file. The default name is a name, not a sentence: it lands in the input
      * already followed by `.txt`, and the author usually replaces the whole thing.
      */
+    /** What a live session adds to the library: who else is inside a record. */
+    live: {
+        // On the mark a row wears while somebody else has its record open in the inspector. A person
+        // is named: there is no width for a name beside the monogram, and a truncated one names
+        // nobody.
+        recordClaimed: "{name} is editing this asset",
+        // On the band a row wears while its file is still coming in over a session. A share of the
+        // file, not a time: how long is a property of the network and is not knowable from here.
+        transferring: "{percent}% of this asset has arrived",
+        // On a file a session did not carry. There is no size limit on a file any more; what can
+        // refuse one is the server, so the two cases are told apart - a project with as much in
+        // transit as it may hold is waited out, and everything else is a server that is not
+        // answering.
+        refusedTitle: "Not imported into the session",
+        refusedQuotaOne: "{name} exceeds what this project may have in transit. Import it once the files already being carried have arrived.",
+        refusedQuotaMany: "{count} files exceed what this project may have in transit. Import them once the files already being carried have arrived.",
+        refusedOne: "{name} could not be sent to the server.",
+        refusedMany: "{count} files could not be sent to the server.",
+        // On replacing a file, which is one file rather than a batch and reports through the panel
+        // rather than through a notification.
+        replaceRefused: "That file could not be sent to the server.",
+        replaceRefusedQuota: "That file exceeds what this project may have in transit.",
+    },
     newTextFile: {
         title: "New Text File",
         prompt: "Name the file. Type an extension to keep it; without one, .txt is used.",

@@ -59,6 +59,7 @@ import { CharacterAppearanceKind, CharacterGroup } from "./character/types";
 import type { PuppetDescription } from "narraleaf-react";
 import type { PuppetDescriptionRequest, PuppetDescriptionResult } from "./puppet/puppetDescriptionModel";
 import type { MediaAssetSupportRecord } from "./media/mediaAssetSupport";
+import type { NotificationAction } from "./ui/types";
 import type { MediaSupportScan } from "./media/MediaSupportService";
 import type {
     UIDocument,
@@ -96,6 +97,7 @@ import type {
     ProjectAppTag,
     ProjectAppTagDocument,
 } from "@shared/types/appTag";
+import type { ProjectDlc, ProjectDlcDocument } from "@shared/types/dlc";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
 import type { BrandColor, ProjectBrandDocument } from "@shared/types/brand";
 import type {
@@ -166,6 +168,8 @@ import type {
     BlueprintInspectorParamSelectOption,
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
+import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
+import type { TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -235,6 +239,8 @@ enum Services {
     AudioTracks = "audioTracks",
     /** The build variants the project ships as, and what each one says differently from the project */
     AppTags = "appTags",
+    /** The DLC the project ships beside its builds: extra content a player installs into one */
+    Dlc = "dlc",
     /** The asset sets the project declares: library entries standing for a family of files, by axis */
     AssetSets = "assetSets",
     /** The project's own palette: the colours every `nlbrand:` link in the project resolves through */
@@ -258,6 +264,8 @@ enum Services {
     VersionControl = "versionControl",
     /** Whether project data may be written at all, and why not - the write-boundary freeze */
     WorkspaceFreeze = "workspaceFreeze",
+    /** The live session this window is in: which half of it this is, and the story it is about */
+    Live = "live",
     /** "The working tree changed under the editors": drops in-memory documents and re-reads them */
     WorkspaceReload = "workspaceReload",
     /** Recovery mode's own state: which subsystems have been tried, and what they said */
@@ -360,7 +368,11 @@ interface ILoggerService extends IService { }
 interface IUIService extends IService {
     showConfirm(message: string, detail?: string): Promise<boolean>;
     showAlert(message: string, detail?: string): Promise<void>;
-    showNotification(message: string, type?: "info" | "success" | "warning" | "error"): void;
+    showNotification(
+        message: string,
+        type?: "info" | "success" | "warning" | "error",
+        options?: { detail?: string; actions?: NotificationAction[]; sticky?: boolean },
+    ): string;
     showError(error: Error | string): void;
 }
 
@@ -525,11 +537,14 @@ interface IVariableRegistryService extends IService {
         input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string },
     ): VariableRegistryEntry;
     renameEntry(id: string, name: string): void;
-    setEntryValueType(id: string, valueType: StoryVariableValueType): void;
+    /** `defaultValue` omitted leaves the default alone; given, it is written in the same act. */
+    setEntryValueType(id: string, valueType: StoryVariableValueType, defaultValue?: StoryLiteralValue): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
     setEntryDescription(id: string, description: string | undefined): void;
-    deleteEntry(id: string): void;
-    replaceRegistry(registry: VariableRegistry): void;
+    /** False when a live session owns this registry - see `VariableRegistryService.canDeleteEntry`. */
+    canDeleteEntry(): boolean;
+    deleteEntry(id: string): boolean;
+    replaceRegistry(registry: VariableRegistry): boolean;
 }
 
 /**
@@ -561,6 +576,44 @@ interface IAudioTrackService extends IService {
 }
 
 /**
+ * The project's DLC - the content it ships beside a build rather than inside one. See
+ * `@shared/types/dlc` for the model.
+ *
+ * A sibling of the variants, not a kind of one: a build is exactly one variant, and has any number
+ * of DLC installed beside it. Nothing is prepended and nothing resolves by fallback - a project
+ * ships no DLC until an author says it does.
+ */
+interface IDlcService extends IService {
+    load(): Promise<ProjectDlc[]>;
+    save(document: ProjectDlcDocument): Promise<void>;
+    getDocument(): ProjectDlcDocument;
+    /** In author order. */
+    list(): ProjectDlc[];
+    /** Only the ones that load into builds of this variant. */
+    listForAppTag(appTagId: string | null | undefined): ProjectDlc[];
+    /** Null for an unknown id: there is no DLC to fall back to. */
+    resolve(id: string | null | undefined): ProjectDlc | null;
+    has(id: string | null | undefined): boolean;
+    onDlcChanged(handler: (dlcs: ProjectDlc[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+    create(input?: { id?: string; name?: string; attachTo?: string }): ProjectDlc;
+    /** Refuses a blank name. Stored references hold the id, so they follow. */
+    rename(id: string, name: string): boolean;
+    /**
+     * Change the filename this DLC ships as. Answers the id in force, which may be numbered.
+     *
+     * Not a rename: copies already in players' hands keep the old name, and a story marked for the
+     * old id stops naming anything.
+     */
+    changeId(id: string, nextId: string): string;
+    setAttachTo(id: string, appTagId: string): boolean;
+    delete(id: string): boolean;
+    flushPendingChanges(): Promise<void>;
+}
+
+/**
  * The project's build variants - what the same project can be shipped as, and what each variant says
  * differently from the project itself. See `@shared/types/appTag` for the model.
  *
@@ -584,7 +637,6 @@ interface IAppTagService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[], label?: HistoryLabel): void;
     createTag(input?: { name?: string }): ProjectAppTag;
     /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
     renameTag(id: string, name: string): boolean;
@@ -1203,7 +1255,11 @@ interface IUIEditorHistoryService extends IService {
 interface ICharacterService extends IService {
     getCharacter(id: string): Character | undefined;
     listCharacter(): Character[];
-    createCharacter(name: string, kind?: CharacterAppearanceKind): Character;
+    createCharacter(
+        name: string,
+        kind?: CharacterAppearanceKind,
+        initial?: { color?: string; groupId?: string },
+    ): Character;
     renameCharacter(id: string, name: string): boolean;
     /** Asynchronous because the baked avatar has to be read before it is deleted, for undo. */
     deleteCharacter(id: string): Promise<boolean>;
@@ -1459,6 +1515,13 @@ interface IWorkspaceFreezeService extends IService {
      */
     showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
     /**
+     * Freeze, read the paths a merge could not settle as the author's own side, then re-read.
+     *
+     * The state a project opened mid-merge starts in, for a window that syncs into one instead.
+     * `thaw` is not the way out of it - completing or abandoning the merge is.
+     */
+    showMergeConflicts(conflicts: readonly string[]): Promise<WorkspaceReloadResult>;
+    /**
      * Keep the workspace in its current view - `thaw` refuses - until the returned function runs.
      *
      * For anything that rewrites project files from outside the editors: leaving mid-rewrite re-reads
@@ -1472,6 +1535,67 @@ interface IWorkspaceFreezeService extends IService {
     /** Why the workspace is frozen, or null when it is not. */
     getReason(): WorkspaceFreezeReason | null;
     onChanged(handler: (reason: WorkspaceFreezeReason | null) => void): () => void;
+}
+
+/**
+ * The live session this window is in, if it is in one.
+ *
+ * One per window: the freeze a session arms is a module-level latch carrying one writable path set,
+ * so a second session would take the first one's away. Everything it answers is a value the
+ * interface renders - see `live/liveSessionView` - because a service that produced sentences would
+ * produce them in one language at a moment when nobody knows which surface is going to show them.
+ */
+interface ILiveSessionService extends IService {
+    /** What the session is, right now. Read whole; a session's state changes as one thing. */
+    getView(): LiveSessionView;
+    onChanged(handler: (view: LiveSessionView) => void): () => void;
+    /** Whether a session owns this story document - the one question the story editor asks. */
+    ownsStory(storyId: StoryId): boolean;
+    /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
+    open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
+    /**
+     * Join one somebody else opened, checkpointing and syncing on the way in.
+     *
+     * No story to name: which document the room is about is the room's own answer, and a caller
+     * that supplied one could only ever supply a document this machine already has.
+     */
+    join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null>;
+    /** Leave: the freeze lifts and what is on disk is this author's own, committable as usual. */
+    leave(): Promise<void>;
+    /**
+     * Say that this window is writing a row, or that it has stopped.
+     *
+     * One method for taking and for giving back, because the two must be impossible to wire up
+     * separately: a claim that is never given back is a row nobody can edit for the rest of the
+     * session. Silent outside a session and for any other story's rows.
+     */
+    claimRow(storyId: StoryId, blockId: StoryBlockId, holding: boolean): void;
+    /**
+     * Say that this window is editing one character record, or that it has stopped.
+     *
+     * The cast's half of the same seam. Held while the record is open in the properties panel - the
+     * box being open, not the keyboard - because an author who has stopped to think about a
+     * description still has one half typed, and a claim that lapsed on their pause is a claim that
+     * lets somebody else take it.
+     */
+    claimCharacter(characterId: string, holding: boolean): void;
+    /**
+     * Say that this window is editing one variable registry entry, or that it has stopped.
+     *
+     * The registry's half of the same seam, held for the same span. One registry per project, so
+     * there is no document to name.
+     */
+    claimVariable(variableId: string, holding: boolean): void;
+    /** Say that this window is editing one named string, or that it has stopped. Addressed by name. */
+    claimLocalizationKey(name: string, holding: boolean): void;
+    /**
+     * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
+     *
+     * False when there is nothing to send, and the view says why - never a snapshot as a fallback,
+     * and never a silent nothing.
+     */
+    undo(): boolean;
+    redo(): boolean;
 }
 
 /**
@@ -1523,11 +1647,12 @@ export {
     IEditorService, IFileSystemService, IFontService, ILocalizationService, ILoggerService,
     IGlobalSettingsService, IPluginService, IPreviewService, IProjectService, IRuntimeService,
     IService, IServiceAssetsService, IPanelStateService, IStorageService, IStoryService,
-    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService,
+    ITextureService, IUIService, IUuidService, IVersionControlService, IWorkspaceFreezeService, ILiveSessionService,
     IWorkspaceReloadService, IVideoService,
     ICharacterService, IHistoryService, IUIDocumentService, IUIEditorHistoryService, IUIGraphService, ILocalBlueprintService, IUIBlueprintLifecycleCoordinator,
     IUIRuntimeBridgeService, IUIEditorFontFaceService, IUIEditorStateService, IDevModeService, IConsoleService, UIEditorStateEvents,
     IProjectDependencyService, IVoiceService, IVariableRegistryService, IAudioTrackService, IAppTagService,
+    IDlcService,
     IBrandService,
     IDictionaryService,
     ISaveSchemaService,

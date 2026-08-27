@@ -4,6 +4,8 @@ import { X, Wand2, AlertCircle, Check } from 'lucide-react';
 import { MagicTagTemplate, MagicTagPreview } from '@/lib/workspace/services/core/MagicTagManager';
 import { Asset } from '@/lib/workspace/services/assets/types';
 import { useWindowOverlayHost } from '@/lib/components/layout';
+import { useFreezeGuard } from '@/apps/workspace/components/ui/freezeGuard';
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useTranslation } from '@/lib/i18n';
 
 export interface MagicTagDialogProps {
@@ -17,6 +19,11 @@ export interface MagicTagDialogProps {
 export function MagicTagDialog({ visible, assets, template, onClose, onApply }: MagicTagDialogProps) {
     const { t } = useTranslation();
     const overlayHost = useWindowOverlayHost();
+    // Asked here rather than inherited from the panel that opened this. The dialog is raised into the
+    // window's overlay layer, so it has no ancestor in the assets panel at all and nothing the panel
+    // switches off can reach it - and the tagging pass below is a conversation the author works
+    // through, long enough for a session to open on the project while it is on screen.
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const [categoryMapping, setCategoryMapping] = useState<Record<number, string>>({});
     const [selectedDelimiters, setSelectedDelimiters] = useState<string[]>([]);
     const [preview, setPreview] = useState<MagicTagPreview[]>([]);
@@ -78,6 +85,7 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
     };
 
     const handleApply = async () => {
+        if (freeze.frozen) return;
         setApplying(true);
         try {
             await onApply(categoryMapping);
@@ -276,10 +284,10 @@ export function MagicTagDialog({ visible, assets, template, onClose, onApply }: 
                     </button>
                     <button
                         onClick={handleApply}
-                        disabled={applying || Object.keys(categoryMapping).length === 0}
+                        {...freeze.writes(applying || Object.keys(categoryMapping).length === 0)}
                         className={`
                             px-4 py-2 text-sm rounded-md transition-colors
-                            ${applying || Object.keys(categoryMapping).length === 0
+                            ${applying || Object.keys(categoryMapping).length === 0 || freeze.frozen
                                 ? "bg-fill text-fg-subtle cursor-not-allowed"
                                 : "bg-primary hover:bg-primary/80 text-on-primary font-medium"
                             }

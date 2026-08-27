@@ -119,8 +119,24 @@ export function isButtonCursorValue(value: unknown): value is ButtonCursorValue 
     return typeof value === "string" && (BUTTON_CURSOR_VALUES as readonly string[]).includes(value);
 }
 
-/** Whitelisted visual keys for `nl.button`. */
+/**
+ * Whitelisted visual keys for `nl.button`.
+ *
+ * The type block at the top is the same set `nl.text` offers, and for the same reason: a button
+ * draws its own label rather than holding a text child, so the label's colour and weight are the
+ * button's properties and nowhere else. Without them a button could change everything about itself
+ * on hover except the word on it - the shape a menu entry wants most - and the workaround was to
+ * fake it with a text shadow and a nudge.
+ *
+ * Alignment and wrapping stay off the list, the way they do for `nl.text`: where a label sits in
+ * its box is layout, and a state that moved it would reflow the button rather than light it up.
+ */
 export type ButtonAppearancePropertyKey =
+    | "fontAssetId"
+    | "fontSize"
+    | "fontWeight"
+    | "color"
+    | "lineHeight"
     | "backgroundColor"
     | "fillType"
     | "fillOpacity"

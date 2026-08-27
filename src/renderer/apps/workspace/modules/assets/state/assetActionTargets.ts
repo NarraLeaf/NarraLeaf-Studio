@@ -126,3 +126,24 @@ export function resolveAssetActionTargets({
 
     return [];
 }
+
+/**
+ * Whether the menu on this target is about a file that has not arrived yet.
+ *
+ * ❗ **The one case where the menu is a single row.** Every command an asset row offers is about a
+ * file - export it, copy it, swap its bytes, rename the thing it is - and a record whose file is
+ * still crossing the room has none of that to act on. So while it is arriving the menu offers the
+ * one thing that does mean something, which is to stop it.
+ *
+ * A folder is never this: a folder has no bytes, so nothing about it can be in flight. Neither is a
+ * multi-row menu, which is offering counts rather than one file.
+ */
+export function contextMenuTargetIsArriving(
+    target: ContextMenuTargetState | null,
+    transfers: Readonly<Record<string, number>>,
+): boolean {
+    if (!target || target.isGroup || !target.item) {
+        return false;
+    }
+    return transfers[target.item.id] !== undefined;
+}

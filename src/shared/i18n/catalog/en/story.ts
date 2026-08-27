@@ -8,6 +8,11 @@ export const story = {
         emptyStories: "No stories in this project.",
         storyActions: "Story actions",
         setDefault: "Set Default",
+            dlc: {
+                title: "Belongs to",
+                // The answer for a story the game itself carries, which is most of them.
+                base: "The game itself",
+            },
         outline: "Outline",
         newChapter: "New Chapter",
         newSceneInChapter: "New Scene in Chapter",
@@ -100,6 +105,103 @@ export const story = {
             unplaceableLine: "A new line cannot be placed here.",
             speakerUnresolved: "This line binds no character, so the original speaker name was kept. Its text still changed.",
         },
+    },
+    // What a control shows while a live session is the reason it cannot act. A session carries a
+    // closed set of story operations, and an edit outside that set would be written on this machine
+    // and on no other - so the same thing is taken away wherever it is offered, and one string says
+    // so everywhere rather than a different excuse per surface.
+    live: {
+        editUnavailable: "Unavailable in a live session. Leave the session to make this change.",
+        // On the mark a row wears while somebody else is writing it. A person is named:
+        // there is no width for a name beside the glyph, and a truncated one names nobody.
+        rowClaimed: "{name} is writing this line",
+        // What the session's host would not take. The words the author typed stay exactly
+        // where they are - a refused row is the case where what is on screen is the only
+        // copy of them - so each of these says what happened and nothing else.
+        refusedRowClaimed: "{name} is writing that line. The change was not applied.",
+        refusedRowGone: "That line is gone. The change was not applied.",
+        refusedAnchorGone: "The line it was moving to is gone. The change was not applied.",
+        refusedSceneGone: "That scene is gone. The change was not applied.",
+        // The outline's answer to a scene that has gone. A scene filed in no chapter is one the
+        // outline never draws, so the request is refused rather than half applied.
+        refusedChapterGone: "That chapter is gone. The change was not applied.",
+        refusedNotInSession: "This machine is no longer in the session.",
+        // The cast's answer to a line that has gone. Says the character is gone and nothing about
+        // the panel: what the author typed into it is theirs and stays where it is.
+        refusedCharacterGone: "That character is gone. The change was not applied.",
+        // The asset library's answer to the same thing, and it says the same nothing about the
+        // inspector: what the author typed into it is theirs and stays where it is.
+        refusedAssetGone: "That asset is gone. The change was not applied.",
+        // The variable registry's answer to the same thing. Says nothing about the row the author is
+        // typing in: what is in it is theirs and stays where it is.
+        refusedVariableGone: "That variable is gone. The change was not applied.",
+        // Not a race: asset ids are minted by whoever built the record, so one already in use is a
+        // retry that escaped or a build that mints them differently. Never applied - writing over a
+        // record under its own id is the one way an import destroys a file that was already there.
+        refusedAssetIdTaken: "That asset already exists here. Nothing was imported.",
+        // The author was asked about the folders inside it before anything was removed, and said no.
+        refusedFolderNotEmpty: "That folder has folders in it. Nothing was deleted.",
+        // A row of one of the project's configuration tables - a build variant, a DLC, a colour of
+        // the palette. One sentence for the three: the panel in front of the author already says
+        // which table it was, and it says the same nothing about what they have typed into it.
+        refusedConfigEntryGone: "That entry is no longer in this project. The change was not applied.",
+        // The interface's answer to a row that has gone, and it says the same nothing about
+        // the properties panel: what the author typed into it is theirs and stays where it is.
+        refusedUIElementGone: "That element is gone. The change was not applied.",
+        refusedUIBlueprintGone: "That blueprint is gone. The change was not applied.",
+        // The same refusal as a held row, said about what was actually held. One reason spans
+        // every document a session carries, and an author told about a line after moving a
+        // button has been told about a document they are not in.
+        refusedElementClaimed: "{name} is editing that element. The change was not applied.",
+        refusedNodeClaimed: "{name} is editing that node. The change was not applied.",
+        // The mixer's answer to a record that has gone, and it says the same nothing about the
+        // panel: what the author typed into it is theirs and stays where it is.
+        refusedTrackGone: "That audio track is gone. The change was not applied.",
+        refusedSetGone: "That asset set is gone. The change was not applied.",
+        // A record too big for one message. Named rather than silent, because the alternative is a
+        // change that appears to have been made and reached nobody.
+        refusedTooLarge: "That change is too large to share in a live session. It was not applied.",
+        // The session does not carry that document at all - a story that was not in the project when
+        // the room opened, or a kind of document a session cannot pass between machines yet.
+        refusedDocumentNotShared: "A live session does not share that document. The change was not applied.",
+        refusedUnknownOp: "The session did not take that change.",
+        // Why the last undo or redo sent nothing. Each names the state that leaves the step
+        // with no operation to take it back with.
+        undoNotMine: "That step was somebody else's.",
+        undoNoRecord: "That step can no longer be taken back.",
+        undoSceneGone: "That scene is gone.",
+        undoRowGone: "That line is gone.",
+        undoRowRestored: "That line is in the scene again.",
+        // The structural steps. Each names the state that leaves the deletion with nothing to put
+        // back: the scene or the chapter is already there, or the place it belonged in is not.
+        undoSceneRestored: "That scene is in the story again.",
+        undoChapterGone: "That chapter is gone.",
+        undoChapterRestored: "That chapter is in the story again.",
+        undoContainerGone: "The block that line was in is gone.",
+        undoAnchorGone: "Where that line moved from is gone.",
+        undoContainerFilled: "That block has lines in it now.",
+        undoSubtreeLost: "The lines that were inside it cannot be put back.",
+        undoChaptersChanged: "The chapters are not the ones that step recorded.",
+        undoCharacterGone: "That character is gone.",
+        // Making a character can be taken back only outside a session: deleting one rewrites the
+        // dialogue rows that speak it, across every story in the project, and a session carries one.
+        undoCharacterRestored: "That character is in the cast again.",
+        // Deleting an asset is not something a session can do, so this is the file having gone
+        // before the session started or after it ended - not a step somebody took inside one.
+        undoAssetGone: "That asset is gone.",
+        // The same answer replacing an asset's contents has always given, in a session or out of
+        // one: the bytes that were there are not kept, so there is nothing to point the record back
+        // at.
+        undoContentReplaced: "Replacing a file cannot be taken back.",
+        undoConfigEntryGone: "That entry is no longer in this project.",
+        undoConfigEntryRestored: "That entry is back in this project.",
+        undoTrackGone: "That audio track is gone.",
+        undoTrackRestored: "That audio track is in the mixer again.",
+        undoSetGone: "That asset set is gone.",
+        undoSetRestored: "That asset set is declared again.",
+        undoVariableGone: "That variable is gone.",
+        undoVariableRestored: "That variable exists again.",
+        undoKeyRestored: "That string is declared again.",
     },
     // The NarraLang export: the story as a script, for reading and comparing. One-way, so a row the
     // script cannot say is reported rather than refused and the file is written either way. `reason`
@@ -234,6 +336,8 @@ export const story = {
         },
         bulkConfirmDetail: "This adds them below the current line as one undo step.",
         scriptFile: "This is a story script. Use Import Script to bring it back in.",
+        // Rows from another project, pasted while a live session is open. Shown once per session.
+        sessionRowsOnly: "During a live session, rows from another project arrive on their own. Leave the session and paste again to bring their translations, takes and assets across.",
         // Translations that travelled with copied rows. Part of the cross-project line; on their
         // own, and only the second of them, after a paste back into the same project.
         translationsCarried: {
@@ -442,6 +546,27 @@ export const story = {
         clickHint: "Waits until the player clicks to continue.",
         remove: "Remove pause",
     },
+    /**
+     * The three run marks a value has to be chosen for: the emphasis set beside the characters, the
+     * size the run is set at, and the speed it is typed out at.
+     */
+    textType: {
+        emphasis: "Emphasis",
+        emphasisNone: "None",
+        emphasisDot: "Dot above",
+        emphasisCircle: "Circle above",
+        emphasisSesame: "Sesame above",
+        emphasisUnderDot: "Dot below",
+        /** The character the emphasis buttons draw their mark on. */
+        emphasisSample: "Ab",
+        size: "Size",
+        sizeSmaller: "Smaller",
+        sizeLarger: "Larger",
+        sizeUnit: "steps",
+        speed: "Typing speed",
+        speedUnit: "cps",
+        speedPlaceholder: "Line",
+    },
     ruby: {
         title: "Ruby text",
         placeholder: "Reading",
@@ -486,6 +611,8 @@ export const story = {
         insertExpression: "Insert expression change",
         ruby: "Ruby text",
         rubyHint: "Ruby text (select the words to annotate)",
+        type: "Type",
+        typeHint: "Type (select the words to set)",
         tools: "Rich text tools",
         pauseClick: "Pause (waits for a click)",
         pauseSeconds: "Pause {seconds}s",
@@ -574,6 +701,7 @@ export const story = {
         // and fall back to it. Listed here so the coverage test can see them.
         fade: "Fade Seconds",
         loop: "Loop",
+        returnable: "Return",
         vol: "Volume",
         volume: "Volume",
         rate: "Speed",
@@ -650,6 +778,7 @@ export const story = {
         fade: "fade",
         // The crossfade named outright, for the contexts where `fade` means something else.
         dissolve: "dissolve",
+        "fade-in": "fade-in",
         slide: "slide",
         "slide-left": "slide-left",
         "slide-right": "slide-right",
@@ -920,6 +1049,11 @@ export const story = {
         cutPointInactiveTitle: "The variant this line ended has been deleted, so it ends nothing.",
         tempSpeaker: "name only",
         createCharacter: "Create character “{name}”",
+        // On the rung above while it is greyed, and on the paste wizard's "New character" target,
+        // which is the same offer made from the other surface. A live session carries story
+        // operations and nothing else, so the cast is the one thing a speaker cannot become while
+        // one is open.
+        createCharacterUnavailable: "Unavailable in a live session. Choose an existing character.",
         voiceOutdated: "Voice outdated, open voice table",
         voiceManage: "Open voice table",
         voicePlay: "Play voice take",
@@ -1078,7 +1212,7 @@ export const story = {
      */
     command: {
         background: { label: "Background", detail: "Set the scene background image or color" },
-        jump: { label: "Jump", detail: "Go to another scene, unloading this one" },
+        jump: { label: "Jump", detail: "Go to another scene, unloading this one unless Return is set" },
         wait: { label: "Wait", detail: "Pause for seconds, or for a click" },
         nvl: { label: "NVL", detail: "Toggle the stacked dialogue panel" },
         show: { label: "Show", detail: "Show a character or a stage object" },

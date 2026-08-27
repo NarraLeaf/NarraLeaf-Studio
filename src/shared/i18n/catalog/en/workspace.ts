@@ -95,6 +95,12 @@ export const workspace = {
             reviewAllClear: "Nothing left to review.",
             staleHint: "The source line changed after this translation. Save it again to mark it current.",
             placeholderHint: "Keep the {n} placeholders. They render inline values.",
+            tagsLabel: "Tags",
+            applyStyle: "Give the selected words this styling",
+            placeToken: "Place this here",
+            clearStyle: "Take the styling off the selected words",
+            clearStyleShort: "Plain",
+            runTagHint: "Copy the ‹n› tags onto the words they belong on. They carry the styling, the pauses and the portrait changes.",
             emptyStory: "This story has no translatable lines yet.",
             emptyFilter: "Nothing matches this filter.",
             noStories: "Create a story first. Its lines appear here for translation.",
@@ -103,6 +109,14 @@ export const workspace = {
             statusTranslated: "Translated",
             statusReviewed: "Reviewed",
             statusStale: "To review",
+        },
+        live: {
+            // On the mark a line wears while somebody else is translating it. A person is named:
+            // there is no width for a name beside the monogram, and a truncated one names nobody.
+            entryClaimed: "{name} is translating this line",
+            // The source column of a named-key row is a different document from the translation
+            // beside it, so it names a different act. Both can be held at once, by two people.
+            keyClaimed: "{name} is editing this string",
         },
     },
     voice: {
@@ -355,6 +369,112 @@ export const workspace = {
         liveJoin: "Join",
         liveLeave: "Leave",
         liveEnd: "End",
+        // Why one may not be started or joined. A workspace holds one freeze at a time, so
+        // each of these names the state that has to be left first.
+        liveBlockedRevision: "Leave the version you are looking at to start or join a live session.",
+        liveBlockedManual: "Unfreeze the workspace to start or join a live session.",
+        liveBlockedMerge: "Finish the merge to start or join a live session.",
+        liveBlockedRecovery: "Live sessions are unavailable in recovery mode.",
+        liveBlockedSession: "This workspace is already in a live session.",
+        // Where this window stands in the room it is in, in the slot the member count uses
+        // outside one. Values with no labels, like every other fact in this panel.
+        liveHost: "Host",
+        liveGuest: "Guest",
+        liveEntering: "Entering",
+        liveLeaving: "Leaving",
+        // Joined, and still applying everything the room did before this window arrived.
+        liveCatchingUp: "Catching up with the session.",
+        // What stands between this project and a session, each naming the one thing that
+        // has to be true before a room can be opened or joined.
+        liveNoStory: "Add a story to start a live session.",
+        liveNoServer: "Connect this project to a server to start or join a live session.",
+        liveNoInstance: "That server has not answered this machine yet.",
+        liveNoRepository: "This project has no version history.",
+        liveNoRevision: "Record a version to start a live session.",
+        liveCloneRequired: "That session is on {project}. Open that project to join it.",
+        // Reached only by starting a session now: joining adopts the version the room opened on, so
+        // there is no longer such a thing as a copy that cannot reach it.
+        liveVersionMismatch: "This project and the server have both changed since they last met.",
+        liveVersionMismatchNext: "Get the server's versions, settle any differences, then try again.",
+        liveRoomGone: "That session is no longer open.",
+        liveRoomGoneNext: "Start one, or wait for the host to open it again.",
+        // The room is there and this window still cannot follow it: the first because the
+        // host is old enough not to say which story it opened on, the second because the
+        // story it named is not in this copy even after syncing.
+        liveRoomStoryUnknown: "That session does not say which story it is about. Ask the host to update Studio.",
+        liveStoryNotHere: "That session is about a story this project does not have.",
+        liveStoryNotHereNext: "Ask the host to send that story to the server, then try again.",
+        liveRefused: "That server refused the session.",
+        liveRefusedNext: "Try again once that server answers.",
+        liveFailed: "The live session could not be started.",
+        liveFailedNext: "Try again.",
+        liveNoInstanceNext: "Check the connection to that server, then try again.",
+        liveNoRepositoryNext: "Enable version control for this project, then try again.",
+        liveMergeConflictsNext: "Settle the merge, then try again.",
+        // How a session ended, for the two endings the author did not ask for. Leaving is
+        // silent: they pressed the control and watched the row change.
+        liveEndedHostLeft: "The host left. The session is over.",
+        // The same event where the room is coming back. A host that hands over or reloads closes
+        // the room and another one opens seconds later, so "the session is over" would be the wrong
+        // half of what happened.
+        liveEndedHandedOver: "The host left. The session is reopening under somebody else.",
+        // While this window is waiting for that to happen. Drawn where the room row is, so the slot
+        // that said which room this window was in says what it is waiting for instead.
+        liveRejoining: "Rejoining when the session reopens.",
+        // Said as what happened to this copy rather than as a goodbye: the session is gone
+        // AND what is on this disk is not what the others are looking at.
+        liveEndedDiverged: "This copy stopped matching the session and left it.",
+        liveEndedDivergedNext: "Get from the server before joining again.",
+        // The collaboration control in the title bar, and the dialog behind it. The control is
+        // drawn for every project pointed at a Team server, including the ones that cannot open a
+        // room right now: a control that appears only once everything is in place cannot be used
+        // to find out what is missing, so it goes inert and says which answer it is waiting for.
+        livePresence: "Live session",
+        liveConnecting: "Connecting to that server.",
+        liveUnsupported: "That server does not offer live sessions.",
+        liveNobody: "No live session on this project.",
+        liveRoomOpen: "{name} has a live session open.",
+        // What the two irreversible acts do, said before they are taken rather than discovered
+        // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the documents a session carries.",
+        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the documents a session carries.",
+        // Which document a session is about. The picker on the way in, and the value afterwards.
+        liveStory: "Story",
+        liveHostedBy: "Hosted by {name}",
+        // Who is in the room, by account. The host is marked because leaving means something
+        // different for that window: it ends the room for everybody.
+        liveMembersLabel: "In the session",
+        liveThisMachine: "This machine",
+        // Where the work that was uncommitted on the way in went. A checkpoint nobody can name is
+        // a checkpoint nobody can go back to, which is why this is stated rather than left to the
+        // version panel to be found in.
+        liveCheckpoint: "Checkpoint",
+        liveCheckpointAt: "Uncommitted work was recorded at {version} on the way in.",
+        liveCheckpointNone: "There was nothing uncommitted to record.",
+        // The guest's own traffic. Drawn only while it is not zero: a document does not move under
+        // a guest's hands until the host answers, and without this that is indistinguishable from
+        // an editor that has stopped working.
+        livePendingOne: "1 change is waiting for the host.",
+        livePendingMany: "{count} changes are waiting for the host.",
+        // What the session takes, said once rather than discovered one control at a time. Named by
+        // what an author would go looking for rather than by document kind, and kept in step with
+        // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
+        // somebody hunting for a control that was working all along.
+        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the named strings, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
+        liveUnavailableHere: "Unavailable in a live session.",
+        // Rows somebody else is writing, gathered where they can be read without hunting for the
+        // mark on each one.
+        liveClaimsLabel: "Lines being written",
+        liveClaimOne: "{name} is writing 1 line.",
+        liveClaimMany: "{name} is writing {count} lines.",
+        // The way out of the session, in the version rail's frozen strip. Named after the mode it
+        // leaves, and after what leaving does for this window in particular.
+        liveFrozenTitle: "A live session is open.",
+        liveLeaveSession: "Leave the live session",
+        liveEndSession: "End the live session",
+        // What a host leaving a room with somebody else in it does. The session carries on in a new
+        // room under the member who has been in it longest.
+        liveHandOverSession: "Hand the live session over",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",
@@ -583,6 +703,12 @@ export const workspace = {
             frozenTitle: "Changes are not being saved",
             frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
+            // A live session saves the documents it carries and refuses the rest, so the title
+            // above would be false about the file the author is most likely typing into.
+            frozenTitleSession: "That file is not being saved",
+            // The documents themselves are named where the author asks what a session takes -
+            // `liveFrozenWhat` - rather than here, which is a line under a title in a status bar.
+            frozenDetailSession: "A live session is open, and only the documents it carries are saved. Leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
@@ -598,6 +724,7 @@ export const workspace = {
                 variables: "variable registry",
                 audioTracks: "audio tracks",
                 appTags: "build variants",
+                dlc: "DLC",
                 assetSets: "asset sets",
                 brand: "brand palette",
                 dictionary: "project dictionary",
@@ -630,6 +757,11 @@ export const workspace = {
             // once, not read a different excuse on each button. The controls are disabled rather
             // than hidden precisely so there is something to hover.
             unavailable: "Unavailable while the project is frozen. Unfreeze the project to use it.",
+            // The same sentence for the one freeze that has no unfreeze. A live session ends by
+            // being left or closed, so telling the author to unfreeze the project would name a
+            // control that is itself unavailable. Which settings a session does leave writable is
+            // said where the session is started or joined, not on every greyed control.
+            unavailableLive: "Unavailable during a live session. Leave the session to use it.",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
@@ -771,6 +903,11 @@ export const workspace = {
             // Refused because the app is closing. Rare, and worth its own sentence: the alternative
             // wording an author would otherwise see names koffi and a worker thread.
             closingWithApp: "Studio is closing. Try again after it restarts.",
+            commitBeforeSync: "Submit a version before getting the server's.",
+            // A push the server would not take because both sides have moved on. The remedy is the
+            // one the backend names; what it does not do is name it in the reader's language, or
+            // without the internal operation that failed in front of it.
+            branchDiverged: "This project and the server have both changed. Get the server's versions first, then send yours.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
@@ -855,6 +992,8 @@ export const workspace = {
                 checkpointClose: "Checkpoint before closing the project",
                 checkpointBuild: "Checkpoint before build",
                 checkpointRestore: "Checkpoint before restore",
+                checkpointLiveSession: "Checkpoint before a live session",
+                liveSessionMatched: "Matched the live session's version",
                 // `{version}` is a revision number or a hash. Not language, so it is not translated.
                 restored: "Restored version {version}",
             },

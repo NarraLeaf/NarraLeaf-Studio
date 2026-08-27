@@ -36,6 +36,29 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_KEY_UP = "blueprint.event.head.a
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_KEY_NAME = "key" as const;
 /** Inspector param key selecting which Game Preference field an `On Preference Changed` head watches. */
 export const BLUEPRINT_NODE_PARAM_EVENT_HEAD_PREFERENCE_KEY = "preferenceKey" as const;
+/**
+ * Entry for one of the project's declared input actions ("advance", "open the log", "dismiss").
+ *
+ * The head every panel-wide gesture ends up at. What fires it is not written on the node: the
+ * project names the action and the bindings it answers to, a surface says which of them it answers,
+ * and the router raises the action by name - so an author who moves "advance" from a click to the
+ * space bar changes one row in the vocabulary rather than every graph that listens.
+ */
+export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION = "blueprint.event.head.action" as const;
+/** Inspector param key naming which of the project's input actions a node is about. */
+export const BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID = "actionId" as const;
+/** Reads whether one of the project's input actions is currently held down. */
+export const BLUEPRINT_NODE_TYPE_INPUT_IS_ACTION_HELD = "blueprint.input.isActionHeld" as const;
+/**
+ * Reads which device the player is using at this moment.
+ *
+ * The same value domain as the `source` pin on the `On Action` head, so a graph compares both the
+ * same way. It exists so a prompt can name the gesture the player will actually make - "click" on a
+ * desktop and "tap" on a phone are different instructions, not different translations of one - and
+ * it gives the device only. What to say about it is the author's sentence to write, in the game's
+ * own languages, which are not Studio's.
+ */
+export const BLUEPRINT_NODE_TYPE_INPUT_GET_DEVICE = "blueprint.input.getDevice" as const;
 /** Entry for widget `focus` UI event. */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FOCUS = "blueprint.event.head.focus" as const;
 /** Entry for widget `blur` UI event. */
@@ -86,11 +109,22 @@ export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED = "blueprint.
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED = "blueprint.event.head.fullscreenChanged" as const;
 /**
  * Entry for an application window close request (the user asked to close the window: native close
- * box, OS shortcut, etc.). The blueprint may cancel the close by synchronously running a Stop Event
- * Bubble node during dispatch; otherwise the window proceeds to close. In Dev Mode this intercepts
- * the Dev Mode window; in preview/production it intercepts the game window.
+ * box, OS shortcut, etc.). The close is held open while the dispatch runs and then proceeds; the
+ * dispatch shares one event control, and running `Keep Window Open`
+ * ({@link BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN}) below this head cancels the close instead. In
+ * Dev Mode this intercepts the Dev Mode window; in preview/production it intercepts the game
+ * window.
  */
 export const BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED = "blueprint.event.head.windowCloseRequested" as const;
+/**
+ * The UI dispatch slot id the head above answers to.
+ *
+ * Spelled once here because two things have to agree on it: the shell that dispatches the close
+ * request, and `Keep Window Open`, which refuses to run in any other dispatch - the event control
+ * it cancels the close through is shared by every dispatch, so the node has to know which one it
+ * is standing in.
+ */
+export const BLUEPRINT_EVENT_SLOT_WINDOW_CLOSE_REQUESTED = "windowCloseRequested" as const;
 /**
  * Entry for a Story Action Blueprint's single "On Call" event. Deliberately kept OUT of
  * EVENT_DISPATCH_HEAD_TYPES - story-action graphs run via the story compiler's Script wrapper,
@@ -147,6 +181,7 @@ const EVENT_DISPATCH_HEAD_TYPES: ReadonlySet<string> = new Set([
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ANY_PREFERENCE_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_FULLSCREEN_CHANGED,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED,
+    BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
 ]);
 
 /**
@@ -420,6 +455,26 @@ function matchesPreferenceChangeDispatch(
     return selectedKey === String(eventPayload?.key ?? "");
 }
 
+/**
+ * Whether an `On Action` head is about the action that was just raised.
+ *
+ * There is deliberately no wildcard spelling. Every other filtered head has a paired "any" head for
+ * the unfiltered case, and an action is a name the project chose - a graph that ran for all of them
+ * would have to switch on the id it was given, which is the arrangement the vocabulary exists to
+ * remove. So a head naming nothing listens to nothing, exactly as an unconfigured preference head
+ * does.
+ */
+function matchesInputActionDispatch(
+    node: { params?: Record<string, unknown> },
+    eventPayload?: Record<string, unknown>,
+): boolean {
+    const selectedId = String(node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? "").trim();
+    if (!selectedId) {
+        return false;
+    }
+    return selectedId === String(eventPayload?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] ?? "");
+}
+
 function matchesDispatchPayload(
     node: { type: string; params?: Record<string, unknown> },
     eventPayload?: Record<string, unknown>,
@@ -429,6 +484,9 @@ function matchesDispatchPayload(
     }
     if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_PREFERENCE_CHANGED) {
         return matchesPreferenceChangeDispatch(node, eventPayload);
+    }
+    if (node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION) {
+        return matchesInputActionDispatch(node, eventPayload);
     }
     return true;
 }
@@ -562,8 +620,6 @@ export const BLUEPRINT_NODE_TYPE_DATA_BREAK_RECT = "blueprint.data.breakRect" as
 /** The point equidistant from a rect's four edges - the thing "move to this button" needs. */
 export const BLUEPRINT_NODE_TYPE_DATA_RECT_CENTER = "blueprint.data.rectCenter" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_REF = "blueprint.element.ref" as const;
-export const BLUEPRINT_NODE_TYPE_ELEMENT_CONTINUE_EVENT_BUBBLE = "blueprint.element.continueEventBubble" as const;
-export const BLUEPRINT_NODE_TYPE_ELEMENT_STOP_EVENT_BUBBLE = "blueprint.element.stopEventBubble" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL = "blueprint.image.assetLiteral" as const;
 export const BLUEPRINT_NODE_TYPE_DATA_RETURN_VALUE = "blueprint.data.returnValue" as const;
 /**
@@ -948,6 +1004,35 @@ export const BLUEPRINT_NODE_TYPE_LAYER_CONFIRM = "blueprint.layer.confirm" as co
 export const BLUEPRINT_NODE_TYPE_APP_GET_FULLSCREEN = "blueprint.app.getFullscreen" as const;
 export const BLUEPRINT_NODE_TYPE_APP_SET_FULLSCREEN = "blueprint.app.setFullscreen" as const;
 /**
+ * The window's size, as a multiple of the size the game is drawn at.
+ *
+ * `Get Window Scale Options` comes first in practice: it answers with the sizes this project offers
+ * (`app.window`), and with nothing at all where the shell has no window it can size - a web export,
+ * Dev Mode, the story preview. A configuration screen built from that list therefore has no size
+ * row to draw in those places, rather than a row that does nothing.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE_OPTIONS = "blueprint.app.getWindowScaleOptions" as const;
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SCALE = "blueprint.app.getWindowScale" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SCALE = "blueprint.app.setWindowScale" as const;
+/** The same size in pixels, for a game whose number does not come from the offered list. */
+export const BLUEPRINT_NODE_TYPE_APP_GET_WINDOW_SIZE = "blueprint.app.getWindowSize" as const;
+export const BLUEPRINT_NODE_TYPE_APP_SET_WINDOW_SIZE = "blueprint.app.setWindowSize" as const;
+/**
+ * Cancel the close the player just asked for, and leave the window where it is.
+ *
+ * The one thing this node is for is answering `On Window Close Requested`
+ * ({@link BLUEPRINT_NODE_TYPE_EVENT_HEAD_WINDOW_CLOSE_REQUESTED}) with "not yet": that dispatch
+ * holds the close open while the graph runs and then closes the window unless something cancelled
+ * it. A game that wants to ask "really quit?" runs this first, shows its own question, and calls
+ * `Quit Application` if the player says yes.
+ *
+ * It stops nothing else. It is not a way to swallow a key, dismiss a page, or keep an element's
+ * event from reaching anything - and outside a close request it has nothing at all to act on,
+ * which is an execution error rather than a quiet no-op, because a graph holding one there is
+ * asking for a guarantee it is not being given.
+ */
+export const BLUEPRINT_NODE_TYPE_APP_KEEP_WINDOW_OPEN = "blueprint.app.keepWindowOpen" as const;
+/**
  * Hand one web address to the player's browser.
  *
  * Only the addresses the build's variant declares are opened, and the shell that opens the page is
@@ -1004,6 +1089,31 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_AVATAR = "blueprint.game.getSp
 /** The speaking character's authored accent colour. Speaker-scoped, exactly like Get Nametag. */
 export const BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR = "blueprint.game.getSpeakerColor" as const;
 /**
+ * Whether the line on screen has finished revealing and the dialog is waiting for the player.
+ *
+ * The condition a click-to-continue indicator is drawn under. It mirrors one engine state, reached
+ * from one place: the moment the typewriter runs out of characters, or the moment a skip finishes
+ * the line early. False while the line is still typing, and false again as soon as the next line
+ * mounts, so an indicator bound to it appears and disappears with no timer of its own.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING = "blueprint.game.isDialogWaiting" as const;
+/**
+ * The current line's text.
+ *
+ * The whole line rather than the part revealed so far. The engine evaluates a line's words once
+ * when it mounts and reveals a prefix of that, so this reads the same before and after the
+ * typewriter runs - which is what makes it usable for a length-dependent layout decision.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT = "blueprint.game.getDialogText" as const;
+/**
+ * Whether the current line has no speaker.
+ *
+ * The condition a nametag hides itself under. `Get Nametag` already answers null for a narrator
+ * line, but a widget that has to lay itself out differently needs the fact before it has a name to
+ * test, and an empty name is also what a character with a blank nametag reports.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR = "blueprint.game.isNarrator" as const;
+/**
  * Any character's data, by reference - the addressable sibling of the speaker-scoped getters above.
  * The character is picked with a `characterId` param (a `"characters"` dynamic select), not a pin,
  * so no new value type was needed for it.
@@ -1049,6 +1159,7 @@ export const BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED = "blueprint.game.clearVisit
  * needs a running story: a title screen asks both before any game exists.
  */
 export const BLUEPRINT_NODE_TYPE_GAME_IS_ENDING_REACHED = "blueprint.game.isEndingReached" as const;
+export const BLUEPRINT_NODE_TYPE_GAME_IS_DLC_INSTALLED = "blueprint.game.isDlcInstalled" as const;
 /**
  * Every ending a story declares, each row already carrying whether it was reached.
  *
@@ -1088,6 +1199,20 @@ export const BLUEPRINT_NODE_TYPE_GAME_GET_APP_TAG = "blueprint.game.getAppTag" a
  */
 export const BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS = "blueprint.game.progress.export" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS = "blueprint.game.progress.import" as const;
+/**
+ * Whether what this build writes stays written.
+ *
+ * A packaged desktop game owns files in a user-data directory and answers `Durable` always. A web
+ * export is a guest of the browser: a site whose storage has not been granted persistence may be
+ * evicted whole under storage pressure, saves included, and a browser that will not answer the
+ * question at all is neither a yes nor a no.
+ *
+ * Three branches rather than a flag, because the three lead an author to different words - and the
+ * node states the fact without acting on it. Whether a player is told anything, and in what terms,
+ * is the author's to decide: a page whose storage may be reclaimed is still a page a game can be
+ * finished on.
+ */
+export const BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY = "blueprint.game.storageDurability" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_CHOOSE = "blueprint.game.choose" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_NEXT = "blueprint.game.next" as const;
 export const BLUEPRINT_NODE_TYPE_GAME_SKIP = "blueprint.game.skip" as const;
@@ -1369,6 +1494,10 @@ export const BLUEPRINT_NODE_TYPE_LIST_REFRESH_ITEMS = "blueprint.list.refreshIte
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_INDEX = "blueprint.list.scrollToIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_TOP = "blueprint.list.scrollToTop" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_BOTTOM = "blueprint.list.scrollToBottom" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS = "blueprint.list.getScrollProgress" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET = "blueprint.list.getScrollOffset" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END = "blueprint.list.isScrolledToEnd" as const;
+export const BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START = "blueprint.list.isScrolledToStart" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS = "blueprint.list.getItemProps" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_INDEX = "blueprint.list.getItemIndex" as const;
 export const BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_COUNT = "blueprint.list.getItemCount" as const;
@@ -1399,6 +1528,10 @@ export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_REFRESH_ITEMS = "blueprint.element
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_INDEX = "blueprint.element.list.scrollToIndex" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_TOP = "blueprint.element.list.scrollToTop" as const;
 export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SCROLL_TO_BOTTOM = "blueprint.element.list.scrollToBottom" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS = "blueprint.element.list.getScrollProgress" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET = "blueprint.element.list.getScrollOffset" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END = "blueprint.element.list.isScrolledToEnd" as const;
+export const BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START = "blueprint.element.list.isScrolledToStart" as const;
 
 export const BLUEPRINT_NODE_TYPE_IMAGE_GET_ASSET = "blueprint.image.getImageAsset" as const;
 export const BLUEPRINT_NODE_TYPE_IMAGE_SET_ASSET = "blueprint.image.setImageAsset" as const;

@@ -13,7 +13,9 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
+import { dlcArtifactFileName, dlcDirectoryName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
+import { diffPack } from "@shared/utils/packDelta";
 import { openSealedBundle } from "@narraleaf/encryption/runtime";
 import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
@@ -173,7 +175,7 @@ describe("patched runtime resources", () => {
      * it is the shape a build with no protection has, and patches must work there
      * too or they become a privilege of protected builds.
      */
-    async function makeApp(material: string, assetBytes: string): Promise<{
+    async function makeApp(material: string, assetBytes: string, appTagId?: string): Promise<{
         appDir: string;
         /** The folder that holds the game, which is where a player drops a patch. */
         gameRootDir: string;
@@ -189,8 +191,19 @@ describe("patched runtime resources", () => {
         const pack = {
             schemaVersion: 2,
             assets: { items: { "asset-1": { id: "asset-1", relativePath: "assets/one", type: "image", name: "one", source: "local" } } },
-            addOns: { verificationKey: projectVerificationKey(material, TITLE) },
+            addOns: {
+                verificationKey: projectVerificationKey(material, TITLE),
+                ...(appTagId ? { appTagId } : {}),
+            },
             marker: "base",
+            bundle: {
+                storyHash: "base",
+                storyLibrary: {
+                    documents: {
+                        "story-1": { id: "story-1", scenes: { "sc-1": { id: "sc-1", text: "one" }, "sc-2": { id: "sc-2", text: "two" } } },
+                    },
+                },
+            },
         } as unknown as GameRuntimePackV1;
         await fs.writeFile(path.join(appDir, "pack.json"), JSON.stringify(pack));
         await fs.writeFile(path.join(appDir, "assets", "one"), assetBytes);
@@ -258,22 +271,29 @@ describe("patched runtime resources", () => {
             { projectMaterial: material, proven: false },
             {
                 pack: JSON.stringify({ ...pack, marker: "hostile" }),
+                "pack.delta": JSON.stringify(diffPack(pack, { ...pack, marker: "hostile" })),
                 "assets/one": "reskinned",
                 "plugins/evil/runtime.js": "export default 1",
             },
         );
 
-        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        const applied: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            log: (level, message) => { if (level === "info") { applied.push(message); } },
+        });
         try {
             expect((await readPackOf(resources)).marker).toBe("base");
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("reskinned");
             expect(await resources.readRuntimeFile("/plugins/evil/runtime.js")).toBeNull();
+            // What it did, not what it failed to prove.
+            expect(applied.join("\n")).toContain("mod.patch.dat (files only)");
         } finally {
             await resources.dispose();
         }
     });
 
-    it("ignores a patch made for another project", async () => {
+    it("ignores a patch made for another project, and names the file without saying why", async () => {
         const material = createProjectMaterial();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
@@ -289,7 +309,39 @@ describe("patched runtime resources", () => {
         });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
-            expect(warnings.some(line => line.includes("foreign.patch.dat"))).toBe(true);
+            const line = warnings.find(entry => entry.includes("foreign.patch.dat"));
+            /*
+             * The reason a layer gives is its own account of how a patch is bound to a build, and a
+             * shipped game writes its log into a file the player can open. So the file is named and
+             * nothing else is - asserted as an equality rather than a "does not contain", because
+             * the wording that would leak comes from a dependency and can change without anything
+             * here noticing.
+             */
+            expect(line).toBe("patch not applied: foreign.patch.dat");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /* A build made to be inspected is read by its author, and there the reason is the whole point. */
+    it("says why a patch was refused when it was built to be inspected", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        await writePatch(
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
+            { projectMaterial: createProjectMaterial() },
+            { "assets/one": "stranger" },
+        );
+
+        const warnings: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            explainRefusedPatches: true,
+            log: (level, message) => { if (level === "warning") { warnings.push(message); } },
+        });
+        try {
+            const line = warnings.find(entry => entry.includes("foreign.patch.dat")) ?? "";
+            expect(line.length).toBeGreaterThan("patch not applied: foreign.patch.dat".length);
         } finally {
             await resources.dispose();
         }
@@ -342,6 +394,75 @@ describe("patched runtime resources", () => {
         }
     });
 
+    /**
+     * The reason a delta exists. Two patches made against one build, neither aware of the other -
+     * an episode and a language pack are the ordinary case - and installing both has to leave both
+     * installed. A patch that carried the whole pack made the second one quietly undo the first.
+     */
+    it("composes what each proven patch changes rather than taking the last pack whole", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        const scenesOf = (value: unknown) =>
+            (value as { bundle: { storyLibrary: { documents: Record<string, { scenes: Record<string, { id: string; text: string }> }> } } })
+                .bundle.storyLibrary.documents["story-1"].scenes;
+        const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as unknown;
+
+        const first = JSON.parse(JSON.stringify(base)) as unknown;
+        scenesOf(first)["sc-1"] = { id: "sc-1", text: "rewritten" };
+        const second = JSON.parse(JSON.stringify(base)) as unknown;
+        scenesOf(second)["sc-3"] = { id: "sc-3", text: "new scene" };
+
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ name: "fix", order: 10 }),
+            "pack.delta": JSON.stringify(diffPack(base, first)),
+        });
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "episode.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ name: "episode", order: 20 }),
+            "pack.delta": JSON.stringify(diffPack(base, second)),
+        });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            const composed = await readPackOf(resources);
+            expect(scenesOf(composed)["sc-1"].text).toBe("rewritten");
+            expect(scenesOf(composed)["sc-3"].text).toBe("new scene");
+            expect(Object.keys(scenesOf(composed)).sort()).toEqual(["sc-1", "sc-2", "sc-3"]);
+            // The stories in hand are not the stories either patch was built from, so the
+            // fingerprint saves are matched against has to be taken again.
+            expect((composed.bundle as { storyHash: string }).storyHash).not.toBe("base");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /*
+     * A patch made before deltas existed still means what it always meant: this is the pack now.
+     * The one below it carries both, which is the shape an export produced while the two overlapped.
+     */
+    it("lets a patch that carries only a whole pack replace what a delta below it composed", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material, "original");
+        const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as Record<string, unknown>;
+        const delta = { ...base, marker: "composed" };
+
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ order: 10 }),
+            "pack.delta": JSON.stringify(diffPack(base, delta)),
+            pack: JSON.stringify(delta),
+        });
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
+            layer: JSON.stringify({ order: 20 }),
+            pack: JSON.stringify({ ...base, marker: "whole" }),
+        });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("whole");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
     it("says so when patch files are present but the build cannot read them", async () => {
         const material = createProjectMaterial();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
@@ -358,7 +479,208 @@ describe("patched runtime resources", () => {
         });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
-            expect(warnings.join("\n")).toContain("cannot read patches");
+            expect(warnings.join("\n")).toContain("applies neither");
+        } finally {
+            await resources.dispose();
+        }
+    });
+});
+
+/**
+ * DLC, which is a sealed layer found somewhere else under a different name.
+ *
+ * The reading is the patch reading - there is one implementation and these tests share the file
+ * with it on purpose. What is tested here is only what a DLC adds: where it is found, what it says
+ * about itself, and the one thing it can be refused for.
+ */
+describe("DLC layers", () => {
+    const TITLE = "com.example.dlc";
+    let root: string;
+
+    beforeEach(async () => {
+        root = await fs.mkdtemp(path.join(os.tmpdir(), "nls-dlc-"));
+    });
+
+    afterEach(async () => {
+        await fs.rm(root, { recursive: true, force: true }).catch(() => undefined);
+    });
+
+    async function makeApp(material: string, appTagId?: string): Promise<{
+        appDir: string;
+        gameRootDir: string;
+        pack: GameRuntimePackV1;
+    }> {
+        const appDir = path.join(root, "game", "app");
+        await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
+        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+            projectMaterial: material,
+            titleId: TITLE,
+        });
+        const pack = {
+            schemaVersion: 2,
+            assets: { items: {} },
+            addOns: {
+                verificationKey: projectVerificationKey(material, TITLE),
+                ...(appTagId ? { appTagId } : {}),
+            },
+            marker: "base",
+        } as unknown as GameRuntimePackV1;
+        await fs.writeFile(path.join(appDir, "pack.json"), JSON.stringify(pack));
+        return { appDir, gameRootDir: path.join(root, "game"), pack };
+    }
+
+    /** One DLC file where a player would have it, stating the edition it belongs to. */
+    async function writeDlc(
+        gameRootDir: string,
+        material: string,
+        dlc: { id: string; attachTo?: string; name?: string },
+        entries: Record<string, string>,
+    ): Promise<void> {
+        const filePath = path.join(
+            gameRootDir,
+            dlcDirectoryName(process.platform),
+            dlcArtifactFileName(dlc.id),
+        );
+        await fs.mkdir(path.dirname(filePath), { recursive: true });
+        const writer = await createSealedLayer(filePath, { projectMaterial: material, titleId: TITLE });
+        await writer.add("layer", Buffer.from(JSON.stringify({
+            ...(dlc.name ? { name: dlc.name } : {}),
+            dlc: { id: dlc.id, attachTo: dlc.attachTo ?? "main" },
+        })));
+        for (const [name, value] of Object.entries(entries)) {
+            await writer.add(name, Buffer.from(value));
+        }
+        await writer.finalize();
+    }
+
+    const readPackOf = async (resources: Awaited<ReturnType<typeof createRuntimeResources>>) =>
+        JSON.parse((await resources.readPack()).toString("utf-8")) as Record<string, unknown>;
+
+    it("reads a DLC out of the DLC folder and reports which one is installed", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material);
+        await writeDlc(gameRootDir, material, { id: "summer", name: "Summer Route" }, {
+            pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
+        });
+
+        const lines: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            log: (_level, message) => lines.push(message),
+        });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("with-dlc");
+            expect(resources.installedDlcIds()).toEqual(["summer"]);
+            expect(lines.join("\n")).toContain("DLC applied: summer_DLC.pak (Summer Route)");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /**
+     * The case the stored edition exists for. Both builds are sealed under the same material -
+     * a variant that overrides no identifier shares one - so the file opens perfectly, and only
+     * what it says about itself can stop it.
+     */
+    it("refuses a DLC that belongs to another edition, and starts anyway", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material, "demo-tag");
+        await writeDlc(gameRootDir, material, { id: "summer", attachTo: "main" }, {
+            pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
+        });
+
+        const warnings: string[] = [];
+        const resources = await createRuntimeResources(appDir, {
+            gameRootDir,
+            log: (level, message) => { if (level === "warning") warnings.push(message); },
+        });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("base");
+            expect(resources.installedDlcIds()).toEqual([]);
+            expect(warnings.join("\n")).toContain("it belongs to a different edition of this game");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /** A build made before packs recorded their variant is the release one, so a release DLC fits. */
+    it("takes a release DLC on a build that records no edition", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material);
+        await writeDlc(gameRootDir, material, { id: "summer" }, {
+            pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
+        });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("with-dlc");
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    /**
+     * A patch fixes the game a player is running, and that game includes their DLC. So a patch
+     * applies over one whatever the two say about their own order.
+     */
+    /**
+     * The one case the stamp exists for. A voice pack replaces asset bytes and changes nothing about
+     * the pack, so nothing composes - and a game that read "none installed" for it could not draw
+     * the entrance to what the player just bought.
+     */
+    it("says a DLC is installed even when it changed nothing about the content", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material);
+        await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
+        await fs.writeFile(path.join(appDir, "assets", "one"), "original");
+        await writeDlc(gameRootDir, material, { id: "voices" }, { "assets/one": "voiced" });
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).installedDlc).toEqual(["voices"]);
+            // Still the base content: the layer carried bytes and no pack of its own.
+            expect((await readPackOf(resources)).marker).toBe("base");
+            expect(resources.installedDlcIds()).toEqual(["voices"]);
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    it("states nothing about DLC on a build that has none beside it", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir } = await makeApp(material);
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            // Absent rather than empty: a base build must not be readable for what else exists.
+            expect((await readPackOf(resources)).installedDlc).toBeUndefined();
+        } finally {
+            await resources.dispose();
+        }
+    });
+
+    it("applies a patch over a DLC even when the DLC asks to sort later", async () => {
+        const material = createProjectMaterial();
+        const { appDir, gameRootDir, pack } = await makeApp(material);
+        const dlcFile = path.join(gameRootDir, dlcDirectoryName(process.platform), dlcArtifactFileName("summer"));
+        await fs.mkdir(path.dirname(dlcFile), { recursive: true });
+        const dlcWriter = await createSealedLayer(dlcFile, { projectMaterial: material, titleId: TITLE });
+        await dlcWriter.add("layer", Buffer.from(JSON.stringify({ order: 99, dlc: { id: "summer", attachTo: "main" } })));
+        await dlcWriter.add("pack", Buffer.from(JSON.stringify({ ...pack, marker: "with-dlc" })));
+        await dlcWriter.finalize();
+
+        const patchFile = path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.patch.dat");
+        await fs.mkdir(path.dirname(patchFile), { recursive: true });
+        const patchWriter = await createSealedLayer(patchFile, { projectMaterial: material, titleId: TITLE });
+        await patchWriter.add("layer", Buffer.from(JSON.stringify({ order: -5 })));
+        await patchWriter.add("pack", Buffer.from(JSON.stringify({ ...pack, marker: "fixed" })));
+        await patchWriter.finalize();
+
+        const resources = await createRuntimeResources(appDir, { gameRootDir });
+        try {
+            expect((await readPackOf(resources)).marker).toBe("fixed");
+            // The DLC still counts as installed; it was applied, then written over.
+            expect(resources.installedDlcIds()).toEqual(["summer"]);
         } finally {
             await resources.dispose();
         }

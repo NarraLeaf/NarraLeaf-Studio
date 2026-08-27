@@ -169,6 +169,8 @@ export type NarralangSlot =
     | "source"
     | "layer"
     | "scene"
+    /** Present on a jump that comes back to the row after itself. */
+    | "returns"
     | "label"
     | "ending"
     | "variant"
@@ -186,6 +188,7 @@ export type NarralangSlot =
     | "transformEasing"
     // Transition tail
     | "transition"
+    | "transitionHold"
     | "transitionEasing"
     // Plain effect timing
     | "duration"
@@ -268,6 +271,7 @@ export type NarralangWord =
     /** Standalone modifiers that are present-or-absent rather than valued. */
     | "loop"
     | "once"
+    | "return"
     | "muted"
     | "autoFit"
     | "async"
