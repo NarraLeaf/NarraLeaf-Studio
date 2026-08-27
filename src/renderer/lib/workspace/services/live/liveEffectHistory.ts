@@ -5,7 +5,7 @@ import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { LiveDerived, LiveDocument, LiveEffect, LiveOp } from "@shared/live/ops";
 import type { LocalizationKeyDefinition } from "@shared/types/localization";
-import type { StoryDocument } from "@shared/types/story";
+import type { StoryDocument, StoryId } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
 
@@ -117,7 +117,19 @@ export class LiveEffectHistory {
         direction: LiveStepDirection,
         context: {
             self: string;
-            document: StoryDocument;
+            /**
+             * One story document as it stands now, by id, or null where this machine does not hold
+             * it.
+             *
+             * ⚠ **A reader rather than a document, because a session carries every story in the
+             * project.** The step being taken back names the document it was about, and that is
+             * not always the one the room is named after: a character deleted in a session rewrites
+             * the rows that spoke it wherever the author put them, and a second story opened in the
+             * same window is edited through the same session. Handed one document, this could only
+             * invert against that one - so a step on any other story was answered `scene-gone` or
+             * `no-record`, which is a safe refusal and still a refusal to undo something undoable.
+             */
+            story(storyId: StoryId): StoryDocument | null;
             cast: LiveCastView;
             /** One asset shard as it stands now, for the steps that are about the library. */
             assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
@@ -151,9 +163,19 @@ export class LiveEffectHistory {
             return { impossible: "nothing-to-redo" };
         }
         const entry = this.entries[index];
+        // The document the effect NAMED, read now. Null for a step about anything else - the cast,
+        // a library, one of the tables - which is what `LiveInverseContext.document` means by
+        // absent, and those inverses never look at it.
+        const about = entry.current.effect.document;
+        const document = about.doc === "story" ? context.story(about.storyId) : null;
+        if (about.doc === "story" && document === null) {
+            // The story this step was about is not held here any more, so there is nothing to read
+            // an inverse against. Refused by name rather than inverted against the wrong file.
+            return { impossible: "no-record" };
+        }
         const inverse = inverseOf(entry.current.effect, {
             self: context.self,
-            document: context.document,
+            document,
             cast: context.cast,
             assets: context.assets,
             assetFolders: context.assetFolders,

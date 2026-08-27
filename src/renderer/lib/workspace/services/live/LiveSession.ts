@@ -991,18 +991,14 @@ export class LiveSession {
         if (!session) {
             return false;
         }
-        const document = this.deps.story.document(session.storyId);
         const cast = this.deps.cast.view();
-        if (!document) {
-            // The story is not held here any more, so nothing can be read to invert against. The cast
-            // always is - it is one document per project and the workspace has it loaded - so there is
-            // no matching guard for it.
-            this.patch({ undoRefusal: "no-record" });
-            return false;
-        }
+        // ⚠ A reader rather than the room's own story. A session carries every story in the
+        // project, so the step being taken back is not always about the document the room is named
+        // after - and handing over that one made Ctrl+Z on a second story answer `scene-gone`. The
+        // history asks for the document its own step named; "not held here" is its refusal to give.
         const plan = session.effects.plan(direction, {
             self: session.self,
-            document,
+            story: storyId => this.deps.story.document(storyId),
             cast,
             assets: assetType => this.deps.assets.records(assetType),
             assetFolders: category => this.deps.assets.folders(category),
