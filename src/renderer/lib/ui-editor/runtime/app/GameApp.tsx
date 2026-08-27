@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
+import { createDialogClickTargets } from "./dialogClickTargets";
 import {
     readWrappedStorableNamespace,
     readWrappedStorableValue,
@@ -724,7 +725,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             void core?.scopeBridge.persistenceSet(key, value);
         },
     });
-    const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
@@ -1713,8 +1714,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [core, host.log]);
 
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
-        nlrDialogVirtualClickTargetRef.current = target;
-    }, []);
+        nlrDialogClickTargets.set(target);
+    }, [nlrDialogClickTargets]);
 
     // Read through the *mounted* session's compile, never a captured one: a recompile mints new
     // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
@@ -1786,7 +1787,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getLiveGame: () => nlrLiveGameRef.current,
         choiceRuntimeRef,
         currentDialogNametagRef,
-        dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
+        dialogClickTargets: nlrDialogClickTargets,
     }), [requireActiveLiveGame]);
 
     /**
@@ -2047,7 +2048,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -2074,6 +2075,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         detachTextReadTracker,
         layerStack,
         navigation,
+        nlrDialogClickTargets,
         openSurface,
         playHead,
         rejectPendingGameStarts,
@@ -4142,7 +4144,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -4160,6 +4162,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
+        nlrDialogClickTargets,
         playHead,
         rejectPendingGameStarts,
     ]);
@@ -4176,7 +4179,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -4185,7 +4188,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
         pluginHost?.detachSession();
-    }, [clearCurrentDialogState, detachTextReadTracker, nlrSession?.id, playHead, pluginHost]);
+    }, [clearCurrentDialogState, detachTextReadTracker, nlrDialogClickTargets, nlrSession?.id, playHead, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
