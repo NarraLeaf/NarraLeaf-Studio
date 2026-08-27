@@ -38,6 +38,16 @@
  * returned untouched rather than guessed at, and the format is read from the
  * bytes rather than the file name, so a `.png` that is really a JPEG is treated
  * as the JPEG it is.
+ *
+ * **GIF is a settled no, not an omission.** Its comments sit in extension blocks
+ * that can only be found by walking the frame structure, which is a parser for a
+ * whole animation format written to remove a string - and the same walk has to
+ * tell a comment block from an application block, because `NETSCAPE2.0` is where
+ * the loop count lives and a GIF that lost it stops looping. The work is real
+ * and the material is rare, so it is not worth what a wrong answer costs.
+ * Fonts are out for the same kind of reason and have been ruled out separately:
+ * a name table holds records the renderer reads, and stripping the wrong one
+ * leaves a game with no text at all.
  */
 
 import { readImageDimensions } from "@shared/utils/imageDimensions";
