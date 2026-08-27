@@ -5,6 +5,8 @@ import {
     PROJECT_DIAGNOSTICS_TEST_ID,
     REACHABLE_ENDINGS_SLUG,
     REACHABLE_ENDINGS_TEST_ID,
+    ROUTE_COVERAGE_SLUG,
+    ROUTE_COVERAGE_TEST_ID,
     WALKTHROUGH_ENDING_PARAMETER,
     WALKTHROUGH_SLUG,
     WALKTHROUGH_TEST_ID,
@@ -113,7 +115,7 @@ describe("TestRegistry", () => {
         registry.ensureBuiltInTestsRegistered(host);
         registry.ensureBuiltInTestsRegistered(host);
 
-        const ids = [PROJECT_DIAGNOSTICS_TEST_ID, REACHABLE_ENDINGS_TEST_ID];
+        const ids = [PROJECT_DIAGNOSTICS_TEST_ID, REACHABLE_ENDINGS_TEST_ID, ROUTE_COVERAGE_TEST_ID];
         const builtIns = registry.list().filter(test => ids.includes(test.definition.id));
         expect(builtIns.map(test => test.definition.id).sort()).toEqual([...ids].sort());
         for (const builtIn of builtIns) {
@@ -129,6 +131,7 @@ describe("TestRegistry", () => {
         // dead keys nothing addresses.
         expect(deriveBuiltInTestSlug(PROJECT_DIAGNOSTICS_TEST_ID)).toBe(PROJECT_DIAGNOSTICS_SLUG);
         expect(deriveBuiltInTestSlug(REACHABLE_ENDINGS_TEST_ID)).toBe(REACHABLE_ENDINGS_SLUG);
+        expect(deriveBuiltInTestSlug(ROUTE_COVERAGE_TEST_ID)).toBe(ROUTE_COVERAGE_SLUG);
         expect(deriveBuiltInTestSlug(WALKTHROUGH_TEST_ID)).toBe(WALKTHROUGH_SLUG);
     });
 

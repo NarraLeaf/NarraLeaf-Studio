@@ -2,6 +2,7 @@ import type { ServiceRegistry } from "@/lib/workspace/services/serviceRegistry";
 import type { TestDefinition } from "../types";
 import { createProjectDiagnosticsTest } from "./projectDiagnostics";
 import { createReachableEndingsTest } from "./reachableEndings";
+import { createRouteCoverageTest } from "./routeCoverage";
 import { createWalkthroughTest } from "./walkthrough";
 
 /**
@@ -23,16 +24,28 @@ export type BuiltInTestHost = {
 /**
  * Every test Studio ships.
  *
- * Three. Two are `integrity` and headless - one runs the project's own lint rules, the other asks
- * whether every way through the story reaches an ending - so both are runnable while the workspace
- * is frozen. The third plays the game to an ending the author names, and therefore opens a window.
+ * Four. Three are `integrity` and headless - one runs the project's own lint rules, one asks whether
+ * every way through the story reaches an ending, and one asks what a player can reach once the
+ * conditions are read - so all three are runnable while the workspace is frozen. The fourth plays
+ * the game to an ending the author names, and therefore opens a window.
+ *
+ * The two story checks are deliberately separate rather than one deeper check. `reachable-endings`
+ * is a claim about the script's shape and holds whatever the variables do; `route-coverage` is a
+ * claim about the state and is only ever as good as what it could derive. Folding them together
+ * would make the first answer as conditional as the second.
  */
 export function createBuiltInTests(host: BuiltInTestHost): TestDefinition[] {
-    return [createProjectDiagnosticsTest(host), createReachableEndingsTest(host), createWalkthroughTest(host)];
+    return [
+        createProjectDiagnosticsTest(host),
+        createReachableEndingsTest(host),
+        createRouteCoverageTest(host),
+        createWalkthroughTest(host),
+    ];
 }
 
 export { PROJECT_DIAGNOSTICS_SLUG, PROJECT_DIAGNOSTICS_TEST_ID, createProjectDiagnosticsTest } from "./projectDiagnostics";
 export { REACHABLE_ENDINGS_SLUG, REACHABLE_ENDINGS_TEST_ID, createReachableEndingsTest } from "./reachableEndings";
+export { ROUTE_COVERAGE_SLUG, ROUTE_COVERAGE_TEST_ID, createRouteCoverageTest } from "./routeCoverage";
 export {
     WALKTHROUGH_ENDING_PARAMETER,
     WALKTHROUGH_SLUG,

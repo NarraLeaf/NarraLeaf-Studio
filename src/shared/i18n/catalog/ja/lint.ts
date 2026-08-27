@@ -296,6 +296,16 @@ export const lint = {
             description: "同じ名前が 2 か所で宣言されている",
             message: "{variable} が永続変数として 2 回宣言されている",
         },
+        variablesConditionNeverHolds: {
+            title: "成立し得ない条件",
+            description: "どの経路をたどっても変数がその値に到達しません",
+            message: "ここでの {variable} の範囲は {bound} なので、この条件は成立しません",
+        },
+        variablesReadNeverWritten: {
+            title: "変化しない条件",
+            description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
+            message: "{variable} を参照する条件が {count} 件ありますが、代入する箇所がありません",
+        },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",
             description: "値が残らず引き直される位置にある乱数",

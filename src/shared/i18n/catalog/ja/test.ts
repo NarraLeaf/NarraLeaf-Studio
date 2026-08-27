@@ -125,6 +125,26 @@ export const test = {
                 passed: "{ending} に到達",
             },
         },
+        routeCoverage: {
+            title: "ルート網羅",
+            description: "条件を踏まえたうえで、各シーン・選択肢・エンディングに実際に到達できるか",
+            skipped: {
+                noEntryPoint: "開始位置を示すストーリーがありません",
+                undecidableEntry: "Start Story ノードは実行時にシーンを決めるため、開始位置を読み取れません",
+                storiesUnread: "読み込めないストーリーがあります",
+            },
+            finding: {
+                sceneUnreachable: "「{scene}」へ至る条件を満たせる経路がありません",
+                optionUnreachable: "「{option}」は表示されません — 条件を満たす経路がありません",
+                branchUnreachable: "この分岐は通りません — 条件を満たす経路がありません",
+                endingUnreachable: "「{name}」は書かれていますが、到達条件を満たせる経路がありません",
+                endingUnreachableUnnamed: "このエンディングは書かれていますが、到達条件を満たせる経路がありません",
+            },
+            summary: {
+                passed: "スクリプトが導く先にはすべて到達できます",
+                failed: "到達不能 — シーン {scenes}、選択肢 {options}、エンディング {endings}",
+            },
+        },
         reachableEndings: {
             title: "エンディングへの到達",
             description: "物語のどの道もエンディング（/ending）に届くかどうか",
