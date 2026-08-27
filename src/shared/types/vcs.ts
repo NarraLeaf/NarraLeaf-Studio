@@ -1020,6 +1020,16 @@ export type VcsServerProjectsProblem =
     | { kind: "rejected"; detail: string }
     | { kind: "unreachable" }
     | { kind: "wrong-repository" }
+    /**
+     * The name asked for is already a different project on that server.
+     *
+     * Not a collision this end can resolve, and not one to publish through: the address
+     * `lore://host/<name>` is what a collaborator clones by, so registering a second
+     * repository under a name somebody else's project answers to would give two projects
+     * one address. Told apart from {@link wrong-repository}, which is the server answering
+     * about a repository nobody asked it about.
+     */
+    | { kind: "name-taken" }
     | { kind: "unknown" };
 
 /**
@@ -1070,7 +1080,20 @@ export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsPr
  * left the machine.
  */
 export type VcsPublishOutcome =
-    | { ok: true }
+    | {
+        ok: true;
+        /**
+         * The name this project is actually on that server under, when it is not the one asked for.
+         *
+         * **Absent for an ordinary publish, and it is the whole of what tells the two apart.** A
+         * repository that has been on this server before - a copied project folder carries the same
+         * repository id - is already registered under whatever it was called then, and connecting
+         * it at the name typed today would write an address that pushes and cannot be cloned. So it
+         * is connected under the name the server holds, and this says which, because a name chosen
+         * by an author and quietly replaced is worse than one they were never given.
+         */
+        connectedAs?: string;
+    }
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**

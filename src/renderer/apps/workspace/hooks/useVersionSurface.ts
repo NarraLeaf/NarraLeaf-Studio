@@ -136,6 +136,7 @@ const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Translation
     refused: "workspace.shell.versionControl.server.publish.refused",
     unreachable: "workspace.shell.versionControl.server.publish.unreachable",
     "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
+    "name-taken": "workspace.shell.versionControl.server.publish.nameTaken",
     rejected: "workspace.shell.versionControl.server.publish.unknown",
     unknown: "workspace.shell.versionControl.server.publish.unknown",
 };
@@ -1042,6 +1043,19 @@ export function useVersionSurface(): VersionSurface {
             if (!outcome.ok) {
                 setFailure({ text: translate(PUBLISH_PROBLEM_KEYS[outcome.problem.kind]), tone: "failure" });
                 return false;
+            }
+            if (outcome.connectedAs !== undefined) {
+                // A note rather than a failure, because nothing failed: this project has been on
+                // that server before and is registered under the name it was published as, so it
+                // is connected under that one. Said because the author typed a name and the
+                // address does not carry it - a substitution nobody is told about is the thing
+                // this line exists to prevent.
+                setFailure({
+                    text: translate("workspace.shell.versionControl.server.publish.connectedAs", {
+                        name: outcome.connectedAs,
+                    }),
+                    tone: "note",
+                });
             }
             setRemoteUrl(await services.versionControl.getRemote());
             setSyncState(await services.versionControl.getSyncState());
