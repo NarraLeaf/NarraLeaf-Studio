@@ -21,6 +21,7 @@ import {
     type TeamComment,
     type TeamLiveMember,
     type TeamLiveMessage,
+    type TeamLiveJoinRule,
     type TeamLiveSession,
     type TeamOverlayRecord,
     type TeamProblem,
@@ -612,13 +613,23 @@ export async function listLiveSessions(
  */
 export async function openLiveSession(
     remoteOrigin: string,
-    input: { project: string; revision: string; story: string; title?: string },
-): Promise<TeamOutcome<TeamLiveSession>> {
+    input: {
+        project: string;
+        revision: string;
+        story: string;
+        title?: string;
+        rule?: TeamLiveJoinRule;
+    },
+): Promise<TeamOutcome<{ session: TeamLiveSession; code: string }>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveOpen, input);
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const session = from === null ? null : readLiveSession(from["session"]);
-    return session === null ? unreadable() : { ok: true, value: session };
+    // ⚠ The four digits are answered HERE and in no other call, because they are not on the
+    // room record: that record is broadcast to everybody watching the project. A server too
+    // old to mint one says nothing, and an empty string is how that reads downstream.
+    const code = typeof from?.["code"] === "string" ? from["code"] : "";
+    return session === null ? unreadable() : { ok: true, value: { session, code } };
 }
 
 /** Join one somebody else opened. Joining one this window is already in is not an error. */
@@ -631,6 +642,76 @@ export async function joinLiveSession(
     const from = record(answered.value);
     const read = from === null ? null : readLiveSession(from["session"]);
     return read === null ? unreadable() : { ok: true, value: read };
+}
+
+/**
+ * Join the room a passcode names, without having had to find it.
+ *
+ * The code is the address and the entitlement at once: the server resolves it, checks it and
+ * lets this window in, all in the one call. Refused where the digits name nothing, which is
+ * also the answer for digits that name a room and are not its own.
+ */
+export async function joinLiveSessionByCode(
+    remoteOrigin: string,
+    code: string,
+): Promise<TeamOutcome<TeamLiveSession>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveJoin, { code });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const read = from === null ? null : readLiveSession(from["session"]);
+    return read === null ? unreadable() : { ok: true, value: read };
+}
+
+/**
+ * Which room a passcode names, without joining it.
+ *
+ * **The one live call that works from a window with no project open**, which is the whole of
+ * why it exists: somebody read four digits and may never have had this project, so before they
+ * can announce anything they have to learn which project to go and get.
+ */
+export async function findLiveSessionByCode(
+    remoteOrigin: string,
+    code: string,
+): Promise<TeamOutcome<TeamLiveSession>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveByCode, { code });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const read = from === null ? null : readLiveSession(from["session"]);
+    return read === null ? unreadable() : { ok: true, value: read };
+}
+
+/** Change how a running room may be joined, which only the window that opened it may do. */
+export async function setLiveSessionRule(
+    remoteOrigin: string,
+    session: string,
+    rule: TeamLiveJoinRule,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveRule, { session, rule });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/** Ask to be let into a room that is joined by asking. */
+export async function requestLiveSessionJoin(
+    remoteOrigin: string,
+    session: string,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveRequestJoin, { session });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/** Say yes or no to somebody who asked, which only the room's opener may do. */
+export async function answerLiveSessionJoin(
+    remoteOrigin: string,
+    session: string,
+    instance: string,
+    admit: boolean,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveAnswerJoin, {
+        session,
+        instance,
+        admit,
+    });
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Leave one. The last one out closes it. Never refused, including for a room that is gone. */

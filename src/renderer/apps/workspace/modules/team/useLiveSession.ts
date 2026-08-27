@@ -4,7 +4,7 @@ import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessi
 import { IDLE_LIVE_SESSION, type LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryId } from "@shared/types/story";
-import type { TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import { useWorkspace } from "../../context";
 
 /**
@@ -30,9 +30,16 @@ export type LiveSessionSurface = {
      * would land.
      */
     busy: boolean;
-    open: (input: { storyId: StoryId; title?: string }) => void;
+    open: (input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }) => void;
     join: (input: { session: TeamLiveSession | string }) => void;
     leave: () => void;
+    /**
+     * Change how people get into the running room. Host only.
+     *
+     * Awaited rather than fired, unlike the three above: the control that calls it is a set of
+     * choices and has to put itself back where it was when the server says no.
+     */
+    setRule: (rule: TeamLiveJoinRule) => Promise<boolean>;
 };
 
 export function useLiveSession(): LiveSessionSurface {
@@ -69,6 +76,10 @@ export function useLiveSession(): LiveSessionSurface {
         open: useCallback(input => run(session => session.open(input)), [run]),
         join: useCallback(input => run(session => session.join(input)), [run]),
         leave: useCallback(() => run(session => session.leave()), [run]),
+        setRule: useCallback(
+            (rule: TeamLiveJoinRule) => service?.setRule(rule) ?? Promise.resolve(false),
+            [service],
+        ),
     };
 }
 

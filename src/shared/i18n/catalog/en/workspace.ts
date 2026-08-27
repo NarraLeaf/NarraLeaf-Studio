@@ -417,6 +417,29 @@ export const workspace = {
         // room's document was written over this tree on the way in, and it has just been written
         // back. Without it the editor changing under them is an unexplained third event.
         liveEndedHostLeft: "The host left. The session is over, and your own work is back.",
+        // Said once per person per room, and never about the people who were already in it when
+        // this window arrived: those are the room rather than something that happened in it.
+        liveJoined: "{name} joined the session.",
+        // The host's, and the two answers are on the notice itself - sending them to find a panel
+        // while somebody waits is the interruption this is meant to avoid.
+        liveAsked: "{name} is asking to join the session.",
+        // On the title-bar control, where the dot is. A count rather than a name: the names are
+        // one press away, and a tooltip that named one of three would be describing a queue by
+        // whoever happened to be at the front of it.
+        liveWaitingToJoin: "{count} waiting to join",
+        liveAdmit: "Let in",
+        liveTurnAway: "Not now",
+        // How people get into a room, as the three controls that set it. Each says both halves:
+        // whether the room can be found, and whether a person decides who comes in.
+        liveRuleOpen: "Anyone on the server",
+        liveRuleOpenDetail: "Listed for everybody, and they join without asking.",
+        liveRuleRequest: "Anyone, once you say yes",
+        liveRuleRequestDetail: "Listed for everybody, and you answer each person who asks.",
+        liveRuleCode: "Only with the passcode",
+        liveRuleCodeDetail: "Not listed. Anybody with the four digits joins without asking.",
+        // Beside the digits. The one thing an author would otherwise find out by trying it.
+        liveCodeFixed: "One passcode per session. To change it, end this one and start another.",
+        liveCodeLabel: "Passcode",
         // Said as what happened to this copy rather than as a goodbye: the session is gone
         // AND what is on this disk is not what the others are looking at.
         liveEndedDiverged: "This copy stopped matching the session and left it.",

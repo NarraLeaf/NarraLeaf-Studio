@@ -8,7 +8,7 @@ import { uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/u
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
-import type { TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
@@ -159,12 +159,26 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
 
     /* ----------------------------------------------------------------- the acts */
 
-    public open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null> {
+    public open(input: {
+        storyId: StoryId;
+        title?: string;
+        rule?: TeamLiveJoinRule;
+    }): Promise<LiveEntryFailure | null> {
         return this.session?.open(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
     public join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
         return this.session?.join(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
+    }
+
+    /** Change how people get into the running room. Host only; false where it was refused. */
+    public setRule(rule: TeamLiveJoinRule): Promise<boolean> {
+        return this.session?.setRule(rule) ?? Promise.resolve(false);
+    }
+
+    /** Say yes or no to somebody waiting to be let in. Host only. */
+    public answerRequest(instance: string, admit: boolean): Promise<boolean> {
+        return this.session?.answerRequest(instance, admit) ?? Promise.resolve(false);
     }
 
     public leave(): Promise<void> {

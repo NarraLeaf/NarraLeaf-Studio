@@ -221,7 +221,30 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
             // What a server does, and what a window waiting for a room to come back is listening
             // for. Announced before this answers, so nothing depends on the opener's own order.
             world.bus.announce(PROJECT, { kind: "live-opened", session: room });
-            return { ok: true, value: room };
+            // The digits, answered to the opener alone - they are deliberately not on the record.
+            // Fixed here rather than random, because a test that could not name them could not
+            // assert that a guest is never told them.
+            return { ok: true, value: { session: room, code: "4821" } };
+        },
+        joinByCode: async () => ({
+            ok: false,
+            problem: { kind: "refused", code: "not-found", detail: "no such code" },
+        }),
+        rule: async (sessionId, rule) => {
+            calls.push(`rule:${rule}`);
+            const room = world.rooms.get(sessionId);
+            if (room) {
+                world.rooms.set(sessionId, { ...room, rule });
+            }
+            return { ok: true, value: {} };
+        },
+        requestJoin: async sessionId => {
+            calls.push(`request:${sessionId}`);
+            return { ok: true, value: {} };
+        },
+        answerJoin: async (sessionId, instance, admit) => {
+            calls.push(`answer:${instance}:${admit ? "yes" : "no"}`);
+            return { ok: true, value: {} };
         },
         join: async sessionId => {
             calls.push("join");

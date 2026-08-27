@@ -169,7 +169,7 @@ import type {
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
 import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
-import type { TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -1552,7 +1552,11 @@ interface ILiveSessionService extends IService {
     /** Whether a session owns this story document - the one question the story editor asks. */
     ownsStory(storyId: StoryId): boolean;
     /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
-    open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
+    open(input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }): Promise<LiveEntryFailure | null>;
+    /** Change how people get into the running room. Host only; false where the server refused. */
+    setRule(rule: TeamLiveJoinRule): Promise<boolean>;
+    /** Say yes or no to somebody waiting to be let in. Host only. */
+    answerRequest(instance: string, admit: boolean): Promise<boolean>;
     /**
      * Join one somebody else opened, checkpointing and syncing on the way in.
      *
