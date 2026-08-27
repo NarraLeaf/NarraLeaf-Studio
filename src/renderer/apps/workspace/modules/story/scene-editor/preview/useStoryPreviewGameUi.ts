@@ -24,7 +24,7 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleOrchestrator } from "@/lib/ui-editor/runtime/app/lifecycle/surfaceLifecycleOrchestrator";
 import type { GameUiSlotHostOptions } from "@/lib/ui-editor/runtime/app/StageSlotSurfaceShell";
-import type { ChoiceSlotRuntime } from "@/lib/ui-editor/runtime/app/ChoiceSlotSurface";
+import { createChoiceMenus } from "@/lib/ui-editor/runtime/app/choiceMenus";
 import {
     createGameUiSlotComponents,
     createLiveGameUiCallbacks,
@@ -107,7 +107,7 @@ export function useStoryPreviewGameUi(input: {
     }, [widgetPatchesByScope]);
 
     // Refs shared by the Game UI slots and the LiveGame callbacks across a session.
-    const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
+    const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const currentDialogNametagRef = useRef<string | null>(null);
     const dialogClickTargets = useMemo(() => createDialogClickTargets(), []);
 
@@ -219,14 +219,14 @@ export function useStoryPreviewGameUi(input: {
             throw new Error("Story preview: bundle is not ready");
         }
         const activeCore: BlueprintRuntimeCore | null = core;
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         currentDialogNametagRef.current = null;
         dialogClickTargets.clear();
 
         const liveGameCallbacks = createLiveGameUiCallbacks({
             requireLiveGame: gameInput.requireLiveGame,
             getLiveGame: gameInput.getLiveGame,
-            choiceRuntimeRef,
+            choiceMenus,
             currentDialogNametagRef,
             dialogClickTargets,
         });
@@ -289,9 +289,7 @@ export function useStoryPreviewGameUi(input: {
             setDialogVirtualClickTarget: target => {
                 dialogClickTargets.set(target);
             },
-            setChoiceRuntime: runtime => {
-                choiceRuntimeRef.current = runtime;
-            },
+            choiceMenus,
         });
         const game = createNlrGameWithGameUi({
             width: designSize.width,
