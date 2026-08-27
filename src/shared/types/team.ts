@@ -554,6 +554,19 @@ export const TeamMethod = {
     liveLeave: "live.leave",
     liveClose: "live.close",
     liveRule: "live.rule",
+    /**
+     * Which room a passcode names, without joining it.
+     *
+     * **The one live method that does not need this window to have the project open.**
+     * Somebody was read four digits and may never have had the project; what they need
+     * first is which project it is, so they can go and get it. Answering that is what
+     * stops the one way in that needs no list from needing a list after all.
+     */
+    liveByCode: "live.byCode",
+    /** Ask to be let into a room that is joined by asking. */
+    liveRequestJoin: "live.requestJoin",
+    /** Answer somebody who asked, which only the room's opener may do. */
+    liveAnswerJoin: "live.answerJoin",
     liveSay: "live.say",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
