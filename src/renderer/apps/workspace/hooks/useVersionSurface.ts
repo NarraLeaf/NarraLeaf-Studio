@@ -137,9 +137,24 @@ const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Translation
     unreachable: "workspace.shell.versionControl.server.publish.unreachable",
     "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
     "name-taken": "workspace.shell.versionControl.server.publish.nameTaken",
+    "already-published": "workspace.shell.versionControl.server.publish.alreadyPublished",
     rejected: "workspace.shell.versionControl.server.publish.unknown",
     unknown: "workspace.shell.versionControl.server.publish.unknown",
 };
+
+/**
+ * The sentence one refusal is drawn as, with whatever it names filled in.
+ *
+ * The key still comes from the table above, so a refusal added to the vocabulary is still a
+ * compile error here rather than a blank line on screen. What this adds is the one thing a
+ * table cannot carry: a refusal that names something has to be given the something.
+ */
+function publishProblemSentence(problem: VcsServerProjectsProblem): string {
+    const key = PUBLISH_PROBLEM_KEYS[problem.kind];
+    return problem.kind === "already-published"
+        ? translate(key, { name: problem.name })
+        : translate(key);
+}
 
 export interface VersionFailure {
     /**
@@ -1041,7 +1056,7 @@ export function useVersionSurface(): VersionSurface {
             const outcome = await services.versionControl.publish(remoteOrigin, name);
             if (!alive.current) return outcome.ok;
             if (!outcome.ok) {
-                setFailure({ text: translate(PUBLISH_PROBLEM_KEYS[outcome.problem.kind]), tone: "failure" });
+                setFailure({ text: publishProblemSentence(outcome.problem), tone: "failure" });
                 return false;
             }
             if (outcome.connectedAs !== undefined) {

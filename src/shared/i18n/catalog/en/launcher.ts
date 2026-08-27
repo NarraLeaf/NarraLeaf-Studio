@@ -112,6 +112,10 @@ export const launcher = {
             // for a server. The name is the project's own app id, which the review page
             // named - so the author knows which one is meant without it being repeated here.
             nameTaken: "Another project on this server is already called that.",
+            // The name is not repeated here: this tab publishes under the project's app id,
+            // which the review page has already named, and the list beside this line is
+            // where the project it is already on the server as can be seen.
+            alreadyPublished: "This project is already on this server under another name.",
             unknown: "This server could not be read.",
         },
         // A project made here and refused by the server it was made for. The project is on

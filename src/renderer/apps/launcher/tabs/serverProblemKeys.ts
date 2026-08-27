@@ -28,5 +28,6 @@ export const SERVER_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Trans
     // Reachable from here: this tab publishes when a project is made for a server, and the
     // name it publishes under is the project's app id.
     "name-taken": "launcher.servers.problem.nameTaken",
+    "already-published": "launcher.servers.problem.alreadyPublished",
     unknown: "launcher.servers.problem.unknown",
 };

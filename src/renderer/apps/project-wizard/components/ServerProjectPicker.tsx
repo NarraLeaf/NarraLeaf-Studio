@@ -21,6 +21,7 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     // server's list rather than putting anything on one.
     "wrong-repository": "wizard.source.onServerUnknown",
     "name-taken": "wizard.source.onServerUnknown",
+    "already-published": "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
 
