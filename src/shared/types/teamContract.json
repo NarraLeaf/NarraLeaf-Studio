@@ -1,5 +1,5 @@
 {
-  "_generated": "Generated from the @narraleaf/team-protocol contract; do not edit by hand. Until that package is published to npm, the generation is a byte-for-byte copy of the Team repository's protocol/contract.json. Studio's team.ts is pinned to this file by teamContract.test.ts, so a rename that reaches only one of them fails there rather than on somebody's machine.",
+  "_generated": "This file is generated from protocol/src/index.ts by scripts/gen-contract.mjs. Do not edit it by hand.",
   "protocol": 2,
   "socketPath": "/api/team/v1/socket",
   "capabilities": [
@@ -9,7 +9,8 @@
     "live",
     "overlay",
     "password-sign-in",
-    "project-history"
+    "project-history",
+    "blobs"
   ],
   "errorCodes": [
     "unknown-method",
@@ -43,6 +44,7 @@
     "live.join",
     "live.leave",
     "live.close",
+    "live.rule",
     "live.say",
     "overlay.list",
     "overlay.put",

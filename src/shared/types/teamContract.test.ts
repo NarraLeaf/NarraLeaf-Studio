@@ -68,6 +68,7 @@ const CAPABILITIES: TeamCapability[] = [
     "overlay",
     "password-sign-in",
     "project-history",
+    "blobs",
 ];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",

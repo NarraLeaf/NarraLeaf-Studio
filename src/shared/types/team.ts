@@ -68,7 +68,15 @@ export type TeamCapability =
     /** Mints a token from a username and password, rather than only accepting a pasted one. */
     | "password-sign-in"
     /** Answers a project's recent revisions. */
-    | "project-history";
+    | "project-history"
+    /**
+     * Carries the bytes of a file between the machines in a live session.
+     *
+     * ⚠ **Not every deployment has it**, and the difference is not cosmetic: a server
+     * without it answers 404 to the transfer endpoints, so importing an asset during a
+     * session against one is a file that never arrives.
+     */
+    | "blobs";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -345,7 +353,31 @@ export interface TeamLiveSession {
     openedAt: number;
     /** Who is in it now. Never empty: the last one out closes it. */
     members: TeamLiveMember[];
+    /**
+     * How somebody gets into it.
+     *
+     * Absent from a room opened against a deployment older than the rule, which
+     * behaves as `open` and always did - so a reader that treats "nothing said" as
+     * `open` is reading it correctly rather than guessing.
+     */
+    rule?: TeamLiveJoinRule;
 }
+
+/**
+ * How a room may be joined.
+ *
+ * ⚠ **The four digits are not here and must never be put here.** A room record is
+ * broadcast on the project's topic, which everybody on the project is watching, and a
+ * passcode broadcast to everybody has said nothing. The server answers it to the window
+ * that opened the room and to nobody else.
+ *
+ *  - `open` - on the project's list, joinable by anybody who can see it.
+ *  - `code` - not on that list for anybody who is not already in it, and joined by the
+ *    digits minted when it opened. **The server enforces both halves**: a list that
+ *    carried the room would be a rule one client build keeps, and an id that was enough
+ *    to join by would be a rule about listings rather than about joining.
+ */
+export type TeamLiveJoinRule = "open" | "code";
 
 export interface TeamLiveMember {
     instance: string;
@@ -443,6 +475,7 @@ export const TeamMethod = {
     liveJoin: "live.join",
     liveLeave: "live.leave",
     liveClose: "live.close",
+    liveRule: "live.rule",
     liveSay: "live.say",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
