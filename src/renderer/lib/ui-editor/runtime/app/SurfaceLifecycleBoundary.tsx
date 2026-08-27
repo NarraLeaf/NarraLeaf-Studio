@@ -132,6 +132,10 @@ export function SurfaceLifecycleBoundary(props: {
         }
         const surfaceToUnmount = surface.id;
         const scopeToUnmount = runtimeScopeId;
+        // Announced here rather than beside `openScope` so the hold and the release are the two
+        // halves of one effect: a scope drawn by several layers at once - the dialog slot, once per
+        // scene on the stage - stays open until the last of them has gone.
+        lifecycleRef.current.scopeHeld(scopeToUnmount);
         return () => {
             executeScopeCommands({
                 commands: lifecycleRef.current.surfaceUnmounted(scopeToUnmount, surfaceToUnmount),
