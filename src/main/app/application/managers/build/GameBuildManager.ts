@@ -38,9 +38,10 @@ import {
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
-    ASSET_COMPRESSION_TRACKS,
-    assetTrackCompression,
     readAssetCompressionConfiguration,
+    resolveAudioCompression,
+    resolveImageCompression,
+    resolveVideoCompression,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
 import {
@@ -155,6 +156,8 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { DownloadTaskBridge } from "../tasks/downloadTasks";
+import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
 
@@ -798,17 +801,38 @@ export class GameBuildManager {
         // about their artwork. Every target, because the policy is about the
         // material rather than about where it lands; the silent half of the
         // pipeline stays silent, since it cannot alter the game.
+        //
+        // The number each one carries is what the encoder is actually given, not
+        // the position of a slider: an author in advanced mode set that figure
+        // themselves, and showing them a scale they are not using would be worse
+        // than showing them nothing.
         const compression = this.assetCompressionConfig(projectConfig);
-        for (const track of ASSET_COMPRESSION_TRACKS) {
-            const policy = assetTrackCompression(compression, track);
-            if (policy.enabled) {
-                findings.push({
-                    code: track === "images" ? "lossy-images" : track === "audio" ? "lossy-audio" : "lossy-video",
-                    severity: "warning",
-                    section: "content",
-                    detail: { quality: String(policy.quality) },
-                });
-            }
+        const images = resolveImageCompression(compression);
+        if (images.enabled) {
+            findings.push({
+                code: "lossy-images",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(images.quality) },
+            });
+        }
+        const audio = resolveAudioCompression(compression);
+        if (audio.enabled) {
+            findings.push({
+                code: "lossy-audio",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(audio.bitrateKbps) },
+            });
+        }
+        const video = resolveVideoCompression(compression);
+        if (video.enabled) {
+            findings.push({
+                code: "lossy-video",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(video.crf) },
+            });
         }
         if (mobileTargets.length > 0) {
             findings.push(...await this.mobilePreflight(normalizedProjectPath));
@@ -2901,6 +2925,13 @@ export class GameBuildManager {
                 env: process.env,
             });
             session.worker = worker;
+            // Everything this build pulls off a network, on the status bar for as long as it takes.
+            // Two sources feed it: the worker says so directly for the files it fetches itself, and
+            // the watcher reads electron-builder's own log for the ones it starts without asking -
+            // an Electron distribution, the installer tooling - which nothing in that process can
+            // observe from the inside. See builderDownloadLog.ts.
+            const downloads = new DownloadTaskBridge(this.app.getTaskScheduler(), session.id);
+            const watcher = new BuilderDownloadWatcher(event => downloads.accept(event));
             let settled = false;
             const settle = (fn: () => void) => {
                 if (settled) {
@@ -2908,13 +2939,21 @@ export class GameBuildManager {
                 }
                 settled = true;
                 session.worker = null;
+                // A killed worker sends no closing line for whatever it was in the middle of
+                // fetching, so the end of the packaging step is what closes those - otherwise a
+                // cancelled build would leave the strip claiming a download forever.
+                downloads.endAll();
                 fn();
             };
-            worker.stdout?.on("data", chunk => this.emitProcessOutput(session, "info", chunk));
-            worker.stderr?.on("data", chunk => this.emitProcessOutput(session, "warning", chunk));
+            worker.stdout?.on("data", chunk => this.emitProcessOutput(session, "info", chunk, watcher));
+            worker.stderr?.on("data", chunk => this.emitProcessOutput(session, "warning", chunk, watcher));
             worker.on("message", (message: GameBuildWorkerOutboundMessage) => {
                 if (message.type === "log") {
                     this.emit(session, { level: message.level, source: "Build", message: message.message });
+                    return;
+                }
+                if (message.type === "download") {
+                    downloads.accept(message.event);
                     return;
                 }
                 if (message.type === "done") {
@@ -3138,10 +3177,10 @@ export class GameBuildManager {
     /**
      * Sound and video, through the vendored FFmpeg.
      *
-     * Never fatal, and silent when both switches are off: the pass returns before
-     * it reads a single byte, so a project that compresses nothing pays nothing
-     * and a host with no encoder says nothing about a step it was never asked to
-     * take.
+     * Never fatal. With both switches off it still runs, because taking the
+     * studio's name out of a recording is not a decision an author makes - but it
+     * then needs no encoder at all, so a host without one is never asked for one
+     * and says nothing about a step it was never asked to take.
      */
     private async compressMedia(
         session: BuildSession,
@@ -3161,6 +3200,14 @@ export class GameBuildManager {
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
             });
+            if (result.stripped > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `removed embedded metadata from ${result.stripped} media file(s), `
+                        + `saving ${formatByteSize(result.metadataBytes)}`,
+                });
+            }
             if (result.converted > 0) {
                 const saved = result.beforeBytes - result.afterBytes;
                 const percent = Math.round((saved / result.beforeBytes) * 100);
@@ -3224,7 +3271,7 @@ export class GameBuildManager {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `${config.compressImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
+                message: `${resolveImageCompression(config).enabled ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
                     + `saving ${formatByteSize(saved)} (${percent}%)`,
             });
             return result.images;
@@ -3446,7 +3493,20 @@ export class GameBuildManager {
         void writeLastGameBuildRun(session.projectPath, this.runRecord(session, session.snapshot));
     }
 
-    private emitProcessOutput(session: BuildSession, level: DevModeConsoleLogPayload["level"], chunk: Buffer): void {
+    /**
+     * One chunk of a worker's standard output: printed to the build console, and - when a watcher is
+     * given - read for the downloads electron-builder starts on its own account.
+     *
+     * The raw chunk goes to the watcher rather than the formatted message, because the formatting
+     * trims the blank lines that mark where one line ends and the next begins.
+     */
+    private emitProcessOutput(
+        session: BuildSession,
+        level: DevModeConsoleLogPayload["level"],
+        chunk: Buffer,
+        watcher?: BuilderDownloadWatcher,
+    ): void {
+        watcher?.read(chunk.toString("utf-8"));
         const message = formatPreviewProcessOutput(chunk);
         if (!message) {
             return;

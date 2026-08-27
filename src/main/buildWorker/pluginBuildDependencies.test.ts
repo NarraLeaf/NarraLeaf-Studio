@@ -33,11 +33,27 @@ function sha256Of(buffer: Buffer): string {
     return createHash("sha256").update(buffer).digest("hex");
 }
 
-/** A fetch that serves `body` once per call, like the real one would. */
+/**
+ * A fetch that serves `body` once per call, like the real one would.
+ *
+ * Carries a `Content-Length` and a readable stream because the download counts bytes as they
+ * arrive: a stand-in without them is a response no server sends.
+ */
 function servingFetch(body: Buffer): ReturnType<typeof vi.fn> {
     return vi.fn(async () => ({
         ok: true,
         status: 200,
+        headers: new Headers({ "content-length": String(body.byteLength) }),
+        // Two chunks rather than one, so a reader that only ever handled a single read still fails
+        // here rather than in front of an author.
+        body: new ReadableStream<Uint8Array>({
+            start(controller) {
+                const middle = Math.floor(body.byteLength / 2);
+                controller.enqueue(new Uint8Array(body.subarray(0, middle)));
+                controller.enqueue(new Uint8Array(body.subarray(middle)));
+                controller.close();
+            },
+        }),
         arrayBuffer: async () => body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
     }));
 }

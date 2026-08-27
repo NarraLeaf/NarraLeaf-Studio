@@ -62,15 +62,32 @@ export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
 export type { WindowConfiguration } from "@shared/types/appWindow";
 export {
+    ASSET_COMPRESSION_MODES,
     ASSET_COMPRESSION_TRACKS,
     ASSET_QUALITY_MAX,
     ASSET_QUALITY_MIN,
+    AUDIO_BITRATE_KBPS_MAX,
+    AUDIO_BITRATE_KBPS_MIN,
+    AUDIO_SAMPLE_RATE_MAX,
+    AUDIO_SAMPLE_RATE_MIN,
     DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
-    assetTrackCompression,
+    DIMENSION_CAP_MAX,
+    DIMENSION_CAP_MIN,
+    VIDEO_CRF_MAX,
+    VIDEO_CRF_MIN,
+    advancedSeedForTrack,
+    assetTrackEnabled,
     normalizeAssetCompressionConfiguration,
     readAssetCompressionConfiguration,
+    resolveAudioCompression,
+    resolveImageCompression,
+    resolveVideoCompression,
 } from "@shared/types/assetCompression";
-export type { AssetCompressionConfiguration, AssetCompressionTrack } from "@shared/types/assetCompression";
+export type {
+    AssetCompressionConfiguration,
+    AssetCompressionMode,
+    AssetCompressionTrack,
+} from "@shared/types/assetCompression";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,

@@ -19,9 +19,40 @@ const AUDIO_ON: AssetCompressionConfiguration = {
     compressAudio: true,
 };
 
-/** Large enough that the "too small to bother" floor is never what a test is measuring. */
-function wavBytes(size = 400_000): Buffer {
-    return Buffer.alloc(size, 0x41);
+function le32(value: number): number[] {
+    return [value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff, (value >>> 24) & 0xff];
+}
+
+function riffChunk(id: string, payload: number[]): Buffer {
+    return Buffer.from([
+        ...[...id].map(c => c.charCodeAt(0)),
+        ...le32(payload.length),
+        ...payload,
+        ...(payload.length % 2 === 1 ? [0] : []),
+    ]);
+}
+
+/** A real RIFF file, large enough that the "too small to bother" floor is never in play. */
+function wavBytes(sampleCount = 400_000): Buffer {
+    const body = Buffer.concat([
+        riffChunk("fmt ", new Array(16).fill(0)),
+        riffChunk("data", new Array(sampleCount).fill(7)),
+    ]);
+    return Buffer.concat([Buffer.from("RIFF"), Buffer.from(le32(4 + body.length)), Buffer.from("WAVE"), body]);
+}
+
+/** The same file with a studio's notes in it. */
+function taggedWav(): Buffer {
+    const info = riffChunk("LIST", [
+        ...[..."INFO"].map(c => c.charCodeAt(0)),
+        ...riffChunk("IART", [...[..."Someone Real"].map(c => c.charCodeAt(0)), 0, 0]),
+    ]);
+    const body = Buffer.concat([
+        riffChunk("fmt ", new Array(16).fill(0)),
+        info,
+        riffChunk("data", new Array(400_000).fill(7)),
+    ]);
+    return Buffer.concat([Buffer.from("RIFF"), Buffer.from(le32(4 + body.length)), Buffer.from("WAVE"), body]);
 }
 
 let projectPath: string;
@@ -155,8 +186,8 @@ describe("compressProjectMedia", () => {
         const result = await run();
 
         expect(result.converted).toBe(1);
-        expect(result.beforeBytes).toBe(400_000);
-        expect(result.afterBytes).toBe(80_000);
+        expect(result.beforeBytes).toBe(wavBytes().length);
+        expect(result.afterBytes).toBe(Math.round(wavBytes().length * 0.2));
         // AAC in MP4, never WebM: the iOS shell's media-type table has no
         // audio/webm in it and WebKit does not sniff containers.
         expect(result.media[ASSET_A]).toMatchObject({ ext: "m4a", mimeType: "audio/mp4" });
@@ -170,22 +201,58 @@ describe("compressProjectMedia", () => {
         // The master is what the author recorded; only the shipped copy is
         // compressed, and a build that quietly rewrote the library would be
         // destroying work no cache can give back.
-        expect((await fs.stat(contentPath(ASSET_A))).size).toBe(400_000);
+        expect((await fs.stat(contentPath(ASSET_A))).size).toBe(wavBytes().length);
     });
 
-    it("does nothing at all while both switches are off", async () => {
+    it("spawns nothing while both switches are off", async () => {
         await writeLibrary("audio", { [ASSET_A]: { bytes: wavBytes() } });
         const probe = { count: 0 };
+        const encoder = fakeEncoder();
         const result = await run({
             config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
             probeRun: fakeProbe([{ codec_type: "audio", codec_name: "pcm_s16le" }], probe),
+            encodeOptions: { spawnProcess: encoder.spawnProcess },
         });
-        expect(result).toMatchObject({ converted: 0, keptOriginal: 0, media: {} });
-        // Not one process, not one log line: a project that compresses nothing
+        expect(result).toMatchObject({ converted: 0, keptOriginal: 0 });
+        // Not one process and not one log line. A project that compresses nothing
         // pays nothing, and a host with no FFmpeg says nothing about a step it
-        // was never asked to take.
+        // was never asked to take - the metadata half needs no binary at all.
         expect(probe.count).toBe(0);
+        expect(encoder.invocations).toHaveLength(0);
         expect(log).not.toHaveBeenCalled();
+    });
+
+    it("takes the tags off a file it is not compressing", async () => {
+        // The path most of a project goes down: compression off, so every file
+        // ships as the author saved it - which is exactly when the tags would
+        // otherwise ship with it.
+        await writeLibrary("audio", { [ASSET_A]: { bytes: taggedWav() } });
+        const result = await run({ config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION });
+        expect(result.stripped).toBe(1);
+        expect(result.metadataBytes).toBeGreaterThan(0);
+        const shipped = result.media[ASSET_A];
+        // The container did not change, so the manifest's own extension still
+        // describes it and nothing here restates one.
+        expect(shipped.ext).toBeUndefined();
+        expect(shipped.mimeType).toBeUndefined();
+        const bytes = await fs.readFile(shipped.path);
+        expect(bytes.includes(Buffer.from("Someone Real"))).toBe(false);
+        expect(bytes.length).toBeLessThan(taggedWav().length);
+    });
+
+    it("leaves an untagged file out of the table entirely", async () => {
+        await writeLibrary("audio", { [ASSET_A]: { bytes: wavBytes() } });
+        const result = await run({ config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION });
+        expect(result).toMatchObject({ stripped: 0, media: {} });
+    });
+
+    it("strips what it refused to compress", async () => {
+        // A file the plan skips still ships, so it still has to be cleaned.
+        await writeLibrary("audio", { [ASSET_A]: { bytes: taggedWav() } });
+        const result = await run({
+            probeRun: fakeProbe([]),   // no streams: nothing to re-encode
+        });
+        expect(result).toMatchObject({ converted: 0, stripped: 1 });
     });
 
     it("keeps the original when the encode is not enough smaller", async () => {

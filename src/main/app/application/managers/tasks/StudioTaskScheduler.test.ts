@@ -302,6 +302,93 @@ describe("a caller that changes its mind", () => {
     });
 });
 
+describe("the network lane", () => {
+    const transfer = (key: string, run: StudioTaskRequest<unknown>["run"]) => ({
+        kind: "toolchainDownload" as const,
+        key,
+        priority: "blocking" as const,
+        lane: "network" as const,
+        run,
+    });
+
+    it("starts a download while a bake has the machine", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const bake = gate();
+        const fetching = gate();
+        let downloadStarted = false;
+
+        const baking = scheduler.submit(task("clip", async () => { await bake.opened; }));
+        await Promise.resolve();
+        const downloading = scheduler.submit(transfer("dist", async () => {
+            downloadStarted = true;
+            await fetching.opened;
+        }));
+        await Promise.resolve();
+
+        // The point of the lane: bytes already moving in a worker cannot be told to wait, so a
+        // readout that queued this would describe a wait that is not happening.
+        expect(downloadStarted).toBe(true);
+        fetching.open();
+        await downloading;
+        bake.open();
+        await baking;
+    });
+
+    it("shows the download rather than the speculation it is running beside", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const bake = gate();
+        const fetching = gate();
+
+        const baking = scheduler.submit(task("clip", async () => { await bake.opened; }));
+        await Promise.resolve();
+        const downloading = scheduler.submit(transfer("dist", async () => { await fetching.opened; }));
+        await Promise.resolve();
+
+        const overview = scheduler.getOverview();
+        expect(overview.active?.kind).toBe("toolchainDownload");
+        // The bake is still going; the strip says there is one more thing than the one it names.
+        expect(overview.queued).toBe(1);
+        expect(overview.blocking).toBe(true);
+
+        fetching.open();
+        await downloading;
+        expect(scheduler.getOverview().active?.kind).toBe("weatherBake");
+        bake.open();
+        await baking;
+    });
+
+    it("reports bytes only where a total was known", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const fetching = gate();
+        const seen: (StudioTaskOverview["active"])[] = [];
+        scheduler.onChanged(overview => seen.push(overview.active));
+
+        const downloading = scheduler.submit(transfer("dist", async context => {
+            context.report({ done: 512, total: 2048, unit: "byte" });
+            await fetching.opened;
+        }));
+        await Promise.resolve();
+        fetching.open();
+        await downloading;
+
+        const measured = seen.find(active => active?.progress !== null && active?.progress !== undefined);
+        expect(measured?.progress).toEqual({ done: 512, total: 2048, unit: "byte" });
+    });
+
+    it("settles a download that was cancelled rather than leaving it on the strip", async () => {
+        const scheduler = new StudioTaskScheduler();
+        const downloading = scheduler.submit(transfer("dist", context => new Promise<void>(resolve => {
+            context.onCancel(() => resolve());
+        })));
+        await Promise.resolve();
+
+        scheduler.cancel("dist");
+
+        expect(await downloading).toEqual({ status: "cancelled" });
+        expect(scheduler.getOverview().active).toBeNull();
+    });
+});
+
 describe("the words a task is shown by", () => {
     // The status bar reaches these through a cast, so the compiler cannot see them and the i18n
     // parity test cannot either - parity compares the three languages against each other, and a key
