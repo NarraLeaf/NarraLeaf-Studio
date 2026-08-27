@@ -21,11 +21,11 @@ import { reportDownload } from "./downloadReporting";
  * they did not know they were using.
  *
  * Shaped after `ensureWinCodeSignCache`, which solves the same problem for the code-signing bundle:
- * a pinned checksum, a cache under a known root, a mirror resolved as "what the author set, then
- * what the host's environment says, then the official source", and an extraction into a staging
- * directory that is renamed into place only once it is complete. That last part is what makes the
- * existence check at the top a sufficient one - a directory under this name is a finished toolchain
- * or it is not there, never a half-extracted tree a later build would try to compile with.
+ * a pinned checksum, a cache under a known root, a mirror resolved as "what the author set, or else
+ * the official source", and an extraction into a staging directory that is renamed into place only
+ * once it is complete. That last part is what makes the existence check at the top a sufficient one
+ * - a directory under this name is a finished toolchain or it is not there, never a half-extracted
+ * tree a later build would try to compile with.
  *
  * Deliberately Electron-free, like the rest of this directory: `userDataDir` arrives as an argument
  * so this can run in either build worker or on the main process, and the author's download rewrites
@@ -47,16 +47,6 @@ export const ZIG_VERSION = "0.16.0";
 
 /** Where the official archives live. `<base><version>/<archive>`. */
 const DEFAULT_ZIG_MIRROR = "https://ziglang.org/download/";
-
-/**
- * Set on a host that reaches the network through somewhere else, and honoured below the Studio
- * setting.
- *
- * Named for this product rather than borrowed, because Zig publishes no environment variable for
- * this the way electron-builder does - an existing name would be one this respects and nothing else
- * sets, which is worse than a name that says who reads it.
- */
-const ZIG_MIRROR_ENV = "NARRALEAF_ZIG_MIRROR";
 
 /**
  * One published build, as `https://ziglang.org/download/index.json` describes it.
@@ -169,7 +159,7 @@ const PRUNED_LEVELS: Readonly<Record<string, { keepFiles: "all" | ReadonlySet<st
 export type EnsureZigToolchainOptions = {
     /** Electron's userData directory. A parameter so this module stays Electron-free. */
     userDataDir: string;
-    /** `build.zigMirror`, as the author set it. Empty or absent means "look at the host, then use the official source". */
+    /** `build.zigMirror`, as the author set it. Empty or absent means the official source. */
     mirror?: string;
     /**
      * The author's download rewrites.
@@ -182,12 +172,16 @@ export type EnsureZigToolchainOptions = {
     log?: (level: "info" | "warning" | "error", message: string) => void;
 };
 
-/** Base URL for the archives, as "what the author set, then the host, then the official source". */
+/**
+ * Base URL for the archives: the Studio setting, or the official source.
+ *
+ * The setting is the only way to point this somewhere else. Zig publishes no environment variable
+ * for it the way electron-builder does, so an invented one would be a second place to configure the
+ * same thing that only this product reads - a name an author has to be told about before it can
+ * help them, sitting beside a field they can already see.
+ */
 export function zigMirror(configured?: string): string {
-    // The Studio setting wins over the environment for the reason the binaries mirror gives: it is
-    // the one an author can actually reach, and a variable exported on this host years ago should
-    // not quietly override what they just typed.
-    const mirror = configured?.trim() || process.env[ZIG_MIRROR_ENV]?.trim() || DEFAULT_ZIG_MIRROR;
+    const mirror = configured?.trim() || DEFAULT_ZIG_MIRROR;
     return mirror.endsWith("/") ? mirror : `${mirror}/`;
 }
 

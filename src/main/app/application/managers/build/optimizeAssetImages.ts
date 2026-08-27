@@ -86,6 +86,15 @@ export type AssetImageOptimizationInput = {
     openCodec: () => Promise<WebImageCodec>;
     log: AssetImageOptimizationLog;
     cancelled?: () => boolean;
+    /**
+     * How far through the library this pass is, once per image.
+     *
+     * A callback rather than a channel of its own: this runs on the main process, where the caller
+     * is the build that wants the number and is one frame away from the window that shows it. The
+     * total is settled before the first image is read - the library's own listing plus the baked
+     * avatars - which is what makes a count here a measurement rather than an extrapolation.
+     */
+    onProgress?: (done: number, total: number) => void;
 };
 
 /**
@@ -283,7 +292,31 @@ export async function optimizeProjectImages(
     const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
         path.join(input.projectPath, "assets", IMAGE_METADATA_FILENAME),
     );
-    for (const [assetKey, record] of Object.entries(metadata ?? {})) {
+    const listed = Object.entries(metadata ?? {});
+    // The baked avatars, which the library does not list: they are derived
+    // project files under a synthetic id, and the compiler copies them in a walk
+    // of its own. They are also PNG by construction and shown on almost every
+    // line of dialogue, so leaving them out would exempt the images a player
+    // looks at most.
+    //
+    // Found before either walk begins rather than between them, so how much work this pass has is
+    // known before it starts any. A total discovered halfway through would make the readout slide
+    // backwards at the moment the avatars were added to it.
+    const avatars = await bakedAvatars(input.projectPath);
+    const total = listed.length + avatars.length;
+    let considered = 0;
+    const advance = (): void => {
+        considered += 1;
+        input.onProgress?.(considered, total);
+    };
+    if (total > 0) {
+        // Announced before the first image so the readout is determinate for the whole pass. A
+        // project with no images says nothing rather than opening a count of zero, which is not a
+        // fraction anything can draw.
+        input.onProgress?.(0, total);
+    }
+
+    for (const [assetKey, record] of listed) {
         if (input.cancelled?.()) {
             break;
         }
@@ -292,18 +325,15 @@ export async function optimizeProjectImages(
         if (sourcePath) {
             await consider(id, sourcePath, assetName(record, id));
         }
+        advance();
     }
 
-    // The baked avatars, which the library does not list: they are derived
-    // project files under a synthetic id, and the compiler copies them in a walk
-    // of its own. They are also PNG by construction and shown on almost every
-    // line of dialogue, so leaving them out would exempt the images a player
-    // looks at most.
-    for (const avatar of await bakedAvatars(input.projectPath)) {
+    for (const avatar of avatars) {
         if (input.cancelled?.()) {
             break;
         }
         await consider(avatar.id, avatar.path, avatar.name);
+        advance();
     }
 
     await codec.open?.close().catch(() => undefined);

@@ -462,8 +462,8 @@ function ConsoleProgressBar({ progress }: { progress: ConsoleProgress | null }) 
             data-tip={progress.label}
         >
             {progress.indeterminate ? (
-                // `nl-motion-keep`: the sweep is the only thing saying the build is alive — the
-                // pipeline gives us nothing to fill a real bar with. Under the reduced-motion
+                // `nl-motion-keep`: the sweep is the only thing saying the work is alive — it is
+                // what a producer shows for a stretch it cannot measure. Under the reduced-motion
                 // preference (styles.css) a stopped bar would read as a hang instead.
                 <>
                     <div className={`nl-motion-keep absolute inset-y-0 animate-progress-indeterminate-1 rounded-full ${barColor}`} />

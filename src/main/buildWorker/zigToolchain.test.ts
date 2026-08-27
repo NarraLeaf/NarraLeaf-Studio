@@ -32,30 +32,25 @@ async function listTree(root: string): Promise<string[]> {
 }
 
 describe("where a Zig toolchain comes from", () => {
-    const previous = process.env.NARRALEAF_ZIG_MIRROR;
-
-    afterEach(() => {
-        if (previous === undefined) {
-            delete process.env.NARRALEAF_ZIG_MIRROR;
-        } else {
-            process.env.NARRALEAF_ZIG_MIRROR = previous;
-        }
-    });
-
-    it("prefers what the author set over what the host was configured with", () => {
-        process.env.NARRALEAF_ZIG_MIRROR = "https://host.test/zig";
-        // The setting is the one an author can reach; a variable exported on this machine years ago
-        // must not quietly override what they just typed.
+    it("takes what the author set, and adds the separator the layout needs", () => {
         expect(zigMirror("https://typed.test/zig")).toBe("https://typed.test/zig/");
+        expect(zigMirror("https://typed.test/zig/")).toBe("https://typed.test/zig/");
     });
 
-    it("falls back to the host, and then to the official source", () => {
-        process.env.NARRALEAF_ZIG_MIRROR = "https://host.test/zig/";
-        expect(zigMirror("")).toBe("https://host.test/zig/");
-        expect(zigMirror("   ")).toBe("https://host.test/zig/");
-
-        delete process.env.NARRALEAF_ZIG_MIRROR;
+    it("falls back to the official source, and reads no environment variable on the way", () => {
+        expect(zigMirror("")).toBe("https://ziglang.org/download/");
+        expect(zigMirror("   ")).toBe("https://ziglang.org/download/");
         expect(zigMirror()).toBe("https://ziglang.org/download/");
+
+        // The setting is the only override. A host variable that could reach this would be a
+        // second place to configure one thing, and the one an author cannot see from the panel
+        // they set it in.
+        process.env.NARRALEAF_ZIG_MIRROR = "https://host.test/zig";
+        try {
+            expect(zigMirror()).toBe("https://ziglang.org/download/");
+        } finally {
+            delete process.env.NARRALEAF_ZIG_MIRROR;
+        }
     });
 
     it("caches where the inventory offers to delete it", () => {
