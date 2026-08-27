@@ -549,7 +549,17 @@ export class LiveSession {
             // needs no checkpoint but is still somewhere this author was. See `giveBackOwnWork`.
             const restore = checkpoint ?? await this.deps.version.head();
             await this.matchRoomRevision(room.revision);
-            if (this.deps.story.document(storyId) === null) {
+            // ⚠ **Read before asked about.** Story documents are loaded lazily, so a window that
+            // has not opened one answers null for every story it has - and a join now happens
+            // seconds after the workspace did, because the launcher hands one over as the window
+            // comes up. Asking `document(storyId)` there reported a story sitting on disk as one
+            // this copy does not have, which is a refusal an author can do nothing about.
+            //
+            // `enter` reads them again a moment later for its own reasons; reading a story that is
+            // already in memory costs nothing, and one call cannot serve both because what happens
+            // in between is the join the server may still refuse.
+            const readable = await this.deps.story.loadAll();
+            if (!readable.includes(storyId)) {
                 // The adoption has landed, so this IS the tree the room opened on and the document
                 // still is not in it. Entering anyway would give every read of it null and say
                 // nothing about why.
