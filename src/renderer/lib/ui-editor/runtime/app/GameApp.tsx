@@ -142,7 +142,7 @@ import {
     AppSurfaceLayerWithAdapter,
     type AppSurfaceLayerNavEntry,
 } from "./AppSurfaceLayer";
-import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
+import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import {
     createGameUiSlotComponents,
@@ -866,7 +866,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, []);
     const currentDialogNametagRef = useRef<string | null>(null);
-    const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
+    const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const prefersReducedMotion = useReducedMotion();
 
     // The choice voice player is built once and outlives any one render, so the host it logs through
@@ -1290,19 +1290,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
     }, [core]);
 
-    const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
-        choiceRuntimeRef.current = runtime;
-        // The one moment a choice's options and the index each of them answers to are both in hand.
-        // Announced from here rather than from the slot surface so a host that mounts no Game UI
-        // choice slot simply never reports one, instead of reporting an empty menu.
-        if (runtime) {
-            pluginHost?.emitChoiceShown(runtime.items.map(item => ({
-                index: item.index,
-                text: item.text,
-                disabled: item.disabled,
-            })));
-        }
-    }, [pluginHost]);
+    // A menu has registered what it is showing: the one moment its options and the index each of
+    // them answers to are both in hand. Every menu on the stage reports, so a concurrent pair is two
+    // choices shown rather than one.
+    useEffect(() => choiceMenus.onShown(runtime => {
+        pluginHost?.emitChoiceShown(runtime.items.map(item => ({
+            index: item.index,
+            text: item.text,
+            disabled: item.disabled,
+        })));
+    }), [choiceMenus, pluginHost]);
 
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
@@ -1785,7 +1782,7 @@ export function GameApp(props: GameAppProps): ReactNode {
     } = useMemo(() => createLiveGameUiCallbacks({
         requireLiveGame: requireActiveLiveGame,
         getLiveGame: () => nlrLiveGameRef.current,
-        choiceRuntimeRef,
+        choiceMenus,
         currentDialogNametagRef,
         dialogClickTargets: nlrDialogClickTargets,
     }), [requireActiveLiveGame]);
@@ -1892,7 +1889,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
         const liveGame = requireActiveLiveGame("Skip To Next Choice");
-        await fastForwardToNextChoice(liveGame, choiceRuntimeRef);
+        await fastForwardToNextChoice(liveGame, choiceMenus);
     }, [requireActiveLiveGame]);
 
     // Read/write bridge over the running story runtime for the Dev Mode story-runtime panel. Fully
@@ -2053,7 +2050,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         clearCurrentDialogState();
         setGameStageVisible(false);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
@@ -3107,7 +3104,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             logLabel: host.id,
             slotHostOptions,
             setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
-            setChoiceRuntime,
+            choiceMenus,
         });
         const onStageNode = slots.onStageNode;
         const game = createNlrGameWithGameUi({
@@ -3204,7 +3201,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         cancelSceneTracking();
         nlrCompiledRef.current = compiled;
         registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         setNlrSession({
             id: sessionId,
             game,
@@ -3278,7 +3275,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
-        setChoiceRuntime,
+        choiceMenus,
         setNlrDialogVirtualClickTarget,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
@@ -4148,7 +4145,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         clearCurrentDialogState();
         clearDevModeSavePreviewImages();
         nlrBootStartedRef.current = null;
@@ -4183,7 +4180,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         clearCurrentDialogState();
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
