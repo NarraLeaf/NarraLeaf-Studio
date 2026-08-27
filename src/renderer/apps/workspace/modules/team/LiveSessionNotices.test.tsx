@@ -35,7 +35,8 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 const world = vi.hoisted(() => ({
     view: {} as LiveSessionView,
     listeners: new Set<(view: LiveSessionView) => void>(),
-    show: vi.fn(() => "notice-1"),
+    // Answers an id, because the request notice closes itself once it has been answered.
+    show: vi.fn((_options: RaisedNotice) => "notice-1"),
     close: vi.fn(),
     answerRequest: vi.fn(() => Promise.resolve(true)),
 }));
@@ -87,7 +88,16 @@ function publish(view: LiveSessionView) {
     });
 }
 
-function shown(): { type: NotificationType; message: string; detail?: string }[] {
+/** One notice as the surface raised it. */
+type RaisedNotice = {
+    type: NotificationType;
+    message: string;
+    detail?: string;
+    timeout?: number;
+    actions?: { label: string; primary?: boolean; onClick: () => void }[];
+};
+
+function shown(): RaisedNotice[] {
     return world.show.mock.calls.map(call => call[0]);
 }
 
@@ -141,12 +151,12 @@ describe("what a live session tells the author", () => {
             requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
         });
 
-        const [notice] = world.show.mock.calls.map(call => call[0]);
-        expect(notice.message).toBe("workspace.shell.team.liveAsked(ben)");
-        expect(notice.timeout).toBe(0);
+        const [notice] = shown();
+        expect(notice?.message).toBe("workspace.shell.team.liveAsked(ben)");
+        expect(notice?.timeout).toBe(0);
         // And the two answers are on it, which is the whole reason it exists where the author is
         // already looking.
-        expect(notice.actions.map((action: { label: string }) => action.label))
+        expect(notice?.actions?.map(action => action.label))
             .toEqual(["workspace.shell.team.liveAdmit", "workspace.shell.team.liveTurnAway"]);
     });
 
@@ -161,8 +171,8 @@ describe("what a live session tells the author", () => {
             requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
         });
 
-        const [notice] = world.show.mock.calls.map(call => call[0]);
-        act(() => notice.actions[0].onClick());
+        const [notice] = shown();
+        act(() => notice?.actions?.[0]?.onClick());
 
         expect(world.close).toHaveBeenCalledWith("notice-1");
         expect(world.answerRequest).toHaveBeenCalledWith("i-ben", true);
