@@ -36,6 +36,51 @@ describe("SurfaceLifecycleOrchestrator", () => {
         expect(commands[1]).toMatchObject({ allowClosedScopeExecution: true });
     });
 
+    it("a scope two layers hold stays open until the second of them goes", () => {
+        // The Game UI dialog slot with a scene parked behind a returnable jump: the caller's layer
+        // and the called scene's layer draw the same surface, so they share one scope. The first to
+        // leave used to close it, and every blueprint dispatch the surviving box made after that was
+        // aborted - the box kept drawing the line and stopped answering the click that settles it.
+        const orchestrator = new SurfaceLifecycleOrchestrator();
+        orchestrator.scopeHeld("scope-1");
+        orchestrator.surfaceReady("scope-1", "surface-a");
+        orchestrator.scopeHeld("scope-1");
+
+        expect(orchestrator.surfaceUnmounted("scope-1", "surface-a")).toEqual([]);
+        expect(tokens(orchestrator.surfaceUnmounted("scope-1", "surface-a")))
+            .toEqual([...LIFECYCLE_CONTRACT.surfaceUnmounted]);
+    });
+
+    it("a layer that left while another held the scope does not re-run surfaceInit", () => {
+        // The surface never unmounted, so the layer the caller mounts on its way back is a re-enter
+        // and not a first enter: init has already run, and running it again would replay every
+        // widget's On Init over state the surface is already holding.
+        const orchestrator = new SurfaceLifecycleOrchestrator();
+        orchestrator.scopeHeld("scope-1");
+        orchestrator.surfaceReady("scope-1", "surface-a");
+        orchestrator.scopeHeld("scope-1");
+        orchestrator.surfaceUnmounted("scope-1", "surface-a");
+
+        expect(tokens(orchestrator.surfaceReady("scope-1", "surface-a")))
+            .toEqual([...LIFECYCLE_CONTRACT.surfaceReadyReEnter]);
+    });
+
+    it("a scope nobody claimed closes on the first unmount", () => {
+        const orchestrator = new SurfaceLifecycleOrchestrator();
+        orchestrator.surfaceReady("scope-1", "surface-a");
+        expect(tokens(orchestrator.surfaceUnmounted("scope-1", "surface-a")))
+            .toEqual([...LIFECYCLE_CONTRACT.surfaceUnmounted]);
+    });
+
+    it("a session reset forgets the layers that were holding scopes open", () => {
+        const orchestrator = new SurfaceLifecycleOrchestrator();
+        orchestrator.scopeHeld("scope-1");
+        orchestrator.scopeHeld("scope-1");
+        orchestrator.sessionReset();
+        expect(tokens(orchestrator.surfaceUnmounted("scope-1", "surface-a")))
+            .toEqual([...LIFECYCLE_CONTRACT.surfaceUnmounted]);
+    });
+
     it("re-enter after exit dispatches surfaceInit again", () => {
         const orchestrator = new SurfaceLifecycleOrchestrator();
         orchestrator.surfaceReady("scope-1", "surface-a");
