@@ -33,6 +33,7 @@ import {
 } from "./effectAuthoringRegistry";
 import { BLEND_MODE_SELECT_OPTIONS } from "./effectBlendOptions";
 import { useTranslation } from "@/lib/i18n";
+import { INTERFACE_DOCUMENT_PATHS } from "@shared/documents/specs/uiEditorPaths";
 
 const PANEL_WIDTH = 280;
 const PANEL_GAP = 8;
@@ -500,7 +501,7 @@ export function EffectsStackEditor({
     const [pendingAdd, setPendingAdd] = useState<VisualEffectKind | null>(null);
     // For the detail panel alone, which is portalled out of this subtree. Everything else in this
     // editor is an ordinary descendant of the inspector's clamp and needs nothing from here.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(INTERFACE_DOCUMENT_PATHS);
 
     const closePanel = useCallback(() => {
         setOpenKind(null);

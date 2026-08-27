@@ -30,13 +30,76 @@ export type SceneFlowDrawnLine = {
     /** Drawn faded: every jump on this line is switched off, so the compiler emits none of them. */
     disabled: boolean;
     /**
-     * Drawn with an arrow at both ends: every jump on this line comes back, so the run goes to the
-     * target and returns to carry on where it left.
+     * Drawn in the call colour, with an arrow at both ends: every jump on this line comes back, so
+     * the run goes to the target and returns to carry on where it left. See {@link sceneFlowLinePaint}.
      */
     returns: boolean;
     /** The forks that reach this target — what a collapsed line hides. Empty on an arm's own line. */
     branches: SceneFlowBranchLabel[];
 };
+
+/** The ink of an ordinary line — a way out of the scene, and the map's overwhelming majority. */
+export const SCENE_FLOW_LINE_STROKE = "rgb(var(--nl-fg-muted))";
+
+/**
+ * The ink of a line the run comes back along.
+ *
+ * A call is marked twice over — this colour *and* an arrowhead at each end — because the arrowheads
+ * on their own cannot say which line they belong to. Every line a collapsed scene sends out leaves
+ * the same point on its rim, so a scene that both jumps and calls draws two lines whose first
+ * segments lie exactly on top of one another, and the return arrowhead is painted on that shared
+ * stub. The reader can see that something comes back to the scene and cannot tell which of the two
+ * targets it is.
+ *
+ * The cue that settles it therefore has to be a property of the WHOLE line rather than a mark at one
+ * point on it, because the only place two lines out of one scene are distinguishable is where they
+ * have already parted. Of the properties a stroke has, three are spoken for here: the dash pattern
+ * is a conditional jump, the opacity is a switched-off row (and the emphasis mask), and width plus
+ * the accent together are the selected line (`.narraleaf-scene-flow .react-flow__edge.selected` in
+ * styles.css). Colour is what is left — and unlike a glyph or a label it still reads when the graph
+ * is zoomed out far enough that a 14px arrowhead is four pixels of grey.
+ *
+ * `binding` rather than another accent because it is the palette's one chromatic token that passes
+ * no verdict: `danger`, `warning` and `success` would each say a call is something being wrong or
+ * right rather than a kind of row, and `primary` is already what a selected line turns on this very
+ * surface. It borrows the token from the blueprint editor's bound-value tint, which the map never
+ * draws beside.
+ */
+export const SCENE_FLOW_CALL_STROKE = "rgb(var(--nl-binding))";
+
+/** A line whose jump only fires on some runs: it sits under a condition or a menu option. */
+export const SCENE_FLOW_CONDITIONAL_DASH = "5 4";
+
+/** How one line is painted, apart from the opacity — see {@link sceneFlowLinePaint}. */
+export type SceneFlowLinePaint = {
+    /** The stroke, and both arrowheads with it, so one line reads as one object. */
+    stroke: string;
+    /** SVG dash array, or undefined for a solid line. */
+    strokeDasharray: string | undefined;
+    /** An arrowhead at the source end as well as at the target end. */
+    doubleHeaded: boolean;
+};
+
+/**
+ * Everything about a line's stroke that follows from what the line *is*.
+ *
+ * Separate from the canvas so the map's three visual codes can be asserted without rendering
+ * anything, and so they are decided in one place: they compose — a switched-off conditional call is
+ * all three at once — and a reader has to be able to take them apart again.
+ *
+ * Opacity is deliberately not here. It is the one part of a line's appearance that does not follow
+ * from the line: it also carries the emphasis mask, which is about what the surface is pointing at
+ * rather than about the jumps.
+ */
+export function sceneFlowLinePaint(
+    line: Pick<SceneFlowDrawnLine, "conditional" | "returns">,
+): SceneFlowLinePaint {
+    return {
+        stroke: line.returns ? SCENE_FLOW_CALL_STROKE : SCENE_FLOW_LINE_STROKE,
+        strokeDasharray: line.conditional ? SCENE_FLOW_CONDITIONAL_DASH : undefined,
+        doubleHeaded: line.returns,
+    };
+}
 
 /**
  * The scene edge minus the jumps an expanded scene's branch rows have taken over, or null when

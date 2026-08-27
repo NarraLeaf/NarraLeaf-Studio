@@ -1,321 +1,100 @@
-import { fnv1a64BytesHex } from "@shared/utils/contentHash";
-import { LIVE_BLOB_CHUNK_BYTES, LIVE_BLOB_MAX_BYTES, type LiveBlobChunk } from "./ops";
-
 /**
  * Getting a file from one machine in a session to the others.
  *
- * **Why this exists at all.** Every other document a session carries is small enough to state: a
- * line of prose, a character record, an entry in a translation library. An asset is a file, and one
- * `live.say` is 16 KiB. There is no second channel - the room stores nothing, the server is a relay,
- * and the repository is the way bulk normally travels but a session is opened ON a committed
- * revision and must not re-base itself under an author who is typing. So a file that exists on one
- * machine and nowhere else is sliced, and the slices travel beside the operation stream.
+ * **Why this needs saying at all.** Every other document a session carries is small enough to
+ * state: a line of prose, a character record, an entry in a translation library. An asset is a
+ * file. It cannot be stated, it cannot be recomputed from anything anybody else has, and the
+ * repository - which is how bulk normally travels - is not available, because a session opens ON a
+ * committed revision and must not re-base itself under an author who is mid-sentence.
  *
- * **Beside it, not through it.** A slice is not an operation: it changes no document, takes no
- * sequence number and is applied by nobody. That is what keeps a thirty-megabyte import from
- * stopping everybody else's typing until it finishes - the host goes on applying operations while
- * the bytes are still arriving, and the operation that names the transfer is simply refused if they
- * never do.
+ * ## The shape
  *
- * **What is deliberately NOT here**, because the three of them are the reason this is affordable at
- * all: duplicating an asset, deleting one and undoing a deletion move no bytes anywhere. The bytes
- * for those are already on every machine, and `LiveAssetBytes` says which of the three a record's
- * bytes come from. Only a file arriving from outside the project travels.
+ * A file goes over **its own request to the server**, beside the operation stream rather than
+ * through it. The sender reserves an object, streams its own file into it and states the operation;
+ * every other machine reads the object out to the place the file belongs, going on as it arrives.
+ * `LiveAssetBytePart` is the whole of the seam: an address, a length and a fingerprint.
  *
- * ## What this promises and what it does not
+ * Four things follow, and each of them is why it is not a message channel:
+ *
+ *  1. **A transfer cannot delay a sentence.** Two connections, so somebody's two-hundred-megabyte
+ *     video is never in front of somebody else's typing. The channel it replaced needed the sender
+ *     paced by hand - a fixed number of pieces and then a turn of the event loop - against a figure
+ *     nobody could pick correctly, because it traded the same thing in both directions.
+ *  2. **Neither machine holds the file.** The sender streams off its own disk, the receiver streams
+ *     onto its own, and the process in between never has more than a socket buffer. So the largest
+ *     file a session carries is a question about disks and about what the server will hold, and no
+ *     longer a question about heaps - which is what the old 32 MiB really was.
+ *  3. **An interruption is resumed.** A reconnect, a session ending, Studio being restarted: the
+ *     server keeps what it already holds, and both ends go on from the byte they reached. A message
+ *     channel had no way to say "from 41,000,000".
+ *  4. **Backpressure is the transport's.** A stream that is ahead of a socket is paused by the
+ *     socket, so there is no pacing figure anywhere in this and nothing to tune.
+ *
+ * ## What it promises and what it does not
  *
  * It promises that a completed transfer is the bytes that were sent, because the digest is computed
- * from what went on the wire and checked against what came off it. It does not promise delivery -
- * nothing on this channel does - which is why {@link LiveBlobInbox.missing} exists and why the
- * operation naming a transfer is refused rather than half-applied when the bytes are short.
+ * from what went on the wire and checked against what came off it before the file is put in place.
+ * It does not promise that a transfer completes - the machine holding the file may close, and the
+ * operation naming it is refused rather than half-applied when that happens, exactly as before.
+ *
+ * ## What deliberately does not travel
+ *
+ * Duplicating an asset, deleting one, and undoing a deletion move no bytes anywhere. Those are the
+ * reason the whole thing is affordable, and `LiveAssetBytes` is where the three answers live: only
+ * a file arriving from outside the project has to go anywhere at all.
  */
 
 /**
- * How many times one file may be asked for again before a machine stops asking.
+ * How far along a transfer is, between nought and one.
  *
- * ⚠ **Bounded because nothing here runs on a timer.** A transfer whose sender has left the room can
- * never complete, and an unbounded repair is a machine asking a room that cannot answer for the rest
- * of the session. Three covers a lost slice and leaves a dead transfer costing three messages in
- * total; what remains is a record whose file is missing, which the reference report already says.
+ * ⚠ **Never above one and never below nought**, whatever it is given. The two numbers come from
+ * different places - the total from the operation that named the file, the count from a transport
+ * that is still running - and a band that draws 104% of a row is a band an author reads as a
+ * defect in the import.
+ *
+ * A file of no length is complete, not nought: an empty file is a legitimate thing to import, and
+ * dividing by its length would make a band that never fills.
  */
-export const MAX_BLOB_REPAIRS = 3;
+export function transferShare(bytes: number, total: number): number {
+    if (!Number.isFinite(bytes) || !Number.isFinite(total) || total <= 0) {
+        return total === 0 ? 1 : 0;
+    }
+    return Math.min(1, Math.max(0, bytes / total));
+}
+
+/** How many times a transfer is picked up again after an interruption before it is left alone. */
+export const TRANSFER_ATTEMPT_LIMIT = 6;
 
 /**
- * Whether a machine that is short of some slices should ask for them again.
+ * How long to wait before picking an interrupted transfer up again.
  *
- * ❗ **The answer is almost always no, and that is the point.** A repair request is answered by the
- * sender re-sending everything that is missing, so a receiver that asked each time a slice landed
- * would have a file sent once per slice: twenty-two slices costs a few hundred messages and passes
- * every small test, and two thousand slices is a room that carries nothing else until it gives up.
- *
- * So there are exactly two moments worth asking at, and neither of them is during the flow:
- *
- *  - **the sender has sent everything and this file is still short** (`sent`), which is a slice that
- *    was lost rather than one that has not been sent yet - slices go down one connection in order,
- *    so the last one landing means they all left;
- *  - **this file started arriving and then stopped**, which is the case the first cannot see, a
- *    transfer whose last slice was the one that was lost.
- *
- * ⚠ **A file that has not started is never asked about**, and that is what makes an import of forty
- * files affordable. They are sent one after another, so while the first is arriving the other
- * thirty-nine have nothing and have had nothing since the last attempt: a rule that read that as a
- * stall would have every one of them ask for a file the sender is already going to send.
- *
- * The first attempt never asks either: it runs while the sender is still sending, and asking then
- * would have the whole file sent a second time before any of the first had arrived.
+ * ⚠ **Backs off, and is bounded twice** - by the delay and by {@link TRANSFER_ATTEMPT_LIMIT}. The
+ * thing being retried is a request to a server that may be down, or may be up and holding an object
+ * whose sender has closed, and a retry that neither backed off nor gave up would be one machine
+ * asking a question nothing can answer for the rest of the session. The first wait is short because
+ * much the commonest interruption is a reconnect that has already finished.
  */
-export function shouldAskForRepair(input: {
-    /** Slices in hand now. */
-    have: number;
-    /** Slices in hand at the previous attempt. Negative when there has not been one. */
-    seen: number;
-    /** Whether the last slice of a file that is still short has arrived. */
-    sent: boolean;
-    /** How many repairs have already been asked for. */
-    asked: number;
-}): boolean {
-    if (input.asked >= MAX_BLOB_REPAIRS) {
+export function transferRetryDelayMs(attempt: number): number {
+    const at = Math.max(0, Math.floor(attempt));
+    return Math.min(30_000, 500 * 2 ** at);
+}
+
+/**
+ * Whether a bundle-relative path may be written inside the asset it belongs to.
+ *
+ * ⚠ **The one field in `LiveAssetBytePart` that decides where bytes land**, and it arrives from
+ * another Studio. A model bundle is a directory whose manifest names its siblings, so the path has
+ * to be honoured; what may not be honoured is one that climbs out of the bundle, names a drive, or
+ * is absolute. Checked here rather than at each of the places that writes one, so there is one
+ * answer rather than three.
+ */
+export function bundlePathIsInside(path: string): boolean {
+    if (path === "" || path.length > 512) {
         return false;
     }
-    if (input.sent) {
-        return true;
-    }
-    if (input.have <= 0) {
+    if (path.startsWith("/") || path.startsWith("\\") || /^[A-Za-z]:/.test(path)) {
         return false;
     }
-    return input.seen >= 0 && input.have <= input.seen;
-}
-
-/** The fingerprint of a file's bytes, as {@link LiveAssetBytePart.digest} carries it. */
-export function blobDigest(bytes: Uint8Array): string {
-    return fnv1a64BytesHex(bytes);
-}
-
-/** How many slices a file of this size takes. Zero bytes is one empty slice, never none. */
-export function blobChunkCount(size: number): number {
-    return Math.max(1, Math.ceil(size / LIVE_BLOB_CHUNK_BYTES));
-}
-
-/**
- * Cut a file into the messages that carry it.
- *
- * ⚠ **An empty file is one empty slice, not zero slices.** A new text file is legitimately zero
- * bytes, and a transfer with nothing in it would be one a receiver could never tell from a transfer
- * that has not started.
- */
-export function sliceBlob(transferId: string, bytes: Uint8Array): LiveBlobChunk[] {
-    const total = blobChunkCount(bytes.length);
-    const chunks: LiveBlobChunk[] = [];
-    for (let index = 0; index < total; index += 1) {
-        const start = index * LIVE_BLOB_CHUNK_BYTES;
-        chunks.push({
-            kind: "blob",
-            transferId,
-            index,
-            total,
-            data: encodeBase64(bytes.subarray(start, start + LIVE_BLOB_CHUNK_BYTES)),
-        });
-    }
-    return chunks;
-}
-
-/** What one transfer is waiting for, or the bytes if it is done. */
-export type LiveBlobState =
-    | { status: "collecting"; have: number; total: number }
-    | { status: "complete"; bytes: Uint8Array }
-    /** The slices arrived but do not hash to what the sender said. See {@link LiveBlobInbox.take}. */
-    | { status: "corrupt" }
-    | { status: "unknown" };
-
-/**
- * The slices this machine has been sent, until the operation that names them arrives.
- *
- * **Held in memory and never on disk**, which is the whole reason the size cap in `ops` is a cap on
- * the file rather than a promise about the disk: a transfer that is never claimed is a transfer that
- * cost some memory for a while, not a stray file in the author's project.
- *
- * ⚠ **Bounded twice, and both bounds are load-bearing.** A slice arrives from another Studio, which
- * may be a different version or may be sending nonsense; without a per-transfer cap one message
- * claiming three million slices reserves the memory to match, and without a cap on how many
- * transfers may be open at once a peer can open one per message. Both are refused silently - a
- * machine that is being flooded has nothing useful to say to the flooder.
- */
-export class LiveBlobInbox {
-    private readonly transfers = new Map<string, { total: number; parts: Map<number, Uint8Array> }>();
-
-    public constructor(private readonly maxOpen: number = 64) {}
-
-    /**
-     * Take one slice in. False when it was refused, which is a defence rather than a failure.
-     *
-     * Refused for a slice that is malformed, one whose transfer would be larger than a session
-     * carries, and one that would open a transfer beyond {@link maxOpen}.
-     */
-    public accept(chunk: LiveBlobChunk): boolean {
-        if (!Number.isInteger(chunk.total) || chunk.total <= 0
-            || !Number.isInteger(chunk.index) || chunk.index < 0 || chunk.index >= chunk.total) {
-            return false;
-        }
-        if (chunk.total > blobChunkCount(LIVE_BLOB_MAX_BYTES)) {
-            return false;
-        }
-        let transfer = this.transfers.get(chunk.transferId);
-        if (!transfer) {
-            if (this.transfers.size >= this.maxOpen) {
-                return false;
-            }
-            transfer = { total: chunk.total, parts: new Map() };
-            this.transfers.set(chunk.transferId, transfer);
-        }
-        if (transfer.total !== chunk.total) {
-            // Two messages disagreeing about the length of one transfer. Neither can be trusted, and
-            // the sender is told what is missing when the operation asks for it.
-            return false;
-        }
-        let slice: Uint8Array;
-        try {
-            slice = decodeBase64(chunk.data);
-        } catch {
-            return false;
-        }
-        transfer.parts.set(chunk.index, slice);
-        return true;
-    }
-
-    /** Which slices of a transfer are still missing. Every one of them for a transfer never seen. */
-    public missing(transferId: string, total: number): number[] {
-        const transfer = this.transfers.get(transferId);
-        const out: number[] = [];
-        for (let index = 0; index < total; index += 1) {
-            if (!transfer?.parts.has(index)) {
-                out.push(index);
-            }
-        }
-        return out;
-    }
-
-    /** Whether a transfer has every slice. */
-    public isComplete(transferId: string): boolean {
-        const transfer = this.transfers.get(transferId);
-        return transfer !== undefined && transfer.parts.size === transfer.total;
-    }
-
-    /**
-     * How many slices of a transfer are in hand. Zero for one never seen, and for one already taken.
-     *
-     * What a progress reading is made of: a file arriving is drawn from this and the length the
-     * operation named, so what the author watches is what has actually landed rather than an
-     * estimate of how long it ought to take.
-     */
-    public received(transferId: string): number {
-        return this.transfers.get(transferId)?.parts.size ?? 0;
-    }
-
-    /**
-     * Whether the last slice of a transfer has arrived.
-     *
-     * **What tells a gap from a transfer still in flight.** Slices are sent in order down one
-     * connection, so the last one landing means the sender has sent them all - and a transfer that
-     * is short of a slice after that is short because one was lost, which is the only case worth
-     * asking about. Without this a receiver would either ask for repairs it does not need, on every
-     * slice, or never ask at all.
-     */
-    public sawLast(transferId: string, total: number): boolean {
-        return this.transfers.get(transferId)?.parts.has(total - 1) ?? false;
-    }
-
-    /**
-     * Take a completed transfer's bytes out, verifying them against what the sender said.
-     *
-     * **Removes it either way.** A transfer that has been claimed is over: if the bytes are right the
-     * caller has them, and if they are not, keeping the slices around would only hold the memory of a
-     * file nobody is going to write.
-     */
-    public take(transferId: string, digest: string): LiveBlobState {
-        const transfer = this.transfers.get(transferId);
-        if (!transfer) {
-            return { status: "unknown" };
-        }
-        if (transfer.parts.size !== transfer.total) {
-            return { status: "collecting", have: transfer.parts.size, total: transfer.total };
-        }
-        this.transfers.delete(transferId);
-
-        let length = 0;
-        for (let index = 0; index < transfer.total; index += 1) {
-            length += transfer.parts.get(index)!.length;
-        }
-        const bytes = new Uint8Array(length);
-        let at = 0;
-        for (let index = 0; index < transfer.total; index += 1) {
-            const slice = transfer.parts.get(index)!;
-            bytes.set(slice, at);
-            at += slice.length;
-        }
-        // ⚠ Checked rather than assumed. The channel can drop a message, and a file reassembled with
-        // one slice missing is a file that looks fine until somebody opens it.
-        return blobDigest(bytes) === digest ? { status: "complete", bytes } : { status: "corrupt" };
-    }
-
-    /** Forget one transfer. What the operation naming it does once it has been refused. */
-    public drop(transferId: string): void {
-        this.transfers.delete(transferId);
-    }
-
-    /** Forget everything. What leaving a session does. */
-    public clear(): void {
-        this.transfers.clear();
-    }
-
-    /** How many transfers are open. For diagnostics and for a test that pins the bound. */
-    public get openCount(): number {
-        return this.transfers.size;
-    }
-}
-
-/* --------------------------------------------------------------------------- base64 */
-
-/**
- * Base64 without assuming a runtime.
- *
- * `Buffer` where there is one and the browser's own pair where there is not: this module is shared,
- * and the same slice is cut in a renderer and could be read in a test that runs under Node with no
- * DOM. Neither implementation is fast; neither has to be, because the cost of a transfer is the
- * messages rather than the encoding.
- */
-function encodeBase64(bytes: Uint8Array): string {
-    if (typeof Buffer !== "undefined") {
-        return Buffer.from(bytes).toString("base64");
-    }
-    let binary = "";
-    // A chunk at a time: `String.fromCharCode(...bytes)` overflows the call stack somewhere around
-    // a hundred thousand arguments, which a slice of this size is comfortably under but a caller
-    // handing over a whole file would not be.
-    for (let at = 0; at < bytes.length; at += 8192) {
-        binary += String.fromCharCode(...bytes.subarray(at, at + 8192));
-    }
-    return btoa(binary);
-}
-
-/**
- * ⚠ **Checked before it is decoded, because `Buffer.from(x, "base64")` does not fail.** It drops
- * whatever it does not recognise and answers with fewer bytes, so a corrupted slice would decode to
- * something shorter and be reassembled into a file that is simply wrong. The digest would catch that
- * afterwards; refusing here catches it while the sender can still be asked for the slice again.
- */
-const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
-
-function decodeBase64(text: string): Uint8Array {
-    if (!BASE64.test(text) || text.length % 4 !== 0) {
-        throw new Error("not base64");
-    }
-    if (typeof Buffer !== "undefined") {
-        return new Uint8Array(Buffer.from(text, "base64"));
-    }
-    const binary = atob(text);
-    const bytes = new Uint8Array(binary.length);
-    for (let at = 0; at < binary.length; at += 1) {
-        bytes[at] = binary.charCodeAt(at);
-    }
-    return bytes;
+    const segments = path.split(/[\\/]/);
+    return segments.every(segment => segment !== "" && segment !== "." && segment !== "..");
 }

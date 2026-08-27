@@ -501,4 +501,7 @@ export const project = {
             },
         },
     },
+    live: {
+        entryClaimed: "{name} がこの項目を編集している",
+    },
 } satisfies LocaleNamespace<"project">;

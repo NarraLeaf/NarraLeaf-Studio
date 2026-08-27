@@ -46,10 +46,6 @@ vi.mock("@/lib/app/bridge", () => ({
         vcs: {
             listServers: () => Promise.resolve({ success: true, data: { servers: bridge.servers } }),
             refreshServer: bridge.refreshServer,
-            listServerProjects: bridge.listServerProjects,
-            listServerMembers: bridge.listServerMembers,
-            getServerProject: bridge.getServerProject,
-            listServerProjectHistory: bridge.listServerProjectHistory,
             listLocalRepositories: () =>
                 Promise.resolve({ success: true, data: { repositories: bridge.repositories } }),
             publishProject: bridge.publishProject,
@@ -59,11 +55,10 @@ vi.mock("@/lib/app/bridge", () => ({
             launchProjectWizard: bridge.launchProjectWizard,
         },
         workspace: { launch: bridge.launchWorkspace },
-        // The projects list, the roster and one project's detail all go over the session
-        // now, so `team.call` is where they are answered. It dispatches to the same per-
-        // method fakes the REST wrappers used, and reshapes their answer into what the wire
-        // carries - the collection under its own key, or a coded problem - so a test still
-        // drives one method and asserts on one fake, and the transport is what changed.
+        // Everything this tab asks a server travels on the session, so `team.call` is where
+        // it is answered. It dispatches to one fake per method and reshapes each answer into
+        // what the wire carries - the collection under its own key, or a coded problem - so a
+        // test drives one method and asserts on one fake.
         team: {
             open: () => Promise.resolve({
                 success: true,

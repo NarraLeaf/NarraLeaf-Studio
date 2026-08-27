@@ -96,6 +96,7 @@ import {
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
@@ -347,7 +348,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // element and read its properties, but not modify or move it"*. This is the only place the freeze
     // enters the canvas - everything below `lib/ui-editor` takes a plain `readOnly` and knows nothing
     // about version control.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const undoOverride = useLiveUndoOverride();
     const readOnly = useMemo<UIEditorReadOnly>(
         () => ({ active: freeze.frozen, reason: freeze.reason }),
         [freeze.frozen, freeze.reason],
@@ -429,6 +431,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         uiService,
         requestRenamePrimary,
         readOnly,
+        // Inside a live session Ctrl+Z sends the inverse of this window's own last operation rather
+        // than restoring a Surface snapshot nobody else has agreed to. See `useLiveUndoOverride`.
+        undoOverride,
     });
 
     const hostAdapter = useMemo<UIHostAdapter>(() => {

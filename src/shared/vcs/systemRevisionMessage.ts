@@ -64,7 +64,18 @@ export const VCS_CHECKPOINT_MESSAGES: Readonly<Record<VcsCheckpointReason, strin
     "project-close": "Checkpoint before closing the project",
     build: "Checkpoint before build",
     restore: "Checkpoint before restore",
+    "live-session": "Checkpoint before a live session",
 };
+
+/**
+ * What a machine records when it puts its working tree on the version a live session is running from.
+ *
+ * A constant rather than a composed sentence, unlike a restore's: the version it matched is the
+ * room's and is already the head afterwards, so naming it in the message would repeat what the
+ * revision itself says. What the sentence has to carry is WHY a revision nobody asked for is in the
+ * history, and that is the same reason every time.
+ */
+export const VCS_LIVE_SESSION_MESSAGE = "Match the live session's version";
 
 /** The fixed half of what a restore records. The version it went back to follows it. */
 const RESTORE_MESSAGE_PREFIX = "Restore version ";
@@ -101,6 +112,11 @@ export const VCS_SYSTEM_MESSAGES: ReadonlyArray<readonly [string, TranslationKey
     [VCS_CHECKPOINT_MESSAGES["project-close"], "workspace.shell.versionControl.systemMessage.checkpointClose"],
     [VCS_CHECKPOINT_MESSAGES.build, "workspace.shell.versionControl.systemMessage.checkpointBuild"],
     [VCS_CHECKPOINT_MESSAGES.restore, "workspace.shell.versionControl.systemMessage.checkpointRestore"],
+    [
+        VCS_CHECKPOINT_MESSAGES["live-session"],
+        "workspace.shell.versionControl.systemMessage.checkpointLiveSession",
+    ],
+    [VCS_LIVE_SESSION_MESSAGE, "workspace.shell.versionControl.systemMessage.liveSessionMatched"],
 ];
 
 /** The same table as a lookup. A `Map` so a sentence cannot collide with `Object.prototype`. */

@@ -3,8 +3,10 @@ import { inverseOf, type LiveBefore } from "@/lib/live/inverse";
 import type { LiveCastView } from "@shared/live/cast";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
-import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LiveDerived, LiveDocument, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LocalizationKeyDefinition } from "@shared/types/localization";
 import type { StoryDocument } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
 
 /**
@@ -45,7 +47,21 @@ export type LiveStepDirection = "undo" | "redo";
 
 /** A step that can be taken, or the reason it cannot. */
 export type LiveStepPlan =
-    | { index: number; direction: LiveStepDirection; op: LiveOp; derived?: LiveDerived }
+    | {
+          index: number;
+          direction: LiveStepDirection;
+          op: LiveOp;
+          /**
+           * The document the step is about - the one the effect being taken back named.
+           *
+           * Carried rather than composed by the sender, because a session's stories are not one:
+           * every story document in the project is shared, so an inverse addressed to "the room's
+           * story" would take a rename back on the wrong file. The effect already states which
+           * document it was about, and this is that statement travelling one step further.
+           */
+          document: LiveDocument;
+          derived?: LiveDerived;
+      }
     | { impossible: LiveUndoRefusalReason };
 
 type Entry = {
@@ -107,10 +123,24 @@ export class LiveEffectHistory {
             assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
             /** One section's folders as they stand now, for the steps that are about them. */
             assetFolders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+            /**
+             * Whether one row of a configuration table is still there.
+             *
+             * Predicates rather than the documents, for `LiveInverseContext`'s reason: the record an
+             * inverse puts back comes from what was captured, and presence is the only thing the
+             * document itself is asked.
+             */
+            hasAppTag(tagId: string): boolean;
+            hasDlc(dlcId: string): boolean;
+            hasBrandColor(colorId: string): boolean;
             /** The mixer as it stands now, for the steps that are about it. */
             audioTracks(): readonly ProjectAudioTrack[] | null;
             /** The asset sets as they stand now, for the steps that are about them. */
             assetSets(): readonly AssetSet[] | null;
+            /** One registry entry as it stands now, for the steps that are about the variables. */
+            variables(variableId: string): VariableRegistryEntry | null;
+            /** Every named string as it stands now, for the steps that are about them. */
+            keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
         },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
@@ -127,8 +157,13 @@ export class LiveEffectHistory {
             cast: context.cast,
             assets: context.assets,
             assetFolders: context.assetFolders,
+            hasAppTag: context.hasAppTag,
+            hasDlc: context.hasDlc,
+            hasBrandColor: context.hasBrandColor,
             audioTracks: context.audioTracks,
             assetSets: context.assetSets,
+            variables: context.variables,
+            keys: context.keys,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {
@@ -142,6 +177,7 @@ export class LiveEffectHistory {
             index,
             direction,
             op: inverse.op,
+            document: entry.current.effect.document,
             ...(derived === undefined ? {} : { derived }),
         };
     }

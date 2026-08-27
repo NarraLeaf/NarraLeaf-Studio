@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "../../context";
 import { useKeybinding, useKeybindings } from "../../hooks";
 import { useWorkspaceOperationsFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useFreezeUnavailableReason } from "../../components/ui/freezeGuard";
 import { translate, useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
 import { Services } from "@/lib/workspace/services/services";
@@ -420,7 +421,7 @@ export function RunControl() {
      * always be stoppable, and this same button is the stop control.
      */
     const previewBlocked = frozen && !running && shownMode === "preview";
-    const frozenTitle = t("workspace.shell.freeze.unavailable");
+    const frozenTitle = useFreezeUnavailableReason();
     const building = buildStatus === "preparing" || buildStatus === "compiling" || buildStatus === "packaging";
     /**
      * Production Build is off while frozen, exactly as it was when it had its own button - the same

@@ -24,7 +24,7 @@ import {
     isValidLocalizationKeyName,
     type LocaleFallbackConflict,
 } from "@shared/types/localization";
-import type { LiveLocalizationOp } from "@shared/live/ops";
+import type { LiveLocalizationKeyOp, LiveLocalizationOp } from "@shared/live/ops";
 import { hashSourceText } from "@shared/utils/localizationText";
 import { normalizeExchangeStatus, type TranslationExchangeRow } from "@shared/utils/localizationExchange";
 import type { StoryDocument } from "@shared/types/story";
@@ -85,15 +85,20 @@ function describeFallbackConflict(conflict: LocaleFallbackConflict, code: string
  * `updateUnit`, and an import ends at `applyImportedRows`, so the sink is asked *before* the
  * document moves - exactly as the story's is - and what it is handed is the entry as it would have
  * been written rather than the patch that was asked for.
+ *
+ * **Two documents pass through one sink**, which is unusual and is the same service owning both: the
+ * per-language libraries and the named-string registry. They are addressed apart everywhere it
+ * matters - a different `LiveDocument`, a different digest, a different claim - and sharing the sink
+ * only means there is one seam to install rather than two on one service.
  */
 export type LocalizationOpSink = {
     /**
      * Take one operation, or decline it.
      *
-     * True means the sink has it and the library must not be touched. False means this edit is not
+     * True means the sink has it and the document must not be touched. False means this edit is not
      * the sink's business and the caller carries on as usual.
      */
-    handle(op: LiveLocalizationOp): boolean;
+    handle(op: LiveLocalizationOp | LiveLocalizationKeyOp): boolean;
 };
 
 export type TranslationImportSummary = {
@@ -526,15 +531,13 @@ export class LocalizationService extends Service<LocalizationService> implements
             sourceText: definition.sourceText,
             ...(definition.note?.trim() ? { note: definition.note } : {}),
         };
-        const next: LocalizationKeysDocument = {
-            ...document,
-            keys: { ...document.keys, [name]: entry },
-        };
-        this.keysDocument = next;
-        this.keysDirty = true;
-        this.scheduleAutoSave();
-        this.events.emit("keysChanged", next);
-        return next;
+        // Asked with the definition as it WOULD have been written - trimmed note and all - for the
+        // reason `updateUnit` is asked with the entry rather than the patch: a receiving machine that
+        // normalised for itself is a second reading of one gesture.
+        if (this.opSink?.handle({ op: "set-key", name, definition: entry })) {
+            return document;
+        }
+        return this.writeKey(document, name, entry);
     }
 
     /** Remove a named key. Its translations stay in the locale files (harmless orphans). */
@@ -543,6 +546,31 @@ export class LocalizationService extends Service<LocalizationService> implements
         if (!(name in document.keys)) {
             return document;
         }
+        if (this.opSink?.handle({ op: "remove-key", name })) {
+            return document;
+        }
+        return this.dropKey(document, name);
+    }
+
+    /** File one named key. The write itself, shared by the panel's path and the live applier's. */
+    private writeKey(
+        document: LocalizationKeysDocument,
+        name: string,
+        definition: LocalizationKeyDefinition,
+    ): LocalizationKeysDocument {
+        const next: LocalizationKeysDocument = {
+            ...document,
+            keys: { ...document.keys, [name]: definition },
+        };
+        this.keysDocument = next;
+        this.keysDirty = true;
+        this.scheduleAutoSave();
+        this.events.emit("keysChanged", next);
+        return next;
+    }
+
+    /** Take one named key out. The write itself, shared by both paths. */
+    private dropKey(document: LocalizationKeysDocument, name: string): LocalizationKeysDocument {
         const keys = { ...document.keys };
         delete keys[name];
         const next: LocalizationKeysDocument = { ...document, keys };
@@ -685,7 +713,11 @@ export class LocalizationService extends Service<LocalizationService> implements
      * a library nobody holds is a value, not a missing answer, so the two copies are seen to have
      * parted company rather than quietly excused.
      */
-    public applyLiveOp(op: LiveLocalizationOp): void {
+    public applyLiveOp(op: LiveLocalizationOp | LiveLocalizationKeyOp): void {
+        if (op.op === "set-key" || op.op === "remove-key") {
+            this.applyLiveKeyOp(op);
+            return;
+        }
         const document = this.documents.get(op.locale);
         if (!document) {
             console.warn(`[LocalizationService] no translations loaded for ${op.locale}; effect not applied`);
@@ -706,6 +738,61 @@ export class LocalizationService extends Service<LocalizationService> implements
                 throw new RendererError(`No applier for live translation operation: ${JSON.stringify(unapplied)}`);
             }
         }
+    }
+
+    /**
+     * Apply one named-key operation, **without consulting the sink**.
+     *
+     * ⚠ A registry this window does not hold is a warning rather than a throw, with the translations
+     * above: an applier runs inside reading a message, and one that threw would take the session down
+     * over one string. The divergence guard catches it on this very effect instead - a key that is
+     * not there has a digest of its own.
+     */
+    private applyLiveKeyOp(op: LiveLocalizationKeyOp): void {
+        const document = this.keysDocument;
+        if (!document) {
+            console.warn("[LocalizationService] the named-key registry is not loaded; effect not applied");
+            return;
+        }
+        switch (op.op) {
+            case "set-key":
+                this.writeKey(document, op.name, op.definition);
+                return;
+            case "remove-key":
+                if (op.name in document.keys) {
+                    this.dropKey(document, op.name);
+                }
+                return;
+            default: {
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live key operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /**
+     * Read the named-key registry, and say whether this window holds it.
+     *
+     * Called on the way into a live session, for `loadAllDocuments`' reason: appliers are
+     * synchronous, so a registry that is not in memory when the session starts is one no effect can
+     * ever reach - and what could be read is what the session carries and what the write boundary
+     * leaves writable, which have to be one set.
+     */
+    public async loadKeysForLive(): Promise<boolean> {
+        try {
+            await this.loadKeys();
+            return true;
+        } catch (error) {
+            // Warned rather than fatal, with a language whose library will not parse: a session
+            // refused because the key registry is broken is worse than one that does not carry it.
+            console.warn("[LocalizationService] could not read the named-key registry for the session", error);
+            return false;
+        }
+    }
+
+    /** Every named key as it stands, or null when this window does not hold the registry. */
+    public keysIfLoaded(): Readonly<Record<string, LocalizationKeyDefinition>> | null {
+        return this.keysDocument?.keys ?? null;
     }
 
     // --- Extraction & progress ---

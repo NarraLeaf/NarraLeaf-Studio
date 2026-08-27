@@ -48,7 +48,11 @@ import { parseTranslatedText } from "@shared/utils/localizationText";
 import type { StoryLibraryEntry } from "@shared/types/story";
 import { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LocalizationEditorTabPayload } from "./localizationEditorTabId";
-import { TranslationClaimsProvider, useTranslationClaimHold } from "./localizationLiveSession";
+import {
+    TranslationClaimsProvider,
+    useLocalizationKeyClaimHold,
+    useTranslationClaimHold,
+} from "./localizationLiveSession";
 import { AddKeyRow, ReviewRow, TranslateRow, type InlineEditing, type TranslationTableRow } from "./TranslationRows";
 
 type EditorMode = "translate" | "review";
@@ -162,6 +166,8 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
      * claim - a session holds the line somebody is inside, whichever shape of row it is.
      */
     const [focusedUnitId, setFocusedUnitId] = useState<string | null>(null);
+    /** The named string whose source box has focus, or null. What the key registry's claim is over. */
+    const [focusedKeyName, setFocusedKeyName] = useState<string | null>(null);
 
     const speakerNameFor = useCallback((row: StoryTranslationRow): string => {
         if (row.role === "narration") {
@@ -552,6 +558,14 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
      */
     useTranslationClaimHold({ service: liveService, locale, unitId: inlineEdit?.unitId ?? focusedUnitId });
 
+    /**
+     * Hold the named string whose source text is open, so nobody in the room rewords it underneath.
+     *
+     * Beside the translation hold rather than folded into it: they are two documents, and the two
+     * boxes of one named-key row can be held by two different people at once.
+     */
+    useLocalizationKeyClaimHold({ service: liveService, name: focusedKeyName });
+
     const handleTargetChange = useCallback((row: TranslationTableRow, target: string) => {
         localizationService?.updateUnit(locale, row.unitId, row.sourceText, { target });
     }, [localizationService, locale]);
@@ -779,6 +793,7 @@ export function LocalizationEditorTab({ payload, active }: EditorComponentProps<
                                             onTargetChange={handleTargetChange}
                                             onSourceChange={handleKeySourceChange}
                                             onRemove={removed => void handleKeyRemove(removed)}
+                                            onFocusKey={setFocusedKeyName}
                                         />
                                     )}
                                 </div>

@@ -103,9 +103,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
-    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
-    VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
@@ -123,6 +121,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -399,11 +398,6 @@ export enum IPCEventType {
     vcsAddServer = "vcs.addServer",
     vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
-    vcsListServerProjects = "vcs.listServerProjects",
-    vcsGetServerProject = "vcs.getServerProject",
-    vcsDeleteServerProject = "vcs.deleteServerProject",
-    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
-    vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
@@ -441,6 +435,21 @@ export enum IPCEventType {
     teamEvent = "team.event",
     /** Pushed: a session opened, dropped, or was refused. */
     teamConnectionChanged = "team.connectionChanged",
+    /**
+     * Bytes, which is the one thing the five above cannot carry.
+     *
+     * ⚠ **A sixth, and deliberately the only one.** `teamCall` is a named method with JSON on
+     * either side, and a file is none of that: it runs for minutes, says how far it has got, can be
+     * stopped, and above all must never have its contents put through a message - the renderer may
+     * not reach the network, and a file crossing here would be a copy of itself in a second heap on
+     * its way to a third. So this carries a **path and a count**, never a byte, and the main
+     * process does the reading, the writing and the connection.
+     *
+     * It is one event rather than four for {@link teamCall}'s reason: the action is named inside
+     * it. Anything that has to move bytes to a server later - and there will be something - asks
+     * here rather than adding a seventh.
+     */
+    teamTransfer = "team.transfer",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -1426,73 +1435,6 @@ export type IPCVcsEvents = {
         response: { servers: VcsServerSession[] };
     };
     /**
-     * What one server holds, asked of that server.
-     *
-     * **Goes to the network**, and answers with the list or with a coded reason it
-     * has none. The token it is asked with never crosses this boundary in either
-     * direction: the main process sealed it when the server was added.
-     */
-    [IPCEventType.vcsListServerProjects]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerProjectsOutcome;
-    };
-    /**
-     * What one server knows about one of its projects.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-detail`.
-     * A `file` that is not readable is a complete answer rather than a failure, and the
-     * server's own explanation for it is deliberately not carried across: it is an
-     * English sentence about the server's internals, and Studio has its own line for
-     * this in every language it speaks.
-     */
-    [IPCEventType.vcsGetServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDetailOutcome;
-    };
-    /**
-     * Take one project off a server.
-     *
-     * **Goes to the network**, and it is the one call here that changes what a server
-     * holds rather than reading it. What it changes is the list: the server stops
-     * carrying the project, and the repository keeps its store and every revision in it.
-     * Nothing here destroys an author's work, and no argument to it would.
-     */
-    [IPCEventType.vcsDeleteServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDeleteOutcome;
-    };
-    /**
-     * The latest revisions on one of a server's projects, newest first.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-history`.
-     * An answer with no `revisions` field at all is the ordinary one for a project the
-     * server has not read, and it is not an empty history.
-     */
-    [IPCEventType.vcsListServerProjectHistory]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
-        response: VcsServerProjectHistoryOutcome;
-    };
-    /**
-     * Who has an account on one server.
-     *
-     * **Goes to the network**, and only to a server that advertised `members`. Takes no
-     * project, like the calls above it: a roster belongs to the server.
-     */
-    [IPCEventType.vcsListServerMembers]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerMembersOutcome;
-    };
-    /**
      * Exchange a username and password for a token, on a server that offers it.
      *
      * **Goes to the network**, and it is the one call here that carries no token — this
@@ -1658,6 +1600,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Client,
         data: { connection: TeamConnection },
         response: never;
+    };
+    [IPCEventType.teamTransfer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamTransferRequest,
+        response: TeamTransferOutcome;
     };
 };
 

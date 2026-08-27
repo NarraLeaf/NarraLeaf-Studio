@@ -550,4 +550,13 @@ export const project = {
             },
         },
     },
+    // What a live session changes about this page. The build variants, the DLC and the palette are
+    // three of the documents a session carries, so all three stay editable - and a row somebody else
+    // is inside is read-only while they are in it, which is what the mark says.
+    live: {
+        // On the mark a row wears while somebody else is inside it, and on the row's own fields. A
+        // person is named: there is no width for a name beside the monogram, and a truncated one
+        // names nobody. One sentence for the three tables - the page already says which it is.
+        entryClaimed: "{name} is editing this entry",
+    },
 } as const;
