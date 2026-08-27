@@ -1123,7 +1123,15 @@ export const workspace = {
                     // The server answered and made a project, and it is not this one. A server
                     // too old to be asked for this does exactly that.
                     wrongRepository: "That server recorded a different project, so nothing was sent to it.",
+                    // A different project already answering to the name asked for. Names the
+                    // remedy, because the only one is to pick another name.
+                    nameTaken: "Another project on that server is already called that. Choose a different name.",
                     unknown: "That server did not record the project.",
+                    // Not a refusal: this project has been on that server before - a copied
+                    // project folder carries the same repository - and it is registered under the
+                    // name it was published as. Said rather than done quietly, because the author
+                    // typed a name and it is not the one in the address.
+                    connectedAs: "This project is already on that server as {name}, so it is connected under that name. Use Send to put this machine's versions on top of what is there.",
                 },
                 /**
                  * Signing this installation in to the server, and saying who is signed in.
