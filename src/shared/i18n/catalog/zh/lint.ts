@@ -292,6 +292,16 @@ export const lint = {
             description: "同一名称在两处声明",
             message: "{variable} 作为持久变量声明了两次",
         },
+        variablesConditionNeverHolds: {
+            title: "没有路径能满足的条件",
+            description: "条件要求的取值，任何一条路径都攒不到",
+            message: "在这里 {variable} 的取值范围是 {bound}，这个条件永远不成立",
+        },
+        variablesReadNeverWritten: {
+            title: "永远不会变的条件",
+            description: "条件判断读取了某个变量，而整个工程从来没有给它赋过值",
+            message: "{count} 处条件判断读取了 {variable}，但没有任何地方给它赋值",
+        },
         variablesRandomOutsideAssignment: {
             title: "赋值之外的随机数",
             description: "随机值位于会被反复重新取值的位置",

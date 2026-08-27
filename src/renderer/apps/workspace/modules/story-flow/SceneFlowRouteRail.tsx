@@ -10,6 +10,7 @@ import type { SceneFlowBranchNodeModel, SceneFlowGraph } from "./sceneFlowModel"
 import { MAX_ROUTES, type SceneFlowEnding, type SceneFlowRoute, type SceneFlowRouteMap } from "./sceneFlowRoutes";
 import {
     foldRouteVariableValue,
+    type SceneFlowBlueprintWrites,
     type SceneFlowDelta,
     type SceneFlowNumericVariable,
     type SceneFlowRange,
@@ -62,6 +63,12 @@ export type SceneFlowVariableFocus = {
      * default here and every route reads `?` while the scene boxes show real numbers.
      */
     registryVariables: readonly VariableRegistryEntry[];
+    /**
+     * Which story variables the project's blueprints may write, so a route's value is folded against
+     * the same writer set the scene boxes were. Without it a row running a graph reads as writing
+     * nothing, and the rail prints a number the game does not produce.
+     */
+    blueprintWrites: SceneFlowBlueprintWrites;
 };
 
 export interface SceneFlowRouteRailProps {
@@ -457,6 +464,13 @@ function routeValueChip(
     route: SceneFlowRoute,
     focus: SceneFlowVariableFocus,
 ): string {
-    const folded = foldRouteVariableValue(graph, document, focus.variable.key, route, focus.registryVariables);
+    const folded = foldRouteVariableValue(
+        graph,
+        document,
+        focus.variable.key,
+        route,
+        focus.registryVariables,
+        focus.blueprintWrites,
+    );
     return folded.kind === "known" ? formatNumber(folded.min) : "?";
 }

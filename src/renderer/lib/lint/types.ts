@@ -126,6 +126,8 @@ export type LintRuleId =
     | "variables/unused"
     | "variables/name-collision"
     | "variables/random-outside-assignment"
+    | "variables/read-never-written"
+    | "variables/condition-never-holds"
     | "text/overlong"
     | "text/empty"
     | "localization/missing"
