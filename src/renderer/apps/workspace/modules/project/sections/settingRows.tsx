@@ -2,6 +2,15 @@
  * The row frame every project setting shares. Shared by the Settings and Game
  * sub-pages so a setting reads the same wherever it lives, and so a new group
  * costs a list of rows rather than a new layout.
+ *
+ * **A row's title has to say what the setting is on its own.** It is the first
+ * thing read on the page - an author scanning for something scans the titles,
+ * not the headings above them - so a heading groups rows, it never completes
+ * their sentence. "Enabled" under a heading that says which material it enables
+ * is a title that only works if the reader arrived from directly above it, and
+ * most do not: they arrive from a search, a diff, or the middle of the page.
+ * The cost is a little repetition between heading and title, and it is the right
+ * way round to be wrong.
  */
 
 import { HintPopover, Switch } from "@/lib/components/elements";
