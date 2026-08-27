@@ -317,9 +317,9 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} は版と版のあいだで進行状況を引き継ぐが、{platform} のビルドはそれを拒む。"
             + "どちらのノードも失敗の枝に進む",
-        "lossy-images": "画像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
-        "lossy-audio": "音声は品質 {quality} で再エンコードされ、失われた情報は戻らない",
-        "lossy-video": "映像は品質 {quality} で再エンコードされ、失われた情報は戻らない",
+        "lossy-images": "画像は品質 {setting} で再エンコードされ、失われた情報は戻らない",
+        "lossy-audio": "音声は {setting} kbit/s で再エンコードされ、失われた情報は戻らない",
+        "lossy-video": "映像は CRF {setting} で再エンコードされ、失われた情報は戻らない",
         "mobile-template-missing": "モバイルのシェルテンプレートを使えない：{reason}",
         "mobile-payload-too-large": "このプロジェクトのアセット（{size}）は、モバイルのパッケージに収まる大きさを超えている",
         "version-uncodable": "バージョン {version} は Android のバージョンコードに変換できない。メジャーは 2099 まで、マイナーとパッチは 999 まで",

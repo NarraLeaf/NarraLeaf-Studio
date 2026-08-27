@@ -3,9 +3,10 @@ import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
 import {
-    assetTrackCompression,
+    assetTrackEnabled,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
+import { mediaMetadataLikely, stripMediaMetadata } from "@shared/utils/assetMediaMetadata";
 import {
     assetMediaWorthKeeping,
     planAssetMediaCompression,
@@ -49,9 +50,14 @@ import { resolveFfmpegBinary, type FfmpegResolveOptions, type FfmpegResolverApp 
 export type CompressedAssetMedia = {
     /** Absolute path to the replacement bytes, in the cache. */
     path: string;
-    /** Always set: a compressed copy is a different container from whatever it came from. */
-    ext: string;
-    mimeType: string;
+    /**
+     * Both absent when the replacement is the same kind of file as the source -
+     * a recording whose tags were removed without re-encoding it. The manifest
+     * already states what that file is, and restating it here would be a second
+     * place for the two to disagree.
+     */
+    ext?: string;
+    mimeType?: string;
 };
 
 export type AssetMediaCompressionResult = {
@@ -66,6 +72,13 @@ export type AssetMediaCompressionResult = {
     /** Total size of the converted files before, and after. */
     beforeBytes: number;
     afterBytes: number;
+    /** Files that were not re-encoded but did carry metadata worth removing. */
+    stripped: number;
+    /**
+     * Bytes {@link stripped} saved. A re-encoded file's tags are gone as part of
+     * its own saving, so counting them here too would report them twice.
+     */
+    metadataBytes: number;
 };
 
 export type AssetMediaCompressionLog = (level: "info" | "warning", message: string) => void;
@@ -112,6 +125,20 @@ const MAX_UNUSED_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 /** How many encoder failures are worth printing before they stop being news. */
 const MAX_FAILURE_WARNINGS = 3;
 
+/**
+ * How much of each end of a file is enough to tell whether it carries tags.
+ *
+ * Generous on both sides rather than tight: an ID3v2 tag with a cover in it runs
+ * to hundreds of kilobytes, and a WAV can carry a long chunk list before its
+ * samples. Reading a little too much costs nothing measurable next to reading
+ * the file.
+ */
+const METADATA_HEAD_BYTES = 256 * 1024;
+const METADATA_TAIL_BYTES = 64 * 1024;
+
+/** The cache file's own extension for a file that was only stripped, never re-encoded. */
+const STRIPPED_EXTENSION = ".stripped";
+
 /** The two metadata shards holding assets this pass can do anything with. */
 const MEDIA_ASSET_TYPES = ["audio", "video"] as const;
 
@@ -130,20 +157,74 @@ export async function compressProjectMedia(
         reused: 0,
         beforeBytes: 0,
         afterBytes: 0,
+        stripped: 0,
+        metadataBytes: 0,
     };
-    // Both switches off is the common case and the whole pass is skippable: no
-    // metadata is read, no binary is resolved, and a host with no FFmpeg builds
-    // exactly as it did before without a word about it.
-    if (!assetTrackCompression(input.config, "audio").enabled
-        && !assetTrackCompression(input.config, "video").enabled) {
-        return result;
-    }
+    // Compression is a decision an author makes; taking the studio's name out of
+    // a recording is not, so this pass runs whether or not either switch is on.
+    // What the switches decide is whether anything is probed or encoded.
+    const compressing = assetTrackEnabled(input.config, "audio") || assetTrackEnabled(input.config, "video");
 
     let binary: string | null = null;
     // Latched, so a host with no FFmpeg looks for it once and says so once,
     // rather than repeating itself for every file in the library.
     let encoderUnavailable = false;
     let failureWarnings = 0;
+
+    /**
+     * For a file no encode will touch: take out what it says about who made it,
+     * and leave the sound exactly as it was.
+     *
+     * This is the path most of a project goes down, because it is the one a
+     * project with compression switched off takes for every file it has.
+     *
+     * The ends of the file are read first and the whole of it only if they say
+     * there is something to find. That ordering is the difference between a warm
+     * build costing a few kilobytes per asset and costing a full read of every
+     * recording in a fully voiced game - see `mediaMetadataLikely` for why a few
+     * kilobytes are enough to answer.
+     */
+    const stripOnly = async (id: string, sourcePath: string, byteLength: number): Promise<void> => {
+        const ends = await readEnds(sourcePath, byteLength);
+        if (!ends || !mediaMetadataLikely(ends.head, ends.tail)) {
+            return;
+        }
+        let bytes: Buffer;
+        try {
+            bytes = await fs.readFile(sourcePath);
+        } catch {
+            return;
+        }
+        const digest = crypto.createHash("sha256").update(bytes).digest("hex");
+        const key = `${digest}-s-v${CACHE_VERSION}`;
+        const cached = await readCached(input.cacheDir, key, STRIPPED_EXTENSION);
+        if (cached === "rejected") {
+            return;
+        }
+        if (cached) {
+            result.media[id] = { path: cached.path };
+            result.stripped += 1;
+            result.metadataBytes += bytes.length - cached.size;
+            return;
+        }
+        const cleaned = stripMediaMetadata(bytes);
+        if (cleaned.removed.length === 0) {
+            // Recorded rather than simply returned. The cheap check is allowed to
+            // say yes when the answer is no, and without a note of that this file
+            // is read in full on every build to reach the same answer.
+            await writeRejected(input.cacheDir, key);
+            return;
+        }
+        const kept = await writeCached(input.cacheDir, key, STRIPPED_EXTENSION, cleaned.bytes);
+        if (!kept) {
+            // A cache that cannot be written costs this file its strip and
+            // nothing else; the original ships, as it did before.
+            return;
+        }
+        result.media[id] = { path: kept };
+        result.stripped += 1;
+        result.metadataBytes += cleaned.bytesRemoved;
+    };
 
     /**
      * One file, from its size to what a compile should copy.
@@ -174,6 +255,11 @@ export async function compressProjectMedia(
             return;
         }
 
+        if (!compressing) {
+            await stripOnly(id, sourcePath, byteLength);
+            return;
+        }
+
         const digest = await hashFile(sourcePath);
         if (digest === null) {
             return;
@@ -188,6 +274,12 @@ export async function compressProjectMedia(
             input.config,
         );
         if (plan.action === "skip") {
+            // Everything the plan refuses - a track whose switch is off, a video
+            // carrying alpha, a file too small to be worth a process - ships as
+            // the author saved it, tags and all, unless this takes them out. It
+            // is the path most of a project goes down, so it is the one that
+            // matters most.
+            await stripOnly(id, sourcePath, byteLength);
             return;
         }
 
@@ -373,11 +465,18 @@ async function resolveEncoder(input: AssetMediaCompressionInput): Promise<string
     return null;
 }
 
+/**
+ * Everything about an encode that changes its bytes, as a key fragment.
+ *
+ * Every parameter the plan carries has to be in it. An author who lowers a cap and builds again
+ * must not be handed the file the previous settings produced, and no one of these settings can
+ * stand for the others: they move independently.
+ */
 function modeOf(plan: Extract<AssetMediaCompressionPlan, { action: "audio" | "video" }>): string {
     if (plan.action === "audio") {
         return `a${plan.bitrateKbps}${plan.sampleRateHz === null ? "" : `r${plan.sampleRateHz}`}`;
     }
-    return `v${plan.crf}`;
+    return `v${plan.crf}${plan.maxHeight === null ? "" : `h${plan.maxHeight}`}`;
 }
 
 function extensionFor(action: "audio" | "video"): string {
@@ -468,10 +567,70 @@ async function readCached(
     }
 }
 
+/**
+ * The first and last few kilobytes of a file, in one open.
+ *
+ * Null when the file cannot be read, which the caller treats as "nothing to do":
+ * an asset the library lists and the disk does not have is the compile's to
+ * report, naming it properly, and this step has nothing to add.
+ */
+async function readEnds(
+    filePath: string,
+    byteLength: number,
+): Promise<{ head: Uint8Array; tail: Uint8Array } | null> {
+    let handle;
+    try {
+        handle = await fs.open(filePath, "r");
+    } catch {
+        return null;
+    }
+    try {
+        const headLength = Math.min(byteLength, METADATA_HEAD_BYTES);
+        const head = Buffer.alloc(headLength);
+        await handle.read(head, 0, headLength, 0);
+        const tailLength = Math.min(byteLength, METADATA_TAIL_BYTES);
+        const tailStart = Math.max(0, byteLength - tailLength);
+        const tail = Buffer.alloc(tailLength);
+        await handle.read(tail, 0, tailLength, tailStart);
+        return { head, tail };
+    } catch {
+        return null;
+    } finally {
+        await handle.close().catch(() => undefined);
+    }
+}
+
 /** Mark an entry as still wanted, so {@link pruneCache} keeps it. */
 async function touch(filePath: string): Promise<void> {
     const now = new Date();
     await fs.utimes(filePath, now, now).catch(() => undefined);
+}
+
+/**
+ * Write the kept bytes, and answer with the path a compile should copy - or null
+ * if the cache could not be written.
+ *
+ * Written to a temporary name and renamed, because a build killed mid-write must
+ * not leave behind a truncated file that every later build reads as a finished
+ * one and ships.
+ */
+async function writeCached(
+    cacheDir: string,
+    key: string,
+    extension: string,
+    bytes: Uint8Array,
+): Promise<string | null> {
+    const target = cachePath(cacheDir, key, extension);
+    const temporary = `${target}.${process.pid}.part`;
+    try {
+        await fs.mkdir(path.dirname(target), { recursive: true });
+        await fs.writeFile(temporary, bytes);
+        await fs.rename(temporary, target);
+        return target;
+    } catch {
+        await fs.rm(temporary, { force: true }).catch(() => undefined);
+        return null;
+    }
 }
 
 async function writeRejected(cacheDir: string, key: string): Promise<void> {

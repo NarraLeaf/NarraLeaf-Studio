@@ -47,6 +47,11 @@ export function NumberField({
         }
     };
 
+    // Sized from the range rather than from a prop the caller has to remember:
+    // a field whose ceiling is 192000 cannot show its own value in the width a
+    // quality of 1 to 100 needs, and a clipped number reads as a broken one.
+    const width = max >= 10_000 ? "w-24" : "w-16";
+
     return (
         <div className="flex shrink-0 items-center gap-1.5">
             <Input
@@ -58,7 +63,7 @@ export function NumberField({
                 value={draft}
                 disabled={disabled}
                 aria-label={ariaLabel}
-                className="w-16 text-right"
+                className={`${width} text-right`}
                 onChange={event => setDraft(event.target.value)}
                 onBlur={commit}
                 onKeyDown={event => {

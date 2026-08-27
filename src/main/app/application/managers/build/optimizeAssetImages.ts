@@ -1,8 +1,12 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
-import { planAssetImageTranscode, assetImageWorthKeeping } from "@shared/utils/assetImageOptimization";
+import { resolveImageCompression, type AssetCompressionConfiguration } from "@shared/types/assetCompression";
+import {
+    planAssetImageTranscode,
+    assetImageWorthKeeping,
+    type AssetImageTranscodePlan,
+} from "@shared/utils/assetImageOptimization";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
 import { stripImageMetadata } from "@shared/utils/assetImageMetadata";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
@@ -153,7 +157,7 @@ export async function optimizeProjectImages(
      * metadata a re-encode had removed anyway.
      */
     const stripOnly = async (id: string, bytes: Buffer): Promise<void> => {
-        const key = cacheKey(bytes, "strip", input.config.imageQuality);
+        const key = cacheKey(bytes, "strip", "");
         const cached = await readCached(input.cacheDir, key, "strip");
         if (cached === "rejected") {
             return;
@@ -213,7 +217,7 @@ export async function optimizeProjectImages(
             return;
         }
 
-        const key = cacheKey(bytes, plan.action, input.config.imageQuality);
+        const key = cacheKey(bytes, plan.action, plan.action === "lossy" ? lossyMode(plan) : "");
         const cached = await readCached(input.cacheDir, key, plan.action);
         if (cached === "rejected") {
             result.keptOriginal += 1;
@@ -233,7 +237,8 @@ export async function optimizeProjectImages(
             bytes,
             sourceType,
             lossless: plan.action === "lossless",
-            ...(plan.action === "lossy" ? { quality: input.config.imageQuality } : {}),
+            ...(plan.action === "lossy" ? { quality: plan.quality } : {}),
+            ...(plan.action === "lossy" && plan.resizeTo ? { resizeTo: plan.resizeTo } : {}),
         });
         if (!encoded) {
             await writeRejected(input.cacheDir, key);
@@ -427,10 +432,22 @@ function assetSourcePath(projectPath: string, id: string): string | null {
  */
 type CacheAction = "lossless" | "lossy" | "strip";
 
-function cacheKey(bytes: Buffer, action: CacheAction, quality: number): string {
+function cacheKey(bytes: Buffer, action: CacheAction, mode: string): string {
     const digest = crypto.createHash("sha256").update(bytes).digest("hex");
-    const mode = action === "lossless" ? "l" : action === "strip" ? "s" : `q${quality}`;
-    return `${digest}-${mode}-v${CACHE_VERSION}`;
+    const prefix = action === "lossless" ? "l" : action === "strip" ? "s" : "";
+    return `${digest}-${prefix}${mode}-v${CACHE_VERSION}`;
+}
+
+/**
+ * Everything about a lossy encode that changes its bytes, as a key fragment.
+ *
+ * The size belongs in it as much as the quality does: an author who lowers the cap and builds again
+ * must not be handed the larger image the previous build made, and the two settings are independent,
+ * so neither can stand for the other.
+ */
+function lossyMode(plan: Extract<AssetImageTranscodePlan, { action: "lossy" }>): string {
+    const size = plan.resizeTo ? `-${plan.resizeTo.width}x${plan.resizeTo.height}` : "";
+    return `q${plan.quality}${size}`;
 }
 
 /**

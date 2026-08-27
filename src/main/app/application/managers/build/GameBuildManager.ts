@@ -38,9 +38,10 @@ import {
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
-    ASSET_COMPRESSION_TRACKS,
-    assetTrackCompression,
     readAssetCompressionConfiguration,
+    resolveAudioCompression,
+    resolveImageCompression,
+    resolveVideoCompression,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
 import {
@@ -798,17 +799,38 @@ export class GameBuildManager {
         // about their artwork. Every target, because the policy is about the
         // material rather than about where it lands; the silent half of the
         // pipeline stays silent, since it cannot alter the game.
+        //
+        // The number each one carries is what the encoder is actually given, not
+        // the position of a slider: an author in advanced mode set that figure
+        // themselves, and showing them a scale they are not using would be worse
+        // than showing them nothing.
         const compression = this.assetCompressionConfig(projectConfig);
-        for (const track of ASSET_COMPRESSION_TRACKS) {
-            const policy = assetTrackCompression(compression, track);
-            if (policy.enabled) {
-                findings.push({
-                    code: track === "images" ? "lossy-images" : track === "audio" ? "lossy-audio" : "lossy-video",
-                    severity: "warning",
-                    section: "content",
-                    detail: { quality: String(policy.quality) },
-                });
-            }
+        const images = resolveImageCompression(compression);
+        if (images.enabled) {
+            findings.push({
+                code: "lossy-images",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(images.quality) },
+            });
+        }
+        const audio = resolveAudioCompression(compression);
+        if (audio.enabled) {
+            findings.push({
+                code: "lossy-audio",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(audio.bitrateKbps) },
+            });
+        }
+        const video = resolveVideoCompression(compression);
+        if (video.enabled) {
+            findings.push({
+                code: "lossy-video",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(video.crf) },
+            });
         }
         if (mobileTargets.length > 0) {
             findings.push(...await this.mobilePreflight(normalizedProjectPath));
@@ -3138,10 +3160,10 @@ export class GameBuildManager {
     /**
      * Sound and video, through the vendored FFmpeg.
      *
-     * Never fatal, and silent when both switches are off: the pass returns before
-     * it reads a single byte, so a project that compresses nothing pays nothing
-     * and a host with no encoder says nothing about a step it was never asked to
-     * take.
+     * Never fatal. With both switches off it still runs, because taking the
+     * studio's name out of a recording is not a decision an author makes - but it
+     * then needs no encoder at all, so a host without one is never asked for one
+     * and says nothing about a step it was never asked to take.
      */
     private async compressMedia(
         session: BuildSession,
@@ -3161,6 +3183,14 @@ export class GameBuildManager {
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
             });
+            if (result.stripped > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `removed embedded metadata from ${result.stripped} media file(s), `
+                        + `saving ${formatByteSize(result.metadataBytes)}`,
+                });
+            }
             if (result.converted > 0) {
                 const saved = result.beforeBytes - result.afterBytes;
                 const percent = Math.round((saved / result.beforeBytes) * 100);
@@ -3224,7 +3254,7 @@ export class GameBuildManager {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `${config.compressImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
+                message: `${resolveImageCompression(config).enabled ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
                     + `saving ${formatByteSize(saved)} (${percent}%)`,
             });
             return result.images;

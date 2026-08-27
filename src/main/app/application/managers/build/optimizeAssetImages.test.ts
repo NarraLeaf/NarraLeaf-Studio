@@ -205,6 +205,40 @@ describe("optimizeProjectImages", () => {
         expect(codec.requests[0]).toMatchObject({ lossless: false, quality: 70 });
     });
 
+    it("hands the codec a size to decode to, and keys the cache by it", async () => {
+        // The fixture is 64x64. A cap is an advanced setting, so auto is asked
+        // first and must not resize anything.
+        await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
+        const auto = fakeCodec({ ratio: 0.2 });
+        await optimizeProjectImages({
+            projectPath,
+            cacheDir,
+            config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true },
+            openCodec: auto.openCodec,
+            log,
+        });
+        expect(auto.requests[0].resizeTo).toBeUndefined();
+
+        const capped = fakeCodec({ ratio: 0.2 });
+        await optimizeProjectImages({
+            projectPath,
+            cacheDir,
+            config: {
+                ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+                compressImages: true,
+                imageMode: "advanced",
+                imageMaxDimension: 32,
+            },
+            openCodec: capped.openCodec,
+            log,
+        });
+        // Encoded again rather than answered from the entry the first build
+        // wrote: the two settings produce different pictures, so a cache that
+        // could not tell them apart would ship the wrong one.
+        expect(capped.requests).toHaveLength(1);
+        expect(capped.requests[0].resizeTo).toEqual({ width: 32, height: 32 });
+    });
+
     it("leaves a JPEG alone by default and takes it once lossy is on", async () => {
         await writeLibrary({ [ASSET_B]: { bytes: jpegBytes() } });
 
