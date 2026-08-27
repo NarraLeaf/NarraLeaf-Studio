@@ -12,11 +12,14 @@
  * subscribes to topics, the server answers calls and pushes events. Everything a product
  * feature needs - reading, writing, and being told - is one shape rather than three.
  *
- * **This file is a twin.** Its other half is `src/team/protocol.ts` in the Team
- * repository. Two copies rather than a shared package, because the two release separately
- * and neither depends on the other; `team/conformance.test.ts` pins what both sides have
- * to agree about, so a change to one of them is a failing test rather than a bad
- * afternoon. Nothing in here may be changed without changing the other.
+ * **The names in here are not authored in here.** The frame catalogue, the method names,
+ * the capability vocabulary, the error codes, the topic patterns and the limits live once,
+ * in the Team repository's zero-dependency `@narraleaf/team-protocol` package, which
+ * generates `protocol/contract.json` out of itself. `teamContract.json` beside this file is
+ * a copy of that generated artifact, and `teamContract.test.ts` pins every constant below
+ * to it - so a name that moved on the server and not here is a failing test rather than a
+ * call refused on somebody's machine. What this file adds is the shape Studio reads the
+ * answers into, which is Studio's own and nobody else's business.
  *
  * Three rules that the rest of Studio's Team code follows from:
  *
@@ -65,6 +68,17 @@ export type TeamCapability =
     | "live"
     /** Data attached to a project at a revision, which never enters the repository. */
     | "overlay"
+    /**
+     * This server's own state may be read and changed over the socket: its accounts, its
+     * settings, its signing keys, the decisions it has made and how it is faring.
+     *
+     * **A statement about the build, not about the caller**, which is easier to misread
+     * here than anywhere else on this list. Every server that has it announces it to
+     * everybody and refuses the methods behind it to all but an operator, so whether the
+     * account on this end may use it is {@link TeamAccount.operator} - a management screen
+     * needs both, and Studio draws none yet.
+     */
+    | "admin"
     /** Mints a token from a username and password, rather than only accepting a pasted one. */
     | "password-sign-in"
     /** Answers a project's recent revisions. */
@@ -173,6 +187,44 @@ export function teamProjectLiveTopic(projectId: string): string {
 export function teamLiveTopic(sessionId: string): string {
     return `live:${sessionId}`;
 }
+
+/**
+ * The four topics a management surface listens on.
+ *
+ * **Named outright rather than built, and that is the shape of the thing rather than a
+ * shortcut.** Every topic above is a function because it addresses one project or one live
+ * session, and the id has to go into the string. These address the server, of which a
+ * session has exactly one, so a builder for them would take no argument - a constant
+ * wearing brackets, and one more thing for a caller to get wrong.
+ *
+ * All four are refused to anybody who is not an operator, which no other topic on this
+ * server is: the rest are about projects, and every account reaches every project. Studio
+ * subscribes to none of them yet.
+ */
+
+/** An account was made, disabled, enabled, given or denied administration, or had its tokens refused. */
+export const TEAM_TOPIC_ADMIN_USERS = "admin/users";
+
+/** A setting of this server changed. */
+export const TEAM_TOPIC_ADMIN_SETTINGS = "admin/settings";
+
+/** This server rotated its signing keys. */
+export const TEAM_TOPIC_ADMIN_KEYS = "admin/keys";
+
+/**
+ * A decision this server was asked to make was **refused**.
+ *
+ * Named for what it publishes rather than for a collection, which is the design rather
+ * than a shortening: a decision is recorded on the path that answers every repository
+ * access, so a topic firing per decision would push more frames than the rest of this
+ * protocol together, to tell a panel something it could only act on by re-reading a page
+ * it already holds.
+ *
+ * Said plainly so that nobody reads this as a list-changed topic with events missing: **an
+ * allowed decision is published nowhere**, and the sequence here counts refusals rather
+ * than rows. Anything wanting the whole log pages `admin.audit.list` instead.
+ */
+export const TEAM_TOPIC_ADMIN_REFUSALS = "admin/refusals";
 
 /* ------------------------------------------------------------------ limits */
 
@@ -506,6 +558,24 @@ export const TeamMethod = {
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
     overlayDrop: "overlay.drop",
+    // Managing the server itself: its accounts, its settings, its signing keys, its
+    // decisions and its health. Announced by the `admin` capability and refused to anybody
+    // who is not an operator. Named here because the contract names them and this list is
+    // the whole of it; Studio calls none of them.
+    adminUsersList: "admin.users.list",
+    adminUsersCreate: "admin.users.create",
+    adminUsersDisable: "admin.users.disable",
+    adminUsersEnable: "admin.users.enable",
+    adminUsersGrantAdmin: "admin.users.grantAdmin",
+    adminUsersRevokeAdmin: "admin.users.revokeAdmin",
+    adminUsersRevokeTokens: "admin.users.revokeTokens",
+    adminTokensMint: "admin.tokens.mint",
+    adminSettingsList: "admin.settings.list",
+    adminSettingsSet: "admin.settings.set",
+    adminKeysList: "admin.keys.list",
+    adminKeysRotate: "admin.keys.rotate",
+    adminAuditList: "admin.audit.list",
+    adminServerStatus: "admin.server.status",
 } as const;
 
 /**
