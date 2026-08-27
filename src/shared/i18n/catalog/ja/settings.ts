@@ -465,8 +465,12 @@ export const settings = {
                     description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
                 },
                 optimizedImages: {
-                    label: "ビルド用最適化画像",
+                    label: "ビルドで再エンコードした画像",
                     description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
+                },
+                compressedMedia: {
+                    label: "ビルドで再エンコードした音声と映像",
+                    description: "ビルド時に再エンコードした音声と映像。次のビルドで再生成される",
                 },
                 psdImports: {
                     label: "PSD 読み込みの残り物",

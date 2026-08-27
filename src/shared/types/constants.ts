@@ -88,4 +88,14 @@ export enum CacheNamespace {
      * the encoding time it already paid once.
      */
     OptimizedImages = "optimized-images",
+    /**
+     * Sound and video a game build re-encoded, keyed the same way and kept apart
+     * from the images for one reason: size.
+     *
+     * A project's artwork cache is measured in tens of megabytes and its voice
+     * cache in whole gigabytes, so an author looking at what Studio is holding
+     * has to be able to see and clear the expensive one without losing the cheap
+     * one they would rather keep.
+     */
+    CompressedMedia = "compressed-media",
 }

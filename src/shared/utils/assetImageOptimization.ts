@@ -20,7 +20,7 @@
  * is really a JPEG is treated as what it is.
  */
 
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
 
 export type AssetImageSkipReason =
@@ -70,7 +70,7 @@ const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 
 export function planAssetImageTranscode(
     candidate: AssetImageCandidate,
-    config: AssetOptimizationConfiguration,
+    config: AssetCompressionConfiguration,
 ): AssetImageTranscodePlan {
     if (!candidate.assetType
         || BUNDLE_ASSET_TYPES.has(candidate.assetType)
@@ -92,7 +92,7 @@ export function planAssetImageTranscode(
     // Order matters: lossy wins where both apply. An author who turned it on
     // asked for the smaller file, and running the lossless pass first would
     // leave the lossy pass re-encoding an image it had already rewritten.
-    if (config.lossyImages) {
+    if (config.compressImages) {
         return { action: "lossy" };
     }
     // The lossless pass answers to nothing in the configuration: it cannot alter

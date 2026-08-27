@@ -446,8 +446,12 @@ export const settings = {
                     description: "为拼写检查下载的词表。工程自己的词条不在这里",
                 },
                 optimizedImages: {
-                    label: "构建优化图像",
+                    label: "构建重编码图像",
                     description: "构建时重新编码的图像。下次构建会重新生成",
+                },
+                compressedMedia: {
+                    label: "构建重编码音视频",
+                    description: "构建时重新编码的音频与视频。下次构建会重新生成",
                 },
                 psdImports: {
                     label: "PSD 导入残留",

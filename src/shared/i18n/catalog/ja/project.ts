@@ -29,7 +29,7 @@ export const project = {
         },
         settings: {
             title: "設定",
-            description: "セキュリティ、署名、最適化、モバイル",
+            description: "セキュリティ、署名、圧縮、モバイル",
         },
     },
     // ページの中で部分どうしを分ける見出し。見出しは名詞で、文にはしない。何をするかは
@@ -58,7 +58,7 @@ export const project = {
         linting: "プロジェクトチェック",
         security: "セキュリティ",
         signing: "署名",
-        optimization: "最適化",
+        compression: "圧縮",
         crash: "クラッシュ",
         mobile: "モバイル",
     },
@@ -412,10 +412,18 @@ export const project = {
         // 関わらず行が並ぶ。証明書はそれを使うビルドの何日も前に用意するもので、その準備こそが
         // これがビルドのダイアログではなくパネルにある理由。
         signingDescription: "どの資格情報でどのプラットフォームに署名するか。証明書とパスワードはこの端末に留まり、プロジェクトはどれを使うかだけを持つ",
-        lossyImagesTitle: "画像を再圧縮",
-        lossyImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
-        lossyQualityTitle: "画像の品質",
-        lossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
+        compressImagesTitle: "画像を圧縮",
+        compressImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        imageQualityTitle: "画像の品質",
+        imageQualityDescription: "画像を圧縮するときの品質。1 から 100 まで",
+        compressAudioTitle: "音声を圧縮",
+        compressAudioDescription: "音声を非可逆 AAC へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        audioQualityTitle: "音声の品質",
+        audioQualityDescription: "音声を圧縮するときの品質。1 から 100 まで",
+        compressVideoTitle: "映像を圧縮",
+        compressVideoDescription: "映像を非可逆 VP9 へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        videoQualityTitle: "映像の品質",
+        videoQualityDescription: "映像を圧縮するときの品質。1 から 100 まで",
         // 「モバイルの向き」とはしない。モバイルの見出しの下にあり、語を重ねると 318px のパネルで
         // ラベルが 2 行になる。
         orientationTitle: "画面の向き",

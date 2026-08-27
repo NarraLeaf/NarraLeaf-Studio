@@ -9,7 +9,7 @@ import type {
     MobileConfiguration,
     NetworkConfiguration,
     SecurityConfiguration,
-    AssetOptimizationConfiguration,
+    AssetCompressionConfiguration,
 } from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
@@ -284,8 +284,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
-    getAssetOptimizationConfiguration(): AssetOptimizationConfiguration;
-    updateAssetOptimizationConfiguration(patch: Partial<AssetOptimizationConfiguration>): Promise<ProjectConfig>;
+    getAssetCompressionConfiguration(): AssetCompressionConfiguration;
+    updateAssetCompressionConfiguration(patch: Partial<AssetCompressionConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;

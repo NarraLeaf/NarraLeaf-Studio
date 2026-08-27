@@ -132,9 +132,13 @@ const LABEL = {
     crash: "documentDiff.project.crash",
     crashPolicy: "documentDiff.project.crashPolicy",
 
-    assetOptimization: "documentDiff.project.assetOptimization",
-    lossyImages: "documentDiff.project.lossyImages",
-    lossyQuality: "documentDiff.project.lossyQuality",
+    assetCompression: "documentDiff.project.assetCompression",
+    compressImages: "documentDiff.project.compressImages",
+    imageQuality: "documentDiff.project.imageQuality",
+    compressAudio: "documentDiff.project.compressAudio",
+    audioQuality: "documentDiff.project.audioQuality",
+    compressVideo: "documentDiff.project.compressVideo",
+    videoQuality: "documentDiff.project.videoQuality",
 
     mobile: "documentDiff.project.mobile",
     mobileOrientation: "documentDiff.project.mobileOrientation",
@@ -299,9 +303,16 @@ const APP_GROUPS: ReadonlyMap<string, ConfigGroup> = new Map<string, ConfigGroup
     }],
     ["security", {label: LABEL.security, fields: {encryptAssets: LABEL.encryptAssets}}],
     ["crash", {label: LABEL.crash, fields: {policy: LABEL.crashPolicy}}],
-    ["assetOptimization", {
-        label: LABEL.assetOptimization,
-        fields: {lossyImages: LABEL.lossyImages, lossyQuality: LABEL.lossyQuality},
+    ["assetCompression", {
+        label: LABEL.assetCompression,
+        fields: {
+            compressImages: LABEL.compressImages,
+            imageQuality: LABEL.imageQuality,
+            compressAudio: LABEL.compressAudio,
+            audioQuality: LABEL.audioQuality,
+            compressVideo: LABEL.compressVideo,
+            videoQuality: LABEL.videoQuality,
+        },
     }],
     ["vfx", {label: LABEL.vfx, fields: {frameRate: LABEL.vfxFrameRate}}],
     ["mobile", {

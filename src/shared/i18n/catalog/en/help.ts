@@ -856,18 +856,22 @@ export const help = {
                 + "\n"
                 + "Ambience clips imported as assets keep the frame rate they were made at.",
         },
-        assetOptimization: {
+        assetCompression: {
             title: "Reducing download size",
             body:
-                "Every build converts images to a smaller format where that loses no detail, and writes "
-                + "precompressed copies of the text files a browser export serves.\n"
+                "Every build converts images to a smaller format where that loses no detail, removes the "
+                + "metadata a file carries about who made it, and writes precompressed copies of the text files a "
+                + "browser export serves. None of that changes the game, and none of it is a setting.\n"
                 + "\n"
-                + "- Converted images are identical to the originals.\n"
-                + "- Recompressing images is lossy. It produces much smaller files, and the detail it drops "
-                + "cannot be recovered.\n"
-                + "- Recompression applies to every package the project builds, on every platform.\n"
-                + "- Precompressed text files are used only by a server configured to serve them. Every other "
-                + "host serves the originals.",
+                + "Compression does change the game, and each kind of material has a switch of its own.\n"
+                + "\n"
+                + "- Compression is lossy. It produces much smaller files, and what it drops cannot be recovered.\n"
+                + "- Each switch applies to every package the project builds, on every platform.\n"
+                + "- The project keeps the files as they were imported. Only the shipped copy is compressed.\n"
+                + "- A file that would not come out meaningfully smaller ships unchanged, as does video carrying "
+                + "transparency.\n"
+                + "- Precompressed text files are used only by a server configured to serve them. Every other host "
+                + "serves the originals.",
         },
         plugins: {
             title: "Plugins",

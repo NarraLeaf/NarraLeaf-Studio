@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、签名、优化与移动端",
+            description: "安全、签名、压缩与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -56,7 +56,7 @@ export const project = {
         linting: "工程检查",
         security: "安全",
         signing: "签名",
-        optimization: "优化",
+        compression: "压缩",
         crash: "崩溃",
         mobile: "移动端",
     },
@@ -401,10 +401,18 @@ export const project = {
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
         signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
-        lossyImagesTitle: "重压缩图像",
-        lossyImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
-        lossyQualityTitle: "图像质量",
-        lossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
+        compressImagesTitle: "压缩图像",
+        compressImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        imageQualityTitle: "图像质量",
+        imageQualityDescription: "压缩图像时使用的质量，取值 1 到 100",
+        compressAudioTitle: "压缩音频",
+        compressAudioDescription: "将音频重编码为有损 AAC，对本工程构建的每一个包生效；体积明显更小，损失的音质无法恢复",
+        audioQualityTitle: "音频质量",
+        audioQualityDescription: "压缩音频时使用的质量，取值 1 到 100",
+        compressVideoTitle: "压缩视频",
+        compressVideoDescription: "将视频重编码为有损 VP9，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        videoQualityTitle: "视频质量",
+        videoQualityDescription: "压缩视频时使用的质量，取值 1 到 100",
         // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
         orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
