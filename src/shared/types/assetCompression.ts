@@ -49,6 +49,19 @@
  * that no author could then say what their game looks or sounds like without
  * first naming where it was installed from.
  *
+ * ## Which way to be wrong
+ *
+ * Everything in this area is ordered the same way: **safety first, and how much
+ * it can compress second.** A build that leaves bytes on the table costs an
+ * author a larger download; a build that ships altered artwork, a track that
+ * lost its loop, or a file that no longer plays costs them work they cannot get
+ * back. That is why a video carrying alpha is refused outright rather than
+ * re-encoded, why an already-lossy source has to clear a much higher bar than a
+ * lossless one, why the metadata pass drops only what it has a name for, and why
+ * a format whose structure cannot be edited safely is left alone rather than
+ * attempted. When a change here would trade one for the other, it goes the same
+ * way.
+ *
  * Shared because both sides read it: the project settings UI writes it into
  * `.nlproj`, and the build reads it back before it compiles anything.
  */
