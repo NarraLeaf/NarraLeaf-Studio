@@ -3,7 +3,7 @@ import type { LiveInverseReason } from "@/lib/live/inverse";
 import type { LiveSessionEntryRefusal } from "@/lib/team/liveSessionEntry";
 import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
-import type { TeamLiveSession, TeamProblem } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveMember, TeamLiveSession, TeamProblem } from "@shared/types/team";
 
 /**
  * Everything a live session is willing to say about itself, as one value.
@@ -174,6 +174,28 @@ export type LiveSessionView = {
     entryFailure: LiveEntryFailure | null;
     /** How the last session ended, or null when none has. Survives into `idle` so it can be read. */
     ended: LiveSessionEnd | null;
+    /**
+     * How people get into this room, or null outside one.
+     *
+     * The room's own answer rather than what this window asked for: the host may change it while
+     * the session runs, and every window in the room is told when it does.
+     */
+    rule: TeamLiveJoinRule | null;
+    /**
+     * The four digits somebody joins by. Host only, and null for everybody else.
+     *
+     * ⚠ **Only the window that opened the room is ever told them.** They are not on the room
+     * record - that record is broadcast to everybody watching the project - so a guest has no way
+     * to learn them and no reason to: the host is the one doing the inviting.
+     */
+    code: string | null;
+    /**
+     * Who is waiting to be let in, oldest first. Host only, and empty for everybody else.
+     *
+     * Only ever populated for a `request` room, because nothing else produces a request. Emptied
+     * as each one is answered, and by the room ending.
+     */
+    requests: readonly TeamLiveMember[];
 };
 
 /** A window in no session, and never in one. The state every workspace starts in. */
@@ -195,4 +217,7 @@ export const IDLE_LIVE_SESSION: LiveSessionView = {
     canRedo: false,
     entryFailure: null,
     ended: null,
+    rule: null,
+    code: null,
+    requests: [],
 };

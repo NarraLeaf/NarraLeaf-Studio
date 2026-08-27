@@ -35,7 +35,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
-import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveEvent, TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferView } from "@shared/types/teamTransfer";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
@@ -89,8 +89,28 @@ export type LiveRooms = {
         /** The story document the room is about. Required by the server; see {@link TeamLiveSession}. */
         story: string;
         title?: string;
-    }): Promise<TeamOutcome<TeamLiveSession>>;
+        /** How people get in. The server's own default - anybody who can see it - when absent. */
+        rule?: TeamLiveJoinRule;
+    }): Promise<TeamOutcome<{
+        session: TeamLiveSession;
+        /**
+         * The four digits somebody joins this room by.
+         *
+         * ⚠ **Answered here and in no other call**, because it is deliberately not on the room
+         * record: that record is broadcast to everybody watching the project, and a passcode
+         * everybody is told has said nothing. Empty from a server too old to mint one.
+         */
+        code: string;
+    }>>;
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
+    /** Join the room a passcode names. The code is the address and the entitlement at once. */
+    joinByCode(code: string): Promise<TeamOutcome<TeamLiveSession>>;
+    /** Change how a running room may be joined. Only the window that opened it may. */
+    rule(sessionId: string, rule: TeamLiveJoinRule): Promise<TeamOutcome<TeamAck>>;
+    /** Ask to be let into a room that is joined by asking. */
+    requestJoin(sessionId: string): Promise<TeamOutcome<TeamAck>>;
+    /** Answer somebody who asked. Only the window that opened the room may. */
+    answerJoin(sessionId: string, instance: string, admit: boolean): Promise<TeamOutcome<TeamAck>>;
     leave(sessionId: string): Promise<TeamOutcome<TeamAck>>;
     close(sessionId: string): Promise<TeamOutcome<TeamAck>>;
     /**

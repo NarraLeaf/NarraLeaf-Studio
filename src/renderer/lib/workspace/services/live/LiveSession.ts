@@ -70,7 +70,12 @@ import { TEAM_LIVE_PAYLOAD_LIMIT } from "@shared/types/team";
 import type { LocalizationUnit } from "@shared/types/localization";
 import type { StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import type { VoiceUnit } from "@shared/types/voice";
-import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type {
+    TeamLiveEvent,
+    TeamLiveJoinRule,
+    TeamLiveMember,
+    TeamLiveSession,
+} from "@shared/types/team";
 import type { TeamTransferState } from "@shared/types/teamTransfer";
 import { categoryOfAssetType, type AssetType } from "../assets/assetTypes";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
@@ -218,6 +223,22 @@ type ActiveSession = {
     /** How many undo or redo steps this window has sent, for the keys their answers arrive under. */
     steps: number;
     /**
+     * The four digits somebody joins this room by. Host only; empty for a guest.
+     *
+     * ⚠ **Answered once, when the room was opened, and never again.** It is not on the room
+     * record - that record is broadcast to everybody watching the project - so a window that did
+     * not open the room has no way to learn it, and a host that reloads and re-founds is opening a
+     * NEW room, which mints its own.
+     */
+    code: string;
+    /**
+     * Who is waiting to be let in, oldest first. Host only.
+     *
+     * Kept here rather than derived from the roster because a request is exactly the state of not
+     * being on it: what the host is deciding about is somebody the room does not know yet.
+     */
+    requests: TeamLiveMember[];
+    /**
      * Where this window's own work was when it joined, for a guest to be put back on. Host: null.
      *
      * **What a room ends with, rather than what it started with.** A guest edits by sending intents
@@ -290,7 +311,12 @@ export class LiveSession {
      * is actually holding never travels anywhere. The push is the other half of the same sentence -
      * a revision only this machine has is not a starting point anybody can reach.
      */
-    public async open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null> {
+    public async open(input: {
+        storyId: StoryId;
+        title?: string;
+        /** How people get in. The server's own default - anybody who can see it - when absent. */
+        rule?: TeamLiveJoinRule;
+    }): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
             return this.failEntry(blocked);
@@ -311,6 +337,7 @@ export class LiveSession {
                 revision: published.revision,
                 checkpoint: published.checkpoint,
                 ...(input.title === undefined ? {} : { title: input.title }),
+                ...(input.rule === undefined ? {} : { rule: input.rule }),
             });
         } catch (error) {
             return this.failEntry({ kind: "failed", detail: describe(error) });
@@ -375,10 +402,13 @@ export class LiveSession {
         revision: string;
         checkpoint: string | null;
         title?: string;
+        /** How people get in. The server's own default - anybody who can see it - when absent. */
+        rule?: TeamLiveJoinRule;
     }): Promise<LiveEntryFailure | null> {
         const opened = await input.ready.rooms.open({
             project: input.ready.project.repositoryId,
             revision: input.revision,
+            ...(input.rule === undefined ? {} : { rule: input.rule }),
             // What the room is about, said once here and read by everybody who joins. The
             // alternative - letting each joiner work it out - can only ever produce a document
             // that machine already has.
@@ -389,12 +419,13 @@ export class LiveSession {
             return this.failEntry({ kind: "refused", problem: opened.problem });
         }
         await this.enter({
-            room: opened.value,
+            room: opened.value.session,
             rooms: input.ready.rooms,
             project: input.ready.project,
             self: input.ready.instance,
             storyId: input.storyId,
             checkpoint: input.checkpoint,
+            code: opened.value.code,
         });
         return null;
     }
@@ -979,6 +1010,8 @@ export class LiveSession {
         checkpoint: string | null;
         /** A guest's own last progress, to be given back when the room ends. Null for a host. */
         restore?: string | null;
+        /** The digits this room is joined by, for the window that opened it. */
+        code?: string;
     }): Promise<void> {
         const role = decideLiveRole(input.room, input.self);
         // Before a single operation can arrive. Every entry in those stacks is a whole-scene
@@ -1052,6 +1085,8 @@ export class LiveSession {
             claimSweep: null,
             divergence: null,
             steps: 0,
+            code: input.code ?? "",
+            requests: [],
             restore: input.restore ?? null,
             stopListening: () => undefined,
             stopWatching: () => undefined,
@@ -1357,6 +1392,49 @@ export class LiveSession {
         });
     }
 
+    /**
+     * Change how people get into the running room, which only its host may do.
+     *
+     * ⚠ **The digits do not change with it.** One room, one code: a host who switches to `code`
+     * and back has not invalidated what they read out to somebody a minute ago, and a host who
+     * wanted new digits wanted a new room. Answers false where the server refused, which is what
+     * a surface needs to put the control back where it was.
+     */
+    public async setRule(rule: TeamLiveJoinRule): Promise<boolean> {
+        const session = this.active;
+        if (!session || session.role !== "host") {
+            return false;
+        }
+        const answered = await session.rooms.rule(session.room.id, rule);
+        if (!answered.ok) {
+            return false;
+        }
+        // Said locally as well as awaited, because the `live-changed` that carries it is the
+        // server's and may be a moment behind - and the control the author just used is the one
+        // thing on screen that must not lag its own press.
+        session.room = { ...session.room, rule };
+        this.publish(session, {});
+        return true;
+    }
+
+    /**
+     * Say yes or no to somebody waiting to be let in. Host only.
+     *
+     * Dropped from the waiting list either way, and before the answer is sent: what the author
+     * decided is what the screen should say, and a request that stayed until the server agreed
+     * would be a second chance to decide something already decided.
+     */
+    public async answerRequest(instance: string, admit: boolean): Promise<boolean> {
+        const session = this.active;
+        if (!session || session.role !== "host") {
+            return false;
+        }
+        session.requests = session.requests.filter(member => member.instance !== instance);
+        this.publish(session, {});
+        const answered = await session.rooms.answerJoin(session.room.id, instance, admit);
+        return answered.ok;
+    }
+
     private onRoomEvent(session: ActiveSession, event: TeamLiveEvent): void {
         if (this.active !== session) {
             return;
@@ -1371,12 +1449,24 @@ export class LiveSession {
             return;
         }
         if (event.kind === "live-requested" || event.kind === "live-refused") {
-            // Somebody asking to be let into a room, and the answer when it is no. Neither is
-            // for a window already in one: a request is the host's to answer and has no surface
-            // yet, and a refusal is addressed to whoever asked, who is by definition not in the
-            // room. **`readRoomEvent` does not read either of them today**, so nothing arrives
-            // here - this is what stops the two of them falling through when it does, because
-            // they carry a room id where every other event carries the room.
+            // ⚠ Both carry a room ID where every other event carries the room, because whoever
+            // asked is not in it. Handled here rather than below for that reason alone.
+            if (event.session !== session.room.id || session.role !== "host") {
+                // Everybody watching the project hears these; only the room's host acts on them,
+                // and a refusal is this host's own answer coming back off the topic.
+                return;
+            }
+            if (event.kind === "live-requested") {
+                if (!session.requests.some(member => member.instance === event.member.instance)) {
+                    // Oldest first, which is the order they will be answered in and the order a
+                    // person reads a list of people waiting.
+                    session.requests = [...session.requests, event.member];
+                    this.publish(session, {});
+                }
+                return;
+            }
+            session.requests = session.requests.filter(member => member.instance !== event.instance);
+            this.publish(session, {});
             return;
         }
         if (event.session.id !== session.room.id) {
@@ -2352,6 +2442,12 @@ export class LiveSession {
             claims: session.host ? session.host.claims.snapshot().held : session.guest?.claimed ?? {},
             canUndo: session.effects.canUndo,
             canRedo: session.effects.canRedo,
+            // The room's own answer rather than what this window asked for: the host may change
+            // it while the session runs, and a `live-changed` is how everybody learns.
+            rule: session.room.rule ?? "open",
+            // Host only. A guest was never told the digits and has no use for them.
+            code: session.role === "host" && session.code !== "" ? session.code : null,
+            requests: [...session.requests],
             ...extra,
         });
     }

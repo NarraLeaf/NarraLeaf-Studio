@@ -7,7 +7,8 @@ import { Modal } from "@/lib/components/elements/Modal";
 import { Select } from "@/lib/components/elements/Select";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import type { StoryId } from "@shared/types/story";
-import type { TeamLiveMember, TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveMember, TeamLiveSession } from "@shared/types/team";
+import type { TranslationKey } from "@shared/i18n";
 import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { LiveMemberAvatars } from "./LiveMemberAvatars";
@@ -167,6 +168,91 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
     );
 }
 
+/**
+ * How people get into this room, and the digits they get in with. Host only.
+ *
+ * **Three controls that each say both halves**, because the two questions behind them are
+ * different ones: whether the room can be found at all, and whether a person decides who comes in.
+ * A list that said only "passcode" would leave an author to discover by trying it that the room
+ * had also left the server's list.
+ *
+ * The digits are shown for every rule rather than only for the one that needs them. They belong to
+ * the room and not to the setting: a host who switches to `code` has not been given a new passcode
+ * and must not be led to think so, which is what the line under them says.
+ */
+function HowPeopleJoin({ live }: { live: ReturnType<typeof useLiveSession> }) {
+    const { t } = useTranslation();
+    const { view } = live;
+    const [busy, setBusy] = useState(false);
+    const rule = view.rule ?? "open";
+
+    const choices: { value: TeamLiveJoinRule; label: TranslationKey; detail: TranslationKey }[] = [
+        {
+            value: "open",
+            label: "workspace.shell.team.liveRuleOpen",
+            detail: "workspace.shell.team.liveRuleOpenDetail",
+        },
+        {
+            value: "request",
+            label: "workspace.shell.team.liveRuleRequest",
+            detail: "workspace.shell.team.liveRuleRequestDetail",
+        },
+        {
+            value: "code",
+            label: "workspace.shell.team.liveRuleCode",
+            detail: "workspace.shell.team.liveRuleCodeDetail",
+        },
+    ];
+
+    return (
+        <div data-live-block="join-rule" className="mt-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-1" role="radiogroup">
+                {choices.map(choice => (
+                    <button
+                        key={choice.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={rule === choice.value}
+                        data-live-rule={choice.value}
+                        disabled={busy}
+                        onClick={() => {
+                            if (rule === choice.value) {
+                                return;
+                            }
+                            setBusy(true);
+                            void live.setRule(choice.value).finally(() => setBusy(false));
+                        }}
+                        className={cn(
+                            "flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 text-left",
+                            "transition-colors disabled:opacity-50",
+                            rule === choice.value
+                                ? "border-primary bg-primary/10"
+                                : "border-line hover:bg-fill",
+                        )}
+                    >
+                        <span className="text-xs text-fg">{t(choice.label)}</span>
+                        <span className="text-2xs text-fg-subtle">{t(choice.detail)}</span>
+                    </button>
+                ))}
+            </div>
+            {view.code !== null && (
+                <div data-live-block="join-code" className="flex flex-col gap-0.5">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-2xs text-fg-subtle">
+                            {t("workspace.shell.team.liveCodeLabel")}
+                        </span>
+                        {/* Spaced out because it is read aloud as often as it is copied. */}
+                        <span data-live-code className="font-mono text-sm tracking-[0.3em] text-fg">
+                            {view.code}
+                        </span>
+                    </div>
+                    <Note seam="code-fixed">{t("workspace.shell.team.liveCodeFixed")}</Note>
+                </div>
+            )}
+        </div>
+    );
+}
+
 /** What a session opened from here would do, and which document it would be about. */
 function StartOffer({ stories, chosen, onChoose }: {
     stories: ReturnType<typeof useLiveSessionStories>;
@@ -248,6 +334,8 @@ function InSession({ team, live }: {
                 {view.phase === "catching-up" && (
                     <Note seam="catching-up">{t("workspace.shell.team.liveCatchingUp")}</Note>
                 )}
+                {/* Whose room this is decides whether there is anything here to change. */}
+                {view.role === "host" && <HowPeopleJoin live={live} />}
                 {/* The guest's own traffic. A document does not move under a guest's hands until the
                     host answers, so without this a round trip in flight and an editor that has
                     stopped working look the same. Always zero for a host, and drawn at zero for
