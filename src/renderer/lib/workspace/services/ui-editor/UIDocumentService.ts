@@ -24,6 +24,8 @@ import {
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
+import type { LiveUIOp } from "@shared/live/ops";
+import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -179,6 +181,52 @@ type UIDocumentMutationHistoryOptions =
 
 type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
+    /**
+     * An effect arriving, rather than a gesture leaving.
+     *
+     * The one flag that makes the sink stand aside. Without it applying an effect would hand the
+     * operation straight back to the sink it came from, and the room would answer itself for ever.
+     */
+    live?: boolean;
+};
+
+/**
+ * Somewhere for an interface edit to go instead of into the document.
+ *
+ * **The seam a live session hangs off, and the reason the interface editor needs no live-session code
+ * at all.** It is `StoryOpSink`'s shape and the same bargain - with a sink installed the document is
+ * not touched, and the screen changes when the operation comes back as somebody's effect - but it
+ * hangs somewhere else, and where is the whole design:
+ *
+ * The story service asks its sink from **each of eleven mutators**, because each of them is one
+ * gesture and can state it. This service has some forty, and they all funnel into one private
+ * `mutateDocument(mutator)` whose mutator is an opaque closure. Asking there is the only place that
+ * cannot fall behind - and what can be stated there is not the gesture but its result, which
+ * `mutateDocument` obtains by running the mutator against a copy and comparing (see
+ * `@shared/live/uiParts`). So the vocabulary is a delta of records, and it is **exhaustive over
+ * gestures by construction**: the forty that exist and the forty-first that lands next month are all
+ * carried, and none of them has to know a session exists.
+ *
+ * One method, for `StoryOpSink`'s reason: there are exactly two outcomes, and a second method would
+ * be a second way to spell one of them.
+ *
+ * ⚠ **A guest's second gesture on one record inside a single round trip supersedes the first**, and
+ * that is a property of every whole-record operation in this vocabulary rather than of this one: a
+ * guest's document does not move until the host answers, so both deltas are computed against the same
+ * state and the later one carries the earlier one's fields as they were. `update-character`,
+ * `update-asset` and `set-translation` all behave this way and always have. What keeps it small here
+ * is that each gesture is self-contained - a drag commits once at its end, and the inspector's text
+ * fields carry their whole draft on every throttled commit - so the two gestures have to be
+ * different KINDS of edit to the same element, made a network round trip apart.
+ */
+export type UIOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means the sink is not
+     * speaking for this document and the mutation carries on as usual.
+     */
+    handle(op: LiveUIOp): boolean;
 };
 
 const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
@@ -650,6 +698,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
+    /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
+    private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
 
@@ -1449,7 +1499,78 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Send interface edits somewhere else, or take them back. Null restores the ordinary behaviour.
+     *
+     * See {@link UIOpSink} for why it hangs on the private mutator rather than on the public ones.
+     */
+    public setOperationSink(sink: UIOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the screen is
+     * finally allowed to change. It goes through the same `mutateDocument` every gesture does - which
+     * is not a detail, because the dirty marking, the auto-save, `documentChanged` and the blueprint
+     * reconciliation all hang off it, and a document that changed without them is one the editor
+     * never redraws and the disk never receives.
+     *
+     * **Nothing recorded here enters this author's undo stack.** An effect is somebody else's edit
+     * landing on this machine, and an undo stack that offered to take it back would be offering to
+     * delete a stranger's work. Inside a session, undo is sending the inverse of one's own last
+     * operation instead; see the live layer's `inverseOf`.
+     *
+     * ⚠ **The records are copied on the way in.** They arrived inside a message the sender may still
+     * be holding - the host keeps every effect it broadcast - and applying writes them into the
+     * document, which then edits them in place.
+     */
+    public applyLiveOp(op: LiveUIOp): void {
+        switch (op.op) {
+            case "write-ui":
+                this.applyParts(op.parts);
+                return;
+            default: {
+                // The switch is exhaustive over the vocabulary and this is what says so. The
+                // callback returns void, so a verb nobody applied here would be a silent no-op: the
+                // effect lands everywhere else in the room and does nothing on this machine, which
+                // is the divergence the digest catches one message too late.
+                const unapplied: never = op.op;
+                throw new RendererError(`No applier for live interface operation: ${String(unapplied)}`);
+            }
+        }
+    }
+
+    private applyParts(parts: LiveUIParts): void {
+        const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
+        this.mutateDocument(document => applyUIParts(document, copy), { live: true });
+    }
+
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.opSink && !options.live) {
+            // Run the gesture against a copy and state what it did to the document, rather than
+            // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is
+            // what makes a verb impossible to forget. See {@link UIOpSink}.
+            const current = this.getDocument();
+            const draft = cloneUIHistoryDocument(current);
+            mutator(draft);
+            const parts = diffUIParts(current, draft);
+            if (parts === null) {
+                // A mutation that changed nothing must not become a message: several of this
+                // service's methods are no-ops against the wrong element, and a room full of empty
+                // operations would cost a broadcast, a sequence number and an undo step each.
+                return;
+            }
+            // ⚠ Which of the records were already here travels with the delta. Nothing in a delta's
+            // shape distinguishes a new element from one somebody deleted while it was being
+            // dragged, and applied blind the second of those puts a deleted element back on every
+            // screen in the room with every machine agreeing about it.
+            const updates = uiPartsUpdates(current, parts);
+            if (this.opSink.handle({ op: "write-ui", parts, ...(updates.length === 0 ? {} : { updates }) })) {
+                return;
+            }
+        }
         const historyService = this.getHistoryService();
         const historyOptions = options.history;
         const beforeHistory =

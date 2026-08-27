@@ -606,9 +606,13 @@ export const assets = {
     live: {
         recordClaimed: "{name} がこのアセットを編集している",
         transferring: "このアセットは {percent}% 転送済み",
-        tooLargeTitle: "セッションに取り込まれていない",
-        tooLargeDetailOne: "{name} は {size} MB を超えている。セッションを終了してから読み込む",
-        tooLargeDetailMany: "{count} 件のファイルが {size} MB を超えている。セッションを終了してから読み込む",
+        refusedTitle: "セッションに取り込まれていない",
+        refusedQuotaOne: "{name} はこのプロジェクトが同時に転送できる量を超えている。転送中のファイルが届いてから読み込む",
+        refusedQuotaMany: "{count} 件のファイルがこのプロジェクトが同時に転送できる量を超えている。転送中のファイルが届いてから読み込む",
+        refusedOne: "{name} をサーバーに送信できなかった",
+        refusedMany: "{count} 件のファイルをサーバーに送信できなかった",
+        replaceRefused: "そのファイルをサーバーに送信できなかった",
+        replaceRefusedQuota: "そのファイルはこのプロジェクトが同時に転送できる量を超えている",
     },
     newTextFile: {
         title: "新規テキストファイル",

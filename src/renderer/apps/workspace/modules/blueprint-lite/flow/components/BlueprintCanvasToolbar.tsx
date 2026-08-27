@@ -32,6 +32,7 @@ import { BLUEPRINT_COMMENT_COLORS, blueprintCommentColorLabel } from "@/lib/ui-e
 import { BlueprintZoomMenu } from "./BlueprintZoomMenu";
 import type { BlueprintLayoutDirection } from "../blueprintAutoLayout";
 import type { BlueprintMinimapPreference } from "../blueprintMinimapPreference";
+import { interfaceDocumentFreezeScope } from "../../../ui-editor/uiLiveSession";
 
 /** What a drag on empty canvas does. */
 export type BlueprintCanvasTool = "select" | "pan";
@@ -73,7 +74,7 @@ export function BlueprintCanvasToolbar({
     onMinimapChange,
 }: BlueprintCanvasToolbarProps) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const colors = useSurfaceToolbarPopover();
     const directions = useSurfaceToolbarPopover();
     const minimapToggleLabel = minimap.visible ? t("blueprint.minimap.hide") : t("blueprint.minimap.show");

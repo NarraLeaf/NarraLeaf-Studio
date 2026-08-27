@@ -15,6 +15,7 @@ import {
     liveEndSentence,
     liveEntryFailureRemedy,
     liveEntryFailureSentence,
+    liveLeaveAct,
     liveMemberRoleKey,
     liveStandingKey,
 } from "./liveSessionText";
@@ -81,8 +82,9 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
     // Survives into `idle` so it can still be read, so it is drawn only where this window is not in
     // a session - and never for an author who left of their own accord, who pressed the control and
     // watched the dialog change.
+    const leaving = liveLeaveAct(view);
     const ended = inRoom ? null : view.ended;
-    const endedSentence = ended === null ? null : liveEndSentence(ended);
+    const endedSentence = ended === null ? null : liveEndSentence(ended, view.rejoining !== null);
 
     return (
         <Modal
@@ -93,16 +95,14 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
             footer={inRoom ? (
                 <Button
                     data-live-act="leave"
-                    // A host holds the only copy that counts, so its window walking away ends the
-                    // room for everybody. The control is named after what it does, and it is the
-                    // destructive one of the two.
-                    variant={view.role === "host" ? "danger" : "secondary"}
+                    // Named after what it does rather than after which half of the session this
+                    // window is: a host walking out of a room with somebody else in it hands it
+                    // over, and only a host walking out of a room of one ends anything.
+                    variant={leaving.destructive ? "danger" : "secondary"}
                     disabled={live.busy || view.phase === "leaving"}
                     onClick={live.leave}
                 >
-                    {t(view.role === "host"
-                        ? "workspace.shell.team.liveEndSession"
-                        : "workspace.shell.team.liveLeaveSession")}
+                    {t(leaving.key)}
                 </Button>
             ) : room !== null ? (
                 <Button
@@ -161,6 +161,13 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
                             <Note seam="remedy">{t("workspace.shell.team.liveEndedDivergedNext")}</Note>
                         )}
                     </div>
+                )}
+                {/* The room is expected back. Said wherever the ending is said, because it is the
+                    other half of the same sentence: a host that hands over or reloads closes the
+                    room and another one opens seconds later, and without this the author reads a
+                    session that vanished and came back as two unexplained events. */}
+                {!inRoom && view.rejoining !== null && (
+                    <Note seam="rejoining">{t("workspace.shell.team.liveRejoining")}</Note>
                 )}
             </div>
         </Modal>

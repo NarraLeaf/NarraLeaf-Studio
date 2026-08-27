@@ -31,9 +31,6 @@ import {
     VcsGetRemoteHandler, VcsSetRemoteHandler, VcsGetSyncStateHandler, VcsPushHandler, VcsSyncHandler, VcsCloneHandler,
     VcsGetServerSessionHandler, VcsSignInHandler, VcsSignOutHandler, VcsTrustAuthorityHandler,
     VcsProbeServerHandler, VcsListServersHandler, VcsAddServerHandler, VcsRefreshServerHandler, VcsForgetServerHandler,
-    VcsListServerProjectsHandler, VcsGetServerProjectHandler, VcsDeleteServerProjectHandler,
-    VcsListServerProjectHistoryHandler,
-    VcsListServerMembersHandler,
     VcsSignInWithPasswordHandler, VcsPublishProjectHandler,
     VcsListLocalRepositoriesHandler,
     VcsGetMergeStateHandler, VcsGetMergeDocumentHandler, VcsResolveConflictsHandler, VcsCompleteMergeHandler, VcsUnresolveConflictsHandler,
@@ -44,6 +41,7 @@ import {
     TeamConnectionsHandler,
     TeamOpenHandler,
     TeamSubscribeHandler,
+    TeamTransferHandler,
     TeamUnsubscribeHandler,
 } from "./handlers/teamAction";
 import { ProjectWizardLaunchHandler, ProjectWizardSelectDirectoryHandler, ProjectWizardGetDefaultDirectoryHandler } from "./handlers/projectWizardAction";
@@ -445,11 +443,6 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new VcsSignInHandler(),
         new VcsProbeServerHandler(),
         new VcsListServersHandler(),
-        new VcsListServerProjectsHandler(),
-        new VcsGetServerProjectHandler(),
-        new VcsDeleteServerProjectHandler(),
-        new VcsListServerProjectHistoryHandler(),
-        new VcsListServerMembersHandler(),
         // The Team protocol, whole. See ./handlers/teamAction.ts for why this is five
         // entries and stays five however many features the protocol grows.
         new TeamOpenHandler(),
@@ -457,6 +450,8 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new TeamCallHandler(),
         new TeamSubscribeHandler(),
         new TeamUnsubscribeHandler(),
+        // The sixth, and the only one that carries bytes rather than a question.
+        new TeamTransferHandler(),
     new VcsSignInWithPasswordHandler(),
         new VcsPublishProjectHandler(),
         new VcsListLocalRepositoriesHandler(),

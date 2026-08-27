@@ -19,6 +19,7 @@ import {
     localizationKeysFreezeScope,
     TranslationClaimMark,
     translationDocumentFreezeScope,
+    useLocalizationKeyClaim,
     useTranslationClaim,
 } from "./localizationLiveSession";
 
@@ -105,6 +106,13 @@ function AutosizeTextarea(props: {
     freezeScope?: string;
     /** Who else is inside this line, or null. Read-only for as long as somebody is. */
     heldBy?: string | null;
+    /**
+     * What to say about the holder, when it is not a translation being held.
+     *
+     * The source column of a named-key row draws this same box over a different document, so the
+     * sentence has to be that document's - "translating this line" is wrong over a source text.
+     */
+    heldTip?: string;
     onChange: (value: string) => void;
     onFocus?: () => void;
     onBlur?: () => void;
@@ -145,7 +153,9 @@ function AutosizeTextarea(props: {
             readOnly={freeze.frozen || held !== null}
             data-tip={freeze.frozen
                 ? freeze.reason
-                : held === null ? undefined : t("workspace.localization.live.entryClaimed", { name: held })}
+                : held === null
+                    ? undefined
+                    : props.heldTip ?? t("workspace.localization.live.entryClaimed", { name: held })}
             className="min-h-[3.25rem] w-full resize-none overflow-hidden rounded-md border border-edge-subtle bg-transparent px-2 py-1.5 text-sm leading-relaxed text-fg outline-none transition-colors placeholder:text-fg-subtle focus:border-primary/50 focus:bg-surface-raised"
         />
     );
@@ -284,6 +294,13 @@ export function TranslateRow(props: {
     onTargetChange: (row: TranslationTableRow, target: string) => void;
     onSourceChange?: (row: TranslationTableRow, sourceText: string) => void;
     onRemove?: (row: TranslationTableRow) => void;
+    /**
+     * The source box of a named key taking or releasing focus, so a session can hold the string.
+     *
+     * Optional because the rows render outside a session too, and a table that had to be told about
+     * one to draw a source text would be the coupling this seam exists to avoid.
+     */
+    onFocusKey?: (name: string | null) => void;
 }) {
     const { t } = useTranslation();
     // Removing a key, and editing a key's source text, write the KEY REGISTRY rather than this
@@ -292,6 +309,12 @@ export function TranslateRow(props: {
     // stay readable either way: browsing a past version is the point.
     const freeze = useFreezeGuard(localizationKeysFreezeScope());
     const heldBy = useTranslationClaim(props.row.unitId);
+    // Who else has this string's SOURCE text open, which is a different document and therefore a
+    // different claim from the translation beside it. Both can be held at once, by two people.
+    const keyHeldBy = useLocalizationKeyClaim(props.row.keyName);
+    const keyHeldTip = keyHeldBy === null
+        ? undefined
+        : t("workspace.localization.live.keyClaimed", { name: keyHeldBy });
     const sourceEditable = props.row.editableSource === true && !!props.onSourceChange;
     const removable = props.row.editableSource === true && !!props.onRemove;
 
@@ -300,6 +323,9 @@ export function TranslateRow(props: {
             <StateIndicator state={props.state} />
             <div className="col-start-1 row-start-1 flex min-w-0 items-center gap-1.5 truncate px-2 text-2xs text-fg-subtle">
                 <span className="select-text truncate">{props.speaker}</span>
+                {/* Two marks, because the row draws two documents: the source text of a named string
+                    and its translation. Two people can hold one row, one column each. */}
+                {keyHeldBy ? <TranslationClaimMark account={keyHeldBy} tip={keyHeldTip} /> : null}
                 {heldBy ? <TranslationClaimMark account={heldBy} /> : null}
             </div>
             {sourceEditable ? (
@@ -309,6 +335,10 @@ export function TranslateRow(props: {
                         placeholder={t("workspace.localization.table.keySourcePlaceholder")}
                         ariaLabel={t("workspace.localization.table.sourceColumn")}
                         freezeScope={localizationKeysFreezeScope()}
+                        heldBy={keyHeldBy}
+                        heldTip={keyHeldTip}
+                        onFocus={() => props.onFocusKey?.(props.row.keyName ?? null)}
+                        onBlur={() => props.onFocusKey?.(null)}
                         onChange={value => props.onSourceChange?.(props.row, value)}
                     />
                 </div>
@@ -332,7 +362,12 @@ export function TranslateRow(props: {
                     type="button"
                     className="absolute right-3 top-2 flex h-6 w-6 items-center justify-center rounded-md text-fg-subtle opacity-0 transition-opacity hover:bg-fill hover:text-danger focus-visible:opacity-100 group-hover:opacity-100"
                     onClick={() => props.onRemove?.(props.row)}
-                    {...freeze.writes(false, t("workspace.localization.table.removeKey"))}
+                    {...freeze.writes(
+                        // Refused for a string somebody else is inside, exactly as typing into it
+                        // is: removing the row takes the sentence they were writing about it.
+                        keyHeldBy !== null,
+                        keyHeldTip ?? t("workspace.localization.table.removeKey"),
+                    )}
                 >
                     <Trash2 className="h-3.5 w-3.5" />
                 </button>

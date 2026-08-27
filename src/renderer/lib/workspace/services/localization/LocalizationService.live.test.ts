@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
-import type { LiveLocalizationOp, LiveVoiceOp } from "@shared/live/ops";
+import type { LiveLocalizationKeyOp, LiveLocalizationOp, LiveVoiceOp } from "@shared/live/ops";
 import { hashSourceText } from "@shared/utils/localizationText";
 import { join } from "@shared/utils/path";
 import { Services, type WorkspaceContext } from "../services";
@@ -22,7 +22,7 @@ type Harness<S> = {
     service: S;
     files: Map<string, string>;
     /** Every operation the sink was handed, in order. */
-    handled: (LiveLocalizationOp | LiveVoiceOp)[];
+    handled: (LiveLocalizationOp | LiveLocalizationKeyOp | LiveVoiceOp)[];
 };
 
 function createContext(files: Map<string, string>, kind: "localization" | "voice"): WorkspaceContext {
@@ -78,7 +78,7 @@ function createContext(files: Map<string, string>, kind: "localization" | "voice
 
 async function createTranslations(): Promise<Harness<LocalizationService>> {
     const files = new Map<string, string>();
-    const handled: LiveLocalizationOp[] = [];
+    const handled: (LiveLocalizationOp | LiveLocalizationKeyOp)[] = [];
     const service = new LocalizationService();
     await service.initialize(createContext(files, "localization"), async () => undefined);
     await service.loadDocument("ja");
@@ -264,5 +264,74 @@ describe("voice takes, while a session owns them", () => {
 
         expect(handled).toEqual([]);
         expect(service.unitsOf("ja")).toEqual({ "text-a": { assetId: "clip-1", sourceHash: "h", status: "approved" } });
+    });
+});
+
+
+describe("the named strings, while a session owns them", () => {
+    it("hands a declaration over with the definition as it would have been written", async () => {
+        // Trimmed note and all, for the reason `updateUnit` is asked with the entry rather than the
+        // patch: a receiving machine that normalised for itself is a second reading of one gesture.
+        const { service, handled } = await createTranslations();
+        await service.loadKeys();
+
+        service.setKey("menu.start", { sourceText: "Start", note: "  " });
+
+        expect(handled).toEqual([{ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } }]);
+        expect(service.keysIfLoaded()).toEqual({});
+    });
+
+    it("hands a removal over, and says nothing about a key that is already gone", async () => {
+        const { service, handled } = await createTranslations();
+        await service.loadKeys();
+        service.applyLiveOp({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+
+        service.removeKey("menu.start");
+        service.removeKey("menu.absent");
+
+        expect(handled).toEqual([{ op: "remove-key", name: "menu.start" }]);
+        // Nothing moved locally: the row goes when the effect comes back.
+        expect(service.keysIfLoaded()).toHaveProperty("menu.start");
+    });
+
+    it("applies an arriving effect without consulting the sink", async () => {
+        const { service, handled } = await createTranslations();
+        await service.loadKeys();
+
+        service.applyLiveOp({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+        expect(service.keysIfLoaded()).toEqual({ "menu.start": { sourceText: "Start" } });
+
+        service.applyLiveOp({ op: "set-key", name: "menu.start", definition: { sourceText: "Begin" } });
+        expect(service.keysIfLoaded()).toEqual({ "menu.start": { sourceText: "Begin" } });
+
+        service.applyLiveOp({ op: "remove-key", name: "menu.start" });
+        expect(service.keysIfLoaded()).toEqual({});
+        expect(handled).toEqual([]);
+    });
+
+    it("leaves the translations of a removed string exactly where they are", async () => {
+        // The document's own rule, and the reason a removal needs nothing carried back with it: a
+        // `key:<name>` entry is a harmless orphan the library already tolerates, so declaring the
+        // string again finds every translation still under it.
+        const { service } = await createTranslations();
+        await service.loadKeys();
+        service.applyLiveOp({
+            op: "set-translation",
+            locale: "ja",
+            unitId: "key:menu.start",
+            unit: { target: "はじめる", sourceHash: "h", status: "translated" },
+        });
+        service.applyLiveOp({ op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+
+        service.applyLiveOp({ op: "remove-key", name: "menu.start" });
+
+        expect(service.keysIfLoaded()).toEqual({});
+        expect(service.unitsOf("ja")).toHaveProperty("key:menu.start");
+    });
+
+    it("says whether this window holds the registry at all, which is what a session carries it on", async () => {
+        const { service } = await createTranslations();
+        expect(await service.loadKeysForLive()).toBe(true);
+        expect(service.keysIfLoaded()).toEqual({});
     });
 });

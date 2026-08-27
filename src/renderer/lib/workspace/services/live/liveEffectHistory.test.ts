@@ -41,6 +41,17 @@ function makeDocument(): StoryDocument {
 /** An empty cast, for the tests that are only about the story. */
 const EMPTY_CAST: LiveCastView = { characters: {}, order: [], groups: {} };
 
+/** No configuration table holds anything, for the tests that are only about the story. */
+const NO_CONFIG = {
+    hasAppTag: () => false,
+    hasDlc: () => false,
+    hasBrandColor: () => false,
+    audioTracks: () => null,
+    assetSets: () => null,
+    variables: () => null,
+    keys: () => null,
+};
+
 function effect(seq: number, op: LiveOp, patch: Partial<LiveEffect> = {}): LiveEffect {
     return { kind: "effect", by: SELF, seq, document: { doc: "story", storyId: "story-1" }, op, ...patch };
 }
@@ -51,17 +62,21 @@ describe("the stack Ctrl+Z reads inside a session", () => {
     it("has nothing to offer before anything has been done", () => {
         const history = new LiveEffectHistory();
         expect(history.canUndo).toBe(false);
-        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null }))
+        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG }))
             .toEqual({ impossible: "nothing-to-undo" });
     });
 
     it("answers with the inverse of the last thing this window did", () => {
         const history = new LiveEffectHistory();
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "Tale" } });
-        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null })).toEqual({
+        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG })).toEqual({
             index: 0,
             direction: "undo",
             op: { op: "rename-story", name: "Tale" },
+            // The document the step's own effect named. A session carries every story in the
+            // project, so an inverse addressed to the room's story would take a rename back on the
+            // wrong file.
+            document: { doc: "story", storyId: "story-1" },
         });
     });
 
@@ -73,7 +88,7 @@ describe("the stack Ctrl+Z reads inside a session", () => {
             effect: effect(1, renamed("Second"), { by: "somebody-else" }),
             before: { op: "rename-story", name: "Tale" },
         });
-        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null }))
+        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG }))
             .toEqual({ impossible: "not-mine" });
     });
 
@@ -82,7 +97,7 @@ describe("the stack Ctrl+Z reads inside a session", () => {
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "First" } });
         history.record({ effect: effect(2, renamed("Third")), before: { op: "rename-story", name: "Second" } });
 
-        const first = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const first = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
         expect(first).toMatchObject({ index: 1, op: { op: "rename-story", name: "Second" } });
         history.expect("k1", first as { index: number; direction: "undo" });
         // The effect that answers the step becomes what the step now stands on, which is what makes
@@ -90,24 +105,26 @@ describe("the stack Ctrl+Z reads inside a session", () => {
         history.record({ effect: effect(3, renamed("Second")), before: { op: "rename-story", name: "Third" } }, "k1");
         expect(history.canRedo).toBe(true);
 
-        const second = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const second = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
         expect(second).toMatchObject({ index: 0, op: { op: "rename-story", name: "First" } });
 
-        const redo = history.plan("redo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const redo = history.plan("redo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
+        expect(second).toMatchObject({ index: 0, op: { op: "rename-story", name: "First" } });
+
         expect(redo).toMatchObject({ index: 1, op: { op: "rename-story", name: "Third" } });
     });
 
     it("has nothing to put back until something has been taken back", () => {
         const history = new LiveEffectHistory();
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "Tale" } });
-        expect(history.plan("redo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null }))
+        expect(history.plan("redo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG }))
             .toEqual({ impossible: "nothing-to-redo" });
     });
 
     it("leaves the stack where it was when the host refuses a step", () => {
         const history = new LiveEffectHistory();
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "Tale" } });
-        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
         history.expect("k1", plan as { index: number; direction: "undo" });
         history.abandon("k1");
         // Nothing was applied, so the step is still there to be taken.
@@ -118,7 +135,7 @@ describe("the stack Ctrl+Z reads inside a session", () => {
     it("drops what had been taken back as soon as something new is done", () => {
         const history = new LiveEffectHistory();
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "First" } });
-        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG });
         history.expect("k1", plan as { index: number; direction: "undo" });
         history.record({ effect: effect(2, renamed("First")), before: { op: "rename-story", name: "Second" } }, "k1");
         expect(history.canRedo).toBe(true);
@@ -138,7 +155,7 @@ describe("the stack Ctrl+Z reads inside a session", () => {
         });
         delete document.scenes["s1"].blocks["a"];
         document.scenes["s1"].rootBlockIds = ["b"];
-        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document, assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null })).toEqual({ impossible: "row-gone" });
+        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document, assets: () => null, assetFolders: () => null, ...NO_CONFIG })).toEqual({ impossible: "row-gone" });
     });
 
     it("carries the entries a deleted row came with into the insert that puts it back", () => {
@@ -158,7 +175,7 @@ describe("the stack Ctrl+Z reads inside a session", () => {
             derived,
         });
 
-        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document, assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null });
+        const plan = history.plan("undo", { self: SELF, cast: EMPTY_CAST, document, assets: () => null, assetFolders: () => null, ...NO_CONFIG });
         expect(plan).toMatchObject({ op: { op: "insert-block" }, derived });
     });
 
@@ -166,6 +183,6 @@ describe("the stack Ctrl+Z reads inside a session", () => {
         const derived: LiveDerived = { translations: { fr: {} } };
         const history = new LiveEffectHistory();
         history.record({ effect: effect(1, renamed("Second")), before: { op: "rename-story", name: "Tale" }, derived });
-        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, audioTracks: () => null, assetSets: () => null })).not.toHaveProperty("derived");
+        expect(history.plan("undo", { self: SELF, cast: EMPTY_CAST, document: makeDocument(), assets: () => null, assetFolders: () => null, ...NO_CONFIG })).not.toHaveProperty("derived");
     });
 });

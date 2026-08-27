@@ -1345,4 +1345,9 @@ export const blueprint = {
         getPlaytime: "Get Playtime",
         getTotalPlaytime: "Get Total Playtime",
     },
+    // A live session leaves the blueprint document writable. What the canvas gains is a mark
+    // saying who else is inside a node.
+    live: {
+        nodeClaimed: "{name} is editing this node",
+    },
 } as const;

@@ -268,4 +268,7 @@ export const uiEditor = {
             apply: "テンプレートを適用できなかった",
         },
     },
+    live: {
+        elementClaimed: "{name} がこの要素を編集している",
+    },
 } satisfies LocaleNamespace<"uiEditor">;
