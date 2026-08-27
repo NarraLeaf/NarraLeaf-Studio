@@ -423,13 +423,22 @@ export interface TeamLiveSession {
  * passcode broadcast to everybody has said nothing. The server answers it to the window
  * that opened the room and to nobody else.
  *
+ * **Two questions, not one**: whether the room can be found, and whether a person decides
+ * who comes in. The three rules are three of the four corners.
+ *
  *  - `open` - on the project's list, joinable by anybody who can see it.
  *  - `code` - not on that list for anybody who is not already in it, and joined by the
  *    digits minted when it opened. **The server enforces both halves**: a list that
  *    carried the room would be a rule one client build keeps, and an id that was enough
  *    to join by would be a rule about listings rather than about joining.
+ *  - `request` - on the list like `open`, and joined only once whoever opened it has said
+ *    yes. Walking in with the id is refused, for the same reason.
+ *
+ * The fourth corner - a code and an answer - is deliberately not offered: a code is
+ * already a door, and a second one asks the host to decide something they know nothing
+ * more about than the code did.
  */
-export type TeamLiveJoinRule = "open" | "code";
+export type TeamLiveJoinRule = "open" | "code" | "request";
 
 export interface TeamLiveMember {
     instance: string;
@@ -442,7 +451,24 @@ export interface TeamLiveMember {
 export type TeamLiveEvent =
     | { kind: "live-opened"; session: TeamLiveSession }
     | { kind: "live-changed"; session: TeamLiveSession }
-    | { kind: "live-closed"; session: string };
+    | { kind: "live-closed"; session: string }
+    /**
+     * Somebody wants into a `request` room. For whoever opened it, and for nobody else.
+     *
+     * ⚠ **On the project's topic rather than the room's**, because the person who asked is
+     * not in the room and has nothing else to listen to. So every window on the project
+     * sees it and all but one must ignore it - which is consistent with a deployment where
+     * every account already reaches every project.
+     */
+    | { kind: "live-requested"; session: string; member: TeamLiveMember }
+    /**
+     * A request that was answered no.
+     *
+     * Being let in has no event of its own: it is a change to the roster, and `live-changed`
+     * already says that - so a window that asked learns it is in by finding itself in the
+     * members.
+     */
+    | { kind: "live-refused"; session: string; instance: string };
 
 /**
  * One thing said inside a live session, as it arrives on that session's topic.
@@ -528,6 +554,19 @@ export const TeamMethod = {
     liveLeave: "live.leave",
     liveClose: "live.close",
     liveRule: "live.rule",
+    /**
+     * Which room a passcode names, without joining it.
+     *
+     * **The one live method that does not need this window to have the project open.**
+     * Somebody was read four digits and may never have had the project; what they need
+     * first is which project it is, so they can go and get it. Answering that is what
+     * stops the one way in that needs no list from needing a list after all.
+     */
+    liveByCode: "live.byCode",
+    /** Ask to be let into a room that is joined by asking. */
+    liveRequestJoin: "live.requestJoin",
+    /** Answer somebody who asked, which only the room's opener may do. */
+    liveAnswerJoin: "live.answerJoin",
     liveSay: "live.say",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
