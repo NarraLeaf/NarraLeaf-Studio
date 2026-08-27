@@ -130,7 +130,7 @@ const expr = (source: string, ast: StoryExpr): StoryExpression => ({ source, ast
 const num = (value: number): StoryExpr => ({ kind: "literal", value });
 const call = (fn: "random" | "randomInt" | "max", args: StoryExpr[]): StoryExpr =>
     ({ kind: "call", fn, args });
-const binary = (op: "+" | "*" | ">" | "<" | ">=", left: StoryExpr, right: StoryExpr): StoryExpr =>
+const binary = (op: "+" | "*" | ">" | "<" | ">=" | "&&", left: StoryExpr, right: StoryExpr): StoryExpr =>
     ({ kind: "binary", op, left, right });
 const varRead = (target: StoryVariableRef, name: string): StoryExpr => ({ kind: "var", target, name });
 
@@ -267,9 +267,25 @@ function run(id: LintRuleId, ctx: LintContext): LintFinding[] {
     }
     const findings = rule.run(ctx, {});
     if (findings instanceof Promise) {
-        throw new Error("variable rules are synchronous");
+        throw new Error(`${id} is async - use runAsync`);
     }
     return findings;
+}
+
+/**
+ * The same, for a rule that has to be awaited.
+ *
+ * `condition-never-holds` is the one: it defers loading the scene-graph builder until a run reaches
+ * it, because a value import of that module pulls the story editor's command registry into the lint
+ * rules' import graph. The `run` above still refuses a promise, so a rule that becomes async by
+ * accident is caught rather than silently returning a pending value.
+ */
+async function runAsync(id: LintRuleId, ctx: LintContext): Promise<LintFinding[]> {
+    const rule = VARIABLES_LINT_RULES.find(entry => entry.id === id);
+    if (!rule) {
+        throw new Error(`no such rule: ${id}`);
+    }
+    return rule.run(ctx, {});
 }
 
 // --- variables/undeclared ---------------------------------------------------
@@ -854,5 +870,287 @@ describe("variables/random-outside-assignment", () => {
 
     it("says nothing about an empty project", () => {
         expect(run("variables/random-outside-assignment", createTestLintContext())).toEqual([]);
+    });
+});
+
+// --- variables/read-never-written & variables/condition-never-holds ----------
+
+/**
+ * The two flag checks.
+ *
+ * Both are built to stay quiet, so most of what is pinned here is silence: a writer in another
+ * story, a writer inside a blueprint, a plugin marker anywhere in the project. Each of those is a
+ * project where the honest answer is "cannot say", and each of them would otherwise produce a
+ * confident finding about a script that works.
+ */
+
+const AFFECTION_REF: StoryVariableRef = { scope: "saved", variableId: "affection" };
+const AFFECTION_KEY = "saved:affection";
+
+/** A declaration carrying a starting number, which is what a range walk needs to seed from. */
+const numberDeclaration = (id: string, name: string, defaultValue: number): BlockSpec => ({
+    id,
+    kind: "declaration",
+    payload: { scope: "saved", name, valueType: "number", storageKey: id, defaultValue },
+});
+
+/** `/inc <var> <step>` as the document stores it: `<var> + <step>` on a setVariable row. */
+const incBy = (id: string, target: StoryVariableRef, step: number, name: string): BlockSpec => ({
+    id,
+    kind: "action",
+    payload: {
+        action: "setVariable",
+        target,
+        value: 0,
+        expression: expr(`${name} + (${step})`, binary("+", varRead(target, name), num(step))),
+    },
+});
+
+const jump = (id: string, targetSceneId: string): BlockSpec => ({
+    id,
+    kind: "jump",
+    payload: { targetSceneId },
+});
+
+/** A story whose document names where play begins - without it every range is `unknown`. */
+function storyFrom(id: string, name: string, scenes: StoryScene[], entrySceneId: string): LintStoryEntry {
+    const document = {
+        schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION,
+        id,
+        name,
+        entrySceneId,
+        chapters: [{ id: "c1", name: "Chapter", sceneIds: scenes.map(entry => entry.id) }],
+        scenes: Object.fromEntries(scenes.map(entry => [entry.id, entry])),
+    } as StoryDocument;
+    return { id, name, document };
+}
+
+/** A blueprint document with one graph that assigns a saved variable. */
+function blueprintWriting(blueprintId: string, savedVariableId: string, ownerKind: "storyAction" | "surface"): BlueprintDocument {
+    return {
+        schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
+        blueprints: {
+            [blueprintId]: {
+                id: blueprintId,
+                name: "graph",
+                owner: ownerKind === "storyAction"
+                    ? { kind: "storyAction", blueprintId }
+                    : { kind: "surface", surfaceId: "s1" },
+                program: {
+                    kind: "graph",
+                    graphs: {
+                        events: {
+                            e1: {
+                                graph: {
+                                    nodes: {
+                                        n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId } },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    } as unknown as BlueprintDocument;
+}
+
+describe("variables/read-never-written", () => {
+    it("reports a route entrance nothing can ever open", () => {
+        // The one-line GalGame accident: the branch is written, it compiles, and the flag that opens
+        // it does not exist anywhere in the project.
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Story", [
+                scene("a", "A", [
+                    declaration("affection", "saved", "affection"),
+                    ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+                ]),
+            ])],
+        });
+
+        const findings = run("variables/read-never-written", ctx);
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", count: 1 });
+    });
+
+    it("counts every guard on one dead flag as one finding", () => {
+        const guard = () => binary(">=", varRead(AFFECTION_REF, "affection"), num(1));
+        const ctx = createTestLintContext({
+            stories: [story("s1", "Story", [
+                scene("a", "A", [
+                    declaration("affection", "saved", "affection"),
+                    ifBranch("if1", "b1", "affection >= 1", guard()),
+                    ifBranch("if2", "b2", "affection >= 1", guard()),
+                    repeatUntil("r1", "affection >= 1", guard()),
+                ]),
+            ])],
+        });
+
+        const findings = run("variables/read-never-written", ctx);
+        // Three guards, one mistake - and the count is what says how much rides on it.
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageParams?.count).toBe(3);
+    });
+
+    it("stays silent when any row writes it, including a disabled one", () => {
+        const withWrite = (disabled: boolean) => createTestLintContext({
+            stories: [story("s1", "Story", [
+                scene("a", "A", [
+                    declaration("affection", "saved", "affection"),
+                    { ...setVariable("w1", AFFECTION_REF), disabled },
+                    ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+                ]),
+            ])],
+        });
+
+        expect(run("variables/read-never-written", withWrite(false))).toEqual([]);
+        // A row switched off for the afternoon is still a place the author writes it - the same
+        // bargain `variables/unused` strikes, and for the same reason.
+        expect(run("variables/read-never-written", withWrite(true))).toEqual([]);
+    });
+
+    it("stays silent when the writer is in another story, or in a blueprint", () => {
+        const guardScene = scene("a", "A", [
+            declaration("affection", "saved", "affection"),
+            ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+        ]);
+
+        // A saved flag chapter two sets and chapter five tests is written, and a per-story tally
+        // would report every cross-chapter flag in the project.
+        expect(run("variables/read-never-written", createTestLintContext({
+            stories: [
+                story("s1", "One", [guardScene]),
+                story("s2", "Two", [scene("z", "Z", [setVariable("w1", AFFECTION_REF)])]),
+            ],
+        }))).toEqual([]);
+
+        expect(run("variables/read-never-written", createTestLintContext({
+            stories: [story("s1", "One", [guardScene])],
+            blueprintDocument: blueprintWriting("bp1", "affection", "storyAction"),
+        }))).toEqual([]);
+    });
+
+    it("refuses to answer for a project holding something it cannot read", () => {
+        const guardScene = scene("a", "A", [
+            declaration("affection", "saved", "affection"),
+            { id: "pl1", kind: "action", payload: { action: "plugin", pluginId: "p", actionId: "p:x", params: {} } },
+            ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+        ]);
+
+        // A plugin's compile pass decides what that row emits, and Studio does not run it.
+        expect(run("variables/read-never-written", createTestLintContext({
+            stories: [story("s1", "One", [guardScene])],
+        }))).toEqual([]);
+
+        // An incomplete library may be hiding the writer in the story that failed to open.
+        expect(run("variables/read-never-written", createTestLintContext({
+            stories: [story("s1", "One", [scene("a", "A", [
+                declaration("affection", "saved", "affection"),
+                ifBranch("if1", "b1", "affection >= 1", binary(">=", varRead(AFFECTION_REF, "affection"), num(1))),
+            ])])],
+            storiesComplete: false,
+        }))).toEqual([]);
+    });
+});
+
+describe("variables/condition-never-holds", () => {
+    /** +2 twice on the way to `end`, so the most any route can carry into it is 4. */
+    function reachableCeiling(guardSource: string, guard: StoryExpr): LintContext {
+        return createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    incBy("w1", AFFECTION_REF, 2, "affection"),
+                    jump("j1", "b"),
+                ]),
+                scene("b", "B", [
+                    incBy("w2", AFFECTION_REF, 2, "affection"),
+                    jump("j2", "end"),
+                ]),
+                scene("end", "End", [ifBranch("if1", "br1", guardSource, guard)]),
+            ], "a")],
+        });
+    }
+
+    it("reports an ending gated behind a number no route can reach", async () => {
+        const findings = await runAsync(
+            "variables/condition-never-holds",
+            reachableCeiling("affection >= 50", binary(">=", varRead(AFFECTION_REF, "affection"), num(50))),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "4..4" });
+    });
+
+    it("says nothing about a threshold a route can reach", async () => {
+        expect(await runAsync(
+            "variables/condition-never-holds",
+            reachableCeiling("affection >= 4", binary(">=", varRead(AFFECTION_REF, "affection"), num(4))),
+        )).toEqual([]);
+        // Nor about one it merely might reach.
+        expect(await runAsync(
+            "variables/condition-never-holds",
+            reachableCeiling("affection >= 3", binary(">=", varRead(AFFECTION_REF, "affection"), num(3))),
+        )).toEqual([]);
+    });
+
+    it("settles a conjunction on the half it can read", async () => {
+        // `>= 50` is impossible whatever the other side does, so the `&&` is impossible - even though
+        // the second operand is a call this cannot evaluate at all.
+        const guard = binary(
+            "&&",
+            binary(">=", varRead(AFFECTION_REF, "affection"), num(50)),
+            call("max", [num(1), num(2)]),
+        );
+        expect(await runAsync("variables/condition-never-holds", reachableCeiling("affection >= 50 && max(1,2)", guard)))
+            .toHaveLength(1);
+    });
+
+    it("leaves the case with no writer at all to the other rule", async () => {
+        // Both rules would have something to say; only one of them says the useful thing.
+        const ctx = createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    ifBranch("if1", "b1", "affection >= 50", binary(">=", varRead(AFFECTION_REF, "affection"), num(50))),
+                ]),
+            ], "a")],
+        });
+
+        expect(await runAsync("variables/condition-never-holds", ctx)).toEqual([]);
+        expect(run("variables/read-never-written", ctx)).toHaveLength(1);
+    });
+
+    it("stays silent when another story or an interface graph moves the same counter", async () => {
+        const base = reachableCeiling("affection >= 50", binary(">=", varRead(AFFECTION_REF, "affection"), num(50)));
+
+        // The range walk covers one story's graph. A player who has also played chapter two arrives
+        // with a number this walk never saw.
+        expect(await runAsync("variables/condition-never-holds", {
+            ...base,
+            stories: [...base.stories, story("s2", "Two", [scene("z", "Z", [setVariable("w9", AFFECTION_REF)])])],
+        })).toEqual([]);
+
+        // A surface's own handler can move it whenever the player clicks.
+        expect(await runAsync("variables/condition-never-holds", {
+            ...base,
+            blueprintDocument: blueprintWriting("bp1", "affection", "surface"),
+        })).toEqual([]);
+    });
+
+    it("counts the guard's own scene, not only what arrives at it", async () => {
+        // The write sits above the guard in the SAME scene. Judging on the arrival range alone would
+        // report a condition the row two lines up makes reachable.
+        const ctx = createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    incBy("w1", AFFECTION_REF, 60, "affection"),
+                    ifBranch("if1", "b1", "affection >= 50", binary(">=", varRead(AFFECTION_REF, "affection"), num(50))),
+                ]),
+            ], "a")],
+        });
+
+        expect(await runAsync("variables/condition-never-holds", ctx)).toEqual([]);
     });
 });

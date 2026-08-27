@@ -20,8 +20,27 @@
  * - **Ranges over-approximate.** Where two conditional writes could not both happen, the interval is
  *   widened as if they could. A range that is too wide never claims a reachable value is impossible;
  *   the reverse error hides an ending.
+ *
+ * **Both approximations widen, and that direction is load-bearing.** A range too wide costs the map
+ * precision; a range too *narrow* claims a value the player can reach is out of reach, which is the
+ * one error a reader cannot recover from. Two writers this module cannot read used to escape the
+ * rule by being invisible rather than unknown, and both narrowed the answer:
+ *
+ * - **A blueprint bound to a row can write a story variable** (`Set Saved Var` / `Set Scene Var` /
+ *   `Set Persistent`), and only `setVariable` rows were counted. {@link collectBlueprintVariableWrites}
+ *   reads which keys a graph may write, and a row that runs one now contributes an `unknown` write
+ *   for each of them — attributed to the row's arm, so the poison spreads exactly as far as the row
+ *   can run. A graph no row in this document names is `ambient`: a UI event handler fires whenever
+ *   the player clicks, so its writes are unknown everywhere rather than at one row.
+ * - **A returnable jump comes back.** The callee's writes land in the caller's continuation, and
+ *   only the forward edge was walked, so everything the subroutine did was dropped. A calling scene
+ *   now carries an `unknown` write, on the way out, for every key written anywhere the call can
+ *   reach. Widening rather than applying the callee's real effects is the honest half-measure: the
+ *   effects depend on where inside the callee the run returns from, which is a row-level question
+ *   this module has never answered.
  */
 
+import type { BlueprintDocument, BlueprintGraphNode } from "@shared/types/blueprint/document";
 import type {
     StoryActionPayload,
     StoryBlock,
@@ -137,7 +156,127 @@ export function readSetVariableDelta(payload: SetVariablePayload): SceneFlowDelt
     return { op: "unknown" };
 }
 
-/** One `setVariable` row, placed in the scene's fork structure. */
+/**
+ * The three blueprint nodes that write a story variable, and the field each names its target in.
+ *
+ * `blueprint.local.set` is deliberately absent: its `variableId` addresses a variable local to the
+ * graph, which no story row can read and no range here is about. The other three are the whole set —
+ * `node project/app/blueprint.js nodes set variable` lists them, and a fourth would have to be added
+ * to the registry before it could be added here.
+ */
+const BLUEPRINT_WRITE_NODES: readonly { type: string; field: string; scope: StoryVariableScope }[] = [
+    { type: "blueprint.saved.set", field: "savedVariableId", scope: "saved" },
+    { type: "blueprint.scene.set", field: "sceneVariableId", scope: "scene" },
+    { type: "blueprint.persistent.set", field: "persistentVariableId", scope: "persistent" },
+];
+
+/**
+ * Which story variables a blueprint may write, addressed the way a story row reaches that blueprint.
+ *
+ * Two buckets because a blueprint's reach depends on who runs it. One bound to a row runs when that
+ * row runs, so its writes belong to that row's scene and arm. One nobody's row names — a surface
+ * event, a widget handler — runs when the player touches the interface, which is any time at all.
+ */
+export type SceneFlowBlueprintWrites = {
+    /** Keys the graph of this blueprint id may write, for a blueprint a story row runs. */
+    byBlueprintId: ReadonlyMap<string, ReadonlySet<string>>;
+    /** Keys written from a graph no row in the document runs. Unknown everywhere, not at one row. */
+    ambient: ReadonlySet<string>;
+};
+
+const NO_BLUEPRINT_WRITES: SceneFlowBlueprintWrites = {
+    byBlueprintId: new Map(),
+    ambient: new Set(),
+};
+
+/** Every graph node of a blueprint, across its events, functions and macros. */
+function* eachNodeOfBlueprint(program: unknown): Generator<BlueprintGraphNode> {
+    const graphs = (program as { kind?: string; graphs?: Record<string, Record<string, { graph?: { nodes?: Record<string, BlueprintGraphNode> } }>> });
+    if (graphs?.kind !== "graph" || !graphs.graphs) {
+        return;
+    }
+    for (const slot of ["events", "functions", "macros"]) {
+        for (const carrier of Object.values(graphs.graphs[slot] ?? {})) {
+            for (const node of Object.values(carrier?.graph?.nodes ?? {})) {
+                if (node) {
+                    yield node;
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The story-variable keys each blueprint may write.
+ *
+ * **A key is emitted under every identity it answers to.** A project-scoped declaration has an `id`
+ * and a `storageKey`, equal unless an author changed one, and a node param may hold either; a ref
+ * addresses `saved` by id and `persistent` by storage key. Emitting the alias as well as the stored
+ * value costs a set entry and removes the one way this scan can miss a writer — and missing a writer
+ * is the failure that narrows a range, which is the failure that matters.
+ *
+ * `registry` is optional so a test can call this with a document alone; omitting it only drops the
+ * alias expansion, never the stored value.
+ */
+export function collectBlueprintVariableWrites(
+    document: BlueprintDocument | null,
+    registry: readonly VariableRegistryEntry[] = [],
+): SceneFlowBlueprintWrites {
+    if (!document) {
+        return NO_BLUEPRINT_WRITES;
+    }
+    const byBlueprintId = new Map<string, Set<string>>();
+    const ambient = new Set<string>();
+
+    const keysFor = (scope: StoryVariableScope, stored: string): string[] => {
+        const keys = [storyVariableRefKey({ scope, variableId: stored } as StoryVariableRef)];
+        for (const entry of registry) {
+            if (entry.scope !== scope || (entry.id !== stored && entry.storageKey !== stored)) {
+                continue;
+            }
+            keys.push(storyVariableRefKey({
+                scope,
+                variableId: scope === "persistent" ? entry.storageKey : entry.id,
+            } as StoryVariableRef));
+        }
+        return keys;
+    };
+
+    for (const blueprint of Object.values(document.blueprints ?? {})) {
+        if (!blueprint) {
+            continue;
+        }
+        const written = new Set<string>();
+        for (const node of eachNodeOfBlueprint(blueprint.program)) {
+            for (const writer of BLUEPRINT_WRITE_NODES) {
+                if (node.type !== writer.type) {
+                    continue;
+                }
+                const stored = node.params?.[writer.field];
+                if (typeof stored === "string" && stored.trim()) {
+                    for (const key of keysFor(writer.scope, stored.trim())) {
+                        written.add(key);
+                    }
+                }
+            }
+        }
+        if (written.size === 0) {
+            continue;
+        }
+        // A story-action blueprint is reached through the row that owns it, so it is attributable.
+        // Everything else runs on the interface's own schedule.
+        if (blueprint.owner?.kind === "storyAction") {
+            byBlueprintId.set(blueprint.id, written);
+        } else {
+            for (const key of written) {
+                ambient.add(key);
+            }
+        }
+    }
+    return { byBlueprintId, ambient };
+}
+
+/** One write site, placed in the scene's fork structure. A `setVariable` row, or a row running a graph. */
 type SceneFlowWrite = {
     blockId: StoryBlockId;
     variableKey: string;
@@ -195,14 +334,31 @@ function readAncestry(scene: StoryScene, block: StoryBlock): SceneFlowAncestry {
     return { armChain, insideRepeat };
 }
 
-function collectSceneWrites(scene: StoryScene): SceneFlowWrite[] {
+function collectSceneWrites(scene: StoryScene, blueprintWrites: SceneFlowBlueprintWrites): SceneFlowWrite[] {
     const writes: SceneFlowWrite[] = [];
     // A disabled row is compiled out with its whole subtree (schema v7), so a write inside one never
     // runs. Counting it would move a counter the shipped game never moves — the one lie a author
     // greying a row out is explicitly trying to avoid.
     const blocks = listSceneBlocksInDocumentOrder(scene, { skipSubtree: candidate => candidate.disabled === true });
     for (const block of blocks) {
-        if (block.kind !== "action" || block.payload.action !== "setVariable") {
+        if (block.kind !== "action") {
+            continue;
+        }
+        if (block.payload.action === "blueprint") {
+            // The graph is data this module can see but not evaluate: what it assigns can come off a
+            // pin, a network read, a random. Which variables it touches is answerable, and that is
+            // the whole of what is claimed here — one `unknown` per key, on this row's arm.
+            const keys = blueprintWrites.byBlueprintId.get(block.payload.blueprintId);
+            if (!keys || keys.size === 0) {
+                continue;
+            }
+            const ancestry = readAncestry(scene, block);
+            for (const variableKey of keys) {
+                writes.push({ blockId: block.id, variableKey, delta: { op: "unknown" }, armChain: ancestry.armChain });
+            }
+            continue;
+        }
+        if (block.payload.action !== "setVariable") {
             continue;
         }
         const ancestry = readAncestry(scene, block);
@@ -222,10 +378,13 @@ function collectSceneWrites(scene: StoryScene): SceneFlowWrite[] {
     return writes;
 }
 
-function collectWritesByScene(document: StoryDocument): Map<StorySceneId, SceneFlowWrite[]> {
+function collectWritesByScene(
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites,
+): Map<StorySceneId, SceneFlowWrite[]> {
     const byScene = new Map<StorySceneId, SceneFlowWrite[]>();
     for (const scene of listScenesInDocumentOrder(document)) {
-        byScene.set(scene.id, collectSceneWrites(scene));
+        byScene.set(scene.id, collectSceneWrites(scene, blueprintWrites));
     }
     return byScene;
 }
@@ -248,18 +407,34 @@ type SceneFlowDocumentIndex = {
  * Nothing here is handed out directly — callers get freshly built effects — so the cached writes
  * cannot be mutated from outside.
  */
-const documentIndexCache = new WeakMap<StoryDocument, SceneFlowDocumentIndex>();
+const documentIndexCache = new WeakMap<StoryDocument, Map<SceneFlowBlueprintWrites, SceneFlowDocumentIndex>>();
 
-function documentIndex(document: StoryDocument): SceneFlowDocumentIndex {
-    const cached = documentIndexCache.get(document);
+/**
+ * The blueprint writes are part of the cache key, not folded into the document's.
+ *
+ * A graph edit replaces the blueprint document while the story document object stays put, so a
+ * single-keyed cache would answer a story's second question with writes read before the author
+ * added the node. The inner map is bounded by the outer key's own lifetime: a story edit replaces
+ * the document and takes every reading of it with it.
+ */
+function documentIndex(
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites,
+): SceneFlowDocumentIndex {
+    let byWrites = documentIndexCache.get(document);
+    if (!byWrites) {
+        byWrites = new Map();
+        documentIndexCache.set(document, byWrites);
+    }
+    const cached = byWrites.get(blueprintWrites);
     if (cached) {
         return cached;
     }
     const index: SceneFlowDocumentIndex = {
-        writesByScene: collectWritesByScene(document),
+        writesByScene: collectWritesByScene(document, blueprintWrites),
         numericVariables: listNumericStoryVariables(document),
     };
-    documentIndexCache.set(document, index);
+    byWrites.set(blueprintWrites, index);
     return index;
 }
 
@@ -276,7 +451,7 @@ function findNumericDeclaration(
     variableKey: string,
     registry: readonly VariableRegistryEntry[],
 ): SceneFlowNumericVariable | undefined {
-    return documentIndex(document).numericVariables.find(variable => variable.key === variableKey)
+    return documentIndex(document, NO_BLUEPRINT_WRITES).numericVariables.find(variable => variable.key === variableKey)
         ?? registryNumericVariables(registry).find(variable => variable.key === variableKey);
 }
 
@@ -301,8 +476,9 @@ function effectOf(write: SceneFlowWrite, certain: boolean): SceneFlowVariableEff
 export function collectBranchEffects(
     graph: SceneFlowGraph,
     document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): Map<string, SceneFlowVariableEffect[]> {
-    const { writesByScene } = documentIndex(document);
+    const { writesByScene } = documentIndex(document, blueprintWrites);
     const effectsByBranch = new Map<string, SceneFlowVariableEffect[]>();
     for (const branch of graph.branches) {
         const effects: SceneFlowVariableEffect[] = [];
@@ -331,9 +507,12 @@ export function collectBranchEffects(
  *
  * Scenes with no spine writes are absent from the map; read `?? []`.
  */
-export function collectSceneEffects(document: StoryDocument): Map<StorySceneId, SceneFlowVariableEffect[]> {
+export function collectSceneEffects(
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): Map<StorySceneId, SceneFlowVariableEffect[]> {
     const effectsByScene = new Map<StorySceneId, SceneFlowVariableEffect[]>();
-    for (const [sceneId, writes] of documentIndex(document).writesByScene) {
+    for (const [sceneId, writes] of documentIndex(document, blueprintWrites).writesByScene) {
         const effects = writes.filter(write => write.armChain.length === 0).map(write => effectOf(write, true));
         if (effects.length > 0) {
             effectsByScene.set(sceneId, effects);
@@ -529,6 +708,93 @@ function applyEffects(
     return current;
 }
 
+/**
+ * What a scene's calls do to every counter, folded into effects applied on the way *out* of it.
+ *
+ * A returnable jump leaves for the callee and comes back, so everything the callee wrote is in force
+ * for the rest of the run — and the forward edge alone never carries it back. The result is one
+ * `unknown` per key written anywhere the call can reach.
+ *
+ * **Reachability from the callee, not the callee alone.** A subroutine that jumps onward before
+ * returning wrote everything on that stretch too, and a set built from one scene would miss it.
+ * Following ordinary edges out of the callee over-approximates — some of what it reaches is past the
+ * return — and over-approximating is the direction that cannot hide a value.
+ *
+ * Applying the callee's real deltas instead would be a better answer and is not available here: which
+ * of the callee's rows ran depends on where the return sits inside it, which is the in-scene position
+ * this module does not model. A row-level walk is what answers that, and this is not one.
+ *
+ * **The call edge itself is exempt**, so arrival at the subroutine is still the value the caller had
+ * when it left - which is the number an author reading the callee's box wants. The exemption is for
+ * edges where EVERY jump comes back, matching `SceneFlowEdgeModel.returns`: an edge carrying a plain
+ * jump as well can be walked after the call returned, and that reading has to absorb.
+ */
+type SceneFlowCallAbsorption = {
+    bySceneId: Map<StorySceneId, SceneFlowVariableEffect[]>;
+    /** `source->target` of every edge that is nothing but calls. */
+    pureCallEdges: Set<string>;
+};
+
+function callAbsorbedEffects(
+    graph: SceneFlowGraph,
+    writesByScene: Map<StorySceneId, SceneFlowWrite[]>,
+): SceneFlowCallAbsorption {
+    const outgoing = new Map<StorySceneId, StorySceneId[]>();
+    const callees = new Map<StorySceneId, StorySceneId[]>();
+    const pureCallEdges = new Set<string>();
+    for (const edge of graph.edges) {
+        const onward = outgoing.get(edge.source);
+        if (onward) {
+            onward.push(edge.target);
+        } else {
+            outgoing.set(edge.source, [edge.target]);
+        }
+        if (!edge.jumps.some(jump => jump.returnable)) {
+            continue;
+        }
+        if (edge.jumps.every(jump => jump.returnable)) {
+            pureCallEdges.add(`${edge.source}->${edge.target}`);
+        }
+        // `some`, not `every`: an edge carrying one plain jump and one call is still a call, and the
+        // caller still has to absorb what the call did.
+        const called = callees.get(edge.source);
+        if (called) {
+            called.push(edge.target);
+        } else {
+            callees.set(edge.source, [edge.target]);
+        }
+    }
+    if (callees.size === 0) {
+        return { bySceneId: new Map(), pureCallEdges };
+    }
+
+    const absorbed = new Map<StorySceneId, SceneFlowVariableEffect[]>();
+    for (const [callerSceneId, entryPoints] of callees) {
+        const keys = new Set<string>();
+        const seen = new Set<StorySceneId>();
+        const frontier = [...entryPoints];
+        for (let cursor = 0; cursor < frontier.length; cursor++) {
+            const sceneId = frontier[cursor];
+            if (seen.has(sceneId)) {
+                continue;
+            }
+            seen.add(sceneId);
+            for (const write of writesByScene.get(sceneId) ?? []) {
+                keys.add(write.variableKey);
+            }
+            frontier.push(...(outgoing.get(sceneId) ?? []));
+        }
+        if (keys.size > 0) {
+            absorbed.set(callerSceneId, Array.from(keys, variableKey => ({
+                variableKey,
+                delta: { op: "unknown" } as const,
+                certain: true,
+            })));
+        }
+    }
+    return { bySceneId: absorbed, pureCallEdges };
+}
+
 /** One way of getting from one scene to another, and what it does to the variable on the way. */
 type SceneFlowTraversal = {
     source: StorySceneId;
@@ -685,9 +951,16 @@ export function computeVariableRanges(
     document: StoryDocument,
     variableKey: string,
     registry: readonly VariableRegistryEntry[] = [],
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): Map<StorySceneId, SceneFlowRange> {
     const sceneIds = graph.nodes.map(node => node.sceneId);
     const ranges = new Map<StorySceneId, SceneFlowRange>(sceneIds.map(id => [id, UNKNOWN_RANGE]));
+
+    if (blueprintWrites.ambient.has(variableKey)) {
+        // Something outside the story writes this one on the player's schedule. Every arrival value
+        // would be a number contradicted by the next button press.
+        return ranges;
+    }
 
     const declaration = findNumericDeclaration(document, variableKey, registry);
     if (!declaration || declaration.defaultValue === null) {
@@ -715,8 +988,9 @@ export function computeVariableRanges(
         return ranges;
     }
 
-    const { writesByScene } = documentIndex(document);
-    const sceneEffects = collectSceneEffects(document);
+    const { writesByScene } = documentIndex(document, blueprintWrites);
+    const sceneEffects = collectSceneEffects(document, blueprintWrites);
+    const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
 
     // One traversal per way of getting from a scene to a scene, because that is the granularity the
     // variable moves at: five options into one hallway are five different counters on arrival.
@@ -738,7 +1012,12 @@ export function computeVariableRanges(
         traversals.push({
             source: branchEdge.sourceSceneId,
             target: branchEdge.target,
-            effects: armTraversalEffects(document, writesByScene, branch),
+            effects: [
+                ...(callAbsorbed.pureCallEdges.has(`${branchEdge.sourceSceneId}->${branchEdge.target}`)
+                    ? []
+                    : callAbsorbed.bySceneId.get(branchEdge.sourceSceneId) ?? []),
+                ...armTraversalEffects(document, writesByScene, branch),
+            ],
         });
     }
     for (const edge of graph.edges) {
@@ -747,7 +1026,13 @@ export function computeVariableRanges(
         // model could not register. Both move the player with no arm effects to apply, and dropping
         // them would strand every scene behind them as unreachable.
         if (edge.jumps.some(jump => !covered?.has(jump.blockId))) {
-            traversals.push({ source: edge.source, target: edge.target, effects: [] });
+            traversals.push({
+                source: edge.source,
+                target: edge.target,
+                effects: callAbsorbed.pureCallEdges.has(`${edge.source}->${edge.target}`)
+                    ? []
+                    : [...(callAbsorbed.bySceneId.get(edge.source) ?? [])],
+            });
         }
     }
 
@@ -809,6 +1094,88 @@ export function computeVariableRanges(
 }
 
 /**
+ * The effects that apply on the way out through each arm, keyed by branch node id.
+ *
+ * The **arrival** reading, which is not what `collectBranchEffects` answers: that one is subtree-only
+ * because an arm's own chip is about what that arm does, while this is the arm's subtree plus the
+ * spines of every arm it is nested inside - what the counter is worth having come out this way. The
+ * two must stay different and must stay derived from one place, which is why this exposes the walk
+ * {@link computeVariableRanges} already runs rather than letting a caller rebuild it.
+ */
+export function collectArmArrivalEffects(
+    graph: SceneFlowGraph,
+    document: StoryDocument,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): Map<string, SceneFlowVariableEffect[]> {
+    const { writesByScene } = documentIndex(document, blueprintWrites);
+    return new Map(graph.branches.map(branch => [
+        branch.id,
+        armTraversalEffects(document, writesByScene, branch),
+    ]));
+}
+
+/** Push a range through a list of effects. See the private walk this exposes for the absorbing rules. */
+export function applyVariableEffects(
+    range: SceneFlowRange,
+    effects: readonly SceneFlowVariableEffect[],
+    variableKey: string,
+): SceneFlowRange {
+    return applyEffects(range, effects, variableKey);
+}
+
+/** Two ways to one point widen the interval - the join a fixpoint over the graph merges states with. */
+export function unionVariableRanges(left: SceneFlowRange, right: SceneFlowRange): SceneFlowRange {
+    return unionRange(left, right);
+}
+
+/** Whether two ranges are the same claim, `unknown` included - the fixpoint's stop condition. */
+export function variableRangesEqual(left: SceneFlowRange, right: SceneFlowRange): boolean {
+    return rangesEqual(left, right);
+}
+
+/**
+ * The scene-spine and arm writes of one scene, all of them, as uncertain effects.
+ *
+ * What a guard written inside the scene has to be judged against: the rows above it have run and the
+ * rows below it have not, and which is which is the in-scene position this module does not model.
+ * Every write as "may have happened" is the bound that holds both readings.
+ */
+export function sceneWritesAsUncertain(
+    document: StoryDocument,
+    sceneId: StorySceneId,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): SceneFlowVariableEffect[] {
+    const writes = documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? [];
+    return writes.map(write => effectOf(write, false));
+}
+
+/**
+ * The widest value a variable can hold at *any* row of one scene.
+ *
+ * {@link computeVariableRanges} answers "on arrival", which is the number an author reading a scene
+ * box wants and the wrong number for a guard written halfway down the scene: the rows above it have
+ * already run. In-scene position is not modelled here (see the header), so the honest bound is the
+ * arrival value widened by every write the scene contains as though each one may or may not have
+ * happened — which is exactly what an uncertain effect means, and exactly what `applyEffects`
+ * already computes for one.
+ *
+ * Arms included, not only the spine. A guard inside one option is reached having taken that option,
+ * and which arm's writes ran before it is a question about the arm the guard is in — a distinction
+ * with a row-level answer and no scene-level one. Folding all of them in widens; dropping them would
+ * narrow, and narrowing is what claims a reachable value is out of reach.
+ */
+export function widenRangeAcrossScene(
+    arrival: SceneFlowRange,
+    document: StoryDocument,
+    sceneId: StorySceneId,
+    variableKey: string,
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
+): SceneFlowRange {
+    const writes = documentIndex(document, blueprintWrites).writesByScene.get(sceneId) ?? [];
+    return applyEffects(arrival, writes.map(write => effectOf(write, false)), variableKey);
+}
+
+/**
  * What the focused variable is worth when one enumerated route ends — the number the route rail
  * sorts by, and the payoff of the whole layer ("which choices give me the 好感 route").
  *
@@ -840,12 +1207,14 @@ export function foldRouteVariableValue(
     variableKey: string,
     route: { sceneIds: readonly StorySceneId[]; branchIds: readonly string[] },
     registry: readonly VariableRegistryEntry[] = [],
+    blueprintWrites: SceneFlowBlueprintWrites = NO_BLUEPRINT_WRITES,
 ): SceneFlowRange {
-    const { writesByScene } = documentIndex(document);
+    const { writesByScene } = documentIndex(document, blueprintWrites);
     const declaration = findNumericDeclaration(document, variableKey, registry);
-    if (!declaration || declaration.defaultValue === null) {
+    if (!declaration || declaration.defaultValue === null || blueprintWrites.ambient.has(variableKey)) {
         return UNKNOWN_RANGE;
     }
+    const callAbsorbed = callAbsorbedEffects(graph, writesByScene);
 
     // Keyed by the scene the arm leaves. A route takes at most one arm per scene: `sceneIds` promises
     // no repeats, each step's arm is the one that owns that scene's exit, and the trailing arm a
@@ -860,7 +1229,7 @@ export function foldRouteVariableValue(
         armBySceneId.set(branch.sceneId, branch);
     }
 
-    const sceneEffects = collectSceneEffects(document);
+    const sceneEffects = collectSceneEffects(document, blueprintWrites);
     let value = declaration.defaultValue;
     let armsApplied = 0;
     const apply = (effects: readonly SceneFlowVariableEffect[]): boolean => {
@@ -880,6 +1249,14 @@ export function foldRouteVariableValue(
         // Scene spine first, then the arm taken out of it — the order `computeVariableRanges` applies
         // them in, and the order the author wrote them in.
         if (!apply(sceneEffects.get(sceneId) ?? [])) {
+            return UNKNOWN_RANGE;
+        }
+        // A route lists the scenes it passes in order, so the scene after a caller is where the
+        // call's work is already done. The callee, when a route enters one, is reached by the exempt
+        // edge and so is not absorbed here either.
+        const next = route.sceneIds[route.sceneIds.indexOf(sceneId) + 1];
+        const entersCallee = next !== undefined && callAbsorbed.pureCallEdges.has(`${sceneId}->${next}`);
+        if (!entersCallee && !apply(callAbsorbed.bySceneId.get(sceneId) ?? [])) {
             return UNKNOWN_RANGE;
         }
         const arm = armBySceneId.get(sceneId);
