@@ -1,4 +1,5 @@
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 
 /**
  * Production game build pipeline types shared between the main process,
@@ -439,6 +440,27 @@ export type LastGameBuildRun = {
 /** Snapshot returned by build.getStatus; the renderer polls this. */
 export type GameBuildStateSnapshot = {
     status: GameBuildStatus;
+    /**
+     * How far through a countable step of the build this is, or `null` where there is nothing to
+     * count.
+     *
+     * Stated rather than optional, because `null` is the answer for most of a build and it has to
+     * be given rather than left out. A build is a sequence of stretches and only some have a
+     * denominator before they begin: re-encoding the project's images is N images, protecting a
+     * mobile payload is N files, hashing what was produced is N artifacts. Handing electron-builder
+     * a target is one promise that returns minutes later, and the only number available around it
+     * is the target count - over targets that differ by orders of magnitude, which would be an
+     * interpolation rather than a measurement.
+     *
+     * So this fills while a step is counting and empties back to `null` when the next stretch
+     * cannot be counted. It says nothing about how far the build as a whole has left to go: no
+     * phase of it knows that.
+     *
+     * The same vocabulary the rest of Studio's long work reports in (see `StudioTaskProgress`),
+     * because a second progress type would be a second set of rules about when a number may be
+     * shown at all.
+     */
+    progress: StudioTaskProgress | null;
     startedAt?: number;
     finishedAt?: number;
     /**

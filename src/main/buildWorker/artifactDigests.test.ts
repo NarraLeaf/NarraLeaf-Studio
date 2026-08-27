@@ -2,7 +2,9 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import { ARTIFACT_DIGEST_FILE_NAME, formatArtifactDigests, writeArtifactDigests } from "./artifactDigests";
+import { setStepProgressReporter } from "./stepProgress";
 
 /**
  * The digests are checked against NIST's published SHA-256 vectors rather than
@@ -19,6 +21,7 @@ const dirs: string[] = [];
 const noop = (): void => undefined;
 
 afterEach(async () => {
+    setStepProgressReporter(null);
     await Promise.all(dirs.splice(0).map(dir => fs.rm(dir, { recursive: true, force: true })));
 });
 
@@ -109,5 +112,30 @@ describe("writeArtifactDigests", () => {
         expect(await fs.readFile(result.path!, "utf8")).toBe(`${VECTORS.abc}  game.exe\n`);
         expect(warnings).toHaveLength(1);
         expect(warnings[0]).toContain("gone.zip");
+    });
+});
+
+describe("what the hashing pass reports while it runs", () => {
+    it("counts every artifact it was given, and stops counting when it is done", async () => {
+        const dir = await tempDir();
+        await fs.writeFile(path.join(dir, "game.exe"), "abc");
+        await fs.writeFile(path.join(dir, "game.zip"), "abc");
+        // A directory: skipped for the sums file, but still one of the artifacts this pass had to
+        // look at, so the count has to reach its total anyway.
+        await fs.mkdir(path.join(dir, "game"));
+        const seen: (StudioTaskProgress | null)[] = [];
+        setStepProgressReporter(progress => seen.push(progress));
+
+        await writeArtifactDigests(
+            [path.join(dir, "game.exe"), path.join(dir, "game.zip"), path.join(dir, "game")],
+            dir,
+            noop,
+        );
+
+        expect(seen[0]).toEqual({ done: 0, total: 3, unit: "file" });
+        expect(seen.at(-2)).toEqual({ done: 3, total: 3, unit: "file" });
+        // Null last: what follows the checksums is a build that has nothing left to count, and a
+        // fraction left standing would go on describing this pass.
+        expect(seen.at(-1)).toBeNull();
     });
 });

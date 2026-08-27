@@ -22,6 +22,7 @@ const RUN: LastGameBuildRun = {
     cancelled: false,
     state: {
         status: "done",
+        progress: null,
         startedAt: 1,
         finishedAt: 2,
         platforms: ["windows"],

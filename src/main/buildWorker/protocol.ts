@@ -1,4 +1,5 @@
 import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type {
     GameBuildArch,
     GameBuildDesktopPlatform,
@@ -417,6 +418,21 @@ export type GameBuildWorkerDownloadMessage = {
     event: DownloadProgressEvent;
 };
 
+/**
+ * How far through a countable step of the packaging this worker is, or `null` for a stretch that
+ * has no denominator.
+ *
+ * Most of what this worker does is one call into electron-builder per target, which reports nothing
+ * back until it has finished; those stretches send `null` and the window shows a sweep. The steps
+ * either side of them - protecting a mobile payload file by file, precompressing the site, hashing
+ * and signing the finished artifacts - all know how much work they have before they start, and
+ * those count.
+ */
+export type GameBuildWorkerProgressMessage = {
+    type: "progress";
+    progress: StudioTaskProgress | null;
+};
+
 export type GameBuildWorkerDoneMessage = {
     type: "done";
     /** Absolute paths of the artifacts electron-builder reported. */
@@ -433,5 +449,6 @@ export type GameBuildWorkerInboundMessage = GameBuildWorkerStartMessage;
 export type GameBuildWorkerOutboundMessage =
     | GameBuildWorkerLogMessage
     | GameBuildWorkerDownloadMessage
+    | GameBuildWorkerProgressMessage
     | GameBuildWorkerDoneMessage
     | GameBuildWorkerErrorMessage;
