@@ -2,6 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import {
     answerLiveSessionJoin,
     closeLiveSession,
+    findLiveSessionByCode,
     joinLiveSession,
     joinLiveSessionByCode,
     leaveLiveSession,
@@ -40,6 +41,7 @@ export function createTeamLiveRooms(remoteOrigin: string): LiveRooms {
         open: input => openLiveSession(remoteOrigin, input),
         join: sessionId => joinLiveSession(remoteOrigin, sessionId),
         joinByCode: code => joinLiveSessionByCode(remoteOrigin, code),
+        byCode: code => findLiveSessionByCode(remoteOrigin, code),
         rule: (sessionId, rule) => setLiveSessionRule(remoteOrigin, sessionId, rule),
         requestJoin: sessionId => requestLiveSessionJoin(remoteOrigin, sessionId),
         answerJoin: (sessionId, instance, admit) =>

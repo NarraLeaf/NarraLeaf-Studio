@@ -366,7 +366,6 @@ export const workspace = {
         liveOpen: "Start a live session",
         liveUntitled: "Live session",
         liveMembers: "{count} in",
-        liveJoin: "Join",
         liveLeave: "Leave",
         liveEnd: "End",
         // Why one may not be started or joined. A workspace holds one freeze at a time, so
@@ -381,6 +380,10 @@ export const workspace = {
         liveHost: "Host",
         liveGuest: "Guest",
         liveEntering: "Entering",
+        // Standing in front of a host who has not answered yet. Its own word rather than
+        // "Entering", because nothing on this machine has happened and nothing will until
+        // somebody else looks at a notification.
+        liveAsking: "Waiting to be let in",
         liveLeaving: "Leaving",
         // Joined, and still applying everything the room did before this window arrived.
         liveCatchingUp: "Catching up with the session.",
@@ -398,6 +401,13 @@ export const workspace = {
         liveVersionMismatchNext: "Get the server's versions, settle any differences, then try again.",
         liveRoomGone: "That session is no longer open.",
         liveRoomGoneNext: "Start one, or wait for the host to open it again.",
+        // Wrong digits and digits nobody is using, in one sentence, because the server answers
+        // both with one: telling them apart would turn guessing into a map of which rooms exist.
+        liveNoSuchCode: "No live session has that passcode.",
+        liveJoinRefused: "The host did not let you in.",
+        // Not a refusal. The request is still standing on the server; this window stopped waiting.
+        liveJoinUnanswered: "Nobody answered.",
+        liveJoinUnansweredNext: "Ask again from the Team screen in the launcher when they are back.",
         // The room is there and this window still cannot follow it: the first because the
         // host is old enough not to say which story it opened on, the second because the
         // story it named is not in this copy even after syncing.
@@ -456,7 +466,9 @@ export const workspace = {
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
         liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the documents a session carries.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the documents a session carries.",
+        // Where the way into somebody else's room is, said wherever one is reported. Every way in
+        // is in the launcher, because joining usually means getting the project first.
+        liveJoinFromLauncher: "Join it from the Team screen in the launcher.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -491,9 +503,9 @@ export const workspace = {
         liveFrozenTitle: "A live session is open.",
         liveLeaveSession: "Leave the live session",
         liveEndSession: "End the live session",
-        // What a host leaving a room with somebody else in it does. The session carries on in a new
-        // room under the member who has been in it longest.
-        liveHandOverSession: "Hand the live session over",
+        // What a host leaving a room with somebody else in it does. There is no successor: the host
+        // holds the only copy that counts, so everybody else goes back to their own work.
+        liveEndSessionForEveryone: "End the session for everyone",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",

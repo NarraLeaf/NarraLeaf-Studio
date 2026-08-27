@@ -325,6 +325,8 @@ export interface RendererPreloadedInterface {
          * when the workspace actually came up.
          */
         setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
+        liveIntentTaken(): Promise<RequestStatus<void>>;
         /** Reveal this window's project folder in the OS file manager. */
         openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;

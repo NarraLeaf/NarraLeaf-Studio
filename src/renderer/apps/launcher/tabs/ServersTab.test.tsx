@@ -2,7 +2,8 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { VcsLocalRepository, VcsServerProject, VcsServerSession } from "@shared/types/vcs";
-import { ServersTab, localCopyOf } from "./ServersTab";
+import { ServersTab } from "./ServersTab";
+import { localCopyOf } from "./localCopy";
 
 /**
  * The tab answers one question per row: is this project already here, or is it not.

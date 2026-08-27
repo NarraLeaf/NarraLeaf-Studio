@@ -75,6 +75,17 @@ export function CollaborationPanel() {
                         ? t("workspace.shell.team.liveNobody")
                         : t("workspace.shell.team.liveRoomOpen", { name: room.openedBy })}
                 </p>
+                {/* Where a room somebody else has open is named, the way into it is named too:
+                    every one of those is in the launcher, and a panel that reported a running
+                    session without saying so reads as a feature that does not work. */}
+                {room !== null && (
+                    <p className="mt-1 text-2xs text-fg-subtle">
+                        {t("workspace.shell.team.liveJoinFromLauncher")}
+                    </p>
+                )}
+                {/* Starting one, which is the only act this window has. It stays where it is when
+                    somebody else already has a room open: two rooms on one project are two
+                    collaborations, and that is the author's call rather than this panel's. */}
                 <Button
                     size="sm"
                     variant="secondary"
@@ -82,9 +93,7 @@ export function CollaborationPanel() {
                     data-collaboration-act="open-dialog"
                     onClick={openLiveSessionDialog}
                 >
-                    {t(room === null
-                        ? "workspace.shell.team.liveOpen"
-                        : "workspace.shell.team.liveJoin")}
+                    {t("workspace.shell.team.liveOpen")}
                 </Button>
             </Empty>
         );

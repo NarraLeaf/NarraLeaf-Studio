@@ -27,9 +27,15 @@ import type { WindowAppType, WindowProps } from "@shared/types/window";
  * path in the launcher - the destination is chosen through the native picker on the wizard's
  * own page, and `storageManager` refuses a folder that was never picked, so a hand-rolled one
  * would be one that cannot write anywhere.
+ *
+ * `openWith` is what the window that comes out of it is opened for beyond the project itself.
+ * Today that is one thing - a live session to join - and it is passed through here rather than
+ * acted on afterwards because the launcher retires the moment the workspace opens: there is no
+ * "afterwards" in this window to do anything in.
  */
 export async function createProjectFromWizard(
     props: WindowProps[WindowAppType.ProjectWizard] = {},
+    openWith: Omit<WindowProps[WindowAppType.Workspace], "projectPath"> = {},
 ): Promise<string | null> {
     const result = await getInterface().app.launchProjectWizard(props);
     if (!result.success) {
@@ -41,10 +47,51 @@ export async function createProjectFromWizard(
     }
 
     await getInterface().workspace.launch(
-        { projectPath: result.data.projectPath },
+        { projectPath: result.data.projectPath, ...openWith },
         true, // Close launcher window after opening workspace
     );
     return null;
+}
+
+/**
+ * Go and be in somebody else's live session.
+ *
+ * ⚠ **The launcher cannot join on the workspace's behalf, and this is where that fact lives.**
+ * A room's membership is recorded per instance, and a launcher window is a different instance
+ * from the workspace it opens - so a launcher that joined would put *itself* in the room and
+ * leave the editor outside it. What it can do is the half a workspace cannot: work out which
+ * room is meant, get the project if this machine has never had it, and hand the intent over.
+ *
+ * That is also why every way into a room is here rather than in the workspace. Joining one
+ * often begins with cloning, cloning needs a window with no project open, and a control that
+ * worked only for the people who already had the project would be the wrong half of a feature.
+ *
+ * Answers an error message to show, or null - which covers both a window on its way up and a
+ * clone the author closed without finishing, neither of which leaves anything to say.
+ */
+export async function joinLiveSession(input: {
+    /** Which room, in the form the workspace will use: an id, or the four digits. */
+    joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>;
+    /** Where this machine keeps that project, or null when it has never had it. */
+    localPath: string | null;
+    /** The repository to clone, for a machine that has not got it. Null when it is not known. */
+    remote: string | null;
+    /** What to say when there is no copy here and no address to fetch one from. */
+    unreachable: string;
+}): Promise<string | null> {
+    if (input.localPath !== null) {
+        await getInterface().workspace.launch(
+            { projectPath: input.localPath, joinLive: input.joinLive },
+            true,
+        );
+        return null;
+    }
+    if (input.remote === null) {
+        // A room on a project this server did not list. Nothing here can fetch it, and the
+        // sentence has to say that rather than opening a wizard with no address in it.
+        return input.unreachable;
+    }
+    return createProjectFromWizard({ remoteUrl: input.remote }, { joinLive: input.joinLive });
 }
 
 export async function openProjectFromFolder(): Promise<string | null> {

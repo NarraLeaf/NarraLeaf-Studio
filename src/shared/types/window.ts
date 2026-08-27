@@ -63,6 +63,24 @@ export type WindowProps = {
          * minute of startup and brings dialogs with nobody to answer them.
          */
         commandLineBuild?: { request: GameBuildRequest };
+        /**
+         * A live session this window should join as soon as its services are up.
+         *
+         * Set by the launcher, which is where every way into somebody else's room lives: joining
+         * one usually means getting the project first, and getting a project is the launcher's
+         * flow. **The launcher cannot join on this window's behalf** - membership in a room is
+         * recorded per instance, and a launcher window is a different instance from the workspace
+         * it opens - so it finds out which room is meant and hands the intent over here.
+         *
+         * Either the room's id, for one picked off a server's list, or the four digits, for one
+         * whose host read them out. They are not interchangeable: a room joined by passcode is
+         * not on any list and refuses its own id, which is the whole of what that rule buys.
+         *
+         * ⚠ **Taken up once.** The workspace clears it through `workspace.liveIntentTaken` before
+         * acting, because props outlive a reload - and a window that reloaded an hour after its
+         * author left the room would otherwise walk straight back into it.
+         */
+        joinLive?: { session: string } | { code: string };
     },
     [WindowAppType.ProjectWizard]: {
         /**

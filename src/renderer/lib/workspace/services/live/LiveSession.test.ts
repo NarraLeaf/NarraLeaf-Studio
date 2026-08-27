@@ -59,7 +59,7 @@ import type { CharacterGroup, StoredCharacter } from "@shared/types/character/mo
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
-import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveEvent, TeamLiveSession, TeamProblem } from "@shared/types/team";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { DEFAULT_CLAIM_TIMEOUT_MS } from "@/lib/live";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
@@ -195,7 +195,60 @@ type World = {
      * under which a claim used to be discarded in silence.
      */
     rosterEvents: boolean;
+    /**
+     * Which room each passcode names, as the server's own table does.
+     *
+     * Kept out of {@link TeamLiveSession} for the reason the server keeps it out: a room record is
+     * broadcast to everybody watching the project, so a code on it would be a code everybody has.
+     */
+    codes: Map<string, string>;
+    /** Who is waiting to be let into each room, by instance. Emptied as each one is answered. */
+    requests: Map<string, string[]>;
 };
+
+/**
+ * Put one instance on a room's roster, and answer the room as it now stands.
+ *
+ * Null for a room that is not there, which is the one case both ways in have to tell apart from a
+ * refusal: joining by id and joining by four digits end in the same place.
+ */
+function addMember(world: World, sessionId: string, instance: string): TeamLiveSession | null {
+    const room = world.rooms.get(sessionId);
+    if (!room) {
+        return null;
+    }
+    if (room.members.some(member => member.instance === instance)) {
+        return room;
+    }
+    const joined: TeamLiveSession = {
+        ...room,
+        members: [
+            ...room.members,
+            { instance, account: accountOf(instance), label: instance, joinedAt: 1 },
+        ],
+    };
+    world.rooms.set(room.id, joined);
+    return joined;
+}
+
+/** What both `join` and `joinByCode` do once they have agreed which room is meant. */
+function enter(
+    world: World,
+    sessionId: string,
+    self: string,
+): { ok: true; value: TeamLiveSession } | { ok: false; problem: TeamProblem } {
+    const joined = addMember(world, sessionId, self);
+    if (joined === null) {
+        return { ok: false, problem: { kind: "refused", code: "not-found", detail: "no such room" } };
+    }
+    // The roster reaches the windows already in the room, which is what a server does - on the
+    // project's topic, which is not the topic this room's messages travel on. See
+    // `World.rosterEvents` for why a test is allowed to withhold it.
+    if (world.rosterEvents) {
+        world.bus.announce(PROJECT, { kind: "live-changed", session: joined });
+    }
+    return { ok: true, value: joined };
+}
 
 function createRooms(world: World, self: string, calls: string[]): LiveRooms {
     return {
@@ -216,20 +269,27 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
                 openedAt: 0,
                 members: [{ instance: self, account: accountOf(self), label: self, joinedAt: 0 }],
                 ...(input.title === undefined ? {} : { title: input.title }),
+                ...(input.rule === undefined ? {} : { rule: input.rule }),
             };
             world.rooms.set(room.id, room);
+            // Numbered rather than random, because a test that could not name the digits could not
+            // assert that a guest is never told them.
+            const code = String(4820 + world.opened);
+            world.codes.set(code, room.id);
             // What a server does, and what a window waiting for a room to come back is listening
             // for. Announced before this answers, so nothing depends on the opener's own order.
             world.bus.announce(PROJECT, { kind: "live-opened", session: room });
             // The digits, answered to the opener alone - they are deliberately not on the record.
-            // Fixed here rather than random, because a test that could not name them could not
-            // assert that a guest is never told them.
-            return { ok: true, value: { session: room, code: "4821" } };
+            return { ok: true, value: { session: room, code } };
         },
-        joinByCode: async () => ({
-            ok: false,
-            problem: { kind: "refused", code: "not-found", detail: "no such code" },
-        }),
+        byCode: async code => {
+            calls.push(`byCode:${code}`);
+            const room = world.rooms.get(world.codes.get(code) ?? "");
+            // The one answer a wrong code and an unused one share, as the server gives it.
+            return room === undefined
+                ? { ok: false, problem: { kind: "refused", code: "not-found", detail: "no such code" } }
+                : { ok: true, value: room };
+        },
         rule: async (sessionId, rule) => {
             calls.push(`rule:${rule}`);
             const room = world.rooms.get(sessionId);
@@ -240,30 +300,44 @@ function createRooms(world: World, self: string, calls: string[]): LiveRooms {
         },
         requestJoin: async sessionId => {
             calls.push(`request:${sessionId}`);
+            world.requests.set(sessionId, [...(world.requests.get(sessionId) ?? []), self]);
+            // On the PROJECT's topic, because whoever asked is not in the room and has nothing
+            // else to listen to - which is also why every window on the project sees it.
+            world.bus.announce(PROJECT, {
+                kind: "live-requested",
+                session: sessionId,
+                member: { instance: self, account: accountOf(self), label: self, joinedAt: 0 },
+            });
             return { ok: true, value: {} };
         },
         answerJoin: async (sessionId, instance, admit) => {
             calls.push(`answer:${instance}:${admit ? "yes" : "no"}`);
+            world.requests.set(
+                sessionId,
+                (world.requests.get(sessionId) ?? []).filter(waiting => waiting !== instance),
+            );
+            if (!admit) {
+                // No is the only answer with an event of its own: yes is a roster change, and the
+                // roster change is already broadcast.
+                world.bus.announce(PROJECT, { kind: "live-refused", session: sessionId, instance });
+                return { ok: true, value: {} };
+            }
+            const admitted = addMember(world, sessionId, instance);
+            if (admitted !== null && world.rosterEvents) {
+                world.bus.announce(PROJECT, { kind: "live-changed", session: admitted });
+            }
             return { ok: true, value: {} };
         },
         join: async sessionId => {
             calls.push("join");
-            const room = world.rooms.get(sessionId);
-            if (!room) {
-                return { ok: false, problem: { kind: "refused", code: "not-found", detail: "no such room" } };
-            }
-            const joined: TeamLiveSession = {
-                ...room,
-                members: [...room.members, { instance: self, account: accountOf(self), label: self, joinedAt: 1 }],
-            };
-            world.rooms.set(room.id, joined);
-            // The roster reaches the windows already in the room, which is what a server does -
-            // on the project's topic, which is not the topic this room's messages travel on. See
-            // `World.rosterEvents` for why a test is allowed to withhold it.
-            if (world.rosterEvents) {
-                world.bus.announce(PROJECT, { kind: "live-changed", session: joined });
-            }
-            return { ok: true, value: joined };
+            return enter(world, sessionId, self);
+        },
+        joinByCode: async code => {
+            calls.push(`joinByCode:${code}`);
+            const named = world.codes.get(code);
+            return named === undefined
+                ? { ok: false, problem: { kind: "refused", code: "not-found", detail: "no such code" } }
+                : enter(world, named, self);
         },
         leave: async sessionId => {
             calls.push("leave");
@@ -1151,7 +1225,14 @@ describe("a live session", () => {
     let guest: Window;
 
     beforeEach(() => {
-        world = { bus: createBus(), rooms: new Map(), opened: 0, rosterEvents: true };
+        world = {
+            bus: createBus(),
+            rooms: new Map(),
+            opened: 0,
+            rosterEvents: true,
+            codes: new Map(),
+            requests: new Map(),
+        };
         host = createWindow(world, "instance-host");
         guest = createWindow(world, "instance-guest");
     });
@@ -1361,6 +1442,142 @@ describe("a live session", () => {
             // and nothing froze behind a session that could not have worked.
             expect(guest.calls).toEqual(["sync", `adopt:${host.version.head}`]);
             expect(guest.freeze.armed).toBeNull();
+        });
+    });
+
+    describe("the two ways in that are not a room id", () => {
+        /** Open a room people get into some other way than by finding it on a list. */
+        async function openRoomWith(rule: "code" | "request"): Promise<void> {
+            host.version.uncommitted = true;
+            expect(await host.session.open({ storyId: host.storyId, rule })).toBeNull();
+        }
+
+        it("joins by the four digits, which is the address and the entitlement at once", async () => {
+            await openRoomWith("code");
+            const code = host.session.getView().code as string;
+
+            expect(await guest.session.join({ code })).toBeNull();
+
+            // Found by asking for it rather than by looking through a list it is deliberately not
+            // on, and then joined with the same digits: a `code` room refuses its own id.
+            expect(guest.calls).toEqual([
+                `byCode:${code}`, "sync", `adopt:${host.version.head}`, `joinByCode:${code}`, "freeze",
+            ]);
+            expect(guest.session.getView().session?.id).toBe("room-1");
+        });
+
+        it("says the same thing about a wrong passcode as about one nobody is using", async () => {
+            await openRoomWith("code");
+
+            expect(await guest.session.join({ code: "0000" })).toEqual({ kind: "no-such-code" });
+            // Nothing was touched to find that out, which is what makes guessing cost nothing to
+            // the guesser and nothing to anybody else either.
+            expect(guest.calls).toEqual(["byCode:0000"]);
+            expect(guest.freeze.armed).toBeNull();
+        });
+
+        it("never puts the digits on the room record, where every window on the project would see them", async () => {
+            await openRoomWith("code");
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+
+            expect(JSON.stringify(room)).not.toContain(host.session.getView().code as string);
+            // And a guest that is in the room is still not told them: the host does the inviting.
+            await guest.session.join({ code: host.session.getView().code as string });
+            expect(guest.session.getView().code).toBeNull();
+        });
+
+        it("asks the host, and goes in when the host says yes", async () => {
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+
+            // ⚠ Standing in front of somebody, and nothing on this machine has been touched yet.
+            expect(guest.session.getView().phase).toBe("asking");
+            expect(guest.calls).toEqual(["request:room-1"]);
+            expect(guest.freeze.armed).toBeNull();
+            // The host heard it, and hears it as somebody to answer rather than as a member.
+            expect(host.session.getView().requests.map(member => member.instance))
+                .toEqual(["instance-guest"]);
+
+            expect(await host.session.answerRequest("instance-guest", true)).toBe(true);
+            await drain(world.bus);
+
+            expect(await joining).toBeNull();
+            // Only now: the checkpoint and the adoption happen on the far side of the answer.
+            expect(guest.calls).toEqual([
+                "request:room-1", "sync", `adopt:${host.version.head}`, "join", "freeze",
+            ]);
+            expect(host.session.getView().requests).toEqual([]);
+        });
+
+        it("leaves this author's own work where it was when the host says no", async () => {
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+
+            expect(await host.session.answerRequest("instance-guest", false)).toBe(true);
+            await drain(world.bus);
+
+            expect(await joining).toEqual({ kind: "join-refused" });
+            // The whole point of asking before touching anything: a window turned away has not had
+            // its author's work written over by a room it was never let into.
+            expect(guest.calls).toEqual(["request:room-1"]);
+            expect(guest.freeze.armed).toBeNull();
+            expect(guest.session.getView().phase).toBe("idle");
+        });
+
+        it("stops waiting after half a minute, and says nobody answered rather than no", async () => {
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+
+            fireTimers(guest);
+
+            expect(await joining).toEqual({ kind: "join-unanswered" });
+            expect(guest.calls).toEqual(["request:room-1"]);
+            expect(guest.session.getView().entryFailure).toEqual({ kind: "join-unanswered" });
+        });
+
+        it("lets the author walk away while waiting, which the ordinary way out cannot do", async () => {
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+
+            // There is no room to leave yet, so `end` has nothing to end - and without the wait
+            // being cancellable the control would do nothing for the whole half minute.
+            await guest.session.leave();
+
+            expect(await joining).toEqual({ kind: "join-unanswered" });
+            expect(guest.session.getView().phase).toBe("idle");
+            // And the clock that is still pending must not fire into a window that has moved on.
+            fireTimers(guest);
+            expect(guest.session.getView().phase).toBe("idle");
+        });
+
+        it("does not ask again for a window that is already in the room", async () => {
+            // A guest that reloads is a window that was let in once. Asking a second time would
+            // put a request in front of a host about somebody already on their roster.
+            await openRoomWith("request");
+            const joining = guest.session.join({ session: "room-1" });
+            await drain(world.bus);
+            await host.session.answerRequest("instance-guest", true);
+            await drain(world.bus);
+            await joining;
+            await guest.session.leave();
+            guest.calls.length = 0;
+            // The roster still has it: leaving a room this test's server does not empty is the
+            // shape a reload leaves behind.
+            const room = world.rooms.get("room-1") as TeamLiveSession;
+            world.rooms.set("room-1", {
+                ...room,
+                members: [
+                    ...room.members,
+                    { instance: "instance-guest", account: "guest", label: "g", joinedAt: 2 },
+                ],
+            });
+
+            expect(await guest.session.join({ session: "room-1" })).toBeNull();
+            expect(guest.calls).not.toContain("request:room-1");
         });
     });
 

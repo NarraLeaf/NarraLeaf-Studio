@@ -31,7 +31,13 @@ export type LiveSessionSurface = {
      */
     busy: boolean;
     open: (input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }) => void;
-    join: (input: { session: TeamLiveSession | string }) => void;
+    /**
+     * ⚠ **There is deliberately no `join` here.** Every way into somebody else's room is in the
+     * launcher's Team screen, because joining one usually means getting the project first and that
+     * is the launcher's flow - so the workspace joins only what it was sent to join, through the
+     * window prop `LiveSessionService` reads on the way up. A control added here would be a second
+     * way in, on the surface that cannot clone.
+     */
     leave: () => void;
     /**
      * Change how people get into the running room. Host only.
@@ -74,7 +80,6 @@ export function useLiveSession(): LiveSessionSurface {
         view,
         busy,
         open: useCallback(input => run(session => session.open(input)), [run]),
-        join: useCallback(input => run(session => session.join(input)), [run]),
         leave: useCallback(() => run(session => session.leave()), [run]),
         setRule: useCallback(
             (rule: TeamLiveJoinRule) => service?.setRule(rule) ?? Promise.resolve(false),
@@ -146,7 +151,7 @@ function sameLibrary(previous: LiveSessionStories, next: readonly LiveSessionSto
 }
 
 /**
- * The room on this project that this window could join, or null.
+ * The room open on this project that this window is not in, or null.
  *
  * ⚠ **A room this window has just closed is not one of them, and it has to be excluded by name.**
  * The list comes from the server and the session's own state does not, so between ending a room and

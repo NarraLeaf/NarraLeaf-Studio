@@ -86,9 +86,11 @@ import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
 import { LiveEffectHistory, type LiveEffectRecord, type LiveStepDirection } from "./liveEffectHistory";
 import {
     decideLiveRole,
+    LIVE_ASK_TO_JOIN_MS,
     LIVE_HOSTED_NOTE_MS,
     planLiveGhostRoom,
     planLiveJoin,
+    type LiveJoinTarget,
 } from "./liveEntry";
 import type { LiveProjectIdentity, LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
 import {
@@ -274,6 +276,14 @@ export class LiveSession {
     private view: LiveSessionView = IDLE_LIVE_SESSION;
     private readonly listeners = new Set<(view: LiveSessionView) => void>();
     private active: ActiveSession | null = null;
+    /**
+     * How to stop waiting for a host to answer, while this window is.
+     *
+     * Held on the session rather than inside the wait, because leaving is the one thing an author
+     * may do in that stretch and it happens from outside: there is no room to leave yet, so the
+     * ordinary path through `end` finds nothing and returns.
+     */
+    private waitingToBeLetIn: (() => void) | null = null;
     public constructor(private readonly deps: LiveSessionDeps) {}
 
     /* ------------------------------------------------------------------- reading */
@@ -452,7 +462,7 @@ export class LiveSession {
      * The last thing before following along is asking the host for everything since the room opened,
      * because an operation applied out of the host's order produces a document the host never held.
      */
-    public async join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
+    public async join(target: LiveJoinTarget): Promise<LiveEntryFailure | null> {
         const blocked = this.blocked();
         if (blocked) {
             return this.failEntry(blocked);
@@ -463,12 +473,25 @@ export class LiveSession {
             if ("kind" in ready) {
                 return this.failEntry(ready);
             }
-            const room = await this.findRoom(ready.rooms, ready.project.repositoryId, input.session);
+            // Flattened once rather than branched on three times below: what a passcode changes
+            // is which call finds the room and which call joins it, and both are far enough apart
+            // that reading the shape twice is how they end up disagreeing.
+            const asked: { code: string; named: null } | { code: null; named: TeamLiveSession | string } =
+                "code" in target
+                    ? { code: target.code, named: null }
+                    : { code: null, named: target.session };
+            // The digits are the address as well as the entitlement, so a room reached by them is
+            // asked for by name rather than looked for in a list it is deliberately not on.
+            const room = asked.code === null
+                ? await this.findRoom(ready.rooms, ready.project.repositoryId, asked.named)
+                : await this.roomByCode(ready.rooms, asked.code);
             if (room === null) {
-                return this.failEntry({
-                    kind: "room-gone",
-                    sessionId: typeof input.session === "string" ? input.session : input.session.id,
-                });
+                return this.failEntry(asked.named === null
+                    ? { kind: "no-such-code" }
+                    : {
+                        kind: "room-gone",
+                        sessionId: typeof asked.named === "string" ? asked.named : asked.named.id,
+                    });
             }
             // The room's own answer, never this window's. A joiner that worked out the document
             // for itself could only ever land on one it already holds - the wrong one whenever the
@@ -491,6 +514,18 @@ export class LiveSession {
                     ...(plan.revision === undefined ? {} : { revision: plan.revision }),
                 });
             }
+            // ⚠ **Before the checkpoint and before the adoption, and that ordering is the point.**
+            // Everything below writes over this tree with the room's copy; a window that did it
+            // first and was then turned away would have taken an author's work off the screen on
+            // the strength of a request somebody said no to. Already a member is not asked again -
+            // that is a window that reloaded, and it was let in once already.
+            if (room.rule === "request"
+                && !room.members.some(member => member.instance === ready.instance)) {
+                const refused = await this.askToBeLetIn(ready, room);
+                if (refused !== null) {
+                    return this.failEntry(refused);
+                }
+            }
             const checkpoint = plan.checkpoint ? await this.deps.version.checkpoint() : null;
             // Read BEFORE the room's version is written over this tree, because afterwards there is
             // nothing on this machine that remembers where its own work was. The checkpoint when one
@@ -504,7 +539,11 @@ export class LiveSession {
                 // nothing about why.
                 return this.failEntry({ kind: "story-not-here", storyId });
             }
-            const joined = await ready.rooms.join(room.id);
+            // A `code` room refuses its own id, so the digits are what this call is made with -
+            // the same four that found it. See {@link TeamLiveJoinRule}.
+            const joined = asked.code === null
+                ? await ready.rooms.join(room.id)
+                : await ready.rooms.joinByCode(asked.code);
             if (!joined.ok) {
                 return this.failEntry({ kind: "refused", problem: joined.problem });
             }
@@ -525,6 +564,12 @@ export class LiveSession {
 
     /** Leave. The freeze lifts and what is on disk is this author's own, committable as usual. */
     public async leave(): Promise<void> {
+        // A window standing in front of a host who has not answered is not in a room, so `end` has
+        // nothing to end - and without this the control would do nothing for half a minute.
+        if (this.waitingToBeLetIn !== null) {
+            this.waitingToBeLetIn();
+            return;
+        }
         await this.end("left");
     }
 
@@ -547,6 +592,7 @@ export class LiveSession {
      * an author who pressed Ctrl+R meant.
      */
     public dispose(): void {
+        this.waitingToBeLetIn?.();
         void this.end("left", { silently: true });
     }
 
@@ -2417,6 +2463,86 @@ export class LiveSession {
         }
         const listed = await rooms.list(project);
         return listed.ok ? listed.value.find(one => one.id === session) ?? null : null;
+    }
+
+    /**
+     * The room four digits name, or null because none does.
+     *
+     * ⚠ **A read rather than the join itself.** What has to happen before joining depends on the
+     * room - which document it is about, which revision it opened on, whether a person has to say
+     * yes first - and all three are on the record this answers. Joining first and finding out
+     * afterwards would mean adopting a version before knowing whether this window was allowed in.
+     */
+    private async roomByCode(rooms: LiveRooms, code: string): Promise<TeamLiveSession | null> {
+        const answered = await rooms.byCode(code);
+        return answered.ok ? answered.value : null;
+    }
+
+    /**
+     * Ask whoever opened a room to let this window in, and stand there until they answer.
+     *
+     * **Nothing on this machine changes here**, which is why this happens before the checkpoint and
+     * the adoption rather than after: the author's own work is still on screen and still theirs
+     * until somebody says yes.
+     *
+     * Three ways it ends. Being let in is a change to the roster and arrives as an ordinary
+     * `live-changed` carrying this instance - the server sends no event of its own for yes, because
+     * the roster already says it. No arrives as `live-refused`, which exists precisely because
+     * nothing else would say it. And the room closing under a request is the same answer as a room
+     * that was never there.
+     *
+     * The fourth way is the clock: see {@link LIVE_ASK_TO_JOIN_MS} for why it is kept here and not
+     * on the server. Answers null where this window may go in, and the failure to report otherwise.
+     */
+    private askToBeLetIn(
+        ready: { project: LiveProjectIdentity; instance: string; rooms: LiveRooms },
+        room: TeamLiveSession,
+    ): Promise<LiveEntryFailure | null> {
+        return new Promise(resolve => {
+            let settled = false;
+            let stopWatching: (() => void) | null = null;
+            let cancelClock: (() => void) | null = null;
+            const finish = (answer: LiveEntryFailure | null) => {
+                if (settled) {
+                    return;
+                }
+                settled = true;
+                this.waitingToBeLetIn = null;
+                stopWatching?.();
+                cancelClock?.();
+                resolve(answer);
+            };
+            // Walking away is an ending like the others, and the one the author drives. Reported as
+            // no answer rather than as a refusal: nobody said no, this window stopped waiting.
+            this.waitingToBeLetIn = () => finish({ kind: "join-unanswered" });
+            this.patch({ phase: "asking" });
+            stopWatching = ready.rooms.watch(room.project, event => {
+                if (event.kind === "live-changed" && event.session.id === room.id) {
+                    if (event.session.members.some(member => member.instance === ready.instance)) {
+                        finish(null);
+                    }
+                    return;
+                }
+                if (event.kind === "live-refused"
+                    && event.session === room.id
+                    && event.instance === ready.instance) {
+                    finish({ kind: "join-refused" });
+                    return;
+                }
+                if (event.kind === "live-closed" && event.session === room.id) {
+                    finish({ kind: "room-gone", sessionId: room.id });
+                }
+            });
+            cancelClock = this.deps.schedule(LIVE_ASK_TO_JOIN_MS, () =>
+                finish({ kind: "join-unanswered" }));
+            // Last, so that an answer arriving in the same tick as the request has somewhere to
+            // land. A server that refuses the asking outright ends it here.
+            void ready.rooms.requestJoin(room.id).then(answered => {
+                if (!answered.ok) {
+                    finish({ kind: "refused", problem: answered.problem });
+                }
+            }, (error: unknown) => finish({ kind: "failed", detail: describe(error) }));
+        });
     }
 
     private failEntry(failure: LiveEntryFailure): LiveEntryFailure {

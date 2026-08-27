@@ -202,6 +202,29 @@ export class WorkspaceSetRecoveryModeHandler extends IPCHandler<IPCEventType.wor
 }
 
 /**
+ * Forget the room this window was told to join, now that it has been acted on.
+ *
+ * Not a reload, unlike its neighbour above: this exists so that the *next* load reads no intent,
+ * and the window doing the clearing is the one carrying it out. See the prop's own note.
+ */
+export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.workspaceLiveIntentTaken> {
+    readonly name = IPCEventType.workspaceLiveIntentTaken;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window carries a live session intent.");
+        }
+
+        const workspace = window as AppWindow<WindowAppType.Workspace>;
+        const { joinLive: _dropped, ...rest } = workspace.getProps();
+        workspace.setProps(rest);
+
+        return this.success(void 0);
+    }
+}
+
+/**
  * Show this window's project folder in the OS file manager.
  *
  * The path comes from the window's own props and never from the message, so this cannot be pointed

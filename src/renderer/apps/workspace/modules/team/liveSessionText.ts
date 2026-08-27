@@ -44,6 +44,11 @@ const ENTRY_FAILURES: Record<LiveEntryFailure["kind"], TranslationKey> = {
     // A merge is open now, and a merge is one of the freezes that refuses a session anyway.
     "merge-conflicts": "workspace.shell.team.liveBlockedMerge",
     "room-gone": "workspace.shell.team.liveRoomGone",
+    // Wrong digits and digits nobody is using are one sentence, because the server answers them
+    // with one - see the failure's own note.
+    "no-such-code": "workspace.shell.team.liveNoSuchCode",
+    "join-refused": "workspace.shell.team.liveJoinRefused",
+    "join-unanswered": "workspace.shell.team.liveJoinUnanswered",
     // The room is there and this window still cannot follow it. Both name the reason rather than
     // falling back to a guess, because the only story this window could guess is one it already
     // holds - see `LiveSession.join`.
@@ -94,6 +99,12 @@ const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = 
     "revision-mismatch": "workspace.shell.team.liveVersionMismatchNext",
     "merge-conflicts": "workspace.shell.team.liveMergeConflictsNext",
     "room-gone": "workspace.shell.team.liveRoomGoneNext",
+    // Both sentences say what to do next in themselves: type them again, and ask the person.
+    "no-such-code": null,
+    "join-refused": null,
+    // The one of the three with somewhere to go: the request is still standing on the server, so
+    // being let in later needs nothing more than joining again.
+    "join-unanswered": "workspace.shell.team.liveJoinUnansweredNext",
     // The remedy is on the other machine and the sentence already names it.
     "room-story-unknown": null,
     "story-not-here": "workspace.shell.team.liveStoryNotHereNext",
@@ -235,6 +246,8 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
     switch (view.phase) {
         case "idle":
             return null;
+        case "asking":
+            return "workspace.shell.team.liveAsking";
         case "entering":
             return "workspace.shell.team.liveEntering";
         case "leaving":
@@ -250,21 +263,22 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
 /**
  * What the control that takes this window out of a room does, and how much it costs.
  *
- * Three answers rather than two, because a host leaving is no longer one act. A room's authority is
- * the window that opened it, so a host walking out of a room with somebody else in it hands it over:
- * the session carries on in a new room opened by whoever was nominated. A host walking out of a room
- * of one ends it - there is nobody to hand it to - and that is the destructive one.
+ * **A host leaving always ends the room, and the control has to say so.** There was once a
+ * handover, and the label survived it by a wave; what is true now is that the host holds the only
+ * copy that counts, so a host walking out leaves nobody for an intent to reach and everybody else
+ * goes back to their own work. Two host labels rather than one because the consequence is not the
+ * same size: a room of one ends quietly, and a room of three sends two people home.
  *
- * Named after what happens rather than after which half of the session this window is, because the
- * two are no longer the same question, and a control that said "End" over a session that carries on
- * would be asking somebody to be brave about nothing.
+ * Named after what happens rather than after which half of the session this window is - and marked
+ * destructive for both host cases, because a control that reads as the gentle option over the most
+ * final act in the feature is the one thing this table exists to prevent.
  */
 export function liveLeaveAct(view: LiveSessionView): { key: TranslationKey; destructive: boolean } {
     if (view.role !== "host") {
         return { key: "workspace.shell.team.liveLeaveSession", destructive: false };
     }
     return liveOtherMembers(view).length > 0
-        ? { key: "workspace.shell.team.liveHandOverSession", destructive: false }
+        ? { key: "workspace.shell.team.liveEndSessionForEveryone", destructive: true }
         : { key: "workspace.shell.team.liveEndSession", destructive: true };
 }
 

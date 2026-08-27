@@ -231,6 +231,7 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceLiveIntentTaken = "workspace.liveIntentTaken",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
@@ -2183,6 +2184,20 @@ export type IPCWorkspaceEvents = {
             enabled: boolean;
             reason?: string;
         },
+        response: void;
+    };
+    /**
+     * Forget the live session this window was told to join, having now acted on it.
+     *
+     * Window props are read once by each load of the renderer and survive a reload, so an intent
+     * left in place would be taken up again by every later load of this window - dragging an
+     * author back into a room they had deliberately left. Cleared rather than remembered in the
+     * renderer, because the renderer is the thing a reload throws away.
+     */
+    [IPCEventType.workspaceLiveIntentTaken]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
         response: void;
     };
     /**

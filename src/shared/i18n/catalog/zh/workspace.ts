@@ -332,7 +332,6 @@ export const workspace = {
         liveOpen: "开始实时会话",
         liveUntitled: "实时会话",
         liveMembers: "{count} 人",
-        liveJoin: "加入",
         liveLeave: "离开",
         liveEnd: "结束",
         // 无法开始或加入的原因。工作区同一时刻只有一种冻结，每一条点名的是需要先离开的状态。
@@ -345,6 +344,9 @@ export const workspace = {
         liveHost: "主持",
         liveGuest: "参与",
         liveEntering: "正在进入",
+        // 站在一个还没作答的主持方面前。单独一个词而不是「正在进入」——本机什么都还没发生，
+        // 而且在别人看一眼通知之前也不会发生。
+        liveAsking: "等待放行",
         liveLeaving: "正在离开",
         // 已加入，正在把加入之前会话里发生的事全部应用完。
         liveCatchingUp: "正在跟上会话进度",
@@ -361,6 +363,13 @@ export const workspace = {
         liveVersionMismatchNext: "先从服务器获取版本并处理差异，然后再试一次",
         liveRoomGone: "该会话已经关闭",
         liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
+        // 口令错和口令没人用是同一句，因为服务器答的就是同一句：分开答等于把猜测变成一张
+        // 「哪些房间存在」的地图。
+        liveNoSuchCode: "没有实时会话用这个口令",
+        liveJoinRefused: "主持方没有放行",
+        // 这不是拒绝。申请还挂在服务器上，只是这个窗口不再等了。
+        liveJoinUnanswered: "无人应答",
+        liveJoinUnansweredNext: "等对方回来后，从启动器的 Team 页面再申请一次",
         liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
         liveStoryNotHere: "该会话所改的故事不在此项目中",
         liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
@@ -408,7 +417,8 @@ export const workspace = {
         liveRoomOpen: "{name} 开着一场实时会话",
         // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
         liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
-        liveJoinWhat: "加入会记录一个检查点、把本机同步到该会话的版本，并冻结此项目中除会话所携带的文档以外的一切",
+        // 报告有别人的房间时，同时说清楚从哪里进。所有入口都在启动器，因为加入往往要先取得工程。
+        liveJoinFromLauncher: "从启动器的 Team 页面加入",
         // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
         liveStory: "故事",
         liveHostedBy: "主持方 {name}",
@@ -435,7 +445,9 @@ export const workspace = {
         liveFrozenTitle: "实时会话进行中",
         liveLeaveSession: "离开实时会话",
         liveEndSession: "结束实时会话",
-        liveHandOverSession: "交接实时会话",
+        // 主持方离开一间还有别人的房间会怎样。没有继任者：主持方手里是唯一算数的那份，
+        // 因此其他人各自回到自己的进度上。
+        liveEndSessionForEveryone: "结束会话（所有人退出）",
         // 附加在项目上、但不在项目里的数据，以及其中有多少条写在已经不是当前的版本上。
         attached: "附加数据 {count} 条",
         attachedOutdated: "{count} 条已过时",

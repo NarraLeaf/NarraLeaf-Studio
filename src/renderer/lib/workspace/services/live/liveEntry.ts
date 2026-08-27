@@ -70,6 +70,32 @@ export function planLiveJoin(input: {
     return { kind: "sync", checkpoint: input.uncommittedChanges };
 }
 
+/**
+ * Which room to join, and what entitles this window to be in it.
+ *
+ * **Not interchangeable, and the difference is the whole of what a passcode buys.** A room joined
+ * by its id is one that was on a list somebody could read; a room joined by four digits is not on
+ * any list and refuses its own id, so the digits are the address and the entitlement at once. A
+ * window handed one cannot fall back on the other.
+ */
+export type LiveJoinTarget = { session: TeamLiveSession | string } | { code: string };
+
+/**
+ * How long a window waits for a host to answer a request to join.
+ *
+ * ⚠ **Timed here rather than on the server, deliberately.** A server that timed requests out would
+ * be holding an opinion about how long a person may take to look at a notification, and it has no
+ * way to form one: the request costs it a map entry and the room may be on a screen nobody is in
+ * front of. So a pending request lives until the room ends or the asker's connection drops, and how
+ * long to stand there is decided by the window doing the standing.
+ *
+ * Half a minute is long enough for somebody to reach a notification they saw and short enough that
+ * an author who is not there leaves the asker with an answer rather than a spinner. Giving up is
+ * not withdrawing: the request is still on the server, and being let in afterwards is a room the
+ * author can join in the ordinary way.
+ */
+export const LIVE_ASK_TO_JOIN_MS = 30_000;
+
 /* ------------------------------------------------------------------- coming back */
 
 /**

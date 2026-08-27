@@ -10,6 +10,7 @@ import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
+import type { WindowAppType } from "@shared/types/window";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
 import { AppTagService } from "../appTag/AppTagService";
@@ -33,6 +34,7 @@ import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
 import { LiveSession } from "./LiveSession";
+import type { LiveJoinTarget } from "./liveEntry";
 import type { LiveSessionDeps, LiveProjectIdentity } from "./liveSessionPorts";
 import { createTeamLiveRooms } from "./teamLiveRooms";
 import {
@@ -106,7 +108,71 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         // Not awaited, and that is the point of it: a workspace must open at the same speed whether
         // or not there is a server to ask, and the answer for nearly every window is "you were in
         // nothing". What it repairs is the room a reload left behind - see `LiveSession.resume`.
-        void this.takeUpAnyRoom();
+        void this.takeUpWhateverThisWindowIsFor();
+    }
+
+    /**
+     * Whichever of the two things a starting workspace has to do about rooms.
+     *
+     * A window opened by the launcher to join one was told which; every other window is asking the
+     * opposite question, which is whether it is already in one that a reload left behind. They are
+     * exclusive by construction - a window handed an intent has never been anywhere - and doing
+     * both would have a fresh window asking a server about a room it cannot be in.
+     */
+    private async takeUpWhateverThisWindowIsFor(): Promise<void> {
+        const asked = await this.roomThisWindowWasSentTo();
+        if (asked === null) {
+            await this.takeUpAnyRoom();
+            return;
+        }
+        await this.joinWhatThisWindowWasSentTo(asked);
+    }
+
+    /**
+     * The room this window was opened to join, taken up so that it is taken up once.
+     *
+     * ⚠ **Cleared before it is acted on, not after.** Window props are read afresh by every load
+     * of the renderer and survive a reload, so an intent left in place would be carried out again
+     * by a window whose author left the room an hour ago - and clearing it afterwards would leave
+     * that hole open for the whole of joining. Cleared even where the join then fails: the author
+     * is told why, and a window that retried by itself on every reload would be worse.
+     */
+    private async roomThisWindowWasSentTo(): Promise<LiveJoinTarget | null> {
+        try {
+            const props = await getInterface().getWindowProps<WindowAppType.Workspace>();
+            const asked = props.success ? props.data.joinLive : undefined;
+            if (asked === undefined) {
+                return null;
+            }
+            await getInterface().workspace.liveIntentTaken();
+            return asked;
+        } catch {
+            // A window that cannot read its own props is one with nothing to act on. The ordinary
+            // resume below is the right thing for it and asks nothing of the author.
+            return null;
+        }
+    }
+
+    /**
+     * Join what the launcher found, retrying for as long as the reason is "not connected yet".
+     *
+     * The socket is opened while the workspace is starting, so the first pass usually runs before
+     * this window has an instance id - which is the same race `takeUpAnyRoom` runs, and answered
+     * the same way. Every other refusal is final and is left on the view for the author to read.
+     */
+    private async joinWhatThisWindowWasSentTo(target: LiveJoinTarget): Promise<void> {
+        for (const delay of LiveSessionService.RESUME_DELAYS_MS) {
+            if (delay > 0) {
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+            if (this.session === null) {
+                return;
+            }
+            const failure = await this.session.join(target);
+            if (failure === null || failure.kind !== "no-instance") {
+                return;
+            }
+        }
     }
 
     /**
@@ -167,8 +233,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return this.session?.open(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
-    public join(input: { session: TeamLiveSession | string }): Promise<LiveEntryFailure | null> {
-        return this.session?.join(input) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
+    public join(target: LiveJoinTarget): Promise<LiveEntryFailure | null> {
+        return this.session?.join(target) ?? Promise.resolve<LiveEntryFailure>(NOT_INITIALIZED);
     }
 
     /** Change how people get into the running room. Host only; false where it was refused. */

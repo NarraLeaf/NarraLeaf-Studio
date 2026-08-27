@@ -21,6 +21,7 @@ import type {
     VcsServerRevision,
 } from "@shared/types/vcs";
 import { ProjectDiscussion } from "./ProjectDiscussion";
+import { ProjectLiveSessions } from "./ServerLiveSessions";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -54,6 +55,14 @@ export interface ServerProjectDetailProps {
     project: VcsServerProject;
     /** The server's name, for the one sentence that has to say which list is being changed. */
     server: string;
+    /**
+     * Where this machine keeps this project, or null when it has never had it.
+     *
+     * Read by the live sessions below, which is the one thing here that acts on it: joining a
+     * room means opening the project, and a machine without it has to fetch one first. The list
+     * is what knows this, for the reason it knows it for the Open control beside the title.
+     */
+    localPath: string | null;
     /** Whether this server answers what it knows about one project. */
     canDetail: boolean;
     /** Whether this server answers a project's revisions. */
@@ -91,6 +100,7 @@ export function ServerProjectDetailView({
     remoteOrigin,
     project,
     server,
+    localPath,
     canDetail,
     canHistory,
     action,
@@ -310,6 +320,15 @@ export function ServerProjectDetailView({
                     holds a session and offers conversations, which is what the component
                     itself checks: a deployment that does not is a page with no such
                     section rather than one with an empty one. */}
+                {/* Above the conversation, because it is happening now and a note is not.
+                    Drawn only where the server offers rooms and there is one open - see
+                    `ServerLiveSessions` for why joining is here rather than in the editor. */}
+                <ProjectLiveSessions
+                    remoteOrigin={remoteOrigin}
+                    project={known}
+                    localPath={localPath}
+                />
+
                 <ProjectDiscussion remoteOrigin={remoteOrigin} projectId={known.id} />
 
                 {versionsUnavailable && !fileUnread && !empty && (

@@ -563,6 +563,11 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
     const members = Array.isArray(from["members"])
         ? from["members"].map(readLiveMember).filter((one): one is TeamLiveMember => one !== null)
         : [];
+    // ⚠ Read against the closed set rather than carried through. A room whose rule this build does
+    // not know is one it must treat as `open` - the behaviour every room had before there was a
+    // choice - and never as a word it will later compare against and never match.
+    const said = from["rule"];
+    const rule = said === "open" || said === "code" || said === "request" ? said : undefined;
     return {
         id,
         project,
@@ -573,6 +578,7 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
         openedByInstance,
         openedAt: count(from, "openedAt") ?? 0,
         members,
+        ...(rule === undefined ? {} : { rule }),
     };
 }
 
