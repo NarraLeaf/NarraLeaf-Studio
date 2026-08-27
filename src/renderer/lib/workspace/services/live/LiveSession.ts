@@ -1370,6 +1370,15 @@ export class LiveSession {
             void this.end(session.role === "host" ? "left" : "host-left");
             return;
         }
+        if (event.kind === "live-requested" || event.kind === "live-refused") {
+            // Somebody asking to be let into a room, and the answer when it is no. Neither is
+            // for a window already in one: a request is the host's to answer and has no surface
+            // yet, and a refusal is addressed to whoever asked, who is by definition not in the
+            // room. **`readRoomEvent` does not read either of them today**, so nothing arrives
+            // here - this is what stops the two of them falling through when it does, because
+            // they carry a room id where every other event carries the room.
+            return;
+        }
         if (event.session.id !== session.room.id) {
             return;
         }
