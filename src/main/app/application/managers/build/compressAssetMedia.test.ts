@@ -339,6 +339,20 @@ describe("compressProjectMedia", () => {
         expect(log).toHaveBeenCalledWith("warning", expect.stringContaining("Broken"));
     });
 
+    it("builds without a probe, says so once, and still strips", async () => {
+        // A host missing the staged binaries has one thing wrong with it, not one
+        // thing wrong per file in the library.
+        await writeLibrary("audio", {
+            [ASSET_A]: { bytes: taggedWav() },
+            [ASSET_B]: { bytes: taggedWav() },
+        });
+        await fs.rm(path.join(binDir, "ffprobe.exe"));
+        const result = await run();
+        expect(log.mock.calls.filter(([level]) => level === "warning")).toHaveLength(1);
+        // The metadata half needs no binary, so it runs anyway.
+        expect(result.stripped).toBe(2);
+    });
+
     it("builds without an encoder, and says so once", async () => {
         await writeLibrary("audio", {
             [ASSET_A]: { bytes: wavBytes() },
