@@ -52,8 +52,13 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         window: AppWindow,
         { props, closeCurrentWindow }: IPCEvents[IPCEventType.workspaceLaunch]["data"]
     ): Promise<RequestStatus<void>> {
+        // ⚠ Everything the window is opened FOR has to be named here, one field at a time.
+        // `openProject` builds the window's props itself - it has to, because it may find the
+        // project already open and hand the request to that window instead - so a prop the caller
+        // set and this did not forward is a prop that silently never arrives.
         await window.getApp().openProject(window, props.projectPath, {
             replaceOpener: closeCurrentWindow,
+            ...(props.joinLive ? { joinLive: props.joinLive } : {}),
         });
 
         return this.success(void 0);

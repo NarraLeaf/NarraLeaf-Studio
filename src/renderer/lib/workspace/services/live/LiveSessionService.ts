@@ -10,6 +10,7 @@ import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
+import type { AppEventToken } from "@shared/types/app";
 import type { WindowAppType } from "@shared/types/window";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
@@ -105,11 +106,21 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             ctx.services.get<AssetsService>(Services.Assets),
         ]);
         this.session = new LiveSession(this.buildDeps(ctx));
+        // ⚠ **Both halves of the launcher's hand-off, and both are needed.** A window this launch
+        // created reads the room off its props; a window that was ALREADY open on this project -
+        // one project is one window - is sent it, because props are read once at load. Subscribed
+        // before the props are read so a message arriving in that gap is not lost.
+        this.joinLiveSubscription = getInterface().workspace.onJoinLive(target => {
+            void this.joinWhatThisWindowWasSentTo(target);
+        });
         // Not awaited, and that is the point of it: a workspace must open at the same speed whether
         // or not there is a server to ask, and the answer for nearly every window is "you were in
         // nothing". What it repairs is the room a reload left behind - see `LiveSession.resume`.
         void this.takeUpWhateverThisWindowIsFor();
     }
+
+    /** How this window stops listening for rooms the launcher wants it in. */
+    private joinLiveSubscription: AppEventToken | null = null;
 
     /**
      * Whichever of the two things a starting workspace has to do about rooms.
@@ -161,6 +172,12 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
      * the same way. Every other refusal is final and is left on the view for the author to read.
      */
     private async joinWhatThisWindowWasSentTo(target: LiveJoinTarget): Promise<void> {
+        if (this.session !== null && this.session.getView().phase !== "idle") {
+            // Already in a room, or on the way into one. A second request is the author pressing
+            // the same control twice, and `join` would refuse it as `busy` - which would put a
+            // failure on screen about something that is going perfectly well.
+            return;
+        }
         for (const delay of LiveSessionService.RESUME_DELAYS_MS) {
             if (delay > 0) {
                 await new Promise(resolve => setTimeout(resolve, delay));
@@ -204,6 +221,8 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
     public override dispose(_ctx: WorkspaceContext): void {
         // A session that survived its window would leave the story editor handing gestures to a
         // room nobody is in, and the project frozen with nothing on screen to explain why.
+        this.joinLiveSubscription?.cancel();
+        this.joinLiveSubscription = null;
         this.session?.dispose();
         this.session = null;
     }
