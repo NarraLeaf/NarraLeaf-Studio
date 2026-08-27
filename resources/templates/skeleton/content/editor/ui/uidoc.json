@@ -251,9 +251,6 @@
         },
         {
           "actionId": "backlog"
-        },
-        {
-          "actionId": "hide"
         }
       ]
     },
@@ -56219,16 +56216,6 @@
         {
           "kind": "key",
           "key": "Escape"
-        }
-      ]
-    },
-    "hide": {
-      "id": "hide",
-      "name": "Hide",
-      "bindings": [
-        {
-          "kind": "pointer",
-          "gesture": "longPress"
         }
       ]
     }
