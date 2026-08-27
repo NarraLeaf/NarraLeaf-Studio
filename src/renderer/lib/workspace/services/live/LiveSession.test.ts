@@ -70,7 +70,7 @@ import type { CharacterOpSink } from "../core/CharacterService";
 import { StoryService } from "../story/StoryService";
 import { LiveSession } from "./LiveSession";
 import type { LiveRooms, LiveSessionDeps } from "./liveSessionPorts";
-import { LIVE_CONTINUATION_MS } from "./liveEntry";
+import { LIVE_HOSTED_NOTE_MS } from "./liveEntry";
 import { IDLE_LIVE_SESSION } from "./liveSessionView";
 
 vi.mock("@/lib/app/writeFreeze", () => ({ getProjectWriteFreeze: () => null }));
@@ -1451,8 +1451,8 @@ describe("a live session", () => {
         it("lifts under a guest when the room ends with nothing to carry it on", async () => {
             await openRoom();
             await joinRoom();
-            // A host whose window went away without saying anything: the room closes and nobody was
-            // nominated. `leave` is the other case and is covered where handovers are.
+            // A host whose window went away without saying anything: the room closes under the
+            // guest. `leave` is the other case, and is covered where the ending is.
             world.bus.announce(PROJECT, { kind: "live-closed", session: "room-1" });
             await drain(world.bus);
             expect(guest.freeze.armed).toBeNull();
@@ -1492,11 +1492,12 @@ describe("a live session", () => {
         });
     });
 
-    describe("the collaboration outliving the room", () => {
+    describe("what the room ending leaves behind", () => {
         it("publishes what the session produced before the room closes", async () => {
-            // ⚠ Exactly one machine records a session's content and every other machine adopts it.
-            // Two windows recording the same story - which is what everybody in a room ends a
-            // session holding - are two histories that differ only in when each of them last saved.
+            // ⚠ Exactly one machine records a session's content, and it is the host: everybody
+            // else was sending intents at it. Two windows recording the same story - which is what
+            // everybody in a room ends a session holding - are two histories that differ only in
+            // when each of them last saved.
             await openRoom();
             await joinRoom();
             host.calls.length = 0;
@@ -1508,73 +1509,122 @@ describe("a live session", () => {
             expect(host.calls).toEqual(["thaw", "checkpoint", "push", "close"]);
         });
 
-        it("hands the room to the member who has been in it longest", async () => {
+        it("does not hand the room on: a room does not outlive its host", async () => {
             await openRoom();
             await joinRoom();
-            guest.calls.length = 0;
-            // Something the session produced, so the version the host publishes on the way out is
-            // one nobody else is standing on yet.
             host.version.uncommitted = true;
 
             await host.session.leave();
             await drain(world.bus);
 
-            // The guest opened a room of its own, on the version the leaving host published, and
-            // did NOT record one: recording it would be a second history of the same afternoon.
-            expect(guest.calls).toContain(`adopt:${host.version.head}`);
-            expect(guest.calls).toContain(`open:${host.version.head}`);
-            expect(guest.calls).not.toContain("push");
-            // And one merge, which is the one a session asks for on purpose: this window is about
-            // to be the one everybody publishes through, and its own history is one the server has
-            // never seen. Both sides are the same bytes, so it settles without a question.
-            expect(guest.calls).toContain("sync");
-            expect(guest.session.getView()).toMatchObject({ phase: "active", role: "host" });
-        });
-
-        it("says nothing about a successor in a room of one", async () => {
-            await openRoom();
-            await host.session.leave();
-            await drain(world.bus);
-            // The publication still happened - the session's work has to be somewhere - but no
-            // room was opened in answer to it.
+            // Nobody opened a second room, and the guest is in none. A host that comes back opens
+            // one the others are offered rather than pulled into.
             expect(world.rooms.size).toBe(0);
+            expect(guest.session.getView()).toMatchObject({
+                phase: "idle",
+                role: null,
+                ended: { cause: "host-left", closed: true },
+            });
         });
 
-        it("follows the room the successor opens, from a third window", async () => {
-            const third = createWindow(world, "instance-third");
+        it("puts a guest back on the checkpoint it recorded on the way in", async () => {
             await openRoom();
+            // Something of this author's own, so joining records a checkpoint rather than finding
+            // nothing to record. Named rather than read back: by the time the join returns, this
+            // tree is standing on the room's version and nothing on the window remembers where its
+            // own work went, which is exactly the fact the session has to carry for it.
+            guest.version.uncommitted = true;
+            const own = "rev-checkpoint-instance-guest-1";
             await joinRoom();
-            await third.session.join({ session: "room-1" });
-            await drain(world.bus);
+            guest.calls.length = 0;
 
             await host.session.leave();
             await drain(world.bus);
 
-            // The guest joined first, so it is the successor; this window recognised its room and
-            // joined it without anybody pressing anything.
-            expect(third.session.getView()).toMatchObject({ storyId: third.storyId, role: "guest" });
-            expect(third.session.getView().session?.id).toBe("room-2");
+            // The room's document was written over this tree on the way in; this is the other half
+            // of that, and the author gets their own work back rather than the host's.
+            expect(guest.calls).toContain(`adopt:${own}`);
+            expect(guest.version.head).toBe(own);
         });
 
-        it("stops waiting for a room that never comes back", async () => {
+        it("puts a guest that had nothing uncommitted back on the revision it was sitting on", async () => {
+            // A clean tree needs no checkpoint - recording one would be a lie about this author's
+            // history - but it is still somewhere they were, and it is what they get back.
             await openRoom();
+            const own = guest.version.head;
             await joinRoom();
-            // A host whose window went away without saying anything. The room closes and nobody was
-            // nominated, so the guest waits - and then stops.
-            world.bus.announce(PROJECT, { kind: "live-closed", session: "room-1" });
+            guest.calls.length = 0;
+
+            await host.session.leave();
             await drain(world.bus);
-            expect(guest.session.getView().rejoining).not.toBeNull();
 
-            fireTimers(guest);
-
-            expect(guest.session.getView().rejoining).toBeNull();
+            expect(guest.calls).toContain(`adopt:${own}`);
         });
 
-        it("does not wait when the author is the one who left", async () => {
+        it("gives the same thing back to a guest that walks out of a room still running", async () => {
+            // Leaving is not a different question. What is under this author's editor is the host's
+            // document either way, and whose it is does not depend on who closed the door.
+            await openRoom();
+            guest.version.uncommitted = true;
+            const own = "rev-checkpoint-instance-guest-1";
+            await joinRoom();
+            guest.calls.length = 0;
+
+            await guest.session.leave();
+
+            expect(guest.calls).toContain(`adopt:${own}`);
+        });
+
+        it("adopts nothing when the guest was already standing on its own work", async () => {
+            // Two machines that were in step: a host with nothing uncommitted opens on the very
+            // revision this window is already holding, so there is nothing to put back and a write
+            // would record a revision saying that nothing happened.
+            expect(await host.session.open({ storyId: host.storyId })).toBeNull();
+            await joinRoom();
+            expect(guest.version.head).toBe(host.version.head);
+            guest.calls.length = 0;
+
+            await host.session.leave();
+            await drain(world.bus);
+
+            expect(guest.calls.some(call => call.startsWith("adopt:"))).toBe(false);
+        });
+
+        it("gives nothing back under a window that is only reloading", async () => {
+            // ⚠ The one ending that must not touch the tree. A window going away cannot tell a
+            // goodbye from a reload, and rolling the session back underneath one that is about to
+            // come straight back would undo an afternoon around an author who never left.
             await openRoom();
             await joinRoom();
-            await guest.session.leave();
-            expect(guest.session.getView().rejoining).toBeNull();
+            guest.calls.length = 0;
+
+            guest.session.dispose();
+            await drain(world.bus);
+
+            expect(guest.calls.some(call => call.startsWith("adopt:"))).toBe(false);
+        });
+
+        it("gives nothing back where the copies stopped agreeing", async () => {
+            // What is on this disk is being kept deliberately, for somebody to look at.
+            await openRoom();
+            await joinRoom();
+            guest.calls.length = 0;
+
+            world.bus.say("room-1", {
+                kind: "effect",
+                by: "instance-host",
+                seq: 1,
+                document: { doc: "story", storyId: guest.storyId },
+                op: { op: "rename-scene", sceneId: guest.sceneId, name: "Elsewhere" },
+                digests: [{
+                    scope: { of: "scene", storyId: guest.storyId, sceneId: guest.sceneId },
+                    hash: "a-digest-nobody-computed",
+                }],
+            }, "instance-host", accountOf("instance-host"));
+            await drain(world.bus);
+
+            expect(guest.session.getView().ended?.cause).toBe("diverged");
+            expect(guest.calls.some(call => call.startsWith("adopt:"))).toBe(false);
         });
     });
 
@@ -1594,8 +1644,14 @@ describe("a live session", () => {
                 "close", "checkpoint", "push", `open:${reloaded.version.head}`, "freeze",
             ]);
             expect(reloaded.session.getView()).toMatchObject({ phase: "active", role: "host" });
-            // And the guest, whose room closed under it, is in the new one.
-            expect(guest.session.getView().session?.id).toBe("room-2");
+            // ⚠ And the guest is NOT pulled into it. Its room closed under it, so its session
+            // ended and its own work came back; the new room is one it is offered. The window that
+            // reloaded is still the host - that much a reload does not change - but a room that
+            // reappears around somebody is the thing this stopped doing.
+            expect(guest.session.getView()).toMatchObject({ phase: "idle", ended: { cause: "host-left" } });
+            expect(world.rooms.get("room-2")?.members.map(member => member.instance)).toEqual([
+                "instance-host",
+            ]);
         });
 
         it("closes it when nobody is in it", async () => {
@@ -1662,7 +1718,7 @@ describe("a live session", () => {
 
         it("does not reopen a session that ended some time ago", async () => {
             const reloaded = createWindow(world, "instance-host");
-            reloaded.hosted = { story: host.storyId, at: -LIVE_CONTINUATION_MS - 1 };
+            reloaded.hosted = { story: host.storyId, at: -LIVE_HOSTED_NOTE_MS - 1 };
 
             expect(await reloaded.session.resume()).toBe("settled");
 

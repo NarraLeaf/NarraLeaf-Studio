@@ -413,14 +413,10 @@ export const workspace = {
         liveMergeConflictsNext: "Settle the merge, then try again.",
         // How a session ended, for the two endings the author did not ask for. Leaving is
         // silent: they pressed the control and watched the row change.
-        liveEndedHostLeft: "The host left. The session is over.",
-        // The same event where the room is coming back. A host that hands over or reloads closes
-        // the room and another one opens seconds later, so "the session is over" would be the wrong
-        // half of what happened.
-        liveEndedHandedOver: "The host left. The session is reopening under somebody else.",
-        // While this window is waiting for that to happen. Drawn where the room row is, so the slot
-        // that said which room this window was in says what it is waiting for instead.
-        liveRejoining: "Rejoining when the session reopens.",
+        // Both halves, because the second one is what the author is about to see on screen: the
+        // room's document was written over this tree on the way in, and it has just been written
+        // back. Without it the editor changing under them is an unexplained third event.
+        liveEndedHostLeft: "The host left. The session is over, and your own work is back.",
         // Said as what happened to this copy rather than as a goodbye: the session is gone
         // AND what is on this disk is not what the others are looking at.
         liveEndedDiverged: "This copy stopped matching the session and left it.",
