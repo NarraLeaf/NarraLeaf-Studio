@@ -140,6 +140,28 @@ export const test = {
                 passed: "Reached {ending}",
             },
         },
+        routeCoverage: {
+            title: "Route coverage",
+            description: "Whether a player can actually reach every scene, option and ending once conditions are read",
+            skipped: {
+                noEntryPoint: "No story marks where play begins",
+                undecidableEntry: "A Start Story node picks its scene while the game runs, so where play begins cannot be read",
+                storiesUnread: "A story could not be read",
+            },
+            // Each of these means the same thing in a different unit: the rows lead here, and the
+            // numbers never do. Worded so an author can tell that from a structural dead end.
+            finding: {
+                sceneUnreachable: "No path can satisfy the conditions leading to \"{scene}\"",
+                optionUnreachable: "\"{option}\" is never offered - no path satisfies its condition",
+                branchUnreachable: "This branch is never taken - no path satisfies its condition",
+                endingUnreachable: "\"{name}\" is written but no path can satisfy the conditions to reach it",
+                endingUnreachableUnnamed: "This ending is written but no path can satisfy the conditions to reach it",
+            },
+            summary: {
+                passed: "Everything the script leads to can be reached",
+                failed: "Unreachable - scenes: {scenes}, options: {options}, endings: {endings}",
+            },
+        },
         reachableEndings: {
             title: "Reachable endings",
             description: "Whether every way through the story reaches an /ending",

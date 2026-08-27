@@ -35,10 +35,12 @@ import { buildSceneFlowGraph } from "./sceneFlowModel";
 import { buildSceneFlowRouteMap, type SceneFlowRoute } from "./sceneFlowRoutes";
 import {
     branchDeltaFor,
+    collectBlueprintVariableWrites,
     collectBranchEffects,
     collectSceneEffects,
     computeVariableRanges,
     listNumericStoryVariables,
+    type SceneFlowBlueprintWrites,
 } from "./sceneFlowVariables";
 import type { SceneFlowTabPayload, SceneFlowViewport } from "./sceneFlowTabId";
 
@@ -92,15 +94,27 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
      * missing.
      */
     const [registryVariables, setRegistryVariables] = useState<readonly VariableRegistryEntry[]>([]);
+    /**
+     * Which story variables the project's graphs may write. Read from the same subscription the
+     * registry is: a `Set Saved Var` added to a blueprint changes what every range on this map can
+     * claim, and a map that only re-read it on a *story* edit would keep drawing the old numbers.
+     */
+    const [blueprintWrites, setBlueprintWrites] = useState<SceneFlowBlueprintWrites>(
+        () => collectBlueprintVariableWrites(null),
+    );
 
     useEffect(() => {
         if (!blueprintService) {
             return undefined;
         }
-        const read = () => setRegistryVariables([
-            ...blueprintService.listSavedVariables(),
-            ...blueprintService.listPersistentVariables(),
-        ]);
+        const read = () => {
+            const registry = [
+                ...blueprintService.listSavedVariables(),
+                ...blueprintService.listPersistentVariables(),
+            ];
+            setRegistryVariables(registry);
+            setBlueprintWrites(collectBlueprintVariableWrites(blueprintService.getBlueprintDocument(), registry));
+        };
         read();
         return blueprintService.onBlueprintHistoryChanged(read);
     }, [blueprintService]);
@@ -191,12 +205,13 @@ export function SceneFlowTab({ tabId, payload }: EditorTabComponentProps<SceneFl
         }
         return {
             variable: focusedVariable,
-            branchEffects: collectBranchEffects(graph, document),
-            sceneEffects: collectSceneEffects(document),
-            ranges: computeVariableRanges(graph, document, focusedVariable.key, registryVariables),
+            branchEffects: collectBranchEffects(graph, document, blueprintWrites),
+            sceneEffects: collectSceneEffects(document, blueprintWrites),
+            ranges: computeVariableRanges(graph, document, focusedVariable.key, registryVariables, blueprintWrites),
             registryVariables,
+            blueprintWrites,
         };
-    }, [document, graph, focusedVariable, registryVariables]);
+    }, [document, graph, focusedVariable, registryVariables, blueprintWrites]);
 
     // A reload can delete the variable the focus names; the picker must not keep showing it.
     useEffect(() => {

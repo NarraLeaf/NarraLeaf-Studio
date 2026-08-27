@@ -119,6 +119,26 @@ export const test = {
                 passed: "已走到 {ending}",
             },
         },
+        routeCoverage: {
+            title: "路线覆盖率",
+            description: "把条件算进去之后，每个场景、选项和结局是不是真的走得到",
+            skipped: {
+                noEntryPoint: "没有任何故事标出从哪里开始",
+                undecidableEntry: "Start Story 节点在运行时才决定进哪个场景，所以读不出从哪里开始",
+                storiesUnread: "有故事读不出来",
+            },
+            finding: {
+                sceneUnreachable: "没有任何路径能满足通往「{scene}」的条件",
+                optionUnreachable: "「{option}」永远不会出现——没有路径满足它的条件",
+                branchUnreachable: "这条分支永远走不到——没有路径满足它的条件",
+                endingUnreachable: "「{name}」写好了，但没有任何路径能满足到达它的条件",
+                endingUnreachableUnnamed: "这个结局写好了，但没有任何路径能满足到达它的条件",
+            },
+            summary: {
+                passed: "剧本能通向的东西都走得到",
+                failed: "走不到的——场景 {scenes} 个，选项 {options} 个，结局 {endings} 个",
+            },
+        },
         reachableEndings: {
             title: "结局可达性",
             description: "故事的每一条路径是否都能走到 /ending",

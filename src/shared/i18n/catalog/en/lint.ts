@@ -303,6 +303,16 @@ export const lint = {
             description: "One name declared in two places",
             message: "{variable} is declared twice as a persistent variable",
         },
+        variablesConditionNeverHolds: {
+            title: "Condition no path can satisfy",
+            description: "A condition whose variable can never reach the value it tests for",
+            message: "{variable} is never more than {bound} here, so this condition cannot hold",
+        },
+        variablesReadNeverWritten: {
+            title: "Condition nothing can change",
+            description: "A variable a condition tests, that nothing in the project ever assigns",
+            message: "{variable} is tested by {count} condition(s) but nothing ever sets it",
+        },
         variablesRandomOutsideAssignment: {
             title: "Random outside an assignment",
             description: "A random value somewhere it is re-rolled instead of kept",
