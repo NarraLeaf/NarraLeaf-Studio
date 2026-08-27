@@ -18,6 +18,7 @@ export const CACHE_BUCKET_IDS = [
     "spellcheckDictionaries",
     "optimizedImages",
     "buildDependencies",
+    "toolchains",
     "electronBuilder",
     "browser",
     "psdImports",
