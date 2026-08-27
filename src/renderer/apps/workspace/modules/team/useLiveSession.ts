@@ -46,6 +46,14 @@ export type LiveSessionSurface = {
      * choices and has to put itself back where it was when the server says no.
      */
     setRule: (rule: TeamLiveJoinRule) => Promise<boolean>;
+    /**
+     * Say yes or no to somebody waiting to be let in. Host only.
+     *
+     * Awaited for `setRule`'s reason: the row it answers disappears when the session publishes the
+     * shorter list, and a control that had already redrawn as gone would be lying about a server
+     * that has not answered yet.
+     */
+    answerRequest: (instance: string, admit: boolean) => Promise<boolean>;
 };
 
 export function useLiveSession(): LiveSessionSurface {
@@ -83,6 +91,11 @@ export function useLiveSession(): LiveSessionSurface {
         leave: useCallback(() => run(session => session.leave()), [run]),
         setRule: useCallback(
             (rule: TeamLiveJoinRule) => service?.setRule(rule) ?? Promise.resolve(false),
+            [service],
+        ),
+        answerRequest: useCallback(
+            (instance: string, admit: boolean) =>
+                service?.answerRequest(instance, admit) ?? Promise.resolve(false),
             [service],
         ),
     };

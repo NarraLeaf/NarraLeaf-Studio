@@ -168,6 +168,12 @@ export function LiveSessionNotices(): null {
             notifications.show({
                 type: NotificationType.Info,
                 message: say.current("workspace.shell.team.liveAsked", { name: member.account }),
+                // ⚠ **Kept up until it is answered.** Every other notice here reports something
+                // that has already happened, and five seconds is long enough to read one. This one
+                // is a question with somebody waiting on the other end of it, and a question that
+                // takes itself off the screen is one the author cannot answer - measured on a real
+                // machine, where the toast was gone before anybody could have reached it.
+                timeout: 0,
                 actions: [
                     {
                         label: say.current("workspace.shell.team.liveAdmit"),

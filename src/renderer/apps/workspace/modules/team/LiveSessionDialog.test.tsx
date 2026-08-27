@@ -47,6 +47,8 @@ const world = vi.hoisted(() => ({
     listeners: new Set<(view: LiveSessionView) => void>(),
     open: vi.fn(() => Promise.resolve(null)),
     leave: vi.fn(() => Promise.resolve()),
+    setRule: vi.fn(() => Promise.resolve(true)),
+    answerRequest: vi.fn(() => Promise.resolve(true)),
     freeze: null as WorkspaceFreezeReason | null,
     stories: [] as { id: string; name: string }[],
     defaultStory: undefined as string | undefined,
@@ -67,6 +69,8 @@ vi.mock("@/apps/workspace/context", () => {
                     },
                     open: world.open,
                     leave: world.leave,
+                    setRule: world.setRule,
+                    answerRequest: world.answerRequest,
                 };
             }
             if (id === Services.WorkspaceFreeze) {
@@ -89,6 +93,8 @@ beforeEach(() => {
     world.listeners.clear();
     world.open.mockClear();
     world.leave.mockClear();
+    world.setRule.mockClear();
+    world.answerRequest.mockClear();
     world.freeze = null;
     world.stories = [{ id: "story-1", name: "Act one" }];
     world.defaultStory = "story-1";
@@ -244,6 +250,60 @@ describe("what the dialog does when pressed", () => {
         expect(act("leave")?.textContent).toBe("workspace.shell.team.liveEndSession");
         fireEvent.click(act("leave") as HTMLElement);
         expect(world.leave).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("somebody waiting to be let in", () => {
+    /** A host with one person asking. */
+    function asking() {
+        world.view = inRoom({
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+        draw();
+    }
+
+    it("puts the two answers where the title bar's mark points", () => {
+        // ⚠ The mark says somebody is waiting and opens THIS. The notice that carries the same two
+        // answers belongs to one moment and is gone once it has been dismissed - a host who was in
+        // another window when it arrived would otherwise be left with a dot and nothing behind it.
+        asking();
+
+        expect(block("waiting")).not.toBeNull();
+        expect(document.querySelector("[data-live-waiting='ben']")).not.toBeNull();
+    });
+
+    it("answers for the person on the row, not for whoever is at the front of the queue", () => {
+        asking();
+
+        fireEvent.click(document.querySelector("[data-live-answer='admit']") as HTMLElement);
+
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", true);
+    });
+
+    it("turns somebody away through the same door", () => {
+        asking();
+
+        fireEvent.click(document.querySelector("[data-live-answer='turn-away']") as HTMLElement);
+
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", false);
+    });
+
+    it("draws nothing where nobody is waiting, and nothing for a guest", () => {
+        world.view = inRoom({ role: "host" });
+        draw();
+        expect(block("waiting")).toBeNull();
+
+        cleanup();
+        resetWindowOverlayHostForTests();
+        // A guest's session never carries requests, so this is belt and braces - and it is the
+        // guard that keeps a future shape of the view from putting a host's decision on a guest.
+        world.view = inRoom({
+            role: "guest",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+        draw();
+        expect(block("waiting")).toBeNull();
     });
 });
 
