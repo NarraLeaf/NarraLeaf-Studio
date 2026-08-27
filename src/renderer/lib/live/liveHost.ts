@@ -391,11 +391,6 @@ export class LiveHost {
                 // back off the topic - every participant receives its own - and there is nothing to
                 // do about it and nothing to say.
                 return null;
-            case "handover":
-                // About the room rather than about the document, so it is settled before a message
-                // reaches either half of the rules - see `LiveSession.onMessage`. A host reading one
-                // is reading its own, coming back off the topic.
-                return null;
         }
     }
 

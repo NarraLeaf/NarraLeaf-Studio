@@ -2744,35 +2744,15 @@ export type LiveCatchUp = {
  * the operation carrying it is refused, exactly as before, if the bytes never turn up.
  */
 
-/* ------------------------------------------------------------------ carrying on */
-
 /**
- * A host saying the room is about to close and who is expected to open the next one.
+ * Everything a machine in a session can say.
  *
- * **The room ends; the collaboration does not have to.** A room's authority is the window that
- * opened it, and the protocol has no verb that moves that authority - so continuing means a new room
- * on the same story, opened by somebody who is still there. This is the only part of that which
- * cannot be worked out independently: every window can compute the same successor from the same
- * roster, but the rosters differ by whatever event has not arrived yet, and two machines opening a
- * room each is two rooms.
- *
- * ⚠ **`revision` is not decoration.** Exactly one machine publishes a session's result and everybody
- * else takes it - two machines recording the same content is two histories that will not merge - so
- * the leaving host pushes and names what it pushed, and the successor puts its tree on that version
- * before opening anything. A successor that published its own copy instead would fork the project
- * against the host that just left it.
+ * ⚠ **There is deliberately nothing here about the room outliving its host.** A `handover` message
+ * used to name the member expected to open the next room; it is gone, along with the idea. A room's
+ * authority is the window that opened it - everyone else is sending intents at that window - so a
+ * host walking out ends the session rather than passing it on, and each guest puts its own tree back
+ * to what it was holding before it joined. See `liveEntry.ts`.
  */
-export type LiveHandover = {
-    kind: "handover";
-    /** The instance expected to open the next room. */
-    to: string;
-    /** The story the next room is about, so nobody follows a room about something else. */
-    story: string;
-    /** What the leaving host published, and what the next room opens on. */
-    revision?: string;
-};
-
-/** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
     | LiveEffect
@@ -2780,8 +2760,7 @@ export type LiveMessage =
     | LiveClaims
     | LiveClaim
     | LiveResync
-    | LiveCatchUp
-    | LiveHandover;
+    | LiveCatchUp;
 
 /**
  * Whether a value is a message this build understands.
@@ -2802,6 +2781,5 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "claims"
         || kind === "claim"
         || kind === "resync"
-        || kind === "catch-up"
-        || kind === "handover";
+        || kind === "catch-up";
 }

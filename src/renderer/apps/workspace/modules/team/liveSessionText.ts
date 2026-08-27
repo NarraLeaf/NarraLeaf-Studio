@@ -122,15 +122,12 @@ const SESSION_ENDS: Record<LiveSessionEnd["cause"], TranslationKey | null> = {
 /**
  * What the author is told about a session that ended, or null when nothing is.
  *
- * `carryingOn` is the one thing that changes what an ending means. A host that hands over or reloads
- * closes the room, and the room is back within seconds under somebody else - so "the session is
- * over" would be the wrong half of what happened, and would be followed by the session reappearing
- * with nothing having explained it.
+ * ⚠ **A host leaving means the session is over, with nothing to wait for.** There was once a second
+ * sentence here for a room that was about to reappear under somebody else; a room no longer outlives
+ * its host, so the ending is the whole of what happened and saying anything softer would promise
+ * something nothing is going to deliver.
  */
-export function liveEndSentence(end: LiveSessionEnd, carryingOn = false): TranslationKey | null {
-    if (carryingOn && end.cause === "host-left") {
-        return "workspace.shell.team.liveEndedHandedOver";
-    }
+export function liveEndSentence(end: LiveSessionEnd): TranslationKey | null {
     return SESSION_ENDS[end.cause];
 }
 
