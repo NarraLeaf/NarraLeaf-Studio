@@ -82,6 +82,22 @@ const LIVE_CHECKPOINT_REASON: VcsCheckpointReason = "live-session";
  */
 const NOT_INITIALIZED: LiveEntryFailure = { kind: "failed", detail: "the live session service is not running" };
 
+/**
+ * The room the launcher sent THIS PAGE LOAD to, once it has been taken off the window's props.
+ *
+ * ⚠ **Module scope rather than the service's, and that is the whole of why it exists.** The props
+ * are cleared the moment they are read - they outlive a reload, and a window that reloaded an hour
+ * after its author left a room must not walk back into it - so whichever service reads them first
+ * holds the only copy. And a service is not forever: React mounts effects twice in development, and
+ * a workspace that failed to start is retried, so the first one is routinely thrown away. Held here,
+ * the request survives that; held on the service, it went into the bin with the mount that happened
+ * to catch it, and the author watched their window open and do nothing.
+ *
+ * Cleared when a join finishes, not when a service is disposed - the difference between "this has
+ * been dealt with" and "the thing that was dealing with it is gone".
+ */
+let handoff: LiveJoinTarget | null = null;
+
 export class LiveSessionService extends Service<LiveSessionService> implements ILiveSessionService {
     private session: LiveSession | null = null;
 
@@ -149,6 +165,10 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
      * is told why, and a window that retried by itself on every reload would be worse.
      */
     private async roomThisWindowWasSentTo(): Promise<LiveJoinTarget | null> {
+        if (handoff !== null) {
+            // Read off the props by an earlier mount of this same page. See {@link handoff}.
+            return handoff;
+        }
         try {
             const props = await getInterface().getWindowProps<WindowAppType.Workspace>();
             const asked = props.success ? props.data.joinLive : undefined;
@@ -156,6 +176,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 return null;
             }
             await getInterface().workspace.liveIntentTaken();
+            handoff = asked;
             return asked;
         } catch {
             // A window that cannot read its own props is one with nothing to act on. The ordinary
@@ -187,6 +208,13 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
             }
             const failure = await this.session.join(target);
             if (failure === null || failure.kind !== "no-instance") {
+                // Answered one way or the other - including by this service being disposed
+                // mid-wait, which reads as nobody having answered. Only the outcome of a service
+                // that is still the live one settles the request, because a disposed one's
+                // "nobody answered" is about the mount, not about the room.
+                if (this.session !== null) {
+                    handoff = null;
+                }
                 return;
             }
         }
