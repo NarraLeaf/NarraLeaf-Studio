@@ -294,8 +294,11 @@ export interface GlobalStateType extends Record<string, any> {
      * Base URL for the Zig toolchain a build downloads when the host has none; "" = the
      * official ziglang.org source. A third source rather than a mode of either above for
      * the same reason those two are separate: the layout is its own
-     * (`<mirror><version>/<archive>`), and nothing about the other two implies it. Takes
-     * precedence over the `NARRALEAF_ZIG_MIRROR` environment variable.
+     * (`<mirror><version>/<archive>`), and nothing about the other two implies it.
+     *
+     * Unlike the two above it has no environment variable beside it. Those two are honoured
+     * because they predate Studio and CI images already export them; a variable invented for
+     * this one would only be a second place to say what this field already says.
      */
     "build.zigMirror": string;
     /**
