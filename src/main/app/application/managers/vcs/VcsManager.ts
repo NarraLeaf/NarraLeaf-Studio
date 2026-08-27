@@ -35,6 +35,7 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { DEFAULT_PUBLISH_LINEAGE_RULE } from "@shared/types/vcs";
 import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import {
     composeRestoreMessage,
@@ -435,6 +436,7 @@ function describeServerSession(
         name: description.name,
         version: description.version,
         capabilities: [...description.capabilities],
+        policy: { ...description.policy },
     };
 }
 
@@ -2099,6 +2101,18 @@ export class VcsManager extends Manager {
      *
      * A project the server already holds is connected and not registered again, which is
      * the second machine joining a project that is already published.
+     *
+     * ⚠ **Two questions, and asking only the first is how this shipped broken.** "Is this
+     * repository already here" is answered by the repository id, which is what a clone -
+     * or a copied project folder - carries. "Is this NAME free" is a different question
+     * about a different thing, and the address written at the end is built from the name.
+     * Answering only the first and then writing the name typed today produced a project
+     * that pushed, reported `remoteBranchExists: true`, and could not be listed or cloned
+     * by anybody, because the name had never been registered anywhere - measured, with the
+     * row sitting on the server under the name it was first published as. See
+     * {@link publishToRemote}, which cannot save it: a registration refused because the
+     * SAME id is already there is swallowed as "already done", which is true of the
+     * repository and false of the name.
      */
     public async publishProject(
         projectPath: string,
@@ -2128,32 +2142,78 @@ export class VcsManager extends Manager {
         // registering it a second time is refused by the server anyway.
         const held = await listServerProjectsOverSession(call, remoteOrigin);
         if (!held.ok) return held;
-        const already = held.projects.some((project) => project.id.toLowerCase() === repositoryId);
+        // **Lineage, which is what the repository id is.** Two copies of one project - a clone,
+        // or a folder somebody duplicated to start a variant - carry the same id, so a row with
+        // this id IS this project on this server, whatever it happens to be called there.
+        const lineage = held.projects.find((project) => project.id.toLowerCase() === repositoryId);
 
-        if (!already) {
-            // `clientId` is the repository id: it is stable and unique to this publish, so a
-            // create retried after a dropped session is the same write to the server rather
-            // than a second project under the same repository.
-            const registered = await createServerProjectOverSession(call, remoteOrigin, {
-                name,
-                repositoryId,
-                clientId: repositoryId,
-            });
-            if (!registered.ok) return registered;
-            this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
-        }
-
-        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
-        if (already) {
-            // Today's behaviour for a project the server already holds: the address, and
-            // nothing sent. Whether this machine's versions belong on top of what is
-            // already there is a question the Send button asks with the state in front
-            // of the author, rather than one a connection answers for them.
+        if (lineage) {
+            // The operator's rule, where they have stated one, and it is asked BEFORE anything
+            // is written: a refusal that had already left an address behind would be a refusal
+            // the author has to undo.
+            if (lineage.name !== name && this.publishLineageRule(remoteOrigin) === "refuse") {
+                this.app.logger.info(
+                    "[Vcs] Refused to publish", root, "as", name,
+                    "- already on", remoteOrigin, "as", lineage.name, "and that server says one name",
+                );
+                return { ok: false, problem: { kind: "already-published", name: lineage.name } };
+            }
+            // Connected under the name the server already holds it as, never the one typed
+            // today. The address is what a collaborator clones by, and only that name resolves.
+            // What this leaves is two histories of one project on one server, which is exactly
+            // what Send and Get are for: whether this machine's versions belong on top of what
+            // is there is a question asked with the state in front of the author, and the answer
+            // to a divergence is a merge they settle rather than a second registration.
+            await this.setRemote(projectPath, `${remoteOrigin}/${lineage.name}`);
+            if (lineage.name !== name) {
+                this.app.logger.info(
+                    "[Vcs] Connected", root, "to", remoteOrigin, "as", lineage.name,
+                    "- already registered under that name, not", name,
+                );
+                return { ok: true, connectedAs: lineage.name };
+            }
             return { ok: true };
         }
+
+        // A different project already answering to this name. Refused rather than published
+        // through: registering here would put a second repository at an address somebody
+        // else's project is cloned by, and the server is the one that decides which of them
+        // a clone gets. Nothing has been written at this point - the address included.
+        if (held.projects.some((project) => project.name.toLowerCase() === name.toLowerCase())) {
+            this.app.logger.info("[Vcs] Refused to publish", root, "as", name, "- taken on", remoteOrigin);
+            return { ok: false, problem: { kind: "name-taken" } };
+        }
+
+        // `clientId` is the repository id: it is stable and unique to this publish, so a
+        // create retried after a dropped session is the same write to the server rather
+        // than a second project under the same repository.
+        const registered = await createServerProjectOverSession(call, remoteOrigin, {
+            name,
+            repositoryId,
+            clientId: repositoryId,
+        });
+        if (!registered.ok) return registered;
+        this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
+
+        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
         await this.push(projectPath);
         this.app.logger.info("[Vcs] Published", root, "to", remoteOrigin, "as", name);
         return { ok: true };
+    }
+
+    /**
+     * What one server says to do with a repository it already holds.
+     *
+     * Read off the session this installation stored when it last asked that server about
+     * itself, rather than by asking now: publishing already knows which server it is talking
+     * to, and a probe here would put a network call in front of a decision the last one
+     * answered. A server that has never said - one older than the rule, or one added before
+     * Studio kept it - is `merge`, which is both the safe assumption and what every
+     * deployment behaved like before there was anything to say.
+     */
+    private publishLineageRule(remoteOrigin: string): "merge" | "refuse" {
+        return this.storedServerSession(remoteOrigin)?.policy?.publishLineage
+            ?? DEFAULT_PUBLISH_LINEAGE_RULE;
     }
 
     /** Every session this installation has recorded, in the order they were written. */

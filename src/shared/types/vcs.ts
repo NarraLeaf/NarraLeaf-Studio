@@ -717,6 +717,37 @@ export function vcsAddressesInAudience(audience: readonly unknown[]): {
  * **The data remote never reaches a person.** It is a fact about the storage this server
  * happens to run, not something anybody chose, and Studio stores it without showing it.
  */
+/**
+ * What a deployment asks of the Studios that use it, when it has said.
+ *
+ * ⚠ **Kept, not enforced by the server that states it.** What these govern is what this
+ * machine writes into its own repository, which no request to that server passes through -
+ * so a Studio that ignored one would only be misusing its own disk. They are here because
+ * an operator wants every machine on their deployment to behave one way, and asking each
+ * author to remember is not a way to get that.
+ */
+export type VcsServerPolicy = {
+    /**
+     * What to do with a repository that server already holds, published again under a
+     * name of somebody's choosing.
+     *
+     * `merge` connects it under the name the server already has it as, leaving two
+     * histories of one project for a person to settle. `refuse` will not have it. Absent
+     * from every server older than the field, and from every one that has not been asked -
+     * see {@link DEFAULT_PUBLISH_LINEAGE_RULE} for what is assumed then and why.
+     */
+    publishLineage?: "merge" | "refuse";
+};
+
+/**
+ * What Studio does about a repeat publish where nothing has said otherwise.
+ *
+ * `merge`, because it is the answer that loses nothing, and because it is what a server
+ * too old to have an opinion behaved like: assuming the stricter rule would make an
+ * ordinary act start failing against deployments nobody has touched.
+ */
+export const DEFAULT_PUBLISH_LINEAGE_RULE = "merge" as const;
+
 export interface VcsServerDiscovery {
     /** Bumped only when a field an older Studio relies on changes meaning. */
     protocol: number;
@@ -734,6 +765,8 @@ export interface VcsServerDiscovery {
     authority: { sha256: string };
     /** The server's own version, for a support conversation. */
     version: string;
+    /** What this deployment asks of its clients, or nothing where it said nothing. */
+    policy: VcsServerPolicy;
     /**
      * What this deployment offers beyond the protocol every server answers.
      *
@@ -758,6 +791,8 @@ export interface VcsServerDescription {
     version: string;
     /** What it offers, as opaque names. */
     capabilities: string[];
+    /** What it asks of its clients. Empty where it asked nothing. */
+    policy: VcsServerPolicy;
 }
 
 /**
@@ -832,6 +867,14 @@ export interface VcsServerSession {
     version?: string;
     /** What it offered then, as opaque names. Absent for the same reason as {@link name}. */
     capabilities?: string[];
+    /**
+     * What it asked of its clients then. Absent for the same reason as {@link name}.
+     *
+     * Read where a rule is acted on rather than asked for at that moment: publishing
+     * already knows which server it is talking to, and a fresh probe on the way would put
+     * a network call in front of a decision the last one already answered.
+     */
+    policy?: VcsServerPolicy;
 }
 
 /**
@@ -1020,6 +1063,25 @@ export type VcsServerProjectsProblem =
     | { kind: "rejected"; detail: string }
     | { kind: "unreachable" }
     | { kind: "wrong-repository" }
+    /**
+     * The name asked for is already a different project on that server.
+     *
+     * Not a collision this end can resolve, and not one to publish through: the address
+     * `lore://host/<name>` is what a collaborator clones by, so registering a second
+     * repository under a name somebody else's project answers to would give two projects
+     * one address. Told apart from {@link wrong-repository}, which is the server answering
+     * about a repository nobody asked it about.
+     */
+    | { kind: "name-taken" }
+    /**
+     * That server already holds this repository, under the name carried here, and its
+     * operator has said a repository gets one name.
+     *
+     * The name is the remedy as much as the explanation: what the author does about it is
+     * connect to the project that is already there, which they cannot do without knowing
+     * which one it is.
+     */
+    | { kind: "already-published"; name: string }
     | { kind: "unknown" };
 
 /**
@@ -1070,7 +1132,20 @@ export function serverProblemFromTeam(problem: TeamProblem): VcsServerProjectsPr
  * left the machine.
  */
 export type VcsPublishOutcome =
-    | { ok: true }
+    | {
+        ok: true;
+        /**
+         * The name this project is actually on that server under, when it is not the one asked for.
+         *
+         * **Absent for an ordinary publish, and it is the whole of what tells the two apart.** A
+         * repository that has been on this server before - a copied project folder carries the same
+         * repository id - is already registered under whatever it was called then, and connecting
+         * it at the name typed today would write an address that pushes and cannot be cloned. So it
+         * is connected under the name the server holds, and this says which, because a name chosen
+         * by an author and quietly replaced is worse than one they were never given.
+         */
+        connectedAs?: string;
+    }
     | { ok: false; problem: VcsServerProjectsProblem };
 
 /**

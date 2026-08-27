@@ -72,6 +72,7 @@ function discovery(capabilities: string[]): VcsServerDiscovery {
         name: "Blackwood Studio",
         auth: { required: true, url: AUTH },
         data: { url: ORIGIN },
+        policy: { publishLineage: "merge" },
         authority: { sha256: "AB:CD" },
         version: "0.7.0",
         capabilities,
@@ -279,6 +280,10 @@ describe("storing the server", () => {
             name: "Blackwood Studio",
             version: "0.7.0",
             capabilities: WITH_PASSWORD,
+            // What the server asks of its clients travels with the rest of what it said
+            // about itself: it is read here once and acted on later, where publishing needs
+            // it, rather than probed again at that moment.
+            policy: { publishLineage: "merge" },
         }));
         // Reaching the address a second time for a name it just gave would be a second
         // answer to a question put a moment ago.
@@ -297,6 +302,7 @@ describe("storing the server", () => {
             name: "Blackwood Studio",
             version: "0.7.0",
             capabilities: WITHOUT_PASSWORD,
+            policy: { publishLineage: "merge" },
         }));
     });
 

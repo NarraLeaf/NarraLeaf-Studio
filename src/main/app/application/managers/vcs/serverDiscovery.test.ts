@@ -43,6 +43,7 @@ const DOCUMENT: VcsServerDiscovery = {
     data: { url: "lore://team.example.lan:41337" },
     authority: { sha256: "3D:38:9F:E6" },
     version: "0.1.0",
+    policy: { publishLineage: "merge" },
     capabilities: ["projects"],
 };
 
