@@ -35,7 +35,14 @@ CDP session and no screenshots. `cdp.js` drives the app when something really do
 yarn lint                      # tsc over the five projects; it does not run the project linter
 yarn test                      # vitest
 node scripts/style-ratchet.mjs # the design-system debt gate, and not part of yarn lint
+node project/build/build-runtime.js --dev   # ~3s; the one gate the three above cannot see
 ```
+
+The fourth is not optional if you touched anything under `src/renderer/lib/ui-editor/` or anything
+those files import. The game runtime bundles part of the Studio renderer and refuses most of the
+rest, and that refusal lives in an esbuild plugin - so an import the runtime may not have is green
+under tsc, green under vitest, and breaks every game build, preview and test run. It has reached
+`develop` that way.
 
 Some failures are the environment rather than the change: a handful of `src/main` and `src/runtime`
 tests need POSIX paths, elevation or an `unzip` on PATH and fail on Windows regardless. Compare
@@ -49,5 +56,6 @@ of them only fail in a full run.
   references to planning documents, work items or session workflow.
 - The interface has a design system (`docs/design-system.md`) and it is not optional.
 - Editing the English skeleton template under `resources/templates/skeleton/content/` means
-  regenerating the Chinese one: `node scripts/gen-skeleton-locale.mjs --check`, add any missing
-  strings to `scripts/gen-skeleton-locale.zh.json`, then run it without `--check` and commit both.
+  regenerating the Chinese and Japanese ones: `node scripts/gen-skeleton-locale.mjs --check`, add any
+  missing strings to `scripts/gen-skeleton-locale.zh.json` and `scripts/gen-skeleton-locale.ja.json`,
+  then run it without `--check` and commit all of them.

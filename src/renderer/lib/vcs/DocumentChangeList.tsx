@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import type { DocumentDiff } from "@shared/documents/diff";
+import type { DocumentChange, DocumentDiff } from "@shared/documents/diff";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
+import { changePathAttribute } from "./compare/splitNavigation";
 import {
     buildDocumentChangeRows,
     CHANGE_KIND_GLYPH,
@@ -72,9 +73,41 @@ export interface DocumentChangeListProps {
      * either one silently accepts the other's spelling as "not whole" rather than failing.
      */
     readonly wholeDocument?: boolean;
+    /** What a surface that can move to a change offers on its rows. See {@link RowReveal}. */
+    readonly reveal?: RowReveal;
+    /** The change the surface is currently showing, drawn as a fill on its row. */
+    readonly activeChange?: DocumentChange | null;
 }
 
-export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDocument }: DocumentChangeListProps) {
+/**
+ * How a surface holding this list offers "show me where this is".
+ *
+ * Two functions rather than one, because whether a row can be acted on is a different question from
+ * what acting on it does, and the list has to ask the first one per row: a canvas can only move to
+ * the changes it drew, and a change that belongs to no node is still a row here. A row that looks
+ * clickable and does nothing is a worse answer than a row that does not look clickable.
+ *
+ * The list never decides either question. It has no idea what is on the canvas above it - it is the
+ * same list the version rail draws with nothing above it at all.
+ */
+export interface RowReveal {
+    /** Whether the surface can move to that change. */
+    readonly can: (change: DocumentChange) => boolean;
+    /** Move to it. */
+    readonly go: (change: DocumentChange) => void;
+    /** What the action is called, for the row's accessible name. */
+    readonly label: string;
+}
+
+export function DocumentChangeList({
+    diff,
+    limit,
+    dense = false,
+    footer,
+    wholeDocument,
+    reveal,
+    activeChange,
+}: DocumentChangeListProps) {
     const { t } = useTranslation();
     const caption = wholeDocument ? null : documentDiffTierCaption(diff.tier);
     const { rows, hidden } = buildDocumentChangeRows(diff, limit);
@@ -96,7 +129,13 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
             )}
 
             {rows.map(row => (
-                <ChangeLine key={row.key} row={row} dense={dense} />
+                <DocumentChangeLine
+                    key={row.key}
+                    row={row}
+                    dense={dense}
+                    active={activeChange !== undefined && activeChange !== null && row.change === activeChange}
+                    reveal={reveal && reveal.can(row.change) ? reveal : undefined}
+                />
             ))}
 
             {hidden > 0 && (
@@ -120,24 +159,71 @@ export function DocumentChangeList({ diff, limit, dense = false, footer, wholeDo
  * is why the two swap places rather than both being drawn: `resolveDocumentChangeLabel` owns that
  * decision, and it exists because the same word arrives as a subject on one tier and as a label
  * parameter on another.
+ *
+ * Exported so that the split comparison can draw the same row in each of its two halves rather than
+ * writing a second one that would drift. It is the row itself and nothing around it: the tier
+ * caption, the empty line and the count of what was left out belong to whoever is assembling a list
+ * out of these, because each of them is said once per list and never once per row.
+ *
+ * **The change's path is on the element, not only in its tooltip.** `DocumentChange.path` is the one
+ * stable name a change has - the same handle a merge decision is taken on - and a surface that has
+ * to scroll to a change, or say which change two halves are showing, needs to address it rather than
+ * read it. It used to reach the DOM as `data-tip` text alone, which nothing can look a row up by.
  */
-function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) {
+export function DocumentChangeLine({
+    row,
+    dense,
+    active = false,
+    className,
+    reveal,
+}: {
+    row: DocumentChangeRow;
+    dense: boolean;
+    /** The row navigation has stopped on. Drawn as a fill, never as a second colour. */
+    active?: boolean;
+    className?: string;
+    /**
+     * Present when the surface above can move to THIS row's change, which turns it into a button.
+     *
+     * Already filtered by the list, so a row that has one can always be acted on. The row keeps its
+     * layout either way - a button here is a change of element and of affordance, not of design.
+     */
+    reveal?: RowReveal;
+}) {
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveDocumentChangeLabel(row.change, translator);
     const path = row.change.path.join(" / ");
     const textSize = dense ? "text-2xs" : "text-xs";
 
+    const Row = reveal ? "button" : "div";
+
     return (
-        <div
+        <Row
+            {...(reveal
+                ? {
+                    type: "button" as const,
+                    onClick: () => reveal.go(row.change),
+                    // The action's name plus the row's own words: "Show this change" alone would
+                    // read as the same command on every row of the list.
+                    "aria-label": [reveal.label, label.primary, label.detail].filter(Boolean).join(" · "),
+                }
+                : {})}
             className={cn(
                 "flex items-baseline gap-1.5 overflow-hidden",
                 dense ? "py-px" : "py-0.5",
                 row.depth === 1 && (dense ? "pl-3" : "pl-4"),
+                active && "bg-fill",
+                // The arrow cursor the design system asks of a control, and the row hover every list in
+                // the app uses. Nothing else changes: a row that can be clicked is still a row.
+                reveal && "nl-focus-ring w-full cursor-default rounded-sm text-left transition-colors hover:bg-fill",
+                className,
             )}
             // The full path, because a row shows the change and not where in the document it sits.
             // Absent for a change at the document root, where there is no path to give.
             data-tip={path || undefined}
+            data-change-path={changePathAttribute(row.change.path)}
+            data-change-row={row.key}
         >
             <span
                 aria-hidden
@@ -162,7 +248,7 @@ function ChangeLine({ row, dense }: { row: DocumentChangeRow; dense: boolean }) 
                     +{row.truncated}
                 </span>
             )}
-        </div>
+        </Row>
     );
 }
 

@@ -8,7 +8,8 @@ import { Services } from "@/lib/workspace/services/services";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { FocusContext } from "@/lib/workspace/services/ui";
 import { buildMainMenuSubmenus } from "./mainMenuModel";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import { useFreezeUnavailableReason } from "../ui/freezeGuard";
 import { useTranslation } from "@/lib/i18n";
 
 /** Identity of the synthetic group the hamburger opens. Not registered; nothing else may name it. */
@@ -43,7 +44,8 @@ export function MainMenuButton() {
     // The same folded list the bar draws side by side, so the two arrangements hold the same menus.
     const actionGroups = useTitleBarActionGroups();
     const { context } = useWorkspace();
-    const frozen = useWorkspaceFrozen();
+    const freeze = useWorkspaceFreezeReason();
+    const frozenReason = useFreezeUnavailableReason();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // The rows a group offers depend on what is focused, exactly as they do in the bar.
@@ -59,8 +61,8 @@ export function MainMenuButton() {
     }, [context]);
 
     const submenus = useMemo<ActionMenuItem[]>(
-        () => buildMainMenuSubmenus(actionGroups, focusContext, frozen, t("workspace.shell.freeze.unavailable")),
-        [actionGroups, focusContext, frozen, t],
+        () => buildMainMenuSubmenus(actionGroups, focusContext, freeze, frozenReason),
+        [actionGroups, focusContext, freeze, frozenReason],
     );
 
     const group = useMemo<ActionGroup>(() => ({

@@ -5,6 +5,7 @@ import { formatBrandLink, parseBrandLink } from "@shared/brand/brandLink";
 import { getActiveBrandPalette } from "@shared/brand/brandRegistry";
 import { getActiveProjectFontIds } from "@shared/typography/projectFonts";
 import { PROJECT_FONT_STACK_MAX } from "@shared/types/typography";
+import type { LiveBrandOp } from "@shared/live/ops";
 import {
     BRAND_SCHEMA_VERSION,
     BUILTIN_BRAND_COLORS,
@@ -548,5 +549,117 @@ describe("BrandService font languages", () => {
         service.addFont("serif");
 
         expect(getActiveProjectFontIds()).toEqual(["jp", "serif"]);
+    });
+});
+
+describe("BrandService inside a live session", () => {
+    /** A sink that takes everything and remembers it - what `LiveSession` installs, minus the room. */
+    function sink(): { ops: LiveBrandOp[]; handle(op: LiveBrandOp): boolean } {
+        const ops: LiveBrandOp[] = [];
+        return {
+            ops,
+            handle(op) {
+                ops.push(op);
+                return true;
+            },
+        };
+    }
+
+    it("states every colour gesture and leaves the palette alone", async () => {
+        const { service } = await createHarness();
+        const created = service.createColor({ name: "Ink", value: "#101318" });
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.renameColor(created.id, "Charcoal");
+        service.updateColor(created.id, { value: "#000000" });
+        service.moveColor(created.id, null);
+        service.deleteColor(created.id);
+
+        expect(taken.ops.map(op => op.op)).toEqual([
+            "update-brand-color",
+            "update-brand-color",
+            "move-brand-color",
+            "delete-brand-color",
+        ]);
+        expect(service.getColor(created.id)).toEqual({ id: created.id, name: "Ink", value: "#101318" });
+    });
+
+    it("states the font stack whole, which is what all four of its gestures produce", async () => {
+        // The one verb here that is not about a record: appending a rung, restricting one to some
+        // languages, removing one and moving one all state a new order of at most a handful of
+        // entries, and none of them has a draft layer to lose.
+        const { service } = await createHarness();
+        service.addFont("serif");
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.addFont("sans");
+        service.setFontLocales("serif", ["ja"]);
+        service.removeFont("serif");
+
+        // Each one states the stack it would have produced from the stack this window still holds -
+        // nothing lands here, so the second and third are not built on the first.
+        expect(taken.ops.map(op => op.op)).toEqual(["set-brand-fonts", "set-brand-fonts", "set-brand-fonts"]);
+        expect(taken.ops.map(op => (op.op === "set-brand-fonts" ? op.fonts : []))).toEqual([
+            [{ assetId: "serif" }, { assetId: "sans" }],
+            [{ assetId: "serif", locales: ["ja"] }],
+            [],
+        ]);
+        // And the stack this window holds has not moved at all.
+        expect(service.listFonts().map(font => font.assetId)).toEqual(["serif"]);
+    });
+
+    it("addresses a seeded slot like any other, because re-pointing one is the whole feature", async () => {
+        const { service } = await createHarness();
+        const seeded = BUILTIN_BRAND_COLORS[0]!.id;
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.updateColor(seeded, { value: "#ABCDEF" });
+        expect(taken.ops[0]).toEqual({
+            op: "update-brand-color",
+            colorId: seeded,
+            color: expect.objectContaining({ id: seeded, value: "#ABCDEF" }),
+        });
+    });
+
+    it("refuses to state a delete of a seeded slot, exactly as it refuses to perform one", async () => {
+        const { service } = await createHarness();
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        expect(service.deleteColor(BUILTIN_BRAND_COLORS[0]!.id)).toBe(false);
+        expect(taken.ops).toEqual([]);
+    });
+
+    it("publishes the palette when an effect arrives, or the window would paint a frame behind", async () => {
+        // Every colour field in Studio reads the module-level palette rather than this service, so an
+        // effect that reached the document without publishing would be a colour nothing paints with
+        // until something unrelated repainted.
+        const { service } = await createHarness();
+        service.setOperationSink(sink());
+
+        service.applyLiveOp({ op: "create-brand-color", color: { id: "c1a2b3c", name: "Ink", value: "#101318" } });
+        expect(service.getColor("c1a2b3c")?.value).toBe("#101318");
+        expect(getActiveBrandPalette().resolveCss("c1a2b3c")).toBe("#101318");
+    });
+
+    it("puts a colour back where it sat when an effect names its neighbour", async () => {
+        const { service } = await createHarness();
+        service.setOperationSink(sink());
+        service.applyLiveOp({ op: "create-brand-color", color: { id: "aaaaaaa", value: "#000000" } });
+        service.applyLiveOp({ op: "create-brand-color", color: { id: "bbbbbbb", value: "#111111" } });
+        service.applyLiveOp({ op: "delete-brand-color", colorId: "aaaaaaa" });
+
+        service.applyLiveOp({ op: "create-brand-color", color: { id: "aaaaaaa", value: "#000000" }, beforeId: "bbbbbbb" });
+        const authored = service.listColors().filter(color => !color.builtin).map(color => color.id);
+        expect(authored).toEqual(["aaaaaaa", "bbbbbbb"]);
+    });
+
+    it("does not resurrect a colour an effect names that this machine does not hold", async () => {
+        const { service } = await createHarness();
+        service.applyLiveOp({ op: "update-brand-color", colorId: "gone", color: { id: "gone", value: "#000000" } });
+        expect(service.getColor("gone")).toBeUndefined();
     });
 });

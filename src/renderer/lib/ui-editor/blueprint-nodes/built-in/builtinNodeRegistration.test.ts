@@ -64,6 +64,32 @@ describe("built-in blueprint node registration", () => {
 
         expect(unregistered).toEqual([]);
     });
+
+    /**
+     * The two event-propagation nodes were removed rather than hidden, and both halves of that are
+     * deliberate. An element's event head now means "I want this event" rather than "I own it", so
+     * every element in the hit chain that declares the head already fires: there is no ownership
+     * left for `Continue Event Bubble` to hand upwards, and nothing for `Stop Event Bubble` to keep
+     * a later continue from doing. A node kept as a hidden no-op would still load in old graphs and
+     * still read as if it did something.
+     *
+     * `Stop Event Bubble` was carrying a second, unrelated meaning by accident: the window close
+     * request is cancelled by stopping propagation on the dispatch's shared event control, so
+     * "stop the bubble" was also the only way to keep a window open. That capability now has a node
+     * of its own, `Keep Window Open` (`blueprint.app.keepWindowOpen`), which is the only thing it
+     * does and refuses to run anywhere else.
+     *
+     * Named here so the ids cannot quietly come back as something else's spelling.
+     */
+    it("no longer registers the event-propagation nodes", () => {
+        registerCoreBlueprintNodes();
+
+        for (const type of ["blueprint.element.continueEventBubble", "blueprint.element.stopEventBubble"]) {
+            expect(blueprintNodeRegistry.get(type), type).toBeUndefined();
+            expect(behaviorNodeRegistry.get(type), type).toBeUndefined();
+            expect(allBuiltinBlueprintNodes.some(def => def.type === type), type).toBe(false);
+        }
+    });
 });
 
 describe("function entry node", () => {

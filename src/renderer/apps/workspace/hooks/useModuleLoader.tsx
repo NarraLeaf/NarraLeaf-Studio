@@ -9,6 +9,7 @@ import {
     builtInActionGroups,
 } from "../modules";
 import { PANELS_UNLOCKED_BY_PROBE, recoveryPanelModule } from "../modules/recovery";
+import { collaborationPanelModule, useCollaborationPanelRegistered } from "../modules/collaboration";
 import type { PanelModule } from "../modules/types";
 
 /**
@@ -40,6 +41,15 @@ const RECOVERY_ALWAYS_ON = new Set([
 function useRegisterablePanels(recovery: boolean): PanelModule[] {
     const { context } = useWorkspace();
     const [unlocked, setUnlocked] = useState<ReadonlySet<string>>(() => new Set<string>());
+    /*
+     * The one panel that is not built in at all until it has something to be about.
+     *
+     * Collaboration is registered the first time this window enters a live session and stays for
+     * good afterwards - a rail icon for a feature nobody in this project uses is one more thing to
+     * work out on a rail that already carries seven, and unregistering it when the room closes
+     * would take the record of what happened in the room away with it.
+     */
+    const collaboration = useCollaborationPanelRegistered();
 
     useEffect(() => {
         if (!context || !recovery) {
@@ -68,15 +78,17 @@ function useRegisterablePanels(recovery: boolean): PanelModule[] {
     }, [context, recovery]);
 
     return useMemo(() => {
-        if (!recovery) {
-            return builtInPanels;
+        // A recovery window holds the project read-only and starts no session, so the collaboration
+        // panel never joins that list.
+        if (recovery) {
+            return [
+                recoveryPanelModule,
+                ...builtInPanels.filter(panel =>
+                    RECOVERY_ALWAYS_ON.has(panel.metadata.id) || unlocked.has(panel.metadata.id)),
+            ];
         }
-        return [
-            recoveryPanelModule,
-            ...builtInPanels.filter(panel =>
-                RECOVERY_ALWAYS_ON.has(panel.metadata.id) || unlocked.has(panel.metadata.id)),
-        ];
-    }, [recovery, unlocked]);
+        return collaboration ? [...builtInPanels, collaborationPanelModule] : builtInPanels;
+    }, [recovery, unlocked, collaboration]);
 }
 
 /**

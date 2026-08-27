@@ -137,12 +137,24 @@ export type SurfaceTarget = {
     rootElementId?: string;
 };
 
+/** A component definition, which owns an element tree of its own. */
+export type ComponentTarget = {
+    id: string;
+    name: string;
+    rootElementId?: string;
+    /** The params each instance supplies, which a `Get Component Param` node picks from. */
+    params: { id: string; name: string; defaultValue: string }[];
+};
+
 export type ElementTarget = {
     id: string;
     type: string;
     name: string;
-    surfaceId: string;
-    /** Ancestor names from the surface root down, for telling two "Button" apart. */
+    /** The surface this element sits on; null when it belongs to a component definition. */
+    surfaceId: string | null;
+    /** The component definition this element belongs to; null when it sits on a surface. */
+    componentId: string | null;
+    /** Ancestor names from the tree's root down, for telling two "Button" apart. */
     path: string;
 };
 
@@ -154,20 +166,40 @@ type UiDocumentElement = {
     childrenIds?: string[];
 };
 
+type UiDocumentComponent = {
+    id: string;
+    name?: string;
+    rootElementId?: string;
+    elements?: Record<string, UiDocumentElement>;
+    params?: { id?: string; name?: string; defaultValue?: string }[];
+};
+
 export type UiDocumentTargets = {
     surfaces: SurfaceTarget[];
+    components: ComponentTarget[];
+    /** Every element in the document, whether a surface or a component definition owns it. */
     elements: ElementTarget[];
     /** The raw element records, which the graph validator wants whole. */
     raw: Record<string, UiDocumentElement>;
 };
 
+/**
+ * The surfaces, the component definitions, and every element either of them owns.
+ *
+ * Component elements are read from the component's **own** element table rather than from the
+ * document's, because that is where they live: a definition is a tree apart, instantiated wherever
+ * somebody places it. Leaving them out is not a smaller answer but a wrong one - a
+ * `componentWidgetMain` blueprint would have no element type to check its event heads against, and
+ * every head on it would be refused as out of scope for a widget nobody could identify.
+ */
 export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
     const filePath = path.join(projectDir, UI_DOCUMENT_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {
-        return { surfaces: [], elements: [], raw: {} };
+        return { surfaces: [], components: [], elements: [], raw: {} };
     }
     let raw: {
         surfaces?: SurfaceTarget[];
+        components?: UiDocumentComponent[];
         elements?: Record<string, UiDocumentElement>;
     };
     try {
@@ -182,14 +214,39 @@ export function readUiDocumentTargets(projectDir: string): UiDocumentTargets {
         if (!surface.rootElementId) {
             continue;
         }
-        walkElements(surface.rootElementId, surface.id, [], elements, out);
+        walkElements(surface.rootElementId, { surfaceId: surface.id, componentId: null }, [], elements, out);
     }
-    return { surfaces, elements: out, raw: elements };
+    const components: ComponentTarget[] = [];
+    // One flat pool, so a resolver can answer about any element by id alone. Ids are unique across
+    // the document - the editor mints them the same way for both tables - so the merge cannot hide
+    // a surface element behind a component one.
+    const pool: Record<string, UiDocumentElement> = { ...elements };
+    for (const component of raw.components ?? []) {
+        if (!component?.id) {
+            continue;
+        }
+        components.push({
+            id: component.id,
+            name: component.name ?? component.id,
+            rootElementId: component.rootElementId,
+            params: (component.params ?? []).map(param => ({
+                id: String(param?.id ?? ""),
+                name: String(param?.name ?? ""),
+                defaultValue: String(param?.defaultValue ?? ""),
+            })).filter(param => param.id),
+        });
+        const own = component.elements ?? {};
+        Object.assign(pool, own);
+        if (component.rootElementId) {
+            walkElements(component.rootElementId, { surfaceId: null, componentId: component.id }, [], own, out);
+        }
+    }
+    return { surfaces, components, elements: out, raw: pool };
 }
 
 function walkElements(
     elementId: string,
-    surfaceId: string,
+    owner: { surfaceId: string | null; componentId: string | null },
     ancestors: string[],
     pool: Record<string, UiDocumentElement>,
     out: ElementTarget[],
@@ -204,11 +261,12 @@ function walkElements(
         id: element.id,
         type: element.type,
         name,
-        surfaceId,
+        surfaceId: owner.surfaceId,
+        componentId: owner.componentId,
         path: [...ancestors, name].join(" / "),
     });
     for (const childId of element.childrenIds ?? []) {
-        walkElements(childId, surfaceId, [...ancestors, name], pool, out, depth + 1);
+        walkElements(childId, owner, [...ancestors, name], pool, out, depth + 1);
     }
 }
 
@@ -259,12 +317,34 @@ export function widgetElementTypeResolver(
  * judge a widget blueprint: which event heads that widget carries, and which of its UI slots point
  * at the layer being validated.
  */
+/** The type of any element in the document, by id, for filling in element references. */
+export function elementTypeResolver(targets: UiDocumentTargets): (elementId: string) => string | undefined {
+    const byId = new Map(targets.elements.map(element => [element.id, element.type]));
+    return elementId => byId.get(elementId);
+}
+
+/**
+ * The element record behind a widget owner, and the surface it sits on when it sits on one.
+ *
+ * A `componentWidgetMain` owner answers with the element and **no surface**, which is the honest
+ * answer rather than a missing one: a definition is instantiated wherever somebody places it, so
+ * there is no single surface its elements are on. The validator uses the element for the scope
+ * check and the surface id only for the checks that are about a surface - which are exactly the
+ * ones that cannot be asked here.
+ */
 export function widgetElementResolver(
     targets: UiDocumentTargets,
 ): (owner: { kind: string; surfaceId?: string; elementId?: string }) =>
-    { element: unknown; surfaceId: string } | undefined {
+    { element: unknown; surfaceId?: string } | undefined {
     return owner => {
-        if (owner.kind !== "widgetMain" || !owner.elementId || !owner.surfaceId) {
+        if (!owner.elementId) {
+            return undefined;
+        }
+        if (owner.kind === "componentWidgetMain") {
+            const element = targets.raw[owner.elementId];
+            return element ? { element } : undefined;
+        }
+        if (owner.kind !== "widgetMain" || !owner.surfaceId) {
             return undefined;
         }
         const element = targets.raw[owner.elementId];

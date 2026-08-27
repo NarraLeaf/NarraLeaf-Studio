@@ -59,7 +59,11 @@ function clip(index: number): Asset {
     };
 }
 
-function Harness({ onRender, library = [] }: { onRender?: () => void; library?: Asset[] }) {
+function Harness({ onRender, library = [], assetTransfers = {} }: {
+    onRender?: () => void;
+    library?: Asset[];
+    assetTransfers?: Readonly<Record<string, number>>;
+}) {
     const [pathIds, setPathIds] = useState<string[]>([]);
     const [toolbarCenter, setToolbarCenter] = useState<AssetsIconViewToolbarCenter | null>(null);
     onRender?.();
@@ -104,6 +108,8 @@ function Harness({ onRender, library = [] }: { onRender?: () => void; library?: 
         setAssetsIconToolbarCenter: setToolbarCenter,
         mediaSupport: new Map(),
         handleConvertMedia: () => undefined,
+        assetClaims: {},
+        assetTransfers,
     };
 
     return (
@@ -146,6 +152,25 @@ describe("AssetsIconView on a large library", () => {
         const tiles = document.querySelectorAll("[data-tip]").length;
         expect(tiles).toBeGreaterThan(0);
         expect(document.querySelectorAll("[data-index]").length).toBeLessThan(30);
+    });
+});
+
+describe("AssetsIconView while a file is arriving", () => {
+    it("fills the tile of a file that is still coming in, at the share that has landed", () => {
+        // The same band the list draws, in the view an author is just as likely to be looking at.
+        const library = [clip(0), clip(1)];
+        render(<Harness library={library} assetTransfers={{ [library[1].id]: 0.6 }} />);
+
+        const bands = document.querySelectorAll("[data-asset-transfer]");
+        expect(bands).toHaveLength(1);
+        expect((bands[0] as HTMLElement).dataset.assetTransfer).toBe("60");
+        expect((bands[0] as HTMLElement).style.width).toBe("60%");
+    });
+
+    it("draws no band when nothing is arriving", () => {
+        render(<Harness library={[clip(0)]} />);
+
+        expect(document.querySelectorAll("[data-asset-transfer]")).toHaveLength(0);
     });
 });
 

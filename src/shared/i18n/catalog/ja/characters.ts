@@ -298,4 +298,7 @@ export const characters = {
         // 組み合わせで、切り抜きはそのどちらかに紐づく。
         portraitScoped: "この見た目にだけ適用",
     },
+    live: {
+        recordClaimed: "{name} がこのキャラクターを編集している",
+    },
 } satisfies LocaleNamespace<"characters">;

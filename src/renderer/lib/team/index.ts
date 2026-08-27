@@ -16,6 +16,8 @@ export {
     deleteComment,
     dropOverlay,
     editComment,
+    forgetProject,
+    getProject,
     getThread,
     joinLiveSession,
     leaveLiveSession,
@@ -23,6 +25,7 @@ export {
     listLiveSessions,
     listMembers,
     listOverlay,
+    listProjectHistory,
     listProjects,
     listThreads,
     openLiveSession,
@@ -39,7 +42,13 @@ export {
     teamCall,
     withdrawClient,
     type OverlayReading,
+    type TeamAck,
     type TeamOutcome,
     type ThreadPage,
 } from "./teamCall";
+export {
+    refuseLiveSessionEntry,
+    type LiveSessionEntryRefusal,
+    type LiveSessionRefusalKey,
+} from "./liveSessionEntry";
 export { useTeamCapability, useTeamConnection, useTeamTopics } from "./useTeam";

@@ -26,6 +26,7 @@ import {
     type Edge,
     type FinalConnectionState,
     type Node,
+    type OnNodeDrag,
     type Viewport,
 } from "@xyflow/react";
 import type { BlueprintGraphIr } from "@shared/types/blueprint/document";
@@ -134,6 +135,7 @@ import {
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -150,6 +152,16 @@ const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
  * every render would tear down and rebuild d3-zoom's handlers on every keystroke in a node card.
  */
 const PAN_BUTTONS_SELECT_TOOL = [1];
+
+/**
+ * The event a drag handler is handed, read off React Flow rather than written out.
+ *
+ * The 12.x line has spelled it both ways - React’s synthetic `MouseEvent` and the DOM’s
+ * `MouseEvent | TouchEvent` - and this repository pins no lockfile, so writing either one names a
+ * type that only some installs agree with. Taking it from `OnNodeDrag` asks whichever version is
+ * installed what it passes.
+ */
+type BlueprintNodeDragEvent = Parameters<OnNodeDrag>[0];
 const PAN_BUTTONS_HAND_TOOL = [0, 1];
 
 /** A node the way the group and layout geometry sees it: where it is and how big it measured. */
@@ -478,7 +490,7 @@ function BlueprintFlowCanvasInner({
     // right-click-to-add, Delete - and leaves selection, panning, zoom and the minimap exactly as they
     // were. There is nothing to grey out on a drag, so the only honest affordance is that it never
     // starts; see `components/ui/freezeGuard`.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const { t } = useTranslation();
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);
@@ -1289,7 +1301,7 @@ function BlueprintFlowCanvasInner({
     );
 
     const onNodeDragStart = useCallback(
-        (_event: MouseEvent | TouchEvent, node: Node, dragged: Node[]) => {
+        (_event: BlueprintNodeDragEvent, node: Node, dragged: Node[]) => {
             isNodeDragActiveRef.current = true;
             groupDragRef.current = null;
             dropTargetRef.current = null;
@@ -1340,7 +1352,7 @@ function BlueprintFlowCanvasInner({
     );
 
     const onNodeDrag = useCallback(
-        (_event: MouseEvent | TouchEvent, node: Node) => {
+        (_event: BlueprintNodeDragEvent, node: Node) => {
             const carried = groupDragRef.current;
             if (carried) {
                 const dx = node.position.x - carried.origin.x;
@@ -1373,7 +1385,7 @@ function BlueprintFlowCanvasInner({
      * and an undo that left a group standing open around nothing would be a puzzle to read.
      */
     const onNodeDragStop = useCallback(
-        (_event: MouseEvent | TouchEvent, node: Node) => {
+        (_event: BlueprintNodeDragEvent, node: Node) => {
             isNodeDragActiveRef.current = false;
             groupDragRef.current = null;
             dropPreviewRef.current?.clear();

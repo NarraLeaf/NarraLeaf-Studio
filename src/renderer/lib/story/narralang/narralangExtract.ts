@@ -308,6 +308,13 @@ function transitionSlots(
         return {};
     }
     const slots: NarralangSlots = { transition: { kind: "timedWord", word, ms: ref.durationMs } };
+    // Carried rather than reported, unlike the prop bag above: a hold is a timing, it has a slot of
+    // its own, and it is the one thing about a through-colour an author is most likely to have set.
+    // Dropping it silently would give back a script whose changes are the right length and hold for
+    // the wrong time.
+    if (ref.holdMs !== undefined) {
+        slots.transitionHold = asSeconds(ref.holdMs);
+    }
     if (ref.easing) {
         slots.transitionEasing = asName(ref.easing);
     }
@@ -612,7 +619,11 @@ function characterShape(
             return {
                 form: "statement",
                 verb: "characterExpression",
-                slots: { subject, appearance: asNames(appearanceNames(ctx, block, payload)) },
+                slots: {
+                    subject,
+                    appearance: asNames(appearanceNames(ctx, block, payload)),
+                    ...transitionSlots(ctx, block.id, payload.transition, "character"),
+                },
             };
         case "setName":
             return {
@@ -1250,6 +1261,9 @@ function jumpShape(ctx: NarralangExtractContext, block: StoryBlock, payload: Sto
         verb: "jump",
         slots: {
             scene: asName(name ?? ""),
+            // Printed only when it is on: a row that never carried the flag prints the line it always
+            // printed, so an existing script round-trips byte for byte.
+            returns: payload.returnable ? asWord("return") : undefined,
             ...transitionSlots(ctx, block.id, payload.transition, "scene"),
         },
     };

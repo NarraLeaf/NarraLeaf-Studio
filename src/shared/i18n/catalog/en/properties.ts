@@ -23,6 +23,30 @@ export const properties = {
         backgroundImage: "Background Image",
         animation: "Animation",
         logic: "Logic",
+        // What this interface does with a click or a keystroke that reaches it, and which of the
+        // project's named actions it answers. The vocabulary itself is edited in the Input Actions
+        // library beside the interface list.
+        input: {
+            title: "Input",
+            mode: "Mode",
+            modeCapture: "Capture",
+            modePass: "Pass through",
+            modeNone: "Ignore",
+            modeHintCapture: "Input stops at this interface.",
+            modeHintPass: "This interface answers, then input carries on underneath.",
+            modeHintNone: "Input goes straight past this interface.",
+            actions: "Actions answered",
+            actionsEmpty: "This project names no input actions yet.",
+            answer: "Answer {name}",
+            bindingMode: "Bindings",
+            bindingModeDefault: "Project default",
+            bindingModeAdd: "Default plus these",
+            bindingModeReplace: "These instead",
+            consume: "Stop after firing",
+            overControls: "Over controls",
+            overControlsSkip: "Stand down",
+            overControlsFire: "Fire anyway",
+        },
     },
     diagnostics: {
         title: "Static checks",

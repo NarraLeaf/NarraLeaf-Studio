@@ -9,6 +9,7 @@ import type {
     StoryBlock,
     StoryBlockId,
     StoryDocument,
+    StoryRichRun,
     StoryScene,
     StoryTextSegment,
 } from "@shared/types/story";
@@ -20,6 +21,8 @@ import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import { findUIElementSurfaceId } from "@shared/types/ui-editor/frame";
 import {
     countSegmentInterpolations,
+    segmentHasMarkup,
+    serializeSegmentMarkupText,
     isSourceHashStale,
     serializeSegmentSourceText,
 } from "@shared/utils/localizationText";
@@ -37,8 +40,19 @@ export type StoryTranslationRow = {
     role: StoryTextSegment["role"];
     /** Speaking character id for dialogue rows (context for translators). */
     characterId?: string;
-    /** Translator-facing source text; interpolations appear as `{n}`. */
+    /** Translator-facing source text; interpolations appear as `{n}`. What the unit is hashed against. */
     sourceText: string;
+    /**
+     * The same text with a run tag around every styled span and every zero-width token, when the
+     * line has any. What the translator is shown and asked to reproduce - see
+     * `serializeSegmentMarkupText`.
+     */
+    sourceMarkup?: string;
+    /**
+     * The segment's own runs, when it has any worth tagging. What lets the translation editor draw
+     * the line rather than describe it, and what a placed tag is resolved against.
+     */
+    sourceRuns?: StoryRichRun[];
     interpolationCount: number;
 };
 
@@ -129,6 +143,15 @@ export function extractStoryTranslationRows(document: StoryDocument): StoryTrans
                         role: translatable.role,
                         ...(translatable.characterId ? { characterId: translatable.characterId } : {}),
                         sourceText,
+                        // Only when there is something to tag. A line with no styling has one
+                        // serialization, and carrying a second copy of it would put run tags in front
+                        // of translators who have no use for them.
+                        ...(segmentHasMarkup(translatable.segment)
+                            ? {
+                                sourceMarkup: serializeSegmentMarkupText(translatable.segment),
+                                sourceRuns: translatable.segment.rich,
+                            }
+                            : {}),
                         interpolationCount: countSegmentInterpolations(translatable.segment),
                     });
                 }
@@ -292,6 +315,14 @@ export function extractKeyTranslationRows(document: LocalizationKeysDocument): K
 export type TranslatableUnitRef = {
     unitId: string;
     sourceText: string;
+    /**
+     * The source with its run tags, when the line has any. Absent when there is nothing to tag.
+     *
+     * Kept apart from `sourceText` on purpose: `sourceText` is what a translation is hashed against,
+     * and it must not move when the author restyles a line. This is what the translator is shown and
+     * asked to reproduce.
+     */
+    sourceMarkup?: string;
 };
 
 /** A unit plus the one line of context an exported file shows the translator. */
@@ -332,7 +363,9 @@ export function buildTranslationExchangeRows(
         rows.push({
             unitId: unit.unitId,
             context: unit.context,
-            source: unit.sourceText,
+            // What the translator reads and copies from; the state above is derived from the plain
+            // serialization, so a restyled line does not go stale on its way out of the door.
+            source: unit.sourceMarkup ?? unit.sourceText,
             target: stored?.target ?? "",
             status: state === "untranslated" ? "" : state,
             note: stored?.note ?? "",

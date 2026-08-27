@@ -1,10 +1,11 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
-import { app as electronApp, dialog, shell } from "electron";
+import { app as electronApp, shell } from "electron";
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
 import os from "os";
@@ -440,7 +441,7 @@ export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPi
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ file: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Choose Background Image",
             properties: ["openFile"],
             filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
@@ -550,7 +551,7 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
             };
             const content = composeDiagnosticsBundle(environment, report, await readMainLogTail(logsDir));
 
-            const selection = await dialog.showSaveDialog(window.win, {
+            const selection = await showSaveDialog(window, {
                 title: "Export Studio Logs",
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-diagnostics.log"),
                 filters: [
@@ -695,7 +696,7 @@ export class AppExportSettingsHandler extends IPCHandler<IPCEventType.appExportS
         { defaultFileName, content }: IPCEvents[IPCEventType.appExportSettings]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportSettings]["response"]>> {
         try {
-            const selection = await dialog.showSaveDialog(window.win, {
+            const selection = await showSaveDialog(window, {
                 title: "Export Studio Settings",
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-settings.json", [".json"]),
                 filters: [{ name: "JSON", extensions: ["json"] }],
@@ -730,7 +731,7 @@ export class AppImportSettingsHandler extends IPCHandler<IPCEventType.appImportS
         window: AppWindow,
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appImportSettings]["response"]>> {
         try {
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Import Studio Settings",
                 properties: ["openFile"],
                 filters: [{ name: "JSON", extensions: ["json"] }],

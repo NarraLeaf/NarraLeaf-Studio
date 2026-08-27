@@ -16,6 +16,7 @@ import {
 import { useTranslation } from "@/lib/i18n";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 import { useFreezeGuard } from "./freezeGuard";
 
 /**
@@ -310,6 +311,12 @@ export function EasingCurveEditor(props: { easing: string; onChange: (easing: st
                 onChange={event => setDraft(event.target.value)}
                 onBlur={commitDraft}
                 onKeyDown={event => {
+                    // Nothing here belongs to the handler while an input method is composing:
+                    // Enter confirms the conversion and Escape cancels it, both at the candidate
+                    // window rather than at this field.
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     // Both keys are handled here and stop there: the surfaces this card opens on -
                     // a popover over the story row, an inspector inside the editor - read Enter and
                     // Escape as "commit the row" and "close me", and neither is what a value field

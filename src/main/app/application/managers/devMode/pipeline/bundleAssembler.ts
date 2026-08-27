@@ -30,6 +30,7 @@ import {
     normalizeLocalizationKeysDocument,
 } from "@shared/types/localization";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
+import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
@@ -131,7 +132,10 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ...Object.values(localBlueprints.blueprints ?? {}),
         ...sharedBlueprints.map(asset => asset.blueprint),
     ]);
-    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop);
+    // A host that stated a selection gets exactly it; one that said nothing carries every DLC the
+    // project has. See `DevModeBundleLoadContext.includedDlc`.
+    const carriedDlc = context.includedDlc ? new Set(context.includedDlc) : null;
+    const storyLibrary = await loadStoryLibrary(context.projectPath, variant, sceneDrop, carriedDlc);
     // Translations and voice lines are keyed by a row's `textId`, not by a scene, so dropping a scene
     // leaves both behind: the prose is gone from the story document and still legible, in full, in
     // every translation table the package carries. They are narrowed against the documents as this
@@ -170,6 +174,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const window = await loadWindowConfiguration(context.projectPath);
     const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
     const preferences = await loadPlayerPreferences(context.projectPath);
@@ -180,6 +185,9 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         bundleId: context.bundleId,
         revision: context.revision,
         timestamp: new Date().toISOString(),
+        // Only when a selection was named. Absent has a meaning of its own - every DLC - and an
+        // empty list would be a different claim.
+        ...(carriedDlc ? { installedDlc: [...carriedDlc] } : {}),
         ui: {
             uidoc,
             uigraphs,
@@ -197,6 +205,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        window,
         vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
@@ -554,10 +563,14 @@ export function planSceneDrop(
  * absent from the package rather than merely unreachable in it, and what makes the story after a cut
  * point absent rather than merely unplayed.
  */
+/**
+ * @param carriedDlc the DLC ids this package holds, or null to carry every story the project has.
+ */
 async function loadStoryLibrary(
     projectPath: string,
     variant: { id: string; name: string },
     sceneDrop: SceneDropPlan,
+    carriedDlc: ReadonlySet<string> | null,
 ): Promise<DevModeStoryLibrary | undefined> {
     const indexPath = path.join(projectPath, "editor", "story", "index.json");
     const index = await readOptionalJsonFile<StoryLibraryIndex>(indexPath);
@@ -572,6 +585,12 @@ async function loadStoryLibrary(
             continue;
         }
         seen.add(entry.id);
+        // Before the document is read, not after: a story this package does not carry must not be
+        // loaded at all, so that no later pass can find its prose and copy it somewhere - a
+        // translation table, a voice index, an asset sweep - that does ship.
+        if (entry.dlcId && carriedDlc && !carriedDlc.has(entry.dlcId)) {
+            continue;
+        }
         const documentPath = resolveStoryDocumentPathForIndexEntry(projectPath, entry);
         if (!documentPath) {
             continue;
@@ -1203,6 +1222,17 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
+ * Load the window settings from `.nlproj` `app.window`. Dense like the ones above: the shell opens
+ * a window on every launch whether or not the author ever opened the page, and the game's own
+ * configuration screen reads the offered sizes out of the same field. Exported for tests.
+ */
+export async function loadWindowConfiguration(projectPath: string): Promise<WindowConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizeWindowConfiguration(app?.window);
 }
 
 /**

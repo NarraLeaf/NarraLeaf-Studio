@@ -25,6 +25,15 @@ import { GlobalSettingsService } from "../GlobalSettingsService";
 import { getInterface } from "@/lib/app/bridge";
 import type { AppEventToken } from "@shared/types/app";
 import { syncEditorTabTitle } from "../ui/editorTabTitle";
+import { NotificationType, type NotificationAction } from "../ui/types";
+
+/** The tone `showNotification` takes -> the notification type the store records. */
+const NOTIFICATION_TYPE_BY_TONE: Record<"info" | "success" | "warning" | "error", NotificationType> = {
+    info: NotificationType.Info,
+    success: NotificationType.Success,
+    warning: NotificationType.Warning,
+    error: NotificationType.Error,
+};
 
 /**
  * UI Service
@@ -105,7 +114,7 @@ export class UIService extends Service<UIService> implements IUIService {
             const unsubDeleted = assetsService.getEvents().on("deleted", (asset: Asset) => {
                 // Clear selection if the deleted asset is selected
                 const selection = this.store.getSelection();
-                if (selection.type === "asset" && (selection.data as Asset).id === asset.id) {
+                if (selection.type === "asset" && selection.data.id === asset.id) {
                     this.store.setSelection({ type: null, data: null });
                 }
 
@@ -124,11 +133,10 @@ export class UIService extends Service<UIService> implements IUIService {
                 }
 
                 const selection = this.store.getSelection();
-                if (selection.type !== "asset" || !selection.data) {
+                if (selection.type !== "asset") {
                     return;
                 }
-                const selected = selection.data as Asset;
-                if (selected.id !== asset.id) {
+                if (selection.data.id !== asset.id) {
                     return;
                 }
                 // Shallow clone so React consumers re-render after in-place metadata updates
@@ -297,23 +305,25 @@ export class UIService extends Service<UIService> implements IUIService {
     }
 
     /**
-     * Show a notification
+     * Show a notification, and return its id.
+     *
+     * `actions` are buttons on the toast; `sticky` keeps it up until the reader dismisses it, which
+     * is what an outcome nobody was watching for needs. Neither survives dismissal: the history the
+     * notifications panel reads keeps the message and the detail and drops the callbacks, so the
+     * message has to make sense on its own once the action is gone (see {@link NotificationService}).
      */
-    public showNotification(message: string, type: "info" | "success" | "warning" | "error" = "info"): void {
-        switch (type) {
-            case "info":
-                this._notifications.info(message);
-                break;
-            case "success":
-                this._notifications.success(message);
-                break;
-            case "warning":
-                this._notifications.warning(message);
-                break;
-            case "error":
-                this._notifications.error(message);
-                break;
-        }
+    public showNotification(
+        message: string,
+        type: "info" | "success" | "warning" | "error" = "info",
+        options?: { detail?: string; actions?: NotificationAction[]; sticky?: boolean },
+    ): string {
+        return this._notifications.show({
+            type: NOTIFICATION_TYPE_BY_TONE[type],
+            message,
+            detail: options?.detail,
+            actions: options?.actions,
+            ...(options?.sticky ? { timeout: 0 } : {}),
+        });
     }
 
     /**

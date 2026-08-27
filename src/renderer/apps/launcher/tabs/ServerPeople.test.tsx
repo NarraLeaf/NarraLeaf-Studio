@@ -27,10 +27,13 @@ vi.mock("@/lib/i18n", async importOriginal => ({
     }),
 }));
 
-const bridge = vi.hoisted(() => ({ listServerMembers: vi.fn() }));
+// The roster comes over the session now, so what a test drives is `team.call` answering
+// `members.list` rather than a REST wrapper. The shape is one method's business - the
+// members hang under `value`, the way the wire carries them.
+const bridge = vi.hoisted(() => ({ call: vi.fn() }));
 
 vi.mock("@/lib/app/bridge", () => ({
-    getInterface: () => ({ vcs: { listServerMembers: bridge.listServerMembers } }),
+    getInterface: () => ({ team: { call: bridge.call } }),
 }));
 
 const ORIGIN = "lore://team.example.lan:41337";
@@ -48,7 +51,7 @@ function member(overrides: Partial<VcsServerMember> = {}): VcsServerMember {
 }
 
 function open(members: VcsServerMember[]) {
-    bridge.listServerMembers.mockResolvedValue({ success: true, data: { ok: true, members } });
+    bridge.call.mockResolvedValue({ success: true, data: { ok: true, value: { members } } });
     render(<ServerPeople remoteOrigin={ORIGIN} />);
 }
 
@@ -60,7 +63,7 @@ function row(username: string): HTMLElement {
 
 afterEach(() => {
     cleanup();
-    bridge.listServerMembers.mockReset();
+    bridge.call.mockReset();
 });
 
 describe("a member row", () => {
@@ -134,8 +137,8 @@ describe("the order of the list", () => {
 
 describe("when the server will not answer", () => {
     it("puts the refusal in words rather than showing an empty roster", async () => {
-        bridge.listServerMembers.mockResolvedValue({
-            success: true, data: { ok: false, problem: { kind: "refused" } },
+        bridge.call.mockResolvedValue({
+            success: true, data: { ok: false, problem: { kind: "refused", code: "refused", detail: "" } },
         });
         render(<ServerPeople remoteOrigin={ORIGIN} />);
 

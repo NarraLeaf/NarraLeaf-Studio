@@ -19,8 +19,10 @@ import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { readProjectConfigFromDir } from "../../utils/projectConfigFile";
 import { findWorkspaceWindow } from "../../utils/workspaceConsole";
+import { refusesOperations } from "@shared/types/workspaceFreeze";
 import { getWorkspaceFreeze, workspaceFrozenMessage } from "../../utils/workspaceFreeze";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
+import { resolveRunDlc } from "../../utils/runDlc";
 import { resolveRunVariant } from "../../utils/runVariant";
 import {
     formatPreviewProcessOutput,
@@ -320,7 +322,7 @@ export class GameTestManager {
         const key = this.projectKey(projectPath);
 
         const frozen = getWorkspaceFreeze(projectPath);
-        if (frozen) {
+        if (frozen !== null && refusesOperations(frozen)) {
             // Named "preview" because a test's game session *is* a preview process - same runner,
             // same pack, same reason the refusal exists (what it ran would not be what the author is
             // looking at). The remedy sentence is the part the author needs.
@@ -467,6 +469,7 @@ export class GameTestManager {
             this.ensureNotCancelled(session);
 
             const runVariant = await resolveRunVariant(this.app.getGlobalState(), session.projectPath);
+            const runDlc = await resolveRunDlc(this.app.getGlobalState(), session.projectPath);
             const artifact = await compileGameRuntimeArtifactInWorker(this.app, {
                 projectPath: session.projectPath,
                 entry: TEST_LAUNCH_ENTRY,
@@ -485,6 +488,10 @@ export class GameTestManager {
                 // the three launch surfaces keep the shapes they had. `packaging` stays off - this
                 // folds the variant without planning what a package would leave out.
                 ...(runVariant ? { appTag: { id: runVariant.id, name: runVariant.name } } : {}),
+                // And which DLC it has installed, from the same setting. A walkthrough test that ran
+                // with content the author had not ticked would pass on a game nobody ships - and the
+                // default, none, is the package every player starts from.
+                includedDlc: runDlc,
                 runtimePlugins: pluginSelection.selected,
                 // "preview" and not "production": a test needs the control server, which a shipped
                 // pack deliberately does not have.

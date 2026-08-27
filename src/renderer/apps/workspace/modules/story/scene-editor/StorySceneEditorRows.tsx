@@ -11,7 +11,7 @@ import { HeadThumbnail } from "@/apps/workspace/modules/characters/editors/compo
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { cn } from "@/lib/utils/cn";
-import { isRowTextEditable } from "./storySceneReadOnly";
+import { isRowTextEditable, useCreateCharacterFreeze, useStoryDocumentScope } from "./storySceneReadOnly";
 import { REF_TOKEN_ARMED_CLASS } from "./StoryLineRefToken";
 import { useStoryRefLink } from "./storyRefNavigation";
 import { isJumpModifierEvent } from "./useJumpModifier";
@@ -100,8 +100,10 @@ import { BlockOverview } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
 import { useStoryRowActions } from "./storyRowActions";
+import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
 import { useReduceMotion } from "@/lib/appearance/useReduceMotion";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /**
  * One story row's data.
@@ -181,8 +183,9 @@ type StoryBlockRowDragProps = {
  */
 export function StoryBlockRow(props: StoryBlockRowProps) {
     // Reordering a row writes the scene. Everything else this row does - selecting, folding, reading
-    // its text, hovering its portrait - does not, and is left alone.
-    const freeze = useFreezeGuard();
+    // its text, hovering its portrait - does not, and is left alone. Scoped to the story document,
+    // because reordering writes that file and nothing else.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const reduceMotion = useReduceMotion();
     const { attributes, listeners, setActivatorNodeRef, setNodeRef, transform, transition, isDragging } = useSortable({
         id: props.row.block.id,
@@ -356,9 +359,19 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
     // The grip's half of the drag, handed down by the sortable shell above.
     const { attributes, dragListeners, setActivatorNodeRef, dragging: isDragging } = props;
     // The shell already refused dnd-kit while frozen; this is what the grip itself says about why.
-    const freeze = useFreezeGuard();
+    // Same scope as the shell, or the two would disagree about whether the row can move.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     const dragsGroup = props.dragGroupSize > 1;
     const dragLabel = dragsGroup ? tn("story.rows.dragRows", props.dragGroupSize) : t("story.rows.dragRow");
+    /**
+     * Who else is writing this row right now, or null. Null for every row outside a live session,
+     * which is the whole document most of the time.
+     *
+     * A context read rather than a component of its own on every row: the answer has to be known
+     * before anything can be mounted for it, and mounting a component that says "not me" on every
+     * row of the screenful costs a subscription apiece.
+     */
+    const claimedBy = useStoryRowClaim(blockId);
 
     return (
         <div
@@ -670,6 +683,17 @@ const StoryBlockRowBody = memo(function StoryBlockRowBody(props: StoryBlockRowPr
                 </div>
                 </>
             </div>
+            {/* Last, so it draws over the background strip on a `/bg` row, and absolute, so a claim
+                taken and dropped while somebody types never re-wraps the words on this line. */}
+            {claimedBy !== null ? (
+                <StoryRowClaimMark
+                    account={claimedBy}
+                    onArtwork={controlsOverArtwork}
+                    // The corner belongs to the row's own actions while the pointer is on it, so the
+                    // name stands down and leaves the monogram.
+                    quiet={showRowActions}
+                />
+            ) : null}
         </div>
     );
 });
@@ -795,8 +819,12 @@ function TextEditBox(props: {
     const commandLine = useStoryCommandLineContext();
     // Second enforcement point for the row text (see isRowTextEditable): even with the state
     // transitions gated, a freeze can land while a row is already open, and the field would keep taking
-    // keystrokes the browser applies on its own.
-    const freeze = useFreezeGuard();
+    // keystrokes the browser applies on its own. Scoped: the text of a row is the story document.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
+    // The same argument for a claim, and here it is not a corner: somebody else in the room can take
+    // this row a moment after it opened, and the field would go on taking keystrokes for an edit the
+    // host is now certain to refuse.
+    const claimedByOther = useStoryRowClaim(props.block.id) !== null;
     const dialoguePayload = props.block.kind === "nodeAction" && props.block.payload.action === "dialogue"
         ? props.block.payload
         : null;
@@ -862,7 +890,7 @@ function TextEditBox(props: {
     const [pauseEdit, setPauseEdit] = useState<PauseClickInfo | null>(null);
     const [spellEdit, setSpellEdit] = useState<SpellingClickInfo | null>(null);
     const [dictionaryEdit, setDictionaryEdit] = useState<DictionaryClickInfo | null>(null);
-    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false });
+    const [activeMarks, setActiveMarks] = useState<ActiveMarks>({ bold: false, italic: false, canRuby: false, hasSelection: false });
     const textStyle = useStoryEditorTextStyle();
     const spellcheck = useStorySpellcheck();
     const dictionary = useStoryDictionary();
@@ -995,7 +1023,7 @@ function TextEditBox(props: {
                 ref={props.editorRef}
                 initialRuns={initialRuns}
                 initialCaret={props.initialCaret}
-                readOnly={!isRowTextEditable(freeze.frozen)}
+                readOnly={!isRowTextEditable(freeze.frozen, claimedByOther)}
                 // Edit in place, VS Code style: no box, no sunken background, no horizontal padding — the
                 // caret lands exactly where the read-only text sat. The active/selected row highlight is
                 // the "you are here" signal, so the field needs none of its own. See the interaction model.
@@ -1126,7 +1154,8 @@ function RowActions(props: { onInsertAfter: () => void; onDelete: () => void; ac
     const { t } = useTranslation();
     // The two buttons that sit on every hovered row. Greyed with the freeze reason rather than hidden:
     // a row whose end cluster vanished would read as a broken editor, not as a frozen project.
-    const freeze = useFreezeGuard();
+    // Scoped: inserting and deleting a row write the story document and nothing else.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
     // Rendered from the bindings themselves, never spelled out: `mod` is ⌘ or Ctrl depending on the
     // platform, and a hardcoded label is how a hint drifts from the key it claims to describe.
     const isMac = isMacPlatform();
@@ -2313,6 +2342,13 @@ export function InsertRow(props: {
                         }
                     }}
                     onKeyDown={event => {
+                        // Every branch below belongs to the IME first while it is composing: Escape
+                        // cancels the conversion rather than discarding the slot, the arrows walk the
+                        // candidate list rather than the command menu, and Enter confirms kana into
+                        // kanji rather than committing a half-typed line.
+                        if (isImeKeyEvent(event)) {
+                            return;
+                        }
                         if (event.key === "Backspace" && value === "" && event.currentTarget.selectionStart === 0 && event.currentTarget.selectionEnd === 0) {
                             event.preventDefault();
                             props.onBackspaceEmpty();
@@ -3011,6 +3047,16 @@ function CharacterPicker(props: {
     /** Rendered as a trailing action when the typed name is not already a character. */
     createLabel?: string | null;
     onCreate?: () => void;
+    /**
+     * Whether that trailing action is switched off, and the sentence saying why.
+     *
+     * Greyed rather than dropped: typing `@somebody` and adding the character afterwards is the
+     * ordinary way people write, so an author who cannot find the rung concludes the feature broke.
+     * The candidates above it stay pickable — binding a name to a character that already exists is a
+     * write to this story document and nothing more.
+     */
+    createDisabled?: boolean;
+    createDisabledReason?: string;
 }) {
     const { t } = useTranslation();
     const listRef = useRef<HTMLDivElement | null>(null);
@@ -3080,7 +3126,15 @@ function CharacterPicker(props: {
                     <div className="my-1 h-px bg-edge" />
                     <button
                         type="button"
-                        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors hover:bg-fill"
+                        className={cn(
+                            "flex w-full items-center gap-2 rounded-md px-2 py-2 text-left transition-colors",
+                            props.createDisabled ? "cursor-not-allowed opacity-50" : "hover:bg-fill",
+                        )}
+                        disabled={props.createDisabled}
+                        // `data-tip` rather than `title`, like every other reason a freeze puts on a
+                        // control: a disabled button receives no pointer events at all, and Studio's
+                        // tooltip resolves this one by hit-testing the pointer instead.
+                        data-tip={props.createDisabledReason}
                         onMouseDown={props.onCreate}
                     >
                         <UserRoundPlus className="h-4 w-4 shrink-0 text-primary" />
@@ -3115,7 +3169,12 @@ function rowSpeakerIdentityFor(characters: Character[], characterId: string | un
     return speakerName ? characterSpeakerIdentity(speakerName, { hasPortrait: false }) : null;
 }
 
-function CharacterSelectTrigger(props: {
+/**
+ * Exported so what a freeze does to this one control can be asserted on the rendered thing, with no
+ * scene editor around it: the picker's two halves answer two different freeze questions, and only a
+ * real DOM shows which of them a given freeze switched off.
+ */
+export function CharacterSelectTrigger(props: {
     characters: Character[];
     tempSpeakers: TempSpeakerRef[];
     characterId: string | undefined;
@@ -3134,9 +3193,13 @@ function CharacterSelectTrigger(props: {
     column?: boolean;
 }) {
     const { t } = useTranslation();
-    // A frozen row keeps its nametag readable and stops offering the picker, which is also the way a
-    // new character gets created from a typed name.
-    const freeze = useFreezeGuard();
+    // A frozen row keeps its nametag readable and stops offering the picker. Scoped to this scene's
+    // own document, because everything the picker itself does - binding a character that exists,
+    // keeping a bare name - is a write to that one file, and a live session on it is precisely the
+    // work the picker is for.
+    const freeze = useFreezeGuard(useStoryDocumentScope());
+    // The one rung inside the picker that reaches past that document, asked separately.
+    const createCharacter = useCreateCharacterFreeze();
     const rootRef = useRef<HTMLDivElement | null>(null);
     const pickerRef = useRef<HTMLDivElement | null>(null);
     const inputRef = useRef<HTMLInputElement | null>(null);
@@ -3345,6 +3408,10 @@ function CharacterSelectTrigger(props: {
                 onMouseDown={event => event.stopPropagation()}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    // The candidate window owns these keys while a name is being converted.
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                         event.preventDefault();
                         picker.moveCharacter(event.key === "ArrowDown" ? 1 : -1);
@@ -3374,6 +3441,8 @@ function CharacterSelectTrigger(props: {
                 frame={frame}
                 panelRef={pickerRef}
                 createLabel={canCreate ? t("story.rows.createCharacter", { name: trimmed }) : null}
+                createDisabled={createCharacter.unavailable}
+                createDisabledReason={createCharacter.reason}
                 onCreate={() => {
                     props.onCreateCharacter(trimmed);
                     close();

@@ -171,9 +171,17 @@ export function WorkspaceCommands() {
                     if (!name) {
                         return;
                     }
-                    const character = characterService.createCharacter(name);
+                    const created = characterService.createCharacter(name);
                     uiService.getStore().setPanelVisibility(CHARACTERS_PANEL_ID, true);
-                    uiService.getStore().setSelection({ type: "character", data: character });
+                    // Re-resolved rather than selecting what was handed back. Inside a live session a
+                    // creation is an intent, so the cast has no such member for one round trip and the
+                    // object returned is the record that was asked for - selecting it would put the
+                    // properties panel on a record nothing writes to. The panel is opened either way;
+                    // the character appears in it when the effect lands.
+                    const character = characterService.getCharacter(created.profile.getId());
+                    if (character) {
+                        uiService.getStore().setSelection({ type: "character", data: character });
+                    }
                 },
             },
             {

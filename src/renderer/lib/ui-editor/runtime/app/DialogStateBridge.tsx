@@ -2,6 +2,9 @@ import { useLayoutEffect } from "react";
 import { useAvatar, useDialog } from "narraleaf-react";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
@@ -12,9 +15,14 @@ import { toBlueprintImageAsset } from "@shared/types/blueprint/valueTypes";
 import type { BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 
 /**
- * Mirrors the NarraLeaf dialog state (speaker nametag, avatar and accent colour) into the blueprint
- * global scope and flushes dialog-bound elements whenever the dialog text,
- * speaker, or completion state changes. Must render inside <NlrDialog>.
+ * Mirrors the NarraLeaf dialog state - the speaker's nametag, avatar and accent colour, and the line
+ * itself - into the blueprint global scope, and flushes dialog-bound elements whenever the dialog
+ * text, speaker, or completion state changes. Must render inside <NlrDialog>.
+ *
+ * The line's own three facts (has it finished revealing, what does it say, is anyone speaking) come
+ * straight off `useDialog`, which is why they are published from here rather than staged by the host
+ * the way the nametag is: the engine reports them per frame to whoever renders inside the dialog,
+ * and this component is the only thing Studio renders there.
  *
  * The avatar comes from the engine's own `useAvatar`, which resolves it off the speaking
  * character's *live* portrait element - so it already reflects the differential that character is
@@ -69,6 +77,13 @@ export function DialogStateBridge(props: {
             ? findBlueprintCharacterInfo(core.scopeBridge.globalGet(BLUEPRINT_GAME_CHARACTERS_STATE_KEY), speakerId)
             : null;
         core.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, speaker?.color ?? null);
+        // The line itself, on the same beat. `done` is the engine's own dialog state and is exactly
+        // the click-to-continue condition: the typewriter has run out of characters (or a skip
+        // finished it early) and nothing advances until the player says so. `text` is the whole
+        // line rather than the revealed prefix - the engine settles the words when the line mounts.
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, dialog.done === true);
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, dialog.text ?? "");
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, dialog.isNarrator === true);
         flushDialogElements();
     }, [
         core,
@@ -80,6 +95,24 @@ export function DialogStateBridge(props: {
         flushDialogElements,
         getCurrentNametag,
     ]);
+
+    /**
+     * No dialog on screen is not a dialog waiting for the player.
+     *
+     * Its own effect so that it runs on unmount only, and it deliberately does not flush: the
+     * surface this bridge belongs to is going away, and the readers that outlive it - a page, a
+     * widget on the stage - re-evaluate on their own next beat and find the blank rather than the
+     * last line's answer. The nametag family is cleared by the host at session teardown instead,
+     * which is a different moment: it has to survive the dialog being hidden and shown again.
+     */
+    useLayoutEffect(() => () => {
+        if (!core) {
+            return;
+        }
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
+        core.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
+    }, [core]);
 
     return null;
 }

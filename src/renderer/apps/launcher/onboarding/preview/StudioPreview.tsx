@@ -1,244 +1,260 @@
-import type { ReactNode } from "react";
-import { useTranslation } from "@/lib/i18n";
-import { cn } from "@/lib/utils/cn";
+import { AnimatePresence, motion } from "motion/react";
 import {
     BookOpen,
     ChevronDown,
-    Cloud,
-    CloudOff,
+    Ellipsis,
     FolderOpen,
-    GitBranch,
-    GitCommitHorizontal,
     Home,
     LayoutDashboard,
+    Menu,
+    Package,
     PanelBottom,
     PanelLeft,
     PanelRight,
+    PanelsTopLeft,
+    Play,
+    Puzzle,
+    Search,
     Settings,
     Terminal,
     Users,
     X,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { useTranslation } from "@/lib/i18n";
+import { useProductIconSrc } from "@/lib/appearance/useProductIcon";
+import { cn } from "@/lib/utils/cn";
 import type { TranslationKey } from "@shared/i18n";
-import type { OnboardingPreviewSurface } from "@shared/types/window";
 import { useOnboardingPreferences } from "../onboardingPreferences";
-import { ServerRow } from "@/lib/vcs/servers";
-import { APP_DISPLAY_NAME } from "@shared/constants/app";
-import { composeVcsIdentity } from "@shared/types/vcs";
-import { useOnboardingServers } from "../onboardingServers";
 import { ConsolePreview } from "./ConsolePreview";
 import { DashboardPreview } from "./DashboardPreview";
 import { StoryScenePreview } from "./StoryScenePreview";
+import { VersionRailPreview } from "./VersionRailPreview";
 import { WelcomePreview } from "./WelcomePreview";
 
 /**
- * Studio's own window, small: the pane on the right of every setup screen.
+ * The top-left corner of a Studio workspace window, drawn at full size and cut off by the screen
+ * that shows it.
  *
- * **A likeness, not an invention.** Every part of it is copied from the surface it stands for -
- * the title bar's height and its two clusters from `TitleBar`, the 48px icon rail and its 40px
- * squares from `LeftSidebarSelector`, the 36px editor tabs with the accent bar over the active one
- * from `EditorGroup`, the 48px panel header from `LeftSidebar`, the 24px strip of small type from
- * `StatusBar`. An author who finishes setup should recognise the window that opens as the one they
- * were just looking at; a preview drawn to its own taste teaches them a layout the product does not
- * have.
+ * **A corner, not a miniature.** The frame is laid out at the width and height a workspace is worked
+ * in and the setup screen has room for the left third of it, so the type is at its real size and the
+ * columns at their real widths; everything past the crop is simply not on screen, the way the right
+ * half of a window is not on screen when it runs off a laptop display. A scaled-down likeness would
+ * teach proportions the product does not have.
  *
- * **The chrome is inert.** The tabs, the rail, the window buttons and the panel headers are drawn
- * as text and glyphs rather than as controls: they are here to be recognised, and a rail that
- * answered a click would be promising a workspace this window has no project to fill. What DOES
- * answer is the scene - rows select, the insert slot takes focus - because that is the part the
- * settings on the left actually change, and a still picture of an editor cannot show what those
- * settings do to reading and typing in one.
+ * **Every part is copied from the surface it stands for**, so the window that opens after setup is
+ * the one that was just on screen: the 40px title bar with its mark, hamburger, project switcher and
+ * run control from `TitleBar` / `MainMenuButton` / `ProjectSwitcher` / `RunControl`; the 48px rail
+ * and its 40px squares from `LeftSidebarSelector`, carrying the panels a workspace registers in the
+ * order it registers them; the 36px editor tabs with the accent bar over the active one from
+ * `EditorGroup`; the 320px version column from `VersionRail`.
  *
- * **One object across the whole flow.** Every answer lands in it: the language names its panels and
- * spells its commands, the theme and the accent paint it, the zoom sizes it (this window is zoomed
- * too, so the likeness grows with everything else), the identity signs its revisions, and the story
- * preferences set its rows. A screen only says which surface to open on.
+ * **The chrome is inert.** The rail, the tabs and the title bar are drawn as text and glyphs rather
+ * than as controls - there is no project behind this window for them to open. What does answer is
+ * the scene, whose rows select and whose insert slot takes typing, because the story screen's
+ * settings are about reading and typing in one.
+ *
+ * **One object across the whole flow.** The language names its panels, the theme and accent paint
+ * it, the zoom sizes it - this window is zoomed with every other, so the corner grows along with the
+ * interface it stands for - the identity signs its versions, and the story preferences set its rows.
+ * A screen only says which surface to bring forward.
  */
+
+/** Which of Studio's surfaces the corner is showing. */
+export type PreviewSurfaceId = "welcome" | "dashboard" | "story" | "console" | "versions";
 
 /**
- * Which of Studio's surfaces the sample is showing.
+ * The width the frame is laid out at, and the basis for what the crop leaves out.
  *
- * Four of them are editor tabs - the welcome page a project opens on, the dashboard, a scene, the
- * console - and two are docked panels: the version panel and the team panel, which are what the
- * screens that ask about a signature and a server are about. Every screen shows the surface its own
- * question lives on; where a question has no surface of its own (language, theme, zoom) the
- * dashboard stands in, because it is the first thing a workspace opens on and it holds still.
- *
- * The shared type, because it travels on the preview window's props.
+ * 960 is the narrow end of what Studio is worked in, and it is chosen for what it does to the
+ * surfaces behind the crop: the dashboard and the welcome page both centre a column of fixed width,
+ * so on a wider frame the only thing in the visible third would be that column's left margin.
  */
-export type PreviewPanelId = OnboardingPreviewSurface;
+const FRAME_WIDTH_PX = 960;
 
-/** The rail, in the order these panels sit in a real window. */
-const RAIL: { icon: LucideIcon; labelKey: TranslationKey; panel?: PreviewPanelId }[] = [
-    { icon: LayoutDashboard, labelKey: "placeholders.moduleTitles.dashboard", panel: "dashboard" },
-    { icon: BookOpen, labelKey: "placeholders.moduleTitles.story", panel: "story" },
+/** How long the page inside the editor takes to change, matched to the screens beside it. */
+const SURFACE_DURATION_S = 0.18;
+
+/** The left rail, as a workspace registers it: the panel modules in `order`, then the fold. */
+const RAIL: readonly { icon: LucideIcon; labelKey?: TranslationKey; label?: string }[] = [
+    { icon: LayoutDashboard, labelKey: "placeholders.moduleTitles.dashboard" },
+    { icon: Package, labelKey: "placeholders.moduleTitles.project" },
+    { icon: BookOpen, labelKey: "placeholders.moduleTitles.story" },
+    { icon: PanelsTopLeft, label: "UI" },
     { icon: Users, labelKey: "placeholders.moduleTitles.characters" },
+    { icon: Search, labelKey: "placeholders.moduleTitles.search" },
     { icon: FolderOpen, labelKey: "placeholders.moduleTitles.assets" },
-    { icon: GitBranch, labelKey: "onboarding.sample.rail.versions", panel: "versions" },
-    { icon: Cloud, labelKey: "onboarding.sample.rail.team", panel: "team" },
+    { icon: Puzzle, labelKey: "placeholders.moduleTitles.plugins" },
+    { icon: Ellipsis, labelKey: "workspace.shell.panelGroup.title" },
 ];
 
-/** The window's three toggles and its settings button, as `ControlBar` draws them. */
-const CONTROL_BAR: LucideIcon[] = [PanelLeft, PanelBottom, PanelRight, Settings];
+/** The window's three dock toggles and its settings button, as `ControlBar` draws them. */
+const CONTROL_BAR: readonly LucideIcon[] = [PanelLeft, PanelBottom, PanelRight, Settings];
 
 export interface StudioPreviewProps {
     /** Which surface this screen is about. */
-    panel: PreviewPanelId;
-    /**
-     * The window's own edges. Defaults to the cropped treatment the setup screen needs - rounded
-     * and bordered on the left, open on the right, because it is cut by the screen edge rather than
-     * ending there. The window that shows this at full size passes nothing to draw.
-     */
-    frameClassName?: string;
-    /**
-     * Draw the sample's own title bar. Off where a real one is drawn around it: the window that
-     * shows this at full size hands {@link PreviewProjectSwitcher} and {@link PreviewControlBar} to
-     * the shared `TitleBar` instead, so the macOS traffic lights land where a workspace puts them
-     * rather than on a second bar above the first.
-     */
-    titleBar?: boolean;
+    surface: PreviewSurfaceId;
 }
 
-export function StudioPreview({
-    panel,
-    frameClassName = "rounded-l-md border-y border-l border-edge",
-    titleBar = true,
-}: StudioPreviewProps) {
+export function StudioPreview({ surface }: StudioPreviewProps) {
     const { t } = useTranslation();
     const preferences = useOnboardingPreferences();
+    const productIconSrc = useProductIconSrc();
+    const projectName = t("onboarding.sample.projectName");
+
+    // The version column is a column of the window rather than a page in it, which is also what
+    // keeps it inside the crop: 320px against the window's left edge.
+    const railPanel = surface === "versions";
+    // A column is not an editor tab, so the editor behind one still holds whatever was last in
+    // front of it.
+    const front: PreviewSurfaceId = railPanel ? "dashboard" : surface;
 
     return (
-        <div className={cn("flex min-h-0 flex-1 flex-col overflow-hidden bg-surface", frameClassName)}>
-            {/* The title bar: the project on the left, the window's own toggles on the right.
-                Absent when the host is drawing a real one around this - see `titleBar`. */}
-            {titleBar ? (
-                <div aria-hidden className="flex h-10 min-h-10 shrink-0 items-center bg-surface-sunken px-1.5">
-                    <PreviewProjectSwitcher />
-                    <span className="ml-auto flex items-center gap-1">
-                        <PreviewControlBar />
+        <div
+            aria-hidden
+            // Raised off the screen behind it, the way every window in front of another one is.
+            //
+            // A large blur and a small downward offset, which is the shape an operating system
+            // gives a window: light from above, so the shadow sits under the frame while the blur
+            // still reaches past its top and left edges - the two the crop leaves visible. The
+            // preset scale is no use here (`shadow-2xl` offsets 25px down against a 50px blur, so
+            // none of it clears the top edge), and offsetting it up and to the left instead puts
+            // the light source below the screen and reads as a glow rather than as depth.
+            //
+            // The pane behind it is left at the window's own background ON PURPOSE. Darkening it
+            // first - which is the obvious way to make the frame stand out - lands the shadow on
+            // pixels that are already almost black and the falloff disappears entirely: measured
+            // flat at luminance 5 across the whole gap, against 17 -> 14 here. In a dark theme the
+            // raised edge does most of the work and the shadow is what carries a light one, which
+            // is why the top and left edges are drawn at `edge-strong` rather than `edge`.
+            className="flex h-full flex-col overflow-hidden rounded-tl-md border-l border-t border-edge-strong bg-surface shadow-[0_6px_32px_rgba(0,0,0,0.4)]"
+            style={{ width: FRAME_WIDTH_PX }}
+        >
+            <div className="flex h-10 min-h-10 shrink-0 items-center border-b border-edge bg-surface-sunken">
+                <span className="flex h-full shrink-0 items-center px-4">
+                    <img src={productIconSrc} alt="" className="h-5 w-5" />
+                </span>
+                {/* The menu bar folded behind one button, which is how Studio leaves the factory. */}
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-fg-muted">
+                    <Menu className="h-4 w-4" />
+                </span>
+                <span className="flex h-8 min-w-0 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted">
+                    <FolderOpen className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{projectName}</span>
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                </span>
+                <span className="flex h-8 shrink-0 items-center rounded-md text-sm text-fg-muted">
+                    <span className="flex items-center gap-1.5 px-2">
+                        <Play className="h-4 w-4" />
+                        {t("actions.run.devMode")}
                     </span>
-                </div>
-            ) : null}
+                    <ChevronDown className="h-3 w-3 shrink-0" />
+                </span>
 
-            <div className={cn("flex min-h-0 flex-1", titleBar && "border-t border-edge")}>
-                {/* The panel rail. The panel this screen is about is the one lit. */}
-                <div aria-hidden className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-edge bg-surface-sunken px-1 py-2">
+                <span className="flex h-full min-w-0 flex-1 items-center justify-center px-3">
+                    <span className="flex h-6 w-full min-w-0 max-w-[720px] items-center justify-center gap-1.5 rounded-md border border-edge bg-fill-subtle px-3 text-xs text-fg-subtle">
+                        <Search className="h-3 w-3 shrink-0" />
+                        <span className="truncate">
+                            {t("workspace.shell.search.titleBarPlaceholder", { name: projectName })}
+                        </span>
+                    </span>
+                </span>
+
+                <span className="flex h-full shrink-0 items-center gap-1 pr-1.5">
+                    {CONTROL_BAR.map((Icon, index) => (
+                        <span key={index} className="grid h-8 w-8 place-items-center rounded-md text-fg-muted">
+                            <Icon className="h-4 w-4" />
+                        </span>
+                    ))}
+                </span>
+            </div>
+
+            <div className="flex min-h-0 flex-1">
+                {/* Left of the panel rail, where the window puts it: which version is on screen
+                    decides what every column to its right is a view of. */}
+                {railPanel ? <VersionRailPreview /> : null}
+
+                <div className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-edge bg-surface-sunken px-1 py-2">
                     {RAIL.map((entry, index) => (
                         <span
                             key={index}
                             className={cn(
                                 "grid h-10 w-10 place-items-center rounded-md",
-                                entry.panel === panel ? "bg-fill-strong text-fg" : "text-fg-muted",
+                                // Lit for the panel whose editor is in front, exactly as the rail
+                                // lights the open one.
+                                index === railIndexFor(front) ? "bg-fill-strong text-fg" : "text-fg-muted",
                             )}
                         >
                             <entry.icon className="h-4 w-4" />
                         </span>
                     ))}
-
                 </div>
-
-                {/* A docked panel is a column beside the editor, not a page in place of it - which
-                    is also what puts it inside the crop: 280px against the rail rather than
-                    something centred in the whole window. */}
-                {panel === "versions" ? (
-                    <PanelSurface icon={GitBranch} title={t("onboarding.sample.rail.versions")}>
-                        <VersionsPanel />
-                    </PanelSurface>
-                ) : panel === "team" ? (
-                    <PanelSurface icon={Cloud} title={t("onboarding.sample.rail.team")}>
-                        <TeamPanel />
-                    </PanelSurface>
-                ) : null}
 
                 <div className="flex min-w-0 flex-1 flex-col">
-                    <EditorTabStrip panel={panel} />
-                    {panel === "story" ? (
-                        <StoryScenePreview story={preferences.story} textStyle={preferences.storyTextStyle} />
-                    ) : panel === "console" ? (
-                        <ConsolePreview />
-                    ) : panel === "welcome" ? (
-                        <WelcomePreview />
-                    ) : (
-                        <DashboardPreview />
-                    )}
+                    <EditorTabStrip front={front} />
+                    {/* The chrome around it holds still and the page inside it changes, which is
+                        what happens when a tab is brought forward. `mode="wait"` because the two
+                        pages are opaque and the same size: overlapping them would read as a fault
+                        rather than as a change. */}
+                    <div className="relative min-h-0 flex-1">
+                        <AnimatePresence mode="wait" initial={false}>
+                            <motion.div
+                                key={front}
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: SURFACE_DURATION_S, ease: "easeOut" }}
+                                className="absolute inset-0 flex flex-col"
+                            >
+                                {front === "story" ? (
+                                    <StoryScenePreview story={preferences.story} textStyle={preferences.storyTextStyle} />
+                                ) : front === "console" ? (
+                                    <ConsolePreview />
+                                ) : front === "welcome" ? (
+                                    <WelcomePreview />
+                                ) : (
+                                    <DashboardPreview />
+                                )}
+                            </motion.div>
+                        </AnimatePresence>
+                    </div>
                 </div>
-            </div>
-
-            {/* The status bar: small type, the branch on the left, the zoom on the right - which is
-                where Studio actually reports the setting the third screen asks about. */}
-            <div aria-hidden className="flex h-6 shrink-0 items-center justify-between border-t border-edge bg-surface-sunken px-1.5">
-                <span className="flex h-full items-center gap-1.5 px-2 text-2xs text-fg-subtle">
-                    <GitBranch className="h-3 w-3" />
-                    main
-                </span>
-                <span className="flex h-full items-center gap-1.5 px-2 text-2xs tabular-nums text-fg-subtle">
-                    {preferences.zoomPercent}%
-                </span>
             </div>
         </div>
     );
 }
 
-/** The project the window is showing, as the workspace's own switcher draws it. Inert. */
-export function PreviewProjectSwitcher() {
-    const { t } = useTranslation();
-    return (
-        <span
-            aria-hidden
-            className="flex h-8 min-w-0 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted"
-        >
-            <FolderOpen className="h-4 w-4 shrink-0" />
-            <span className="truncate">{t("onboarding.sample.projectName")}</span>
-            <ChevronDown className="h-3 w-3 shrink-0" />
-        </span>
-    );
-}
-
-/** The three dock toggles and the settings button, as `ControlBar` draws them. Inert. */
-export function PreviewControlBar() {
-    return (
-        <>
-            {CONTROL_BAR.map((Icon, index) => (
-                <span aria-hidden key={index} className="grid h-8 w-8 place-items-center rounded-md text-fg-muted">
-                    <Icon className="h-4 w-4" />
-                </span>
-            ))}
-        </>
-    );
+/** Which rail square a surface belongs to. Only the panels that have one are named. */
+function railIndexFor(surface: PreviewSurfaceId): number {
+    return surface === "story" ? 2 : 0;
 }
 
 /**
- * The editor's tab strip, with the open surface active and the other two beside it.
+ * The editor's tab strip, with the open surface in front and the rest beside it.
  *
- * Three tabs rather than a strip that changes shape: the dashboard and the console are editor tabs
- * in Studio like any other, so a window showing one of them is a window with all three open and one
- * of them in front. Clipped rather than scrollable, with the fade the real strip uses to say there
- * is more along that edge.
+ * Four tabs rather than a strip that changes shape: the dashboard, the welcome page and the console
+ * are editor tabs in Studio like any other, so a window showing one of them is a window with all
+ * four open and one of them in front. The open one is listed first - in a real window a tab's
+ * position is the history of what was opened when, and a sample has no history, while the tab being
+ * looked at has to be inside the crop.
+ *
+ * Clipped rather than scrollable, with the fade the real strip draws along the edge that has more.
  */
-function EditorTabStrip({ panel }: { panel: PreviewPanelId }) {
+function EditorTabStrip({ front }: { front: PreviewSurfaceId }) {
     const { t } = useTranslation();
-    const all: { id: PreviewPanelId; icon: LucideIcon; label: string }[] = [
-        { id: "welcome", icon: Home, label: t("placeholders.moduleTitles.welcome") },
+    const all: { id: PreviewSurfaceId; icon: LucideIcon; label: string }[] = [
         { id: "dashboard", icon: LayoutDashboard, label: t("placeholders.moduleTitles.dashboard") },
+        { id: "welcome", icon: Home, label: t("placeholders.moduleTitles.welcome") },
         { id: "story", icon: BookOpen, label: t("onboarding.sample.scene") },
         { id: "console", icon: Terminal, label: t("placeholders.moduleTitles.console") },
     ];
-    /*
-     * A docked panel is not an editor tab, so on those screens the editor behind it is still the
-     * dashboard - which is the tab that stays in front.
-     *
-     * The open one is listed first. In a real window its position is the history of what was
-     * opened when, and a sample has no history; what it does have is a screen with room for two
-     * tabs, and the one being looked at has to be one of them.
-     */
-    const front = panel === "versions" || panel === "team" ? "dashboard" : panel;
     const tabs = [
         ...all.filter(tab => tab.id === front),
         ...all.filter(tab => tab.id !== front),
     ];
+
     return (
-        <div aria-hidden className="relative shrink-0 overflow-hidden border-b border-edge bg-surface-sunken">
+        <div className="relative shrink-0 overflow-hidden border-b border-edge bg-surface-sunken">
             <div className="flex items-stretch">
                 {tabs.map(tab => {
                     const active = tab.id === front;
@@ -259,91 +275,6 @@ function EditorTabStrip({ panel }: { panel: PreviewPanelId }) {
                 })}
             </div>
             <span className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-surface-sunken to-transparent" />
-        </div>
-    );
-}
-
-/** A docked panel, headed the way `LeftSidebar` heads one. */
-function PanelSurface({ icon: Icon, title, children }: { icon: LucideIcon; title: string; children: ReactNode }) {
-    return (
-        // The width a left dock opens at, and its own edge against the editor beside it.
-        <div className="flex min-h-0 w-[280px] shrink-0 flex-col border-r border-edge bg-surface">
-            <div aria-hidden className="flex h-12 shrink-0 items-center justify-between border-b border-edge bg-surface-sunken px-4">
-                <span className="flex min-w-0 items-center gap-2">
-                    <Icon className="h-4 w-4 shrink-0 text-fg-muted" />
-                    <span className="truncate text-sm font-medium text-fg">{title}</span>
-                </span>
-                <X className="h-4 w-4 shrink-0 text-fg-subtle" />
-            </div>
-            {children}
-        </div>
-    );
-}
-
-/**
- * The version panel: two recorded revisions, signed the way this installation signs them.
- *
- * The signature is composed by `composeVcsIdentity`, the same fold that reaches the repository, so
- * what the sample prints is the string a commit would actually carry - including the `Name <email>`
- * shape, and including the tool's own name when both fields are empty.
- */
-function VersionsPanel() {
-    const { t } = useTranslation();
-    const { authorName, authorEmail } = useOnboardingPreferences();
-    const identity = composeVcsIdentity(authorName, authorEmail) || APP_DISPLAY_NAME;
-
-    const entries: TranslationKey[] = [
-        "onboarding.sample.versions.latest",
-        "onboarding.sample.versions.earlier",
-    ];
-
-    return (
-        <div aria-hidden className="min-h-0 flex-1 overflow-y-auto p-2">
-            {entries.map(key => (
-                <div key={key} className="flex items-start gap-2 rounded-md px-2 py-1.5">
-                    <GitCommitHorizontal className="mt-0.5 h-3.5 w-3.5 shrink-0 text-fg-subtle" />
-                    <div className="min-w-0">
-                        <div className="truncate text-xs text-fg">{t(key)}</div>
-                        <div className="truncate text-2xs text-fg-subtle">
-                            {t("onboarding.sample.versions.checkpoint")} · {identity}
-                        </div>
-                    </div>
-                </div>
-            ))}
-        </div>
-    );
-}
-
-/**
- * The team panel: the servers this installation is signed in to, drawn with the row every other
- * screen draws a server with.
- *
- * Read live rather than mocked, because this one genuinely can be: the Team step signs in through
- * the ordinary dialog, so the moment a server is added it appears here - which is the whole answer
- * to "did that work".
- */
-function TeamPanel() {
-    const { t } = useTranslation();
-    const { servers, loading } = useOnboardingServers();
-
-    if (loading) {
-        return <div className="min-h-0 flex-1" />;
-    }
-
-    if (servers.length === 0) {
-        return (
-            <div aria-hidden className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2 p-4 text-center">
-                <CloudOff className="h-5 w-5 text-fg-subtle" />
-                <span className="text-xs text-fg-subtle">{t("onboarding.sample.teamAlone")}</span>
-            </div>
-        );
-    }
-
-    return (
-        <div aria-hidden className="min-h-0 flex-1 space-y-1 overflow-y-auto p-2">
-            {servers.map(session => (
-                <ServerRow key={session.remoteOrigin} session={session} size="sm" />
-            ))}
         </div>
     );
 }

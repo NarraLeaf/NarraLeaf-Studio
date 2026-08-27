@@ -117,6 +117,14 @@ describe("PreviewManager.launch while the workspace is frozen", () => {
         // assertion: refused rejects, allowed resolves.
         await expect(makeManager().launch(projectPath, entry)).resolves.toBe("error");
     });
+
+    it("launches during a live session, the one freeze that is not about consistency", async () => {
+        // The session's content is on the working tree, which is what a preview runs, so the guard
+        // has nothing to protect the author from here.
+        reportWorkspaceFreeze(projectPath, "live-session");
+
+        await expect(makeManager().launch(projectPath, entry)).resolves.toBe("error");
+    });
 });
 
 /**

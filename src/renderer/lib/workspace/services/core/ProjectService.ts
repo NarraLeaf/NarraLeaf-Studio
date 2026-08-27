@@ -14,6 +14,7 @@ import {
     LocalizationConfiguration,
     MobileConfiguration,
     NetworkConfiguration,
+    PatchConfiguration,
     PlayerPreferences,
     ProjectAppConfiguration,
     VfxConfiguration,
@@ -32,6 +33,7 @@ import {
     normalizeLocalizationConfiguration,
     normalizeMobileConfiguration,
     normalizeNetworkConfiguration,
+    normalizePatchConfiguration,
     normalizePlayerPreferences,
     normalizeSaveCompatibilityConfiguration,
     normalizeSaveLocationConfiguration,
@@ -39,6 +41,8 @@ import {
     normalizeSigningConfiguration,
     normalizeVfxConfiguration,
     normalizeVoiceConfiguration,
+    normalizeWindowConfiguration,
+    type WindowConfiguration,
     readAssetOptimizationConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
@@ -646,6 +650,38 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
+     * Read what the shipped game's window may do, falling back to the defaults for projects that
+     * predate `app.window` - which is a resizable window that remembers where it was.
+     */
+    public getWindowConfiguration(): WindowConfiguration {
+        return normalizeWindowConfiguration(this.getProjectConfig().app?.window);
+    }
+
+    /**
+     * Merge a partial patch into the window settings.
+     *
+     * Written by the project App page and baked into the bundle, where the shell reads it to open
+     * its window and the game's own configuration screen reads it to know what sizes to offer.
+     */
+    public async updateWindowConfiguration(patch: Partial<WindowConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const window = normalizeWindowConfiguration({
+                ...normalizeWindowConfiguration(config.app?.window),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                window,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
      * Read the frame rate this project's screen effects are baked at, falling back to 30 for
      * projects that predate `app.vfx` - which is the rate their clips are already on disk at.
      */
@@ -696,6 +732,32 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 build,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Read the remembered patch-export selection, or null when the project has
+     * never had a patch exported from it.
+     */
+    public getPatchConfiguration(): PatchConfiguration | null {
+        return normalizePatchConfiguration(this.getProjectConfig().app?.patch);
+    }
+
+    /**
+     * Persist the patch dialog's selection so the next export reopens with the
+     * same editions, build folder and file.
+     */
+    public async updatePatchConfiguration(patch: PatchConfiguration): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                patch,
             };
             return {
                 ...config,

@@ -19,7 +19,6 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
 import { isUIElementSelection } from "@/lib/workspace/services/ui/UIStore";
-import type { UIElementSelection } from "@shared/types/ui-editor/selection";
 import { useUISurfaceEditorServices } from "@/apps/workspace/modules/ui-editor/editors/useUISurfaceEditorServices";
 import { useWorkspace } from "@/apps/workspace/context";
 import { DevModeService } from "@/lib/workspace/services/core/DevModeService";
@@ -97,6 +96,7 @@ import {
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { useBrandPaletteRevision } from "@/lib/ui-editor/runtime/useBrandPaletteRevision";
 import type { UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { interfaceDocumentFreezeScope, useLiveUndoOverride } from "../uiLiveSession";
 
 const SURFACE_TAB_PREFIX = "ui-editor:surface:";
 const getSurfaceTabId = (targetSurfaceId: string) => `${SURFACE_TAB_PREFIX}${targetSurfaceId}`;
@@ -214,11 +214,6 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
             return;
         }
         if (current.type === "scene") {
-            const currentSceneId = typeof current.data === "string" ? current.data : current.data?.id ?? null;
-            if (currentSceneId === surface.id) {
-                selectSurfaceForProperties(stateService, surface.id, uiService);
-                return;
-            }
             selectSurfaceForProperties(stateService, surface.id, uiService);
             return;
         }
@@ -276,7 +271,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return null;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return null;
         }
@@ -296,7 +291,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== activeBindingSession.surfaceId || data.elementIds.length !== 1) {
             return;
         }
@@ -353,7 +348,8 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
     // element and read its properties, but not modify or move it"*. This is the only place the freeze
     // enters the canvas - everything below `lib/ui-editor` takes a plain `readOnly` and knows nothing
     // about version control.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const undoOverride = useLiveUndoOverride();
     const readOnly = useMemo<UIEditorReadOnly>(
         () => ({ active: freeze.frozen, reason: freeze.reason }),
         [freeze.frozen, freeze.reason],
@@ -404,7 +400,7 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         if (!isUIElementSelection(sel)) {
             return;
         }
-        const data = sel.data as UIElementSelection;
+        const data = sel.data;
         if (data.surfaceId !== surface.id || data.elementIds.length !== 1) {
             return;
         }
@@ -435,6 +431,9 @@ export function UISurfaceEditorTab({ tabId, payload, active }: EditorComponentPr
         uiService,
         requestRenamePrimary,
         readOnly,
+        // Inside a live session Ctrl+Z sends the inverse of this window's own last operation rather
+        // than restoring a Surface snapshot nobody else has agreed to. See `useLiveUndoOverride`.
+        undoOverride,
     });
 
     const hostAdapter = useMemo<UIHostAdapter>(() => {

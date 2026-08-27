@@ -59,7 +59,7 @@ export const documentDiff = {
         title: "Name",
         /** `{name}` is itself a key - see `count` below - resolved before it reaches this template. */
         count: "{name}",
-        other: "Changed, in a way the summary does not show",
+        other: "Changed outside the totals",
     },
     /** Tier 3: JSON paths. Generic by construction; the caption above the list says so. */
     structural: {
@@ -77,8 +77,10 @@ export const documentDiff = {
     count: {
         /** The author's own variants. The release tag is always there and is not counted. */
         appTags: "Build variants",
+        dlc: "DLC",
         assetSets: "Asset sets",
         assets: "Assets",
+        folders: "Asset folders",
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */
         brandColors: "Brand colors",
@@ -88,6 +90,8 @@ export const documentDiff = {
         characters: "Characters",
         dictionaryTerms: "Dictionary terms",
         localizationKeys: "Localization keys",
+        projectLanguages: "Languages",
+        projectPlugins: "Plugins",
         saveFields: "Save fields",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",
@@ -176,19 +180,59 @@ export const documentDiff = {
         avatarChanged: "Dialog avatar {key}",
         groupAdded: "Group added",
         groupRemoved: "Group removed",
+        /**
+         * Words for the fields the character editor shows but never labels.
+         *
+         * Every other field the comparison reports is answered with the key the panel the author
+         * edits it in already uses - see `CHARACTER_FIELD_NAME_KEY`. These six have no such key to
+         * borrow: the cast list prints a character's nicknames under their name with no caption,
+         * group membership is set by moving a row rather than by filling a field, and the canvas,
+         * the avatar axes, the PSD a stack was imported from and the state a puppet rests in are
+         * each reached through a button or a bare control. So each is named from the vocabulary
+         * those controls already use ("Set canvas", "Avatar varies with this axis", "Import PSD")
+         * rather than coined here.
+         *
+         * They sit here rather than in `characters.*` because this is the surface that draws them:
+         * a label under the panel's own namespace that no panel renders would be taken for the
+         * panel's word the next time someone looks for one, and there would then be two of them.
+         *
+         * `attributes` and `options` are deliberately absent. Studio has no surface for either -
+         * both are bags a plugin or an import writes through - so their rows keep the stored name,
+         * which is the only name anyone able to reach them has.
+         */
+        fields: {
+            nicknames: "Nicknames",
+            group: "Group",
+            canvas: "Canvas",
+            avatarAxes: "Avatar axes",
+            psd: "PSD",
+            puppetDefaultState: "Default state",
+        },
         groupRenamed: "Group renamed",
     },
     /**
-     * One translation unit, as a three-way merge reads it.
+     * Tier 1, one language's translation library - the document whose whole content is text.
      *
-     * Emitted only by `merge3` - this format has no semantic diff yet - and there is no `subject`
-     * beside them: a unit id is a story text id or a `key:`/`char:` handle, never a word the author
-     * typed. What identifies the row for them is the two translations drawn underneath it.
+     * The comparison and the three-way merge share the first three. Nothing here names the unit and
+     * nothing can: a unit id is a story text id or a `key:`/`char:`/`scene:` handle, never a word
+     * the author typed. What identifies a row is the translation itself, drawn beside the label as
+     * the value pair - which is why `changed` says only that a line was translated again and leaves
+     * the two texts to the pair.
+     *
+     * The four status lines state what the unit now is, in the translation table's own four words,
+     * rather than pairing the two identifiers the file keeps them under.
      */
     localization: {
         added: "Translation added",
         removed: "Translation removed",
         changed: "Translation changed",
+        note: "Note changed",
+        /** The translation did not change; the line it was written from is a different line now. */
+        source: "Written against a different source line",
+        statusUntranslated: "Now untranslated",
+        statusMachine: "Now a machine translation",
+        statusTranslated: "Now translated",
+        statusReviewed: "Now reviewed",
     },
     /**
      * Tier 1, the interface document: Surfaces and the elements on them.
@@ -279,6 +323,236 @@ export const documentDiff = {
         /** The content hash moved: the file behind the record is different bytes now. */
         content: "File contents replaced",
         field: "{field} changed",
+        /**
+         * A file of asset contents that no record in the comparison names.
+         *
+         * Its own name is a shard of an id, so there is nothing in the path to call it. It is left
+         * on the list rather than folded away, because a merge that dropped a metadata record while
+         * keeping the bytes is exactly the state this row is the only evidence of.
+         */
+        orphanContent: "File with no asset record",
+    },
+    /**
+     * Tier 1, the project's palette.
+     *
+     * `subject` is the author's own name for a colour, which the seeded entries do not have - their
+     * names are translated strings the panel supplies, so a row for one carries the two colours and
+     * no name, and `BrandChangeDetail` draws the whole palette underneath.
+     */
+    brand: {
+        added: "Color added",
+        removed: "Color removed",
+        renamed: "Renamed",
+        /** The value pair is the two colours, drawn as swatches rather than read as text. */
+        value: "Color changed",
+        /** The default font stack. One row for the whole list: a rung is stored as an asset id. */
+        fonts: "Default fonts changed",
+    },
+    /**
+     * Tier 1, the build variants - the editions one project ships as.
+     *
+     * Every line below the first three names its field rather than saying "changed", which is the
+     * one shape all eight can take. Four of them are long names the variant panel already uses
+     * ("Page shown when the story ends"), and four of them are used TWICE: once under a variant,
+     * where `subject` names it, and once alone for the value every variant inherits from the
+     * project. A verb would have to be dropped from the first four and reworded for the second.
+     * What happened is on the row already - the marker, and the two values beside it.
+     *
+     * `version` says whose version it is. This surface is full of version numbers of its own
+     * (`#3`, `#7`), and an unqualified "Version" reads as one of those.
+     */
+    appTags: {
+        added: "Variant added",
+        removed: "Variant removed",
+        renamed: "Renamed",
+        /** The three identity fields. An absent value on one side is the variant inheriting it. */
+        displayName: "Application name",
+        identifier: "Identifier",
+        version: "Project version",
+        plugins: "Plugin settings",
+        assetAxes: "Assets the build uses",
+        scenes: "Scenes that can be started",
+        ending: "Page shown when the story ends",
+        order: "Variant order",
+    },
+    /**
+     * Tier 1, the project's mixer.
+     *
+     * `rerouted` is the row this tier exists for. Where a bus feeds decides what its gain is
+     * multiplied by and which fader reaches it, and it moves no count - so under the summary tier a
+     * re-routed track was a file that changed in a way nothing could name. The two bus names are
+     * the value pair; a track that now hangs off the master has no parent to name, which is why
+     * that case has a line of its own instead of half a pair.
+     */
+    audioTracks: {
+        added: "Track added",
+        removed: "Track removed",
+        renamed: "Renamed",
+        rerouted: "Routes into a different bus",
+        reroutedToMaster: "Routes into the master output",
+        /** The value pair is the fader's own number, out of 100, not the stored 0 to 1. */
+        volume: "Volume changed",
+        /** The policy that holds now, because `true` and `false` are the file's words for it. */
+        loopOn: "Loops by default",
+        loopOff: "Plays once by default",
+        order: "Tracks reordered",
+    },
+    /**
+     * Tier 1, the project's saved and global variables.
+     *
+     * `defaultValue` is the row this tier exists for: it is what every playthrough starts from and
+     * what a save written before the variable existed reads as, so it changes the shipped game
+     * while moving no count at all. The scope lines state what the variable now is rather than
+     * pairing two stored words, one of which ("persistent") is not what the panel calls that scope.
+     */
+    variables: {
+        added: "Variable added",
+        removed: "Variable removed",
+        renamed: "Renamed",
+        defaultValue: "Default value changed",
+        valueType: "Type changed",
+        scopeSaved: "Now a saved variable",
+        scopeGlobal: "Now a global variable",
+        /** The key the value is kept under, which a rename is designed never to touch. */
+        storageKey: "Values already saved are no longer found",
+        description: "Note changed",
+    },
+    /**
+     * Tier 1, the fields one save slot carries.
+     *
+     * `removed` is the only line here that says what a change costs, and the only one that needs
+     * to. Adding a field is safe by construction - a slot with no value for it reads the default -
+     * while removing one takes away the pins that read it, and every save already on a player's
+     * disk is left holding a value nothing in the project can ask for again.
+     */
+    saveSchema: {
+        added: "Save field added",
+        removed: "Save field removed. Existing saves keep the value, nothing reads it.",
+        renamed: "Renamed",
+        valueType: "Type changed",
+        defaultValue: "Default changed",
+        /** The key inside the save, fixed at creation so that a rename cannot orphan what is written. */
+        storageKey: "Values already saved are no longer found",
+        description: "Note changed",
+        /** Where it sits among the pins on the save nodes. Nothing about the game changes. */
+        reordered: "Moved among the fields",
+    },
+    /**
+     * Tier 1, the project's own vocabulary.
+     *
+     * There is no `renamed` here and there cannot be one: a dictionary entry has no id, the
+     * spelling is the identity, so a respelt term is one term gone and another arrived. The two
+     * option lines say what the dictionary does now, because they change what the story editor
+     * marks in every script in the project.
+     */
+    dictionary: {
+        added: "Term added",
+        removed: "Term removed",
+        reading: "Reading changed",
+        /** A list, so no value pair: two lists of spellings on one line cannot be read at any width. */
+        variants: "Variant spellings changed",
+        note: "Note changed",
+        readingsOn: "Readings are suggested",
+        readingsOff: "Readings are not suggested",
+        variantsOn: "Variant spellings are checked",
+        variantsOff: "Variant spellings are not checked",
+    },
+    /**
+     * Tier 1, the project's own settings - what the game is called, and everything a build, a save
+     * and a player's first launch reads out of it.
+     *
+     * One row per area of the project and one child per setting inside it, because that is how the
+     * author reaches them: these values are spread over fourteen panels and are known by the words
+     * those panels use, not by the names the file keeps them under. The value pair rides beside the
+     * row, so a policy or a mode is quoted in the file's own word rather than reworded here.
+     *
+     * `field` is the last resort, and five areas rest on it entirely - the signing credentials, the
+     * distribution key, and the remembered state of the build, patch and check dialogs. Four of
+     * those are a dialog's memory and one is a key nobody types; author copy for their fields would
+     * claim a panel that does not exist.
+     */
+    project: {
+        name: "Application name",
+        identifier: "Identifier",
+        /** A setting this build has no word for, named as the file keeps it. */
+        field: "{field} changed",
+        metadata: "Details",
+        metaVersion: "Project version",
+        metaDescription: "Description",
+        metaAuthor: "Author",
+        metaEmail: "Contact email",
+        metaWebsite: "Website",
+        /** One line, in the packaged binaries' file properties. */
+        metaCopyright: "Copyright",
+        /** The full notice, shipped beside the game. */
+        metaCopyrightText: "Copyright notice",
+        metaResolution: "Window size",
+        metaIcons: "Icons",
+        network: "Network access",
+        networkPolicy: "Network policy",
+        networkAllowlist: "Network request allowlist",
+        networkHttp: "Plain HTTP requests",
+        networkRemoteResource: "Remote resources",
+        networkRemoteScript: "Remote scripts",
+        localization: "Languages",
+        sourceLocale: "Source language",
+        locales: "Language list",
+        voice: "Voice-over",
+        voicedLocales: "Voiced languages",
+        voiceNaming: "Voice file naming",
+        voiceCast: "Voice cast",
+        voiceChoices: "Voiced choices",
+        dialogue: "Dialogue",
+        dialogueAutoForwardPause: "Pause length under auto forward",
+        preferences: "Player defaults",
+        prefTextSpeed: "Text speed",
+        prefGameSpeed: "Game speed",
+        prefAutoForward: "Auto forward",
+        prefAutoForwardDelay: "Auto forward wait",
+        prefShowDialog: "Show the dialogue box",
+        prefSkip: "Allow skipping",
+        prefSkipReadText: "Skip read text only",
+        prefSkipDelay: "Skip delay",
+        prefSkipInterval: "Skip interval",
+        prefGlobalVolume: "Master volume",
+        prefBgmVolume: "Music volume",
+        prefSoundVolume: "SFX volume",
+        prefVoiceVolume: "Voice volume",
+        prefVoiceEndMode: "When a voiced line ends",
+        prefVoiceFadeDuration: "Voice fade",
+        autoSave: "Saving",
+        autoSaveEnabled: "Automatic saving",
+        autoSaveInterval: "Save every",
+        autoSaveSlots: "Autosaves kept",
+        saveCompatibility: "Older saves",
+        saveCompatible: "Saves from another project version",
+        saveIncompatible: "Saves from before a story change",
+        saveLocation: "Player files",
+        saveLocationWindowsLinux: "Windows and Linux",
+        saveLocationMacos: "macOS",
+        languageChange: "Language switching",
+        languageChangeInGame: "Changing language during a game",
+        security: "Security",
+        encryptAssets: "Encrypt assets",
+        crash: "Crashes",
+        crashPolicy: "When the game stops working",
+        assetOptimization: "Optimization",
+        lossyImages: "Recompress images",
+        lossyQuality: "Image quality",
+        vfx: "Screen effects",
+        vfxFrameRate: "Weather frame rate",
+        mobile: "Mobile",
+        mobileOrientation: "Orientation",
+        mobileFit: "Screen fit",
+        mobileCropX: "Keep horizontally",
+        mobileCropY: "Keep vertically",
+        distribution: "Distribution key",
+        signing: "Signing",
+        build: "Build settings",
+        patch: "Patch export settings",
+        linting: "Project check",
+        dependencies: "Dependencies",
+        dependencyPlugins: "Plugin list",
     },
     /**
      * Which of the four tiers answered - the caption that stops a structural list from reading as a
@@ -286,13 +560,13 @@ export const documentDiff = {
      */
     tier: {
         summary: "Summary only",
-        summaryHint: "The contents were not compared. These are the numbers each version reports about itself.",
+        summaryHint: "Only the totals were compared, not the contents.",
         structural: "Structural",
-        structuralHint: "Compared by JSON structure alone, so generated ids and reordered lists read as changes.",
+        structuralHint: "This list may include differences that are not edits.",
         content: "Format only",
         contentHint: "What the file reports about itself was compared. Its contents were not.",
         opaque: "Not read",
-        opaqueHint: "Too large, not text, or unreadable. Only its size is reported.",
+        opaqueHint: "Only the size of this file was compared.",
     },
     rows: {
         loading: "Reading the comparison…",
@@ -300,7 +574,7 @@ export const documentDiff = {
         // Three ways of being empty, because "modified" plus "nothing differs" reads as a
         // contradiction and each tier can support a different claim. See documentDiffEmptyKey.
         emptyFormatting: "Only formatting changed",
-        emptyUntracked: "Nothing the editor tracks changed",
+        emptyUntracked: "No change visible in the editor",
         emptyCounts: "The totals are unchanged",
         moreInGroup: "{count} more inside",
         showing: "Showing {shown} of {total}",
@@ -401,6 +675,39 @@ export const documentDiff = {
      * the grouping exists so a comparison reads as "the story changed" rather than as a path list.
      * The classification is in `renderer/lib/vcs/changeCategory.ts`.
      */
+    /**
+     * What the author calls each kind of document.
+     *
+     * The fallback for a thing with no name of its own. Never a file name: the author did not
+     * make a file, they made a project, a story, a set of pages.
+     */
+    name: {
+        project: "Project settings",
+        storyIndex: "Story list",
+        story: "Story",
+        animationIndex: "Motion list",
+        animation: "Motion",
+        uiDocument: "Interface pages",
+        uiGraphs: "Interface blueprints",
+        blueprint: "Blueprint",
+        variables: "Variables",
+        audioTracks: "Audio tracks",
+        brand: "Brand palette",
+        appTags: "Build variants",
+        dlc: "Additional content",
+        dictionary: "Dictionary",
+        saveSchema: "Save fields",
+        assetSets: "Asset sets",
+        localization: "Translations",
+        localizationKeys: "Translation keys",
+        voice: "Voice lines",
+        assetsMetadata: "Asset library",
+        assetsGroups: "Asset folders",
+        assetsOrder: "Asset order",
+        characters: "Cast",
+        assetContent: "Asset file",
+        qualified: "{name} ({qualifier})",
+    },
     category: {
         story: "Story",
         characters: "Characters",
@@ -421,7 +728,7 @@ export const documentDiff = {
         fileList: "Changed files",
         resize: "Resize the file list",
         /** Only reachable by closing every heading, which is a thing an author can do. */
-        selectPrompt: "Open a heading and pick a file to see what changed in it.",
+        selectPrompt: "Open a heading and select a file to see its changes.",
         /** What one file's row says when the file was modified rather than added or removed. */
         changes: {
             one: "{count} change",
@@ -449,8 +756,8 @@ export const documentDiff = {
          * files whose detail has the specific caveat on it.
          */
         partial: {
-            one: "{count} file here was not compared in full",
-            other: "{count} files here were not compared in full",
+            one: "{count} file here may have changes not listed",
+            other: "{count} files here may have changes not listed",
         },
     },
     tab: {
@@ -462,10 +769,57 @@ export const documentDiff = {
         refresh: "Read again",
         empty: "Nothing differs between these two versions",
         emptyWorkingTree: "Nothing has changed since the last version",
-        readFailure: "The bytes for this comparison could not be read: {error}",
-        incomplete: "{shown} of {total} changed documents were compared. The rest were left out.",
+        readFailure: "This comparison could not be read: {error}",
+        incomplete: "{shown} of {total} changed documents were compared.",
         documentsOmitted: "{count} more documents are not listed here.",
         unavailable: "Version control is not available in this project.",
+    },
+    /**
+     * One document at two versions, in a tab of its own.
+     *
+     * The words the split arrangement itself adds, and nothing more: what a change SAYS is under the
+     * tier keys above and is the same wherever the change is drawn. Each half is named for the
+     * version it shows, so nothing here names a version - `revisionLabel` does that, from a number.
+     */
+    split: {
+        open: "Open side by side",
+        /** The newer half of a working-tree comparison: the files as they are now. */
+        thisProject: "This project",
+        /** On a gap one version holds where the other has content. */
+        notInVersion: "Not in this version",
+        resize: "Resize the two halves",
+        previous: "Previous change",
+        next: "Next change",
+        /**
+         * Which change of how many. Drawn rather than worded, for the reason a value pair is: it is
+         * read at a glance beside two buttons, and a sentence there would be read as a sentence.
+         */
+        position: "{index} / {total}",
+        gone: "This file is not in this comparison.",
+        /** A row that selects the element it is about, so the right rail can show its properties. */
+        inspect: "Inspect {name}",
+    },
+    /**
+     * The right rail while an element of one half is selected.
+     *
+     * The rail draws the same inspector the interface editor draws, over the version that half is
+     * showing. So nothing here describes a field - the fields say what they always say - and what
+     * these keys add is the one thing the fields cannot: which version this is, and that it is a
+     * picture of one rather than a canvas.
+     */
+    inspector: {
+        /** Above the fields, so the rail never leaves which version unsaid. */
+        version: "From {version}",
+        /** An element the other half does not hold at all. Stated, rather than left as a blank. */
+        onlyHere: "Not in {version}",
+        readOnly: "A comparison is read-only. Open the interface editor to edit these properties.",
+        /**
+         * What the other half holds for one field, on the hover of the dot beside its name. Drawn as
+         * a pair rather than worded, for the reason a change's own two values are.
+         */
+        differs: "{version}: {value}",
+        /** The counterpart where there is no value at all - an empty text, a cleared colour. */
+        noValue: "Empty",
     },
     /**
      * Finishing a merge by taking one side of each file.
@@ -600,7 +954,7 @@ export const documentDiff = {
          * the same result; a second phrase for it would read as a second behaviour.
          */
         fitView: "Fit view",
-        oneChange: "Showing one change.",
+        oneChange: "Showing one change",
         showAll: "Show every change",
         /**
          * The changes this canvas is not marking, said in one line and never in silence.
@@ -616,7 +970,7 @@ export const documentDiff = {
         onOtherPages: "{count} on other pages",
         onOtherGraphs: "{count} in other graphs",
         /** Inside a component definition, outside every page, or about the file itself. */
-        offCanvas: "{count} cannot be drawn on a page",
+        offCanvas: "{count} outside every page",
         /**
          * Marked nowhere because the drawn page has no handle on the element.
          *
@@ -624,7 +978,21 @@ export const documentDiff = {
          * definition shares the element ids inside it, so that content carries no id at all and six
          * placements would otherwise be indistinguishable.
          */
-        unplaced: "{count} could not be located",
+        unplaced: "{count} with no place on a page",
+        /**
+         * The pictures on screen that are not this version's, in the same line as the marks.
+         *
+         * A mark drawn in a widget's place has no room for words at the size a page is drawn
+         * here, so this is where the reason is. The two reasons stay apart because the author's
+         * next move differs: an asset imported after this version is nothing to look into, and a
+         * file that would not read is.
+         */
+        assetsNotShown: {
+            one: "{count} asset is not shown here:",
+            other: "{count} assets are not shown here:",
+        },
+        assetsAbsent: "{count} not in this version",
+        assetsFailed: "{count} could not be read",
         /** Four reasons a column has no picture in it, and they stay four. */
         notDrawn: "This version of the page could not be drawn.",
         emptyGraph: "This graph has no nodes.",

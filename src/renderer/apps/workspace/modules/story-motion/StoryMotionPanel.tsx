@@ -36,7 +36,6 @@ import { createStoryMotionEditorTab, resolveStoryMotionStageSize } from "./Story
 import { getStoryMotionDescriptor } from "./storyMotionAction";
 import {
     STORY_MOTION_KEYFRAME_SELECTION_TYPE,
-    isStoryMotionKeyframeSelectionData,
     type StoryMotionActionContext,
     type StoryMotionPanelPayload,
 } from "./storyMotionTypes";
@@ -636,7 +635,6 @@ function clearStoryMotionSelectionForAnimation(uiService: UIService, animationId
     const selection = uiService.getStore().getSelection();
     if (
         selection.type === STORY_MOTION_KEYFRAME_SELECTION_TYPE
-        && isStoryMotionKeyframeSelectionData(selection.data)
         && selection.data.animationId === animationId
     ) {
         uiService.getStore().setSelection({ type: null, data: null });

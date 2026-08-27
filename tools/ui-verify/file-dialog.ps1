@@ -4,6 +4,11 @@
 # reach them: a feature that opens one is otherwise unverifiable end to end. This is the recipe that
 # works, and every line of it is a thing that was tried and failed first:
 #
+# Try the shortcut first. A development launch with --experimental --x-scripted-file-dialog opens
+# no native dialog at all: each picker waits in the page on window.__NLS_STUDIO_DIALOG__, where CDP
+# answers it with a path (see tools/ui-verify/README.md). This script is for the runs that have to
+# exercise the real dialog, and for a packaged build, which ignores experimental mode outright.
+#
 #   -List             enumerate the dialog's controls (ids differ per dialog kind: the save box is
 #                     Edit id=1001, the open box Edit id=1148, the folder box Edit id=1152)
 #   -Text <path>      type a path and submit

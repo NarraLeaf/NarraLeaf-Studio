@@ -14,7 +14,11 @@
 import fs from "fs/promises";
 import path from "path";
 import { openSealedBundle, RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption/runtime";
-import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleAssetEntry } from "@shared/utils/gameRuntimeBundle";
+import {
+    GAME_RUNTIME_BUNDLE_PACK_ENTRY,
+    gameRuntimeBundleAssetEntry,
+    gameRuntimeBundleModelEntry,
+} from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { auditShippedContent, type ShippedArtifactReader, type ShippedContentAuditResult } from "./shippedContentAudit";
 import { collectSaveAnchors, diffSaveAnchors, type SaveAnchorDiff } from "./saveAnchors";
@@ -44,13 +48,21 @@ async function openArtifact(appDir: string): Promise<{
         const pack = JSON.parse(
             Buffer.from(await sealed.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY)).toString("utf-8"),
         ) as GameRuntimePackV1;
+        // A model bundle is not stored under its own id. Its members are keyed `{id}/{path}` and the
+        // one entry addressed by the id alone is the record naming the bundle's entry file, under
+        // the key with the trailing slash - which is exactly how the shipped game resolves a bare
+        // bundle id (see `resolveModelBundleKey`). Asking for `assets/{id}` finds nothing and would
+        // fail the build for every package carrying a puppet character.
+        const modelBundles = new Set(pack.assets.modelBundles ?? []);
         return {
             pack,
             reader: {
                 // A sealed entry has to be read to be proven: the store answers no other question
                 // about it, and "the entry is where the id says" is the claim under test.
                 entryExists: async relativePath => (await sealed.read(relativePath)).byteLength > 0,
-                resolveEntryName: assetId => gameRuntimeBundleAssetEntry(assetId),
+                resolveEntryName: assetId => (modelBundles.has(assetId)
+                    ? gameRuntimeBundleModelEntry(assetId)
+                    : gameRuntimeBundleAssetEntry(assetId)),
             },
             close: () => sealed.close(),
         };

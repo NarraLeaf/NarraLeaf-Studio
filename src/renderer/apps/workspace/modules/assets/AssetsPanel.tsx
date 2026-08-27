@@ -50,6 +50,7 @@ import { assetSetSubtree, type AssetSet } from "@shared/types/assetSet";
 import { freezeContextMenuRows } from "@/apps/workspace/components/ui/freezeGuard";
 import { useWorkspaceAssetDragOptional } from "@/apps/workspace/dnd/WorkspaceAssetDragProvider";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope, assetSetFreezeScope, useAssetClaims, useAssetTransfers } from "./assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import { AssetOverviewView } from "../asset-overview/AssetOverviewView";
 
@@ -157,6 +158,37 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // a keystroke has no control to grey - and a keybinding bypasses the disabled menu row it shares
     // an action with, so Ctrl+V and Delete kept working on a frozen project.
     const freeze = useFreezeGuard();
+    /**
+     * The asset library's own guard.
+     *
+     * Two guards rather than one, and the line between them is not "what a session can carry" any
+     * more - it carries the whole library, files included. It is **which document**: everything that
+     * writes the library reads this one, and the asset SETS beside it are a different document with
+     * no verbs of its own, so their controls keep {@link freeze} and grey under any freeze at all.
+     */
+    const libraryFreeze = useFreezeGuard(assetLibraryFreezeScope());
+    /**
+     * The asset sets' own guard.
+     *
+     * A third guard rather than a widening of {@link libraryFreeze}, because the sets are a third
+     * document: they were frozen under any freeze at all while they had no verbs, and a session
+     * carries them now. See `assetSetFreezeScope` for why it names the library as well.
+     */
+    const setFreeze = useFreezeGuard(assetSetFreezeScope());
+    // One subscription for every row. Empty outside a live session.
+    const assetClaims = useAssetClaims();
+    const assetTransfers = useAssetTransfers();
+
+    /**
+     * Stop a file that is still arriving, and take its record with it.
+     *
+     * Straight to the service and with no confirmation, for the reason `cancelTransfers` gives:
+     * nothing an author made is being thrown away, and the row it acts on is one the menu only
+     * offers this on while its file is in the air.
+     */
+    const handleCancelTransfer = useCallback((assetId: string) => {
+        context?.services.get<AssetsService>(Services.Assets).cancelTransfers([assetId]);
+    }, [context]);
     const searchBoxRef = useRef<HTMLInputElement>(null);
     /**
      * The panel's scroller.
@@ -623,11 +655,10 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
             return;
         }
         const assetsService = context.services.get<AssetsService>(Services.Assets);
-        await assetsService.transaction(async service => {
-            for (const asset of moving) {
-                await service.moveAssetToGroup(asset, groupId);
-            }
-        });
+        // One call rather than a loop: filing a selection is one gesture, and inside a live session
+        // the service turns it into one operation per shard - which is what makes it one press to
+        // take back rather than one per row.
+        await assetsService.moveAssetsToGroup(moving, groupId);
         void loadAssets();
     }, [context, loadAssets]);
 
@@ -767,7 +798,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                         handleCreateSubAssetSet({ set: entry.set, value });
                     },
                 },
-            ], freeze.frozen, new Set<string>(), freeze.reason);
+            ], setFreeze.frozen, new Set<string>(), setFreeze.reason);
         }
         return freezeContextMenuRows([
             {
@@ -799,7 +830,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     void handleDeleteAssetSet(entry);
                 },
             },
-        ], freeze.frozen, new Set<string>(), freeze.reason);
+        ], setFreeze.frozen, new Set<string>(), setFreeze.reason);
     }, [
         setMenuTarget,
         canCreateAssetSet,
@@ -807,7 +838,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         t,
         inputDialog,
         closeAssetSetContextMenu,
-        freeze,
+        setFreeze,
         handleCreateSubAssetSet,
         handleDeleteAssetSet,
         handleDissolveAssetSet,
@@ -908,7 +939,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
     // F2 opens the rename dialog, which writes the new name straight to the asset record. Nothing
     // renders for the key, so the refusal goes on the handler; memoised so the binding is not
     // re-registered on every render.
-    const renameShortcut = useMemo(() => freeze.run(handleRename), [freeze, handleRename]);
+    const renameShortcut = useMemo(() => libraryFreeze.run(handleRename), [libraryFreeze, handleRename]);
 
     useKeyboardShortcuts({
         isInitialized,
@@ -956,6 +987,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         handleCreateGroup, handleCreateTextFile, handleImportToGroup, handleCreateMagicTags: handleMagicTagsClick,
         handleCreateAssetSet, canCreateAssetSet, handleCreateAssetSetIn, handleCreateAssetSetAt,
         notify: notifyFromMenu,
+        assetTransfers,
+        handleCancelTransfer,
     });
 
     const handleRootDrop = useCallback(
@@ -1029,7 +1062,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     // by the freeze policy already, but `mod+v` runs the action straight from the
                     // keybinding, and on a frozen project it created assets that never landed.
                     // Copy and cut above only fill the clipboard, so they are left alone.
-                    onClick: freeze.run((_workspace) => handlePasteRef.current()),
+                    onClick: libraryFreeze.run((_workspace) => handlePasteRef.current()),
                     disabled: !hasClipboardContent || actionLoading,
                     when,
                     order: 2,
@@ -1043,7 +1076,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
                     menuRole: "delete",
                     // Same for Delete, which reaches the files themselves: the key runs the action
                     // without ever consulting the greyed row.
-                    onClick: freeze.run((_workspace) => handleDeleteRef.current()),
+                    onClick: libraryFreeze.run((_workspace) => handleDeleteRef.current()),
                     disabled: !hasSelection || actionLoading,
                     when,
                     order: 3,
@@ -1054,7 +1087,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         return () => {
             unregisterActionGroup(groupId);
         };
-    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze]);
+    }, [context, panelId, selectedItems.size, clipboard?.assets.length, clipboard?.groups.length, actionLoading, focusArea, t, freeze, libraryFreeze]);
 
     useEffect(() => {
         if (showHeader) {
@@ -1091,6 +1124,8 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         setAssetsIconToolbarCenter,
         mediaSupport,
         handleConvertMedia,
+        assetClaims,
+        assetTransfers,
     };
 
     return (

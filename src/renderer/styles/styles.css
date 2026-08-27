@@ -441,6 +441,36 @@ html.nl-studio {
     display: none;
 }
 
+/*
+ * The two halves of a split comparison, and the gaps one of them holds.
+ *
+ * `scrollbar-gutter` is reserved on both halves whether or not either one is
+ * long enough to need it: the halves are kept level line for line, and a
+ * scrollbar appearing in one of them would take eight pixels of text width from
+ * that half alone, re-wrap its rows and put the two out of step.
+ */
+.nl-split-half {
+    scrollbar-gutter: stable;
+}
+
+/*
+ * A region one version does not have, where the other one has content.
+ *
+ * Hatched rather than blank, because a blank region of the same height reads as
+ * content that has not arrived yet. The stripes are the edge token at its
+ * faintest, so the gap stays the quietest thing on a surface whose whole job is
+ * to make the changes the loudest.
+ */
+.nl-diff-spacer {
+    background-image: repeating-linear-gradient(
+        135deg,
+        var(--nl-edge-strong) 0,
+        var(--nl-edge-strong) 1px,
+        transparent 1px,
+        transparent 6px
+    );
+}
+
 /* Global focus styles - remove default browser focus outlines */
 *:focus,
 *:focus-visible {
@@ -846,10 +876,13 @@ input[type="radio"]:focus {
 /*
  * Scene flow: the selected line.
  *
- * `!important` because the line paints its stroke inline — the colour carries the conditional dash
- * pattern and the dim state, both of which are per-edge facts a stylesheet cannot know. Selection is
- * the one thing that has to override them, since it is what the Delete key is aimed at: a line the
- * author cannot see they have selected is a line they delete by surprise.
+ * `!important` because the line paints its stroke inline — it carries the conditional dash pattern,
+ * the dim state, and the colour that says the run comes back along this line rather than leaving by
+ * it (`sceneFlowLinePaint`). All three are per-edge facts a stylesheet cannot know. Selection is the
+ * one thing that has to override them, since it is what the Delete key is aimed at: a line the
+ * author cannot see they have selected is a line they delete by surprise. A selected call therefore
+ * goes accent for as long as it is selected, keeping its two arrowheads — which are markers, not the
+ * path — to say what kind of line it is.
  */
 .narraleaf-scene-flow .react-flow__edge.selected .react-flow__edge-path {
     stroke: var(--narraleaf-accent-strong) !important;
@@ -1108,6 +1141,74 @@ input[type="radio"]:focus {
     line-height: 1;
     white-space: nowrap;
     /* The reading is a label, not a target: a click there belongs to the word underneath. */
+    pointer-events: none;
+}
+
+/*
+ * Emphasis marks in the story editor: the dot or circle set beside every character of a stressed
+ * phrase (傍点 / 圏点, 着重号).
+ *
+ * Drawn by `text-emphasis` rather than by the pseudo-element the ruby reading above uses. There is
+ * one mark per character and they have to follow the characters through a line break, which is
+ * exactly what a single `::before` cannot do — and unlike a reading, a mark carries no text of its
+ * own, so nothing here can add units the runs never had.
+ *
+ * `text-emphasis-position` names both axes at once: the first keyword is read in horizontal writing
+ * and the second in vertical, where both Japanese and Chinese set the marks to the right.
+ *
+ * The marks sit in the leading the row already has, the same space the ruby reading is drawn in, so
+ * a marked row is 36.2px against an unmarked row's 36 - the mark clears the leading by a fifth of a
+ * pixel. Measured, not assumed. A reading had to cost nothing at all because it is written over
+ * whole words at a time and the rows below it visibly moved; a fifth of a pixel is below the device
+ * pixel this is drawn at, and the glyphs inside the row do not move at all.
+ */
+.story-rt-emphasis {
+    text-emphasis-position: over right;
+}
+
+/*
+ * Every mark is named by its value, so the class alone draws nothing. The type panel's "none" sample
+ * wears the class with no value, and a default on the bare class would put a dot on it.
+ */
+.story-rt-emphasis[data-emphasis="dot"] {
+    text-emphasis: filled dot;
+}
+
+.story-rt-emphasis[data-emphasis="circle"] {
+    text-emphasis: open circle;
+}
+
+.story-rt-emphasis[data-emphasis="sesame"] {
+    text-emphasis: filled sesame;
+}
+
+.story-rt-emphasis[data-emphasis="under-dot"] {
+    text-emphasis: filled dot;
+    text-emphasis-position: under right;
+}
+
+/*
+ * The translation field, and the brackets that delimit a style range in it.
+ *
+ * A translator places the line's tags; they never invent one. The bracket is therefore drawn as a
+ * boundary and not as a control: no background, no hit target of its own, just enough weight to be
+ * seen at the edge of the words it holds. The words between a pair keep the styling they will have
+ * in the game, so the field shows the range and the result at once.
+ *
+ * The chip itself is `contenteditable="false"`, which is what makes the caret step over it whole and
+ * Backspace take it away in one press - the whole reason a tag is an element here rather than four
+ * characters the translator has to select by hand.
+ */
+.story-rt-tag {
+    /* Off the baseline by a hair, so a bracket reads as a mark on the text rather than a letter in it. */
+    position: relative;
+    top: -0.05em;
+    opacity: 0.85;
+}
+
+.nl-translation-field:empty::before {
+    content: attr(data-placeholder);
+    color: rgb(var(--nl-fg-subtle));
     pointer-events: none;
 }
 

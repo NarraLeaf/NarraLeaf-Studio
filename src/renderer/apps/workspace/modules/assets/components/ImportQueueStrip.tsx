@@ -1,6 +1,8 @@
 import { RotateCcw, X } from "lucide-react";
 import { basename } from "@shared/utils/path";
 import { Progress } from "@/lib/components/elements/Progress";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../assetLiveSession";
 import { useTranslation } from "@/lib/i18n";
 import type { ImportQueueState } from "../state/useImportQueue";
 
@@ -12,6 +14,12 @@ import type { ImportQueueState } from "../state/useImportQueue";
  * It is a row inside the panel, not a floating layer — a drop of twenty files is part of working in
  * the panel, and an overlay would cover the tree the author is dropping onto. It shows nothing at
  * all when there is nothing to report.
+ *
+ * Retry is the one thing here that writes, and it is also the only import control in the panel that
+ * outlives the gesture that produced it: the failure list stays until the author dismisses it, so on
+ * a workspace frozen after the drop this row was the live way back into a copy the library would
+ * refuse. Dismiss is left alone — clearing a list of file names is not a write, and a strip that
+ * could not be got rid of while frozen would be a worse answer than the leak.
  */
 export function ImportQueueStrip({
     state,
@@ -23,6 +31,7 @@ export function ImportQueueStrip({
     onDismiss: () => void;
 }) {
     const { t, tn } = useTranslation();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
 
     if (!state.running && state.failures.length === 0) {
         return null;
@@ -73,8 +82,8 @@ export function ImportQueueStrip({
                 <button
                     type="button"
                     onClick={onRetry}
-                    data-tip={t("assets.import.retry")}
-                    className="h-7 px-2 flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle text-xs text-fg-muted hover:bg-fill transition-colors"
+                    {...freeze.writes(false, t("assets.import.retry"))}
+                    className="h-7 px-2 flex items-center gap-1 rounded-md border border-edge-strong bg-fill-subtle text-xs text-fg-muted hover:bg-fill transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 >
                     <RotateCcw className="w-3 h-3" />
                     <span>{t("assets.import.retry")}</span>

@@ -48,6 +48,47 @@ export const uiEditor = {
         page: "Page {index}",
         gameUi: "{slot} UI",
         component: "Component {index}",
+        inputAction: "Action {index}",
+    },
+    // The project's input vocabulary. An author names a gesture once - "Advance", "Skip" - and each
+    // interface answers the ones it wants, so the same six words are read in the library panel and
+    // again in the interface's own Input section.
+    inputActions: {
+        title: "Input Actions",
+        create: "Create action",
+        createTitle: "Create Input Action",
+        rename: "Rename…",
+        delete: "Delete action",
+        deleteConfirm: "Delete {name}?",
+        deleteDetail: {
+            one: "{count} interface answers this action and will stop answering it.",
+            other: "{count} interfaces answer this action and will stop answering it.",
+        },
+        actionOptions: "Action options",
+        empty: "Name a gesture here, then let each interface answer it.",
+        noMatches: "No matches.",
+        answered: {
+            one: "{count} interface",
+            other: "{count} interfaces",
+        },
+        noBindings: "No bindings",
+        addBinding: "Add binding",
+        removeBinding: "Remove {binding}",
+        device: {
+            pointer: "Mouse",
+            key: "Keyboard",
+            touch: "Touch",
+        },
+        gesture: {
+            click: "Click",
+            doubleClick: "Double click",
+            rightClick: "Right click",
+            wheelUp: "Scroll up",
+            wheelDown: "Scroll down",
+            wheelLeft: "Scroll left",
+            wheelRight: "Scroll right",
+            longPress: "Long press",
+        },
     },
     createDialog: {
         slotIntro: "Choose where this Game UI belongs during gameplay.",
@@ -240,5 +281,12 @@ export const uiEditor = {
             offline: "Template store unavailable",
             apply: "Could not apply the template.",
         },
+    },
+    // A live session leaves both interface documents writable, so the editor is not switched
+    // off. What it gains is a mark saying who else is inside an element.
+    live: {
+        // On the mark an element wears while somebody else has it selected. A person is named:
+        // there is no width for a name beside the monogram, and a truncated one names nobody.
+        elementClaimed: "{name} is editing this element",
     },
 } as const;

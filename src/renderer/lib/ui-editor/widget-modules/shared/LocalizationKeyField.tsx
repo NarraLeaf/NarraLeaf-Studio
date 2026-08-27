@@ -19,6 +19,7 @@ import { isValidLocalizationKeyName } from "@shared/types/localization";
 import { useTranslation } from "@/lib/i18n";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { listLocalizationKeyOptions } from "./localizationKeyOptions";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** Sentinel option value that opens the create dialog instead of selecting a key. */
 const CREATE_KEY_SENTINEL = "\0nl.localization.create-key";
@@ -211,6 +212,9 @@ export function createLocalizationKeyField(config: LocalizationKeyFieldConfig) {
                                     }
                                 }}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         event.preventDefault();
                                         void handleCreate();

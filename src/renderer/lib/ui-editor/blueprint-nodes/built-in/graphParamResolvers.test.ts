@@ -22,6 +22,8 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
+import { defineBlueprintNode } from "../defineBlueprintNode";
+import { BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET } from "@shared/types/blueprint/graph";
 import { resolveEffectiveBlueprintNodePins } from "../effectivePins";
 import { writeBlueprintNodeOutputValues } from "../nodeOutputValues";
 import type { BlueprintNodeDef } from "../types";
@@ -359,5 +361,65 @@ describe("asset set pins", () => {
         };
 
         expect(resolveDataPinValue(graph, "n1", "asset", graph.nodes!.n1!.params!, undefined)).toBe(SET);
+    });
+});
+
+describe("data outputs of nodes the host did not define", () => {
+    const PLUGIN_TYPE = "acme.demo.publishesRows";
+
+    function pluginGraph(): DataPinGraph {
+        return {
+            id: "plugin",
+            nodes: { node: { type: PLUGIN_TYPE, params: {} } },
+            edges: [],
+        } as unknown as DataPinGraph;
+    }
+
+    it("resolves an output pin from what the node published", () => {
+        registerCoreBlueprintNodes();
+        defineBlueprintNode({
+            type: PLUGIN_TYPE,
+            displayName: "Publishes Rows",
+            category: "Acme",
+            graphKinds: ["event", "function", "macro"],
+            isPure: false,
+            pins: [
+                { id: "in", kind: "input", semantic: "exec", label: "In" },
+                { id: "next", kind: "output", semantic: "exec", label: "Next" },
+                { id: "rows", kind: "output", semantic: "data", valueType: "array", label: "Rows" },
+            ],
+            execute: () => ({ nextPort: "next", outputValues: { rows: [SENTINEL] } }),
+        });
+
+        const blueprintLocals: Record<string, unknown> = {};
+        writeBlueprintNodeOutputValues(blueprintLocals, "node", { rows: [SENTINEL] });
+
+        expect(resolveDataPinValue(pluginGraph(), "node", "rows", {}, blueprintLocals)).toEqual([SENTINEL]);
+    });
+
+    it("answers undefined for a port the node did not publish", () => {
+        registerCoreBlueprintNodes();
+        const blueprintLocals: Record<string, unknown> = {};
+        writeBlueprintNodeOutputValues(blueprintLocals, "node", { rows: [SENTINEL] });
+
+        expect(resolveDataPinValue(pluginGraph(), "node", "somethingElse", {}, blueprintLocals)).toBeUndefined();
+    });
+
+    /**
+     * The gate that keeps the sweeps above meaningful. Built-in nodes must register their output
+     * ports in `resolveSelfOutput`; if reading the output store worked for them too, an unregistered
+     * built-in would resolve anyway and the sweeps would pass whether or not anyone registered it.
+     */
+    it("does not extend the same path to built-in node types", () => {
+        registerCoreBlueprintNodes();
+        const graph: DataPinGraph = {
+            id: "builtin",
+            nodes: { node: { type: BLUEPRINT_NODE_TYPE_GAME_HISTORY_GET, params: {} } },
+            edges: [],
+        } as unknown as DataPinGraph;
+        const blueprintLocals: Record<string, unknown> = {};
+        writeBlueprintNodeOutputValues(blueprintLocals, "node", { unregisteredPort: SENTINEL });
+
+        expect(resolveDataPinValue(graph, "node", "unregisteredPort", {}, blueprintLocals)).toBeUndefined();
     });
 });

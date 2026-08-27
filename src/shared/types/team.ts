@@ -37,10 +37,16 @@
 export const TEAM_SOCKET_PATH = "/api/team/v1/socket";
 
 /** What the shapes in this file are, as a whole. Compared with the server's opening frame. */
-export const TEAM_PROTOCOL_VERSION = 1;
+export const TEAM_PROTOCOL_VERSION = 2;
 
 /**
  * The names a server announces, and Studio matches literally.
+ *
+ * **One vocabulary, said in two places.** A server advertises these same names in its
+ * discovery document and again in the session's opening frame, so this is also the set the
+ * version-control side gates on - {@link VcsServerCapability} is this type. There is not a
+ * second list for the REST surface: a deployment offers a thing or it does not, and it says
+ * so once.
  *
  * **Two different things are called a session in this file and it is worth being clear
  * once.** A *link session* is the socket: one per server, opened by Studio on its own the
@@ -58,7 +64,11 @@ export type TeamCapability =
     /** Live sessions: rooms on a project, for finding installations and broadcasting to them. */
     | "live"
     /** Data attached to a project at a revision, which never enters the repository. */
-    | "overlay";
+    | "overlay"
+    /** Mints a token from a username and password, rather than only accepting a pasted one. */
+    | "password-sign-in"
+    /** Answers a project's recent revisions. */
+    | "project-history";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -118,7 +128,6 @@ export type TeamErrorCode =
 /* ------------------------------------------------------------------ topics */
 
 export const TEAM_TOPIC_PROJECTS = "projects";
-export const TEAM_TOPIC_MEMBERS = "members";
 
 /** One project's row, or what the server has read out of its repository. */
 export function teamProjectTopic(projectId: string): string {
@@ -317,6 +326,18 @@ export interface TeamLiveSession {
     project: string;
     /** What the project stood at when it was opened, as the opener reported it. */
     revision?: string;
+    /**
+     * Which story document the room is about, as the opener named it.
+     *
+     * **This is what a joiner follows instead of guessing.** The server requires it of every
+     * room opened, so a current one always has it; it is optional here for the reason `revision`
+     * is - what arrives is read defensively, and a room opened against an older deployment has
+     * none. Joining such a room is refused by name rather than by falling back to a guess: the
+     * only thing this window could guess is a document it already holds, which is both the wrong
+     * answer for somebody whose copy differs and no answer at all for somebody who has just
+     * arrived.
+     */
+    story?: string;
     title?: string;
     /** Who opened it, by username. */
     openedBy: string;
@@ -403,6 +424,9 @@ export type TeamOverlayEvent =
 export const TeamMethod = {
     projectsList: "projects.list",
     projectsGet: "projects.get",
+    projectsHistory: "projects.history",
+    projectsCreate: "projects.create",
+    projectsForget: "projects.forget",
     membersList: "members.list",
     threadsList: "threads.list",
     threadsGet: "threads.get",

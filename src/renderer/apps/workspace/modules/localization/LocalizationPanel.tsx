@@ -13,12 +13,17 @@ import type { PanelComponentProps } from "../types";
 import { ContextMenu, Progress, type ContextMenuDef } from "@/lib/components/elements";
 import { useWorkspace } from "../../context";
 import { freezeContextMenuRows, useFreezeGuard } from "../../components/ui/freezeGuard";
+import { translationDocumentFreezeScope } from "./localizationLiveSession";
 
 /**
- * The localization locale menu row that keeps working while frozen: the export.
+ * The localization locale menu row that keeps working under ANY freeze: the export.
  *
- * It writes to a path the author picks, outside the project. Language Settings, Set-as-source,
- * Import and Remove Language all write the project and are off.
+ * It writes to a path the author picks, outside the project. Language Settings, Set-as-source and
+ * Remove Language all write `.nlproj`, which no freeze exempts, and are off.
+ *
+ * ⚠ Import is not here and is not always off either: it writes one language's translations, which a
+ * live session leaves writable, so it is added to this set when that document is writable. See where
+ * this is used.
  */
 const FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS: ReadonlySet<string> = new Set(["export-translations"]);
 import { useRegistry } from "../../registry";
@@ -61,6 +66,7 @@ import { appPrivilegedFacade } from "@/lib/app/privilegedFacade";
 import { createLocalizationEditorTab } from "./openLocalizationEditorTab";
 import { TranslationExportForm } from "./TranslationExportForm";
 import { LanguageSettingsForm, type FallbackCandidate } from "./LanguageSettingsForm";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 /** One translatable unit with translator-facing context (for progress and export). */
 type PanelRow = TranslatableUnitContext;
@@ -83,9 +89,21 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { t } = useTranslation();
-    // Adding, removing and re-sourcing a language, and importing a CSV, write the project. Reading the
-    // tables, switching locale and exporting a CSV do not.
+    // Adding, removing and re-sourcing a language write `.nlproj`, which no partial freeze exempts.
+    // Reading the tables, switching locale and exporting a CSV write nothing at all.
     const freeze = useFreezeGuard();
+    const [localeMenu, setLocaleMenu] = useState<LocaleMenuState | null>(null);
+    /**
+     * The import, which writes ONE language's translations rather than the project.
+     *
+     * Its own guard because a live session carries that document: under the panel's unscoped freeze
+     * the row would be greyed out inside a session that was carrying the import perfectly well - a
+     * dead control in a workspace that had just been told it could keep working. The menu is built
+     * for one language at a time, so the row and the handler are always about the same one.
+     */
+    const importFreeze = useFreezeGuard(
+        localeMenu ? translationDocumentFreezeScope(localeMenu.code) : undefined,
+    );
 
     const localizationService = useMemo(
         () => (context && isInitialized ? context.services.get<LocalizationService>(Services.Localization) : null),
@@ -121,9 +139,6 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
     const [rows, setRows] = useState<PanelRow[]>([]);
     const [progressByLocale, setProgressByLocale] = useState<Record<string, LocalizationProgress>>({});
     const [refreshTick, setRefreshTick] = useState(0);
-
-    // Per-row "more" menu (one at a time, anchored under its trigger).
-    const [localeMenu, setLocaleMenu] = useState<LocaleMenuState | null>(null);
 
     // Last format chosen for an export: a team that translates in Poedit does so
     // every time, and re-picking it per language is the kind of friction that
@@ -175,7 +190,12 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         });
                     }
                     for (const row of localizationService.extractRows(document)) {
-                        collected.push({ unitId: row.unitId, sourceText: row.sourceText, context: row.sceneName });
+                        collected.push({
+                            unitId: row.unitId,
+                            sourceText: row.sourceText,
+                            ...(row.sourceMarkup ? { sourceMarkup: row.sourceMarkup } : {}),
+                            context: row.sceneName,
+                        });
                     }
                 } catch {
                     // A broken story must not take the panel down.
@@ -265,8 +285,16 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         setNameDraftTouched(false);
     }, []);
 
+    /**
+     * Declare a language. Writes the localization configuration, so a frozen project refuses it.
+     *
+     * Checked here and not only on the ghost row that opens this form: the draft row stays open
+     * across a freeze, and both of its fields submit on Enter. Guarding the opener alone meant a form
+     * that was already on screen kept taking a code, a name and a keystroke, and answered with
+     * nothing.
+     */
     const handleAddLocale = useCallback(async () => {
-        if (!localizationService) {
+        if (!localizationService || freeze.frozen) {
             return;
         }
         const code = codeDraft.trim();
@@ -280,7 +308,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService?.showError(error instanceof Error ? error : String(error));
         }
-    }, [localizationService, uiService, codeDraft, nameDraft, cancelAddLocale, t]);
+    }, [localizationService, freeze.frozen, uiService, codeDraft, nameDraft, cancelAddLocale, t]);
 
     const handleRemoveLocale = useCallback(async (code: string, displayName: string) => {
         if (!localizationService || !uiService) {
@@ -466,8 +494,17 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         });
     }, [localizationService, uiService, rows, exportFormat, writeExport, t]);
 
+    /**
+     * Fold a translator's exchange file back into the language's document.
+     *
+     * Refused before the picker opens rather than at the save. The menu row this hangs off is greyed
+     * by the freeze already, but the row was drawn before the author started reading the file list,
+     * and everything between the picker and the write - the parse, the "this file names a different
+     * language" confirmation - is time in which a session can begin. Asking a translator to confirm
+     * an overwrite that is then discarded is the worst version of this.
+     */
     const handleImport = useCallback(async (code: string, displayName: string) => {
-        if (!localizationService || !context || !uiService) {
+        if (!localizationService || !context || !uiService || importFreeze.frozen) {
             return;
         }
         try {
@@ -524,7 +561,7 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         } catch (error) {
             uiService.showError(error instanceof Error ? error : String(error));
         }
-    }, [localizationService, context, rows, uiService, t]);
+    }, [localizationService, context, importFreeze.frozen, rows, uiService, t]);
 
     const localeMenuItems = useMemo<ContextMenuDef>(() => {
         if (!localeMenu) {
@@ -566,8 +603,20 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
         return items;
     }, [localeMenu, handleSetSource, handleLanguageSettings, handleExport, handleImport, handleRemoveLocale, t]);
     const frozenLocaleMenuItems = useMemo(
-        () => freezeContextMenuRows(localeMenuItems, freeze.frozen, FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, freeze.reason),
-        [freeze, localeMenuItems],
+        () => freezeContextMenuRows(
+            localeMenuItems,
+            freeze.frozen,
+            // The import row keeps working while THIS language's translations are writable, which is
+            // what a live session leaves them. Everything else on this menu writes `.nlproj` - the
+            // source language, the language list, the display name - and a session carries none of
+            // that, so the rest stays greyed. Named the way the helper insists on: what keeps
+            // working, never what is switched off.
+            importFreeze.frozen
+                ? FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS
+                : new Set([...FREEZE_READ_ONLY_LOCALIZATION_MENU_IDS, "import-translations"]),
+            freeze.reason,
+        ),
+        [freeze, importFreeze.frozen, localeMenuItems],
     );
 
     const locales = config?.locales ?? [];
@@ -676,6 +725,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                         <div
                             className="mt-1 flex items-center gap-1.5"
                             onKeyDown={event => {
+                                if (isImeKeyEvent(event)) {
+                                    return;
+                                }
                                 if (event.key === "Escape") {
                                     cancelAddLocale();
                                 }
@@ -693,6 +745,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                 placeholder={t("workspace.localization.panel.codePlaceholder")}
                                 onChange={event => handleCodeDraftChange(event.target.value)}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -708,6 +763,9 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                                     setNameDraftTouched(true);
                                 }}
                                 onKeyDown={event => {
+                                    if (isImeKeyEvent(event)) {
+                                        return;
+                                    }
                                     if (event.key === "Enter") {
                                         void handleAddLocale();
                                     }
@@ -716,9 +774,10 @@ export function LocalizationPanel({ panelId }: PanelComponentProps) {
                             />
                             <button
                                 type="button"
-                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg"
+                                className="flex h-7 w-7 flex-none items-center justify-center rounded-md border border-edge text-fg-muted hover:border-primary/50 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40"
                                 onClick={() => void handleAddLocale()}
-                                data-tip={t("workspace.localization.panel.confirm")} aria-label={t("workspace.localization.panel.confirm")}
+                                aria-label={t("workspace.localization.panel.confirm")}
+                                {...freeze.writes(false, t("workspace.localization.panel.confirm"))}
                             >
                                 <Check className="h-3.5 w-3.5" />
                             </button>

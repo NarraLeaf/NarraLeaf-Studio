@@ -126,6 +126,7 @@ export function ConflictResolveView({
                                 // than re-dressing the old one with another file's values.
                                 key={selectedPath}
                                 path={selectedPath}
+                                name={rows.find(row => row.path === selectedPath)!.name}
                                 entry={documents[selectedPath]}
                                 choices={changeChoices[selectedPath] ?? {}}
                                 disabled={running}

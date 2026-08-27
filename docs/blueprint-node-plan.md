@@ -44,6 +44,7 @@
 | On Scroll End | `blueprint.event.head.scrollEnd` | **已实现**。列表或滚动容器滚动到末端时触发。 |
 | On Preference Changed | `blueprint.event.head.preferenceChanged` | **已实现**。监听当前 `LiveGame` 指定 Game Preference（如 BGM Volume）变化；Inspector `Preference` 选择偏好键；输出 `then` / `value` / `previousValue`；订阅 NarraLeaf React `game.preference.onPreferenceChange`；Global 与 Surface 蓝图可用。 |
 | On Any Preference Changed | `blueprint.event.head.anyPreferenceChanged` | **已实现**。监听当前 `LiveGame` 任意 Game Preference 变化；输出 `then` / `key` / `value` / `previousValue`；Global 与 Surface 蓝图可用。 |
+| On Action | `blueprint.event.head.action` | **已实现**。工程声明的输入操作被触发时执行；Inspector `Action` 从工程的操作词表里选；输出 `then` / `source` / `x` / `y`，`source` 是 `pointer` / `key` / `gamepad` / `touch`，`x` / `y` 只有指针绑定有意义；Global 与 Surface 蓝图可用。 |
 | On Interval | `blueprint.event.head.timer` | 指定计时器触发时执行。 |
 
 ## Flow
@@ -220,6 +221,14 @@
 按属性排序、按属性筛选、按属性查找覆盖了 VN 界面里绝大多数用法，且不需要作者再学一个概念。
 列表控件上还有一组同样按字段（而不是按属性名字符串）操作的节点，见 List 一节——
 那些能给出真正的字段下拉，因为列表声明了自己的条目结构。
+
+## Input
+
+工程给手势起的名字，以及界面对它的回答。绑定写在词表和各个界面上，不写在图里——所以这些节点只认名字。
+
+| 节点 | 类型 ID 建议 | 说明 |
+| --- | --- | --- |
+| Is Action Held | `blueprint.input.isActionHeld` | **已实现**。指定输入操作当前是否按住，用于长按类手势；纯节点，输出 `held`；事件图、函数图、宏都可用。 |
 
 ## Displayable / Widget
 
@@ -428,6 +437,14 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Find Item By Field | `blueprint.list.findItemByField` / `blueprint.element.list.findItemByField` | **已实现**。按字段查第一条，输出下标、条目与是否找到。 |
 | Set Item Field At | `blueprint.list.setItemFieldAt` / `blueprint.element.list.setItemFieldAt` | **已实现**。改写指定下标条目的某个字段；下标不存在或字段未声明时静默跳过。 |
 | Sort List By Field | `blueprint.list.sortByField` / `blueprint.element.list.sortByField` | **已实现**。按字段升/降序重排运行时内容。 |
+| Get Scroll Progress | `blueprint.list.getScrollProgress` / `blueprint.element.list.getScrollProgress` | **已实现**。列表沿滚动轴走到了哪，0 到 1。内容装得下时读 1（既在开头也在末尾）。 |
+| Get Scroll Offset | `blueprint.list.getScrollOffset` / `blueprint.element.list.getScrollOffset` | **已实现**。当前偏移与最大偏移，单位像素。 |
+| Is Scrolled To End | `blueprint.list.isScrolledToEnd` / `blueprint.element.list.isScrolledToEnd` | **已实现**。是否已经滚到末尾，带 1px 容差——小数偏移配上取整的尺寸，滚到头也可能差那么一点。 |
+| Is Scrolled To Start | `blueprint.list.isScrolledToStart` / `blueprint.element.list.isScrolledToStart` | **已实现**。是否还在开头。 |
+
+**Scroll 事件头说的是「列表动了」，这四个读节点说的是「列表现在在哪」。**
+区别对不是由列表本身触发的图很重要：页面上的滚轮处理没人会通知它，它只能自己问。
+把事件头给的答案抄进一个变量，是那种会悄悄过期的写法。
 
 字段下拉的选项来自节点所指列表声明的条目结构：接了 Element 引脚就跟着那根线走，
 挂在列表自己的私有蓝图上就是那个列表，放在条目模板里就是画它的那个列表。
@@ -444,6 +461,7 @@ Element 版节点与 Slider/List 一样，放置后需要手动把 Element Liter
 | Get Current Page | `blueprint.page.getCurrent` | 获取当前 Page ID。 |
 | Is Surface Exiting | `blueprint.page.isSurfaceExiting` | **已实现**。读取当前 Surface 是否处于退出动画状态。 |
 | Is Surface Entering | `blueprint.page.isSurfaceEntering` | **已实现**。读取当前 Surface 是否处于进入动画状态。 |
+| Keep Window Open | `blueprint.app.keepWindowOpen` | **已实现**。取消玩家发出的窗口关闭请求，把窗口留在原地；只在 `On Window Close Requested` 事件图里有意义，其他派发中执行会抛出蓝图执行错误。 |
 | Is Page Open | `blueprint.page.isOpen` | 判断指定 Page 是否处于打开状态。 |
 | Preload Page | `blueprint.page.preload` | 预加载指定 Page。 |
 | Unload Page | `blueprint.page.unload` | 卸载指定 Page 资源。 |

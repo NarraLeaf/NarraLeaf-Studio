@@ -129,20 +129,46 @@ export const build = {
     },
         patch: {
             title: "导出补丁",
-            variantLabel: "变体",
-            variantHint: "补丁只能在所针对变体的构建中打开",
-            contentLabel: "内容取自",
+            kindLabel: "导出",
+            kindPatch: "补丁",
+            dlcVariantHint: "在 工程 ▸ 应用 的 DLC 上设置。",
+            dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}。",
+            baselineModeLabel: "本补丁更新的构建",
+            baselineModeVariant: "在本次导出中构建",
+            baselineModeArtifact: "已有的构建目录",
+            baselineModeVariantHint: "先构建下方的变体，补丁只包含与它不同的内容",
+            baselineModeArtifactHint: "补丁只包含与该目录不同的文件",
+            targetLabel: "安装到的变体",
+            targetHint: "补丁只能在所针对变体的构建中打开",
+            artifactLabel: "构建目录",
+            artifactPlaceholder: "留空则包含整份游戏",
+            artifactReading: "正在读取该构建…",
+            artifactRead: "{product}，构建于 {date}",
+            artifactReadVersioned: "{product} {version}，构建于 {date}",
+            artifactVariantStated: "读取自该构建目录",
+            artifactVariantUnknown: "该构建未标明变体，请在下方选择",
+            artifactVariantMismatch: "该构建是 {build}，而此 DLC 依附于 {variant}",
+            artifactWholeGame: "补丁将包含整份游戏",
+            contentLabel: "内容取自的变体",
             contentHint: "该变体的场景、条件分支与美术会进入补丁",
-            baselineLabel: "本补丁更新的构建",
-            baselinePlaceholder: "留空则包含整份游戏",
-            baselineHint: "此前构建产出的桌面构建目录。补丁只包含与该目录不同的文件",
+            sameVariant: "内容与所更新的构建是同一个变体，补丁不包含任何改动",
             outputLabel: "保存为",
             nameLabel: "名称",
             namePlaceholder: "显示在游戏日志中",
+            layerLabel: "层级",
+            layerHint: "两个补丁改动同一处时，层级更高的一方生效",
             browse: "浏览…",
+            blocked: {
+                output: "请选择文件的保存位置",
+                reading: "正在读取构建目录",
+                artifact: "该目录中没有本游戏的构建",
+                dlcBaseline: "请选择此 DLC 所附加到的构建",
+                dlcVariant: "该构建不是此 DLC 依附的变体",
+            },
             exportAction: "导出",
             busy: "已有构建正在运行",
-            noKey: "本工程尚未创建分发密钥。请先在「工程」页创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
+            noKey: "本工程尚未创建分发密钥。请先创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
+            noKeyAction: "打开「工程」页",
         },
     signing: {
         empty: "选择一个可签名的目标后，这里会列出对应平台",
@@ -215,6 +241,11 @@ export const build = {
     output: {
         artifacts: "产物",
         artifactsEmpty: "选择一个目标后这里会列出产物",
+            includeDlc: "同时构建这个变体的 DLC",
+            includeDlcHint: {
+                one: "{count} 个 DLC，输出到安装包旁边它自己的文件夹里。",
+                other: "{count} 个 DLC，各自输出到安装包旁边自己的文件夹里。",
+            },
         openWhenDone: "构建完成后打开输出目录",
     },
     // 构建完成后打印在产物清单下方的体积读数。数字本身不翻译：共用的字节格式化在所有语言里
@@ -299,6 +330,49 @@ export const build = {
         submitted: "构建已开始，进度显示在控制台",
         done: "构建完成",
         failed: "构建失败",
+        patchDone: "补丁已导出",
+        patchFailed: "补丁导出失败",
+        // 通知上的按钮。上面那句话离开按钮仍然成立：通知面板保留正文，不保留按钮
+        openReport: "打开报告",
+    },
+    /**
+     * 构建报告：一次已结束的运行产出了什么，以及它从资产库中带走了什么。
+     * 由该次运行发出的通知打开。
+     *
+     * 两个词分工明确：产物是构建写出的文件，资产是工程资产库中的条目。报告两者都给出。
+     */
+    report: {
+        title: "构建报告",
+        empty: "没有可报告的构建",
+        outcome: {
+            done: "成功",
+            error: "失败",
+            cancelled: "中止",
+        },
+        kind: {
+            build: "正式构建",
+            patch: "补丁导出",
+        },
+        summary: "概览",
+        variant: "变体",
+        platforms: "平台",
+        duration: "耗时",
+        artifacts: "产物",
+        artifactsEmpty: "本次运行没有产物",
+        outputDir: "输出目录",
+        durationSeconds: "{seconds} 秒",
+        durationMinutes: "{minutes} 分 {seconds} 秒",
+        includedTitle: "已打包的资产",
+        includedEmpty: "本次运行没有打包任何资产",
+        excludedTitle: "未打包的资产",
+        excludedEmpty: "本次运行没有排除任何资产",
+        charactersTitle: "未打包的角色",
+        // 对完整打包资产库的运行，用它替代两份资产清单
+        wholeLibrary: "本次运行完整打包了资产库",
+        search: "搜索资产",
+        noMatches: "没有资产匹配该搜索",
+        showAll: "显示全部 {count} 项",
+        failure: "失败原因",
     },
     invalidCommand: "{story} / {scene} 中有无效指令：{source}",
     invalidCommandSummary: {
@@ -338,6 +412,11 @@ export const build = {
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
+    contentComputedPinGap: "{location} 的资产来自计算结果，因此本次构建无法判断它需要哪个资产",
+    contentComputedPinSummary: {
+        one: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在引脚上选定资产，详见控制台",
+        other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
+    },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
     contentCoverageWholeProject: "本工程",
     contentCoverageSummary: {

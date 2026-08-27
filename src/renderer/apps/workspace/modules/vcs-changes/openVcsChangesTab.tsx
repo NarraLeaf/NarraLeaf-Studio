@@ -3,7 +3,7 @@ import type { EditorTabDefinition } from "@/apps/workspace/registry/types";
 import { translate } from "@/lib/i18n";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
-import { shortRevision } from "../../components/layout/versionRailModel";
+import { revisionLabel } from "../../components/layout/versionRailModel";
 import { VcsChangesTab } from "./VcsChangesTab";
 import { vcsChangesTabId, type VcsChangesPayload } from "./vcsChangesIds";
 
@@ -16,7 +16,7 @@ import { vcsChangesTabId, type VcsChangesPayload } from "./vcsChangesIds";
 export function createVcsChangesTab(payload: VcsChangesPayload): EditorTabDefinition<VcsChangesPayload> {
     return {
         id: vcsChangesTabId(payload),
-        title: tabTitle(payload),
+        title: vcsChangesTabTitle(payload),
         // The one tab in this family that can change the project wears a different mark, so a strip
         // holding both does not read as two copies of the same thing.
         icon: payload.mode === "resolve"
@@ -45,15 +45,20 @@ export function openVcsChangesTab(ctx: WorkspaceContext, payload: VcsChangesPayl
  * Read through `translate` rather than a hook because a tab title is captured when the tab is
  * created; the body re-reads its own text reactively, so a language switch changes everything inside
  * the tab and leaves the strip until it is reopened - the same bargain every other tab here makes.
+ *
+ * A version is named here the way it is named everywhere else - `revisionLabel`, from the number the
+ * payload carries. The strip used to fall back to a seven-character hash whenever a caller had not
+ * pre-rendered a name, which put `a91f3c8 → 3ddbc20` in a tab beside a rail, a status cell and a
+ * switcher menu all saying `#12 → #17`, for the same two versions.
  */
-function tabTitle(payload: VcsChangesPayload): string {
+export function vcsChangesTabTitle(payload: VcsChangesPayload): string {
     switch (payload.mode) {
         case "working-tree":
             return translate("documentDiff.tab.workingTree");
         case "between":
             return translate("documentDiff.tab.between", {
-                from: payload.fromLabel ?? shortRevision(payload.from),
-                to: payload.toLabel ?? shortRevision(payload.to),
+                from: revisionLabel(payload.fromNumber),
+                to: revisionLabel(payload.toNumber),
             });
         case "resolve":
             return translate("documentDiff.resolve.tab");

@@ -12,6 +12,8 @@ type UITemplateDetailProps = {
     runtimeBridge: UIRuntimeBridgeService | null;
     placementLabel: string;
     blockedReason?: string;
+    /** Why nothing may be added right now - a frozen workspace. See `UITemplateCard`. */
+    addDisabledReason?: string;
     busy: boolean;
     onAdd: () => void;
     onBack: () => void;
@@ -31,6 +33,7 @@ export function UITemplateDetail({
     runtimeBridge,
     placementLabel,
     blockedReason,
+    addDisabledReason,
     busy,
     onAdd,
     onBack,
@@ -95,8 +98,8 @@ export function UITemplateDetail({
                     variant="primary"
                     size="sm"
                     fullWidth
-                    disabled={busy || Boolean(blockedReason)}
-                    data-tip={blockedReason}
+                    disabled={busy || Boolean(blockedReason) || Boolean(addDisabledReason)}
+                    data-tip={blockedReason ?? addDisabledReason}
                     onClick={onAdd}
                 >
                     {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

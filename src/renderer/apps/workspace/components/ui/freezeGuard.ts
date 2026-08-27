@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { useTranslation } from "@/lib/i18n";
 import type { ContextMenuDef } from "@/lib/components/elements/ContextMenu";
-import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
+import { freezeAllowsWrite, type WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
+import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
+import { useReadOnlyInspection } from "./readOnlyInspection";
 
 /**
  * What a control inside an editor renders as while the workspace is frozen.
@@ -31,6 +33,12 @@ import { useWorkspaceFrozen } from "../../hooks/useWorkspaceFrozen";
  * Two shapes, because the surfaces genuinely differ. A button has somewhere to put a reason;
  * a drag gesture does not, and {@link FreezeGuard.gesture} makes it inert instead - a half-inert
  * gesture (drag starts, drop does nothing) is worse than either, because it reads as a bug.
+ *
+ * **One freeze is partial**, and this is where the interface learns about it: a live session leaves
+ * one story document writable and refuses the rest. A surface says which document it edits by
+ * passing a scope to {@link useFreezeGuard}, and the answer then comes from `freezeAllowsWrite` -
+ * the same function the write boundary calls, so the two halves of the policy cannot part company.
+ * Everything that names no scope stays frozen by any freeze at all; see {@link isFreezeBlocking}.
  */
 export type FrozenControlProps = {
     disabled: boolean;
@@ -183,15 +191,106 @@ export function freezeContextMenuRows(
 }
 
 /**
+ * Whether a freeze switches off a control that is about to edit `scope`.
+ *
+ * The interface half of the same question `freezeAllowsWrite` answers at the write boundary, and it
+ * literally calls it - one function, so the gate and the cursor cannot disagree. A surface that
+ * offers an edit the gate then refuses is the "quietly discarding everything" failure with an
+ * encouraging cursor on top of it; a surface greyed out over a write the gate would have allowed is
+ * a dead control inside a workspace that was told it could keep working.
+ *
+ * **No scope means frozen whenever any freeze is armed, and that default must never soften.** The
+ * guard has call sites in the dozens across the workspace and only a handful of them can name the
+ * document they edit; a default that answered "writable" would unlock every one of the rest the day
+ * the first partial freeze shipped, silently, with nothing on screen to say so. Opting in is a
+ * surface stating which file it is about - which is also the only claim this module can check.
+ */
+export function isFreezeBlocking(
+    freeze: WorkspaceFreezeReason | null,
+    scope?: string | readonly string[],
+): boolean {
+    if (freeze === null) {
+        return false;
+    }
+    if (scope === undefined) {
+        return true;
+    }
+    // ⚠ **Every path, not any of them.** A surface that writes more than one file is blocked unless
+    // all of them are allowed: offering an edit that half-lands is the "quietly discarding
+    // everything" failure with an encouraging cursor on top, and it is the half that lands which
+    // makes it hard to notice. The asset library is the first surface with more than one - a
+    // selection may hold rows of several types, each filed in its own shard.
+    const paths = typeof scope === "string" ? [scope] : scope;
+    return !paths.every((path) => freezeAllowsWrite(freeze, path));
+}
+
+/**
+ * The one sentence a control switched off by a freeze shows.
+ *
+ * **One string for every control, and two only because one freeze has two different ways out.** The
+ * bargain the top bar and the panels both make is that the author learns "this is what frozen looks
+ * like" once instead of reading a different excuse per button - so this is the only place either of
+ * them takes the sentence from. A live session is left or closed rather than unfrozen, and the
+ * ordinary sentence tells its author to press a control that is itself unavailable.
+ *
+ * ⚠ **The kind decides the SENTENCE and nothing else.** `writeFreeze` warns that asking which kind
+ * of freeze is armed invites a surface to give itself an exception, and that warning stands: what a
+ * control may do is {@link isFreezeBlocking}'s answer alone, from the same predicate the write
+ * boundary calls.
+ */
+export function useFreezeUnavailableReason(): string {
+    const freeze = useWorkspaceFreeze();
+    const { t } = useTranslation();
+    return freeze?.kind === "live-session"
+        ? t("workspace.shell.freeze.unavailableLive")
+        : t("workspace.shell.freeze.unavailable");
+}
+
+/**
  * How a workspace surface opts into the frozen read-only affordance: call this, then route every
  * control and gesture that writes project data through the returned guard.
  *
- * Reads the freeze through `useWorkspaceFrozen`, which reads `WorkspaceFreezeService` - the
+ * Reads the freeze through `useWorkspaceFreeze`, which reads `WorkspaceFreezeService` - the
  * workspace-scoped face of the latch, not the module latch, so it thaws on a project switch.
+ *
+ * `scope` is the project data the caller is about to edit, as a project-relative path in the
+ * repository's own spelling - the input `freezeAllowsWrite` takes, and the only sanctioned way for a
+ * surface to stay live inside a partial freeze. Pass it only where every control routed through the
+ * returned guard writes that one document: a guard scoped to a story while one of its buttons
+ * creates a character would offer an edit the boundary refuses. Left out, the guard is frozen by any
+ * freeze at all, which is what keeps every surface that has not opted in correct.
+ *
+ * A list of paths is a surface that writes more than one file and needs all of them - the asset
+ * library, whose rows are filed in a shard per type. It is blocked unless every one is allowed.
+ *
+ * `reason` is deliberately unaffected by the scope: it is the sentence a greyed control shows, and
+ * a control that is live has nothing to show it on.
+ *
+ * **Two ways to be read-only, and they are not the same fact.** A freeze is a state of the project;
+ * an inspection (`readOnlyInspection`) is a state of this part of the window - a panel drawing a
+ * version that has already happened. Either switches every control off. The inspection's reason wins
+ * where both apply, because it is the nearer cause and the one that is still true after a thaw, and
+ * because telling an author their project is frozen while they read an old version would be false.
  */
-export function useFreezeGuard(): FreezeGuard {
-    const frozen = useWorkspaceFrozen();
+export function useFreezeGuard(scope?: string | readonly string[]): FreezeGuard {
+    const freeze = useWorkspaceFreeze();
+    const inspecting = useReadOnlyInspection();
     const { t } = useTranslation();
-    const reason = t("workspace.shell.freeze.unavailable");
-    return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason]);
+    // ⚠ **The kind decides the SENTENCE and nothing else.** `writeFreeze` warns that asking which
+    // kind of freeze is armed is an invitation for a surface to give itself an exception, and that
+    // warning stands: what a control may do is still `isFreezeBlocking`'s answer alone, from the
+    // same predicate the write boundary calls. What is being chosen here is what a greyed control
+    // says, and one freeze needs a different sentence because it has a different way out - a live
+    // session is left or closed, and telling its author to unfreeze the project names a control
+    // that is itself unavailable.
+    const frozenReason = useFreezeUnavailableReason();
+    const reason = inspecting
+        ? t("documentDiff.inspector.readOnly")
+        : frozenReason;
+    // Joined rather than passed through as an array: a caller that builds its list inline hands over
+    // a new array on every render, and a guard rebuilt on every render is a new object for every
+    // memo downstream to notice.
+    const key = scope === undefined ? "" : typeof scope === "string" ? scope : scope.join("\n");
+    const frozen = inspecting || isFreezeBlocking(freeze, scope);
+    return useMemo(() => makeFreezeGuard(frozen, reason), [frozen, reason, key]);
 }

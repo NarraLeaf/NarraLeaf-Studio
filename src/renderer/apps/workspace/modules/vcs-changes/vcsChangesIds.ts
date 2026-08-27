@@ -8,7 +8,7 @@ import type { RevisionId } from "@shared/types/vcs";
  * live in either file without making the two import each other.
  */
 
-/** Every id this tab uses starts here, so a stale one is recognisable in a persisted layout. */
+/** Every id this tab uses starts here, so one of them is recognisable wherever tab ids are read. */
 const VCS_CHANGES_TAB_PREFIX = "narraleaf-studio:vcs-changes";
 
 /**
@@ -24,24 +24,32 @@ export type VcsChangesPayload =
     /**
      * The author's uncommitted work against the last version. Never cached; it scans (docs §4.17).
      *
-     * `headLabel` is what the opener was already calling the version being compared against (`#36`),
-     * and it exists because without it this tab was the one surface in the feature that named a
-     * version by its hash - "Changes since 3ddbc20" beside a rail, a status cell and a menu that all
-     * said `#36`. Optional because the tab can be restored from a persisted layout with no opener to
-     * ask, and then the hash is the honest fallback rather than a number invented here.
+     * `headNumber` is the number the opener was already showing for the version being compared
+     * against - the `#36` on the rail, in the status cell and in the switcher menu - carried so the
+     * tab's heading opens on that same name instead of on a placeholder one frame before it knows
+     * better.
+     *
+     * **A hint, not the answer.** The tab reads the head's number for itself once the comparison
+     * has answered, because a number captured when the tab was opened describes the repository as
+     * it was then, and this tab outlives commits. Optional in the same honest sense: an opener that
+     * does not already hold the number passes nothing rather than reading the repository to fill it
+     * in. A NUMBER rather than a rendered `#36`, so `revisionLabel` stays the one thing that decides
+     * how a version is spelled.
      */
-    | { readonly mode: "working-tree"; readonly headLabel?: string }
+    | { readonly mode: "working-tree"; readonly headNumber?: number }
     /**
-     * Two revisions. `fromLabel` / `toLabel` are how the author was already naming them (`#12`);
-     * absent falls back to a short hash, because a comparison entered from somewhere that did not
-     * pass a label still has to say which two versions it is between.
+     * Two revisions, each named by its number - `#12`, the name every other version surface uses.
+     *
+     * Both numbers are REQUIRED, and that is what makes naming either side by hash unrepresentable
+     * rather than merely discouraged: this pair is immutable, every way into the comparison already
+     * holds both numbers, and once the tab is open there is nothing cheap to re-read them from.
      */
     | {
         readonly mode: "between";
         readonly from: RevisionId;
         readonly to: RevisionId;
-        readonly fromLabel?: string;
-        readonly toLabel?: string;
+        readonly fromNumber: number;
+        readonly toNumber: number;
     }
     /**
      * The open merge: one row per path it could not settle, each taken whole from one side.

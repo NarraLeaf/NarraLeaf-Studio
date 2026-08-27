@@ -1,11 +1,13 @@
 import { DoorOpen, Hourglass, ScrollText, Wallpaper } from "lucide-react";
 import { createBlockForCommand } from "../../storyActionCommands";
-import { asNumber, defineStoryCommand, SECONDS_TYPE, secondsParam, type StoryCommandParamSpec } from "../spec";
+import { asBoolean, asNumber, defineStoryCommand, holdParam, SECONDS_TYPE, secondsParam, type StoryCommandParamSpec } from "../spec";
 import { withRevealTransform, withTransitionRef } from "../payloadHelpers";
 import { transitionOptions } from "../transitions";
 import { storySecondsToMs } from "@shared/utils/storyTime";
 
 /** Scene & flow: `/bg`, `/jump`, `/wait`, `/nvl`. */
+
+
 
 /**
  * `rule=` — the greyscale picture a rule transition plays in the order of.
@@ -26,7 +28,7 @@ export const bg = defineStoryCommand({
     aliases: ["background"],
     category: "scene",
     icon: Wallpaper,
-    examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018", "/bg forest_day rule=spiral d=1.2"],
+    examples: ["/bg forest_day", "/bg forest_day t=fade d=0.5", "/bg #101018", "/bg forest_day rule=spiral d=1.2", "/bg forest_day t=black d=4 hold=2"],
     // Inline quick-edit: the transition duration. The transition kind (`t`, an enum) stays an
     // inspector choice — a qualitative pick, not a high-frequency micro-adjust.
     quickParams: ["d"],
@@ -40,6 +42,7 @@ export const bg = defineStoryCommand({
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
         rule: ruleParam(),
         d: secondsParam(),
+        hold: holdParam(),
     },
     build(args, ctx) {
         const block = createBlockForCommand("background", ctx.generateId);
@@ -55,23 +58,37 @@ export const bg = defineStoryCommand({
             payload.color = args.image.color;
             payload.assetId = undefined;
         }
-        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule);
+        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule, args.hold);
         return { ...block, payload: { ...payload, ...(transition ? { transition } : {}) } };
     },
 });
 
+/**
+ * `/jump <scene>` - leave for another scene, and optionally come back.
+ *
+ * One command with a flag rather than a second `/call`, and the `/label` vs `/goto` ruling next door
+ * does not reach it. That ruling refuses to let the *target's type* decide what a row does, because
+ * the author cannot see a type: a name is a name. `return` is a word the author types and the row
+ * prints back, so the two behaviours are told apart on the row itself - which is the thing the
+ * ruling was protecting.
+ */
 export const jump = defineStoryCommand({
     id: "jump",
     token: "jump",
     category: "scene",
     icon: DoorOpen,
-    examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6", "/jump 'Chapter 2' rule=spiral d=1.2"],
+    examples: ["/jump 'Chapter 2'", "/jump 'Chapter 2' t=fade d=0.6", "/jump 'Chapter 2' return"],
     quickParams: ["scene"],
     params: {
         scene: { hint: "scene", type: { kind: "scene" }, positional: true, core: true },
         t: { aliases: ["transition"], hint: "transition", type: { kind: "enum", options: transitionOptions("scene") } },
         rule: ruleParam(),
         d: secondsParam(),
+        hold: holdParam(),
+        // A bare flag: `/jump 'Title card' return` and `/jump 'Title card' return=true` are the same
+        // row. The scene this row is in is suspended for the length of the one it names, and the row
+        // after this one runs when that scene finishes.
+        return: { aliases: ["comeback", "call"], hint: "returnable", type: { kind: "boolean" } },
     },
     build(args, ctx) {
         const block = createBlockForCommand("jump", ctx.generateId);
@@ -82,8 +99,18 @@ export const jump = defineStoryCommand({
         if (args.scene?.kind === "scene") {
             payload.targetSceneId = args.scene.sceneId;
         }
-        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule);
-        return { ...block, payload: { ...payload, ...(transition ? { transition } : {}) } };
+        // Absent means the plain jump, and the field stays off the payload entirely so a row the
+        // author never flagged is byte-identical to one written before the flag existed.
+        const returnable = asBoolean(args.return);
+        const transition = withTransitionRef(payload.transition, "scene", args.t, args.d, args.rule, args.hold);
+        return {
+            ...block,
+            payload: {
+                ...payload,
+                ...(returnable ? { returnable: true } : {}),
+                ...(transition ? { transition } : {}),
+            },
+        };
     },
 });
 

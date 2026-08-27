@@ -3,6 +3,7 @@ import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import { join } from "@shared/utils/path";
 import { APP_TAG_ID_RELEASE, APP_TAG_SCHEMA_VERSION, RELEASE_APP_TAG, type AppTagBaseIdentity } from "@shared/types/appTag";
 import type { PluginBuildConfigField } from "@shared/types/plugins";
+import type { LiveAppTagOp } from "@shared/live/ops";
 import { Services, type WorkspaceContext } from "../services";
 import { HistoryService } from "../history/HistoryService";
 import { projectHistoryScope } from "../history/historyScopes";
@@ -505,5 +506,144 @@ describe("build variant undo", () => {
             key: "project.appTags.history.delete",
             params: { name: "Demo" },
         });
+    });
+});
+
+describe("AppTagService inside a live session", () => {
+    /**
+     * A sink that takes everything and remembers it - what `LiveSession` installs, minus the room.
+     *
+     * The contract this exercises is the one every mutator on this service now shares: with a sink
+     * installed the edit becomes an operation and the document is not touched, and the panel moves
+     * when the operation comes back through {@link AppTagService.applyLiveOp}.
+     */
+    function sink(): { ops: LiveAppTagOp[]; handle(op: LiveAppTagOp): boolean } {
+        const ops: LiveAppTagOp[] = [];
+        return {
+            ops,
+            handle(op) {
+                ops.push(op);
+                return true;
+            },
+        };
+    }
+
+    it("states an edit and leaves the document alone, for every mutator on the record", async () => {
+        const { service, history } = await createHarness();
+        const created = service.createTag({ name: "Demo" });
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.renameTag(created.id, "Trial");
+        service.setOverride(created.id, "version", "0.9");
+        service.clearOverride(created.id, "version");
+        service.clearAllOverrides(created.id);
+        service.setEndingSurface(created.id, "credits");
+        service.deleteTag(created.id);
+
+        expect(taken.ops.map(op => op.op)).toEqual([
+            "update-app-tag",
+            "update-app-tag",
+            "update-app-tag",
+            "update-app-tag",
+            "update-app-tag",
+            "delete-app-tag",
+        ]);
+        // Nothing landed here: not the name, not the overrides, not the deletion.
+        expect(service.getTag(created.id)?.name).toBe("Demo");
+        // And nothing entered this author's undo stack, because nothing happened to undo: the one
+        // step on it is still the creation from before the sink was installed.
+        expect(history.peekUndo(projectHistoryScope())).toEqual({
+            key: "project.appTags.history.add",
+            params: { name: "Demo" },
+        });
+        history.undo(projectHistoryScope());
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("carries the record the local write would have produced, not the patch that produced it", async () => {
+        // The receiving machines must not each recompute a result from their own copy: that is an
+        // operation stating an intention where the document states an outcome.
+        const { service } = await createHarness();
+        const created = service.createTag({ name: "Demo" });
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.setOverride(created.id, "displayName", "Skeleton Demo");
+        const op = taken.ops[0];
+        expect(op?.op).toBe("update-app-tag");
+        expect(op?.op === "update-app-tag" && op.tag.overrides).toEqual({ displayName: "Skeleton Demo" });
+    });
+
+    it("states a creation as an intent, and hands back a record that is not in the list yet", async () => {
+        const { service } = await createHarness();
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        const asked = service.createTag({ name: "Demo" });
+        expect(taken.ops[0]?.op).toBe("create-app-tag");
+        expect(service.getTag(asked.id)).toBeUndefined();
+
+        // It lands when the effect answering the intent arrives.
+        service.applyLiveOp({ op: "create-app-tag", tag: asked });
+        expect(service.getTag(asked.id)?.name).toBe("Demo");
+    });
+
+    it("routes the project's own record to its own verb, and carries the variants it also rewrites", async () => {
+        const { service } = await createHarness();
+        const created = service.createTag({ name: "Demo" });
+        const field: PluginBuildConfigField = {
+            pluginId: "steam",
+            pluginName: "Steam",
+            key: "appid",
+            label: "App ID",
+            scope: "global",
+            type: "text",
+        };
+        service.setPluginConfigValue(created.id, field, "480");
+        const taken = sink();
+        service.setOperationSink(taken);
+
+        service.setPluginConfigValue(created.id, field, "620");
+        const op = taken.ops[0];
+        expect(op?.op).toBe("set-app-tag-defaults");
+        // A field no variant may state is taken off every variant, and the operation says which
+        // records that leaves rather than leaving each machine to work it out from a plugin it may
+        // not have installed.
+        expect(op?.op === "set-app-tag-defaults" && op.defaults.pluginConfig).toEqual({ steam: { appid: "620" } });
+        expect(op?.op === "set-app-tag-defaults" && op.tagPluginConfig)
+            .toEqual([{ tagId: created.id, pluginConfig: {} }]);
+    });
+
+    it("applies an effect through the same normalization an ordinary edit goes through", async () => {
+        const { service, history } = await createHarness();
+        service.setOperationSink(sink());
+
+        service.applyLiveOp({ op: "create-app-tag", tag: { id: "t9", name: "Demo", overrides: { version: "  " } } });
+        // The blank override is dropped, exactly as it would be on the machine that made the edit -
+        // two spellings on disk would be a disagreement the digest reports and nobody can act on.
+        expect(service.getTag("t9")?.overrides).toEqual({});
+        expect(service.isDirty()).toBe(true);
+        // ⚠ And nothing is on this author's undo stack: an effect is somebody else's edit landing
+        // here, and an undo that offered to take it back would be offering to delete their work.
+        expect(history.canUndo(projectHistoryScope())).toBe(false);
+    });
+
+    it("does not resurrect a row an effect names that this machine does not hold", async () => {
+        // The host refuses an update naming a record it cannot find, so reaching this is this
+        // machine having missed the creation. Creating it here would hide that; the digest reports it.
+        const { service } = await createHarness();
+        service.applyLiveOp({ op: "update-app-tag", tagId: "gone", tag: { id: "gone", name: "X", overrides: {} } });
+        expect(service.getTag("gone")).toBeUndefined();
+    });
+
+    it("goes back to writing the document the moment the sink is taken away", async () => {
+        const { service } = await createHarness();
+        const created = service.createTag({ name: "Demo" });
+        service.setOperationSink(sink());
+        service.setOperationSink(null);
+
+        service.renameTag(created.id, "Trial");
+        expect(service.getTag(created.id)?.name).toBe("Trial");
     });
 });

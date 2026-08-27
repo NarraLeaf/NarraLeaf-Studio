@@ -6,7 +6,9 @@
 
 键盘事件由运行时窗口级监听派发，不依赖元素焦点。Global 蓝图、当前 active Surface 蓝图，以及已挂载控件的私有蓝图都会收到对应键盘事件；如果多处都放置事件 Head，它们会分别执行。控件私有蓝图的键盘监听随控件挂载注册，控件卸载时自动移除。Surface 完成 prepaint 后，Page 进退场期间键盘事件仍会派发；需要屏蔽时在图里读取 Page 分类的 `Is Surface Entering`、`Is Surface Exiting` 或 `Is Surface Transitioning` 自行分支。
 
-元素事件只从当前元素自己的可交互区域触发，不会默认冒泡接管子元素事件；Surface 进退场期间，鼠标与点击类事件默认等到 Surface interaction ready 后才派发。控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。需要把当前接入的元素事件继续交给父元素时，在子元素的事件图中使用 Element 分类的 `Continue Event Bubble` 节点；它会沿用当前事件名和原始 payload 派发到结构父元素。需要在当前层吃掉事件时，使用 `Stop Event Bubble`；例如叠层 Page 拦截 Space 后，可阻止该按键继续影响背景游戏。
+元素事件只从当前元素自己的可交互区域触发；Surface 进退场期间，鼠标与点击类事件默认等到 Surface interaction ready 后才派发。控件处于禁用或文本编辑等不可交互状态时不会派发对应 Events Head。
+
+`Continue Event Bubble` 与 `Stop Event Bubble` 两个节点已经移除：元素的事件 Head 表示「我要这个事件」而不是「这个事件归我」，命中链上声明了该 Head 的元素各自触发，没有可以交出去或吃掉的所有权。唯一仍然可以被蓝图取消的派发是窗口关闭请求，取消它用 App 分类的 `Keep Window Open`（见 `node.page.md`）；该节点只对窗口关闭请求有效，不影响任何其他事件。
 
 在可视化编辑器中，画布右键 Add Node 菜单会按当前 Blueprint owner 和 widget event slot 显示可用 Events Head。左侧 `Layers > New` 也提供可选的 Event 字段，默认 `-` 表示只创建空图层；只有显式选择事件时才会自动插入对应 Events Head。
 
@@ -382,3 +384,22 @@ Flush 是属性提交后的批处理通知。运行时会按帧合并同一元�
 - `key` - 发生变化的 Game Preference 键，`string`，取值为规范键名（如 `bgmVolume`）
 - `value` - 变化后的新值，通用 `json`，实际类型由 `key` 决定
 - `previousValue` - 变化前运行时缓存的旧值，类型同 `value`；没有更早快照时为 `null`
+
+## On Action
+
+`blueprint.event.head.action` - 工程声明的输入操作被触发事件
+
+面板级手势的落点。什么东西触发它不写在节点上：工程给手势起名字并给出默认绑定，Surface 说自己回答哪几个、以及在可操作控件上要不要照样触发，运行时按名字把操作抛给蓝图。作者把「推进」从单击改成空格，改的是词表里的一行。
+
+出现在 Global 蓝图和 Surface 蓝图中。控件私有蓝图里没有它——控件想要原始手势，用自己的 `Mouse Click` 等事件头；「在这个控件上点一下等于推进」正是这套词表要替换掉的写法。
+
+一次派发携带整个词表，具体由卡片上的 `Action` 过滤。没有通配写法：`Action` 留空的卡片什么都不监听，和未配置的 `On Preference Changed` 一样。
+
+卡片字段：
+- `Action` - 要监听的输入操作（Inspector 参数），下拉从当前工程的操作词表填充。存的是操作 id，所以改名不会让图失去目标
+
+输出：
+- `then` - 执行出口
+- `source` - 触发这次操作的输入族，`string`，取值 `pointer` / `key` / `gamepad` / `touch`
+- `x` / `y` - 手势落点，`float`，与鼠标事件头同一套 Surface 设计坐标。鼠标与触屏的绑定都有落点，键盘和手柄绑定没有，此时不要读这两个引脚。判据是 `source` 为 `key` 或 `gamepad`，不是「是不是 `pointer`」
+

@@ -41,6 +41,7 @@ import {
     BLUEPRINT_NODE_TYPE_FUNCTION_ENTRY,
     BLUEPRINT_NODE_TYPE_GAME_EXPORT_PROGRESS,
     BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS,
+    BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
     BLUEPRINT_NODE_TYPE_LAYER_CONFIRM,
     BLUEPRINT_NODE_TYPE_NETWORK_FETCH,
@@ -167,6 +168,7 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.frameWidget.getTargetPage", "blueprint.game.getAppTag", "blueprint.game.getAutoForward",
     "blueprint.game.getBgmVolume", "blueprint.game.getCharacter", "blueprint.game.getChoiceCount",
     "blueprint.game.getCps", "blueprint.game.getGameSpeed", "blueprint.game.getGlobalVolume",
+    "blueprint.game.getDialogText", "blueprint.game.isDialogWaiting", "blueprint.game.isNarrator",
     "blueprint.game.getNametag", "blueprint.game.getNotifications",
     "blueprint.game.getPlaytime", "blueprint.game.getSkip",
     "blueprint.game.getAutoForwardDelay", "blueprint.game.getSkipping",
@@ -178,10 +180,12 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.game.getTotalPlaytime",
     "blueprint.game.isInGame", "blueprint.game.isNvlMode", "blueprint.game.isOptionPicked",
     "blueprint.game.isSceneVisited", "blueprint.game.isTextRead", "blueprint.game.isTextReadById",
-    "blueprint.game.getEndings", "blueprint.game.isEndingReached",
+    "blueprint.game.getEndings", "blueprint.game.isEndingReached", "blueprint.game.isDlcInstalled",
     "blueprint.image.assetLiteral", "blueprint.image.getCropRect", "blueprint.image.getEnabled",
     "blueprint.image.getFitMode", "blueprint.image.getFlipX", "blueprint.image.getFlipY",
-    "blueprint.image.getImageAsset", "blueprint.image.getVisible", "blueprint.layer.isMounted",
+    "blueprint.image.getImageAsset", "blueprint.image.getVisible",
+    "blueprint.input.getDevice", "blueprint.input.isActionHeld",
+    "blueprint.layer.isMounted",
     "blueprint.list.findItemByField", "blueprint.list.getEnabled", "blueprint.list.getItemAt",
     "blueprint.list.getItemCount", "blueprint.list.getItemField", "blueprint.list.getItemIndex",
     "blueprint.list.getItemKey", "blueprint.list.getItemProps", "blueprint.list.getItems",
@@ -189,6 +193,10 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
     "blueprint.list.getVisible",
     "blueprint.element.list.findItemByField", "blueprint.element.list.getItemAt",
     "blueprint.element.list.getLength",
+    "blueprint.element.list.getScrollProgress", "blueprint.element.list.getScrollOffset",
+    "blueprint.element.list.isScrolledToEnd", "blueprint.element.list.isScrolledToStart",
+    "blueprint.list.getScrollProgress", "blueprint.list.getScrollOffset",
+    "blueprint.list.isScrolledToEnd", "blueprint.list.isScrolledToStart",
     "blueprint.local.declareVar", "blueprint.local.get",
     "blueprint.math.abs", "blueprint.math.add", "blueprint.math.ceil",
     "blueprint.math.decrement", "blueprint.math.divide", "blueprint.math.equal", "blueprint.math.floor",
@@ -228,7 +236,10 @@ const PURE_DATA_NODE_TYPES: readonly string[] = [
  * and the shape the fold walks straight through.
  */
 const STEP_NODE_TYPES: readonly string[] = [
-    "blueprint.app.getFullscreen", "blueprint.app.setFullscreen", "blueprint.broadcast.send",
+    "blueprint.app.getFullscreen", "blueprint.app.getWindowScale",
+    "blueprint.app.getWindowScaleOptions", "blueprint.app.getWindowSize",
+    "blueprint.app.keepWindowOpen", "blueprint.app.setFullscreen", "blueprint.app.setWindowScale",
+    "blueprint.app.setWindowSize", "blueprint.broadcast.send",
     "blueprint.button.setEnabled", "blueprint.button.setLabel", "blueprint.button.setPointer",
     "blueprint.button.setVariant", "blueprint.button.setVisible", "blueprint.container.setClipContent",
     "blueprint.container.setEnabled", "blueprint.container.setVariant", "blueprint.container.setVisible",
@@ -239,7 +250,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.element.button.setVariant", "blueprint.element.button.setVisible",
     "blueprint.element.container.setClipContent", "blueprint.element.container.setEnabled",
     "blueprint.element.container.setVariant", "blueprint.element.container.setVisible",
-    "blueprint.element.continueEventBubble", "blueprint.element.displayable.animateProperty",
+    "blueprint.element.displayable.animateProperty",
     "blueprint.element.displayable.setDisplay", "blueprint.element.displayable.setProperty",
     "blueprint.element.displayable.setVariant", "blueprint.element.displayable.stopAnimation",
     "blueprint.element.frame.setEnabled", "blueprint.element.frame.setParams",
@@ -257,7 +268,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.element.list.setSelectedItem", "blueprint.element.list.setVisible",
     "blueprint.element.slider.setEnabled", "blueprint.element.slider.setRange",
     "blueprint.element.slider.setValue", "blueprint.element.slider.setVisible",
-    "blueprint.element.stopEventBubble", "blueprint.element.switch.setChecked",
+    "blueprint.element.switch.setChecked",
     "blueprint.element.switch.setEnabled", "blueprint.element.switch.setVisible",
     "blueprint.element.switch.toggle", "blueprint.element.switch.turnOff",
     "blueprint.element.switch.turnOn", "blueprint.element.text.appendText",
@@ -324,6 +335,7 @@ const STEP_NODE_TYPES: readonly string[] = [
  * body is the exec-reachable subgraph below it inside its host event graph.
  */
 const EVENT_HEAD_NODE_TYPES: readonly string[] = [
+    "blueprint.event.head.action",
     "blueprint.event.head.afterSurfaceEnter", "blueprint.event.head.anyKeyDown",
     "blueprint.event.head.anyKeyUp", "blueprint.event.head.anyPreferenceChanged",
     "blueprint.event.head.appBoot", "blueprint.event.head.beforeSurfaceExit", "blueprint.event.head.blur",
@@ -408,6 +420,13 @@ const IRREGULAR_EXEC_PINS: Readonly<Record<string, BlueprintNodeExecPins>> = {
     // machine - and it leads to "start a new game", not to an apology. Folding it into `failed`
     // would put an error message in front of every first-time player.
     [BLUEPRINT_NODE_TYPE_GAME_IMPORT_PROGRESS]: { in: ["in"], out: ["found", "missing", "failed"] },
+    // `Check Storage Durability` has three for the same reason: `evictable` is "this browser may
+    // remove saved games" and `unknown` is a browser that will not say, and an author telling a
+    // player the first when the truth is the second has made a promise nobody gave them.
+    [BLUEPRINT_NODE_TYPE_GAME_STORAGE_DURABILITY]: {
+        in: ["in"],
+        out: ["durable", "evictable", "unknown"],
+    },
     // `Load Save` leaves by `failed` and by nothing else. A load that lands has replaced the whole
     // running game, so there is nothing a `next` could run against - the graph that asked for it is
     // not the game any more. A refusal moved nothing, and the save screen that asked is still

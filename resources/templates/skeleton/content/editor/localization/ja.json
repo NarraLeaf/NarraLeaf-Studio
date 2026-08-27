@@ -305,7 +305,7 @@
     "key:log.title": {
       "sourceHash": "fnv1a:a1dd7bf1",
       "status": "translated",
-      "target": "バックログ"
+      "target": "ログ"
     },
     "key:menu.continue": {
       "sourceHash": "fnv1a:ab43d664",

@@ -55,7 +55,15 @@ import {
     ZOOM_PERCENT_MAX,
     ZOOM_PERCENT_MIN,
 } from "@shared/constants/zoom";
-import { CONFIRM_QUIT_DEFAULT, CONFIRM_QUIT_KEY } from "@shared/constants/quit";
+import {
+    CONFIRM_QUIT_DEFAULT,
+    CONFIRM_QUIT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_KEY,
+    QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+    QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
+} from "@shared/constants/quit";
 import { isMacPlatform } from "@/lib/app/platform";
 import { LOCALE_META, SUPPORTED_LOCALES } from "@shared/i18n";
 import { deviceDefaultLocale } from "@/lib/i18n/deviceLocale";
@@ -1279,6 +1287,26 @@ export const AppSettings: AppSettingDefinition[] = [
         description: "Records on closing the window, independent of the interval above.",
         descriptionKey: "settings.items.checkpointOnClose.description",
         defaultValue: true,
+    },
+    {
+        // Under the switch it depends on, because it is the same feature at the one moment it
+        // cannot be given all the time it wants: quitting closes every open project at once, and
+        // the checkpoints share the deadline that also has to close the version-control stores.
+        // Read by the main process (App.checkpointOpenWorkspacesForShutdown) as the quit starts,
+        // so a change here applies to the next quit without a restart.
+        key: QUIT_CHECKPOINT_TIMEOUT_KEY,
+        category: "versionControl",
+        scope: SettingScope.Global,
+        type: SettingValueType.Integer,
+        label: "Checkpoint deadline when quitting",
+        labelKey: "settings.items.quitCheckpointTimeout.label",
+        description: "How long quitting waits for the checkpoints of every open project; a project that takes longer is left unrecorded. Set to 0 to record none when quitting.",
+        descriptionKey: "settings.items.quitCheckpointTimeout.description",
+        defaultValue: QUIT_CHECKPOINT_TIMEOUT_DEFAULT_SECONDS,
+        min: QUIT_CHECKPOINT_TIMEOUT_MIN_SECONDS,
+        max: QUIT_CHECKPOINT_TIMEOUT_MAX_SECONDS,
+        step: QUIT_CHECKPOINT_TIMEOUT_STEP_SECONDS,
+        unit: "s",
     },
     {
         // Read by the project wizard, which fills its author field with this only while that

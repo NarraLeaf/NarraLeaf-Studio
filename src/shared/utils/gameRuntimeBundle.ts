@@ -45,3 +45,13 @@ export function gameRuntimeBundleModelEntry(assetId: string): string {
 export function gameRuntimeBundleRuntimeEntry(pathname: string): string {
     return pathname.replace(/\\/g, "/").replace(/^\/+/, "");
 }
+
+/**
+ * Entry holding what one patch changes about the pack, rather than a pack of its own.
+ *
+ * Read in preference to {@link GAME_RUNTIME_BUNDLE_PACK_ENTRY} when a layer carries both, so several
+ * patches on one build compose instead of the last one replacing the rest. A patch carries the full
+ * pack as well, because a build made before this entry existed knows only that name and would
+ * otherwise install a patch that changed nothing about the story.
+ */
+export const GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY = "pack.delta";

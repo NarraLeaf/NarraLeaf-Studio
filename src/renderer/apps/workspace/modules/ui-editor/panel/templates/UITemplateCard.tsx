@@ -23,6 +23,14 @@ type UITemplateCardProps = {
     placementLabel: string;
     /** Set when the template cannot be added right now, and says why. */
     blockedReason?: string;
+    /**
+     * Set when nothing in this store may be added right now - a frozen workspace - and says why.
+     *
+     * Separate from {@link blockedReason}, which is about this one template and rewrites the
+     * button's label to say so. A freeze is about the project, applies to every card at once, and
+     * leaves the label alone: the author is reading a shelf, not being told each item is sold out.
+     */
+    addDisabledReason?: string;
     busy: boolean;
     onAdd: () => void;
     /** Open the detail view. The card body is the control; Add is not. */
@@ -111,6 +119,7 @@ export function UITemplateCard({
     runtimeBridge,
     placementLabel,
     blockedReason,
+    addDisabledReason,
     busy,
     onAdd,
     onOpenDetail,
@@ -166,11 +175,12 @@ export function UITemplateCard({
                     variant="secondary"
                     size="sm"
                     fullWidth
-                        disabled={busy || Boolean(blockedReason)}
+                        disabled={busy || Boolean(blockedReason) || Boolean(addDisabledReason)}
                         // The reason a card refuses lives on the control that refuses,
                         // so it is readable without adding a second line to every card
-                        // that is perfectly fine.
-                        data-tip={blockedReason}
+                        // that is perfectly fine. The template's own reason wins: it is
+                        // the more specific of the two, and it is the one the label says.
+                        data-tip={blockedReason ?? addDisabledReason}
                         onClick={onAdd}
                     >
                         {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null}

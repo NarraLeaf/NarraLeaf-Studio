@@ -5,6 +5,7 @@ import type { DocumentMergeDecision } from "@shared/documents/diff";
 import type { VcsMergeDocumentBlocker } from "@shared/types/vcs";
 import { ConflictFooter, ConflictResolveView, type WriteGuard } from "./ConflictResolveView";
 import { buildConflictRows, type MergeChoiceState, type MergeDocumentEntry } from "./mergeDecisionView";
+import { NO_DOCUMENT_NAMES } from "./documentName";
 
 /**
  * What the merge panel promises, on screen.
@@ -58,7 +59,7 @@ function tree(paths: readonly string[], partial: Partial<MergeChoiceState>, sele
     const state: MergeChoiceState = {
         decisions: {}, perChange: {}, changeChoices: {}, documents: {}, ...partial,
     };
-    const rows = buildConflictRows(paths, state);
+    const rows = buildConflictRows(paths, state, NO_DOCUMENT_NAMES);
     return (
         <>
             <ConflictResolveView

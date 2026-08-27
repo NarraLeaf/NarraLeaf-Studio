@@ -20,6 +20,7 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_VISITED,
     BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED,
     BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED,
+    BLUEPRINT_NODE_TYPE_LITERAL_STRING,
     BLUEPRINT_NODE_TYPE_LOCAL_SET,
 } from "@shared/types/blueprint/graph";
 import type { UIGraph } from "@shared/types/ui-editor/graph";
@@ -81,6 +82,48 @@ async function readPin(
 }
 
 const EMPTY: VisitedState = { scenes: [], options: [] };
+
+/**
+ * The same reader, but told which scene by a wired pin instead of by the card.
+ *
+ * A `String` node stands in for whatever computes it - in the template that is a `Get Component
+ * Param`, which is the whole reason the pin exists: one gallery card placed once per scene reads
+ * which scene it is from its own params, and a card that could only name a scene on the card would
+ * have to be copied once per scene.
+ */
+function wiredReaderGraph(nodeType: string, pinId: string, targetKey: string, wired: string, params: Record<string, unknown>): UIGraph {
+    return {
+        id: "readVisitedWired",
+        entries: { main: { start: { nodeId: "store", port: "in" } } },
+        nodes: {
+            read: { id: "read", type: nodeType, params },
+            target: { id: "target", type: BLUEPRINT_NODE_TYPE_LITERAL_STRING, params: { value: wired } },
+            store: { id: "store", type: BLUEPRINT_NODE_TYPE_LOCAL_SET, params: { variableId: "out" } },
+        },
+        edges: [
+            { from: { nodeId: "target", port: "value" }, to: { nodeId: "read", port: targetKey } },
+            { from: { nodeId: "read", port: pinId }, to: { nodeId: "store", port: "value" } },
+        ],
+    } as UIGraph;
+}
+
+async function readWiredPin(
+    nodeType: string,
+    pinId: string,
+    targetKey: string,
+    wired: string,
+    params: Record<string, unknown>,
+    state: VisitedState,
+): Promise<unknown> {
+    const locals: Record<string, unknown> = {};
+    await executeGraph({
+        graph: wiredReaderGraph(nodeType, pinId, targetKey, wired, params),
+        entry: { start: { nodeId: "store", port: "in" } },
+        hostAdapter: createVisitedHostAdapter(state),
+        blueprintLocals: locals,
+    });
+    return locals.out;
+}
 
 describe("visited blueprint nodes", () => {
     it("registers all three types", () => {
@@ -147,5 +190,51 @@ describe("visited blueprint nodes", () => {
         });
 
         expect(state).toEqual({ scenes: [], options: [] });
+    });
+});
+
+describe("a visited reader told which target by a pin", () => {
+    it("reads the wired scene rather than the one on the card", async () => {
+        registerCoreBlueprintNodes();
+        const state: VisitedState = { scenes: ["scene-wired"], options: [] };
+
+        // The card still names a scene, and it is not the visited one. The pin wins, which is what
+        // lets one component answer for every scene it is placed against.
+        expect(await readWiredPin(
+            BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED, "isVisited", "sceneId", "scene-wired",
+            { sceneId: "scene-on-the-card" }, state,
+        )).toBe(true);
+
+        expect(await readWiredPin(
+            BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED, "isVisited", "sceneId", "scene-elsewhere",
+            { sceneId: "scene-wired" }, state,
+        )).toBe(false);
+    });
+
+    it("falls back to the card when nothing is wired, so every existing graph is unchanged", async () => {
+        registerCoreBlueprintNodes();
+        const state: VisitedState = { scenes: ["scene-on-the-card"], options: [] };
+
+        expect(await readPin(
+            BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED, "isVisited", { sceneId: "scene-on-the-card" }, state,
+        )).toBe(true);
+    });
+
+    it("answers the same way for a picked option", async () => {
+        registerCoreBlueprintNodes();
+        const state: VisitedState = { scenes: [], options: ["option-wired"] };
+
+        expect(await readWiredPin(
+            BLUEPRINT_NODE_TYPE_GAME_IS_OPTION_PICKED, "isPicked", "optionId", "option-wired",
+            { optionId: "option-on-the-card" }, state,
+        )).toBe(true);
+    });
+
+    it("reads an empty target as not visited rather than as everything", async () => {
+        registerCoreBlueprintNodes();
+
+        expect(await readWiredPin(
+            BLUEPRINT_NODE_TYPE_GAME_IS_SCENE_VISITED, "isVisited", "sceneId", "   ", {}, EMPTY,
+        )).toBe(false);
     });
 });

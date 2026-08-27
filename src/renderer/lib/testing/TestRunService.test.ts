@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GameTestEventPayload } from "@shared/types/gameTest";
+import type { WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 import { testRegistry } from "./registry";
 import { TestRunService } from "./TestRunService";
@@ -49,7 +50,7 @@ type FakeCache = {
     createdDirs: string[];
 };
 
-function createContext(options: { frozen?: boolean; cache?: FakeCache } = {}): WorkspaceContext {
+function createContext(options: { freeze?: WorkspaceFreezeKind; cache?: FakeCache } = {}): WorkspaceContext {
     const consoleStub = {
         registerChannel: vi.fn(() => () => undefined),
         log: vi.fn(),
@@ -92,7 +93,7 @@ function createContext(options: { frozen?: boolean; cache?: FakeCache } = {}): W
                     return consoleStub;
                 }
                 if (serviceId === Services.WorkspaceFreeze) {
-                    return { isFrozen: () => Boolean(options.frozen) };
+                    return { getReason: () => (options.freeze ? { kind: options.freeze } : null) };
                 }
                 if (serviceId === Services.FileSystem) {
                     if (!cache) {
@@ -106,7 +107,7 @@ function createContext(options: { frozen?: boolean; cache?: FakeCache } = {}): W
     } as unknown as WorkspaceContext;
 }
 
-async function createService(options: { frozen?: boolean; cache?: FakeCache } = {}): Promise<TestRunService> {
+async function createService(options: { freeze?: WorkspaceFreezeKind; cache?: FakeCache } = {}): Promise<TestRunService> {
     const service = new TestRunService();
     await service.initialize(createContext(options), async () => undefined);
     return service;
@@ -362,7 +363,7 @@ describe("TestRunService host gates", () => {
     });
 
     it("refuses a windowed test on a frozen workspace and allows a headless one", async () => {
-        const service = await createService({ frozen: true });
+        const service = await createService({ freeze: "manual" });
         const windowed = registerTest({ presentation: "windowed" });
         const headless = registerTest({ presentation: "headless" });
 
@@ -374,6 +375,16 @@ describe("TestRunService host gates", () => {
         });
         expect(service.getAvailability(headless)).toEqual({ available: true });
         await expect(service.start(windowed)).rejects.toThrow();
+    });
+
+    it("offers a windowed test during a live session, because main would launch it", async () => {
+        // The refusal above is a consistency guard - what ran would not be what the author is
+        // looking at. A session's working tree IS what everybody is looking at, and `GameTestManager`
+        // launches it, so refusing here would grey out a row over a game that would have started.
+        const service = await createService({ freeze: "live-session" });
+        const windowed = registerTest({ presentation: "windowed" });
+
+        expect(service.getAvailability(windowed)).toEqual({ available: true });
     });
 
     it("lets a definition decline for itself, and reports a definition that throws", async () => {

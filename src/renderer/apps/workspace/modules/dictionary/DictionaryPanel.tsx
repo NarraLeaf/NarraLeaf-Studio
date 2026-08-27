@@ -30,6 +30,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useWorkspace } from "@/apps/workspace/context";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { dictionaryFreezeScope } from "./dictionaryFreeze";
 import { Services } from "@/lib/workspace/services/services";
 import type { DictionaryService } from "@/lib/workspace/services/dictionary/DictionaryService";
 import {
@@ -47,6 +48,7 @@ import {
 import { jumpToSearchTarget } from "../search/searchJump";
 import type { PanelComponentProps } from "../types";
 import type { DictionaryPanelPayload } from "./openDictionaryPanel";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 const FIELD_CLASS = cn(
     CONTROL_SIZE_CLASS.sm,
@@ -68,7 +70,7 @@ function EntryEditor(props: {
     onRemove: () => void;
 }) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(dictionaryFreezeScope());
     const { entry } = props;
     const [term, setTerm] = useState(entry.term);
     const [reading, setReading] = useState(entry.reading ?? "");
@@ -108,6 +110,9 @@ function EntryEditor(props: {
                 onBlur={commitTerm}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }
@@ -124,6 +129,9 @@ function EntryEditor(props: {
                 onBlur={() => props.onCommit({ reading: reading.trim() || null })}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }
@@ -154,6 +162,9 @@ function EntryEditor(props: {
                 onBlur={() => props.onCommit({ note: note.trim() || null })}
                 onKeyDown={event => {
                     event.stopPropagation();
+                    if (isImeKeyEvent(event)) {
+                        return;
+                    }
                     if (event.key === "Enter") {
                         event.currentTarget.blur();
                     }
@@ -211,7 +222,7 @@ function EntryFindings(props: { findings: DictionaryFinding[]; onJump: (finding:
 export function DictionaryPanel({ payload }: PanelComponentProps<DictionaryPanelPayload>) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(dictionaryFreezeScope());
 
     const service = useMemo<DictionaryService | null>(
         () => (context && isInitialized ? context.services.get<DictionaryService>(Services.Dictionary) : null),

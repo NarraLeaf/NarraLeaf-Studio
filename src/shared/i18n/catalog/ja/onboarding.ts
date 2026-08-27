@@ -5,7 +5,10 @@ import type { LocaleNamespace } from "../types";
  *
  * 訊いているのはどれも設定にある項目なので、ラベルと選択肢の名前は `settings` 名前空間から読む。
  * 同じ設定に二通りの訳を置くと、セットアップ画面と設定ウィンドウで「システムに合わせる」の
- * 言い方が食い違う。プレビュー内の入力欄の文言も同じ理由で `story.rows.*` から取る。
+ * 言い方が食い違う。サンプル内の文言も同じ理由で、ストーリー行は `story.rows.*`、
+ * バージョン列の見出しは `workspace.shell` から取る。
+ *
+ * 文体は常体。`title` は文ではなく名詞句にする。
  */
 export const onboarding = {
     windowTitle: "{name} へようこそ",
@@ -22,81 +25,72 @@ export const onboarding = {
     },
     welcome: {
         title: "ようこそ",
-        expectation: "始める前に、いくつか簡単な設定をします。",
-        haveSettings: "ほかのコンピューターで Studio を使っていますか？",
+        expectation: "インターフェースとストーリーエディターの設定、全 6 画面。選んだ時点で反映され、あとから設定でも変更できる",
+        haveSettings: "ほかのインストールの設定",
     },
     language: {
         title: "言語",
-        expectation: "Studio の画面表示に使う言語。設定でいつでも変更できる",
+        expectation: "Studio の画面表示に使う言語",
         matchedToDevice: "この端末の言語と一致",
     },
     appearance: {
         title: "外観",
-        expectation: "好みのテーマとアクセントを選んでください",
+        expectation: "インターフェースのテーマとアクセント",
     },
     zoom: {
         title: "画面の拡大率",
-        expectation: "Studio の画面を描く大きさ。下の「ウィンドウ全体を見る」を押すと、実際の大きさを確かめられる",
-        custom: "カスタム倍率",
-        surface: "プレビューに出す画面",
+        expectation: "Studio の画面を描く大きさ。このウィンドウもこの設定に従う",
+        custom: "カスタム",
+        surface: "プレビューの画面",
     },
     identity: {
-        title: "あなたは誰？",
-        expectation: "バージョン管理に表示され、どの改訂を誰が入れたかを見分けるために使う",
-        unsigned: "空のままなら、改訂は {name} として記録される",
+        title: "署名",
+        expectation: "各バージョンに記録される名前と、新規プロジェクトの既定の作者",
+        unsigned: "空のままなら、バージョンは {name} として記録される",
     },
     team: {
-        title: "Team サーバー",
-        expectation: "NarraLeaf Team はチームでの制作に向けた機能。チームがサーバーを用意しているなら、ここで接続できる",
+        title: "チームサーバー",
+        expectation: "共有プロジェクトの置き場所。サーバーは必須ではない",
         connect: "サーバーに接続",
         connected: "サインイン済み",
-        none: "サーバーはあとからホーム画面の Team でも追加できる",
+        none: "プロジェクトはこの端末に保存される",
     },
     story: {
-        title: "エディターの設定",
-        expectation: "ストーリーエディターの設定をいくつか。残りはすべて設定にある",
+        title: "ストーリーエディター",
+        expectation: "シーンエディターの表示と入力の方式",
     },
     import: {
         action: "設定ファイルを読み込む…",
-        leaves: "適用するとこれらの設定が読み込まれ、そのまま Studio が開く",
+        leaves: "適用するとセットアップを終了して Studio が開く",
     },
     done: {
-        title: "創作はここから",
-        expectation: "NarraLeaf Studio のセットアップが終わった。設定には好みに合わせる項目がまだたくさんある。さあ、いちばん良いやり方で自分のビジュアルノベルを作ろう。千里の道も一歩から",
-        docs: "ドキュメントを読む",
-    },
-    previewWindow: {
-        open: "ウィンドウ全体を見る",
-        notice: "このウィンドウは拡大率のプレビュー。中のものは操作できない。ほかの拡大率はドロップダウンから見られる",
+        title: "セットアップ完了",
+        expectation: "ここで設定した項目はすべて設定にある。F1 でカーソル位置のヘルプが開く",
+        docs: "ドキュメントを開く",
     },
     skipConfirm: {
         title: "セットアップをスキップしますか？",
-        message: "Studio は既定の設定で開きます。好みに合わせる項目は設定にたくさんあります。",
+        message: "Studio は既定の設定で開きます。セットアップは再表示されませんが、ここで尋ねる項目はすべて設定にあります。",
     },
     nav: {
         skip: "セットアップをスキップ",
         finish: "Studio を開く",
     },
     sample: {
-        projectName: "Welcome to Studio",
+        projectName: "Afterlight",
         storyName: "第 1 章",
-        scene: "こんにちは！",
+        scene: "屋上、夕方",
         speaker: "Narra",
-        line: "NarraLeaf Studio へようこそ！",
-        lineContinued: "ここで好みの見た目を選んでください。",
-        narration: "ほかにも設定で変更できます。",
+        line: "チャイムが鳴ったのは十分前。",
+        lineContinued: "屋上にはほかに誰もいない。",
+        narration: "背後の階段室の扉は開いたままだった。",
         background: "屋上",
         placement: "中央",
         transition: "フェード",
-        rail: {
-            story: "ストーリー",
-            versions: "バージョン管理",
-            team: "チーム",
-        },
         versions: {
             latest: "屋上のシーン、初稿",
-            earlier: "章の始まり",
             checkpoint: "チェックポイント",
+            earlier: "章の始まり",
         },
         dashboard: {
             lastActive: "たった今",
@@ -108,6 +102,5 @@ export const onboarding = {
             warning: "シーン「屋上、夕方」に立ち絵のないキャラクターがいる",
             done: "プレビュー完了、3.4 秒",
         },
-        teamAlone: "この端末で作業中",
     },
 } satisfies LocaleNamespace<"onboarding">;

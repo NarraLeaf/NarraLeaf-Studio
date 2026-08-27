@@ -5,7 +5,7 @@ import path from "path";
 import { Readable } from "stream";
 import { nativeImage } from "electron";
 import { shell } from "electron";
-import { app, BrowserWindow, dialog, ipcMain, Menu, protocol, screen, session } from "electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, powerSaveBlocker, protocol, screen, session } from "electron/main";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { GameTestCommand, GameTestEvent } from "@shared/types/gameTest";
 import type { SaveCompatibilityStamp } from "@shared/types/saveCompatibility";
@@ -20,17 +20,20 @@ import {
     type GameCrashPolicy,
     type GameRuntimePackV1,
 } from "@shared/types/gameRuntime";
+import {
+    normalizeWindowConfiguration,
+    WINDOW_SCALE_DESIGN,
+    type WindowConfiguration,
+    type WindowScaleStep,
+} from "@shared/types/appWindow";
 import { getMimeType } from "@shared/utils/fs";
 import {
     DEFAULT_SAVE_LOCATION_CONFIGURATION,
     normalizeSaveLocationConfiguration,
     type SaveLocationConfiguration,
 } from "@shared/utils/userDataLocation";
-import {
-    buildGameRuntimeAssetVersionArg,
-    buildGameRuntimeCrashPolicyArg,
-    buildGameRuntimeLogPathArg,
-} from "@shared/utils/gameRuntimeAssetUrl";
+import { buildGameRuntimeAssetVersionArg } from "@shared/utils/gameRuntimeAssetUrl";
+import { buildGameRuntimeIndexUrl } from "@shared/utils/gameRuntimeIndexUrl";
 import {
     resolveGameRuntimeEntrySurface,
     resolveGameRuntimeInitialBackgroundColor,
@@ -48,7 +51,7 @@ import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointe
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { sniffMediaType } from "./mediaSniff";
-import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
+import { createRuntimeResources, isSealedBuildSync, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
@@ -76,7 +79,30 @@ import {
 } from "@shared/utils/gameProgressFile";
 import type { GameProgressExportRequest } from "@shared/types/gameProgress";
 import { installRuntimeLogSink, runtimeLogPath } from "./runtimeLog";
+import { installDisplaySleepInhibitor, type DisplaySleepInhibitor } from "./displaySleep";
+import { resolveShellText, type ShellText } from "./shellText";
+import { claimSingleInstance } from "./singleInstance";
+import {
+    currentWindowScale,
+    fitInside,
+    fittingWindowScales,
+    NO_WINDOW_CHROME,
+    readWindowGeometry,
+    resolveWindowGeometry,
+    roomForStage,
+    scaledDesign,
+    writeWindowGeometry,
+    type WindowChrome,
+} from "./windowGeometry";
 import { installWindowCrashHandling } from "./windowCrashHandling";
+import {
+    hasDebuggingSwitch,
+    hasStartupSwitch,
+    honoursDebuggableMarker,
+    reviewStartupArguments,
+    RUNTIME_LOGS_SWITCH,
+} from "@shared/utils/runtimeStartupArguments";
+import { silenceRuntimeConsole } from "./runtimeConsole";
 
 const appDir = __dirname;
 
@@ -118,6 +144,15 @@ const shellManifest = readShellManifest();
 const shellMode = shellManifest.mode;
 
 /**
+ * Whether this build's content is sealed.
+ *
+ * Read from disk rather than from the pack, because the marker below has to be answered before
+ * anything can open one. It is the same file `createRuntimeResources` decides on a moment later, so
+ * the two cannot disagree about what kind of build this is.
+ */
+const shellSealed = isSealedBuildSync(appDir);
+
+/**
  * This build was made to be inspected, so the guards below stand aside for the launch switches
  * they otherwise refuse.
  *
@@ -125,8 +160,40 @@ const shellMode = shellManifest.mode;
  * own: the switch still has to be on the command line for anything to be listening. The pack
  * carries the same marker and stays authoritative - a manifest that claims this while the pack does
  * not is refused by the second gate, which is the one that runs from inside the archive.
+ *
+ * The *shipped* form of a sealed build refuses it whichever marker carries it, because this gate -
+ * the one that decides in time to matter - can only read the manifest, and a protected game cannot
+ * have a text edit standing between a stranger and its decrypted content. An app directory run by
+ * hand is not that form and keeps the marker. See {@link honoursDebuggableMarker}.
  */
-const shellDebuggable = shellManifest.debuggable;
+const shellDebuggable = honoursDebuggableMarker({
+    marker: shellManifest.debuggable,
+    sealed: shellSealed,
+    packaged: app.isPackaged,
+});
+
+/*
+ * Before anything has had a chance to print. A shipped game keeps its own output to its log file
+ * unless this run asked for it, so that starting the executable from a terminal does not answer
+ * what the game is built with.
+ *
+ * Preview and test keep their console unconditionally: Studio reads the child's stdout to fill the
+ * console panel an author watches, and a build made to be inspected is not one to go quiet on.
+ */
+if (shellMode === "production" && !shellDebuggable
+    && !hasStartupSwitch(startupArguments(), process.platform, RUNTIME_LOGS_SWITCH)) {
+    silenceRuntimeConsole();
+    // Chromium's own logging is written from C++, where no JavaScript reaches it, so the only
+    // thing that turns it off is a switch this process appends to its own command line. Without it
+    // a child process dying still prints a Chromium source path to stderr, which answers the same
+    // question the game's own lines used to.
+    //
+    // Both, because `disable-logging` alone does not stop it: measured on Electron 38, a browser
+    // process killed while its network service was running still printed one ERROR line with the
+    // switch set, and none once the severity floor was raised to FATAL.
+    app.commandLine.appendSwitch("disable-logging");
+    app.commandLine.appendSwitch("log-level", "3");
+}
 
 /**
  * A test asked for this game to run with no way out to the network.
@@ -212,23 +279,28 @@ function progressEnvironment(): GameProgressEnvironment {
  */
 const logRuntime = installRuntimeLogSink(userDataDir);
 
-
-/** Node inspector / Chromium remote-debugging switches refused in production. */
-const DEBUG_SWITCHES = [
-    "remote-debugging-port",
-    "remote-debugging-pipe",
-    "inspect",
-    "inspect-brk",
-    "inspect-port",
-    "inspect-publish-uid",
-];
-
 let packPromise: Promise<GameRuntimePackV1> | null = null;
 /** The game's own name, once the pack has been read. Titles the crash dialogs. */
 let loadedPackName: string | null = null;
 /** What this build does when it stops working, from the pack. */
 let crashPolicy: GameCrashPolicy = DEFAULT_GAME_CRASH_POLICY;
 let mainWindow: BrowserWindow | null = null;
+/** The window's display block, driven by the renderer over `runtime:displayAwake:set`. */
+let displaySleep: DisplaySleepInhibitor | null = null;
+/** What the project says its window may do; settled from the pack as the window is built. */
+let windowConfig: WindowConfiguration = normalizeWindowConfiguration(undefined);
+/** The stage's own size, which every offered scale step is a multiple of. */
+let windowDesign = { width: 1280, height: 720 };
+/**
+ * The window's content bounds while it is neither maximised nor full-screen.
+ *
+ * Kept because that is the size worth restoring: `getContentBounds` on a maximised window answers
+ * with the screen, and a player who closed the game maximised should get a maximised window back -
+ * not a window whose restored size is also the screen.
+ */
+let normalWindowBounds: { width: number; height: number; x: number | null; y: number | null } | null = null;
+/** What this platform's window frame adds to the stage, measured from the window itself. */
+let windowChrome: WindowChrome = NO_WINDOW_CHROME;
 let controlServer: WebSocketServer | null = null;
 let resources: RuntimeResources | null = null;
 let saveStore: RuntimeSaveStore | null = null;
@@ -268,13 +340,28 @@ function runtimeResources(): RuntimeResources {
     return resources;
 }
 
-/** Whether the process was started with an inspector / remote-debugging switch. */
-function hasDebuggingSwitch(): boolean {
-    if (DEBUG_SWITCHES.some(name => app.commandLine.hasSwitch(name))) {
-        return true;
-    }
-    const pattern = /^--(remote-debugging-(port|pipe)|inspect(-brk|-port|-publish-uid)?)(=|$)/;
-    return [...process.argv, ...process.execArgv].some(arg => pattern.test(arg));
+/**
+ * What this launch was given that a shipped game does not accept.
+ *
+ * The whole command line rather than a list of switches known to be dangerous: Electron takes every
+ * switch Chromium was compiled with, and naming the bad ones means the list is only ever as current
+ * as the last person who read Chromium's release notes. A game states what it accepts instead, and
+ * everything outside that stops the launch - see `@shared/utils/runtimeStartupArguments`.
+ */
+function refusedStartupArguments(): string[] {
+    return reviewStartupArguments(startupArguments(), process.platform).refused;
+}
+
+/**
+ * The command line as far as it came from whoever started the game.
+ *
+ * `electron <app dir>` puts the directory in `argv[1]`, and a build run that way is how a developer
+ * opens a compiled app directory without packaging it. A shipped game has no such argument - what
+ * follows the executable there is the player's - so the one Electron itself added is dropped only
+ * in the mode Electron adds it in, and a packaged build stays strict about every positional.
+ */
+function startupArguments(): string[] {
+    return [...process.argv.slice(process.defaultApp ? 2 : 1), ...process.execArgv];
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -314,17 +401,62 @@ if (testNetworkBlocked) {
     );
 }
 
-// Earliest possible refusal to run a production game under an attached
-// debugger/CDP: before app-ready, before any window or session exists. The
-// post-pack-read check below stays as the authoritative (tamper-resistant on
-// asar-integrity platforms) second gate.
-const startupBlocked = shellMode === "production" && !shellDebuggable && hasDebuggingSwitch();
-if (startupBlocked) {
+/**
+ * Earliest possible refusal of a command line a shipped game does not accept: before app-ready,
+ * before any window or session exists. The post-pack-read check below stays as the authoritative
+ * (tamper-resistant on asar-integrity platforms) second gate.
+ *
+ * Both halves matter and they are not the same half. Quitting states the policy; taking the
+ * switches off the command line is what stops them being acted on, because Chromium reads several
+ * of them after this script has run. Measured on Electron 38: a launch with
+ * `--remote-debugging-port` that only quit here still had the port accepting connections about
+ * 130ms later, and the same launch with the switch removed here never listened at all.
+ */
+function refuseStartupArguments(): boolean {
+    const refused = refusedStartupArguments();
+    if (refused.length === 0) {
+        return false;
+    }
+    for (const name of reviewStartupArguments(startupArguments(), process.platform).removable) {
+        app.commandLine.removeSwitch(name);
+    }
+    // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
+    // file to send to support; anyone probing the game for what it refuses gets a process that
+    // exits and says nothing.
+    logRuntime("error", `refusing to start: this build does not accept ${refused.join(", ")}`);
     app.quit();
+    return true;
 }
 
+const startupBlocked = shellMode === "production" && !shellDebuggable && refuseStartupArguments();
+
+/**
+ * A shipped game runs once at a time; see `singleInstance` for what a second copy costs the player.
+ *
+ * Only a shipped one. Studio's preview and its test runner start several copies of the same build
+ * on purpose - two authors' windows, a test suite and the game it is testing - and they do not
+ * share a player directory to damage either: a preview writes beside the compiled app rather than
+ * into the installed game's (see `useSiblingUserData`).
+ *
+ * After the command-line gate above, so a launch this build refuses is refused for that reason
+ * rather than reported as a second copy.
+ */
+const secondCopy = shellMode === "production" && !startupBlocked && !claimSingleInstance({
+    requestLock: () => app.requestSingleInstanceLock(),
+    quit: () => {
+        app.quit();
+    },
+    onSecondInstance: listener => {
+        app.on("second-instance", () => {
+            listener();
+        });
+    },
+    window: () => mainWindow,
+    log: logRuntime,
+});
+
 void app.whenReady().then(async () => {
-    if (startupBlocked) {
+    if (startupBlocked || secondCopy) {
         return;
     }
     resources = await createRuntimeResources(appDir, {
@@ -337,15 +469,19 @@ void app.whenReady().then(async () => {
         userDataDir,
         // What applied, and what did not, is the only trace a patch leaves.
         log: logRuntime,
+        // A build made to be inspected says why a patch was refused; a shipped one names the file
+        // and stops, because the reason describes how a patch is bound to its build.
+        explainRefusedPatches: shellMode !== "production" || shellDebuggable,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && pack.debuggable !== true && hasDebuggingSwitch()) {
-        // Refuse to run a production game under an attached debugger/CDP.
+    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
+        // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
+        // rewritten shell manifest does not get past on the platforms that validate one.
         app.quit();
         return;
     }
-    if (pack.debuggable === true) {
-        console.log("[GameRuntime] This build accepts debugging switches (built under an experimental condition).");
+    if (packDebuggable(pack)) {
+        console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
     const networkAllowlist = packNetworkAllowlist(pack);
@@ -372,7 +508,10 @@ void app.whenReady().then(async () => {
     // author, who pressed Stop, would otherwise read an unhandled rejection on the Studio console.
     // Keyed on the quit rather than on the window being destroyed: `app.quit()` aborts the load
     // first and tears the window down after, so `isDestroyed()` is still false when this rejects.
-    await mainWindow.loadURL(`${GAME_RUNTIME_PROTOCOL}://runtime/index.html`).catch(error => {
+    await mainWindow.loadURL(buildGameRuntimeIndexUrl({
+        policy: normalizeGameCrashPolicy(pack.crash?.policy),
+        logPath: runtimeLogPath(userDataDir),
+    })).catch(error => {
         if (isQuitting) {
             return;
         }
@@ -389,7 +528,6 @@ function createSidecarHost(pack: GameRuntimePackV1): SidecarHost {
     return new SidecarHost(collectPackSidecars(pack), {
         appDir,
         userDataDir,
-        execPath: process.execPath,
         mode: pack.mode,
         game: { name: pack.project.name, version: pack.project.version ?? null },
         log: (level, message) => {
@@ -527,13 +665,40 @@ process.on("uncaughtExceptionMonitor", (error: unknown, origin?: string) => {
  */
 function reportFatalRuntimeError(headline: string): void {
     try {
+        const text = shellText();
         dialog.showErrorBox(
             gameDisplayName(),
-            `${headline}\n\nThe game has to close. Details were written to ${runtimeLogPath(userDataDir)}`,
+            `${headline}\n\n${text.fatalClose} ${text.logAt(runtimeLogPath(userDataDir))}`,
         );
     } catch {
         /* No window server, or a dialog that refused. The log line above is the report. */
     }
+}
+
+/**
+ * What this process says to the player, in the language this machine asked for.
+ *
+ * `getLocale()` leads, and that ordering is the whole point: it is the same tag the page's
+ * `navigator.languages` leads with, so the native dialogs and the game's own crash screen cannot
+ * end up in different languages. It also moves with `--lang`, which is on the startup allowlist
+ * and which the system list does not follow - a player who launches the game in Japanese on a
+ * Chinese machine gets a Japanese page, and would otherwise get a Chinese dialog over it.
+ *
+ * The system list follows as the preference order proper. Before the app is ready `getLocale()`
+ * answers an empty string rather than throwing, and an empty tag is dropped, so the list degrades
+ * to the system one on its own - which matters because the earliest caller here is the
+ * uncaught-exception monitor, and that can fire before ready.
+ *
+ * Resolved once. Nothing about a running game can change the answer, and a crash is a bad moment
+ * to start asking questions.
+ */
+let cachedShellText: ShellText | null = null;
+
+function shellText(): ShellText {
+    if (!cachedShellText) {
+        cachedShellText = resolveShellText([app.getLocale(), ...app.getPreferredSystemLanguages()]);
+    }
+    return cachedShellText;
 }
 
 /** The game's own name once the pack has been read, and something honest before that. */
@@ -601,6 +766,22 @@ function emitTestEvent(event: GameTestEvent): void {
     }
 }
 
+/**
+ * The pack's own `debuggable` marker, as far as it is allowed to mean anything.
+ *
+ * Put through the same rule as the manifest one. This marker cannot be tampered with - it comes out
+ * of the protected store - so the point is not to defend against an edit; it is that the two gates
+ * have to say the same thing, or a launch could be refused its switch by the first and then be
+ * handed DevTools by the second.
+ */
+function packDebuggable(pack: GameRuntimePackV1): boolean {
+    return honoursDebuggableMarker({
+        marker: pack.debuggable === true,
+        sealed: shellSealed,
+        packaged: app.isPackaged,
+    });
+}
+
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
         packPromise = runtimeResources()
@@ -611,7 +792,29 @@ async function readPack(): Promise<GameRuntimePackV1> {
 }
 
 function createWindow(pack: GameRuntimePackV1): BrowserWindow {
-    const size = resolveInitialWindowSize(pack);
+    const design = resolveInitialWindowSize(pack);
+    windowConfig = normalizeWindowConfiguration(pack.bundle?.window);
+    // Measured rather than assumed: a 1080-tall window plus its title bar does not fit a 1080p
+    // desktop once the taskbar has its strip, and the display the player left the game on may not
+    // be the primary one. `getDisplayMatching` answers both - it falls back to the nearest display
+    // for a rectangle that lands on none, which is the case a remembered position has to survive.
+    const remembered = readWindowGeometry(userDataDir);
+    const displays = screen.getAllDisplays().map(display => display.workArea);
+    const workArea = remembered && remembered.x !== null && remembered.y !== null
+        ? screen.getDisplayMatching({
+            x: remembered.x,
+            y: remembered.y,
+            width: remembered.width,
+            height: remembered.height,
+        }).workArea
+        : screen.getPrimaryDisplay().workArea;
+    const geometry = resolveWindowGeometry({
+        design,
+        config: windowConfig,
+        remembered,
+        workArea,
+        displays,
+    });
     const icon = createProjectIcon(pack);
     // Production disables DevTools outright: with devTools:false Electron ignores
     // any openDevTools call and the menu/keyboard toggles become no-ops, so there
@@ -621,14 +824,24 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // switch on the command line it starts exactly as a production build does, which is what keeps
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
-        || (pack.debuggable === true && hasDebuggingSwitch());
+        || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
     const win = new BrowserWindow({
         title: pack.project.name,
-        width: size.width,
-        height: size.height,
+        // The design size is the STAGE, not the window: Electron's width/height are the outer size,
+        // so without this a 1920x1080 project was drawn into a client area a title bar shorter than
+        // it asked for and scaled to about 0.97 on the display it was made for.
+        useContentSize: true,
+        width: geometry.width,
+        height: geometry.height,
+        ...(geometry.x !== undefined && geometry.y !== undefined
+            ? { x: geometry.x, y: geometry.y }
+            : { center: true }),
+        fullscreen: geometry.fullscreen,
+        // The steps a configuration screen offers are one thing and the window frame is another;
+        // an author who wants only the offered sizes turns dragging off.
+        resizable: windowConfig.resizable,
         minWidth: 480,
         minHeight: 320,
-        center: true,
         frame: true,
         // Windows and Linux lay the menu bar out inside the window, so it has to
         // be gone before the first frame or the game's viewport is measured with
@@ -647,20 +860,99 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             // The preload derives versioned asset URLs from this marker; a
             // process argument is the only synchronous channel it can read
             // before the document loads.
+            // The crash policy and the log path used to travel here too, and no longer do: the
+            // preload republishes them, so they went down with it in the one failure - a preload
+            // that never ran - where the crash screen has to be right on its own. They are on the
+            // page's own address now (see `buildGameRuntimeIndexUrl`).
             additionalArguments: [
                 buildGameRuntimeAssetVersionArg(resolveAssetVersion(pack)),
-                // So the crash screen is right from the first frame. The failure it is most likely
-                // to draw happens while the pack is still being read, and asking the pack for the
-                // policy then would mean falling back to "show the error" in exactly the build
-                // whose author asked for the opposite.
-                buildGameRuntimeCrashPolicyArg(normalizeGameCrashPolicy(pack.crash?.policy)),
-                // So the crash screen can say where the report is. The one thing a player can do
-                // about a crash is hand the file over, which needs them to be told where it is.
-                buildGameRuntimeLogPathArg(runtimeLogPath(userDataDir)),
             ],
         },
     });
     win.setTitle(pack.project.name);
+    windowDesign = design;
+    /*
+     * The frame, and then the geometry again.
+     *
+     * Only a window can say what its own frame costs - it depends on the platform, the theme and
+     * the display's scaling - and the size that has to fit the screen is the window rather than the
+     * stage inside it. MEASURED on Windows 11 at 125%: 15x64, which is why a 1080-tall stage does
+     * not fit a desktop with 1104 rows under its taskbar. Asking once with zero and again with the
+     * real number costs nothing visible, because the window is still hidden until first paint.
+     */
+    const outerBounds = win.getBounds();
+    const [openedWidth, openedHeight] = win.getContentSize();
+    windowChrome = {
+        width: Math.max(0, outerBounds.width - openedWidth),
+        height: Math.max(0, outerBounds.height - openedHeight),
+    };
+    const fitted = resolveWindowGeometry({
+        design,
+        config: windowConfig,
+        remembered,
+        workArea,
+        displays,
+        chrome: windowChrome,
+    });
+    if (fitted.width !== openedWidth || fitted.height !== openedHeight) {
+        win.setContentSize(fitted.width, fitted.height);
+        if (fitted.x === undefined || fitted.y === undefined) {
+            win.center();
+        }
+    }
+    normalWindowBounds = {
+        width: fitted.width,
+        height: fitted.height,
+        x: fitted.x ?? null,
+        y: fitted.y ?? null,
+    };
+    /*
+     * No `setAspectRatio`. It looks like the right answer - a window held at the design ratio can
+     * never letterbox its own art - and on Windows it is not: MEASURED on Electron 38, the ratio is
+     * maintained for the WHOLE window including the frame, with or without the frame passed as the
+     * extra size, so asking for 16:9 gave a 16:9 window with a 1.90 stage inside it. The stage is
+     * fitted by the renderer either way; a window dragged off the ratio letterboxes, which is what
+     * every build has always done and is at least the shape the author drew.
+     */
+    if (fitted.maximized) {
+        win.maximize();
+    }
+    // Only while the window is in its ordinary state - see `normalWindowBounds`.
+    const rememberNormalBounds = (): void => {
+        if (win.isDestroyed() || win.isMaximized() || win.isMinimized() || win.isFullScreen()) {
+            return;
+        }
+        // Size from the content, position from the window. Mixing them is a real drift: the
+        // content origin sits a title bar below the window's, so a window reopened at its content
+        // position walks down the screen by the height of its own frame on every launch. MEASURED
+        // at 56 rows per relaunch before this was split.
+        const content = win.getContentSize();
+        const bounds = win.getBounds();
+        normalWindowBounds = {
+            width: content[0],
+            height: content[1],
+            x: bounds.x,
+            y: bounds.y,
+        };
+    };
+    win.on("resize", rememberNormalBounds);
+    win.on("move", rememberNormalBounds);
+    // On the way out rather than after: `closed` fires on a window there is nothing left to read.
+    // A close the game cancels writes too, which costs one file write and keeps the answer correct
+    // for the quit that does not go through a close at all.
+    win.on("close", () => {
+        if (!windowConfig.rememberGeometry || win.isDestroyed()) {
+            return;
+        }
+        writeWindowGeometry(userDataDir, {
+            width: normalWindowBounds?.width ?? geometry.width,
+            height: normalWindowBounds?.height ?? geometry.height,
+            x: normalWindowBounds?.x ?? null,
+            y: normalWindowBounds?.y ?? null,
+            maximized: win.isMaximized(),
+            fullscreen: win.isFullScreen(),
+        }, message => logRuntime("warning", `[Window] ${message}`));
+    });
     // Chromium raises the loaded document's <title> to the window, and the shell's index.html
     // carries a generic one, so the name set above lasted until the first paint and every game
     // was called NarraLeaf Game in the taskbar. The window is the project's, and a variant's is
@@ -734,6 +1026,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
         log: logRuntime,
         logPath: runtimeLogPath(userDataDir),
         displayName: gameDisplayName,
+        text: shellText(),
         // Read through rather than captured: the pack settles the policy as the window is being
         // built, and a snapshot taken here could be one step behind it.
         policy: () => crashPolicy,
@@ -754,6 +1047,16 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
             noLink: true,
         })).response,
         now: () => Date.now(),
+    });
+    // Auto mode plays for an hour without a single input, which the system reads as an idle
+    // machine; the renderer says when the story is moving on its own and this holds the display
+    // for as long as it is, and the window is on screen.
+    displaySleep = installDisplaySleepInhibitor(win, {
+        hold: () => powerSaveBlocker.start("prevent-display-sleep"),
+        release: id => {
+            powerSaveBlocker.stop(id);
+        },
+        log: logRuntime,
     });
     if (devToolsEnabled) {
         win.webContents.on("before-input-event", (_event, input) => {
@@ -854,6 +1157,84 @@ function createProjectIcon(pack: GameRuntimePackV1): Electron.NativeImage | unde
     }
 }
 
+/**
+ * Put the stage at a multiple of the size the game was drawn at.
+ *
+ * Any multiple, not only the ones the project offers: see the IPC handler for why the offered list
+ * is a list rather than a limit.
+ */
+function applyWindowScale(scale: number): void {
+    if (!Number.isFinite(scale) || scale <= 0) {
+        return;
+    }
+    const size = scaledDesign(windowDesign, scale);
+    applyWindowContentSize(size.width, size.height);
+}
+
+/**
+ * Put the stage at a size in pixels.
+ *
+ * The one place a window is resized while the game runs, so the two ways of asking - a multiple of
+ * the design size, or the pixels themselves - cannot drift apart.
+ *
+ * Full screen and maximised are left first: both are answers to "how big", and a window sized
+ * underneath either would come back to the old size the moment the player left it.
+ *
+ * The window keeps its place unless the new size would hang off the screen, in which case it is
+ * centred - a player who put the window where they wanted it has said something worth keeping, and
+ * a window half off the desktop has not.
+ */
+function applyWindowContentSize(width: number, height: number): void {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return;
+    }
+    if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+        return;
+    }
+    if (win.isFullScreen()) {
+        win.setFullScreen(false);
+    }
+    if (win.isMaximized()) {
+        win.unmaximize();
+    }
+    const workArea = screen.getDisplayMatching(win.getBounds()).workArea;
+    const size = fitInside({ width, height }, roomForStage(workArea, windowChrome));
+    win.setContentSize(size.width, size.height);
+    const bounds = win.getBounds();
+    const fits = bounds.x >= workArea.x
+        && bounds.y >= workArea.y
+        && bounds.x + bounds.width <= workArea.x + workArea.width
+        && bounds.y + bounds.height <= workArea.y + workArea.height;
+    if (!fits) {
+        win.center();
+    }
+}
+
+/** Which step the window is at now, for a configuration screen reading its own state. */
+function readWindowScale(): WindowScaleStep {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) {
+        return WINDOW_SCALE_DESIGN;
+    }
+    const [width, height] = win.getContentSize();
+    return currentWindowScale(windowDesign, { width, height });
+}
+
+/**
+ * The sizes worth offering this player, measured against the display their window is on.
+ *
+ * Asked of the shell rather than declared by the project: 200% is the right offer on a 4K monitor
+ * and nonsense on a laptop, and only the running game can see which one it is looking at.
+ */
+function readWindowScaleOptions(): number[] {
+    const win = mainWindow;
+    const workArea = win && !win.isDestroyed()
+        ? screen.getDisplayMatching(win.getBounds()).workArea
+        : screen.getPrimaryDisplay().workArea;
+    return fittingWindowScales(windowDesign, roomForStage(workArea, windowChrome));
+}
+
 function resolveInitialWindowSize(pack: GameRuntimePackV1): { width: number; height: number } {
     const surface = resolveGameRuntimeEntrySurface(pack);
     const width = surface?.designSize.width;
@@ -923,8 +1304,11 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
             }
             return new Response("Not found", { status: 404 });
         } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            return new Response(message, { status: 404 });
+            // The page gets nothing but the status. A read that fails inside the payload fails with
+            // the payload's own wording, and answering a fetch with it would let any script in the
+            // renderer ask the game how it stores what it stores. The log keeps the detail.
+            logRuntime("warning", `request failed: ${error instanceof Error ? error.message : String(error)}`);
+            return new Response("Not found", { status: 404 });
         }
     });
 }
@@ -1155,6 +1539,31 @@ function registerRuntimeIpc(): void {
             return;
         }
         pendingCloseDecisions.get(requestId)?.(payload?.allow !== false);
+    });
+    // Fire-and-forget: nothing in the game waits on the display, and a request arriving after the
+    // window has gone is about a window with no display left to hold.
+    ipcMain.on("runtime:displayAwake:set", (_event, awake: boolean) => {
+        displaySleep?.setRequested(awake === true);
+    });
+    ipcMain.handle("runtime:window:getScaleOptions", () => readWindowScaleOptions());
+    ipcMain.handle("runtime:window:getScale", () => readWindowScale());
+    ipcMain.handle("runtime:window:setScale", (_event, scale: number) => {
+        // Any multiple the graph asks for, not only the ones the project offers: the offered list
+        // is what a configuration screen is built from, and a game that computed a size of its own
+        // has a reason the list cannot know. The screen and the window minimum are the only limits,
+        // and those are not policy - a window larger than the desktop is one the player cannot use.
+        applyWindowScale(Number(scale));
+    });
+    ipcMain.handle("runtime:window:getSize", () => {
+        const win = mainWindow;
+        if (!win || win.isDestroyed()) {
+            return { width: windowDesign.width, height: windowDesign.height };
+        }
+        const [width, height] = win.getContentSize();
+        return { width, height };
+    });
+    ipcMain.handle("runtime:window:setSize", (_event, size: { width?: number; height?: number }) => {
+        applyWindowContentSize(Number(size?.width), Number(size?.height));
     });
     ipcMain.handle("runtime:fullscreen:get", () => mainWindow?.isFullScreen() === true);
     ipcMain.handle("runtime:fullscreen:set", (_event, fullscreen: boolean) => {

@@ -84,7 +84,7 @@ const APPEARANCES: Record<string, { name: string; ref: { kind: "pose"; id: strin
 };
 const MOTIONS: Record<string, string> = { "anim-shake": "handheld shake" };
 const APP_TAGS: Record<string, string> = { "tag-demo": "Demo" };
-const SCENES: Record<string, string> = { "scene-2": "天台 · 夜" };
+const SCENES: Record<string, string> = { "scene-2": "天台 · 夜", "scene-3": "Storeroom", "scene-4": "return" };
 
 const lookups: NarralangLookups = {
     character: (id) => (CHARACTERS[id] ? { name: CHARACTERS[id] } : null),
@@ -149,8 +149,10 @@ const SHOUTED: NarralangDialect = {
             { mark: "italic", tag: "EM" },
             { mark: "color", tag: "COLOUR", arg: "raw" },
             { mark: "fontSize", tag: "SIZE", arg: "number" },
+            { mark: "fontSizeStep", tag: "STEP", arg: "number" },
             { mark: "cps", tag: "CPS", arg: "number" },
             { mark: "ruby", tag: "RUBY", arg: "raw" },
+            { mark: "emphasis", tag: "MARK", arg: "raw" },
         ],
     },
     verbs: {
@@ -252,6 +254,10 @@ function roundTrip(fixture: StoryScene, dialect: NarralangDialect): string {
 
 const SCENE_TABLE: Record<string, StoryScene> = {
     "scene-2": { id: "scene-2", name: "天台 · 夜", runtimeName: "rooftop", rootBlockIds: [], blocks: {} },
+    // A name the printer has no reason to quote, so a bare word stands next to the jump's own bare
+    // word - and one named after that word, which is the only way the two can be confused.
+    "scene-3": { id: "scene-3", name: "Storeroom", runtimeName: "storeroom", rootBlockIds: [], blocks: {} },
+    "scene-4": { id: "scene-4", name: "return", runtimeName: "return_scene", rootBlockIds: [], blocks: {} },
 };
 
 // --- The corpus ---------------------------------------------------------------------------------------
@@ -301,6 +307,18 @@ const corpus: Record<string, StoryScene> = {
         },
         { id: "b10", kind: "note", payload: { text: text("这里以后要补一段回忆闪回", "note") } },
         { id: "b11", kind: "action", payload: { action: "character", operation: "exit", characterId: "char-alice", transform: { to: { opacity: 0 }, durationMs: 300 } } },
+    ] as never),
+
+    // A change that stands still in the middle of itself, and the two soft looks spelled apart.
+    // The hold is a slot of its own on the transition tail, not part of the timed word: the word
+    // says how long the whole change takes and this says how much of that is spent sitting still.
+    // Before it existed the script carried the change back at the right length holding for the
+    // wrong time, which is the one way a round trip can lie and still typecheck.
+    "a change that holds in a colour": scene([
+        { id: "h1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "throughColor", durationMs: 4000, holdMs: 2000 } } },
+        //  on a whole-screen change is the crossfade, so the fade-in needs the absolute word.
+        { id: "h2", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "fadeIn", durationMs: 600 } } },
+        { id: "h3", kind: "action", payload: { action: "character", operation: "expression", characterId: "char-alice", pose: "pose-smile", transition: { kind: "exposure", durationMs: 900, holdMs: 300, easing: "easeOut" } } },
     ] as never),
 
     "characters, every channel": scene([
@@ -400,6 +418,10 @@ const corpus: Record<string, StoryScene> = {
         { id: "e11", kind: "action", payload: { action: "wait", mode: "click" } },
         { id: "e12", kind: "action", payload: { action: "setBackground", color: "#101018" } },
         { id: "e13", kind: "jump", payload: { targetSceneId: "scene-2", transition: { kind: "dissolve", durationMs: 600 } } },
+        // The returnable jump, alone and beside a transition: the flag is a bare word on the line, so
+        // a script that carries it has to parse back to the same row.
+        { id: "e14", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true } },
+        { id: "e15", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true, transition: { kind: "fadeIn", durationMs: 400 } } },
     ] as never),
 
     "control flow": scene([
@@ -465,6 +487,21 @@ const corpus: Record<string, StoryScene> = {
         { id: "h5", kind: "nodeAction", payload: { action: "narration", text: text("大括号 {1} 与反斜杠 \\ 都在", "narration") } },
         { id: "h6", kind: "nodeAction", payload: { action: "narration", text: text(" 缩进过的一行 ", "narration") } },
         { id: "h7", kind: "note", payload: { text: text("注释里也有: 冒号", "note") } },
+        {
+            id: "h12",
+            kind: "nodeAction",
+            payload: {
+                action: "narration",
+                // The two marks the type panel writes. The step carries a sign, which the number
+                // argument has to print and read back as one.
+                text: text("それはわたしが決めた", "narration", [
+                    { text: "それは" },
+                    { text: "わたし", marks: { emphasis: "dot" } },
+                    { text: "が" },
+                    { text: "決めた", marks: { emphasis: "under-dot", fontSizeStep: -2 } },
+                ]),
+            },
+        },
         {
             id: "h10",
             kind: "nodeAction",
@@ -652,5 +689,48 @@ describe("a scene renamed from the inspector", () => {
             .toMatchObject({ action: "image", operation: "show", objectName: "crow", target: { sourceBlockId: ids[0] } });
         expect(parsed.blocks[ids[3]].payload)
             .toMatchObject({ action: "audio", operation: "stopSound", objectName: "gate", target: { sourceBlockId: ids[2] } });
+    });
+});
+
+// --- The returnable jump's own line -----------------------------------------------------------------
+
+describe("a jump that comes back", () => {
+    /** The scene's printed rows, without the `scene ...:` header or the indent. */
+    function rows(fixture: StoryScene): string[] {
+        return roundTrip(fixture, NARRALANG_DEFAULT_DIALECT).split(/\r?\n/).slice(1).map(line => line.trim()).filter(Boolean);
+    }
+
+    it("prints the flag as a bare word after the scene name, quoted name or not", () => {
+        expect(rows(scene([
+            { id: "k1", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true } },
+            { id: "k2", kind: "jump", payload: { targetSceneId: "scene-3", returnable: true } },
+        ] as never))).toEqual(["jump '天台 · 夜' return", "jump Storeroom return"]);
+    });
+
+    it("puts the flag before the transition tail, and takes both back", () => {
+        expect(rows(scene([
+            { id: "k1", kind: "jump", payload: { targetSceneId: "scene-2", returnable: true, transition: { kind: "fadeIn", durationMs: 400 } } },
+        ] as never))).toEqual(["jump '天台 · 夜' return with fade-in 0.4"]);
+    });
+
+    it("writes nothing at all on a jump that was never flagged", () => {
+        // The regression guard for every script already on disk: a plain jump prints the line it has
+        // always printed, so adopting the flag is what changes a project's script file rather than
+        // upgrading Studio. Compared as whole lines, because a trailing word is exactly the failure.
+        expect(rows(scene([
+            { id: "k1", kind: "jump", payload: { targetSceneId: "scene-2" } },
+            { id: "k2", kind: "jump", payload: { targetSceneId: "scene-2", transition: { kind: "dissolve", durationMs: 600 } } },
+        ] as never))).toEqual(["jump '天台 · 夜'", "jump '天台 · 夜' with fade 0.6"]);
+    });
+
+    it("tells a scene named `return` apart from the flag", () => {
+        // The slots are read in order - the name binds first - so `jump return` is a plain jump to
+        // the scene of that name and `jump return return` is a call to it. Nothing here quotes the
+        // name, which is what makes this worth pinning: if the flag were ever read first, an author
+        // with an unluckily named scene would silently get the other row.
+        expect(rows(scene([
+            { id: "k1", kind: "jump", payload: { targetSceneId: "scene-4" } },
+            { id: "k2", kind: "jump", payload: { targetSceneId: "scene-4", returnable: true } },
+        ] as never))).toEqual(["jump return", "jump return return"]);
     });
 });

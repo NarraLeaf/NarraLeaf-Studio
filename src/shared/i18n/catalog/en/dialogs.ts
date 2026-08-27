@@ -61,6 +61,7 @@ export const dialogs = {
         scene: "scene",
         chapter: "chapter",
         component: "component",
+        inputAction: "input action",
         asset: "asset",
         // Capitalised to match the menu item that opens the dialog ("Rename Page"), and because
         // Game UI is the interface's own name for the thing rather than a common noun.

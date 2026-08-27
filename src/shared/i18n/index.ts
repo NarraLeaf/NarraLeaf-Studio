@@ -5,6 +5,7 @@
  * every renderer app. React bindings live in `src/renderer/lib/i18n`.
  */
 export * from "./locales";
+export * from "./preferredLocale";
 export * from "./catalog";
 export * from "./translator";
 export * from "./registry";

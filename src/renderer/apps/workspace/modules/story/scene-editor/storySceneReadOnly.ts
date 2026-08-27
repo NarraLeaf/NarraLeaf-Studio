@@ -1,3 +1,7 @@
+import { createContext, useContext } from "react";
+import { storyDocumentSpec } from "@shared/documents/specs";
+import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useTranslation } from "@/lib/i18n";
 import type { KeybindingDefinition } from "@/apps/workspace/hooks";
 import type { StoryRowActions } from "./storyRowActions";
 
@@ -19,6 +23,12 @@ import type { StoryRowActions } from "./storyRowActions";
  * are also the only way to READ what a row contains. `openInspector` and the Enter binding are gated
  * one level down instead, in the controller, so that they still open the inspector and no longer open
  * the line editor or an insert slot.
+ *
+ * **Whether the workspace is frozen *for this scene* is a narrower question than it used to be.**
+ * One freeze - a live session - leaves a single story document writable and refuses the rest, so the
+ * editor names the document it writes ({@link storyDocumentFreezeScope}) and the freeze guard
+ * answers from `freezeAllowsWrite` about that path. Nothing in the tables below changes: they still
+ * say what a frozen scene leaves working, for whichever freezes do apply to it.
  */
 const READ_ONLY_STORY_ROW_ACTIONS: ReadonlySet<keyof StoryRowActions> = new Set<keyof StoryRowActions>([
     // Selection, in all the shapes a row offers it.
@@ -115,9 +125,91 @@ export function isStoryKeybindingReadOnlySafe(id: string): boolean {
  *    thaw - the exact loss this pass exists to prevent.
  *
  * Both call this, so there is one answer rather than two that can drift.
+ *
+ * `claimedByOther` is a row somebody else in a live session is writing, and it is refused here for
+ * the same reason a freeze is: the host would refuse the operation anyway, but letting an author
+ * type a whole paragraph and telling them afterwards is precisely the injury a claim exists to
+ * prevent. Both arguments are required rather than defaulted, so a call site that has not been told
+ * which rows are taken fails to compile instead of quietly offering one.
  */
-export function isRowTextEditable(frozen: boolean): boolean {
-    return !frozen;
+export function isRowTextEditable(frozen: boolean, claimedByOther: boolean): boolean {
+    return !frozen && !claimedByOther;
+}
+
+/**
+ * Which file this editor's writes land in, as the project-relative path the freeze policy takes.
+ *
+ * Derived from the document spec rather than assembled here, for the reason `writeFreeze` gives for
+ * naming its derived libraries by kind: a path spelled a second time is a path that falls behind the
+ * one `StoryService` actually saves to, and this one is compared against the set a live session
+ * declares writable. If the two ever disagree the editor offers an edit the write boundary refuses.
+ *
+ * `undefined` for a tab with no story - the answer the freeze guard reads as "I cannot say which
+ * document this is", which is the conservative one.
+ */
+export function storyDocumentFreezeScope(storyId: string | undefined): string | undefined {
+    return storyId ? storyDocumentSpec.pathFor({ storyId }) : undefined;
+}
+
+/**
+ * The scope above, for the row components that are too deep in the tree to be handed it.
+ *
+ * A context rather than a prop threaded through the row tree, but deliberately NOT something
+ * `useFreezeGuard` reads on its own: each control still has to ask for it, because the rows hold
+ * controls that write beyond this document - the nametag picker's "Create character" rung, see
+ * {@link useCreateCharacterFreeze} - and those must keep the conservative answer. Opting in one call
+ * site at a time is what keeps that honest.
+ *
+ * Empty by default, so a row rendered outside a scene editor is frozen by any freeze at all.
+ */
+const StoryDocumentScopeContext = createContext<string | undefined>(undefined);
+
+export const StoryDocumentScopeProvider = StoryDocumentScopeContext.Provider;
+
+/** The story document the surrounding scene editor writes, or undefined outside one. */
+export function useStoryDocumentScope(): string | undefined {
+    return useContext(StoryDocumentScopeContext);
+}
+
+/** Whether the editor may still make a cast member out of a name, and what to say when it may not. */
+export type StoryCreateCharacterFreeze = {
+    unavailable: boolean;
+    /** Hover text for the control this switches off; undefined while it is live. */
+    reason: string | undefined;
+};
+
+/**
+ * The one thing an author does to a speaker here that is not a write to this story document.
+ *
+ * Turning a typed name into a character creates a character document and only then rebinds the rows
+ * that used the name, so the story half is the second half of it. A freeze that leaves this document
+ * writable still refuses the first half - which is why the offer has to come off rather than be
+ * left to fail at the write boundary, where the author would get a notice about a file they never
+ * thought they were editing.
+ *
+ * `unavailable` comes from the UNSCOPED guard and from nothing else. A control that writes past the
+ * story document names no document, so it is switched off by any freeze at all - the conservative
+ * answer, and here also the exactly right one.
+ *
+ * **The scoped guard decides which sentence the author reads, never whether the control is live.** A
+ * freeze that covers this document as well has already switched the whole editor off, and the
+ * workspace's own single string is what every other greyed control in it is showing; a freeze that
+ * spares the document has left the author writing this scene with one control missing, and that is
+ * the case worth a sentence of its own.
+ */
+export function useCreateCharacterFreeze(): StoryCreateCharacterFreeze {
+    const { t } = useTranslation();
+    const beyondThisDocument = useFreezeGuard();
+    const thisDocument = useFreezeGuard(useStoryDocumentScope());
+    if (!beyondThisDocument.frozen) {
+        return { unavailable: false, reason: undefined };
+    }
+    return {
+        unavailable: true,
+        reason: thisDocument.frozen
+            ? beyondThisDocument.reason
+            : t("story.rows.createCharacterUnavailable"),
+    };
 }
 
 /**

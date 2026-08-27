@@ -1,8 +1,11 @@
 import type { UIComponentId, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import type { DevModeBundle } from "@shared/types/devMode";
 import { isPointerPositionElementEvent } from "@shared/types/ui-editor/widgetLogic";
+import { UI_SURFACE_INPUT_ACTION_EVENT } from "@shared/types/ui-editor/inputActionEvent";
+import { isUIListItemInstanceKeyOf } from "@shared/types/ui-editor/list";
+import { popUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import { BLUEPRINT_HOST_API_CONTRACT_VERSION } from "@shared/types/blueprint/hostApi";
-import type { UIHostAdapter, UIHostAdapterBlueprintRuntime } from "../types";
+import type { UIHostAdapter, UIHostAdapterBlueprintRuntime, UIHostAdapterElementEventOptions } from "../types";
 import {
     countBlueprintBroadcastListeners,
     dispatchBlueprintElementClickEvent,
@@ -80,15 +83,22 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         blueprintRuntime,
     };
 
-    const dispatchElementBlueprintEventNow: UIHostAdapterBlueprintRuntime["dispatchElementBlueprintEvent"] = async (
-        elementId,
-        eventName,
-        eventPayload,
-        eventOptions,
-    ) => {
+    /**
+     * Run everything that listens for this event on exactly one element.
+     *
+     * Three listener kinds, all of which the element may have at once: the element's own private
+     * blueprint (its `mouseClick` graph), the surface-wide `On Element Flush` heads that name it,
+     * and the surface-wide `On Element Click` heads that name it.
+     */
+    const fireElementListeners = async (
+        elementId: string,
+        eventName: string,
+        eventPayload?: Record<string, unknown>,
+        eventOptions?: UIHostAdapterElementEventOptions,
+    ): Promise<void> => {
         const flushedElement = eventName === "flush" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
         const clickedElement = eventName === "mouseClick" ? readRuntimeElement(elementId, eventOptions?.componentId) : undefined;
-        const handledByWidget = await dispatchBlueprintUiEvent({
+        await dispatchBlueprintUiEvent({
             document,
             blueprintDocument,
             persistentVariables,
@@ -137,14 +147,13 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 executionManager,
             });
         }
-        let handledByElementEvent = false;
         if (eventName === "mouseClick" && clickedElement) {
             const target = {
                 surfaceId: surface.id,
                 elementId,
                 elementType: clickedElement.type,
             };
-            handledByElementEvent = await dispatchBlueprintElementClickEvent({
+            await dispatchBlueprintElementClickEvent({
                 document,
                 blueprintDocument,
                 persistentVariables,
@@ -161,21 +170,97 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
                 executionManager,
             });
         }
+    };
 
-        // Nothing listened here, so the event was never this element's to keep. Handing it up is the
-        // same walk `Continue Event Bubble` makes, and the parent decides the same way in turn - so
-        // a run of elements with no listener passes it along until one has, or until the root.
-        if (
-            !handledByWidget
-            && !handledByElementEvent
-            && isPointerPositionElementEvent(eventName)
-            && !eventOptions?.eventControl?.isPropagationStopped()
-        ) {
-            const parentId = readRuntimeElement(elementId, eventOptions?.componentId)?.parentId;
-            if (parentId) {
-                await dispatchElementBlueprintEventNow(parentId, eventName, eventPayload, eventOptions);
-            }
+    /**
+     * Fire this event on the hit element and then on every ancestor up to the surface root.
+     *
+     * A head on an element says "I want this", not "I own this". Before, an element with a listener
+     * kept the event and only a run of elements with none passed it along - so a decorative image
+     * laid over a clickable panel was fine, but a panel that listened *and* sat inside a page that
+     * also listened was not: the inner one silently took every click away from the outer, and the
+     * only fix was for the author to notice and forward it by hand from each element in turn.
+     *
+     * Now every element in the chain that declares a head fires, innermost first, and one that
+     * declares none is simply skipped. Innermost-first is the order the walk happens to run in and
+     * not a promise: nothing in the interface offers to order two heads against each other, because
+     * an author who needs one thing to happen after another has a graph to say so in.
+     *
+     * The propagation control still ends the walk. It is the DOM half of the same event, and it is
+     * how something that really does own a pointer for the moment - a scroller mid-scroll, a drag in
+     * progress - says so; "I am listening" never was that statement, which is the whole change here.
+     */
+    const dispatchElementBlueprintEventNow: UIHostAdapterBlueprintRuntime["dispatchElementBlueprintEvent"] = async (
+        elementId,
+        eventName,
+        eventPayload,
+        eventOptions,
+    ) => {
+        await fireElementListeners(elementId, eventName, eventPayload, eventOptions);
+        if (!isPointerPositionElementEvent(eventName)) {
+            return;
         }
+        let currentId = elementId;
+        let options = eventOptions;
+        // The chain is bounded by the document tree, but a malformed `parentId` cycle would not be:
+        // this runs on every click, so it ends at a visited element rather than hanging the renderer.
+        const visited = new Set<string>([currentId]);
+        while (!options?.eventControl?.isPropagationStopped()) {
+            const parentId = readRuntimeElement(currentId, options?.componentId)?.parentId;
+            const next = parentId ? { id: parentId, options: leavingListRow(parentId, options) } : leavingComponent(options);
+            if (!next || visited.has(next.id)) {
+                return;
+            }
+            visited.add(next.id);
+            options = next.options;
+            await fireElementListeners(next.id, eventName, eventPayload, options);
+            currentId = next.id;
+        }
+    };
+
+    /**
+     * Where a click carries on once it has run out of component to climb.
+     *
+     * A definition's root has no parent - it is authored on its own, and which page it ends up on is
+     * the placement's business - so the walk would stop there, and a container that placed a card
+     * would never hear a press on it. The instance key names the element that placed it, so the walk
+     * resumes at that element, on the Surface, with the component's own context shed: past this
+     * point `componentId` would send the lookup back inside the definition, and the params belong to
+     * a drawing the event has just left.
+     *
+     * The same shape as {@link leavingListRow} below, and for the same reason - the difference is
+     * only that a row is inside its list and a definition is not inside anything.
+     */
+    const leavingComponent = (
+        options: UIHostAdapterElementEventOptions | undefined,
+    ): { id: string; options: UIHostAdapterElementEventOptions | undefined } | null => {
+        const popped = popUIComponentInstanceKey(options?.instanceKey);
+        if (!popped) {
+            return null;
+        }
+        const { componentId: _id, componentParams: _params, ...rest } = options ?? {};
+        return {
+            id: popped.instanceElementId,
+            options: { ...rest, instanceKey: popped.outerKey || undefined },
+        };
+    };
+
+    /**
+     * The row context an event leaves behind when it is handed past the list that made it.
+     *
+     * A row event carries the scope and the instance key of the row it started in, and everything
+     * keyed by that key - runtime element state, and the blueprint variable record - belongs to that
+     * row. Once the event reaches the list itself it is no longer inside any row, so carrying the key
+     * further would hand an ancestor a private copy of its own variables, freshly defaulted, for as
+     * long as the pointer happened to be over a row. That reads as an ancestor whose variables never
+     * remember anything, which is not a failure any author could see the cause of.
+     */
+    const leavingListRow = (parentId: string, options: UIHostAdapterElementEventOptions | undefined): UIHostAdapterElementEventOptions | undefined => {
+        if (!options || !isUIListItemInstanceKeyOf(options.instanceKey, parentId)) {
+            return options;
+        }
+        const { listItemScope: _scope, instanceKey: _key, ...rest } = options;
+        return rest;
     };
 
     const resolvePendingFlushes = (items: PendingFlush[]) => {
@@ -291,11 +376,27 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
         await dispatchElementBlueprintEventNow(elementId, eventName, eventPayload, eventOptions);
     };
 
+    /**
+     * Hand this element's event to its structural parent on request.
+     *
+     * A pointer event already reaches every ancestor by itself now, so asking for one to be handed
+     * up is asking for something that has already happened: dispatching it here would fire each
+     * ancestor twice, once for the request and once for the walk that runs when this element's graph
+     * finishes. So the request is answered - there was a parent, or there was not - without a second
+     * dispatch.
+     *
+     * Events outside the bubbling set are unchanged. `mouseEnter` and the rest deliberately do not
+     * travel on their own (an ancestor chain reported as hovered all at once is nobody's idea of
+     * hover), so for those this really does forward.
+     */
     blueprintRuntime.continueElementEventBubble = async (elementId, eventName, eventPayload, eventOptions) => {
         const current = readRuntimeElement(elementId, eventOptions?.componentId);
         const parentId = current?.parentId ?? null;
         if (!parentId) {
             return false;
+        }
+        if (isPointerPositionElementEvent(eventName)) {
+            return true;
         }
         await blueprintRuntime.dispatchElementBlueprintEvent(parentId, eventName, eventPayload, eventOptions);
         return true;
@@ -317,6 +418,18 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             },
             executionManager,
         });
+    };
+
+    /**
+     * Raise one of this surface's declared actions on its surfaceMain blueprint.
+     *
+     * Deliberately the ordinary surface-event path under one reserved event name rather than a
+     * channel of its own: an action head is then started, traced, cancelled and scoped by exactly
+     * the code every other surface event already is, and the only thing new about it is the
+     * `actionId` its head filters on.
+     */
+    blueprintRuntime.dispatchSurfaceInputAction = async payload => {
+        await blueprintRuntime.dispatchSurfaceBlueprintEvent?.(UI_SURFACE_INPUT_ACTION_EVENT, { ...payload });
     };
 
     blueprintRuntime.dispatchBroadcastEvent = async (eventName, data, sender) => {
@@ -354,6 +467,9 @@ export function createDevModeBlueprintHostAdapter(options: DevModeBlueprintHostA
             // Visibility follows the calling execution, not this adapter's surface
             // (global callers pass no surface and only see global fns).
             surfaceId: input.callerSurfaceId,
+            callerComponentId: input.callerComponentId,
+            callerComponentParams: input.callerComponentParams,
+            callerInstanceKey: input.callerInstanceKey,
             runtimeScopeId: effectiveRuntimeScopeId,
             hostAdapter: adapter,
             debug,

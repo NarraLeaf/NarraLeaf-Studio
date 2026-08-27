@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 36 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 37 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -49,6 +49,38 @@ export const BLUEPRINT_GAME_CHARACTERS_STATE_KEY = "game.characters" as const;
  * differential resolves no avatar.
  */
 export const BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY = "game.dialog.avatar" as const;
+
+/**
+ * Global runtime state key holding whether the line on screen has finished revealing and the dialog
+ * is now waiting for the player.
+ *
+ * The state a click-to-continue indicator is drawn under, and the reason this family of keys exists
+ * at all: the engine has always known it, and until it was published here a widget could only be on
+ * for the whole of a line or off for the whole of one.
+ *
+ * Written on the dialog beat next to the nametag, which is also the beat that re-evaluates every
+ * value graph - so the frame the indicator appears on is the frame the line finished. False, not
+ * null, when no line is on screen: a widget bound to it must lay out before any game exists.
+ */
+export const BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY = "game.dialog.waiting" as const;
+
+/**
+ * Global runtime state key holding the current line's text.
+ *
+ * The whole line, not the part revealed so far. The engine evaluates a line's words when it mounts
+ * and reveals a prefix of that, so this value is settled before the first character appears - which
+ * is what lets a widget size itself for the line it is about to show rather than one character at a
+ * time. Empty string when no line is on screen.
+ */
+export const BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY = "game.dialog.text" as const;
+
+/**
+ * Global runtime state key holding whether the current line has no speaker.
+ *
+ * Distinct from a null nametag, which is also what a character with a blank name reports, and which
+ * a widget cannot test before it has a name at all. False when no line is on screen.
+ */
+export const BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY = "game.dialog.narrator" as const;
 
 /** Global runtime state key mirrored from the NarraLeaf notification slot bridge. */
 export const BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY = "game.notifications" as const;
@@ -207,6 +239,55 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             callableFromBinding: false,
             async: true,
             input: { fullscreen: false },
+            output: null,
+        },
+        /**
+         * The window's size, as a multiple of the size the game is drawn at.
+         *
+         * The list comes first and the pair below act on it: the sizes a build offers are the
+         * author's answer in `app.window`, and a shell with no window of its own to size answers
+         * with an empty list - so a configuration screen built from it draws no size row there,
+         * rather than a row that cannot work.
+         */
+        getWindowScaleOptions: {
+            capabilityId: "navigation.getWindowScaleOptions",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: [] as number[],
+        },
+        getWindowScale: {
+            capabilityId: "navigation.getWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: 1,
+        },
+        setWindowScale: {
+            capabilityId: "navigation.setWindowScale",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { scale: 1 },
+            output: null,
+        },
+        /** The same size in pixels, for a game whose number comes from somewhere else. */
+        getWindowSize: {
+            capabilityId: "navigation.getWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: {},
+            output: { width: 0, height: 0 },
+        },
+        setWindowSize: {
+            capabilityId: "navigation.setWindowSize",
+            purity: "effectful",
+            callableFromBinding: false,
+            async: true,
+            input: { width: 0, height: 0 },
             output: null,
         },
         /**
@@ -636,6 +717,30 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: false,
             input: {},
             output: null,
+        },
+        isDialogWaiting: {
+            capabilityId: "game.isDialogWaiting",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
+        },
+        getDialogText: {
+            capabilityId: "game.getDialogText",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: "",
+        },
+        isNarrator: {
+            capabilityId: "game.isNarrator",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: {},
+            output: false,
         },
         getCharacter: {
             capabilityId: "game.getCharacter",

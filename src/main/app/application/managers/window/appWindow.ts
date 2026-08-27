@@ -15,6 +15,7 @@ import { getWindowBackgroundColor } from "@/app/application/theme";
 import { applyTrafficLightPositionForZoom, applyZoomFactorToWebContents, windowTypeUsesZoom } from "@/app/application/zoom";
 import { ZOOM_PERCENT_DEFAULT, nextZoomPercent, normalizeZoomPercent, trafficLightPositionForZoom } from "@shared/constants/zoom";
 import { decideWindowNavigation } from "./navigationGuard";
+import { installScriptedFileDialogBridge } from "./fileDialog";
 import { decideDetachedWindowOpen } from "./detachedWindowGuard";
 import { describeWindowSubject } from "./windowCrash";
 import { isCrashLooping, recordCrash } from "@shared/utils/crashLoop";
@@ -305,7 +306,18 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
     private loadResult: boolean | null = null;
     private loadResultCallbacks: Array<(ok: boolean) => void> = [];
 
+    /**
+     * The most recent report, rather than the latched first one.
+     *
+     * The two differ because the error screen offers a retry, which re-runs the whole startup in
+     * this same window: a workspace that failed once and then opened reports `false` and later
+     * `true`, and only the first of those is the answer a replace-style launch was waiting for.
+     * Anything asking "is there a workspace in this window right now" wants the last.
+     */
+    private workspaceIsUp = false;
+
     public reportLoadResult(ok: boolean): void {
+        this.workspaceIsUp = ok;
         if (this.loadResult !== null) {
             return; // First report wins; the preflight settles exactly once.
         }
@@ -315,6 +327,17 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
         for (const callback of callbacks) {
             callback(ok);
         }
+    }
+
+    /**
+     * Whether this window currently holds a workspace that came up.
+     *
+     * False for all three ways it can be otherwise: a startup still running, a startup blocked
+     * (see `shouldCheckpointOnClose`), and a preflight that failed. True again after a retry that
+     * succeeded, which is what makes this different from {@link onLoadResult}'s latched answer.
+     */
+    public hasLoadedWorkspace(): boolean {
+        return this.workspaceIsUp;
     }
 
     /** Invoke `fn` with the load outcome - immediately if already reported. */
@@ -750,6 +773,8 @@ export class AppWindow<T extends WindowAppType = any> extends WindowProxy {
 
         webContents.on("did-finish-load", () => {
             this.expectedProcessSwap = false;
+            // Experimental `scripted-file-dialog` only; a no-op in every other launch.
+            installScriptedFileDialogBridge(this);
         });
 
         this.autoFocus();

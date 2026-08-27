@@ -124,9 +124,13 @@ export function AvatarSection(props: {
         compositeSizeFor(props.crop, typeof window === "undefined" ? 1 : window.devicePixelRatio),
     );
 
-    const writes = (ownDisabled: boolean, ownTitle: string) => ({
+    // The same shape `FreezeGuard.writes` returns, rebuilt here because this section is handed the
+    // freeze as two props rather than reading it itself. `data-tip`, not `title`: a disabled control
+    // receives no pointer events, so Studio's tooltip resolves it by hit-testing the pointer - and a
+    // reason written into `title` is the one thing that hit test cannot find.
+    const writes = (ownDisabled: boolean, ownTip: string) => ({
         disabled: ownDisabled || props.frozen,
-        title: ownDisabled ? ownTitle : props.frozen ? props.freezeReason : ownTitle,
+        "data-tip": ownDisabled ? ownTip : props.frozen ? props.freezeReason : ownTip,
     });
 
     return (

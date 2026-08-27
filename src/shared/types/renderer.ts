@@ -26,7 +26,13 @@ import type { MissingRecentProject } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
-import type { BuildPreflightFinding, GameBuildRequest, GameBuildStateSnapshot, GamePatchExportRequest } from "./gameBuild";
+import type {
+    BuildPreflightFinding,
+    GameBuildRequest,
+    GameBuildStateSnapshot,
+    GamePatchExportRequest,
+    LastGameBuildRun,
+} from "./gameBuild";
 import type { CommandLineBuildEvent } from "./commandLineBuild";
 import type {
     MacSigningIdentity,
@@ -82,7 +88,8 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -436,11 +443,6 @@ export interface RendererPreloadedInterface {
          * once the window is gone; a window closed without an answer resolves `false`.
          */
         promptServerTrust(props: ServerTrustPromptProps): Promise<RequestStatus<{ trusted: boolean }>>;
-        /**
-         * Raise first-run setup's preview at full size, in a window of its own. The surface is the
-         * only thing it is told; the preferences the sample is drawn from it reads for itself.
-         */
-        openOnboardingPreview(props: WindowProps[WindowAppType.OnboardingPreview]): Promise<RequestStatus<void>>;
         state: {
             getGlobalState<K extends GlobalStateKeys>(key: K): Promise<RequestStatus<{ value: GlobalStateValue<K> }>>;
             setGlobalState<K extends GlobalStateKeys>(key: K, value: GlobalStateValue<K>): Promise<RequestStatus<void>>;
@@ -892,70 +894,6 @@ export interface RendererPreloadedInterface {
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
-         * What one server holds. **Goes to the network.**
-         *
-         * Answered afresh every time rather than from anything kept here: a list that was
-         * right when it was stored is wrong the moment somebody else pushes.
-         */
-        listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
-        /**
-         * What one server knows about one of its projects. **Goes to the network.**
-         *
-         * **Ask only a server whose session advertises `project-detail`.** A deployment
-         * that offers none has no such surface in front of it - the absence of a
-         * capability is a fact about the server, not something to put a sentence to.
-         *
-         * A `file` that is not readable is a complete answer: the server records a project
-         * when it is created and opens the file afterwards. The server's own explanation
-         * for that does not cross this boundary, so there is nothing here to print.
-         */
-        getServerProject(
-            remoteOrigin: string,
-            projectId: string,
-        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
-        /**
-         * Take one project off a server. **Goes to the network**, and it is the one call
-         * in this group that changes what a server holds rather than reading it.
-         *
-         * **What it removes is the project, not the work.** The server stops listing it
-         * and stops answering for it; the repository keeps its store and every revision
-         * in it, and a project removed by mistake is published again under the same
-         * repository id and comes back with its history. Nothing here destroys anything
-         * an author wrote, so a surface offering this must not say that it does.
-         *
-         * Nothing on this machine changes either: a local copy goes on opening, and its
-         * remote goes on pointing where it pointed.
-         */
-        deleteServerProject(
-            remoteOrigin: string,
-            projectId: string,
-        ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>>;
-        /**
-         * The latest revisions on one of a server's projects, newest first.
-         * **Goes to the network**, and only where `project-history` is advertised.
-         *
-         * **An answer with no `revisions` is not an empty history.** The field is left out
-         * for a project the server has not read, which is the ordinary answer for one made
-         * a moment ago, and a surface that reads it as zero says so about work that has
-         * plenty.
-         */
-        listServerProjectHistory(
-            remoteOrigin: string,
-            projectId: string,
-            limit?: number,
-            before?: string,
-        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
-        /**
-         * Who has an account on one server. **Goes to the network**, and only where
-         * `members` is advertised.
-         *
-         * Every account carries the address recorded on its revisions. Within a server
-         * that is not a secret, but a list that prints all of them at once is a different
-         * thing from an address on one revision - so a surface showing this shows the
-         * address for the one member a reader opens, and not for the list.
-         */
-        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
-        /**
          * Exchange a username and password for a token, where a server offers it.
          *
          * **Goes to the network, and carries no token** - this is where one comes from,
@@ -1060,6 +998,13 @@ export interface RendererPreloadedInterface {
         onEvent(handler: (message: TeamEventMessage) => void): AppEventToken;
         /** A session opened, dropped, or was refused. Sent to every window. */
         onConnectionChanged(handler: (payload: { connection: TeamConnection }) => void): AppEventToken;
+        /**
+         * Move a file between this project and a server, or ask how far one has got.
+         *
+         * ⚠ Names a path; never carries a byte. The reading, the writing and the connection all
+         * happen in the main process - see `@shared/types/teamTransfer`.
+         */
+        transfer(request: TeamTransferRequest): Promise<RequestStatus<TeamTransferOutcome>>;
     };
 
     gameBuild: {
@@ -1083,6 +1028,27 @@ export interface RendererPreloadedInterface {
         selectPatchFile(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
         /** The build a patch is measured against - a package file, not a folder. */
         selectPatchBaseline(defaultPath?: string): Promise<RequestStatus<{ path: string | null }>>;
+        /**
+         * What this project's last run of the build pipeline came to. Null for a project that has
+         * never been built.
+         */
+        readLastRun(projectPath: string): Promise<RequestStatus<{ run: LastGameBuildRun | null }>>;
+        /**
+         * Show the last run's output folder in the desktop's file manager. The folder is the one
+         * the pipeline recorded; this names only the project.
+         */
+        revealOutput(projectPath: string): Promise<RequestStatus<{ revealed: boolean }>>;
+        /**
+         * What a build folder says about itself: the variant it was compiled as, the application
+         * name and version it carries, and when it was built. Fails, with the reason, on a path
+         * that holds no game.
+         */
+        readPatchBaseline(path: string): Promise<RequestStatus<{
+            appTagId: string | null;
+            productName: string | null;
+            version: string | null;
+            builtAt: string | null;
+        }>>;
     };
 
     /**

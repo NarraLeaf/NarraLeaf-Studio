@@ -2,7 +2,14 @@ import type { StoryExpression } from "./expression";
 import { resolveAssetVariantMember, type AssetVariantMap } from "../assetSet";
 import type { WeatherSeedRef } from "../../weather/model";
 
-export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
+// v2 gives a library entry an optional `dlcId`: the DLC the story belongs to, absent on a story
+// the game itself carries. Additive, and a v1 index cannot contain one, so the migration is the
+// stamp and nothing else.
+// The bump is still not optional, and the reason is what an older Studio would BUILD. It has no
+// reading for the field, so it would compile a DLC's story into the base package and ship the
+// content the author had sold separately - silently, in the one direction nobody checks. Refusing
+// the document is the point.
+export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
 // load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
@@ -177,7 +184,30 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 1 as const;
 // optional, and unlike `cut` the reason is what a v20 Studio would *play*: it reads an unknown
 // control payload as an ordinary group and compiles it to nothing, so the story would run straight
 // past the ending into whatever follows it, recording nothing. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 21 as const;
+// v22 gives a transition its hold as a length of time: `StoryTransitionRef.holdMs`, beside the
+// duration and in the same unit, replacing the `props.hold` percentage `throughColor` and `exposure`
+// carried. A percentage could not say how long the colour is actually held - it was a share of the
+// run, so the seconds it bought moved whenever the duration did - and worse, the engine spent it as a
+// share of *eased* progress, which crosses the middle at its fastest: a nominal 30% hold played as
+// 17.8% of the wall clock. The step converts each stored percentage against that row's own duration,
+// so a row keeps the hold it was actually getting rather than the one it claimed.
+// The same step retires `maskWipe` into `softWipe` with `feather: 0`. The two compile to the identical
+// engine call, but no `t=` word ever named `maskWipe`, so a row carrying it printed `t=maskWipe` and
+// re-parsed as a soft wipe with the default feather of 12 - a hard edge lost to editing the row.
+// The bump is not optional: a v21 Studio meeting `holdMs` ignores it and plays a hold it was not asked
+// for, then writes the document back without it. Refusing the document is the point.
+// v23 gives a jump the choice of coming back: `StoryJumpPayload.returnable`. A returnable jump
+// suspends the scene it leaves instead of unloading it, plays the scene it names, and resumes at the
+// row after itself - the shape every other engine in this genre calls call/return, and the one this
+// story model had no way to write. Until now the only way to reuse a fixed sequence was to copy it
+// into every scene that needed it, because the jump that reached it could not come back and each
+// caller would have needed a branch of its own to be jumped back to.
+// No migration: a v22 document cannot carry the field, and absent reads as `false`, which is the
+// jump it has always been. The bump is not optional, and the reason is what a v22 Studio would
+// *play*: it would ignore the field, compile a plain jump, and run the called scene as the end of
+// the story rather than as a detour - so every row after the jump, in every scene that made one,
+// would silently never run. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 23 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -207,6 +237,18 @@ export type StoryLibraryEntry = {
     updatedAt: string;
     importSource?: StoryImportSource;
     exportMeta?: StoryExportMeta;
+    /**
+     * The DLC this story belongs to (schema v2), absent on a story the game itself carries.
+     *
+     * On the library entry rather than inside the document because it is a fact about how the story
+     * is shipped, not about what it says: a build reads it to decide whether the document goes in
+     * the package at all, and reading it from inside would mean loading what it may not ship.
+     *
+     * An id naming no DLC is reported rather than refused, the way a cut point naming no variant is.
+     * The failure direction is the same - the story rejoins the base build - and refusing here would
+     * make deleting a DLC lock the project.
+     */
+    dlcId?: string;
 };
 
 export type StoryImportSource = {
@@ -1205,6 +1247,27 @@ export type StoryEndingPage =
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
     transition?: StoryTransitionRef;
+    /**
+     * Come back to the row after this one when the scene it names runs out (schema v23).
+     *
+     * Absent or `false` is the jump this row has always been: the scene it is written in is unloaded
+     * and nothing after the row ever runs. `true` suspends that scene instead - it keeps its stage,
+     * its sprites and its scene-local variables, its background music is paused, and it stops
+     * painting - and the story resumes here when the called scene runs out of rows.
+     *
+     * Written as a flag rather than as a second block kind on purpose. What a row does is decided by
+     * a word the author typed on it and the row prints back, not by the *kind* of thing the target
+     * is - which is the distinction `/goto` and `/jump` are two commands over (see the note on the
+     * `goto` spec). Every reader that only wants to know where the row points reads
+     * `targetSceneId` and is unaffected; the readers that care whether control comes back are the
+     * ones that ask for this.
+     *
+     * Two consequences the engine enforces and the lint rules mirror, both from a suspended scene
+     * being one real scene rather than a saved position: a scene already on the call stack cannot be
+     * called (so `A -> B -> A` throws rather than recursing), and a plain jump taken while a call is
+     * open gives the call up and unloads everything parked behind it.
+     */
+    returnable?: boolean;
 };
 
 export type StoryNotePayload = {
@@ -1224,13 +1287,33 @@ export type StoryTextSegment = {
     rich?: StoryRichRun[];
 };
 
+/**
+ * Emphasis marks set beside every character of a run — how East Asian typography stresses a phrase.
+ * The four values name the conventions rather than the CSS behind them; see
+ * `STORY_TEXT_EMPHASIS_VALUES` in `@shared/utils/storyTextMarks`.
+ */
+export type StoryTextEmphasis = "dot" | "circle" | "sesame" | "under-dot";
+
 export type StoryTextMarks = {
     bold?: boolean;
     italic?: boolean;
     color?: string;
     ruby?: string;
     cps?: number;
+    /**
+     * An absolute size in pixels. Legacy: it survives in documents that carry it and in scripts that
+     * spell it, but nothing in the editor writes one. A size pinned in pixels does not follow the
+     * dialogue box it is set in, and it defeats the text scaling that keeps a long line inside its
+     * box; `fontSizeStep` is what the size control writes.
+     */
     fontSize?: number;
+    /**
+     * The run's size as a number of steps away from the line's, positive for larger. A step is
+     * `STORY_FONT_SIZE_STEP_RATIO`. Relative rather than absolute, so the run keeps its weight
+     * against the rest of the line at whatever size the line is set.
+     */
+    fontSizeStep?: number;
+    emphasis?: StoryTextEmphasis;
 };
 
 /**
@@ -1762,6 +1845,23 @@ export type StoryTransitionRef = {
      * picture their scene changes depend on.
      */
     ruleAssetId?: string;
+    /**
+     * How long the transition sits at its extreme before finishing, in milliseconds.
+     *
+     * Read by the three transitions that have an extreme to sit at: `throughColor` holds the colour,
+     * `exposure` holds the blown-out frame, `darkness` holds at its starting darkness. It is taken
+     * out of {@link durationMs} rather than added to it, split evenly off the two moving halves, so
+     * `{durationMs: 4000, holdMs: 2000}` is one second in, two of colour, one out.
+     *
+     * A first-class field and not a `props` entry, for the reason `ruleAssetId` is one: `props` is the
+     * per-kind bag, and everything that reads a transition generically - the script export, the
+     * command line - reads the named fields and reports the bag as something it cannot spell. A hold
+     * is a timing, it belongs beside the duration, and a script has to be able to carry it.
+     *
+     * Absent means the transition's own default: 30% of the duration for `throughColor`, nothing for
+     * the other two.
+     */
+    holdMs?: number;
     props?: Record<string, StoryLiteralValue>;
 };
 

@@ -4,9 +4,9 @@ import { mergeDecisionKey } from "@shared/documents/mergeApply";
 import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { splitDocumentPath } from "./changeIndex";
+import { renderDocumentName, type DocumentName } from "./documentName";
 import {
-    describeMergeSide,
+    describeMergeSides,
     effectiveMergeSide,
     mergeDocumentBlockedKey,
     resolveMergeDecisionLabel,
@@ -27,6 +27,8 @@ import {
  */
 export interface ConflictDetailProps {
     readonly path: string;
+    /** What the author calls it, as the row that selected this one says it. */
+    readonly name: DocumentName;
     /** `undefined` while nobody has asked for this file yet - which reads the same as loading. */
     readonly entry: MergeDocumentEntry | undefined;
     readonly choices: MergeChangeChoices;
@@ -36,9 +38,8 @@ export interface ConflictDetailProps {
     readonly className?: string;
 }
 
-export function ConflictDetail({ path, entry, choices, disabled, onChooseChange, className }: ConflictDetailProps) {
+export function ConflictDetail({ path, name, entry, choices, disabled, onChooseChange, className }: ConflictDetailProps) {
     const { t } = useTranslation();
-    const { directory, name } = splitDocumentPath(path);
 
     return (
         <div
@@ -48,12 +49,9 @@ export function ConflictDetail({ path, entry, choices, disabled, onChooseChange,
             className={cn("flex h-full min-h-0 flex-col", className)}
         >
             <div className="flex shrink-0 items-baseline gap-1.5 overflow-hidden px-3 py-2">
-                <span className="min-w-0 truncate text-xs font-medium text-fg">{name}</span>
-                {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle" data-tip={directory}>
-                        {directory}
-                    </span>
-                )}
+                <span className="min-w-0 truncate text-xs font-medium text-fg" data-tip={path}>
+                    {renderDocumentName(name, t)}
+                </span>
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
@@ -125,6 +123,9 @@ function MergeChangeRow({
     const translator = useTranslation();
     const { t } = translator;
     const label = resolveMergeDecisionLabel(decision, translator);
+    // Described once, for both: the two columns are rows of each other only if one field list built
+    // from both sides decides what each of them draws.
+    const values = describeMergeSides(decision.mine, decision.theirs);
     const conflict = decision.outcome === "conflict";
     const other = side === "mine" ? "theirs" : "mine";
 
@@ -178,13 +179,13 @@ function MergeChangeRow({
                                     ? "documentDiff.resolve.takeMine"
                                     : "documentDiff.resolve.takeTheirs")}
                             </span>
-                            <MergeValue view={describeMergeSide(candidate === "mine" ? decision.mine : decision.theirs)} />
+                            <MergeValue view={values[candidate]} />
                         </button>
                     ))}
                 </div>
             ) : (
                 <div className="mt-0.5 min-w-0 rounded-md border border-edge/60 px-1.5 py-1">
-                    <MergeValue view={describeMergeSide(side === "mine" ? decision.mine : decision.theirs)} />
+                    <MergeValue view={values[side]} />
                 </div>
             )}
         </div>

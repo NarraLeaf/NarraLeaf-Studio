@@ -19,9 +19,9 @@ import type { SettingsImportPlan } from "@shared/utils/settingsDocument";
  * **On the cover, because it is about the whole run rather than any screen of it.** An import
  * answers every question at once, so when it lands setup is over:
  * {@link ImportSettingsActionProps.onImported} leaves it the same way the last screen's button does,
- * and the author arrives at the home screen with the settings they came with. It sat in the footer
- * of every screen until it was pointed out what that meant: offered beside question four, "I already
- * have all of this" reads as a way to answer question four.
+ * and the author arrives at the home screen with the settings they came with. Not in the footer of
+ * every screen: offered beside question four, "I already have all of this" reads as a way to answer
+ * question four.
  *
  * There is no export half. On a first run there is nothing yet worth writing out, and the pair
  * belongs together in Settings, where the machine being copied FROM is the one that has settings.

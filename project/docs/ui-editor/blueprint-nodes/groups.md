@@ -78,8 +78,6 @@ Element 节点组用于显式引用当前 Surface 内的控件，并放置所有
 
 Element 节点组默认具有：
 - `blueprint.element.ref` - Same-Surface 元素字面量引用，输出 `element` 或 typed `element:<widgetType>`
-- `blueprint.element.continueEventBubble` - 在当前 Widget 事件图中把当前事件继续派发给结构父元素，并从 `next` 继续执行
-- `blueprint.element.stopEventBubble` - 标记当前事件已处理，阻止后续父级冒泡或键盘事件继续传到背景层，并从 `next` 继续执行
 - `blueprint.event.head.elementFlush` - 绑定目标控件并监听该控件的 flush 事件
 - `blueprint.event.head.elementClick` - 绑定目标控件并监听该控件的 click 事件
 - `blueprint.element.text.*` - Text Element 读写节点
@@ -164,6 +162,7 @@ Page 节点组默认具有：
 - `blueprint.page.isSurfaceEntering` - 读取当前 Surface 是否处于进入动画状态；可用于 Blueprint Value；Global 蓝图不可用
 - `blueprint.page.isSurfaceTransitioning` - 读取当前 Surface 是否处于进入或退出动画状态；可用于 Blueprint Value；Global 蓝图不可用
 - `blueprint.page.quit` - 退出当前应用运行时；Studio Dev Mode 中停止 Dev Mode 会话（尾节点，无执行出口）
+- `blueprint.app.keepWindowOpen` - 取消当前窗口关闭请求；只能用于 Global 与 Surface 蓝图，且只在 `On Window Close Requested` 派发中有效，其他派发中执行会抛出蓝图执行错误
 - `blueprint.frame.emit` - 向父级 Page 组件发送事件
 
 ## Game
@@ -206,6 +205,8 @@ Global 节点组默认具有：
 - `blueprint.event.head.keyUp` - 运行时窗口指定键抬起事件
 - `blueprint.event.head.anyKeyDown` - 运行时窗口任意键按下事件
 - `blueprint.event.head.anyKeyUp` - 运行时窗口任意键抬起事件
+- `blueprint.event.head.action` - 工程声明的输入操作被触发事件，卡片上的 `Action` 决定监听哪一个
+- Input 节点组
 
 ## Surface
 
@@ -222,7 +223,17 @@ Surface 节点组默认具有：
 - `blueprint.event.head.keyUp` - 当前 active Surface 收到运行时窗口指定键抬起事件
 - `blueprint.event.head.anyKeyDown` - 当前 active Surface 收到运行时窗口任意键按下事件
 - `blueprint.event.head.anyKeyUp` - 当前 active Surface 收到运行时窗口任意键抬起事件
+- `blueprint.event.head.action` - 当前 Surface 回答的输入操作被触发事件，卡片上的 `Action` 决定监听哪一个
 - Broadcast 节点组
+- Input 节点组
+
+## Input
+
+Input 节点组读取工程声明的输入操作词表。绑定写在词表和各个界面上，不写在图里，所以这里的节点只认操作的名字。
+
+Input 节点组默认具有：
+- `blueprint.input.isActionHeld` - 指定输入操作当前是否按住，纯节点
+- `blueprint.input.getDevice` - 玩家当前使用的输入设备，纯节点
 
 ## List
 

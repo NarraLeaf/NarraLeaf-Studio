@@ -37,7 +37,7 @@ import {
  */
 
 const DOCUMENT: VcsServerDiscovery = {
-    protocol: 1,
+    protocol: 2,
     name: "team.example.lan",
     auth: { required: true, url: "https://team.example.lan:41402" },
     data: { url: "lore://team.example.lan:41337" },
@@ -208,11 +208,13 @@ describe("reading an address", () => {
 
 describe("reading what came back", () => {
     it("says which version a server speaks when it is not this one", () => {
+        // A server still on the previous protocol is refused by number, with the remedy
+        // named. This build speaks 2, so 1 is the one that no longer fits.
         const answer = readDiscoveryDocument({
             status: 200,
-            body: JSON.stringify({ ...DOCUMENT, protocol: 2 }),
+            body: JSON.stringify({ ...DOCUMENT, protocol: 1 }),
         });
-        expect(answer).toContain("version 2");
+        expect(answer).toContain("version 1");
     });
 
     it("refuses a description with nothing to push to", () => {

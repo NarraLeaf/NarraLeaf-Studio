@@ -19,6 +19,7 @@ import {
     RUNTIME_SUPPORT_FILENAME,
 } from "@narraleaf/encryption/runtime";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
+import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
 import { UI_GRAPH_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/graph";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
@@ -41,6 +42,8 @@ import {
 } from "./gameRuntimeArtifactCompiler";
 
 const ASSET_ID = "00000000-0000-4000-8000-000000000123";
+/** A second library asset the fixture project never mentions anywhere. */
+const UNUSED_ASSET_ID = "00000000-0000-4000-8000-000000000124";
 const REMOTE_ASSET_ID = "00000000-0000-4000-8000-000000000456";
 const SIDECAR_PLUGIN_ID = "acme.sidecar-plugin";
 const SIDECAR_ID = `${SIDECAR_PLUGIN_ID}.bridge`;
@@ -841,6 +844,57 @@ describe("game runtime artifact compiler", () => {
     });
 
     /*
+     * The one combination the marker must not survive.
+     *
+     * A protected build's runtime refuses a debugging switch whatever its markers say, because the
+     * gate that decides in time reads the loose manifest - a text file - and a build whose author
+     * paid for asset protection cannot have a one-word edit standing between a stranger and a
+     * debugger attached to the process that holds the decrypted content. So the artifact does not
+     * carry the claim at all, and says why.
+     */
+    it("keeps the debuggable marker on a protected build, and says how far it reaches", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main", "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            debuggable: true,
+            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        expect(result.pack.debuggable).toBe(true);
+        // The artifact is honest about being half a debuggable one, because the difference only
+        // shows up when someone runs the packaged game and nothing attaches.
+        expect(result.notices.some(notice => notice.includes("run directly"))).toBe(true);
+
+        // Both markers, because the runtime reads them at different moments and puts each through
+        // the same rule - an artifact carrying only one of them would be refused by the other gate.
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.debuggable).toBe(true);
+
+        const reader = await openSealedBundle(
+            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
+            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+            expect(pack.debuggable).toBe(true);
+        } finally {
+            await reader.close();
+        }
+    });
+
+    /*
      * The point of the whole opaque-read design, asserted end to end: a shipped protected build must
      * be unable to answer "what is in here", while still being able to answer "give me this id".
      *
@@ -1152,6 +1206,10 @@ describe("game runtime artifact compiler", () => {
 
         expect(result.pack.addOns?.verificationKey)
             .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+        // What a later patch export reads to decide whether this build can be sent the difference
+        // rather than a whole pack. Dropped, every patch made for this build silently goes back to
+        // replacing the content of every other patch installed beside it.
+        expect(result.pack.addOns?.packDeltaVersion).toBe(PACK_DELTA_VERSION);
         // Loose payload, and still a binary beside it.
         await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
         const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);
@@ -1390,6 +1448,20 @@ async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
         JSON.stringify({ mode: "production", sourcemap: true, builtAt: "2026-01-01T00:00:00.000Z" }),
         "utf-8",
     );
+}
+
+/**
+ * Put an asset id where a page stores one, so the sweep that decides what ships can see it.
+ *
+ * `assetId` rather than an arbitrary key: the property names a document stores a library id under
+ * are one list (`UI_ASSET_ID_PROPERTY_NAMES`), and a fixture that referenced an asset by a name no
+ * reader knows would pass for a reason the product does not have.
+ */
+async function referenceAssetFromRootSurface(projectPath: string, assetId: string): Promise<void> {
+    const uidocPath = path.join(projectPath, "editor", "ui", "uidoc.json");
+    const uidoc = JSON.parse(await fs.readFile(uidocPath, "utf-8"));
+    uidoc.elements.root.props = { ...uidoc.elements.root.props, assetId };
+    await fs.writeFile(uidocPath, JSON.stringify(uidoc), "utf-8");
 }
 
 async function createMinimalProject(
@@ -1676,6 +1748,76 @@ describe("weather clips in the pack", () => {
         const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
         expect(pack.assets.items[atSixty]).toMatchObject({ id: atSixty, type: "video" });
         expect(pack.assets.items[atThirty]).toBeUndefined();
+    });
+
+
+    it("leaves an asset nothing references out of a package, whatever edition it is", async () => {
+        // The release edition included. A build that removes no scene still carries a library sized
+        // for everything the author ever imported, and a package is public the moment someone opens
+        // it - so what ships is what the bytes name, in every edition.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        await referenceAssetFromRootSurface(projectPath, ASSET_ID);
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+        });
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[ASSET_ID]).toBeDefined();
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeUndefined();
+        // The bytes, not just the manifest: an entry can be dropped from the listing while the file
+        // is still sitting in the package, which is the failure this whole pass exists to prevent.
+        await expect(
+            fs.readFile(path.join(result.appDir, "assets", `${UNUSED_ASSET_ID}.png`), "utf-8"),
+        ).rejects.toThrow();
+
+        const report = result.assetReport;
+        expect(report?.included.map(entry => entry.id)).toEqual([ASSET_ID]);
+        expect(report?.excluded.map(entry => entry.name)).toEqual(["spare.png"]);
+        expect(report?.excluded[0].bytes).toBe("unreferenced bytes".length);
+        expect(report?.excludedBytes).toBe("unreferenced bytes".length);
+    });
+
+    it("carries the library whole for a preview, and reports nothing about it", async () => {
+        // The audit that proves a narrowed package still reaches every asset it needs runs exactly
+        // where a report is present, so a compile that narrows nothing must produce none.
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath, {
+            assets: {
+                [ASSET_ID]: { id: ASSET_ID, name: "hero.png", ext: ".png", source: "local" },
+                [UNUSED_ASSET_ID]: { id: UNUSED_ASSET_ID, name: "spare.png", ext: ".png", source: "local" },
+            },
+        });
+        await writeAsset(projectPath, ASSET_ID, "referenced bytes");
+        await writeAsset(projectPath, UNUSED_ASSET_ID, "unreferenced bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact(
+            previewCompileInput(projectPath, runtimeDistDir, 47331),
+        );
+
+        const pack = JSON.parse(await fs.readFile(result.packPath, "utf-8"));
+        expect(pack.assets.items[UNUSED_ASSET_ID]).toBeDefined();
+        expect(result.assetReport).toBeUndefined();
     });
 
     it("keeps the clip's manifest entry through a production build, where most fields are dropped", async () => {

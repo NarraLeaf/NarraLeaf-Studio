@@ -1,8 +1,8 @@
 import { useState, type ReactNode } from "react";
 import { copyTextToClipboard } from "@shared/utils/copyText";
 import { useTranslation } from "@/lib/i18n";
-import { getGameRuntimeBridge } from "@/lib/ui-editor/runtime/gameRuntimeBridge";
-import { getRuntimeCrashPolicy } from "./crashPolicy";
+import { getShellLocale } from "./shellLocale";
+import { getRuntimeCrashPolicy, getRuntimeShellLogPath } from "./crashPolicy";
 
 interface RuntimeCrashScreenProps {
     /** The failure, already flattened. Carries a stack when there was one. */
@@ -37,10 +37,13 @@ export function RuntimeCrashScreen({ details, onRestart }: RuntimeCrashScreenPro
     /**
      * Shown under every policy, including the one that keeps the error off the screen - especially
      * that one. A player who is not being shown what went wrong is exactly the player who needs to
-     * be able to hand the file to somebody who can read it. Absent on the web export, which has no
-     * log file to name.
+     * be able to hand the file to somebody who can read it.
+     *
+     * Read from the page's address rather than from the bridge, because the screen that most needs
+     * to name the log is the one drawn when the preload never ran - and that is exactly when there
+     * is no bridge to ask. Absent on the web export, which has no log file to name.
      */
-    const logPath = getGameRuntimeBridge()?.logPath ?? null;
+    const logPath = getRuntimeShellLogPath();
 
     const handleCopy = async () => {
         try {
@@ -67,13 +70,18 @@ ${t("game.crash.logAt", { path: logPath })}` : details);
     };
 
     return (
-        /* Scrolls, and only centres while there is room to.
+        /* `lang` is set here and nowhere higher: it decides which Han forms the browser draws, and
+           the document belongs to the game, whose language is the author's and the player's, not
+           this screen's. Scoping it to the screen keeps the shell in the machine's language without
+           touching a single glyph of the game.
+
+           Scrolls, and only centres while there is room to.
            A game window may be 480x320, and this screen has to work there: with the details open
            its content is taller than that, and a centred flex child that overflows loses its top
            to a scrollbar that does not exist. What the player saw was the stack trace, no title,
            and a Restart button cut off above the first pixel. `min-h-full` on the centring row
            lets short content sit in the middle and tall content grow the scroll container. */
-        <div className="h-screen w-screen overflow-y-auto bg-black text-white">
+        <div lang={getShellLocale()} className="h-screen w-screen overflow-y-auto bg-black text-white">
             <div className="flex min-h-full items-center justify-center p-8">
                 <div className="w-full max-w-xl">
                     <h1 className="text-lg font-medium">{t("game.crash.title")}</h1>

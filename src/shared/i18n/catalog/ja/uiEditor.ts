@@ -49,6 +49,42 @@ export const uiEditor = {
         page: "ページ {index}",
         gameUi: "{slot} UI",
         component: "コンポーネント {index}",
+        inputAction: "アクション {index}",
+    },
+    inputActions: {
+        title: "入力アクション",
+        create: "アクションを作成",
+        createTitle: "入力アクションを作成",
+        rename: "名前を変更…",
+        delete: "アクションを削除",
+        deleteConfirm: "{name} を削除するか",
+        deleteDetail: {
+            other: "{count} 個のインターフェースがこのアクションに応答している。削除すると応答しなくなる",
+        },
+        actionOptions: "アクションの操作",
+        empty: "ここでジェスチャーに名前を付けて、各インターフェースに応答させる",
+        noMatches: "一致するものがない",
+        answered: {
+            other: "{count} 個のインターフェース",
+        },
+        noBindings: "割り当てなし",
+        addBinding: "割り当てを追加",
+        removeBinding: "{binding} を外す",
+        device: {
+            pointer: "マウス",
+            key: "キーボード",
+            touch: "タッチ",
+        },
+        gesture: {
+            click: "クリック",
+            doubleClick: "ダブルクリック",
+            rightClick: "右クリック",
+            wheelUp: "上スクロール",
+            wheelDown: "下スクロール",
+            wheelLeft: "左スクロール",
+            wheelRight: "右スクロール",
+            longPress: "長押し",
+        },
     },
     createDialog: {
         slotIntro: "このゲーム UI がプレイ中のどこに属するかを選ぶ",
@@ -231,5 +267,8 @@ export const uiEditor = {
             offline: "テンプレートストアを使えない",
             apply: "テンプレートを適用できなかった",
         },
+    },
+    live: {
+        elementClaimed: "{name} がこの要素を編集している",
     },
 } satisfies LocaleNamespace<"uiEditor">;

@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import type { TranslationKey } from "@shared/i18n";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { GenericChangeDetail } from "./GenericChangeDetail";
+import { SettingsChangeDetail } from "./SettingsChangeDetail";
 import { registerChangePresenter, type ChangePresenter, type ChangePresenterProps } from "./registry";
 import { useSideBytes, type ComparisonSide, type SideBytesStatus } from "./comparisonSide";
 import { sidesOfEntry } from "./entrySides";
@@ -46,7 +46,11 @@ export function BrandChangeDetail({ entry, change, sides }: ChangePresenterProps
         return (
             <div className="flex flex-col gap-2">
                 <p className="text-2xs text-fg-muted">{t(failureKey(unreadable))}</p>
-                <GenericChangeDetail entry={entry} change={change} />
+                {/* The palette read as settings, which is what it is once the swatches are off the
+                    table: a list of named values, each with the two sides of the change on it.
+                    `SettingsChangeDetail` is a component here rather than a second presenter - one
+                    presenter is mounted for this document and it is this one. */}
+                <SettingsChangeDetail entry={entry} change={change} />
             </div>
         );
     }

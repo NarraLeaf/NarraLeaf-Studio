@@ -37,8 +37,10 @@ export const project = {
     group: {
         details: "詳細",
         appTags: "ビルドバリアント",
+        dlc: "DLC",
         userData: "プレイヤーのファイル",
         icons: "アイコン",
+        window: "ウィンドウ",
         screenEffects: "画面エフェクト",
         dependencies: "依存関係",
         saving: "セーブ",
@@ -172,6 +174,29 @@ export const project = {
         // どのバリアントも名指さないカットポイントは何も終わらせない。
         deleteDetailCuts: {
             other: "スクリプトの {count} 箇所のカットポイントは残り、効かなくなる",
+        },
+    },
+    dlc: {
+        add: "DLC を追加",
+        history: {
+            add: "DLC {name} を追加",
+            rename: "DLC の名前を {name} に変更",
+            delete: "DLC {name} を削除",
+            edit: "DLC を編集",
+        },
+        newDlcName: "新しい DLC",
+        nameTitle: "名前",
+        idTitle: "ID",
+        idFile: "出力されるファイル: {file}",
+        idChangeConfirm: "ID を「{id}」に変更しますか？",
+        idChangeDetail: "すでに配布したファイルのファイル名は変わらず、元の ID を指定したストーリーはこの DLC を指さなくなります。",
+        idChangeAction: "変更",
+        attachTitle: "組み込む先",
+        delete: "削除",
+        deleteConfirm: "「{name}」を削除しますか？",
+        deleteDetail: {
+            one: "{count} 件のストーリーがベースビルドに戻ります。",
+            other: "{count} 件のストーリーがベースビルドに戻ります。",
         },
     },
     assets: {
@@ -426,6 +451,14 @@ export const project = {
             right: "右",
         },
     },
+    window: {
+        resizableTitle: "サイズ変更を許可",
+        resizableDescription: "プレイヤーがウィンドウをドラッグしてサイズを変更できます。ステージは自身の比率を保って表示されます。",
+        rememberTitle: "ウィンドウを記憶",
+        rememberDescription: "前回終了時のサイズ・位置・表示モードで開きます。",
+        fullscreenTitle: "起動時にフルスクリーン",
+        fullscreenDescription: "初回起動時にフルスクリーンで開きます。",
+    },
     screenEffects: {
         frameRateTitle: "天候のフレームレート",
         frameRateDescription: "雪・雨・桜に適用される。読み込んだクリップは元のフレームレートのまま",
@@ -467,5 +500,8 @@ export const project = {
                 other: "アクション {count} 個",
             },
         },
+    },
+    live: {
+        entryClaimed: "{name} がこの項目を編集している",
     },
 } satisfies LocaleNamespace<"project">;

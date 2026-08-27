@@ -12,6 +12,10 @@ export const story = {
         emptyStories: "このプロジェクトにストーリーがない",
         storyActions: "ストーリーの操作",
         setDefault: "既定にする",
+            dlc: {
+                title: "所属",
+                base: "ゲーム本体",
+            },
         outline: "アウトライン",
         newChapter: "新規チャプター",
         newSceneInChapter: "チャプターに新規シーン",
@@ -99,6 +103,71 @@ export const story = {
             unplaceableLine: "ここには新しい行を置けない",
             speakerUnresolved: "この行はキャラクターと結びついていないので、元の話者名を残した。文のほうは変わっている",
         },
+    },
+    // ライブセッションが理由で動けない操作が見せる文。セッションが運べるストーリー操作は決まった
+    // 一組だけで、その外の編集はこの機械にだけ書かれて他のどこにも届かない。どの画面でも取り上げ
+    // られるものは同じなので、面ごとに言い訳を書き分けず、一つの文で言う。
+    live: {
+        editUnavailable: "ライブセッション中は使えない。セッションを抜けてから変更する",
+        // 他の人が書いている行に付く印のホバー文言。名前を出す。印の横に名前を置く幅は
+        // なく、切り詰めた名前では誰か分からない。
+        rowClaimed: "{name} がこの行を書いている",
+        // セッションのホストが受け付けなかった変更。作者が打った文字は画面にそのまま
+        // 残す——拒否された行は、画面にあるものがその唯一の写しなので——ので、
+        // ここでは起きたことだけを言う。
+        refusedRowClaimed: "{name} がその行を書いている。この変更は反映されていない",
+        refusedRowGone: "その行はもうない。この変更は反映されていない",
+        refusedAnchorGone: "移動先の行はもうない。この変更は反映されていない",
+        refusedSceneGone: "そのシーンはもうない。この変更は反映されていない",
+        // アウトラインにとっての「シーンがもうない」。どのチャプターにも入っていない
+        // シーンはアウトラインに描かれないので、半分だけ適用せず丸ごと拒否する。
+        refusedChapterGone: "そのチャプターはもうない。この変更は反映されていない",
+        refusedCharacterGone: "そのキャラクターは存在しない。この変更は反映されていない",
+        refusedAssetGone: "そのアセットは存在しない。この変更は反映されていない",
+        refusedVariableGone: "その変数は存在しない。この変更は反映されていない",
+        refusedAssetIdTaken: "そのアセットはすでにここにある。何も取り込まれていない",
+        refusedFolderNotEmpty: "そのフォルダーの中にフォルダーがある。何も削除されていない",
+        refusedConfigEntryGone: "その項目はこのプロジェクトにもうない。この変更は反映されていない",
+        refusedUIElementGone: "その要素は存在しない。この変更は反映されていない",
+        refusedUIBlueprintGone: "そのブループリントは存在しない。この変更は反映されていない",
+        refusedElementClaimed: "{name} がその要素を編集している。この変更は反映されていない",
+        refusedNodeClaimed: "{name} がそのノードを編集している。この変更は反映されていない",
+        refusedTooLarge: "この変更は大きすぎてリアルタイムセッションで共有できない。反映されていない",
+        refusedTrackGone: "そのオーディオトラックは存在しない。この変更は反映されていない",
+        refusedSetGone: "そのアセットセットは存在しない。この変更は反映されていない",
+        refusedDocumentNotShared: "リアルタイムセッションはそのドキュメントを共有しない。この変更は反映されていない",
+        refusedNotInSession: "この端末はもうセッションにいない",
+        refusedUnknownOp: "セッションはこの変更を受け付けなかった",
+        // 直前の取り消し・やり直しが何も送らなかった理由。戻すための操作が作れない
+        // 状態を一つずつ名指しする。
+        undoNotMine: "その手順は他の人のもの",
+        undoNoRecord: "その手順はもう元に戻せない",
+        undoSceneGone: "そのシーンはもうない",
+        undoRowGone: "その行はもうない",
+        undoRowRestored: "その行はシーンに戻っている",
+        // 構造の手順。この削除に戻す先が残っていない状態をそれぞれ名指しする——
+        // シーンやチャプターがすでに戻っているか、元あった場所がもうないか。
+        undoSceneRestored: "そのシーンは物語に戻っている",
+        undoChapterGone: "そのチャプターはもうない",
+        undoChapterRestored: "そのチャプターは物語に戻っている",
+        undoContainerGone: "その行が入っていたブロックはもうない",
+        undoAnchorGone: "その行が元にあった場所はもうない",
+        undoContainerFilled: "そのブロックには別の行が入っている",
+        undoSubtreeLost: "中にあった行は戻せない",
+        undoChaptersChanged: "チャプターがその手順の記録と一致しない",
+        undoCharacterGone: "そのキャラクターは存在しない",
+        undoCharacterRestored: "そのキャラクターは名簿に戻っている",
+        undoAssetGone: "そのアセットは存在しない",
+        undoContentReplaced: "ファイルの差し替えは取り消せない",
+        undoConfigEntryGone: "その項目はこのプロジェクトにもうない",
+        undoConfigEntryRestored: "その項目はこのプロジェクトに戻っている",
+        undoTrackGone: "そのオーディオトラックは存在しない",
+        undoTrackRestored: "そのオーディオトラックはミキサーに戻っている",
+        undoSetGone: "そのアセットセットは存在しない",
+        undoSetRestored: "そのアセットセットは再び宣言されている",
+        undoVariableGone: "その変数は存在しない",
+        undoVariableRestored: "その変数はまた存在している",
+        undoKeyRestored: "その文字列は再び宣言されている",
     },
     // NarraLang の書き出し。ストーリーをスクリプトとして読み、差分を取るためのもの。一方向なので、
     // スクリプトで言えない行は拒まずに報告し、ファイルはどちらにせよ書く。`reason` は印刷側の
@@ -211,6 +280,8 @@ export const story = {
         },
         bulkConfirmDetail: "現在の行の下に、1 回分の取り消しとして足す",
         scriptFile: "これはストーリーのスクリプト。戻すには「スクリプトを読み込む」を使う",
+        // ライブセッション中に、別のプロジェクトから貼り付けた行。セッションごとに一度だけ出す。
+        sessionRowsOnly: "ライブセッション中は、他のプロジェクトの行だけが入る。翻訳・ボイス・アセットを持ち込むには、セッションを抜けてから貼り付け直す",
         translationsCarried: {
             other: "翻訳 {count} 件を引き継いだ",
         },
@@ -394,6 +465,26 @@ export const story = {
         clickHint: "プレイヤーがクリックするまで待つ",
         remove: "停止を取り除く",
     },
+    /**
+     * 値を選ぶ三つの行内マーク：文字の脇に置く傍点、その範囲の文字サイズ、そして打ち出す速度。
+     */
+    textType: {
+        emphasis: "傍点",
+        emphasisNone: "なし",
+        emphasisDot: "行の上・黒丸",
+        emphasisCircle: "行の上・白丸",
+        emphasisSesame: "行の上・ゴマ",
+        emphasisUnderDot: "行の下・黒丸",
+        /** 傍点のボタンで見本に使う文字。 */
+        emphasisSample: "文",
+        size: "文字サイズ",
+        sizeSmaller: "小さく",
+        sizeLarger: "大きく",
+        sizeUnit: "段",
+        speed: "表示速度",
+        speedUnit: "字/秒",
+        speedPlaceholder: "行と同じ",
+    },
     ruby: {
         title: "ルビ",
         placeholder: "読み",
@@ -435,6 +526,8 @@ export const story = {
         insertExpression: "式による変更を差し込む",
         ruby: "ルビ",
         rubyHint: "ルビ（振りたい語を選んでから）",
+        type: "文字",
+        typeHint: "文字（設定する語を選んでから）",
         tools: "リッチテキストの道具",
         pauseClick: "停止（クリックを待つ）",
         pauseSeconds: "停止 {seconds} 秒",
@@ -520,6 +613,7 @@ export const story = {
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
         loop: "ループ",
+        returnable: "戻り",
         vol: "音量",
         volume: "音量",
         rate: "速度",
@@ -587,6 +681,7 @@ export const story = {
         fade: "フェード",
         // 「フェード」は文脈で意味が変わる語。こちらは常にクロスフェードそのものを指す。
         dissolve: "ディゾルブ",
+        "fade-in": "フェードイン",
         slide: "スライド",
         "slide-left": "左スライド",
         "slide-right": "右スライド",
@@ -846,6 +941,8 @@ export const story = {
         cutPointInactiveTitle: "この行が終わらせていたバリアントは削除されたので、何も終わらせていない",
         tempSpeaker: "名前だけ",
         createCharacter: "キャラクター「{name}」を作成",
+        // 上の行が灰色のときと、貼り付けウィザードの「新しいキャラクター」に出る。どちらも同じ申し出。
+        createCharacterUnavailable: "ライブセッション中は使えない。既存のキャラクターを選ぶ",
         voiceOutdated: "ボイスが古い。ボイスの表を開く",
         voiceManage: "ボイスの表を開く",
         voicePlay: "ボイスのテイクを再生",
@@ -1004,7 +1101,7 @@ export const story = {
      */
     command: {
         background: { label: "背景", detail: "シーンの背景画像か背景色を決める" },
-        jump: { label: "ジャンプ", detail: "別のシーンへ移る。いまのシーンは解放される" },
+        jump: { label: "ジャンプ", detail: "別のシーンへ移る。「戻り」がなければいまのシーンは解放される" },
         wait: { label: "待機", detail: "指定した秒数、またはクリックまで待つ" },
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
         show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },

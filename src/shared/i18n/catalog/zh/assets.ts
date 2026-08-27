@@ -328,6 +328,7 @@ export const assets = {
         newSubGroup: "新建子分组",
         newTextFile: "新建文本文件",
         importAssets: "导入资产…",
+        cancelTransfer: "取消导入",
         replaceContent: "替换文件…",
         copyCount: {
             one: "复制 {count} 项",
@@ -485,6 +486,17 @@ export const assets = {
         lineEndingLabel: "行尾：{ending}",
         encodingLabel: "编码：{encoding}",
         actionFailed: "该操作执行失败",
+    },
+    live: {
+        recordClaimed: "{name} 正在编辑该资产",
+        transferring: "该资产已传输 {percent}%",
+        refusedTitle: "未导入到会话",
+        refusedQuotaOne: "{name} 超过该工程可同时传输的容量，待传输中的文件到达后再导入",
+        refusedQuotaMany: "{count} 个文件超过该工程可同时传输的容量，待传输中的文件到达后再导入",
+        refusedOne: "{name} 无法发送到服务器",
+        refusedMany: "{count} 个文件无法发送到服务器",
+        replaceRefused: "该文件无法发送到服务器",
+        replaceRefusedQuota: "该文件超过该工程可同时传输的容量",
     },
     newTextFile: {
         title: "新建文本文件",

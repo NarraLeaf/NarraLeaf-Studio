@@ -3,6 +3,8 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_CLEAR,
@@ -46,6 +48,14 @@ import {
     BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_BOTTOM,
     BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_SCROLL_TO_TOP,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END,
+    BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START,
     BLUEPRINT_NODE_TYPE_LIST_SET_ITEMS,
     BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_INDEX,
     BLUEPRINT_NODE_TYPE_LIST_SET_SELECTED_ITEM,
@@ -208,11 +218,10 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
         if (ref.elementType !== LIST_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError("List node requires an nl.list element", ctx.node.id);
         }
-        const currentSurfaceId = ctx.executionOwner?.surfaceId;
-        if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+        if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError("List node can only target the current Surface", ctx.node.id);
         }
-        return ref.elementId;
+        return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
     }
     if (target === "element") {
         throw new BlueprintGraphExecutionError("List Element node requires a List input", ctx.node.id);
@@ -221,7 +230,7 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
     if (!elementId) {
         throw new BlueprintGraphExecutionError("List node requires a List target", ctx.node.id);
     }
-    return elementId;
+    return buildUIWidgetAddress(elementId, ctx.instanceKey);
 }
 
 function normalizeArray(value: unknown): unknown[] {
@@ -642,6 +651,42 @@ export const listBlueprintNodes: BlueprintNodeDef[] = [
             return { nextPort: "next" };
         },
     }),
+    /**
+     * Where the list is, asked at the moment the graph runs.
+     *
+     * The Scroll head tells a graph the list has moved; these tell a graph where it ended up. The
+     * difference matters to anything triggered by something other than the list - a wheel handler on
+     * the page around it cannot be told, it has to ask - and mirroring the head's answer into a
+     * variable instead is the shape that silently goes stale.
+     */
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_PROGRESS,
+        displayName: "Get Scroll Progress",
+        keywords: ["list", "scroll", "progress", "position", "fraction"],
+        pins: [out("progress", "Progress", "float")],
+        target: "self",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_LIST_GET_SCROLL_OFFSET,
+        displayName: "Get Scroll Offset",
+        keywords: ["list", "scroll", "offset", "pixels", "position"],
+        pins: [out("offset", "Offset", "float"), out("maxOffset", "Max Offset", "float")],
+        target: "self",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_END,
+        displayName: "Is Scrolled To End",
+        keywords: ["list", "scroll", "end", "bottom", "edge"],
+        pins: [out("atEnd", "At End", "boolean")],
+        target: "self",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_LIST_IS_SCROLLED_TO_START,
+        displayName: "Is Scrolled To Start",
+        keywords: ["list", "scroll", "start", "top", "edge"],
+        pins: [out("atStart", "At Start", "boolean")],
+        target: "self",
+    }),
     readNode({
         type: BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS,
         displayName: "Get List Item Props",
@@ -758,6 +803,34 @@ export const listBlueprintNodes: BlueprintNodeDef[] = [
         inspectorParams: [fieldParam()],
         target: "element",
         execute: ctx => setItemFieldAt(ctx, "element"),
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_PROGRESS,
+        displayName: "Get Scroll Progress",
+        keywords: ["list", "element", "scroll", "progress", "position", "fraction"],
+        pins: [out("progress", "Progress", "float")],
+        target: "element",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_GET_SCROLL_OFFSET,
+        displayName: "Get Scroll Offset",
+        keywords: ["list", "element", "scroll", "offset", "pixels", "position"],
+        pins: [out("offset", "Offset", "float"), out("maxOffset", "Max Offset", "float")],
+        target: "element",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_END,
+        displayName: "Is Scrolled To End",
+        keywords: ["list", "element", "scroll", "end", "bottom", "edge"],
+        pins: [out("atEnd", "At End", "boolean")],
+        target: "element",
+    }),
+    readNode({
+        type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_IS_SCROLLED_TO_START,
+        displayName: "Is Scrolled To Start",
+        keywords: ["list", "element", "scroll", "start", "top", "edge"],
+        pins: [out("atStart", "At Start", "boolean")],
+        target: "element",
     }),
     writeNode({
         type: BLUEPRINT_NODE_TYPE_ELEMENT_LIST_SORT_BY_FIELD,

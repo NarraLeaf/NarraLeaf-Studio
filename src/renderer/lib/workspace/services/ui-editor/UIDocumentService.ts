@@ -24,6 +24,8 @@ import {
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
+import type { LiveUIOp } from "@shared/live/ops";
+import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -118,6 +120,17 @@ import {
 } from "@shared/types/ui-editor/builtinStructs";
 import type { UIStructField } from "@shared/types/ui-editor/struct";
 import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
+import {
+    normalizeUIInputActionLibrary,
+    normalizeUIInputBindings,
+    normalizeUISurfaceActionEnablements,
+    normalizeUISurfaceInputMode,
+    pruneUISurfaceActionEnablements,
+    type UIInputActionDef,
+    type UIInputBinding,
+    type UISurfaceActionEnablement,
+    type UISurfaceInputMode,
+} from "@shared/types/ui-editor/inputAction";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
 import {
@@ -168,6 +181,52 @@ type UIDocumentMutationHistoryOptions =
 
 type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
+    /**
+     * An effect arriving, rather than a gesture leaving.
+     *
+     * The one flag that makes the sink stand aside. Without it applying an effect would hand the
+     * operation straight back to the sink it came from, and the room would answer itself for ever.
+     */
+    live?: boolean;
+};
+
+/**
+ * Somewhere for an interface edit to go instead of into the document.
+ *
+ * **The seam a live session hangs off, and the reason the interface editor needs no live-session code
+ * at all.** It is `StoryOpSink`'s shape and the same bargain - with a sink installed the document is
+ * not touched, and the screen changes when the operation comes back as somebody's effect - but it
+ * hangs somewhere else, and where is the whole design:
+ *
+ * The story service asks its sink from **each of eleven mutators**, because each of them is one
+ * gesture and can state it. This service has some forty, and they all funnel into one private
+ * `mutateDocument(mutator)` whose mutator is an opaque closure. Asking there is the only place that
+ * cannot fall behind - and what can be stated there is not the gesture but its result, which
+ * `mutateDocument` obtains by running the mutator against a copy and comparing (see
+ * `@shared/live/uiParts`). So the vocabulary is a delta of records, and it is **exhaustive over
+ * gestures by construction**: the forty that exist and the forty-first that lands next month are all
+ * carried, and none of them has to know a session exists.
+ *
+ * One method, for `StoryOpSink`'s reason: there are exactly two outcomes, and a second method would
+ * be a second way to spell one of them.
+ *
+ * ⚠ **A guest's second gesture on one record inside a single round trip supersedes the first**, and
+ * that is a property of every whole-record operation in this vocabulary rather than of this one: a
+ * guest's document does not move until the host answers, so both deltas are computed against the same
+ * state and the later one carries the earlier one's fields as they were. `update-character`,
+ * `update-asset` and `set-translation` all behave this way and always have. What keeps it small here
+ * is that each gesture is self-contained - a drag commits once at its end, and the inspector's text
+ * fields carry their whole draft on every throttled commit - so the two gestures have to be
+ * different KINDS of edit to the same element, made a network round trip apart.
+ */
+export type UIOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means the sink is not
+     * speaking for this document and the mutation carries on as usual.
+     */
+    handle(op: LiveUIOp): boolean;
 };
 
 const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
@@ -639,6 +698,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
+    /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
+    private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
 
@@ -987,6 +1048,164 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /** What the gestures of this project mean, keyed by id. */
+    public getInputActions(): Record<string, UIInputActionDef> {
+        return this.getDocument().actions ?? {};
+    }
+
+    /**
+     * Add an entry to the project's action vocabulary.
+     *
+     * Bindings start empty: the project default is what every surface inherits, so guessing one
+     * would silently wire a gesture the author never asked for into every interface at once.
+     */
+    public createInputAction(name: string): UIInputActionDef | null {
+        const actionName = name.trim();
+        if (!actionName) {
+            return null;
+        }
+        const actionId = this.getContext().services.get<UuidService>(Services.Uuid).generate();
+        const action: UIInputActionDef = { id: actionId, name: actionName, bindings: [] };
+        this.mutateDocument(document => {
+            document.actions = { ...(document.actions ?? {}), [actionId]: action };
+        }, { history: false });
+        return action;
+    }
+
+    /** Rename one vocabulary entry. Surfaces store the id, so nothing they answer moves. */
+    public renameInputAction(actionId: string, name: string): void {
+        const nextName = name.trim();
+        if (!nextName) {
+            return;
+        }
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action || action.name === nextName) {
+                return;
+            }
+            action.name = nextName;
+        }, { history: false });
+    }
+
+    /**
+     * Replace the bindings a surface gets unless it overrides them.
+     *
+     * Every surface that took the default is rebound by this, which is the point of the vocabulary
+     * being a project-level table; a surface that had said otherwise keeps what it said.
+     */
+    public setInputActionBindings(actionId: string, bindings: readonly UIInputBinding[]): void {
+        this.mutateDocument(document => {
+            const action = document.actions?.[actionId];
+            if (!action) {
+                return;
+            }
+            action.bindings = normalizeUIInputBindings(bindings);
+        }, { history: false });
+    }
+
+    /**
+     * Drop one vocabulary entry, and every surface's answer to it, in one transaction.
+     *
+     * Both halves together for the reason `setListItemStructFields` prunes in its own transaction: a
+     * surface left answering an action nothing defines is a row with no name and no bindings, and a
+     * later action minted onto the same id would inherit those replies without anyone asking for it.
+     */
+    public deleteInputAction(actionId: string): void {
+        this.mutateDocument(document => {
+            if (!document.actions?.[actionId]) {
+                return;
+            }
+            const actions = { ...document.actions };
+            delete actions[actionId];
+            document.actions = actions;
+            const remaining = new Set(Object.keys(actions));
+            for (const surface of document.surfaces) {
+                if (!surface.actions) {
+                    continue;
+                }
+                const kept = pruneUISurfaceActionEnablements(surface.actions, remaining);
+                if (kept.length === surface.actions.length) {
+                    continue;
+                }
+                surface.actions = kept;
+            }
+        }, { history: false });
+    }
+
+    /** What this surface does with input that lands on it. */
+    public setSurfaceInputMode(surfaceId: string, mode: UISurfaceInputMode): void {
+        this.updateSurface(surfaceId, surface => {
+            surface.input = normalizeUISurfaceInputMode(mode);
+        }, { mergeKey: `surface:${surfaceId}:input` });
+    }
+
+    /**
+     * Whether this surface answers one of the project's actions.
+     *
+     * Enabling adds a bare enablement - no added bindings, no override - so the surface starts on
+     * the project's defaults and the row an author sees says exactly that. Disabling removes the
+     * record rather than flagging it off: a surface that does not answer an action has nothing to
+     * store about it, and a hidden set of per-surface bindings that reappear on re-enable is a
+     * state nobody can see.
+     */
+    public setSurfaceActionEnabled(surfaceId: string, actionId: string, enabled: boolean): void {
+        const id = actionId.trim();
+        if (!id) {
+            return;
+        }
+        this.updateSurface(surfaceId, surface => {
+            const current = surface.actions ?? [];
+            if (!enabled) {
+                const kept = current.filter(entry => entry.actionId !== id);
+                if (kept.length === current.length) {
+                    return;
+                }
+                if (kept.length === 0) {
+                    delete surface.actions;
+                    return;
+                }
+                surface.actions = kept;
+                return;
+            }
+            if (current.some(entry => entry.actionId === id)) {
+                return;
+            }
+            surface.actions = [...current, { actionId: id }];
+        });
+    }
+
+    /**
+     * Change one field of one surface's answer.
+     *
+     * A key **present** in the patch is written even when its value is `undefined`, which is how
+     * `overrideBindings` is cleared - an override present but empty means "no gesture here" and is a
+     * different statement from having no override at all (see `resolveSurfaceActionBindings`).
+     */
+    public updateSurfaceActionEnablement(
+        surfaceId: string,
+        actionId: string,
+        patch: Partial<Omit<UISurfaceActionEnablement, "actionId">>,
+    ): void {
+        this.updateSurface(surfaceId, surface => {
+            const enablement = surface.actions?.find(entry => entry.actionId === actionId);
+            if (!enablement) {
+                return;
+            }
+            for (const key of Object.keys(patch) as (keyof typeof patch)[]) {
+                const value = patch[key];
+                if (value === undefined) {
+                    delete enablement[key];
+                    continue;
+                }
+                if (key === "addBindings" || key === "overrideBindings") {
+                    enablement[key] = normalizeUIInputBindings(value);
+                    continue;
+                }
+                (enablement as Record<string, unknown>)[key] = value;
+            }
+        }, { mergeKey: `surface:${surfaceId}:action:${actionId}:${Object.keys(patch).sort().join(",")}` });
+    }
+
     /**
      * Bind one prop of one element to a field of the list item it is drawn for. `null` unbinds.
      *
@@ -1280,7 +1499,78 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Send interface edits somewhere else, or take them back. Null restores the ordinary behaviour.
+     *
+     * See {@link UIOpSink} for why it hangs on the private mutator rather than on the public ones.
+     */
+    public setOperationSink(sink: UIOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the screen is
+     * finally allowed to change. It goes through the same `mutateDocument` every gesture does - which
+     * is not a detail, because the dirty marking, the auto-save, `documentChanged` and the blueprint
+     * reconciliation all hang off it, and a document that changed without them is one the editor
+     * never redraws and the disk never receives.
+     *
+     * **Nothing recorded here enters this author's undo stack.** An effect is somebody else's edit
+     * landing on this machine, and an undo stack that offered to take it back would be offering to
+     * delete a stranger's work. Inside a session, undo is sending the inverse of one's own last
+     * operation instead; see the live layer's `inverseOf`.
+     *
+     * ⚠ **The records are copied on the way in.** They arrived inside a message the sender may still
+     * be holding - the host keeps every effect it broadcast - and applying writes them into the
+     * document, which then edits them in place.
+     */
+    public applyLiveOp(op: LiveUIOp): void {
+        switch (op.op) {
+            case "write-ui":
+                this.applyParts(op.parts);
+                return;
+            default: {
+                // The switch is exhaustive over the vocabulary and this is what says so. The
+                // callback returns void, so a verb nobody applied here would be a silent no-op: the
+                // effect lands everywhere else in the room and does nothing on this machine, which
+                // is the divergence the digest catches one message too late.
+                const unapplied: never = op.op;
+                throw new RendererError(`No applier for live interface operation: ${String(unapplied)}`);
+            }
+        }
+    }
+
+    private applyParts(parts: LiveUIParts): void {
+        const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
+        this.mutateDocument(document => applyUIParts(document, copy), { live: true });
+    }
+
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.opSink && !options.live) {
+            // Run the gesture against a copy and state what it did to the document, rather than
+            // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is
+            // what makes a verb impossible to forget. See {@link UIOpSink}.
+            const current = this.getDocument();
+            const draft = cloneUIHistoryDocument(current);
+            mutator(draft);
+            const parts = diffUIParts(current, draft);
+            if (parts === null) {
+                // A mutation that changed nothing must not become a message: several of this
+                // service's methods are no-ops against the wrong element, and a room full of empty
+                // operations would cost a broadcast, a sequence number and an undo step each.
+                return;
+            }
+            // ⚠ Which of the records were already here travels with the delta. Nothing in a delta's
+            // shape distinguishes a new element from one somebody deleted while it was being
+            // dragged, and applied blind the second of those puts a deleted element back on every
+            // screen in the room with every machine agreeing about it.
+            const updates = uiPartsUpdates(current, parts);
+            if (this.opSink.handle({ op: "write-ui", parts, ...(updates.length === 0 ? {} : { updates }) })) {
+                return;
+            }
+        }
         const historyService = this.getHistoryService();
         const historyOptions = options.history;
         const beforeHistory =
@@ -1370,6 +1660,42 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
+        return this.normalizeInputModel(this.migrateSchemaVersion(document));
+    }
+
+    /**
+     * The input vocabulary and every surface's reply to it, read the way this build understands them.
+     *
+     * Runs on every load rather than in one numbered migration, and carries **no** schema bump. The
+     * precedent is the struct library: fields whose absence already means a defined default are read
+     * through a normalizer instead of being backfilled once, so a document written by an older
+     * Studio loads with an empty vocabulary, `capture`, and no enablements without ever having
+     * claimed to be a newer schema. The numbered migrations here are the other kind - each one
+     * restructures elements a normalizer could not reconstruct.
+     *
+     * `input` and `actions` are written back only when the surface carries them, so a project that
+     * has never opened the input panel keeps its surface records exactly as short as they were and
+     * the load path's "did normalizing change anything" check stays quiet.
+     */
+    private normalizeInputModel(document: UIDocument): UIDocument {
+        const actions = normalizeUIInputActionLibrary(document.actions);
+        if (Object.keys(actions).length > 0) {
+            document.actions = actions;
+        } else {
+            delete document.actions;
+        }
+        for (const surface of document.surfaces) {
+            if (surface.input !== undefined) {
+                surface.input = normalizeUISurfaceInputMode(surface.input);
+            }
+            if (surface.actions !== undefined) {
+                surface.actions = normalizeUISurfaceActionEnablements(surface.actions);
+            }
+        }
+        return document;
+    }
+
+    private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }

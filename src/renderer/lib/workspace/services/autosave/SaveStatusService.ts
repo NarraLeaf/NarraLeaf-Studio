@@ -321,19 +321,29 @@ export class SaveStatusService extends Service<SaveStatusService> {
         if (!notifications) {
             return;
         }
+        // A live session is the one freeze that is partial, and both of the usual sentences are
+        // false under it: the story the session is about IS being saved, and there is no "unfreeze"
+        // - the way out is leaving the session. Told the usual way, an author who had just watched a
+        // line of dialogue save would be informed that nothing is being saved, which is alarming and
+        // wrong in the direction that makes people stop working.
+        const session = refusal.reason.kind === "live-session";
         this.frozenToast = notifications.showSticky({
             type: NotificationType.Warning,
-            message: translate("workspace.shell.save.frozenTitle"),
-            detail: refusal.reason.kind === "revision"
-                ? translate("workspace.shell.save.frozenDetailRevision", {
-                    version: refusal.reason.label ?? refusal.reason.revision,
-                })
-                // A merge gets its own sentence rather than the manual one, because the remedy is
-                // opposite: there is nothing to "unfreeze" - the way out is finishing the merge,
-                // and an author told to unfreeze would look for a control that is not there.
-                : refusal.reason.kind === "merge"
-                    ? translate("workspace.shell.save.frozenDetailMerge")
-                    : translate("workspace.shell.save.frozenDetailManual"),
+            message: translate(session
+                ? "workspace.shell.save.frozenTitleSession"
+                : "workspace.shell.save.frozenTitle"),
+            detail: session
+                ? translate("workspace.shell.save.frozenDetailSession")
+                : refusal.reason.kind === "revision"
+                    ? translate("workspace.shell.save.frozenDetailRevision", {
+                        version: refusal.reason.label ?? refusal.reason.revision,
+                    })
+                    // A merge gets its own sentence rather than the manual one, because the remedy is
+                    // opposite: there is nothing to "unfreeze" - the way out is finishing the merge,
+                    // and an author told to unfreeze would look for a control that is not there.
+                    : refusal.reason.kind === "merge"
+                        ? translate("workspace.shell.save.frozenDetailMerge")
+                        : translate("workspace.shell.save.frozenDetailManual"),
         });
     }
 

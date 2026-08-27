@@ -35,6 +35,13 @@ export type DocumentKind =
     | "brand"
     /** The build variants the project ships as, at `editor/app-tags.json`. */
     | "app-tags"
+    /**
+     * The DLC the project ships beside its builds, at `editor/dlc.json`.
+     *
+     * A sibling of `app-tags` rather than part of it: a build is exactly one variant, and has any
+     * number of DLC installed beside it.
+     */
+    | "dlc"
     /** The words the project spells on purpose, at `editor/dictionary.json`. */
     | "dictionary"
     /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
@@ -130,6 +137,20 @@ export interface DocumentSpec<T> {
      * malformed parameter is a save that lands somewhere nothing will look.
      */
     pathFor(parameters?: Readonly<Record<string, string>>): string;
+
+    /**
+     * The bytes of one of these documents, as the `raw` value {@link parse} is handed.
+     *
+     * The counterpart of {@link serialize}, and it exists for the same reason: a format that is
+     * not JSON at all has to be able to say so. Every reader used to spell `JSON.parse` itself
+     * before it reached a spec, so the project configuration - which is msgpack - could not be
+     * read even with a spec registered for it, and reported as a number of bytes.
+     *
+     * `path` is the document's own path, because one spec may own two names that are two eras of
+     * the same document and are not the same format. Throwing is how this says the bytes are not
+     * of this format; the caller reports that and compares the file some other way.
+     */
+    decode(bytes: Uint8Array, path: string): unknown;
 
     parse(raw: unknown, context: DocumentParseContext): T;
 

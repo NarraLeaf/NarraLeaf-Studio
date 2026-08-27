@@ -125,6 +125,11 @@ export const lint = {
             description: "A scene that leaves on some paths and reaches its end on another",
             message: "Play runs off the end of the scene here",
         },
+        storyCallCycle: {
+            title: "Circular call",
+            description: "A returnable jump reaching a scene that can call its own back",
+            message: "Calls a scene that can call this one back",
+        },
         storyUnreachableScene: {
             title: "Unreachable scene",
             description: "A scene nothing can reach from the start",
@@ -209,6 +214,8 @@ export const lint = {
             messageEnding: "Names an ending that no longer exists",
             messageCharacter: "Names a character that no longer exists",
             messageTextKey: "Names a text key the project does not declare",
+            messageDlc: "Names a DLC the project does not have",
+            messageInputAction: "Names an input action the project does not declare",
         },
         blueprintElementRefMissing: {
             title: "Missing widget",
@@ -228,6 +235,11 @@ export const lint = {
             title: "Unreachable node",
             description: "A node no entry point in its graph can reach",
             message: "Nothing reaches this node, so it never runs",
+        },
+        blueprintDlcEntranceUnguarded: {
+            title: "Unguarded DLC entrance",
+            description: "A Start Story into a DLC's story, with nothing asking whether the DLC is here",
+            message: "Nothing in this graph asks whether the DLC is installed",
         },
         blueprintEmptyEvent: {
             title: "Empty event",
@@ -265,6 +277,11 @@ export const lint = {
             title: "Missing item field",
             description: "A widget bound to an item field the list drawing it does not declare",
             message: "This is bound to an item field the list does not declare, so every row shows the same value",
+        },
+        uiGestureAnsweredTwice: {
+            title: "Gesture answered twice",
+            description: "A widget with a pointer handler of its own, on a page whose action answers the same gesture",
+            message: "{action} on this page answers the same gesture this widget does, so both run",
         },
         blueprintSaveFieldEmpty: {
             title: "Empty save field",
@@ -312,6 +329,11 @@ export const lint = {
             title: "Stale translation",
             description: "The source line changed after it was translated",
             message: "{locale} translation is older than the line",
+        },
+        localizationMarkup: {
+            title: "Translation drops styling",
+            description: "The line is styled and the translation renders it plainly",
+            message: "{locale} translation does not carry this line's styling",
         },
         localizationOrphan: {
             title: "Orphan translation",

@@ -21,7 +21,7 @@ import {
     normalizeGameRuntimeViewportConfig,
 } from "@shared/types/gameRuntime";
 import type { AppTagBaseIdentity, AppTagPluginConfig, AppTagReachableScenes, ProjectAppTag } from "@shared/types/appTag";
-import { APP_TAG_ID_RELEASE, isBuiltinAppTagId } from "@shared/types/appTag";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import { gameProgressKey } from "@shared/types/gameProgress";
 import { resolveShippedPluginBuildConfig } from "@shared/utils/pluginBuildConfig";
 import {
@@ -67,13 +67,20 @@ import {
 } from "../../../../../buildWorker/pluginBuildDependencies";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
+import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { collectWeatherSpecs, weatherClipAssetId, type PackedWeatherClip } from "@shared/weather/stage";
 import { sanitizeProjectFileName } from "@shared/utils/nlproj";
-import { deriveGameAppId, type GameBuildPlatform } from "@shared/types/gameBuild";
+import {
+    deriveGameAppId,
+    totalShippedAssetBytes,
+    type GameBuildPlatform,
+    type ShippedAssetReport,
+    type ShippedAssetReportEntry,
+} from "@shared/types/gameBuild";
 import { normalizeSaveLocationConfiguration, userDataDirectoryName } from "@shared/utils/userDataLocation";
 import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } from "./webShell";
 
@@ -219,6 +226,28 @@ export type GameRuntimeArtifactCompileInput = {
      */
     packaging?: boolean;
     /**
+     * This package is produced to be read back and then thrown away.
+     *
+     * Set by the patch export for the build it measures against: that package is compared entry by
+     * entry and deleted, and no player ever receives it. Everything about what it carries is decided
+     * exactly as a real package's would be - the same fold, the same trim, the same entry names, or
+     * the comparison would be measuring something else.
+     *
+     * What it does change is the audit. The check that reads a produced package back and proves it
+     * still reaches every asset it asks for exists to protect what ships; asking it of a package
+     * nobody receives buys nothing and costs a compile of every story in every language. A defect it
+     * would find there is a defect in a build of that variant, and a build of that variant is what
+     * reports it.
+     */
+    forComparison?: boolean;
+    /**
+     * The DLC whose stories go into this artifact, on top of the game's own.
+     *
+     * Only the production build and the DLC export set it, and only one of them sets it to
+     * anything: see `DevModeBundleLoadContext.includedDlc`.
+     */
+    includedDlc?: readonly string[];
+    /**
      * Studio's own userData directory, used only as the root of the build
      * dependency cache that `dep:` sidecar includes resolve through. Passed in
      * rather than read from Electron because this module also runs off the main
@@ -249,6 +278,10 @@ export type GameRuntimeArtifactCompileInput = {
      * The experimental `debuggable-build` condition, and nothing else, sets it. It is written into
      * both the pack and the loose app manifest because the runtime checks the two at different
      * moments - the manifest before Chromium starts, the pack once it is open.
+     *
+     * A sealed artifact still carries it, but it means less there: the runtime honours it only
+     * while the app directory is being run by hand, never in the packaged game. The compile says so
+     * rather than leaving the author to discover it. See `honoursDebuggableMarker`.
      */
     debuggable?: boolean;
     /**
@@ -356,6 +389,15 @@ export type GameRuntimeArtifactCompileResult = {
      * ones it reaches for.
      */
     collapsedBuildAxis: boolean;
+    /**
+     * What this compile carried out of the asset library and what it left behind.
+     *
+     * Present exactly when the compile narrowed the library, which is every packaging compile and no
+     * preview. **The worker decides whether to audit by whether this is here**, so the two can no
+     * longer drift: trimming without the audit is the dangerous half, because it removes assets with
+     * nothing checking that the shipped game still reaches every one it asks for.
+     */
+    assetReport?: ShippedAssetReport;
 };
 
 /**
@@ -449,6 +491,7 @@ export async function compileGameRuntimeArtifact(
         blueprintScriptsCompileErrors: blueprintScripts.errors,
         ...(input.appTag ? { appTag: input.appTag } : {}),
         ...(input.packaging ? { packaging: true } : {}),
+        ...(input.includedDlc ? { includedDlc: input.includedDlc } : {}),
         // The declarations, not the count. A pack that merely carries a plugin can still drop a
         // scene; one that carries a plugin able to start a story cannot.
         runtimePlugins: (input.runtimePlugins ?? []).map(plugin => ({
@@ -462,29 +505,31 @@ export async function compileGameRuntimeArtifact(
         onNotice: message => notices.push(message),
         onAssetSetCollapse: () => { collapsedBuildAxis = true; },
     });
-    // A variant that removed story also carries an asset library sized for the story it removed, and
-    // a package is public the moment someone opens it. The release edition removes nothing, so it
-    // narrows nothing: there is no unreachable content for it to be carrying.
+    // Every package narrows the library to what it references, and only a package does: a preview
+    // and a test address whatever the author points them at, so both carry it whole.
     //
-    // Unless an asset set collapsed a build axis. That drops variants from every edition including
-    // the release one - the axis is a statement about the art, not about which edition is narrower -
-    // so the premise above stops holding and the library has to be narrowed either way. Skipping it
-    // there would leave the withheld variants sitting in the package, which is the one failure a
-    // build axis exists to prevent.
-    const stripping = Boolean(input.packaging)
-        && (collapsedBuildAxis
-            || (Boolean(input.appTag) && !isBuiltinAppTagId(input.appTag?.id ?? APP_TAG_ID_RELEASE)));
+    // This used to ask which edition was being built, on the grounds that only an edition that
+    // removed story could be carrying content it could no longer reach. Two things made that false.
+    // A collapsed build axis drops art from every edition including the release one. And a DLC's
+    // stories are left out of the build they attach to, which takes their prose but not the art it
+    // named - so the base package shipped the pictures of content nobody bought. A library sized for
+    // content the package does not carry is public the moment someone opens the package, and an
+    // asset nothing references is not reachable by any edition.
+    const stripping = Boolean(input.packaging);
     const shipped = stripping
         ? await planShippedAssets(
             input.projectPath,
             assembled,
             input.runtimePlugins ?? [],
             message => notices.push(message),
+            input.assetImages,
         )
         : null;
     const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
-    if (shipped && shipped.removedAssetCount > 0) {
-        notices.push(`${shipped.removedAssetCount} assets are unreachable in this edition and do not ship`);
+    if (shipped && shipped.report.excluded.length > 0) {
+        notices.push(
+            `${shipped.report.excluded.length} asset(s) are not referenced by this build and were left out`,
+        );
     }
 
     // Bound before anything is written into it. A build with a distribution key
@@ -511,6 +556,18 @@ export async function compileGameRuntimeArtifact(
             ),
         }
         : { kind: "loose" };
+
+    // The marker is written either way, but on a sealed artifact it reaches only half as far: the
+    // runtime honours it while this app directory is run by hand and refuses it in the packaged
+    // game, because the gate that decides in time reads the loose manifest and a shipped protected
+    // build cannot have a text edit standing between a stranger and its content.
+    const debuggable = input.debuggable === true;
+    if (debuggable && input.encryptionKey) {
+        notices.push(
+            "asset protection is on: this artifact accepts a debugging switch only while its app "
+            + "directory is run directly, never as the packaged game",
+        );
+    }
 
     try {
         const assetManifest = await copyProjectAssets({
@@ -577,11 +634,17 @@ export async function compileGameRuntimeArtifact(
             target,
         });
 
+        // What this payload can say about DLC, as the assembler stated it - the one place that
+        // decided. Absent there means "every DLC the project has", which no packaged build ever
+        // is: every production compile names a selection, so this is empty on a base build and
+        // holds one id on a DLC build.
+        const installedDlc = [...(bundle.installedDlc ?? [])];
+
         const pack: GameRuntimePackV1 = {
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
             mode,
-            ...(input.debuggable ? { debuggable: true } : {}),
+            ...(debuggable ? { debuggable: true } : {}),
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: input.productName?.trim()
@@ -628,6 +691,15 @@ export async function compileGameRuntimeArtifact(
             // the same tag that decides the build's name. Omitted when blank, which is the state
             // every build was in before this field and the one the runtime treats as "show nothing".
             ...(endingSurfaceId ? { endingSurfaceId } : {}),
+            // The DLC whose content is in this payload.
+            //
+            // Empty on the ordinary build, which is the point: a base build states nothing about
+            // what else exists to buy. A DLC build holds the one it is for.
+            //
+            // The runtime adds to this the DLC it finds beside the game (`installedDlcIds`). The two
+            // writers state the same thing about different halves: what shipped inside, and what was
+            // installed outside.
+            ...(installedDlc.length > 0 ? { installedDlc } : {}),
             // The public half only, and only when this build was given a key: a
             // build that carries no way to check a proof must say so by having no
             // field, rather than by carrying an empty one that reads as "checked".
@@ -638,6 +710,12 @@ export async function compileGameRuntimeArtifact(
                             input.distribution.key,
                             input.distribution.titleId,
                         ),
+                        packDeltaVersion: PACK_DELTA_VERSION,
+                        // Which variant this build is, so that it can refuse a DLC belonging to
+                        // another one. Two variants that override no identity are sealed under
+                        // the same material, so without this a demo would happily open the full
+                        // game's extra chapter.
+                        appTagId: input.appTag?.id ?? APP_TAG_ID_RELEASE,
                     },
                 }
                 : {}),
@@ -689,6 +767,7 @@ export async function compileGameRuntimeArtifact(
             copiedAssetCount: Object.keys(assetManifest).length,
             notices,
             collapsedBuildAxis,
+            ...(shipped ? { assetReport: shipped.report } : {}),
         };
     } catch (error) {
         if (target.kind === "sealed") {
@@ -977,13 +1056,15 @@ async function planShippedAssets(
     bundle: DevModeBundle,
     runtimePlugins: readonly GameRuntimePluginSource[],
     onNotice?: (message: string) => void,
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>,
 ): Promise<{
     bundle: DevModeBundle;
     include: Set<string>;
     characterIds: Set<string>;
-    removedAssetCount: number;
+    report: ShippedAssetReport;
 }> {
-    const libraryAssetIds = await readLibraryAssetIds(projectPath);
+    const library = await readLibraryAssetRecords(projectPath);
+    const libraryAssetIds = new Set(library.keys());
     // A plugin's published data ships inside the pack and a plugin can ask for an asset's URL, so a
     // catalogue naming one is a reference like any other. It is swept from the same files the plugin
     // copier reads rather than from its output, because that copier runs after the assets are chosen.
@@ -1022,8 +1103,91 @@ async function planShippedAssets(
         },
         include,
         characterIds: cast.characterIds,
-        removedAssetCount: libraryAssetIds.size - include.size,
+        report: await describeShippedAssets({
+            library,
+            include,
+            characters: bundle.storyLibrary?.characters ?? [],
+            shippedCharacterIds: cast.characterIds,
+            ...(assetImages ? { assetImages } : {}),
+        }),
     };
+}
+
+/**
+ * What this build carried out of the library and what it left behind, as an author reads it.
+ *
+ * Measured rather than counted: the number that answers "should this asset have shipped" is the
+ * name, and the number that answers "was leaving it out worth anything" is its size. Both lists are
+ * ordered largest first, because the entry worth looking at in a list of four hundred is the one
+ * that costs the most.
+ *
+ * A size that cannot be read is left absent rather than reported as zero. An asset shown as "0 B"
+ * reads as an empty file, which is a different problem from one nobody could measure.
+ */
+async function describeShippedAssets(input: {
+    library: ReadonlyMap<string, LibraryAssetRecord>;
+    include: ReadonlySet<string>;
+    characters: readonly { id: string; name?: string }[];
+    shippedCharacterIds: ReadonlySet<string>;
+    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+}): Promise<ShippedAssetReport> {
+    const included: ShippedAssetReportEntry[] = [];
+    const excluded: ShippedAssetReportEntry[] = [];
+    for (const [assetId, record] of input.library) {
+        const carried = input.include.has(assetId);
+        // What the package holds for an asset it carried, what the project holds for one it did
+        // not: a re-encoded image ships as the smaller file, and reporting its source size would
+        // credit the build with bytes it never wrote.
+        const measured = carried
+            ? input.assetImages?.[assetId]?.path ?? record.sourcePath
+            : record.sourcePath;
+        const bytes = await measureAssetBytes(measured);
+        const entry: ShippedAssetReportEntry = {
+            id: assetId,
+            name: record.name,
+            type: record.type,
+            ...(bytes === undefined ? {} : { bytes }),
+        };
+        (carried ? included : excluded).push(entry);
+    }
+    const bySize = (a: ShippedAssetReportEntry, b: ShippedAssetReportEntry): number =>
+        (b.bytes ?? 0) - (a.bytes ?? 0) || a.name.localeCompare(b.name);
+    included.sort(bySize);
+    excluded.sort(bySize);
+    return {
+        included,
+        excluded,
+        excludedCharacters: input.characters
+            .filter(character => !input.shippedCharacterIds.has(character.id))
+            .map(character => ({ id: character.id, name: character.name?.trim() || character.id })),
+        includedBytes: totalShippedAssetBytes(included),
+        excludedBytes: totalShippedAssetBytes(excluded),
+    };
+}
+
+/**
+ * Bytes at `target`, or undefined when it cannot be read.
+ *
+ * A model bundle is a directory, and its size is the sum of the files that would ship out of it -
+ * the same walk the copier uses, so the two agree about what a bundle is made of.
+ */
+async function measureAssetBytes(target: string): Promise<number | undefined> {
+    try {
+        const stats = await fs.stat(target);
+        if (stats.isFile()) {
+            return stats.size;
+        }
+        if (!stats.isDirectory()) {
+            return undefined;
+        }
+        let total = 0;
+        for (const relative of await listBundleFiles(target)) {
+            total += (await fs.stat(path.join(target, ...relative.split("/")))).size;
+        }
+        return total;
+    } catch {
+        return undefined;
+    }
 }
 
 /**
@@ -1164,18 +1328,37 @@ function shippedAssetManifest(
     return withModelBundles(items);
 }
 
-/** Every asset id the project's library declares, across all shards. */
-async function readLibraryAssetIds(projectPath: string): Promise<Set<string>> {
-    const ids = new Set<string>();
+/** One entry of the project's asset library, as the trimming pass and its report need it. */
+type LibraryAssetRecord = {
+    name: string;
+    type: string;
+    /** Where the project keeps the bytes: a file, or a directory for a model bundle. */
+    sourcePath: string;
+};
+
+/**
+ * The whole asset library, keyed by id.
+ *
+ * Read once and used twice: the ids decide what the sweep is allowed to keep, and the names and
+ * paths are what the build's report names an asset by. Reading it a second time to answer the
+ * second question would be a second reading of the same shards that could disagree with the first.
+ */
+async function readLibraryAssetRecords(projectPath: string): Promise<Map<string, LibraryAssetRecord>> {
+    const records = new Map<string, LibraryAssetRecord>();
     for (const type of ASSET_TYPES) {
-        const metadata = await readOptionalJson<Record<string, unknown>>(
+        const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
             path.join(projectPath, "assets", `assets.metadata.${type}.json`),
         );
-        for (const assetId of Object.keys(metadata ?? {})) {
-            ids.add(assetId);
+        for (const [assetId, rawAsset] of Object.entries(metadata ?? {})) {
+            const normalized = normalizeAssetRecord(assetId, type, rawAsset);
+            records.set(assetId, {
+                name: normalized.name,
+                type,
+                sourcePath: resolveAssetSourcePath(projectPath, normalized),
+            });
         }
     }
-    return ids;
+    return records;
 }
 
 async function copyProjectAssets(input: {

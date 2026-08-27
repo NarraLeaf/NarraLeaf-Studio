@@ -18,6 +18,7 @@ import { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 import { fnBlueprintNodes } from "./fnNodes";
 import { frameBlueprintNodes } from "./frameNodes";
 import { pointerBlueprintNodes } from "./pointerNodes";
+import { inputActionBlueprintNodes } from "./inputActionNodes";
 import { gameBlueprintNodes } from "./gameNodes";
 import { layerBlueprintNodes } from "./layerNodes";
 import { listBlueprintNodes } from "./listNodes";
@@ -28,6 +29,7 @@ import { mathBlueprintNodes } from "./mathNodes";
 import { networkBlueprintNodes } from "./networkNodes";
 import { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 import { progressBlueprintNodes } from "./progressNodes";
+import { storageBlueprintNodes } from "./storageNodes";
 import { sliderBlueprintNodes } from "./sliderNodes";
 import { soundBlueprintNodes } from "./soundNodes";
 import { structuralBlueprintNodes } from "./structuralNodes";
@@ -35,6 +37,7 @@ import { switchBlueprintNodes } from "./switchNodes";
 import { textInputBlueprintNodes } from "./textInputNodes";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
 import { visitedBlueprintNodes } from "./visitedNodes";
+import { dlcBlueprintNodes } from "./dlcNodes";
 import { endingBlueprintNodes } from "./endingNodes";
 import { stringBlueprintNodes } from "./stringNodes";
 import { textBlueprintNodes } from "./textNodes";
@@ -55,6 +58,7 @@ export { eventHeadBlueprintNodes } from "./events/eventHeadNodes";
 export { fnBlueprintNodes } from "./fnNodes";
 export { frameBlueprintNodes } from "./frameNodes";
 export { pointerBlueprintNodes } from "./pointerNodes";
+export { inputActionBlueprintNodes, BLUEPRINT_INPUT_ACTION_OPTIONS_SOURCE } from "./inputActionNodes";
 export { gameBlueprintNodes } from "./gameNodes";
 export { layerBlueprintNodes } from "./layerNodes";
 export { listBlueprintNodes } from "./listNodes";
@@ -65,8 +69,10 @@ export { mathBlueprintNodes } from "./mathNodes";
 export { networkBlueprintNodes } from "./networkNodes";
 export { persistentVariableBlueprintNodes } from "./persistentVariableNodes";
 export { progressBlueprintNodes } from "./progressNodes";
+export { storageBlueprintNodes } from "./storageNodes";
 export { storyVariableBlueprintNodes } from "./storyVariableNodes";
 export { visitedBlueprintNodes } from "./visitedNodes";
+export { dlcBlueprintNodes } from "./dlcNodes";
 export { endingBlueprintNodes } from "./endingNodes";
 export { sliderBlueprintNodes } from "./sliderNodes";
 export { soundBlueprintNodes } from "./soundNodes";
@@ -86,13 +92,16 @@ export const allBuiltinBlueprintNodes: BlueprintNodeDef[] = [
     ...fnBlueprintNodes,
     ...frameBlueprintNodes,
     ...pointerBlueprintNodes,
+    ...inputActionBlueprintNodes,
     ...layerBlueprintNodes,
     ...componentBlueprintNodes,
     ...gameBlueprintNodes,
     ...visitedBlueprintNodes,
+    ...dlcBlueprintNodes,
     ...endingBlueprintNodes,
     ...appTagBlueprintNodes,
     ...progressBlueprintNodes,
+    ...storageBlueprintNodes,
     ...backlogBlueprintNodes,
     ...controlFlowBlueprintNodes,
     ...dataBlueprintNodes,

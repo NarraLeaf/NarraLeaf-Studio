@@ -38,6 +38,7 @@ import type { VoiceConfiguration, VoiceDocument } from "@shared/types/voice";
 import { buildAssetNameKeyMap, voiceMatchKeyForEntry, withSceneIndices } from "@/lib/workspace/services/voice/voiceScript";
 import type { VoiceEditorTabPayload } from "./voiceEditorTabId";
 import { VoiceRow, type VoiceTableRow } from "./VoiceRows";
+import { isImeKeyEvent } from "@/lib/utils/imeComposition";
 
 type EditorMode = "assign" | "audition";
 type GroupAxis = "scene" | "character";
@@ -46,7 +47,7 @@ type AuditionFilter = "all" | "approved" | "pending";
 
 const NARRATION_GROUP_KEY = "__narration__";
 /** Every choice option shares one bucket on the character axis: an option has no speaker. */
-const CHOICE_GROUP_KEY = "__choice__";
+const CHOICE_GROUP_KEY = "__choice__";
 
 /** Starting estimates for the windowed list; every item re-measures itself once it mounts. */
 const GROUP_ROW_HEIGHT_PX = 26;
@@ -693,6 +694,9 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                                             }
                                         }}
                                         onKeyDown={event => {
+                                            if (isImeKeyEvent(event)) {
+                                                return;
+                                            }
                                             if (event.key === "Enter") {
                                                 (event.target as HTMLInputElement).blur();
                                             }
@@ -709,6 +713,7 @@ export function VoiceEditorTab({ payload, active }: EditorComponentProps<VoiceEd
                             return (
                                 <VoiceRow
                                     row={row}
+                                    locale={locale}
                                     speaker={row.speaker}
                                     state={state}
                                     asset={asset}

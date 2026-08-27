@@ -71,6 +71,13 @@ export const CONTAINER_KEY_ORDER: ContainerAppearancePropertyKey[] = [
 
 /** Stable key order for button appearance groups. */
 export const BUTTON_KEY_ORDER: ButtonAppearancePropertyKey[] = [
+    // The label's own type, in the order `nl.text` lists the same five. First, because what a menu
+    // entry changes on hover or when it is the page you are on is almost always the word on it.
+    "fontAssetId",
+    "fontSize",
+    "fontWeight",
+    "color",
+    "lineHeight",
     "backgroundColor",
     "fillType",
     "fillOpacity",
@@ -292,6 +299,16 @@ function containerRowValue(props: ContainerWidgetProps, key: ContainerAppearance
 function buttonRowValue(props: ButtonWidgetProps, key: ButtonAppearancePropertyKey): AppearanceValueRow {
     const value = (() => {
         switch (key) {
+            case "fontAssetId":
+                return props.fontAssetId ?? null;
+            case "fontSize":
+                return props.fontSize;
+            case "fontWeight":
+                return props.fontWeight;
+            case "color":
+                return props.color;
+            case "lineHeight":
+                return props.lineHeight;
             case "backgroundColor":
                 return props.backgroundColor;
             case "fillType":

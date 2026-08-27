@@ -41,6 +41,21 @@ export type DevModeBundleLoadContext = {
      */
     packaging?: boolean;
     /**
+     * The DLC whose stories this assembly carries, on top of the game's own.
+     *
+     * **Absent means every DLC the project has**, and stating it - even as an empty list - means
+     * exactly those. The distinction is whether the host has an answer, not whether it is packaging:
+     * a build always has one (the base package holds none of them; a DLC package holds its own), and
+     * so does a Dev Mode run whose author has switched some off to see what a player without them
+     * gets. A host with nothing to say - the workspace's story preview, a test - carries the lot,
+     * which is what it always did.
+     *
+     * Deliberately not tied to {@link packaging}, unlike the scene drop beside it. A scene drop is a
+     * refusal phrased for a build; this is a question about which content exists in this run, and an
+     * author testing the without-the-DLC path is asking it of Dev Mode.
+     */
+    includedDlc?: readonly string[];
+    /**
      * The third-party runtime code this pack ships, and what each piece of it declared it may do.
      *
      * Only the declarations are read, and only to ask whether a plugin can start a story. This was

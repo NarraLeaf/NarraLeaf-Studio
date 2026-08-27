@@ -21,6 +21,8 @@ export const actions = {
         // 「製品ビルド」の隣。どちらも何かを起動するのではなくファイルを作る、同じ種類のもの。
         exportPatch: "パッチを書き出す…",
         runAs: "実行するバリアント",
+            runWithDlc: "DLC 付きで実行",
+            dlcCount: "{active} / {total}",
     },
     file: {
         label: "ファイル",

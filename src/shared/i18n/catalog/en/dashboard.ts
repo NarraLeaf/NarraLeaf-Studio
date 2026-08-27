@@ -89,6 +89,13 @@ export const dashboard = {
         },
     },
 
+    // The last run, folded shut. The history below it is how builds have been going; this is what
+    // the last one shipped.
+    lastBuild: {
+        title: "Last build",
+        openReport: "Open report",
+    },
+
     builds: {
         title: "Build history",
         ok: "Succeeded",

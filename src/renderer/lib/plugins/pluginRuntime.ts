@@ -211,6 +211,31 @@ async function loadWorkspacePluginsNow(ctx: WorkspaceContext): Promise<Workspace
     return loadResults;
 }
 
+let pluginEntryLoadSerial = 0;
+
+/**
+ * The specifier to `import()` for one load of a plugin entry.
+ *
+ * `entryUrl` names the plugin, its version and the entry path, and nothing else - and installing
+ * from a directory is a file copy, so an author who rebuilds and reinstalls without bumping the
+ * version gets byte-for-byte the same URL back. The module registry is keyed by URL, so a second
+ * `import()` hands over the module already loaded and a reload would only re-run the *old* code's
+ * `setup()`. The `no-store` on the plugin protocol handler does not reach this - it governs the
+ * HTTP cache, which is not what is holding the module.
+ *
+ * A per-load token in the query defeats the registry, and the handler never sees it: plugin entries
+ * resolve from the pathname alone. Nothing stale hides behind the entry either, because the handler
+ * serves only the entries the manifest declares - a relative sub-import inside a plugin 404s, so a
+ * self-contained bundle is the only shape that loads at all.
+ *
+ * The superseded module stays in the registry, ESM having no eviction. That is the standing cost of
+ * a reload, bounded by how many times the author presses it.
+ */
+export function pluginEntryImportSpecifier(entryUrl: string): string {
+    pluginEntryLoadSerial += 1;
+    return `${entryUrl}${entryUrl.includes("?") ? "&" : "?"}nlsLoad=${pluginEntryLoadSerial}`;
+}
+
 async function loadWorkspacePlugin(
     ctx: WorkspaceContext,
     descriptor: WorkspacePluginDescriptor,
@@ -218,7 +243,7 @@ async function loadWorkspacePlugin(
     const runtime = createPluginPrivilegedFacade(descriptor.plugin);
     const { app, dispose } = createPluginApp(ctx, descriptor, runtime.app);
     try {
-        const mod = await import(descriptor.entryUrl) as PluginModule;
+        const mod = await import(pluginEntryImportSpecifier(descriptor.entryUrl)) as PluginModule;
         const definition = resolvePluginDefinition(mod);
 
         const setupResult = await definition.setup(app);

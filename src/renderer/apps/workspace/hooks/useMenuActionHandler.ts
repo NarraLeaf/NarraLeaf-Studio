@@ -5,7 +5,7 @@ import { useWorkspace } from "../context";
 import { useRegistry } from "../registry";
 import { getActionGroupItems, findActionMenuItemById, isActionVisible } from "../components/ui/actionMenuModel";
 import { resolveFrozenActionDisabled } from "../components/ui/freezeActionPolicy";
-import { useWorkspaceFrozen } from "./useWorkspaceFrozen";
+import { useWorkspaceFreezeReason } from "./useWorkspaceFrozen";
 import type { ActionDefinition, ActionGroup } from "../registry/types";
 import { UIService } from "@/lib/workspace/services/ui";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -25,7 +25,7 @@ export function useMenuActionHandler(): void {
     const { workspace, context } = useWorkspace();
     const { actions, actionGroups } = useRegistry();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
-    const frozen = useWorkspaceFrozen();
+    const freeze = useWorkspaceFreezeReason();
 
     useEffect(() => {
         if (!context) return;
@@ -68,7 +68,7 @@ export function useMenuActionHandler(): void {
             // ran from the macOS menu, so the freeze covered one door and not the other. Ask
             // `freezeActionPolicy` the same question the bar asks - which keeps File and Help
             // (close the window, read the docs) alive, so a frozen workspace is never a trap.
-            if (resolveFrozenActionDisabled(action, frozen)) {
+            if (resolveFrozenActionDisabled(action, freeze)) {
                 return;
             }
             if (!workspace) {
@@ -78,7 +78,7 @@ export function useMenuActionHandler(): void {
 
             action.onClick(workspace);
         },
-        [actionGroups, actions, context, focusContext, frozen, workspace],
+        [actionGroups, actions, context, focusContext, freeze, workspace],
     );
 
     useEffect(() => {

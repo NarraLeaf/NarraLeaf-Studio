@@ -40,6 +40,9 @@ import { truncateDebugEventMessage } from "./DebugBridge";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
     BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_NOTIFICATIONS_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_AVATAR_STATE_KEY,
@@ -56,10 +59,28 @@ import {
     type AudioMixPreferences,
     type ProjectAudioTrack,
 } from "@shared/types/audioTrack";
+import type { GameStorageDurability } from "@shared/types/gameRuntime";
 import { LOCALE_STORAGE_KEY, type GameLocalizationBundle } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY, type VoiceLocaleEntry } from "@shared/types/voice";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
-import { isListLikeWidgetType } from "@shared/types/ui-editor/list";
+import {
+    buildUIWidgetAddress,
+    readUIWidgetAddress,
+    readUIWidgetAddressElementId,
+} from "@shared/types/ui-editor/widgetAddress";
+import {
+    findUISurfaceActionEnablement,
+    readUISurfaceActionOverControls,
+    resolveSurfaceActionBindings,
+} from "@shared/types/ui-editor/inputAction";
+import {
+    getSharedInputHoldTracker,
+    isInputBindingHeld,
+} from "@/lib/ui-editor/runtime/input/inputHoldState";
+import { readCurrentInputDevice } from "@/lib/ui-editor/runtime/input/inputDeviceState";
+import { hitChainHasOperableElement } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
+import { readSurfaceHitChain } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
+import { isListLikeWidgetType, type UIListScrollMetrics } from "@shared/types/ui-editor/list";
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { makeDefaultStructItem, type UIStructDef } from "@shared/types/ui-editor/struct";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
@@ -124,6 +145,16 @@ import {
 } from "@/lib/ui-editor/widget-modules/shared/appearance/initialAppearanceModel";
 
 export type DevModeWidgetRuntimePatch = {
+    /**
+     * Widget props this drawing has written over the authored ones.
+     *
+     * The other fields here are single facts about a widget; this one is the widget's own property
+     * bag, and it is here rather than written onto the element record for the reason the whole patch
+     * exists: the record is the *document*, shared by every drawing of it. Writing text onto a
+     * component's element made all six placements of that component show the sixth one's text, and
+     * it also meant a running game was quietly editing the file the author saved.
+     */
+    props?: Record<string, unknown>;
     display?: boolean;
     visible?: boolean;
     enabled?: boolean;
@@ -187,6 +218,14 @@ export type BlueprintListProperties = {
      * list no longer declares would sort by nothing and report success.
      */
     struct: UIStructDef | null;
+    /**
+     * Where the list has got to along its axis, as it last measured itself.
+     *
+     * A list that has not been rendered - or has been rendered somewhere with no runtime store, like
+     * a Surface thumbnail - reports at-rest rather than nothing, so a graph asking gets the answer
+     * for a list that cannot scroll instead of an undefined it has no way to branch on.
+     */
+    scroll: UIListScrollMetrics;
 };
 
 export type BlueprintDisplayableProperties = {
@@ -326,6 +365,12 @@ export type BlueprintHostApiRuntime = {
         quitApplication: () => Promise<void>;
         getFullscreen: () => Promise<boolean>;
         setFullscreen: (fullscreen: boolean) => Promise<void>;
+        /** The sizes worth offering, ascending. Empty where the shell has no window to size. */
+        getWindowScaleOptions: () => Promise<number[]>;
+        getWindowScale: () => Promise<number>;
+        setWindowScale: (scale: number) => Promise<void>;
+        getWindowSize: () => Promise<{ width: number; height: number }>;
+        setWindowSize: (width: number, height: number) => Promise<void>;
         /**
          * Open one web address in the player's browser.
          *
@@ -501,6 +546,23 @@ export type BlueprintHostApiRuntime = {
          */
         getSpeakerColor: () => BlueprintRGBAColor;
         /**
+         * Has the line on screen finished revealing, with the dialog now waiting for the player.
+         *
+         * False while it is still typing, and false again the moment the next line mounts, so an
+         * indicator bound to it needs no timer of its own. False with no dialog on screen at all.
+         */
+        isDialogWaiting: () => boolean;
+        /**
+         * The current line's text - the whole line, not the part revealed so far. Empty string when
+         * no line is on screen.
+         */
+        getDialogText: () => string;
+        /**
+         * Does the current line have no speaker. Distinct from a null nametag, which a character
+         * with a blank name also reports. False when no line is on screen.
+         */
+        isNarrator: () => boolean;
+        /**
          * Any character by id, from the table mirrored into global state - the addressable read the
          * speaker-scoped getters above cannot do. Null when the id is empty, or names a character
          * that is not (or is no longer) in the project.
@@ -543,6 +605,16 @@ export type BlueprintHostApiRuntime = {
          * anything. Needs no running story - a title screen asks it before the first game exists.
          */
         isEndingReached: (endingId: string) => boolean;
+        /**
+         * Is this DLC installed beside the running build, by the id the author gave it.
+         *
+         * The whole of what a game may ask about its DLC, and deliberately not "does the player own
+         * it". Ownership is a storefront's fact and a plugin's to answer; what decides whether the
+         * content is here is whether its file is, which is the question this asks. A build with no
+         * DLC beside it answers false to everything, which is what a title screen wants before the
+         * player has bought anything.
+         */
+        isDlcInstalled: (dlcId: string) => boolean;
         /**
          * Every ending one story declares, in document order, each row already carrying whether it
          * was reached. Empty for an unknown or unnamed story rather than an error.
@@ -620,6 +692,29 @@ export type BlueprintHostApiRuntime = {
         fetch: (request: BlueprintNetworkFetchRequest) => Promise<BlueprintNetworkFetchResult>;
     };
     /**
+     * The read side of input routing, for `Is Action Held` and `Get Input Device`.
+     *
+     * The only part of the input model a graph can ask about rather than be told about. Everything
+     * else in it is a dispatch - an action fires, a head runs - and none of that can answer "while
+     * the gesture is down" or "with which hand", because a fired event leaves nothing behind that
+     * says whether the hand is still there or what it was.
+     *
+     * Structural rather than a declared family in `@shared/types/blueprint/hostApi`, matching how
+     * both nodes reach for it (see `BlueprintInputActionHostApi`): the contract there names
+     * capabilities a host may or may not implement, and these are answered by the window every host
+     * already has.
+     */
+    input: {
+        isActionHeld: (actionId: string) => boolean;
+        /**
+         * Which device the player is using at this moment.
+         *
+         * One of the four values the `On Action` head's `source` pin carries, typed as a plain
+         * string so a graph compares both against the same literals.
+         */
+        getDevice: () => string;
+    };
+    /**
      * Moving the player's real cursor, for the Move Mouse family.
      *
      * The author names a point in a surface's own coordinates, which is the only frame they have
@@ -666,6 +761,16 @@ export type BlueprintHostApiRuntime = {
     progress: {
         export: () => Promise<{ outcome: "written" | "failed"; error: string }>;
         import: () => Promise<GameProgressImportOutcome>;
+    };
+    /**
+     * What the shell can promise about the data it writes, for the `Check Storage Durability` node.
+     *
+     * A fact about where the game is running, not about the playthrough: a packaged desktop game
+     * keeps files nothing reclaims, a web export holds whatever grant the browser gave it. Stated,
+     * never acted on - what a player is told about it belongs to the title.
+     */
+    storage: {
+        durability: () => Promise<GameStorageDurability>;
     };
     devtools: {
         log: (level: string, message: string) => void;
@@ -814,6 +919,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * wipes are no-ops - which is what lets an endings screen lay out in the preview.
      */
     onIsEndingReached?: (endingId: string) => boolean;
+    /**
+     * Which DLC are installed beside this build. Absent where nothing can say - the editor preview,
+     * a host that carries no layers - and every DLC then reads as not installed.
+     */
+    onIsDlcInstalled?: (dlcId: string) => boolean;
     onListEndings?: (storyId: string) => BlueprintStoryEnding[];
     onClearEndingState?: (endingId: string) => Promise<void> | void;
     onClearEndings?: () => Promise<void> | void;
@@ -880,6 +990,16 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetFullscreen?: () => boolean | Promise<boolean>;
     onSetFullscreen?: (fullscreen: boolean) => void | Promise<void>;
     /**
+     * The window sizes worth offering, measured by the shell. See
+     * `GameAppHost.getWindowScaleOptions`; the empty list is what a configuration screen draws
+     * nothing from, rather than drawing a control that cannot work.
+     */
+    onGetWindowScaleOptions?: () => number[] | Promise<number[]>;
+    onGetWindowScale?: () => number | Promise<number>;
+    onSetWindowScale?: (scale: number) => void | Promise<void>;
+    onGetWindowSize?: () => { width: number; height: number } | Promise<{ width: number; height: number }>;
+    onSetWindowSize?: (width: number, height: number) => void | Promise<void>;
+    /**
      * The layer stack composited over the page lane.
      *
      * Absent in every host with nothing to stack onto - the editor preview and the workspace story
@@ -943,9 +1063,26 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onExportProgress?: () => Promise<{ outcome: "written" | "failed"; error: string }>;
     /** Reads it back, and applies what it holds to the running game. Absent for the same reasons. */
     onImportProgress?: () => Promise<GameProgressImportOutcome>;
+    /**
+     * What the shell running this graph can promise about the data it writes.
+     *
+     * Absent in every environment that writes nowhere real - the editor preview and the story
+     * preview - where the node leaves by `Unknown`, which is what "this cannot be answered here"
+     * already means.
+     */
+    onStorageDurability?: () => Promise<GameStorageDurability>;
 };
 
-function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
+/**
+ * The element record behind a widget address.
+ *
+ * Takes an address rather than an element id because that is what every caller has: a running graph
+ * addresses a *drawing* (see `widgetAddress.ts`), and the document knows only elements. Splitting
+ * here rather than in each of the thirty-odd host API methods keeps the two ideas apart at exactly
+ * one seam - past this point everything is talking about the document, where drawings do not exist.
+ */
+function readDocumentElement(document: UIDocument, address: string): UIElement | undefined {
+    const elementId = readUIWidgetAddressElementId(address);
     const element = document.elements[elementId];
     if (element) {
         return element;
@@ -1215,8 +1352,28 @@ function jsonEquals(a: unknown, b: unknown): boolean {
     }
 }
 
-function readTextProperties(document: UIDocument, elementId: string): BlueprintTextProperties {
-    const el = assertTextElement(document, elementId);
+/**
+ * An element as one drawing of it currently is: the authored record under this drawing's overrides.
+ *
+ * Every widget reader takes the override map for this reason. Reading the record alone answers what
+ * the author saved, which stopped being the answer the moment a graph wrote anything - and made
+ * every "did this actually change?" guard compare against the wrong value.
+ */
+function withWidgetPropOverride(
+    element: UIElement,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): UIElement {
+    const props = overrides.get(address)?.props;
+    return props ? { ...element, props: { ...(element.props ?? {}), ...props } } : element;
+}
+
+function readTextProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintTextProperties {
+    const el = withWidgetPropOverride(assertTextElement(document, address), overrides, address);
     const p = getTextProps(el);
     return {
         text: p.text,
@@ -1282,6 +1439,7 @@ function readListProperties(
     return {
         items,
         selectedIndex,
+        scroll: widgetRuntimeStore.getListScrollMetrics(scopedKey),
         struct: resolveUIStruct(
             document,
             getListProps(requireDocumentElement(document, elementId, "list")).itemStructId,
@@ -1543,8 +1701,12 @@ function patchButtonDefaultCursorAppearance(
     return changed ? { ...model, variants } : model;
 }
 
-function readButtonProperties(document: UIDocument, elementId: string): BlueprintButtonProperties {
-    const p = getButtonProps(assertButtonElement(document, elementId));
+function readButtonProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintButtonProperties {
+    const p = getButtonProps(withWidgetPropOverride(assertButtonElement(document, address), overrides, address));
     const fallbackCursor = isButtonCursorValue(p.cursor) ? p.cursor : "auto";
     return {
         label: p.label,
@@ -1552,12 +1714,21 @@ function readButtonProperties(document: UIDocument, elementId: string): Blueprin
     };
 }
 
-function readContainerProperties(document: UIDocument, elementId: string): BlueprintContainerProperties {
-    return { clipContent: getContainerProps(assertContainerElement(document, elementId)).clipContent };
+function readContainerProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintContainerProperties {
+    const el = withWidgetPropOverride(assertContainerElement(document, address), overrides, address);
+    return { clipContent: getContainerProps(el).clipContent };
 }
 
-function readImageProperties(document: UIDocument, elementId: string): BlueprintImageProperties {
-    const p = getImageWidgetRectangleProps(assertImageElement(document, elementId));
+function readImageProperties(
+    document: UIDocument,
+    overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
+    address: string,
+): BlueprintImageProperties {
+    const p = getImageWidgetRectangleProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
     const fill = p.imageFill ?? null;
     const assetId = fill?.assetId?.trim() || null;
     return {
@@ -2101,6 +2272,55 @@ function normalizeGamePreferenceValue(
 }
 
 /**
+ * `Is Action Held` - whether the player is holding a gesture this surface reads as this action.
+ *
+ * Resolved through the surface rather than off the vocabulary alone, because the surface is what
+ * says how the action is raised here: `overrideBindings` replaces the project's set, `addBindings`
+ * extends it, and a surface that overrides an action with nothing has said that gesture is not its
+ * business - which reads as never held, exactly as it fires nothing. A surface that says nothing
+ * about the action falls back to the project's bindings, which is the same answer
+ * `resolveSurfaceActionBindings` gives the dispatch path for the same input.
+ *
+ * `overControls` is honoured for a pointer hold the way it is for a pointer press: a panel-wide
+ * "hold to advance" must not run while the player is holding the Back button down. It is asked of
+ * where the press *landed* rather than of where the pointer is now, because it is one press
+ * throughout however far it has since been dragged.
+ */
+function readInputActionHeld(document: UIDocument, surfaceId: string, actionId: string): boolean {
+    const trimmedId = actionId.trim();
+    const def = trimmedId ? document.actions?.[trimmedId] : undefined;
+    if (!def) {
+        return false;
+    }
+    const surface = document.surfaces.find(entry => entry.id === surfaceId);
+    const enablement = findUISurfaceActionEnablement(surface?.actions, trimmedId);
+    const bindings = resolveSurfaceActionBindings(def, enablement);
+    if (bindings.length === 0) {
+        return false;
+    }
+    const tracker = getSharedInputHoldTracker();
+    const held = tracker.read();
+    const standsDownOverControls = readUISurfaceActionOverControls(enablement) === "skip";
+    return bindings.some(binding => {
+        if (!isInputBindingHeld(binding, held)) {
+            return false;
+        }
+        if (binding.kind !== "pointer" || !standsDownOverControls) {
+            return true;
+        }
+        const chain = readSurfaceHitChain({
+            document,
+            target: tracker.readPressTarget(binding.gesture),
+            // Every surface rather than only the one asking: a press that landed on a control
+            // belongs to that control wherever it was drawn, and a panel behind it has no better
+            // claim on the gesture than the panel in front of it does.
+            surfaceRoot: null,
+        });
+        return !hitChainHasOperableElement(chain);
+    });
+}
+
+/**
  * Unified Host API implementation for Dev Mode (M3-full). Workspace editor does not instantiate this.
  */
 export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRuntimeOptions): BlueprintHostApiRuntime {
@@ -2149,6 +2369,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onIsEndingReached,
+        onIsDlcInstalled,
         onListEndings,
         onClearEndingState,
         onClearEndings,
@@ -2175,6 +2396,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onOpenExternal,
         onExportProgress,
         onImportProgress,
+        onStorageDurability,
         audioTracks,
         onSubscribeGamePreferences,
         onLocaleChanged,
@@ -2186,6 +2408,11 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onQuitApplication,
         onGetFullscreen,
         onSetFullscreen,
+        onGetWindowScaleOptions,
+        onGetWindowScale,
+        onSetWindowScale,
+        onGetWindowSize,
+        onSetWindowSize,
         onShowLayer,
         onHideLayer,
         onHideLayerGroup,
@@ -2218,6 +2445,38 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         widgetRuntimeStore.notifyRuntimePatchesChanged(options);
     };
 
+    /**
+     * The props this drawing is working with: what the author wrote, under what the graph has since
+     * written over it.
+     *
+     * Every widget read and every widget write goes through this. Reading the authored props alone
+     * would make a second write to the same property recompute from the original value - "set the
+     * text, then append to it" would append to what the author typed - and it would make the change
+     * checks that guard each setter compare against the wrong thing and skip the write.
+     */
+    const effectiveProps = (address: string, element: UIElement): Record<string, unknown> => {
+        const override = runtimePatches.get(address)?.props;
+        return override ? { ...(element.props ?? {}), ...override } : (element.props ?? {});
+    };
+
+    /** The element as this drawing currently sees it. Never the record the document holds. */
+    const effectiveElement = (address: string, element: UIElement): UIElement => {
+        const override = runtimePatches.get(address)?.props;
+        return override ? { ...element, props: { ...(element.props ?? {}), ...override } } : element;
+    };
+
+    /**
+     * Write props for one drawing.
+     *
+     * Takes the whole next bag rather than a delta, because that is what each setter already
+     * computes - and the merge below keeps the properties this write did not mention.
+     */
+    const writeWidgetProps = (address: string, props: Record<string, unknown>) => {
+        const previous = runtimePatches.get(address) ?? {};
+        runtimePatches.set(address, { ...previous, props: { ...(previous.props ?? {}), ...props } });
+        emitWidgetPatch(address, { props });
+    };
+
     const scheduleElementFlush = (elementId: string) => {
         if (!onElementFlush) {
             return;
@@ -2240,10 +2499,14 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 if (!target) {
                     continue;
                 }
-                void onElementFlush(id, {
+                // Named to the graphs listening for it, so the element rather than the drawing:
+                // `On Element Flush` heads pick themselves by element id, and a head cannot be
+                // written against one row of a list or one placement of a component.
+                const flushedElementId = readUIWidgetAddressElementId(id);
+                void onElementFlush(flushedElementId, {
                     element: {
                         surfaceId: activeSurfaceId,
-                        elementId: id,
+                        elementId: flushedElementId,
                         elementType: target.type,
                     },
                 });
@@ -2450,6 +2713,62 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         throw new Error("setFullscreen: application window is not available");
                     }
                     await onSetFullscreen(fullscreen === true);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScaleOptions: async () => {
+                const cap = "navigation.getWindowScaleOptions";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const offered = onGetWindowScaleOptions ? await onGetWindowScaleOptions() : [];
+                    // Ascending, and a copy: a graph that sorted or spliced the array in place
+                    // would be editing what the shell handed out.
+                    return [...offered].sort((a, b) => a - b);
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowScale: async () => {
+                const cap = "navigation.getWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // A shell with no window to size answers with the design size rather than
+                    // throwing: nothing about the game is wrong, there is simply one size.
+                    return onGetWindowScale ? Number(await onGetWindowScale()) : 1;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowScale: async (scale: number) => {
+                const cap = "navigation.setWindowScale";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowScale?.(Number(scale));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getWindowSize: async () => {
+                const cap = "navigation.getWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Zero from a shell with no window of its own, which is what a stage that is
+                    // not a window in the first place honestly measures.
+                    const size = onGetWindowSize ? await onGetWindowSize() : null;
+                    return {
+                        width: Number(size?.width ?? 0),
+                        height: Number(size?.height ?? 0),
+                    };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setWindowSize: async (width: number, height: number) => {
+                const cap = "navigation.setWindowSize";
+                emitHostCall(emit, cap, "call");
+                try {
+                    await onSetWindowSize?.(Number(width), Number(height));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2675,7 +2994,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getTextProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readTextProperties(document, elementId);
+                    return readTextProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2684,17 +3003,13 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.setTextProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    const current = readTextProperties(document, elementId);
+                    const current = readTextProperties(document, runtimePatches, elementId);
                     const el = assertTextElement(document, elementId);
                     const normalized = normalizeTextPatch(current, patch);
                     if (!textPatchChanges(current, normalized)) {
                         return;
                     }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        ...normalized,
-                    };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), ...normalized });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2704,7 +3019,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getButtonProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readButtonProperties(document, elementId);
+                    return readButtonProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2714,7 +3029,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertButtonElement(document, elementId);
-                    const current = readButtonProperties(document, elementId);
+                    const current = readButtonProperties(document, runtimePatches, elementId);
                     const hasLabelPatch = Object.prototype.hasOwnProperty.call(patch, "label");
                     const hasCursorPatch = Object.prototype.hasOwnProperty.call(patch, "cursor");
                     const nextLabel = hasLabelPatch ? normalizeString(patch.label, current.label) : current.label;
@@ -2738,8 +3053,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!changed) {
                         return;
                     }
-                    el.props = nextProps;
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, nextProps);
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2749,7 +3063,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getContainerProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readContainerProperties(document, elementId);
+                    return readContainerProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2759,13 +3073,12 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertContainerElement(document, elementId);
-                    const current = readContainerProperties(document, elementId);
+                    const current = readContainerProperties(document, runtimePatches, elementId);
                     const clipContent = patch.clipContent === undefined ? current.clipContent : patch.clipContent === true;
                     if (clipContent === current.clipContent) {
                         return;
                     }
-                    el.props = { ...(el.props ?? {}), clipContent };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), clipContent });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -2775,7 +3088,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 const cap = "widget.getImageProperties";
                 emitHostCall(emit, cap, "call");
                 try {
-                    return readImageProperties(document, elementId);
+                    return readImageProperties(document, runtimePatches, elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -2785,7 +3098,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     const el = assertImageElement(document, elementId);
-                    const current = readImageProperties(document, elementId);
+                    const current = readImageProperties(document, runtimePatches, elementId);
                     const hasAssetPatch = Object.prototype.hasOwnProperty.call(patch, "asset");
                     const assetId = hasAssetPatch
                         ? normalizeBlueprintImageAssetValue(patch.asset)?.assetId ?? null
@@ -2818,8 +3131,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                         nextProps = buildImageFillPropsUpdate(el, nextFill);
                     }
-                    el.props = { ...nextProps, imageFlipX: flipX, imageFlipY: flipY };
-                    emitWidgetPatch(elementId, {});
+                    writeWidgetProps(elementId, { ...nextProps, imageFlipX: flipX, imageFlipY: flipY });
                     scheduleElementFlush(elementId);
                 } finally {
                     emitHostCall(emit, cap, "return");
@@ -3049,7 +3361,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // and the two want different things from the author.
                     requireDocumentElement(document, elementId, "measuredRect");
                     return measureElementSurfaceRect(
-                        elementId,
+                        readUIWidgetAddressElementId(elementId),
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     )?.rect ?? null;
                 } finally {
@@ -3302,11 +3614,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (targetSurfaceId === current.targetSurfaceId && jsonEquals(params, current.params)) {
                         return;
                     }
-                    el.props = {
-                        ...(el.props ?? {}),
-                        targetSurfaceId,
-                        params,
-                    };
+                    writeWidgetProps(elementId, { ...effectiveProps(elementId, el), targetSurfaceId, params });
                     const nextPatch: DevModeWidgetRuntimePatch = {
                         ...(runtimePatches.get(elementId) ?? {}),
                         frame: {
@@ -3813,6 +4121,43 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     emitHostCall(emit, cap, "return");
                 }
             },
+            /**
+             * The three line-scoped reads below take no host override, unlike every neighbour here.
+             * There is nothing for a host to override with: the values come off the engine's own
+             * dialog hook, which only `DialogStateBridge` can see, and it is the one component every
+             * host renders inside the dialog. Global state is therefore the only source, and reading
+             * it directly is what makes the answer identical in Dev Mode and in the story preview.
+             */
+            isDialogWaiting: () => {
+                const cap = "game.isDialogWaiting";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return scope.globalGet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDialogText: () => {
+                const cap = "game.getDialogText";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const value = scope.globalGet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY);
+                    // The pin is a non-nullable string, so "no line on screen" is the empty string
+                    // rather than an absent value a downstream text node would render as "undefined".
+                    return typeof value === "string" ? value : "";
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isNarrator: () => {
+                const cap = "game.isNarrator";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return scope.globalGet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY) === true;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
             getCharacter: (characterId: string) => {
                 const cap = "game.getCharacter";
                 emitHostCall(emit, cap, "call");
@@ -3938,6 +4283,17 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     // No record reachable is "not reached", not an error: an endings screen opened
                     // in the editor preview must still lay out, and locked is the honest answer.
                     return onIsEndingReached ? onIsEndingReached(endingId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            isDlcInstalled: (dlcId: string) => {
+                const cap = "game.isDlcInstalled";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Nothing to ask is "not installed", not an error: a menu previewed in the
+                    // editor still has to lay out, and hiding the entrance is the honest answer.
+                    return onIsDlcInstalled ? onIsDlcInstalled(dlcId) : false;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -4222,6 +4578,26 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 }
             },
         },
+        input: {
+            isActionHeld: (actionId: string) => {
+                const cap = "input.isActionHeld";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readInputActionHeld(document, activeSurfaceId, String(actionId ?? ""));
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getDevice: () => {
+                const cap = "input.getDevice";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return readCurrentInputDevice();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
         // Shared by both pointer entry points so the surface-to-window conversion, and the answer
         // given when there is no backend, exist once.
         pointer: {
@@ -4231,7 +4607,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 try {
                     requireDocumentElement(document, elementId, "movePointerToElement");
                     const measured = measureElementSurfaceRect(
-                        elementId,
+                        readUIWidgetAddressElementId(elementId),
                         surfaceId => document.surfaces.find(surface => surface.id === surfaceId)?.designSize ?? null,
                     );
                     if (!measured) {
@@ -4293,6 +4669,19 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                         };
                     }
                     return await onImportProgress();
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+        },
+        storage: {
+            durability: async () => {
+                const cap = "storage.durability";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // No backend = nowhere real is being written (editor preview, story preview),
+                    // and "this cannot be answered here" is exactly what `unknown` says.
+                    return await (onStorageDurability?.() ?? Promise.resolve("unknown" as const));
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
