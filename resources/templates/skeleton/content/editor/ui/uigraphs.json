@@ -10920,13 +10920,12 @@
           "graphs": {
             "eventIds": [
               "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958",
-              "249cb93d-8446-4d0a-b0da-cfaabf791e31"
+              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958"
             ],
             "events": {
               "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
                 "id": "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-                "name": "Advance or restore the dialogue",
+                "name": "Advance the dialogue",
                 "graph": {
                   "nodes": {
                     "head": {
@@ -10942,47 +10941,14 @@
                         }
                       }
                     },
-                    "shown": {
-                      "id": "shown",
-                      "type": "blueprint.game.isDialogShown",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 200
-                        }
-                      }
-                    },
-                    "branch": {
-                      "id": "branch",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 300,
-                          "y": 0
-                        }
-                      }
-                    },
                     "next": {
                       "id": "next",
                       "type": "blueprint.game.next",
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 600,
-                          "y": -40
-                        }
-                      }
-                    },
-                    "show": {
-                      "id": "show",
-                      "type": "blueprint.game.showDialog",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 600,
-                          "y": 120
+                          "x": 280,
+                          "y": 0
                         }
                       }
                     }
@@ -10994,37 +10960,7 @@
                         "port": "then"
                       },
                       "to": {
-                        "nodeId": "branch",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "shown",
-                        "port": "isShown"
-                      },
-                      "to": {
-                        "nodeId": "branch",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "branch",
-                        "port": "true"
-                      },
-                      "to": {
                         "nodeId": "next",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "branch",
-                        "port": "false"
-                      },
-                      "to": {
-                        "nodeId": "show",
                         "port": "in"
                       }
                     }
@@ -11074,53 +11010,6 @@
                       },
                       "to": {
                         "nodeId": "go",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "249cb93d-8446-4d0a-b0da-cfaabf791e31": {
-                "id": "249cb93d-8446-4d0a-b0da-cfaabf791e31",
-                "name": "Hide the dialogue",
-                "graph": {
-                  "nodes": {
-                    "head": {
-                      "id": "head",
-                      "type": "blueprint.event.head.action",
-                      "params": {
-                        "actionId": "hide"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "hide": {
-                      "id": "hide",
-                      "type": "blueprint.game.hideDialog",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "head",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "hide",
                         "port": "in"
                       }
                     }
@@ -23041,6 +22930,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-26T20:09:43.791Z"
+    "updatedAt": "2026-08-26T02:13:13.549Z"
   }
 }
