@@ -169,6 +169,64 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
 }
 
 /**
+ * Who is waiting to be let in, and the two answers. Host only.
+ *
+ * **The same two answers the notice carries, in the place the title bar's mark points at.** The
+ * notice is the fast path - it arrives where the author is looking and costs no navigation - but it
+ * belongs to one moment, and a host who was in another window when it came would otherwise be left
+ * with a dot that says somebody is waiting and nothing behind it.
+ *
+ * Rows rather than a count, because answering is per person: two people waiting is two decisions,
+ * and the only thing that tells them apart is whose name is on the row.
+ */
+function WaitingToJoin({ live }: { live: ReturnType<typeof useLiveSession> }) {
+    const { t } = useTranslation();
+    const [busy, setBusy] = useState<string | null>(null);
+
+    const answer = (instance: string, admit: boolean) => {
+        setBusy(instance);
+        void live.answerRequest(instance, admit).finally(() => setBusy(null));
+    };
+
+    return (
+        <div data-live-block="waiting" className="mt-3">
+            <FieldLabel as="div">{t("workspace.shell.team.liveWaitingLabel")}</FieldLabel>
+            <div className="mt-1 flex flex-col gap-1">
+                {live.view.requests.map(member => (
+                    <div
+                        key={member.instance}
+                        data-live-waiting={member.account}
+                        className="flex min-h-7 items-center gap-2"
+                    >
+                        <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">
+                            {member.account}
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={busy !== null}
+                            data-live-answer="admit"
+                            onClick={() => answer(member.instance, true)}
+                        >
+                            {t("workspace.shell.team.liveAdmit")}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy !== null}
+                            data-live-answer="turn-away"
+                            onClick={() => answer(member.instance, false)}
+                        >
+                            {t("workspace.shell.team.liveTurnAway")}
+                        </Button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
  * How people get into this room, and the digits they get in with. Host only.
  *
  * **Three controls that each say both halves**, because the two questions behind them are
@@ -343,6 +401,11 @@ function InSession({ team, live }: {
                 )}
                 {/* Whose room this is decides whether there is anything here to change. */}
                 {view.role === "host" && <HowPeopleJoin live={live} />}
+                {/* ⚠ The dot in the title bar points HERE, so the answer has to be here. The
+                    notice that carries it is the fast path and is gone once it is answered or
+                    once the author was somewhere else; without this, a host who missed it would
+                    be left with a mark saying somebody is waiting and no way to say yes. */}
+                {view.role === "host" && view.requests.length > 0 && <WaitingToJoin live={live} />}
                 {/* The guest's own traffic. A document does not move under a guest's hands until the
                     host answers, so without this a round trip in flight and an editor that has
                     stopped working look the same. Always zero for a host, and drawn at zero for

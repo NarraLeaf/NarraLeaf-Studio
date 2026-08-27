@@ -122,6 +122,29 @@ describe("what a live session tells the author", () => {
         expect(shown()).toHaveLength(1);
     });
 
+    it("keeps a request on screen until it is answered, unlike everything else here", () => {
+        // ⚠ Measured on a real machine: the toast was gone in five seconds, before anybody could
+        // have reached it, and the only thing left was a mark in the title bar. Every other notice
+        // in this file REPORTS something; this one asks a question with a person waiting on the
+        // other end, and a question that takes itself off the screen cannot be answered.
+        render(<LiveSessionNotices />);
+
+        publish({
+            ...IDLE_LIVE_SESSION,
+            phase: "active",
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+
+        const [notice] = world.show.mock.calls.map(call => call[0]);
+        expect(notice.message).toBe("workspace.shell.team.liveAsked(ben)");
+        expect(notice.timeout).toBe(0);
+        // And the two answers are on it, which is the whole reason it exists where the author is
+        // already looking.
+        expect(notice.actions.map((action: { label: string }) => action.label))
+            .toEqual(["workspace.shell.team.liveAdmit", "workspace.shell.team.liveTurnAway"]);
+    });
+
     it("says why an undo sent nothing, and stays quiet at the end of the stack", () => {
         render(<LiveSessionNotices />);
 

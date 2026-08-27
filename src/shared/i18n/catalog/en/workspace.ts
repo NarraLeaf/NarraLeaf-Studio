@@ -437,6 +437,9 @@ export const workspace = {
         // one press away, and a tooltip that named one of three would be describing a queue by
         // whoever happened to be at the front of it.
         liveWaitingToJoin: "{count} waiting to join",
+        // The heading over the same two answers inside the dialog, which is where the title
+        // bar's mark points. A count would be a second copy of what the mark already said.
+        liveWaitingLabel: "Waiting to be let in",
         liveAdmit: "Let in",
         liveTurnAway: "Not now",
         // How people get into a room, as the three controls that set it. Each says both halves:
