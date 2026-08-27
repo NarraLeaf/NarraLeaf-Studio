@@ -35,6 +35,7 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { DEFAULT_PUBLISH_LINEAGE_RULE } from "@shared/types/vcs";
 import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import {
     composeRestoreMessage,
@@ -435,6 +436,7 @@ function describeServerSession(
         name: description.name,
         version: description.version,
         capabilities: [...description.capabilities],
+        policy: { ...description.policy },
     };
 }
 
@@ -2146,6 +2148,16 @@ export class VcsManager extends Manager {
         const lineage = held.projects.find((project) => project.id.toLowerCase() === repositoryId);
 
         if (lineage) {
+            // The operator's rule, where they have stated one, and it is asked BEFORE anything
+            // is written: a refusal that had already left an address behind would be a refusal
+            // the author has to undo.
+            if (lineage.name !== name && this.publishLineageRule(remoteOrigin) === "refuse") {
+                this.app.logger.info(
+                    "[Vcs] Refused to publish", root, "as", name,
+                    "- already on", remoteOrigin, "as", lineage.name, "and that server says one name",
+                );
+                return { ok: false, problem: { kind: "already-published", name: lineage.name } };
+            }
             // Connected under the name the server already holds it as, never the one typed
             // today. The address is what a collaborator clones by, and only that name resolves.
             // What this leaves is two histories of one project on one server, which is exactly
@@ -2187,6 +2199,21 @@ export class VcsManager extends Manager {
         await this.push(projectPath);
         this.app.logger.info("[Vcs] Published", root, "to", remoteOrigin, "as", name);
         return { ok: true };
+    }
+
+    /**
+     * What one server says to do with a repository it already holds.
+     *
+     * Read off the session this installation stored when it last asked that server about
+     * itself, rather than by asking now: publishing already knows which server it is talking
+     * to, and a probe here would put a network call in front of a decision the last one
+     * answered. A server that has never said - one older than the rule, or one added before
+     * Studio kept it - is `merge`, which is both the safe assumption and what every
+     * deployment behaved like before there was anything to say.
+     */
+    private publishLineageRule(remoteOrigin: string): "merge" | "refuse" {
+        return this.storedServerSession(remoteOrigin)?.policy?.publishLineage
+            ?? DEFAULT_PUBLISH_LINEAGE_RULE;
     }
 
     /** Every session this installation has recorded, in the order they were written. */

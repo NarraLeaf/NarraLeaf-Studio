@@ -1126,6 +1126,10 @@ export const workspace = {
                     // A different project already answering to the name asked for. Names the
                     // remedy, because the only one is to pick another name.
                     nameTaken: "Another project on that server is already called that. Choose a different name.",
+                    // The same repository under a name it was published as before, on a
+                    // server whose operator has said a repository gets one name. Names it,
+                    // because what the author does next is connect to that project.
+                    alreadyPublished: "This project is already on that server as {name}, and that server gives a project one name.",
                     unknown: "That server did not record the project.",
                     // Not a refusal: this project has been on that server before - a copied
                     // project folder carries the same repository - and it is registered under the

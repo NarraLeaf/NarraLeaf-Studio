@@ -113,9 +113,14 @@ const SESSION = {
     signedInAt: 0,
 };
 
-function fakeApp(): BaseApp {
+function fakeApp(policy?: { publishLineage: "merge" | "refuse" }): BaseApp {
     const noop = () => undefined;
-    const state = new Map<string, unknown>([["versionControl.serverSessions", [SESSION]]]);
+    const state = new Map<string, unknown>([
+        // What the server said about itself when it was last asked, which is where a rule
+        // it states is read from - see `VcsManager.publishLineageRule` for why it is read
+        // here rather than probed at the moment it is needed.
+        ["versionControl.serverSessions", [policy === undefined ? SESSION : { ...SESSION, policy }]],
+    ]);
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         getGlobalState: () => ({
@@ -232,6 +237,22 @@ describe("publishing a project to a server", () => {
             `publishToRemote ${ORIGIN}/seagrass ${REPOSITORY}`,
         ]);
         expect(server.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a repeat publish where the server says a project gets one name", async () => {
+        // The operator's rule rather than Studio's judgement. `merge` is what every server
+        // older than the rule behaved like, so the strict one has to be asked for.
+        const strict = new VcsManager(fakeApp({ publishLineage: "refuse" }), undefined, teamSessionCall);
+        server.list.mockResolvedValue(listed([projectRow(REPOSITORY, "seagrass")]));
+
+        await expect(strict.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({
+            ok: false,
+            problem: { kind: "already-published", name: "seagrass" },
+        });
+
+        // Asked before anything is written, so there is no address to undo: a refusal that
+        // left one behind would be a refusal the author has to clean up after.
+        expect(lore.calls).toEqual(["list"]);
     });
 
     it("refuses a name a different project on that server answers to", async () => {
