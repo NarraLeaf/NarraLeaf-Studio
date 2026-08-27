@@ -3,9 +3,9 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
-    type AssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
+    DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    type AssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import { optimizeProjectImages } from "./optimizeAssetImages";
@@ -151,7 +151,7 @@ describe("optimizeProjectImages", () => {
         await writeLibrary({ [ASSET_A]: { name: "Sprite", bytes: pngBytes() } });
         const codec = fakeCodec({ ratio: 0.5 });
         const result = await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
         });
 
         expect(result.converted).toBe(1);
@@ -170,7 +170,7 @@ describe("optimizeProjectImages", () => {
         await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
         const codec = fakeCodec({ ratio: 1.4 });
         const result = await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
         });
 
         expect(result).toMatchObject({ converted: 0, keptOriginal: 1 });
@@ -183,7 +183,7 @@ describe("optimizeProjectImages", () => {
         // back to the source pixels, so it must not ship.
         const codec = fakeCodec({ ratio: 0.5, verifiedLossless: false });
         const result = await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
         });
 
         expect(result).toMatchObject({ converted: 0, keptOriginal: 1 });
@@ -193,7 +193,7 @@ describe("optimizeProjectImages", () => {
 
     it("does not ask for a verdict it cannot use in lossy mode", async () => {
         await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
-        const lossy: AssetOptimizationConfiguration = { lossyImages: true, lossyQuality: 70 };
+        const lossy: AssetCompressionConfiguration = { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true, imageQuality: 70 };
         // A lossy encode is not expected to round trip, so an unverified result
         // is the normal case and must still be kept.
         const codec = fakeCodec({ ratio: 0.2, verifiedLossless: false });
@@ -210,7 +210,7 @@ describe("optimizeProjectImages", () => {
 
         const lossless = fakeCodec();
         await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: lossless.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: lossless.openCodec, log,
         });
         expect(lossless.requests).toHaveLength(0);
         // Nothing to encode is nothing to open a browser engine for.
@@ -220,7 +220,7 @@ describe("optimizeProjectImages", () => {
         const result = await optimizeProjectImages({
             projectPath,
             cacheDir,
-            config: { ...DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, lossyImages: true },
+            config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true },
             openCodec: lossy.openCodec,
             log,
         });
@@ -232,7 +232,7 @@ describe("optimizeProjectImages", () => {
         await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
         await fs.rm(contentPath(ASSET_A));
         await expect(optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
         })).resolves.toMatchObject({ converted: 0, images: {} });
     });
 
@@ -240,7 +240,7 @@ describe("optimizeProjectImages", () => {
         await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
         const codec = fakeCodec({ fail: true });
         const result = await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
         });
 
         expect(result).toMatchObject({ converted: 0, keptOriginal: 1, images: {} });
@@ -253,7 +253,7 @@ describe("optimizeProjectImages", () => {
         const result = await optimizeProjectImages({
             projectPath,
             cacheDir,
-            config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+            config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
             openCodec: codec.openCodec,
             log,
             cancelled: () => seen++ > 0,
@@ -270,7 +270,7 @@ describe("optimizeProjectImages", () => {
         const codec = fakeCodec({ ratio: 0.5 });
 
         const result = await optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
         });
 
         // Keyed by the synthetic id the compiler derives, or the compile looks up
@@ -280,7 +280,7 @@ describe("optimizeProjectImages", () => {
 
     it("does nothing at all for a project with no images", async () => {
         await expect(optimizeProjectImages({
-            projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
         })).resolves.toMatchObject({ converted: 0, images: {} });
     });
 
@@ -291,7 +291,7 @@ describe("optimizeProjectImages", () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
 
             const result = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             expect(result.stripped).toBe(1);
@@ -304,7 +304,7 @@ describe("optimizeProjectImages", () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
 
             const result = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             // A stripped PNG is still a PNG, and the compiler reads an absent ext
@@ -317,7 +317,7 @@ describe("optimizeProjectImages", () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
 
             const result = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             // Removing this would not take away anything about the author, it
@@ -331,7 +331,7 @@ describe("optimizeProjectImages", () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes() } });
 
             const result = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             expect(result.stripped).toBe(0);
@@ -341,7 +341,7 @@ describe("optimizeProjectImages", () => {
         it("reuses a stripped result on the next build", async () => {
             await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
             const options = {
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             };
 
             const first = await optimizeProjectImages(options);
@@ -357,7 +357,7 @@ describe("optimizeProjectImages", () => {
             const codec = fakeCodec({ ratio: 0.5 });
 
             const result = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: codec.openCodec, log,
             });
 
             // What a conversion saved is already in afterBytes; counting it here
@@ -371,7 +371,7 @@ describe("optimizeProjectImages", () => {
             const first = await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+                config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
                 openCodec: fakeCodec({ ratio: 0.5 }).openCodec,
                 log,
             });
@@ -379,7 +379,7 @@ describe("optimizeProjectImages", () => {
             // A second build with no codec available at all: if this needs one,
             // the cache is not doing its job.
             const second = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             expect(second).toMatchObject({ converted: 1, reused: 1 });
@@ -393,7 +393,7 @@ describe("optimizeProjectImages", () => {
             await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+                config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
                 openCodec: fakeCodec({ ratio: 1.4 }).openCodec,
                 log,
             });
@@ -402,7 +402,7 @@ describe("optimizeProjectImages", () => {
             // of that, every build re-encodes and re-compares every one of them
             // forever to reach the same answer.
             const second = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             expect(second).toMatchObject({ converted: 0, keptOriginal: 1 });
@@ -413,7 +413,7 @@ describe("optimizeProjectImages", () => {
             const first = await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+                config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
                 openCodec: fakeCodec({ ratio: 0.5 }).openCodec,
                 log,
             });
@@ -426,7 +426,7 @@ describe("optimizeProjectImages", () => {
             // asks for the entry, so nothing keeps it.
             await writeLibrary({});
             await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             await expect(fs.stat(first.images[ASSET_A].path)).rejects.toThrow();
@@ -437,7 +437,7 @@ describe("optimizeProjectImages", () => {
             const first = await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
+                config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
                 openCodec: fakeCodec({ ratio: 0.5 }).openCodec,
                 log,
             });
@@ -447,7 +447,7 @@ describe("optimizeProjectImages", () => {
             // Artwork that has not changed in a year is still artwork this build
             // ships; age must mean "unused", never "old".
             const second = await optimizeProjectImages({
-                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+                projectPath, cacheDir, config: DEFAULT_ASSET_COMPRESSION_CONFIGURATION, openCodec: refuseCodec, log,
             });
 
             expect(second).toMatchObject({ converted: 1, reused: 1 });
@@ -459,14 +459,14 @@ describe("optimizeProjectImages", () => {
             const at90 = await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: { lossyImages: true, lossyQuality: 90 },
+                config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true, imageQuality: 90 },
                 openCodec: fakeCodec({ ratio: 0.5 }).openCodec,
                 log,
             });
             const at40 = await optimizeProjectImages({
                 projectPath,
                 cacheDir,
-                config: { lossyImages: true, lossyQuality: 40 },
+                config: { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true, imageQuality: 40 },
                 openCodec: fakeCodec({ ratio: 0.2 }).openCodec,
                 log,
             });

@@ -38,9 +38,11 @@ import {
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
 import {
-    readAssetOptimizationConfiguration,
-    type AssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
+    ASSET_COMPRESSION_TRACKS,
+    assetTrackCompression,
+    readAssetCompressionConfiguration,
+    type AssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
 import {
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_PLATFORM,
@@ -79,6 +81,7 @@ import {
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
 import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
+import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
@@ -134,6 +137,7 @@ import { SigningVault, type SecretSealer } from "../security/signingVault";
 import {
     type GameRuntimeArtifactCompileResult,
     type GameRuntimePluginSource,
+    type OptimizedAssetFile,
 } from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
@@ -789,20 +793,24 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
         }));
-        // The one step in the optimization pipeline that changes what the player
-        // sees. It is opt-in, but a setting turned on months ago is a setting
-        // nobody remembers, and this is the last moment before it is applied.
-        // Every target, because the policy is about the artwork rather than about
-        // where it lands. The lossless half is deliberately silent: it cannot
-        // alter the game.
-        const assetOptimization = this.assetOptimizationConfig(projectConfig);
-        if (assetOptimization.lossyImages) {
-            findings.push({
-                code: "lossy-images",
-                severity: "warning",
-                section: "content",
-                detail: { quality: String(assetOptimization.lossyQuality) },
-            });
+        // The steps that change what the player sees and hears. Each is opt-in,
+        // but a switch turned on months ago is a switch nobody remembers, and this
+        // is the last moment before it is applied. One finding per track, because
+        // an author who allowed it for their voice recordings has said nothing
+        // about their artwork. Every target, because the policy is about the
+        // material rather than about where it lands; the silent half of the
+        // pipeline stays silent, since it cannot alter the game.
+        const compression = this.assetCompressionConfig(projectConfig);
+        for (const track of ASSET_COMPRESSION_TRACKS) {
+            const policy = assetTrackCompression(compression, track);
+            if (policy.enabled) {
+                findings.push({
+                    code: track === "images" ? "lossy-images" : track === "audio" ? "lossy-audio" : "lossy-video",
+                    severity: "warning",
+                    section: "content",
+                    detail: { quality: String(policy.quality) },
+                });
+            }
         }
         if (mobileTargets.length > 0) {
             findings.push(...await this.mobilePreflight(normalizedProjectPath));
@@ -1042,7 +1050,7 @@ export class GameBuildManager {
         // would read as changed against the build being patched, and the patch
         // would carry the author's whole art library back to a player who already
         // has it - under the extension the pack no longer names.
-        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
 
         /**
@@ -1068,7 +1076,7 @@ export class GameBuildManager {
                 identity,
                 distribution,
                 projectConfig,
-                assetImages,
+                assetReplacements,
                 ...(encryptionKey ? { encryptionKey } : {}),
             })
             : null;
@@ -1109,7 +1117,7 @@ export class GameBuildManager {
             ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
             hostUserDataDir: this.app.getUserDataDir(),
             downloadRewrites: currentDownloadRewrites(),
-            assetImages,
+            assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
@@ -1222,7 +1230,7 @@ export class GameBuildManager {
             debuggable: boolean;
             identity: { appId: string; productName: string; identifier?: string };
             projectConfig: ProjectConfigData | null;
-            assetImages: AssetImageOptimizationResult["images"];
+            assetReplacements: Record<string, OptimizedAssetFile>;
             encryptionKey?: string;
             /** The payload this build produced - what a player has before installing any of these. */
             baselineAppDir: string;
@@ -1282,7 +1290,7 @@ export class GameBuildManager {
                     : {}),
                 hostUserDataDir: this.app.getUserDataDir(),
                 downloadRewrites: currentDownloadRewrites(),
-                assetImages: options.assetImages,
+                assetReplacements: options.assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
@@ -1335,7 +1343,7 @@ export class GameBuildManager {
             identity: { appId: string; productName: string; identifier?: string };
             distribution: { key: string; titleId: string };
             projectConfig: ProjectConfigData | null;
-            assetImages: AssetImageOptimizationResult["images"];
+            assetReplacements: Record<string, OptimizedAssetFile>;
             encryptionKey?: string;
         },
     ): Promise<string> {
@@ -1375,7 +1383,7 @@ export class GameBuildManager {
                 : {}),
             hostUserDataDir: this.app.getUserDataDir(),
             downloadRewrites: currentDownloadRewrites(),
-            assetImages: options.assetImages,
+            assetReplacements: options.assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
@@ -1762,8 +1770,8 @@ export class GameBuildManager {
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // Before either compile, so both carry the same bytes for an asset and a
-        // protected pack is optimized like an unprotected one. See optimizeImages.
-        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        // protected pack is optimized like an unprotected one. See optimizeAssets.
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
@@ -1834,7 +1842,7 @@ export class GameBuildManager {
                 // Electron on the far side.
                 hostUserDataDir: this.app.getUserDataDir(),
                 downloadRewrites: currentDownloadRewrites(),
-                assetImages,
+                assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
@@ -1887,7 +1895,7 @@ export class GameBuildManager {
                     ]),
                 ],
                 shell: "web",
-                assetImages,
+                assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
@@ -2026,7 +2034,7 @@ export class GameBuildManager {
                 debuggable,
                 identity,
                 projectConfig,
-                assetImages,
+                assetReplacements,
                 ...(encryptionKey ? { encryptionKey } : {}),
                 baselineAppDir: desktopArtifact.appDir,
                 outputDir,
@@ -3084,8 +3092,8 @@ export class GameBuildManager {
         return (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
     }
 
-    private assetOptimizationConfig(projectConfig: ProjectConfigData | null): AssetOptimizationConfiguration {
-        return readAssetOptimizationConfiguration(projectConfig?.app);
+    private assetCompressionConfig(projectConfig: ProjectConfigData | null): AssetCompressionConfiguration {
+        return readAssetCompressionConfiguration(projectConfig?.app);
     }
 
     /**
@@ -3117,7 +3125,7 @@ export class GameBuildManager {
     }
 
     /**
-     * Re-encode the project's images once, before anything is compiled, and
+     * Re-encode what the project ships once, before anything is compiled, and
      * answer with the file each compile should copy in place of the author's.
      *
      * Ahead of the compiles rather than over their output, because a protected
@@ -3127,6 +3135,74 @@ export class GameBuildManager {
      * site the browser and both mobile shells are built from, and a patch made
      * later - all carrying identical bytes for an asset.
      *
+     * Two passes behind one table. They fail independently and neither is fatal:
+     * a host whose codec window will not open still compresses its audio, a host
+     * with no FFmpeg still re-encodes its images, and a host missing both builds
+     * exactly what it built before.
+     */
+    private async optimizeAssets(
+        session: BuildSession,
+        projectPath: string,
+        projectConfig: ProjectConfigData | null,
+    ): Promise<Record<string, OptimizedAssetFile>> {
+        const config = this.assetCompressionConfig(projectConfig);
+        return {
+            ...await this.optimizeImages(session, projectPath, config),
+            ...await this.compressMedia(session, projectPath, config),
+        };
+    }
+
+    /**
+     * Sound and video, through the vendored FFmpeg.
+     *
+     * Never fatal, and silent when both switches are off: the pass returns before
+     * it reads a single byte, so a project that compresses nothing pays nothing
+     * and a host with no encoder says nothing about a step it was never asked to
+     * take.
+     */
+    private async compressMedia(
+        session: BuildSession,
+        projectPath: string,
+        config: AssetCompressionConfiguration,
+    ): Promise<Record<string, OptimizedAssetFile>> {
+        try {
+            const result = await compressProjectMedia({
+                projectPath,
+                cacheDir: path.join(
+                    this.app.getUserDataDir(),
+                    UserDataNamespace.Cache,
+                    CacheNamespace.CompressedMedia,
+                ),
+                config,
+                app: this.app,
+                log: (level, message) => this.emit(session, { level, source: "Build", message }),
+                cancelled: () => session.cancelled,
+            });
+            if (result.converted > 0) {
+                const saved = result.beforeBytes - result.afterBytes;
+                const percent = Math.round((saved / result.beforeBytes) * 100);
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `compressed ${result.converted} media file(s), `
+                        + `saving ${formatByteSize(saved)} (${percent}%)`,
+                });
+            }
+            return result.media;
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not compress the audio and video, so they ship as they are: "
+                    + (error instanceof Error ? error.message : String(error)),
+            });
+            return {};
+        }
+    }
+
+    /**
+     * Images, through a hidden Chromium window.
+     *
      * Never fatal. This is an improvement on a build that already works, so a
      * codec window that will not open - a headless host, a broken GPU sandbox -
      * costs the author some bytes and a warning, not their build.
@@ -3134,9 +3210,8 @@ export class GameBuildManager {
     private async optimizeImages(
         session: BuildSession,
         projectPath: string,
-        projectConfig: ProjectConfigData | null,
+        config: AssetCompressionConfiguration,
     ): Promise<AssetImageOptimizationResult["images"]> {
-        const config = this.assetOptimizationConfig(projectConfig);
         try {
             const result = await optimizeProjectImages({
                 projectPath,
@@ -3166,7 +3241,7 @@ export class GameBuildManager {
             this.emit(session, {
                 level: "info",
                 source: "Build",
-                message: `${config.lossyImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
+                message: `${config.compressImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
                     + `saving ${formatByteSize(saved)} (${percent}%)`,
             });
             return result.images;

@@ -515,8 +515,12 @@ export const settings = {
                     description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
                 },
                 optimizedImages: {
-                    label: "Optimized build images",
+                    label: "Re-encoded build images",
                     description: "Images re-encoded for a build. Produced again the next time one runs.",
+                },
+                compressedMedia: {
+                    label: "Re-encoded build media",
+                    description: "Audio and video re-encoded for a build. Produced again the next time one runs.",
                 },
                 psdImports: {
                     label: "PSD import leftovers",
