@@ -2,13 +2,13 @@ import type { TeamLiveSession } from "@shared/types/team";
 import type { LiveSessionRole } from "./liveSessionView";
 
 /**
- * The decisions taken on the way into a room, and on the way out of one that is not meant to end,
+ * The decisions taken on the way into a room, and on the way back to one this window itself opened,
  * as functions of what is known rather than as branches inside the thing that acts on them.
  *
  * Each is asked twice - once by a control deciding what to offer, once by the act behind it - and
  * each is the kind of question that is easy to answer differently in two places. Kept here so
- * there is one answer, and so that "which half am I", "what does joining cost" and "is this new
- * room the one I was just in" can be checked without a server, a repository or a room.
+ * there is one answer, and so that "which half am I", "what does joining cost" and "is that room
+ * on the server still mine" can be checked without a server, a repository or a room.
  */
 
 /**
@@ -39,6 +39,12 @@ export function decideLiveRole(session: TeamLiveSession, instance: string): Live
  * to protect, and joining a session is therefore one of the ordinary ways to come by the project in
  * the first place. Cloning is the launcher's flow and needs a window that has no project open, so
  * this is reported rather than performed.
+ *
+ * **Both shapes are given back the same thing when the room ends: whatever this machine's own last
+ * progress was.** For `sync` that is the checkpoint recorded here, or the revision the tree was
+ * already on when there was nothing to record. For `clone` it is the clone itself - this machine
+ * had no progress of its own before, so what it came by IS its own from then on. One rule, and no
+ * case in which an author has to work out whose the bytes on their disk are.
  */
 export type LiveJoinPlan =
     | { kind: "sync"; checkpoint: boolean }
@@ -64,98 +70,34 @@ export function planLiveJoin(input: {
     return { kind: "sync", checkpoint: input.uncommittedChanges };
 }
 
-/* ------------------------------------------------------------------- carrying on */
+/* ------------------------------------------------------------------- coming back */
 
 /**
- * Who opens the next room when this one's host walks out of it.
+ * ⚠ **A room does not outlive its host, and nothing here nominates a successor.**
  *
- * **The longest-standing member, and ties are broken by instance id.** Not because seniority earns
- * anything, but because every window has to be able to arrive at the same answer from a roster that
- * may be one event out of date, and "who has been here longest" is the only ordering the server's
- * roster already carries. The id is the tiebreak because two windows that joined in the same
- * millisecond must not each decide they are the one.
+ * There was once a handover: the leaving host published, named the longest-standing member, and
+ * everybody else watched for the room that member opened. It is gone, and the reason it is gone is
+ * worth keeping because the shape is tempting. **The host is the only copy that counts** - everyone
+ * else is sending intents at it - so a room whose host has walked out has no authority for an
+ * intent to reach, and the only thing a guest can safely do with what is on its own disk is put
+ * back what was there before it joined. A successor could carry the CONTENT on, but not the
+ * question every other machine is then left holding: whose is this work, and what may I discard?
+ * Nobody in that room ever held an answer to it.
  *
- * Null in a room of one, which is not a handover at all: nobody is left to hand it to, and the room
- * ending is the whole of what happens.
+ * So the ending is the whole of what happens, and a host that comes back opens a room the others
+ * are offered rather than pulled into. See {@link LiveGhostRoom} for the one thing that does
+ * survive a window going away, which is that window's claim on its OWN room.
  */
-export function chooseLiveSuccessor(
-    members: readonly { instance: string; joinedAt: number }[],
-    leaving: string,
-): string | null {
-    const candidates = members.filter(member => member.instance !== leaving);
-    if (candidates.length === 0) {
-        return null;
-    }
-    return candidates.reduce((best, member) => {
-        if (member.joinedAt !== best.joinedAt) {
-            return member.joinedAt < best.joinedAt ? member : best;
-        }
-        return member.instance < best.instance ? member : best;
-    }).instance;
-}
 
 /**
- * What a window keeps of a room that ended so that it can follow the one that replaces it.
+ * How long the note a host leaves itself is worth acting on.
  *
- * A room's authority is the window that opened it and the protocol has no verb that moves it, so
- * carrying on means a NEW room on the same story - opened by whoever was nominated, or by the same
- * window coming back after a reload. Every window that was in the old room therefore has to
- * recognise the new one, and this is what it recognises it by.
+ * A window that reloads writes down that it was hosting and reads it back on the way up. Long
+ * enough for a workspace to start - the slowest thing in between is a whole-project write - and
+ * short enough that a note found the next morning is not a room opening around an author who has
+ * moved on to something else.
  */
-export type LiveContinuation = {
-    /**
-     * The room that ended. What carries on is a NEW one, never this.
-     *
-     * Named so it can be refused, because the two ways a window learns a room ended - the server's
-     * event and a message from the host - both leave a window in which a stale listing still has it
-     * in. Following it would put this window back into a room nobody is answering in.
-     */
-    previousRoom: string;
-    /** The story the old room was about. A room about anything else is a different collaboration. */
-    story: string;
-    /** The instance the leaving host nominated, or null when nobody said. */
-    successor: string | null;
-    /** The instance that hosted the room that ended, which may open the next one itself. */
-    previousHost: string;
-    /** When the old room ended, so following does not resume an afternoon later. */
-    since: number;
-};
-
-/**
- * How long a window keeps watching for the room to come back.
- *
- * Long enough for the successor to record a checkpoint, put its tree on the published version and
- * open a room - the slowest of those is a whole-project write, so this is measured in tens of
- * seconds rather than in seconds. Short enough that a room somebody opens after lunch is an
- * invitation the author answers rather than a session that starts around them.
- */
-export const LIVE_CONTINUATION_MS = 90_000;
-
-/**
- * Whether this newly seen room is the one this window was just in, carried on by somebody else.
- *
- * ⚠ **Deliberately not "any room on this story".** Following one would mean a window that left a
- * collaboration an hour ago being pulled into the next one without being asked. What is being
- * recognised here is narrow on purpose: the same story, opened by the window that was nominated for
- * it or by the host that vanished, within the minute and a half after the room ended.
- */
-export function continuesLiveSession(
-    continuation: LiveContinuation,
-    room: TeamLiveSession,
-    now: number,
-): boolean {
-    if (now - continuation.since > LIVE_CONTINUATION_MS) {
-        return false;
-    }
-    if (room.id === continuation.previousRoom) {
-        return false;
-    }
-    if (room.story !== continuation.story) {
-        return false;
-    }
-    const expected = continuation.successor ?? continuation.previousHost;
-    return room.openedByInstance === expected || room.openedByInstance === continuation.previousHost;
-}
+export const LIVE_HOSTED_NOTE_MS = 90_000;
 
 /**
  * What to do about a room this window already owns, found on the server as the workspace starts.

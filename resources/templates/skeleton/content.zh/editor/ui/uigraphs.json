@@ -10920,8 +10920,7 @@
           "graphs": {
             "eventIds": [
               "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958",
-              "249cb93d-8446-4d0a-b0da-cfaabf791e31"
+              "1e7f25a2-3a04-413d-9adc-b24eb1a7c958"
             ],
             "events": {
               "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
@@ -11011,53 +11010,6 @@
                       },
                       "to": {
                         "nodeId": "go",
-                        "port": "in"
-                      }
-                    }
-                  ],
-                  "meta": {
-                    "graphKind": "event"
-                  }
-                }
-              },
-              "249cb93d-8446-4d0a-b0da-cfaabf791e31": {
-                "id": "249cb93d-8446-4d0a-b0da-cfaabf791e31",
-                "name": "隐藏对话",
-                "graph": {
-                  "nodes": {
-                    "head": {
-                      "id": "head",
-                      "type": "blueprint.event.head.action",
-                      "params": {
-                        "actionId": "hide"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "toggle": {
-                      "id": "toggle",
-                      "type": "blueprint.game.toggleDialogDisplay",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 0
-                        }
-                      }
-                    }
-                  },
-                  "edges": [
-                    {
-                      "from": {
-                        "nodeId": "head",
-                        "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "toggle",
                         "port": "in"
                       }
                     }
@@ -22978,6 +22930,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-26T16:27:37.125Z"
+    "updatedAt": "2026-08-26T02:13:13.549Z"
   }
 }

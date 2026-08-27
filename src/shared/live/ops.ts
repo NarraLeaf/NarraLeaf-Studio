@@ -1,19 +1,35 @@
 import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
 import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import type {
+    AppTagAssetAxes,
+    AppTagEndingSurfaceId,
+    AppTagPluginConfig,
+    AppTagReachableScenes,
+    ProjectAppTag,
+} from "@shared/types/appTag";
+import type { BrandColor } from "@shared/types/brand";
 import { uiGraphPartsNodes, type LiveUIGraphParts } from "./uiGraphParts";
 import { uiPartsElements, type LiveUIElementRef, type LiveUIParts } from "./uiParts";
 import type { AssetSet } from "@shared/types/assetSet";
 import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
 import type { ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
+import type { ProjectDlc } from "@shared/types/dlc";
 import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
     StoryBlockId,
+    StoryChapter,
+    StoryChapterId,
     StoryId,
+    StoryScene,
+    StorySceneBgm,
     StorySceneId,
+    StorySceneSnapshot,
 } from "@shared/types/story";
 
 /**
@@ -160,7 +176,149 @@ export type LiveStoryOp =
     | { op: "set-entry-scene"; sceneId: StorySceneId | null }
     | { op: "rename-story"; name: string }
     /** Chapters in their new order, named by id. */
-    | { op: "reorder-chapters"; chapterIds: readonly string[] };
+    | { op: "reorder-chapters"; chapterIds: readonly string[] }
+    /**
+     * Add a scene, whole, filed in one chapter.
+     *
+     * **The scene travels entire, the way `insert-block` carries its block**, and for a sharper
+     * reason than a block has. Three things about a new scene are minted rather than derived: its id,
+     * its runtime name - which falls back to `scene_<uuid>` for a title with no latin letters in it -
+     * and, in a story with no chapters at all, the chapter it is filed under. A verb that named only
+     * what the author typed would have every machine mint different ids for one scene, which is two
+     * scenes with one name and no way back to one.
+     *
+     * It is also the inverse of `delete-scene`, which is the other reason it carries a whole scene
+     * rather than an empty one: putting a scene back has to put its rows back with it, in one
+     * operation. A verb that restored the shell would leave an empty scene on every screen and look
+     * as though the undo had worked.
+     *
+     * ⚠ **A scene with enough rows in it will not fit in one message.** That is refused by name
+     * (`too-large`) and never split, with {@link LiveCharacterOp}'s record: half a scene arriving is
+     * a scene nobody wrote, agreed upon by everybody.
+     */
+    | {
+          op: "create-scene";
+          scene: StoryScene;
+          /** The chapter it is filed under, or null for a scene no chapter claims. */
+          chapterId: StoryChapterId | null;
+          /** The sibling it sits in front of inside that chapter, or null for the end of it. */
+          beforeSceneId: StorySceneId | null;
+          /**
+           * The chapter to make first, when the one named is not there.
+           *
+           * Carried because its id is minted too: creating a scene in a story with no chapters makes
+           * one, and a machine that minted its own would file the scene in a chapter nobody else has.
+           */
+          chapter?: StoryChapter;
+          /**
+           * Make this scene the story's entry.
+           *
+           * Absent is the ordinary case, and the applier still derives the rule the panel has always
+           * had - a story with no entry takes the first scene made in it. Present is an inverse
+           * putting back an entry that a deletion moved, which is not derivable from the document
+           * afterwards: by then the pointer is somewhere else and nothing says where it was.
+           */
+          entry?: boolean;
+      }
+    /**
+     * Remove a scene, and everything in it.
+     *
+     * One operation because it is one gesture, with `delete-blocks`. What it destroys is not
+     * derivable afterwards, so the record of what it displaced holds the scene entire - its rows, its
+     * chapter, its position in that chapter and whether it was the entry - and the inverse is a
+     * `create-scene` of all of it.
+     */
+    | { op: "delete-scene"; sceneId: StorySceneId }
+    /**
+     * Replace what a scene says about itself, apart from its rows.
+     *
+     * **The scene's fields rather than the scene**, which is the difference between this and
+     * `update-character`: a scene's rows are the largest thing in the project and every one of them
+     * has verbs already, so a whole-record verb here would send a hundred rows of prose to change a
+     * background. The fields it does carry are stated whole for `update-block`'s reason - the
+     * inspector commits them together, and clearing one has to be expressible.
+     *
+     * ⚠ **`rename-scene` is still its own verb and is not folded into this one.** They are two
+     * gestures - the outline's rename box and the scene overview's inspector - and the outline's is
+     * the one an author uses while the overview is not open at all.
+     */
+    | { op: "update-scene"; sceneId: StorySceneId; fields: LiveSceneFields }
+    /**
+     * File a scene in a chapter, in front of the sibling named or last when that is null.
+     *
+     * Its own inverse, with `move-block`: the operation states a destination, and where the scene
+     * came from is what the record of the displaced state keeps.
+     */
+    | {
+          op: "move-scene";
+          sceneId: StorySceneId;
+          chapterId: StoryChapterId | null;
+          beforeSceneId: StorySceneId | null;
+      }
+    /**
+     * The scene's snapshots, as they now stand.
+     *
+     * One verb for five gestures - add one, rename one, delete one, set a value, clear a value -
+     * because `StoryService` reaches them through one mutator over the whole list, which is the point
+     * every snapshot edit passes through. `set-dictionary-options` is the same shape one document
+     * along and is stated the same way for the same reason.
+     *
+     * Not claimed: a snapshot is a name and a table of numbers picked from closed sets, so the loser
+     * of a race loses a click. See {@link CLAIMED_OPS}.
+     */
+    | { op: "set-scene-snapshots"; sceneId: StorySceneId; snapshots: readonly StorySceneSnapshot[] }
+    /**
+     * Add a chapter, in front of the sibling named or last when that is null.
+     *
+     * The chapter travels whole for `create-scene`'s reason: its id is minted. `scenes` is what makes
+     * this the inverse of `delete-chapter` - that deletion takes every scene of the chapter with it,
+     * so putting the chapter back has to put them back too, in one operation.
+     */
+    | {
+          op: "create-chapter";
+          chapter: StoryChapter;
+          beforeChapterId: StoryChapterId | null;
+          /** The scenes to put back with it. Absent for an ordinary creation, which has none. */
+          scenes?: readonly StoryScene[];
+          /** The entry scene to restore, for the inverse of a deletion that moved it. */
+          entry?: StorySceneId;
+      }
+    /** Rename one chapter. Last-writer-wins with a scene's name - see {@link CLAIMED_OPS}. */
+    | { op: "rename-chapter"; chapterId: StoryChapterId; name: string }
+    /**
+     * Remove a chapter **and every scene in it**.
+     *
+     * The widest structural deletion the story has, and one operation for `delete-blocks`' reason:
+     * the cascade is what the author asked for, and a run of deletions would draw every intermediate
+     * document on every other screen in the room.
+     *
+     * ⚠ Its inverse carries every scene the cascade destroyed, so a large chapter can be one that
+     * will not fit in a message - answered as `too-large` when the undo is sent, never as half a
+     * chapter coming back.
+     */
+    | { op: "delete-chapter"; chapterId: StoryChapterId };
+
+/**
+ * What a scene says about itself, apart from its rows.
+ *
+ * Named rather than spelled inline because two things state it - the operation and the record of what
+ * that operation displaced - and two spellings of one shape are two chances for them to disagree.
+ *
+ * `runtimeName` travels beside `name` because it is derived from it only when it is empty, and only
+ * on the machine that did the editing: a receiver that derived its own would compile a different
+ * scene name into the game from the one every other machine compiled.
+ *
+ * ⚠ **An absent field is an absent key, never `undefined`.** The canonical encoder refuses a property
+ * whose value is `undefined`, so a scene cleared that way would be one no receiving machine could
+ * save - see `VariableRegistryService.setEntryDefault`, which learned it one document along.
+ */
+export type LiveSceneFields = {
+    name: string;
+    runtimeName: string;
+    description?: string;
+    defaultBackgroundAssetId?: string;
+    bgm?: StorySceneBgm;
+};
 
 /** One dialogue row, addressed across the whole project. What a rebind names. */
 export type LiveDialogueRowRef = {
@@ -572,6 +730,165 @@ export type LiveAssetFolderOp =
           assets: readonly { assetType: string; record: LiveAssetRecord }[];
       };
 
+/* ------------------------------------------------- the project's configuration tables */
+
+/**
+ * Everything that can be done to the build variants - `editor/app-tags.json`.
+ *
+ * **One row of a project table, and the addressing is the cast's rather than the story's.**
+ * `AppTagService` funnels every gesture through one write path that takes a whole-document mutator
+ * and can therefore state nothing finer than "the document is now this"; the rows themselves are
+ * what the panel edits, one accordion at a time, so a record is the finest thing that can be stated
+ * truthfully and still be about something an author points at. A whole-document verb would be the
+ * last-writer-wins this design refuses: the variant name and the three identity overrides are
+ * blur-committed text fields that re-sync from their props, so the loser of that race loses a name
+ * they had half typed, silently.
+ *
+ * Three verbs plus one, and the plus one is what the release variant is. A project's own plugin
+ * values, asset-axis positions, scene declarations and ending page live at the document root rather
+ * than on a record, because the release variant is synthesized and stores nothing - see
+ * `ProjectAppTagDocument`. They are edited through the same panel rows as a variant's, so they need a
+ * verb of their own; {@link LiveAppTagDefaults} is what it carries.
+ *
+ * ⚠ **Deleting a variant rewrites nothing.** References to it resolve to the release variant from
+ * then on, which is `AppTagService.deleteTag`'s stated behaviour and the reason the panel counts them
+ * before the author presses the button. So there is no sweep to derive and no second document to
+ * fingerprint - unlike deleting a character, which reaches every story that holds a line it spoke.
+ */
+export type LiveAppTagOp =
+    /**
+     * Add a variant. The record arrives whole, with the id its author minted.
+     *
+     * Separate from `update-app-tag` for the reason `create-character` is separate from
+     * `update-character`: an update naming a record that is gone has to be refused so the author
+     * keeps what they just typed, and a single verb that created whatever it could not find would
+     * silently put back a variant somebody else deleted - along with the overrides that decide what
+     * that edition builds as.
+     *
+     * Appended unless `beforeId` says otherwise: `AppTagService.createTag` appends, and every machine
+     * applies the same operations in the same order, so an ordinary creation needs no position at all.
+     *
+     * ⚠ **`beforeId` is reachable only as the inverse of a deletion**, the way `create-character`'s
+     * `rebind` is. Undoing "delete the middle variant" has to put it back where it was; appending it
+     * would be a rearrangement wearing the word "undo", and the author would have to notice. A row
+     * that has gone since is treated as absent and the record lands at the end.
+     */
+    | { op: "create-app-tag"; tag: ProjectAppTag; beforeId?: string }
+    /** Replace a variant's record. The whole record, for {@link LiveCharacterOp}'s reason. */
+    | { op: "update-app-tag"; tagId: string; tag: ProjectAppTag }
+    /** Remove a variant. What pointed at it reads as the release variant from now on. */
+    | { op: "delete-app-tag"; tagId: string }
+    /**
+     * What every variant inherits: the project's own plugin values, axis positions, scene
+     * declarations and ending page.
+     *
+     * Whole rather than one key at a time, because that is what the document holds - four optional
+     * records at its root, normalized as a unit on every write, with an absent key meaning "nothing
+     * declared" rather than "unchanged". A per-key verb would have to invent a spelling for the
+     * difference and every machine would have to agree on it.
+     *
+     * ⚠ `tagPluginConfig` is the one gesture here that reaches the variant records too. Writing a
+     * plugin field that is not per-variant also takes that field off every variant, because such an
+     * entry is inert - resolution never reads it - and leaving it would give one field two stored
+     * answers.
+     */
+    | {
+          op: "set-app-tag-defaults";
+          defaults: LiveAppTagDefaults;
+          /**
+           * The variants whose plugin records this write also rewrites, whole.
+           *
+           * **Carried rather than derived, and the direction is why.** Going down, which entries a
+           * field that is not per-variant makes inert is a question every machine could answer. Going
+           * back up it is not: the entries are gone, and nothing left in the document says what they
+           * were. One field that works in both directions is one statement of one fact; a derived
+           * sweep plus a carried restore would be two, and the inverse of an ordinary build-config
+           * edit would quietly not restore what the edit removed.
+           *
+           * Absent for every other write to the project's own record, which is almost all of them.
+           */
+          tagPluginConfig?: readonly { tagId: string; pluginConfig: AppTagPluginConfig }[];
+      };
+
+/**
+ * The project's own half of `editor/app-tags.json` - what an unstated key on a variant resolves to.
+ *
+ * Spelled as the four optional records rather than as the document, so the operation cannot carry
+ * the variant list: two statements of who the variants are, arriving in one message, is a second
+ * chance for the two to disagree.
+ */
+export type LiveAppTagDefaults = {
+    pluginConfig?: AppTagPluginConfig;
+    assetAxes?: AppTagAssetAxes;
+    reachableScenes?: AppTagReachableScenes;
+    endingSurfaceId?: AppTagEndingSurfaceId;
+};
+
+/**
+ * Everything that can be done to the DLC list - `editor/dlc.json`.
+ *
+ * The variants' mirror, one document along, and deliberately the same three verbs: `DlcService` is
+ * `AppTagService` down to the bookkeeping, its panel is the same accordion of blur-committed text
+ * fields, and its deletion rewrites nothing either - a story marked for a deleted DLC ships with the
+ * base build, which is what the delete confirmation already says.
+ *
+ * ⚠ **`update-dlc` also changes the id**, which is the filename the DLC ships as. It is addressed by
+ * the id it had, and the record it carries may state a different one: `DlcService.changeId` is one
+ * gesture, and splitting it into a delete and a create would make it two operations, two undo steps
+ * and - for the moment between them - a project where the DLC does not exist.
+ */
+export type LiveDlcOp =
+    /** Add a DLC. Appended, and `beforeId` is the inverse of a deletion - see `create-app-tag`. */
+    | { op: "create-dlc"; dlc: ProjectDlc; beforeId?: string }
+    /** Replace a DLC's record, id included. See {@link LiveDlcOp}. */
+    | { op: "update-dlc"; dlcId: string; dlc: ProjectDlc }
+    /** Remove a DLC. The stories marked for it ship with the base build from now on. */
+    | { op: "delete-dlc"; dlcId: string };
+
+/**
+ * Everything that can be done to the project's palette - `editor/brand.json`.
+ *
+ * The document holds two lists that are edited apart, and the verbs follow that split because
+ * `BrandService` does: colours go through `applyColorMutation`, the font stack through
+ * `applyFontMutation`, and neither is ever a step of the other.
+ *
+ * **A colour is a record; the font stack is one value.** A colour has a name somebody typed into a
+ * blur-committed field and a value they picked, and there may be dozens of them - so it is addressed
+ * and it is claimed. The stack is at most a handful of rungs, has nothing typed into it at all (a
+ * picker, two arrows and a set of language checkboxes), and every one of its gestures rewrites the
+ * whole order anyway.
+ *
+ * ⚠ **The seeded entries are records like any other.** Re-pointing `button.primary` is the whole
+ * feature, so `update-brand-color` addresses them exactly as it addresses an author's own; what it
+ * cannot do is delete one, and `BrandService.deleteColor` is where that is refused.
+ */
+export type LiveBrandOp =
+    /**
+     * Add a colour of the author's own. Appended after the seeds, and `beforeId` is the inverse of a
+     * deletion - see `create-app-tag`.
+     */
+    | { op: "create-brand-color"; color: BrandColor; beforeId?: string }
+    /** Replace one colour - its name, its value, or both. */
+    | { op: "update-brand-color"; colorId: string; color: BrandColor }
+    /** Remove one of the author's colours. Links that pointed at it resolve to nothing and are linted. */
+    | { op: "delete-brand-color"; colorId: string }
+    /**
+     * Move a colour to sit before another, or to the end when `beforeId` is null.
+     *
+     * Relative rather than an index, for `LiveBlockTarget`'s reason. Unclaimed, with `move-block` and
+     * `move-assets`: a drag rearranges the palette without touching a word anybody wrote.
+     */
+    | { op: "move-brand-color"; colorId: string; beforeId: string | null }
+    /**
+     * The whole font stack, in priority order.
+     *
+     * The one verb here that is not about a record, and the exception is argued in {@link LiveBrandOp}:
+     * appending a rung, restricting one to some languages, removing one and moving one up or down are
+     * four gestures that all state a new order of at most `PROJECT_FONT_STACK_MAX` entries, and none
+     * of them has a draft layer to lose.
+     */
+    | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] };
+
 /**
  * Everything that can be done to the interface document.
  *
@@ -811,15 +1128,18 @@ export type LiveAssetSetOp =
  * deliberately never touches - so the name is a label and changing it rewrites no other document.
  * There is nothing here for a receiver to derive.
  *
- * ⚠ **The AUTHORED deletion is not here, and `delete-variable` is not it.** Removing a variable the
- * author chose to remove does not only take the entry: it clears the `savedVariableId` /
- * `persistentVariableId` params of every `Get`/`Set` node that named it, which is a write to
- * `editor/ui/uigraphs.json` - a document a session does not carry and the write boundary refuses. A
- * verb that took the entry and left those nodes behind would give every author in the room a
- * blueprint that fails at runtime with nothing on screen saying why. So `VariableRegistryService`
- * refuses that gesture for as long as a sink is installed, exactly as `AssetsService` refuses an
- * import: the act that cannot travel whole is stopped at the service that owns it, rather than left
- * to a boundary that would let half of it through.
+ * ⚠ **Removing one reaches a second document, and that reach is DERIVED rather than carried.** It
+ * clears the `savedVariableId` / `persistentVariableId` params of every `Get`/`Set` node that named
+ * it, which is a write to `editor/ui/uigraphs.json`. That is not something the operation states:
+ * every machine works out the same nodes from the same registry and the same blueprints, which is the
+ * criterion that decides every piece of derived work here. What it does mean is that the sweep has to
+ * be fingerprinted - `LiveSessionService.applyVariableOp` reports the blueprints it rewrote, and they
+ * reach the effect's digests beside the entry's own.
+ *
+ * ⚠ **A session that does not carry the blueprint document refuses the gesture instead**, at
+ * `VariableRegistryService` and exactly as `AssetsService` refuses an import: `editor/variables.json`
+ * IS writable during a session, so a deletion reaching the write boundary would be allowed and would
+ * land on one machine only. The act that cannot travel whole is stopped at the service that owns it.
  */
 export type LiveVariableOp =
     /**
@@ -834,15 +1154,12 @@ export type LiveVariableOp =
     /** Replace one entry. The whole entry - see {@link LiveVariableOp}. */
     | { op: "update-variable"; variableId: string; entry: VariableRegistryEntry }
     /**
-     * Take one entry back out.
+     * Take one entry back out, and let every machine clear the nodes that named it.
      *
-     * ⚠ **Reachable only as the inverse of `create-variable`**, the way `restore-asset-folder` is
-     * only reachable as the inverse of a folder deletion - and here that restriction is what makes
-     * the verb correct rather than merely tidy. An author's own deletion has to sweep the blueprint
-     * nodes that named the variable, and a session cannot carry that write; a variable *created
-     * inside this session* has no such nodes, because blueprint editing is frozen for the length of
-     * one, so there is provably nothing to sweep. Undo therefore takes back exactly what the
-     * creation added, and nothing else.
+     * An author's own removal and the inverse of a `create-variable` are one verb, because they are
+     * one act on this document: the entry leaves, and the sweep that follows it is derived - see
+     * {@link LiveVariableOp}. Undoing a creation made inside the session sweeps nothing, which is
+     * not a special case but the ordinary answer for a variable no node has had time to name.
      *
      * Claimed with `delete-character`: somebody may have opened the row and started typing a name
      * into it between the creation and the undo.
@@ -895,6 +1212,9 @@ export type LiveOp =
     | LiveVoiceOp
     | LiveAssetOp
     | LiveAssetFolderOp
+    | LiveAppTagOp
+    | LiveDlcOp
+    | LiveBrandOp
     | LiveUIOp
     | LiveUIGraphOp
     | LiveDictionaryOp
@@ -950,6 +1270,17 @@ export type LiveDocument =
      * spelling of "which document" rather than two.
      */
     | { doc: "asset-groups"; category: string }
+    /**
+     * The build variants - `editor/app-tags.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, so the kind is the whole
+     * address. The same is true of the two below it.
+     */
+    | { doc: "app-tags" }
+    /** The DLC list - `editor/dlc.json`. */
+    | { doc: "dlc" }
+    /** The palette and the default font stack - `editor/brand.json`. */
+    | { doc: "brand" }
     /**
      * The interface - `editor/ui/uidoc.json`.
      *
@@ -1020,6 +1351,14 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return "story";
         case "create-character":
         case "update-character":
@@ -1043,6 +1382,21 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "delete-asset-folder":
         case "restore-asset-folder":
             return "asset-groups";
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return "app-tags";
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return "dlc";
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return "brand";
         case "write-ui":
             return "ui";
         case "write-ui-graphs":
@@ -1137,6 +1491,12 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.doc === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.doc === "app-tags";
+        case "dlc":
+            return right.doc === "dlc";
+        case "brand":
+            return right.doc === "brand";
         case "ui":
             return right.doc === "ui";
         case "ui-graphs":
@@ -1169,6 +1529,12 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `assets ${document.assetType}`;
         case "asset-groups":
             return `asset folders ${document.category}`;
+        case "app-tags":
+            return "build variants";
+        case "dlc":
+            return "DLC";
+        case "brand":
+            return "brand palette";
         case "ui":
             return "interface";
         case "ui-graphs":
@@ -1271,6 +1637,22 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-asset",
     "replace-asset-content",
     "delete-assets",
+    // The three configuration tables, and the same test answers for all of them: every one of their
+    // rows is edited through a field that keeps a draft in its own state until it is blurred and
+    // re-syncs from its props when somebody else's edit arrives. A variant's name and its three
+    // identity overrides, a DLC's name and the filename it ships as, a colour's name - the loser of
+    // any of those races loses what they had half typed, with nothing on screen to say so.
+    //
+    // ⚠ **Creating and rearranging are not here**, with `insert-block` and `move-block`: a creation
+    // names an id nobody else has, and a drag rewrites an order without touching a word anybody
+    // wrote. `set-brand-fonts` is out for the second reason - the stack has no typing on it at all.
+    "update-app-tag",
+    "delete-app-tag",
+    "set-app-tag-defaults",
+    "update-dlc",
+    "delete-dlc",
+    "update-brand-color",
+    "delete-brand-color",
     // The interface and the blueprints, over the elements and the nodes their deltas name. The test
     // is the one every other entry answers: the properties panel and a node's parameter editors keep
     // a half-typed value in their own state and reach the document on a throttle or on blur, so the
@@ -1308,6 +1690,17 @@ export function opBlockId(op: LiveStoryOp): StoryBlockId | null {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // The structural verbs are about a scene, a chapter or the outline - never about one row,
+        // even where they destroy hundreds of them. A claim is over a row somebody is writing, and
+        // deleting a scene is answered by the scene's own check rather than by the rows inside it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -1344,6 +1737,17 @@ export function opBlockIds(op: LiveStoryOp): readonly StoryBlockId[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Empty with the rest of the structural verbs - see {@link opBlockId}. A scene deletion does
+        // remove rows, and none of them is named here: the rows are not what the gesture is about,
+        // and a claim check over them would refuse a scene because somebody left a caret in it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return [];
     }
 }
@@ -1374,8 +1778,22 @@ export function opSceneId(op: LiveStoryOp): StorySceneId | null {
             return onlySceneOf(op.edits);
         case "set-entry-scene":
             return op.sceneId;
+        // The scene a structural verb is about, when it is about one. `create-scene` names it
+        // through the record it carries, which is the only place the id exists at all.
+        case "create-scene":
+            return op.scene.id;
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+            return op.sceneId;
         case "rename-story":
         case "reorder-chapters":
+        // The chapter verbs are about the outline. `delete-chapter` reaches every scene in the
+        // chapter and still names none of them: there is no single scene for a digest to be of.
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -1498,6 +1916,38 @@ export function uiNodeClaimKey(blueprintId: string, graphId: string, nodeId: str
 export const UI_NODE_CLAIM_PREFIX = "ui-node:";
 
 /**
+ * The claim over one build variant's row.
+ *
+ * ⚠ **The project's own defaults are held under {@link APP_TAG_DEFAULTS_CLAIM_ID}**, which is the
+ * release variant's reserved id. That is not a trick: the release variant is what the root records
+ * belong to - it is synthesized and stores nothing of its own - and the panel draws it as a row
+ * beside the others. An id that could collide with a stored one would be, but the release id is
+ * exactly the id the normalizer refuses to store.
+ */
+export function appTagClaimKey(tagId: string): LiveClaimKey {
+    return `app-tag:${tagId}`;
+}
+
+/**
+ * Whose row the project's own defaults are, for a claim.
+ *
+ * The release variant's own id, taken from the model rather than spelled again here: it is the id
+ * the normalizer refuses to store, so nothing this key space holds can ever collide with it - and a
+ * second spelling would be a collision waiting for the day that id changed.
+ */
+export const APP_TAG_DEFAULTS_CLAIM_ID = APP_TAG_ID_RELEASE;
+
+/** The claim over one DLC's row. */
+export function dlcClaimKey(dlcId: string): LiveClaimKey {
+    return `dlc:${dlcId}`;
+}
+
+/** The claim over one colour of the project's palette. */
+export function brandColorClaimKey(colorId: string): LiveClaimKey {
+    return `brand-color:${colorId}`;
+}
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -1523,6 +1973,14 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return opBlockIds(op).map(storyRowClaimKey);
         case "update-character":
         case "delete-character":
@@ -1561,6 +2019,19 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
             // layer behind it. See {@link CLAIMED_OPS}.
             return [];
+        case "update-app-tag":
+        case "delete-app-tag":
+            return [appTagClaimKey(op.tagId)];
+        case "set-app-tag-defaults":
+            // The release variant's row - see {@link appTagClaimKey}. The panel draws the project's
+            // own values there, so that is the row somebody is inside while they are edited.
+            return [appTagClaimKey(APP_TAG_DEFAULTS_CLAIM_ID)];
+        case "update-dlc":
+        case "delete-dlc":
+            return [dlcClaimKey(op.dlcId)];
+        case "update-brand-color":
+        case "delete-brand-color":
+            return [brandColorClaimKey(op.colorId)];
         case "write-ui":
             // Every element the delta names, and one held element refuses the whole gesture - the
             // rule every batch follows. Half a layout change is a screen nobody arranged.
@@ -1570,6 +2041,11 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
             // slots and the owner records are not claimed: none of them has a draft layer behind it,
             // and losing one costs a name.
             return uiGraphPartsNodes(op.parts).map(ref => uiNodeClaimKey(ref.blueprintId, ref.graphId, ref.nodeId));
+        case "create-app-tag":
+        case "create-dlc":
+        case "create-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
         case "set-dictionary-entry":
         case "set-dictionary-options":
         case "create-audio-track":
@@ -1653,6 +2129,21 @@ export type LiveDigestScope =
      * across every folder below it, and a section's folder list is a handful of four-field records.
      */
     | { of: "asset-groups"; category: string }
+    /**
+     * The build variants, whole - and the same for the two below it.
+     *
+     * The fourth, fifth and sixth documents to be fingerprinted entire, and `@shared/live/config`
+     * gives the reason the libraries give second: these are the smallest documents in the project.
+     * A palette is a couple of dozen short entries, a variant list and a DLC list are a handful of
+     * records each, and they are edited a few times in a session rather than on every keystroke -
+     * so the encode a whole-document digest pays for is cheaper here than the bookkeeping a
+     * per-record one would need, and it catches a rearrangement no per-record digest would.
+     */
+    | { of: "app-tags" }
+    /** The DLC list, whole. */
+    | { of: "dlc" }
+    /** The palette and the font stack, whole. */
+    | { of: "brand" }
     /**
      * One Surface of the interface, with its whole element tree.
      *
@@ -1745,11 +2236,30 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
             const sceneId = opSceneId(op);
             return sceneId === null ? null : { of: "scene", storyId, sceneId };
         }
+        // The scene a structural verb changes the content of. A creation's scene arrives whole, so
+        // the fingerprint proves the rows came with it; the three edits below change fields the
+        // digest covers.
+        case "create-scene":
+            return { of: "scene", storyId, sceneId: op.scene.id };
+        case "update-scene":
+        case "set-scene-snapshots":
+            return { of: "scene", storyId, sceneId: op.sceneId };
         // Names a scene it does not change: the pointer moved, the scene did not, and a digest of it
         // would be a fingerprint of something this operation cannot have altered.
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Filing a scene changes the chapter that holds it, not a word inside it - `move-block`'s
+        // answer one level up.
+        case "move-scene":
+        // ⚠ Null because there is nothing left to fingerprint. A scene this machine no longer holds
+        // hashes to nothing rather than to a value (see `LiveSession.digestOf`), so a scope here
+        // would be a digest that is always absent - and the outline the two verbs below change is
+        // not a unit any scope covers, exactly as `reorder-chapters` has never been.
+        case "delete-scene":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
         case "create-character":
             return { of: "character", characterId: op.character.profile.id };
@@ -1778,6 +2288,21 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "delete-asset-folder":
         case "restore-asset-folder":
             return { of: "asset-groups", category: op.category };
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return { of: "app-tags" };
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return { of: "dlc" };
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return { of: "brand" };
         // ⚠ Null, and every unit these two change is reported by the applier instead. Which Surface
         // an element belongs to is a question about the tree, not about the message - and for an
         // element that has just been deleted the only place left to ask is the state before the
@@ -1832,6 +2357,12 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "assets" && right.assetType === left.assetType;
         case "asset-groups":
             return right.of === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.of === "app-tags";
+        case "dlc":
+            return right.of === "dlc";
+        case "brand":
+            return right.of === "brand";
         case "ui-surface":
             return right.of === "ui-surface" && right.surfaceId === left.surfaceId;
         case "ui-component":
@@ -1976,6 +2507,16 @@ export type LiveRefusalReason =
     /** The scene is gone. */
     | "scene-gone"
     /**
+     * The chapter is gone.
+     *
+     * The outline's answer to `scene-gone`, and needed as soon as a scene can be filed at all: a
+     * creation names the chapter it goes in, and a chapter somebody deleted while the author was
+     * typing a scene name is a place the scene cannot land. Applying anyway would put the scene in a
+     * document that draws it nowhere - `scenes` holds it and no chapter claims it - which reads on
+     * every screen as a scene that was never created.
+     */
+    | "chapter-gone"
+    /**
      * The character record is gone.
      *
      * The cast's answer to `row-gone`, and it carries the same instruction: the author has a panel
@@ -2033,6 +2574,20 @@ export type LiveRefusalReason =
      * already has, for assets that arrived by every other route.
      */
     | "folder-not-empty"
+    /**
+     * The row of a configuration table is gone - a build variant, a DLC, a colour of the palette.
+     *
+     * The three tables' answer to `row-gone` and to `character-gone`, and it carries the same
+     * instruction: the field the author is typing into is theirs to keep. An update that created what
+     * it could not find would put back a variant, a DLC or a colour somebody else deleted - and for
+     * the first two that is an edition of the game, or a file already in players' hands.
+     *
+     * **One reason for the three**, where the cast and the library have one each. What differs
+     * between them is which panel the author is looking at, and the panel is already in front of
+     * them; three sentences saying the same thing about three tables would be three ways to write
+     * "that entry is no longer in this project".
+     */
+    | "config-entry-gone"
     /**
      * An interface element the delta was changing is gone.
      *
@@ -2189,35 +2744,15 @@ export type LiveCatchUp = {
  * the operation carrying it is refused, exactly as before, if the bytes never turn up.
  */
 
-/* ------------------------------------------------------------------ carrying on */
-
 /**
- * A host saying the room is about to close and who is expected to open the next one.
+ * Everything a machine in a session can say.
  *
- * **The room ends; the collaboration does not have to.** A room's authority is the window that
- * opened it, and the protocol has no verb that moves that authority - so continuing means a new room
- * on the same story, opened by somebody who is still there. This is the only part of that which
- * cannot be worked out independently: every window can compute the same successor from the same
- * roster, but the rosters differ by whatever event has not arrived yet, and two machines opening a
- * room each is two rooms.
- *
- * ⚠ **`revision` is not decoration.** Exactly one machine publishes a session's result and everybody
- * else takes it - two machines recording the same content is two histories that will not merge - so
- * the leaving host pushes and names what it pushed, and the successor puts its tree on that version
- * before opening anything. A successor that published its own copy instead would fork the project
- * against the host that just left it.
+ * ⚠ **There is deliberately nothing here about the room outliving its host.** A `handover` message
+ * used to name the member expected to open the next room; it is gone, along with the idea. A room's
+ * authority is the window that opened it - everyone else is sending intents at that window - so a
+ * host walking out ends the session rather than passing it on, and each guest puts its own tree back
+ * to what it was holding before it joined. See `liveEntry.ts`.
  */
-export type LiveHandover = {
-    kind: "handover";
-    /** The instance expected to open the next room. */
-    to: string;
-    /** The story the next room is about, so nobody follows a room about something else. */
-    story: string;
-    /** What the leaving host published, and what the next room opens on. */
-    revision?: string;
-};
-
-/** Everything a machine in a session can say. */
 export type LiveMessage =
     | LiveIntent
     | LiveEffect
@@ -2225,8 +2760,7 @@ export type LiveMessage =
     | LiveClaims
     | LiveClaim
     | LiveResync
-    | LiveCatchUp
-    | LiveHandover;
+    | LiveCatchUp;
 
 /**
  * Whether a value is a message this build understands.
@@ -2247,6 +2781,5 @@ export function isLiveMessage(value: unknown): value is LiveMessage {
         || kind === "claims"
         || kind === "claim"
         || kind === "resync"
-        || kind === "catch-up"
-        || kind === "handover";
+        || kind === "catch-up";
 }

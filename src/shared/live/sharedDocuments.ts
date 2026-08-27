@@ -1,10 +1,13 @@
 import {
+    appTagsSpec,
     assetGroupsSpec,
     assetSetsSpec,
     assetsMetadataSpec,
     audioTracksSpec,
+    brandSpec,
     charactersSpec,
     dictionarySpec,
+    dlcSpec,
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
@@ -88,13 +91,52 @@ import { sameLiveDocument, type LiveDocument } from "./ops";
  * memory when the session starts is one no effect can ever reach, and carrying it would leave the
  * boundary allowing writes the host refuses.
  *
- * ⚠ **`variables.json` being writable does not mean every gesture on it travels.** Removing a
- * variable also clears the params of every blueprint node that named it, which is a write to
- * `editor/ui/uigraphs.json` - a document this table does not carry - so the vocabulary has no verb
- * for it and `VariableRegistryService` refuses the gesture for as long as a sink is installed. That
- * is the same shape the asset library is already in, and it is the safe half of the invariant: the
- * owning service stops what cannot travel, rather than the write boundary allowing an edit that
- * would land on one machine and nowhere else.
+ * **The three configuration tables joined next**: the build variants, the DLC list and the palette.
+ * They are unparameterised, like the cast - one of each per project - and they are here because a
+ * session that is meant to stay open all day cannot be one an author has to end in order to add a
+ * variant or move the brand colour.
+ *
+ * ⚠ **Two configuration documents were considered and are deliberately NOT here**, and their absence
+ * is the same invariant working:
+ *
+ *  - **`editor/save-schema.json`.** Its only editing surface is the popover on a `Save Game` /
+ *    `Get Save Metadata` node card, which is inside the blueprint editor - a document no session
+ *    carries - and its undo rides the blueprint history channel, where `LocalBlueprintService`
+ *    snapshots the graph and the schema together. Sharing the schema alone would give an author a
+ *    Ctrl+Z that also restores a frozen document. It arrives when the blueprints do.
+ *  - **`<projectName>.nlproj`.** Four independent reasons, and the first is enough on its own:
+ *    writability is decided by PATH, so the whole file is shared or none of it is, and its writers
+ *    are every group of the project's settings rather than one panel. Beyond that, some of what it
+ *    holds is deliberately local to a machine (a signing credential is an id into
+ *    `<userData>/signing/`, and the selected build variant is a preference); some of it decides which
+ *    documents a session carries at all (the language list, the plugin list), which is settled when
+ *    the room opens; and renaming the project renames the file, so the writable path would move
+ *    mid-session. Its spec refuses to serialize for a related reason - see `specs/project`.
+ *
+ * ⚠ **A story document being writable means every gesture on it travels, and that is a wider claim
+ * than "the rows travel".** The vocabulary began with the rows and grew to the outline for exactly
+ * this reason: creating a scene, deleting one, filing it in a chapter, editing what the scene says
+ * about itself, its snapshots, and making, renaming or removing a chapter are all writes to the same
+ * file - so while they had no verbs they were silent local changes on a path the boundary allowed,
+ * with no digest over any of them. They have verbs now. The one gesture that does NOT is
+ * `StoryService.replaceScene` - the whole-scene write a script import and a NarraLang commit end in -
+ * and it is refused by the service that owns it, for the reason `AssetsService` refuses an import:
+ * what it states is "here is the scene now", which is whole-document last-writer-wins over the
+ * largest unit in the project.
+ *
+ * ⚠ **The story LIBRARY is not here, and its absence is the invariant working.** Making, removing or
+ * re-pointing a story writes `editor/story/stories.json` and a document at a path this table does not
+ * name, so the boundary refuses both - which is the honest half, and it is why the set is built from
+ * the stories the project had when the room opened rather than from the ones it has now.
+ *
+ * ⚠ **`variables.json` and the blueprint document are one gesture apart.** Removing a variable also
+ * clears the params of every blueprint node that named it, which is a write to
+ * `editor/ui/uigraphs.json`. While that document was not carried the gesture had nowhere to go and
+ * `VariableRegistryService` refused it for as long as a sink was installed; carried, the sweep is
+ * derived - every machine computes the same nodes from the same effect - and the removal travels.
+ * The refusal remains for the session that does not hold both interface documents, which is the safe
+ * half of the invariant: the owning service stops what cannot travel, rather than the write boundary
+ * allowing an edit that would land on one machine and nowhere else.
  *
  * ⚠ **The Gallery's catalog is not here, and it is the harmless half of the trade for a sharp
  * reason.** It lives in a plugin store (`editor/services/narraleaf.gallery.items.json`) and the only
@@ -188,7 +230,8 @@ export const NO_LIVE_REGISTRIES: LiveSessionRegistries = { variables: false, loc
  * Two kinds of file, and neither is a `LiveDocument`:
  *
  *  - **the asset payloads** (`assets/content/`), which are bytes an applier puts down rather than a
- *    document anybody addresses;
+ *    document anybody addresses
+/**
  *  - **the row-order shards**, which every machine recomputes from what it has just applied.
  *
  * ⚠ Held apart from {@link liveSessionDocuments} on purpose. The invariant that file states is about
@@ -242,6 +285,12 @@ export function liveSessionDocuments(
         ...locales.voice.map((locale): LiveDocument => ({ doc: "voice", locale })),
         ...assetTypes.map((assetType): LiveDocument => ({ doc: "assets", assetType })),
         ...assetCategories.map((category): LiveDocument => ({ doc: "asset-groups", category })),
+        // The three configuration tables, unparameterised for the cast's reason: there is one of each
+        // per project, so a session either carries it or the window is not in a session. They need
+        // nothing from the caller for the same reason.
+        { doc: "app-tags" },
+        { doc: "dlc" },
+        { doc: "brand" },
         // Both or neither. See {@link LiveSessionInterface}: the interface and its blueprints are
         // one editing surface written to two files, and a session that carried one of them would
         // refuse the writes the other one makes on its behalf.
@@ -278,6 +327,12 @@ export function liveDocumentPath(document: LiveDocument): string {
             return assetsMetadataSpec.pathFor({ type: document.assetType });
         case "asset-groups":
             return assetGroupsSpec.pathFor({ category: document.category });
+        case "app-tags":
+            return appTagsSpec.pathFor();
+        case "dlc":
+            return dlcSpec.pathFor();
+        case "brand":
+            return brandSpec.pathFor();
         case "ui":
             return uiDocumentSpec.pathFor();
         case "ui-graphs":

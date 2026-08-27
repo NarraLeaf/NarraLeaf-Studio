@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+    appTagsSpec,
     assetGroupsSpec,
     assetSetsSpec,
     assetsMetadataSpec,
     audioTracksSpec,
+    brandSpec,
     charactersSpec,
     dictionarySpec,
+    dlcSpec,
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
@@ -36,7 +39,14 @@ const REGISTRIES: LiveSessionRegistries = { variables: true, localizationKeys: t
  * Unparameterised with the cast, so they need nothing from the caller and appear in every answer -
  * which is what the expectations below spell out rather than filter away.
  */
-const TABLES = [{ doc: "dictionary" }, { doc: "audio-tracks" }, { doc: "asset-sets" }];
+const TABLES = [
+    { doc: "app-tags" },
+    { doc: "dlc" },
+    { doc: "brand" },
+    { doc: "dictionary" },
+    { doc: "audio-tracks" },
+    { doc: "asset-sets" },
+];
 
 /**
  * The one table two things read: the write boundary, which asks which paths a session leaves
@@ -94,6 +104,9 @@ describe("the documents a session carries", () => {
             .toBe(assetsMetadataSpec.pathFor({ type: "image" }));
         expect(liveDocumentPath({ doc: "asset-groups", category: "media" }))
             .toBe(assetGroupsSpec.pathFor({ category: "media" }));
+        expect(liveDocumentPath({ doc: "app-tags" })).toBe(appTagsSpec.pathFor());
+        expect(liveDocumentPath({ doc: "dlc" })).toBe(dlcSpec.pathFor());
+        expect(liveDocumentPath({ doc: "brand" })).toBe(brandSpec.pathFor());
         expect(liveDocumentPath({ doc: "dictionary" })).toBe(dictionarySpec.pathFor());
         expect(liveDocumentPath({ doc: "audio-tracks" })).toBe(audioTracksSpec.pathFor());
         expect(liveDocumentPath({ doc: "asset-sets" })).toBe(assetSetsSpec.pathFor());
@@ -169,6 +182,9 @@ describe("the documents a session carries", () => {
             { op: "set-take", locale: "ja", unitId: "t", unit: null },
             { op: "update-asset", assetType: "image", assetId: "a", record: {} },
             { op: "set-asset-folder", category: "image", folderId: "g", folder: {} },
+            { op: "create-app-tag", tag: { id: "t", name: "Demo", overrides: {} } },
+            { op: "create-dlc", dlc: { id: "d", name: "Side Story", attachTo: "release" } },
+            { op: "create-brand-color", color: { id: "c", value: "#FFFFFF" } },
             { op: "set-dictionary-entry", term: "x", entry: null },
             { op: "create-audio-track", track: { id: "t" } as never, beforeId: null },
             { op: "delete-asset-sets", setIds: ["s"] },
@@ -177,30 +193,37 @@ describe("the documents a session carries", () => {
             carried.add(opDocumentKind(op));
         }
         expect([...carried].sort()).toEqual([
+            "app-tags",
             "asset-groups",
             "asset-sets",
             "assets",
             "audio-tracks",
+            "brand",
             "characters",
             "dictionary",
+            "dlc",
             "localization",
             "story",
             "voice",
         ]);
         // Two stories, the cast, two translation libraries, one voice library, two asset shards,
-        // two folder shards and the three project tables - every document the vocabulary can carry -
-        // plus the three paths no operation is about: the payload root and the two row orders.
+        // two folder shards and the six unparameterised project documents - every document the
+        // vocabulary can carry - plus the three paths no operation is about: the payload root and
+        // the two row orders.
         expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES, ASSET_TYPES, ASSET_CATEGORIES))
-            .toHaveLength(13 + 3);
+            .toHaveLength(16 + 3);
     });
 
     it("adds the two project-level registries, and only the ones this machine could read", () => {
         // Booleans rather than a list, because neither is parameterised - and read rather than
         // assumed, for the libraries' reason: a registry that would not parse is one no effect can be
         // applied to, and carrying it would leave the boundary allowing writes the host refuses.
-        // Beside the three unparameterised project tables, which are always carried.
+        // Beside the six unparameterised project documents, which are always carried.
         expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toEqual([
             { doc: "characters" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
             { doc: "dictionary" },
             { doc: "audio-tracks" },
             { doc: "asset-sets" },
@@ -212,6 +235,9 @@ describe("the documents a session carries", () => {
             localizationKeys: false,
         })).toEqual([
             { doc: "characters" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
             { doc: "dictionary" },
             { doc: "audio-tracks" },
             { doc: "asset-sets" },

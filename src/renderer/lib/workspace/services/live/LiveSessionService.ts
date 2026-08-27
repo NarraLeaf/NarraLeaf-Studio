@@ -2,7 +2,7 @@ import { getInterface } from "@/lib/app/bridge";
 import { holdDerivedProjectWrites } from "@/lib/app/writeFreeze";
 import { announceClient } from "@/lib/team/teamCall";
 import { planLiveDerived } from "@/apps/workspace/modules/story/scene-editor/storyLivePaste";
-import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp } from "@shared/live/ops";
+import type { LiveDerived, LiveDigestScope, LiveUIGraphOp, LiveUIOp, LiveVariableOp } from "@shared/live/ops";
 import { uiGraphPartsTouched, uiHasBlueprint } from "@shared/live/uiGraphParts";
 import { uiHasElement, uiOwningSurfaceIds, uiPartsTouched } from "@shared/live/uiParts";
 import type { UIDocument } from "@shared/types/ui-editor/document";
@@ -12,6 +12,9 @@ import type { TeamLiveSession } from "@shared/types/team";
 import { parseVcsRemoteUrl, VcsErrorCode, type VcsCheckpointReason } from "@shared/types/vcs";
 import { Service } from "../Service";
 import { Services, type ILiveSessionService, type WorkspaceContext } from "../services";
+import { AppTagService } from "../appTag/AppTagService";
+import { BrandService } from "../brand/BrandService";
+import { DlcService } from "../dlc/DlcService";
 import { CharacterService } from "../core/CharacterService";
 import { VcsCallError, VersionControlService } from "../core/VersionControlService";
 import { WorkspaceFreezeService } from "../core/WorkspaceFreezeService";
@@ -25,6 +28,7 @@ import { LocalizationService } from "../localization/LocalizationService";
 import { rowsSpokenBy } from "../story/characterSweepLive";
 import { StoryService } from "../story/StoryService";
 import { UIDocumentService } from "../ui-editor/UIDocumentService";
+import { LocalBlueprintService } from "../ui-editor/LocalBlueprintService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { VariableRegistryService } from "../variables/VariableRegistryService";
 import { VoiceService } from "../voice/VoiceService";
@@ -211,6 +215,24 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
     }
 
     /**
+     * This window is editing one row of a configuration table, or has stopped.
+     *
+     * Three doors beside the other four, and the same bargain: silent outside a session. See
+     * `LiveSession.claimAppTag` for what a row is and why the project's own defaults are one.
+     */
+    public claimAppTag(tagId: string, holding: boolean): void {
+        this.session?.claimAppTag(tagId, holding);
+    }
+
+    public claimDlc(dlcId: string, holding: boolean): void {
+        this.session?.claimDlc(dlcId, holding);
+    }
+
+    public claimBrandColor(colorId: string, holding: boolean): void {
+        this.session?.claimBrandColor(colorId, holding);
+    }
+
+    /**
      * Say that this window is editing one interface element, or that it has stopped.
      *
      * The canvas's door beside the row's, the record's, the line's and the asset's, and the same
@@ -314,6 +336,45 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         return scopes;
     }
 
+    /**
+     * Apply one registry operation, and the blueprint sweep a deletion implies.
+     *
+     * **The sweep is derived, which is what makes a deletion shareable at all.** The effect says the
+     * variable is gone; every machine then clears the `Get`/`Set` params that named it out of a
+     * blueprint document the room already agrees on, and arrives at the same records. Nothing about
+     * those nodes travels, for the criterion that decides every piece of derived work in this design:
+     * another machine can compute the same result from the same effect.
+     *
+     * ⚠ Run through `holdDerived`, so the sweep never becomes a `write-ui-graphs` message of its own -
+     * on a host that would be a second broadcast per deletion and a second press of undo, and on a
+     * guest an intent for work nobody asked for. What it wrote comes back as the blueprints to
+     * fingerprint.
+     *
+     * ⚠ The sweep runs BEFORE the entry leaves, with the order `deletePersistentVariable` keeps for
+     * its own reason: clearing first and failing to remove the entry leaves empty nodes beside a
+     * variable that is still there, which is the state neither half of this is allowed to produce.
+     */
+    private applyVariableOp(ctx: WorkspaceContext, op: LiveVariableOp): readonly LiveDigestScope[] {
+        const variables = ctx.services.get<VariableRegistryService>(Services.VariableRegistry);
+        if (op.op !== "delete-variable") {
+            variables.applyLiveOp(op);
+            return [];
+        }
+        const uigraphs = ctx.services.get<UIGraphService>(Services.UIGraph);
+        const blueprints = ctx.services.get<LocalBlueprintService>(Services.LocalBlueprint);
+        const swept = uigraphs.holdDerived(() => blueprints.sweepVariableNodeRefs(op.variableId));
+        variables.applyLiveOp(op);
+        if (swept === null) {
+            // No node named it, which is the ordinary case for a variable created in this session.
+            return [];
+        }
+        const touched = uiGraphPartsTouched(swept);
+        return [
+            ...touched.blueprints.map(blueprintId => ({ of: "ui-blueprint", blueprintId }) as const),
+            ...(touched.shell ? [{ of: "ui-graph-shell" } as const] : []),
+        ];
+    }
+
     private uiDocumentOrNull(ctx: WorkspaceContext): UIDocument | null {
         try {
             return ctx.services.get<UIDocumentService>(Services.UIDocument).getDocument();
@@ -336,6 +397,9 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
         const localization = (): LocalizationService => ctx.services.get<LocalizationService>(Services.Localization);
         const assets = (): AssetsService => ctx.services.get<AssetsService>(Services.Assets);
         const voice = (): VoiceService => ctx.services.get<VoiceService>(Services.Voice);
+        const appTags = (): AppTagService => ctx.services.get<AppTagService>(Services.AppTags);
+        const dlc = (): DlcService => ctx.services.get<DlcService>(Services.Dlc);
+        const brand = (): BrandService => ctx.services.get<BrandService>(Services.Brand);
         const dictionary = (): DictionaryService => ctx.services.get<DictionaryService>(Services.Dictionary);
         const audioTracks = (): AudioTrackService => ctx.services.get<AudioTrackService>(Services.AudioTracks);
         const assetSets = (): AssetSetService => ctx.services.get<AssetSetService>(Services.AssetSets);
@@ -436,6 +500,26 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 folders: category => assets().foldersOf(category),
                 applyOp: op => assets().applyLiveOp(op),
             },
+            // The three configuration tables. No load step either, and for the asset library's
+            // reason: all three services read their file as the workspace starts.
+            appTags: {
+                setSink: sink => appTags().setOperationSink(sink),
+                document: () => appTags().liveDocument(),
+                hasTag: tagId => appTags().getTag(tagId) !== undefined,
+                applyOp: op => appTags().applyLiveOp(op),
+            },
+            dlc: {
+                setSink: sink => dlc().setOperationSink(sink),
+                document: () => dlc().liveDocument(),
+                hasDlc: dlcId => dlc().has(dlcId),
+                applyOp: op => dlc().applyLiveOp(op),
+            },
+            brand: {
+                setSink: sink => brand().setOperationSink(sink),
+                document: () => brand().liveDocument(),
+                hasColor: colorId => brand().getColor(colorId) !== undefined,
+                applyOp: op => brand().applyLiveOp(op),
+            },
             ui: {
                 setSink: sink => {
                     uidoc().setOperationSink(sink?.ui ?? null);
@@ -475,7 +559,7 @@ export class LiveSessionService extends Service<LiveSessionService> implements I
                 // does not, and a session must not carry it.
                 readable: () => variables().isReadable(),
                 entry: variableId => variables().getEntry(variableId) ?? null,
-                applyOp: op => variables().applyLiveOp(op),
+                applyOp: op => this.applyVariableOp(ctx, op),
             },
             version: {
                 checkpoint: async () => (await version().createCheckpoint(LIVE_CHECKPOINT_REASON))?.revision ?? null,

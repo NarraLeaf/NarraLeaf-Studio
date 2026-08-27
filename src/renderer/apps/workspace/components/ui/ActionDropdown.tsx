@@ -18,6 +18,7 @@ import { applyFreezeToActionMenuItems, isFreezeExemptActionGroup } from "./freez
 import { MnemonicLabel, useMnemonicReveal, useTitleBarMenu } from "./titleBarMenus";
 import { MenuShortcut } from "./MenuShortcut";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import { useFreezeUnavailableReason } from "./freezeGuard";
 import { useShortcutLabels, type ShortcutLabels } from "../../hooks/useShortcutLabels";
 import { useTranslation } from "@/lib/i18n";
 
@@ -55,6 +56,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
     const { t } = useTranslation();
     const { workspace, context } = useWorkspace();
     const freeze = useWorkspaceFreezeReason();
+    const frozenReason = useFreezeUnavailableReason();
     const frozenOut = freeze !== null && !preFrozen && !isFreezeExemptActionGroup(group.id);
     const groupLabel = group.labelKey ? t(group.labelKey) : group.label;
     const [openPath, setOpenPath] = useState<number[]>([]); // path of opened submenus
@@ -338,7 +340,7 @@ export function ActionDropdown({ group, iconOnly = false, preFrozen = false }: A
                             hoverCloseTimerRef={hoverCloseTimerRef}
                             focusContext={focusContext}
                             shortcuts={shortcuts}
-                            disabledTitle={frozenOut ? t("workspace.shell.freeze.unavailable") : undefined}
+                            disabledTitle={frozenOut ? frozenReason : undefined}
                         />
                     </div>
                 </>

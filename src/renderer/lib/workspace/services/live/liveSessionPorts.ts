@@ -2,10 +2,12 @@ import type { TeamAck, TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAppTagOp,
     LiveAssetFolder,
     LiveAssetFolderOp,
     LiveAssetOp,
     LiveAssetRecord,
+    LiveBrandOp,
     LiveAssetSetOp,
     LiveAudioTrackOp,
     LiveCharacterOp,
@@ -13,6 +15,7 @@ import type {
     LiveDialogueRowRef,
     LiveDictionaryOp,
     LiveDigestScope,
+    LiveDlcOp,
     LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveStoryOp,
@@ -21,6 +24,9 @@ import type {
     LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import type { ProjectAppTagDocument } from "@shared/types/appTag";
+import type { ProjectBrandDocument } from "@shared/types/brand";
+import type { ProjectDlcDocument } from "@shared/types/dlc";
 import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
@@ -33,10 +39,13 @@ import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
 import type { TeamTransferOutcome, TeamTransferView } from "@shared/types/teamTransfer";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
+import type { AppTagOpSink } from "../appTag/AppTagService";
+import type { BrandOpSink } from "../brand/BrandService";
 import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
 import type { AssetSetOpSink } from "../assets/AssetSetService";
 import type { AudioTrackOpSink } from "../audio/AudioTrackService";
 import type { CharacterOpSink } from "../core/CharacterService";
+import type { DlcOpSink } from "../dlc/DlcService";
 import type { DictionaryOpSink } from "../dictionary/DictionaryService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
@@ -96,8 +105,15 @@ export type LiveRooms = {
     /**
      * Listen to one room. `from` is the instance the server says sent it, never something the
      * message claims about itself. Returns the unsubscribe.
+     *
+     * `account` is the person behind that instance, and it comes from the same place `from` does:
+     * the server stamps both on every message it relays. It is carried because the alternative was
+     * for the host to look the sender up in its own copy of the roster, which is one delivery
+     * behind - a member whose arrival this window has not been told about yet is a member it cannot
+     * name, and a claim it cannot name is a claim it throws away. An empty string is a server too
+     * old to say, which leaves the roster to answer as before.
      */
-    listen(sessionId: string, onMessage: (payload: unknown, from: string) => void): () => void;
+    listen(sessionId: string, onMessage: (payload: unknown, from: string, account: string) => void): () => void;
     /**
      * Watch a project's rooms opening and closing. Returns the unsubscribe.
      *
@@ -197,9 +213,10 @@ export type LiveLocalizationPort = {
  * an empty stand-in so the project still opens, and a session that carried THAT would be applying
  * operations to a registry with nothing to do with the file on disk.
  *
- * ⚠ **Nothing here removes an entry.** Deleting a variable also clears the params of every blueprint
- * node that named it, and the blueprint document is not a document a session carries -
- * `VariableRegistryService` refuses the gesture for as long as a sink is installed.
+ * ⚠ **Removing an entry reaches a second document.** Deleting a variable also clears the params of
+ * every blueprint node that named it - and the blueprint document is one a session carries now, so
+ * that sweep is derived rather than refused: the effect says the variable is gone, and every machine
+ * works out the same nodes. Which is why {@link applyOp} answers with scopes.
  */
 export type LiveVariablesPort = {
     /** Where registry edits go instead of into the registry, or null to take them back. */
@@ -208,8 +225,14 @@ export type LiveVariablesPort = {
     readable(): boolean;
     /** One entry as it stands, or null when there is none. Read for a digest and for an inverse. */
     entry(variableId: string): VariableRegistryEntry | null;
-    /** Apply one operation, without consulting the sink. Synchronous, for the story port's reason. */
-    applyOp(op: LiveVariableOp): void;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * Answers with every unit it changed beyond the one the operation names - the blueprints a
+     * deletion's node sweep rewrote. Derived work is what has to be fingerprinted rather than
+     * assumed, and this is what puts those blueprints into the effect's digests.
+     */
+    applyOp(op: LiveVariableOp): readonly LiveDigestScope[];
 };
 
 /** One language's voice takes. The translations port's mirror, method for method. */
@@ -305,6 +328,41 @@ export type LiveAssetsPort = {
      * deletion emptied - because derived work is what has to be fingerprinted rather than assumed.
      */
     applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
+};
+
+/**
+ * The build variants - one of the three configuration tables a session carries.
+ *
+ * Four methods, and they are the same four the two below have: somewhere for its edits to go, the
+ * document to fingerprint, whether a row is still there, and an applier that does not consult the
+ * sink. There is no `loadAll` on any of them, and that is what makes them the cheapest documents to
+ * share: all three services read their file as the workspace starts rather than when a panel opens
+ * it, so a session has nothing to fetch on the way in.
+ */
+export type LiveAppTagsPort = {
+    setSink(sink: AppTagOpSink | null): void;
+    /** The document as it stands, or null when this window does not hold it. Read for the digest. */
+    document(): ProjectAppTagDocument | null;
+    /** Whether one variant is still in the list. What the host's refusal is decided on. */
+    hasTag(tagId: string): boolean;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveAppTagOp): void;
+};
+
+/** The DLC list. The variants' port, method for method. */
+export type LiveDlcPort = {
+    setSink(sink: DlcOpSink | null): void;
+    document(): ProjectDlcDocument | null;
+    hasDlc(dlcId: string): boolean;
+    applyOp(op: LiveDlcOp): void;
+};
+
+/** The palette and the default font stack. The variants' port, method for method. */
+export type LiveBrandPort = {
+    setSink(sink: BrandOpSink | null): void;
+    document(): ProjectBrandDocument | null;
+    hasColor(colorId: string): boolean;
+    applyOp(op: LiveBrandOp): void;
 };
 
 /**
@@ -561,6 +619,9 @@ export type LiveSessionDeps = {
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
     assets: LiveAssetsPort;
+    appTags: LiveAppTagsPort;
+    dlc: LiveDlcPort;
+    brand: LiveBrandPort;
     ui: LiveUIPort;
     dictionary: LiveDictionaryPort;
     audioTracks: LiveAudioTrackPort;

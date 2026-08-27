@@ -58,7 +58,7 @@ Page分类具有：
 Game 分类具有：
 - `Start Game` 游戏启动尾节点
 - 游戏状态节点：`Is In Game`、`Is Game Overlay`、`Quit Game`
-- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Set Sentence Speed`、`Get Sentence Speed`
+- Dialog 节点：`Get Nametag`、`Next`、`Skip`、`Show Dialog`、`Hide Dialog`、`Toggle Dialog Display`、`Is Dialog Shown`、`Set Sentence Speed`、`Get Sentence Speed`
 - Preference 节点：`Get/Set Auto Forward`、`Get/Set Skip`、`Get/Set Game Speed`、`Get/Set Voice Volume`、`Get/Set Voice Fade Duration`、`Get/Set Voice End Mode`、`Get/Set BGM Volume`、`Get/Set Sound Volume`、`Get/Set Global Volume`、`Get/Set Skip Delay`、`Get/Set Skip Interval`；`showDialog` 继续由现有 Dialog Display 节点覆盖
 - 本地存档节点：`Save Game`、`Load Save`、`Delete Save`、`List Saves`、`Get Save Metadata`、`Get Save Preview`
 

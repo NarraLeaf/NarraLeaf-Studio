@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
+import { createDialogClickTargets } from "./dialogClickTargets";
 import {
     readWrappedStorableNamespace,
     readWrappedStorableValue,
@@ -197,7 +198,7 @@ import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
-import { holdStageAdvance } from "./stageAdvanceHold";
+import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -652,6 +653,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameEntered: gameEnteredRef,
     }), []);
     /**
+     * The pages this bundle can put on the screen.
+     *
+     * The same question the surface stack asks before it draws an entry or a layer, so an overlay
+     * naming a page the bundle does not contain is absent from the screen and absent from the
+     * occlusion answer at once. Without it such a layer holds the story against a stage nothing is
+     * covering - see `stageOcclusion`.
+     */
+    const drawableSurfaceIds = useMemo(
+        () => new Set(bundle.ui.uidoc.surfaces.map(surface => surface.id)),
+        [bundle.ui.uidoc.surfaces],
+    );
+    /**
      * Whether the story is the thing the player is looking at, rather than merely the thing behind
      * what they are looking at.
      *
@@ -675,8 +688,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             pagesHiddenForGame: studioPageHiddenForGameRef.current,
             gameHiddenKeys: gameHiddenNavKeysRef.current,
             layers: layerStack.getSnapshot().layers,
+            drawableSurfaceIds,
         });
-    }, [isInGame, layerStack, navigation]);
+    }, [drawableSurfaceIds, isInGame, layerStack, navigation]);
     /**
      * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
      *
@@ -690,6 +704,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         pagesHiddenForGame: studioPageHiddenForGame,
         gameHiddenKeys: gameHiddenNavKeys,
         layers,
+        drawableSurfaceIds,
     });
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
@@ -710,7 +725,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             void core?.scopeBridge.persistenceSet(key, value);
         },
     });
-    const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
@@ -1699,8 +1714,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [core, host.log]);
 
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
-        nlrDialogVirtualClickTargetRef.current = target;
-    }, []);
+        nlrDialogClickTargets.set(target);
+    }, [nlrDialogClickTargets]);
 
     // Read through the *mounted* session's compile, never a captured one: a recompile mints new
     // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
@@ -1772,7 +1787,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         getLiveGame: () => nlrLiveGameRef.current,
         choiceRuntimeRef,
         currentDialogNametagRef,
-        dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
+        dialogClickTargets: nlrDialogClickTargets,
     }), [requireActiveLiveGame]);
 
     /**
@@ -2033,7 +2048,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -2060,6 +2075,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         detachTextReadTracker,
         layerStack,
         navigation,
+        nlrDialogClickTargets,
         openSurface,
         playHead,
         rejectPendingGameStarts,
@@ -4128,7 +4144,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -4146,6 +4162,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
+        nlrDialogClickTargets,
         playHead,
         rejectPendingGameStarts,
     ]);
@@ -4162,7 +4179,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
@@ -4171,7 +4188,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
         pluginHost?.detachSession();
-    }, [clearCurrentDialogState, detachTextReadTracker, nlrSession?.id, playHead, pluginHost]);
+    }, [clearCurrentDialogState, detachTextReadTracker, nlrDialogClickTargets, nlrSession?.id, playHead, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -4423,39 +4440,56 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Studio takes one. It covers the stage click and the advance key with it, which is the same
      * answer for the same reason: the player is looking at the screen on top.
      *
-     * Mount and cleanup are the two edges of "covered", so a suspension cannot survive the render
-     * that decided the stage was clear. See `stageAdvanceHold` for what releasing has to do besides
-     * releasing.
+     * One holder per playthrough, and it is asked the question on every commit rather than only when
+     * the answer changes. A suspension lives on a `Set` inside the engine's `GameState` and nothing
+     * else ever looks at it, so tying the release to one effect cleanup made an event that fails to
+     * arrive permanent - the stage click, the advance key and auto-forward all dead for the rest of
+     * the run. See `stageAdvanceHold` for why re-asking cannot let go early, and for what releasing
+     * has to do besides releasing.
      */
+    const stageAdvanceHolderRef = useRef<StageAdvanceHolder | null>(null);
     useEffect(() => {
-        if (!stageCovered) {
-            return;
-        }
-        const heldLiveGame = nlrLiveGameRef.current;
         const preference = (nlrSession?.game as {
             preference?: {
                 getPreference?: (key: string) => unknown;
                 setPreference?: (key: string, value: unknown) => void;
             };
         } | undefined)?.preference;
-        const hold = holdStageAdvance({
-            suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
-            isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
-            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
-            rearmAutoForward: () => {
-                engineNudgeDepthRef.current += 1;
-                try {
-                    preference?.setPreference?.("autoForward", true);
-                } catch {
-                    // A session torn down between the check and the write; the line it would have
-                    // woken is gone with it.
-                } finally {
-                    engineNudgeDepthRef.current -= 1;
-                }
-            },
+        const holder = createStageAdvanceHolder(() => {
+            // Read at the moment the hold is taken, not when the holder was built: a cover that
+            // went up while the session was still mounting is held on the game that arrives, and a
+            // hold on a game that has been replaced knows it has nothing left to wake.
+            const heldLiveGame = nlrLiveGameRef.current;
+            return holdStageAdvance({
+                suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+                isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+                isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+                rearmAutoForward: () => {
+                    engineNudgeDepthRef.current += 1;
+                    try {
+                        preference?.setPreference?.("autoForward", true);
+                    } catch {
+                        // A session torn down between the check and the write; the line it would
+                        // have woken is gone with it.
+                    } finally {
+                        engineNudgeDepthRef.current -= 1;
+                    }
+                },
+            });
         });
-        return hold.release;
-    }, [nlrSession, stageCovered]);
+        stageAdvanceHolderRef.current = holder;
+        return () => {
+            stageAdvanceHolderRef.current = null;
+            holder.dispose();
+        };
+    }, [nlrSession]);
+
+    // Deliberately no dependency list: this is the reconciliation, and it has to run on the commit
+    // that changed the answer whether or not the answer is one of this effect's inputs. Declared
+    // after the holder so the holder of this commit is the one it syncs.
+    useEffect(() => {
+        stageAdvanceHolderRef.current?.sync(stageCovered);
+    });
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.

@@ -225,6 +225,28 @@ export function isFreezeBlocking(
 }
 
 /**
+ * The one sentence a control switched off by a freeze shows.
+ *
+ * **One string for every control, and two only because one freeze has two different ways out.** The
+ * bargain the top bar and the panels both make is that the author learns "this is what frozen looks
+ * like" once instead of reading a different excuse per button - so this is the only place either of
+ * them takes the sentence from. A live session is left or closed rather than unfrozen, and the
+ * ordinary sentence tells its author to press a control that is itself unavailable.
+ *
+ * ⚠ **The kind decides the SENTENCE and nothing else.** `writeFreeze` warns that asking which kind
+ * of freeze is armed invites a surface to give itself an exception, and that warning stands: what a
+ * control may do is {@link isFreezeBlocking}'s answer alone, from the same predicate the write
+ * boundary calls.
+ */
+export function useFreezeUnavailableReason(): string {
+    const freeze = useWorkspaceFreeze();
+    const { t } = useTranslation();
+    return freeze?.kind === "live-session"
+        ? t("workspace.shell.freeze.unavailableLive")
+        : t("workspace.shell.freeze.unavailable");
+}
+
+/**
  * How a workspace surface opts into the frozen read-only affordance: call this, then route every
  * control and gesture that writes project data through the returned guard.
  *
@@ -254,9 +276,17 @@ export function useFreezeGuard(scope?: string | readonly string[]): FreezeGuard 
     const freeze = useWorkspaceFreeze();
     const inspecting = useReadOnlyInspection();
     const { t } = useTranslation();
+    // ⚠ **The kind decides the SENTENCE and nothing else.** `writeFreeze` warns that asking which
+    // kind of freeze is armed is an invitation for a surface to give itself an exception, and that
+    // warning stands: what a control may do is still `isFreezeBlocking`'s answer alone, from the
+    // same predicate the write boundary calls. What is being chosen here is what a greyed control
+    // says, and one freeze needs a different sentence because it has a different way out - a live
+    // session is left or closed, and telling its author to unfreeze the project names a control
+    // that is itself unavailable.
+    const frozenReason = useFreezeUnavailableReason();
     const reason = inspecting
         ? t("documentDiff.inspector.readOnly")
-        : t("workspace.shell.freeze.unavailable");
+        : frozenReason;
     // Joined rather than passed through as an array: a caller that builds its list inline hands over
     // a new array on every render, and a guard rebuilt on every render is a new object for every
     // memo downstream to notice.

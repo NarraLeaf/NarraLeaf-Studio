@@ -1185,16 +1185,48 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
     }
 
     /**
+     * Clear every `Get`/`Set` node that named a registry variable, whichever scope declared it.
+     *
+     * **The derived half of a deletion, as one call, so that a machine applying an effect does the
+     * same thing the author's own machine did.** Both scopes are swept rather than the one the entry
+     * declared: an id belongs to exactly one entry, the node types differ between the scopes, and an
+     * applier running after the entry has already left the registry has nothing left to ask.
+     */
+    public sweepVariableNodeRefs(variableId: string): void {
+        this.applyBlueprintMutation(doc => {
+            this.clearVariableNodeRefs(doc, {
+                paramKey: "persistentVariableId",
+                nodeTypes: [BLUEPRINT_NODE_TYPE_PERSISTENT_GET, BLUEPRINT_NODE_TYPE_PERSISTENT_SET],
+                variableId,
+            });
+            this.clearVariableNodeRefs(doc, {
+                paramKey: "savedVariableId",
+                nodeTypes: [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET],
+                variableId,
+            });
+        });
+    }
+
+    /**
      * Remove a global variable, and the node refs that named it.
      *
      * ⚠ **Asked before anything is written**, and that order is the whole of why this is not one
-     * call. The registry refuses a deletion for the length of a live session - it also rewrites the
-     * blueprint document, which a session does not carry - and clearing the node refs first would
-     * leave every `Get`/`Set` node empty while the variable stayed exactly where it was.
+     * call. A session that cannot carry the sweep refuses the deletion outright, and clearing the
+     * node refs first would leave every `Get`/`Set` node empty while the variable stayed exactly
+     * where it was.
+     *
+     * ⚠ **In a session the sweep is not done here.** It is derived from the effect - every machine
+     * works out the same nodes from the same statement - so doing it alongside would be a second
+     * write for work the effect already implies, and on a host a second message and a second press
+     * of undo. See `LiveSessionService.applyVariableOp`.
      */
     public deletePersistentVariable(historyBlueprintId: string, variableId: string): boolean {
-        if (!this.getVariableRegistryService().canDeleteEntry()) {
+        const registry = this.getVariableRegistryService();
+        if (!registry.canDeleteEntry()) {
             return false;
+        }
+        if (registry.isShared()) {
+            return registry.deleteEntry(variableId);
         }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
@@ -1260,8 +1292,13 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * ⚠ Asked before anything is written, with {@link deletePersistentVariable}.
      */
     public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): boolean {
-        if (!this.getVariableRegistryService().canDeleteEntry()) {
+        const registry = this.getVariableRegistryService();
+        if (!registry.canDeleteEntry()) {
             return false;
+        }
+        if (registry.isShared()) {
+            // Derived in a session, with {@link deletePersistentVariable}.
+            return registry.deleteEntry(variableId);
         }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             this.applyBlueprintMutation(doc => {

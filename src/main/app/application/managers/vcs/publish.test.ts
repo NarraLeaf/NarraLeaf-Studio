@@ -132,8 +132,8 @@ function listed(projects: unknown[] = []) {
 }
 
 /** A whole project row, as a server lists it - the fields the reader insists on, and more. */
-function projectRow(id = REPOSITORY) {
-    return { id, name: "driftwood", description: "", createdAt: 0, remote: `${ORIGIN}/driftwood` };
+function projectRow(id = REPOSITORY, name = "driftwood") {
+    return { id, name, description: "", createdAt: 0, remote: `${ORIGIN}/${name}` };
 }
 
 /** The wire's answer to `projects.create`: the one row it recorded, under its own key. */
@@ -210,6 +210,52 @@ describe("publishing a project to a server", () => {
             `writeRemote ${ORIGIN}/driftwood`,
             `publishToRemote ${ORIGIN}/driftwood ${REPOSITORY}`,
         ]);
+    });
+
+    it("connects under the name the server already holds this repository as", async () => {
+        // ⚠ The case that shipped broken. A copied project folder carries the same
+        // repository, so this repository has been on this server before - under whatever it
+        // was called then. Connecting it at the name typed today wrote an address that
+        // pushed and could not be cloned or listed by anybody, because that name was never
+        // registered: `publishToRemote` swallows a refusal that names the same id as
+        // "already done", which is true of the repository and false of the name.
+        server.list.mockResolvedValue(listed([projectRow(REPOSITORY, "seagrass")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: true, connectedAs: "seagrass" });
+
+        // The name the server holds, in the address and in the registration alike - and
+        // nothing registered a second time, because this is one project either way.
+        expect(lore.calls).toEqual([
+            "list",
+            `writeRemote ${ORIGIN}/seagrass`,
+            `publishToRemote ${ORIGIN}/seagrass ${REPOSITORY}`,
+        ]);
+        expect(server.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a name a different project on that server answers to", async () => {
+        // Two repositories at one address is one address that resolves to whichever the
+        // server picks. The remedy is the author's - another name - so nothing is written
+        // here at all, the address included.
+        server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "driftwood")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
+
+        expect(lore.calls).toEqual(["list"]);
+        expect(server.create).not.toHaveBeenCalled();
+    });
+
+    it("publishes past a name that differs only in case, because a server does not", async () => {
+        // The name is matched without regard to case on purpose: an address that differs
+        // from another project's only by a capital letter is one an author reads as the
+        // same address, and the two of them being different projects is the surprise this
+        // refusal exists to prevent.
+        server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "Driftwood")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
     });
 
     it("puts the address back when connecting fails, and sends nothing", async () => {

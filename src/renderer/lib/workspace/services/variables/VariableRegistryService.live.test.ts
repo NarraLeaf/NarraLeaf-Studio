@@ -67,7 +67,7 @@ async function createHarness(): Promise<Harness> {
     const service = new VariableRegistryService();
     await service.initialize(ctx, async () => undefined);
     const handled: LiveVariableOp[] = [];
-    service.setOperationSink({ handle: op => (handled.push(op), true) });
+    service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
     return { service, files, handled };
 }
 
@@ -75,7 +75,7 @@ describe("the variable registry inside a live session", () => {
     it("states a creation and files nothing, so the row arrives with the effect", async () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         const entry = service.createEntry("saved", { name: "Gold", valueType: "number" });
 
@@ -90,7 +90,7 @@ describe("the variable registry inside a live session", () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold", valueType: "number" });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         service.renameEntry(entry.id, "Coins");
         service.setEntryValueType(entry.id, "string");
@@ -114,7 +114,7 @@ describe("the variable registry inside a live session", () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold", valueType: "number", defaultValue: 10 });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         service.setEntryDefault(entry.id, undefined);
 
@@ -129,7 +129,7 @@ describe("the variable registry inside a live session", () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold" });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         service.renameEntry(entry.id, "   ");
 
@@ -137,15 +137,33 @@ describe("the variable registry inside a live session", () => {
         expect(service.getEntry(entry.id)?.name).toBe("Gold");
     });
 
-    it("refuses to remove an entry, because the act also empties blueprint nodes", async () => {
-        // The ruling this whole seam turns on: removing a variable clears the `savedVariableId` /
-        // `persistentVariableId` params of every node that named it, and the blueprint document is
-        // not one a session carries. Refused at the service, exactly as the asset library refuses an
-        // import - the write boundary would let it through, and it would land here and nowhere else.
+    it("states a removal and files nothing, so the row leaves with the effect", async () => {
+        // Removing a variable also clears the `savedVariableId` / `persistentVariableId` params of
+        // every node that named it. That sweep is DERIVED now that a session carries the blueprint
+        // document - every machine works out the same nodes from this one statement - so the gesture
+        // travels instead of being refused.
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold" });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
+
+        expect(service.canDeleteEntry()).toBe(true);
+        expect(service.deleteEntry(entry.id)).toBe(true);
+        // Not written here: the row leaves the panel when the effect comes back, with every other
+        // gesture in this file.
+        expect(service.getEntry(entry.id)).toBeDefined();
+        expect(handled).toEqual([{ op: "delete-variable", variableId: entry.id }]);
+    });
+
+    it("refuses to remove an entry when the session cannot carry the node sweep", async () => {
+        // A window that could not read the two interface documents carries neither, so there is
+        // nowhere for the sweep to land - and the old ruling is still the right one there. Refused
+        // at the service, exactly as the asset library refuses an import: the write boundary would
+        // let it through, and it would land here and nowhere else.
+        const { service, handled } = await createHarness();
+        service.setOperationSink(null);
+        const entry = service.createEntry("saved", { name: "Gold" });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => false });
 
         expect(service.canDeleteEntry()).toBe(false);
         expect(service.deleteEntry(entry.id)).toBe(false);
@@ -209,7 +227,7 @@ describe("retyping a variable, which is one gesture", () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold", valueType: "boolean", defaultValue: false });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         service.setEntryValueType(entry.id, "number", 0);
 
@@ -224,7 +242,7 @@ describe("retyping a variable, which is one gesture", () => {
         const { service, handled } = await createHarness();
         service.setOperationSink(null);
         const entry = service.createEntry("saved", { name: "Gold", valueType: "boolean", defaultValue: false });
-        service.setOperationSink({ handle: op => (handled.push(op), true) });
+        service.setOperationSink({ handle: op => (handled.push(op), true), canDelete: () => true });
 
         service.setEntryValueType(entry.id, "number");
 

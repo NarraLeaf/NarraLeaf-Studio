@@ -57,6 +57,17 @@ export type VariableOpSink = {
      * the sink's business and the caller carries on as usual.
      */
     handle(op: LiveVariableOp): boolean;
+    /**
+     * Whether a deletion can travel in this session.
+     *
+     * **Not the same question as `handle`, and it has to be asked before anything is written.**
+     * Removing a variable also clears the params of every `Get`/`Set` node that named it, which is a
+     * write to `editor/ui/uigraphs.json`. A session that carries the blueprint document derives that
+     * sweep on every machine from the one effect; a session that does not carry it would leave the
+     * entry gone here and the nodes gone here and neither anywhere else. So the sink answers, and
+     * the panel's control follows the answer.
+     */
+    canDelete(): boolean;
 };
 
 /**
@@ -463,25 +474,44 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     /**
      * Whether a variable can be removed right now.
      *
-     * ⚠ **False for the length of a live session, and that is a ruling rather than a limitation.**
-     * Removing a variable does not only take the entry: every `Get`/`Set` node that named it has its
-     * `savedVariableId` / `persistentVariableId` param cleared, and that is a write to the blueprint
-     * document - which a session does not carry, because no operation is about it. A verb that
-     * removed the entry and left those nodes behind would give every author in the room a blueprint
-     * that fails at runtime with nothing on screen saying why.
+     * **True in a session that carries the blueprint document, and that is the whole of the change
+     * from when it was false throughout one.** Removing a variable does not only take the entry:
+     * every `Get`/`Set` node that named it has its `savedVariableId` / `persistentVariableId` param
+     * cleared, and that is a write to `editor/ui/uigraphs.json`. While a session did not carry that
+     * document the gesture had nowhere to go and was refused here - for the reason `AssetsService`
+     * refuses an import, since `editor/variables.json` IS writable during a session and a deletion
+     * reaching the write boundary would have been allowed and landed on one machine only.
      *
-     * Refused here rather than left to the write boundary, for the reason `AssetsService` refuses an
-     * import: `editor/variables.json` IS writable during a session, so a deletion that reached the
-     * boundary would be allowed - and would land on this machine and nowhere else.
+     * The session carries it now, so the sweep is DERIVED: the effect says "this variable is gone",
+     * and every machine works out the same nodes from the same registry and the same blueprints.
+     * What is still asked is whether THIS session carries them - a window that could not read the
+     * two interface documents carries neither, and there the old answer is still the right one.
      */
     public canDeleteEntry(): boolean {
-        return this.opSink === null;
+        return this.opSink === null || this.opSink.canDelete();
     }
 
-    /** Remove one entry. False when a live session owns this registry - see {@link canDeleteEntry}. */
+    /**
+     * Whether a live session owns this registry's edits.
+     *
+     * What a caller has to ask before doing anything ALONGSIDE a deletion. The node sweep is derived
+     * from the effect, so performing it here as well would be a second write for work the effect
+     * already implies - and, on a host, a second message.
+     */
+    public isShared(): boolean {
+        return this.opSink !== null;
+    }
+
+    /** Remove one entry. False when nothing can carry the sweep - see {@link canDeleteEntry}. */
     public deleteEntry(id: string): boolean {
         if (!this.canDeleteEntry()) {
             return false;
+        }
+        if (this.opSink?.handle({ op: "delete-variable", variableId: id }) === true) {
+            // Stated rather than written, with every other mutator here: the row leaves the panel
+            // when the effect comes back, and the blueprint nodes are swept by the applier that
+            // takes it - on this machine and on every other, from the same statement.
+            return true;
         }
         this.applyRegistryMutation(registry => {
             delete registry.entries[id];
@@ -556,10 +586,10 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
                 });
                 return;
             case "delete-variable":
-                // ⚠ No node-ref sweep, and that is correct rather than missing: this verb is only
-                // ever the inverse of a creation made inside the session, and blueprint editing is
-                // frozen throughout one - so there is provably no node pointing at it. An authored
-                // deletion, which does need the sweep, is refused instead. See {@link canDeleteEntry}.
+                // ⚠ **The node-ref sweep is not here, and its absence is deliberate.** It is a write
+                // to the blueprint document, which this service does not own; the caller performs it
+                // around this call and reports which blueprints it touched, so that derived work
+                // reaches the effect's digests. See `LiveSessionService.applyVariableOp`.
                 this.applyRegistryMutation(registry => {
                     delete registry.entries[op.variableId];
                 });

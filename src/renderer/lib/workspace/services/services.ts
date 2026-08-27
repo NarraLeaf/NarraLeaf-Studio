@@ -598,7 +598,6 @@ interface IDlcService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyMutation(mutator: (dlcs: ProjectDlc[]) => ProjectDlc[], label?: HistoryLabel): void;
     create(input?: { id?: string; name?: string; attachTo?: string }): ProjectDlc;
     /** Refuses a blank name. Stored references hold the id, so they follow. */
     rename(id: string, name: string): boolean;
@@ -638,7 +637,6 @@ interface IAppTagService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[], label?: HistoryLabel): void;
     createTag(input?: { name?: string }): ProjectAppTag;
     /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
     renameTag(id: string, name: string): boolean;
