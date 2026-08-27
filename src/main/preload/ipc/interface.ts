@@ -273,6 +273,7 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
+        liveIntentTaken: () => ipcClient.invoke(IPCEventType.workspaceLiveIntentTaken, {}),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         openProjectFolder: () =>

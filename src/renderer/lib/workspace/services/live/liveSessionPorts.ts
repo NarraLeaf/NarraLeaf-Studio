@@ -105,6 +105,14 @@ export type LiveRooms = {
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
     /** Join the room a passcode names. The code is the address and the entitlement at once. */
     joinByCode(code: string): Promise<TeamOutcome<TeamLiveSession>>;
+    /**
+     * Which room a passcode names, without joining it.
+     *
+     * Separate from {@link joinByCode} because what a joiner has to do before joining depends on
+     * the room: which document it is about, which revision it opened on, and whether anybody has
+     * to say yes first. Reading it costs one round trip and answers all three.
+     */
+    byCode(code: string): Promise<TeamOutcome<TeamLiveSession>>;
     /** Change how a running room may be joined. Only the window that opened it may. */
     rule(sessionId: string, rule: TeamLiveJoinRule): Promise<TeamOutcome<TeamAck>>;
     /** Ask to be let into a room that is joined by asking. */

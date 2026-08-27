@@ -28,8 +28,13 @@ export type LiveSessionRole = "host" | "guest";
  * in which this machine's document is knowingly behind: it has joined, it has asked the host for
  * everything since the room opened, and until that arrives what is on screen is the revision the
  * room opened on rather than what the room is looking at.
+ *
+ * `asking` is a phase of its own for the opposite reason: nothing on this machine has happened yet
+ * and nothing is going to until a person somewhere else looks at a notification. Nothing has been
+ * checkpointed, nothing has been adopted, and the window is free to walk away - which is not true
+ * of any part of `entering`.
  */
-export type LiveSessionPhase = "idle" | "entering" | "catching-up" | "active" | "leaving";
+export type LiveSessionPhase = "idle" | "asking" | "entering" | "catching-up" | "active" | "leaving";
 
 /** Why a session is over. */
 export type LiveSessionEndCause =
@@ -100,6 +105,24 @@ export type LiveEntryFailure =
     | { kind: "merge-conflicts"; paths: readonly string[] }
     /** The room named is not open on this project any more. */
     | { kind: "room-gone"; sessionId: string }
+    /**
+     * No room answers to those four digits.
+     *
+     * ⚠ **The same answer a code that is simply wrong gets, and the server gives it deliberately.**
+     * "There is no such room" and "there is a room and that is not its code" are one sentence to
+     * whoever typed them, and telling the two apart would turn ten thousand guesses into a map of
+     * which rooms exist.
+     */
+    | { kind: "no-such-code" }
+    /** The host was asked and said no. */
+    | { kind: "join-refused" }
+    /**
+     * The host was asked and half a minute went by.
+     *
+     * Not a refusal: the request is still standing on the server, and this window simply stopped
+     * waiting in front of the author. See {@link LIVE_ASK_TO_JOIN_MS}.
+     */
+    | { kind: "join-unanswered" }
     /**
      * The room does not say which document it is about, so there is nothing to follow.
      *

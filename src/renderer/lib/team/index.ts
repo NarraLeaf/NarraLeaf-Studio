@@ -16,6 +16,7 @@ export {
     deleteComment,
     dropOverlay,
     editComment,
+    findLiveSessionByCode,
     forgetProject,
     getProject,
     getThread,

@@ -345,7 +345,6 @@ export const workspace = {
         liveOpen: "ライブセッションを開始",
         liveUntitled: "ライブセッション",
         liveMembers: "{count} 人",
-        liveJoin: "参加",
         liveLeave: "退出",
         liveEnd: "終了",
         // 開始・参加できない理由。ワークスペースが持つ凍結は同時に一つなので、
@@ -359,6 +358,9 @@ export const workspace = {
         liveHost: "ホスト",
         liveGuest: "ゲスト",
         liveEntering: "参加中",
+        // まだ答えていないホストの前で待っている状態。「参加中」とは別の語にする。この端末では
+        // まだ何も起きておらず、誰かが通知を見るまで何も起きないから。
+        liveAsking: "許可を待っている",
         liveLeaving: "退出中",
         // 参加は済み、到着前にルームで起きたことを適用しているところ。
         liveCatchingUp: "セッションに追いついているところ",
@@ -376,6 +378,13 @@ export const workspace = {
         liveVersionMismatchNext: "サーバーからバージョンを取得して差分を処理し、もう一度試す",
         liveRoomGone: "そのセッションはもう開いていない",
         liveRoomGoneNext: "自分で開始するか、ホストが開き直すのを待つ",
+        // 合言葉が違うときと、その合言葉を誰も使っていないときは同じ一文。サーバーの答えが
+        // 同じだから——区別すれば、当てずっぽうが「どのルームがあるか」の地図になる。
+        liveNoSuchCode: "その合言葉のライブセッションはない",
+        liveJoinRefused: "ホストは入れてくれなかった",
+        // 拒否ではない。要求はサーバーに残っていて、この端末が待つのをやめただけ。
+        liveJoinUnanswered: "応答がなかった",
+        liveJoinUnansweredNext: "相手が戻ったら、ランチャーの Team 画面からもう一度求める",
         liveRoomStoryUnknown: "そのセッションはどのストーリーのものか示していない。ホストに Studio の更新を頼む",
         liveStoryNotHere: "そのセッションのストーリーはこのプロジェクトにない",
         liveStoryNotHereNext: "ホストにそのストーリーをサーバーへ送ってもらい、もう一度試す",
@@ -427,7 +436,9 @@ export const workspace = {
         // 取り消せない二つの操作が何をするか、押す前に示す。どちらも数秒かかり、
         // 取り消せず、プロジェクトを凍結する。
         liveStartWhat: "開始すると、チェックポイントを記録してサーバーに送り、セッションが運ぶドキュメント以外のこのプロジェクト全体を凍結する",
-        liveJoinWhat: "参加すると、チェックポイントを記録し、この端末をセッションのバージョンに合わせ、セッションが運ぶドキュメント以外のこのプロジェクト全体を凍結する",
+        // 他人のルームを知らせるところでは、入り口の場所も言う。参加はたいてい先にプロジェクトを
+        // 手に入れることから始まるので、入り口はすべてランチャーにある。
+        liveJoinFromLauncher: "ランチャーの Team 画面から参加する",
         // セッションが対象とする文書。参加前は選択、参加後は値。
         liveStory: "ストーリー",
         liveHostedBy: "ホスト {name}",
@@ -456,7 +467,9 @@ export const workspace = {
         liveFrozenTitle: "ライブセッション中",
         liveLeaveSession: "ライブセッションを退出",
         liveEndSession: "ライブセッションを終了",
-        liveHandOverSession: "ライブセッションを引き渡す",
+        // ホストが他の人のいるルームを出るとどうなるか。後継はいない。数えられる唯一の写しは
+        // ホストが持っているので、ほかの全員は自分の作業に戻る。
+        liveEndSessionForEveryone: "全員のセッションを終了",
         // プロジェクトに付いているが、プロジェクトの中にはないデータ。そのうち
         // 現在のものではないバージョンに対して書かれた件数。
         attached: "付随データ {count} 件",

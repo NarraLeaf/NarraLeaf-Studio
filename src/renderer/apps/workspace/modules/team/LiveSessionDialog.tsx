@@ -30,11 +30,15 @@ import { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiv
  * message arrives, a phase turns over, the room ends - and a dialog drawing from several readers
  * would put several moments of the same session on screen at once.
  *
- * **The two ways in are dialogs because both are irreversible and neither is instant.** Starting
- * records a checkpoint, pushes it, opens the room on it and freezes the project; joining records a
- * checkpoint, brings the tree to the room's version and freezes the project. Neither can be
- * cancelled once pressed, so what they are about to do is stated where they are pressed rather than
- * discovered afterwards.
+ * **Starting is a dialog because it is irreversible and not instant.** It records a checkpoint,
+ * pushes it, opens the room on it and freezes the project, and none of that can be cancelled once
+ * pressed - so what it is about to do is stated where it is pressed rather than discovered
+ * afterwards.
+ *
+ * ⚠ **Joining is not here, and its absence is the design.** Every way into somebody else's room is
+ * in the launcher's Team screen: joining one usually means getting the project first, and that is
+ * the launcher's flow. A room open on this project is still reported here - a fact worth knowing is
+ * still worth saying - with the one line that names where the way in is.
  *
  * **A `Modal`, and it has to be**: the story picker portals into the window's overlay layer, and a
  * body-level popover would paint over a dialog it opened and take both down on the first click
@@ -57,6 +61,7 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
     // singleton: a session entered while the workspace is frozen for something else would replace
     // that freeze instead of adding to it. The acts behind these controls ask again for the reason.
     const freeze = useWorkspaceFreeze();
+    /** Somebody else's room on this project, reported rather than offered. See the note above. */
     const room = useJoinableRoom(team, live.view);
     const { view } = live;
     const inRoom = view.phase !== "idle";
@@ -97,22 +102,13 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
                 <Button
                     data-live-act="leave"
                     // Named after what it does rather than after which half of the session this
-                    // window is: a host walking out of a room with somebody else in it hands it
-                    // over, and only a host walking out of a room of one ends anything.
+                    // window is: a host leaving ends the room for everybody in it, which is why
+                    // both host labels are the destructive one.
                     variant={leaving.destructive ? "danger" : "secondary"}
                     disabled={live.busy || view.phase === "leaving"}
                     onClick={live.leave}
                 >
                     {t(leaving.key)}
-                </Button>
-            ) : room !== null ? (
-                <Button
-                    data-live-act="join"
-                    variant="primary"
-                    disabled={live.busy || blocked !== null}
-                    onClick={() => live.join({ session: room })}
-                >
-                    {t("workspace.shell.team.liveJoin")}
                 </Button>
             ) : (
                 <Button
@@ -134,11 +130,15 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
             )}
         >
             <div data-live-dialog={view.phase} className="flex flex-col gap-4">
-                {inRoom
-                    ? <InSession team={team} live={live} />
-                    : room !== null
-                        ? <JoinOffer room={room} />
-                        : <StartOffer stories={stories} chosen={chosen} onChoose={setChosen} />}
+                {inRoom ? <InSession team={team} live={live} /> : (
+                    <>
+                        {/* Above the offer rather than instead of it: a room somebody else has open
+                            does not stop this author starting one, and the two facts are read in
+                            that order - what is already happening, then what this control does. */}
+                        {room !== null && <RoomElsewhere room={room} />}
+                        <StartOffer stories={stories} chosen={chosen} onChoose={setChosen} />
+                    </>
+                )}
 
                 {/* One line, and the current one. The session keeps the last refusal and the last
                     ending until something replaces them, so a column of every answer it has given
@@ -284,11 +284,18 @@ function StartOffer({ stories, chosen, onChoose }: {
     );
 }
 
-/** The room somebody else has open: whose it is, what it is about, and what joining does. */
-function JoinOffer({ room }: { room: TeamLiveSession }) {
+/**
+ * The room somebody else has open on this project: whose it is, and where the way in is.
+ *
+ * **Reported, not offered.** There is no control here on purpose - see the note at the top of this
+ * file - but the fact is still worth having, and an author who can see that a session is running
+ * and cannot see where to join it would reasonably conclude the feature is broken. So the last
+ * line names the screen that has the way in.
+ */
+function RoomElsewhere({ room }: { room: TeamLiveSession }) {
     const { t } = useTranslation();
     return (
-        <div data-live-block="join" className="flex flex-col gap-2">
+        <div data-live-block="elsewhere" className="flex flex-col gap-2">
             <div>
                 <p className="truncate text-sm text-fg">
                     {room.title ?? t("workspace.shell.team.liveUntitled")}
@@ -298,7 +305,7 @@ function JoinOffer({ room }: { room: TeamLiveSession }) {
                 </p>
             </div>
             <MemberList members={room.members} host={room.openedBy} self={null} />
-            <p className="text-2xs text-fg-muted">{t("workspace.shell.team.liveJoinWhat")}</p>
+            <Note seam="elsewhere">{t("workspace.shell.team.liveJoinFromLauncher")}</Note>
         </div>
     );
 }
