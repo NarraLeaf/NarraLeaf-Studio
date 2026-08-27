@@ -92,6 +92,14 @@ export type AssetMediaCompressionInput = {
     app: FfmpegResolverApp;
     log: AssetMediaCompressionLog;
     cancelled?: () => boolean;
+    /**
+     * How far through the library this pass is, once per file.
+     *
+     * A callback rather than a channel of its own, for the reason the image pass gives: this runs
+     * on the main process, beside the build that wants the number. Both metadata files are read
+     * before the first probe, so the total is a fact rather than a guess that grows.
+     */
+    onProgress?: (done: number, total: number) => void;
     /** Injected in tests; how the vendored binaries are located. */
     ffmpeg?: FfmpegResolveOptions;
     /** Injected in tests; defaults to running the resolved ffprobe. */
@@ -433,11 +441,23 @@ export async function compressProjectMedia(
         return outcome.report;
     };
 
-    for (const type of MEDIA_ASSET_TYPES) {
-        const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
+    // Both listings first, then the work: a total that arrived only when the video listing was
+    // reached would make the readout jump backwards halfway through a project that has both.
+    const listings = await Promise.all(MEDIA_ASSET_TYPES.map(async type => ({
+        type,
+        records: Object.entries(await readOptionalJson<Record<string, AssetMetadataRecord>>(
             path.join(input.projectPath, "assets", `assets.metadata.${type}.json`),
-        );
-        for (const [assetKey, record] of Object.entries(metadata ?? {})) {
+        ) ?? {}),
+    })));
+    const total = listings.reduce((sum, listing) => sum + listing.records.length, 0);
+    let considered = 0;
+    if (total > 0) {
+        // A project with no sound and no video opens no count: zero of zero is not a fraction.
+        input.onProgress?.(0, total);
+    }
+
+    for (const { type, records } of listings) {
+        for (const [assetKey, record] of records) {
             if (input.cancelled?.()) {
                 break;
             }
@@ -446,6 +466,8 @@ export async function compressProjectMedia(
             if (sourcePath) {
                 await consider(id, sourcePath, assetName(record, id), type);
             }
+            considered += 1;
+            input.onProgress?.(considered, total);
         }
     }
 

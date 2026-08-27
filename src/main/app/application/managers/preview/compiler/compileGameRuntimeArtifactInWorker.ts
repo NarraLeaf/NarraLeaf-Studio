@@ -5,6 +5,7 @@ import type {
     CompileWorkerOutboundMessage,
     ShippedContentAuditReport,
 } from "@/buildWorker/compileWorkerProtocol";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import { DownloadTaskBridge } from "../../tasks/downloadTasks";
 import { bakeWeatherClipsForPack } from "../../weather/weatherClipsForPack";
 import { screenEffectBakeThreads } from "../../weather/screenEffectQuality";
@@ -48,6 +49,20 @@ export type CompileWorkerHooks = {
      * gate, and a preview or a test run has nothing to refuse.
      */
     onAudit?: (report: ShippedContentAuditReport) => void;
+    /**
+     * How far through a countable step of the compile the worker is, and `null` when it is in a
+     * stretch that has none - which is most of one.
+     *
+     * Forwarded rather than interpreted: what a step counts and whether it counts at all is decided
+     * where the loop is, and the compile reports it through the process-wide sink in
+     * `buildWorker/stepProgress`. A caller that does not pass this hears nothing, which is every
+     * preview and every test run: they have nowhere to put a number.
+     *
+     * It is called with `null` when the compile settles, whatever it settles as. A worker killed
+     * mid-step sends no closing count, and a count left standing would describe a pass that ended
+     * minutes ago.
+     */
+    onProgress?: (progress: StudioTaskProgress | null) => void;
 };
 
 /**
@@ -115,8 +130,9 @@ export async function compileGameRuntimeArtifactInWorker(
             }
             settled = true;
             // A killed worker sends no closing event for a transfer it was in the middle of, so the
-            // end of the compile closes whatever is still open.
+            // end of the compile closes whatever is still open. The same is true of a step count.
             downloads.endAll();
+            hooks?.onProgress?.(null);
             fn();
         };
         // The compile emits no protocol logs, but plugin-data resolution can
@@ -126,6 +142,10 @@ export async function compileGameRuntimeArtifactInWorker(
         worker.on("message", (message: CompileWorkerOutboundMessage) => {
             if (message.type === "download") {
                 downloads.accept(message.event);
+                return;
+            }
+            if (message.type === "progress") {
+                hooks?.onProgress?.(message.progress);
                 return;
             }
             if (message.type === "done") {

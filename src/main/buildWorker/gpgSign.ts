@@ -2,6 +2,7 @@ import { execFile } from "child_process";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
+import { countBuildStep } from "./stepProgress";
 import type { GameBuildWorkerGpgSigning } from "./protocol";
 
 /**
@@ -181,6 +182,9 @@ export async function signArtifactsWithGpg(
     }
     log("info", `signing ${files.length} artifact${files.length === 1 ? "" : "s"} with GPG key ${gpg.keyId}`);
     const signatures: string[] = [];
+    // One gpg process per artifact, each reading the whole file. The list is settled before the
+    // first one starts - it is exactly what the checksums covered - so this pass can say where it is.
+    const counted = countBuildStep(files.length, "file");
     for (const file of files) {
         const signature = detachedSignaturePath(file);
         try {
@@ -200,7 +204,9 @@ export async function signArtifactsWithGpg(
             throw new Error(`GPG could not sign ${path.basename(file)}:\n${gpgFailureDetail(error)}`);
         }
         signatures.push(signature);
+        counted.advance();
     }
+    counted.end();
     return signatures;
 }
 
