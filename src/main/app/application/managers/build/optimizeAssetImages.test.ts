@@ -32,6 +32,25 @@ function pngBytes(padding = 40_000): Buffer {
     ]);
 }
 
+function ascii(value: string): number[] {
+    return [...value].map(character => character.charCodeAt(0));
+}
+
+/**
+ * A PNG no transcode will touch: its ICC profile makes it colour-managed, which
+ * the transcode plan skips. That is what makes it the interesting case here -
+ * an image in this state ships exactly as the artist saved it, metadata and all.
+ */
+function colourManagedPngBytes(extraChunks: number[][] = []): Buffer {
+    return Buffer.from([
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+        ...chunkBytes("IHDR", [...be32(64), ...be32(64), 8, 6, 0, 0, 0]),
+        ...chunkBytes("iCCP", [...ascii("sRGB"), 0, 0, 1, 2, 3]),
+        ...extraChunks.flat(),
+        ...chunkBytes("IDAT", new Array(4_000).fill(7)),
+        ...chunkBytes("IEND"),
+    ]);
+}
 function jpegBytes(): Buffer {
     return Buffer.from([
         0xff, 0xd8,
@@ -265,6 +284,87 @@ describe("optimizeProjectImages", () => {
         })).resolves.toMatchObject({ converted: 0, images: {} });
     });
 
+    describe("embedded metadata", () => {
+        const AUTHOR = chunkBytes("tEXt", ascii("Author a person who is not the player"));
+
+        it("strips an image the transcode refuses, without opening a codec", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            });
+
+            expect(result.stripped).toBe(1);
+            expect(result.metadataBytes).toBeGreaterThan(0);
+            const shipped = await fs.readFile(result.images[ASSET_A].path);
+            expect(shipped.includes(Buffer.from("Author"))).toBe(false);
+        });
+
+        it("says nothing about the format, because it did not change one", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            });
+
+            // A stripped PNG is still a PNG, and the compiler reads an absent ext
+            // as "keep what the manifest already says".
+            expect(result.images[ASSET_A].ext).toBeUndefined();
+            expect(result.images[ASSET_A].mimeType).toBeUndefined();
+        });
+
+        it("keeps the colour profile it was skipped for", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            });
+
+            // Removing this would not take away anything about the author, it
+            // would shift the colours - the exact failure the transcode plan
+            // refuses to risk.
+            const shipped = await fs.readFile(result.images[ASSET_A].path);
+            expect(shipped.includes(Buffer.from("iCCP"))).toBe(true);
+        });
+
+        it("leaves an image carrying nothing exactly where it is", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes() } });
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            });
+
+            expect(result.stripped).toBe(0);
+            expect(result.images).toEqual({});
+        });
+
+        it("reuses a stripped result on the next build", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: colourManagedPngBytes([AUTHOR]) } });
+            const options = {
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: refuseCodec, log,
+            };
+
+            const first = await optimizeProjectImages(options);
+            const second = await optimizeProjectImages(options);
+
+            expect(second.stripped).toBe(1);
+            expect(second.images[ASSET_A].path).toBe(first.images[ASSET_A].path);
+            expect(second.metadataBytes).toBe(first.metadataBytes);
+        });
+
+        it("does not strip a converted image a second time", async () => {
+            await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });
+            const codec = fakeCodec({ ratio: 0.5 });
+
+            const result = await optimizeProjectImages({
+                projectPath, cacheDir, config: DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, openCodec: codec.openCodec, log,
+            });
+
+            // What a conversion saved is already in afterBytes; counting it here
+            // as well would report the same bytes twice.
+            expect(result).toMatchObject({ converted: 1, stripped: 0, metadataBytes: 0 });
+        });
+    });
     describe("the cache", () => {
         it("reuses a kept result without encoding again", async () => {
             await writeLibrary({ [ASSET_A]: { bytes: pngBytes() } });

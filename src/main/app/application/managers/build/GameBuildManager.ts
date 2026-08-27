@@ -3133,6 +3133,14 @@ export class GameBuildManager {
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
             });
+            if (result.stripped > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `removed embedded metadata from ${result.stripped} image(s), `
+                        + `saving ${formatByteSize(result.metadataBytes)}`,
+                });
+            }
             if (result.converted === 0) {
                 return result.images;
             }

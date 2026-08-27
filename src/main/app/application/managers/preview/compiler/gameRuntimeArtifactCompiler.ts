@@ -356,8 +356,14 @@ export type GameRuntimeArtifactCompileInput = {
  */
 export type OptimizedAssetImageInput = {
     path: string;
-    ext: string;
-    mimeType: string;
+    /**
+     * Both absent when the replacement is the same kind of file as the source -
+     * an image whose metadata was removed without re-encoding it. The manifest
+     * already states what that image is, and restating it here would be a second
+     * place for the two to disagree.
+     */
+    ext?: string;
+    mimeType?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
