@@ -1,4 +1,4 @@
-import { useEffect, type ComponentProps } from "react";
+import type { ComponentProps } from "react";
 import { Dialog as NlrDialog } from "narraleaf-react";
 import type { UIStageSurface } from "@shared/types/ui-editor/document";
 import { DialogStateBridge } from "./DialogStateBridge";
@@ -21,10 +21,11 @@ export function DialogSlotSurface(props: {
     const { options, surface, setDialogVirtualClickTarget } = props;
     const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "dialog" });
 
-    useEffect(() => () => setDialogVirtualClickTarget(null), [setDialogVirtualClickTarget]);
-
     return (
         <NlrDialog
+            // The box a Game UI click is forwarded to. Handed over on mount and taken back on
+            // detach, both by React; the host holds it by element, so a box leaving the stage
+            // never takes another one's place with it - see `createDialogClickTargets`.
             ref={setDialogVirtualClickTarget}
             style={{ width: "100%", height: "100%", position: "relative" }}
         >

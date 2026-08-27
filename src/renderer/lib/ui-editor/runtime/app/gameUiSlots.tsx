@@ -9,6 +9,7 @@ import type {
     BlueprintGamePreferenceValue,
 } from "@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge";
 import { createDialogSlotComponent } from "./DialogSlotSurface";
+import type { DialogClickTargets } from "./dialogClickTargets";
 import { createNotificationSlotComponent } from "./NotificationSlotSurface";
 import { createChoiceSlotComponent, type ChoiceSlotRuntime } from "./ChoiceSlotSurface";
 import { createNvlSlotComponent } from "./NvlSlotSurface";
@@ -179,8 +180,8 @@ export type LiveGameUiCallbackDeps = {
     choiceRuntimeRef: MutableRefObject<ChoiceSlotRuntime | null>;
     /** Fallback nametag captured from `LiveGame.onCharacterPrompt` (see `wireNametagPrompt`). */
     currentDialogNametagRef: MutableRefObject<string | null>;
-    /** The custom dialog surface's virtual click target (set via `createDialogSlotComponent`). */
-    dialogVirtualClickTargetRef: MutableRefObject<HTMLElement | null>;
+    /** The engine dialog boxes the custom dialog surfaces have mounted (see `DialogClickTargets`). */
+    dialogClickTargets: DialogClickTargets;
 };
 
 export type LiveGameUiCallbacks = Pick<GameUiSlotHostOptions,
@@ -314,7 +315,7 @@ export async function fastForwardToNextChoice(
  * no React state — so hosts can build them once per session.
  */
 export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGameUiCallbacks {
-    const { requireLiveGame, getLiveGame, choiceRuntimeRef, currentDialogNametagRef, dialogVirtualClickTargetRef } = deps;
+    const { requireLiveGame, getLiveGame, choiceRuntimeRef, currentDialogNametagRef, dialogClickTargets } = deps;
 
     return {
         getCurrentNametag: (): string | null => {
@@ -401,11 +402,16 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         nextInGame: async (): Promise<void> => {
-            const dialogClickTarget = dialogVirtualClickTargetRef.current;
-            if (dialogClickTarget?.isConnected) {
+            // The newest box still on the stage. A Game UI dialog surface covers the stage and takes
+            // the click itself, so this is the whole of the advance path for a game that has one:
+            // the click a player made reaches the line only by being made again here.
+            const dialogClickTarget = dialogClickTargets.current();
+            if (dialogClickTarget) {
                 dialogClickTarget.click();
                 return;
             }
+            // No dialog surface of its own: the engine draws the box, and its stage announcer
+            // answers a click anywhere on the player.
             const liveGame = requireLiveGame("Next");
             const gameState = liveGame.getGameState();
             if (!gameState) {
