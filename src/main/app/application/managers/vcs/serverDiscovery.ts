@@ -1,7 +1,7 @@
 import https from "https";
 import tls from "tls";
 import { TEAM_PROTOCOL_VERSION } from "@shared/types/team";
-import type { VcsServerDiscovery, VcsServerProbe } from "@shared/types/vcs";
+import type { VcsServerDiscovery, VcsServerPolicy, VcsServerProbe } from "@shared/types/vcs";
 import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
 
 /**
@@ -280,8 +280,24 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
         data: { url: data.url.trim() },
         authority: { sha256: authority.sha256.trim() },
         version: document.version.trim(),
+        policy: readPolicy(document.policy),
         capabilities: readCapabilities(document.capabilities),
     };
+}
+
+/**
+ * What a deployment asks of its clients, or nothing.
+ *
+ * Read the way capabilities are and for the same reason: a server that says nothing here
+ * is one from before the field, and refusing it would take away the deployments this is
+ * meant to describe. A rule that is not one of the words this Studio knows is dropped
+ * rather than kept - what is left then is "nothing said", which every caller already
+ * has an answer for, where a word nobody can act on would be a third state.
+ */
+function readPolicy(offered: unknown): VcsServerPolicy {
+    if (typeof offered !== "object" || offered === null) return {};
+    const rule = (offered as { publishLineage?: unknown }).publishLineage;
+    return rule === "merge" || rule === "refuse" ? { publishLineage: rule } : {};
 }
 
 /**

@@ -294,6 +294,7 @@ export function AddServerModal({
                 name: discovery.name,
                 version: discovery.version,
                 capabilities: discovery.capabilities,
+                policy: discovery.policy,
             })
             .catch(() => null);
         if (!result?.success) {
