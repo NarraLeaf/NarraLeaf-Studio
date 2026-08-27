@@ -182,7 +182,7 @@ export function transcodeArgs(target: MediaConvertTarget, sourcePath: string, ou
         // Subtitle and data streams are deliberately not mapped: they may be illegal in the
         // destination container, and the engine never asks a decoder for them.
         args.push("-map", "0:V?", "-map", "0:a?", "-c", "copy");
-        args.push(...containerFlags(target.container));
+        args.push(...containerFlags(target.container), ...isoAudioBrand(target));
         args.push("-f", MUXER_FOR_CONTAINER[target.container], outputPath);
         return args;
     }
@@ -197,9 +197,30 @@ export function transcodeArgs(target: MediaConvertTarget, sourcePath: string, ou
     if (target.audio !== null) {
         args.push("-map", "0:a?", ...(target.audio === "aac" ? AAC_ARGS : VORBIS_ARGS));
     }
-    args.push(...containerFlags(target.container));
+    args.push(...containerFlags(target.container), ...isoAudioBrand(target));
     args.push("-f", MUXER_FOR_CONTAINER[target.container], outputPath);
     return args;
+}
+
+/**
+ * `-brand "M4A "` for an MP4 that carries no picture, and nothing otherwise.
+ *
+ * The major brand is the only thing in an ISO base media file that says whether it holds a video,
+ * and the muxer's default `isom` says nothing. That is not cosmetic: a shipped protected pack keeps
+ * its entries under an asset id with no extension and no recorded media type, so the runtime decides
+ * from the bytes (`src/runtime/main/mediaSniff.ts`), and there the brand is the whole of the
+ * evidence. Branded `isom`, a voice line is handed to the page as `video/mp4`.
+ *
+ * Which targets are audio-only is the same question {@link mediaConvertTargetExtension} answers when
+ * it picks `.m4a` over `.mp4`, and it is answered the same way here: `reencode` knows from `video`
+ * being null, `remux` from its own flag. The trailing space is part of the four-character brand.
+ */
+function isoAudioBrand(target: MediaConvertTarget): string[] {
+    if (target.kind === "image" || target.container !== "mp4") {
+        return [];
+    }
+    const audioOnly = target.kind === "reencode" ? target.video === null : target.audioOnly;
+    return audioOnly ? ["-brand", "M4A "] : [];
 }
 
 /**
@@ -229,7 +250,7 @@ export function transcodeArgs(target: MediaConvertTarget, sourcePath: string, ou
 export function compressionArgs(
     plan:
         | { action: "audio"; bitrateKbps: number; sampleRateHz: number | null }
-        | { action: "video"; crf: number },
+        | { action: "video"; crf: number; maxHeight: number | null },
     sourcePath: string,
     outputPath: string,
 ): string[] {
@@ -258,6 +279,12 @@ export function compressionArgs(
         return args;
     }
     args.push("-map", "0:V?", ...vp9Args("good", plan.crf));
+    if (plan.maxHeight !== null) {
+        // `-2` for the width rather than `-1`: it keeps the aspect ratio and rounds to an even
+        // number, which yuv420p requires. An odd width there is a hard encoder failure, not a
+        // slightly wrong picture.
+        args.push("-vf", `scale=-2:${plan.maxHeight}`);
+    }
     args.push("-map", "0:a?", ...VORBIS_ARGS);
     args.push("-f", MUXER_FOR_CONTAINER.webm, outputPath);
     return args;

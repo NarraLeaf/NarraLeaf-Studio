@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
     DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    DEFAULT_ASSET_QUALITY,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
 import {
@@ -144,8 +145,33 @@ describe("planAssetImageTranscode", () => {
     });
 
     it("converts both PNG and JPEG once lossy is turned on", () => {
-        expect(planAssetImageTranscode(candidate(png()), LOSSY)).toEqual({ action: "lossy" });
-        expect(planAssetImageTranscode(candidate(jpeg()), LOSSY)).toEqual({ action: "lossy" });
+        // The plan carries the quality rather than leaving the caller to read it back out of the
+        // configuration, so that nothing downstream has to know whether it came from the shared
+        // scale or from an author who typed it.
+        const expected = { action: "lossy", quality: DEFAULT_ASSET_QUALITY, resizeTo: null };
+        expect(planAssetImageTranscode(candidate(png()), LOSSY)).toEqual(expected);
+        expect(planAssetImageTranscode(candidate(jpeg()), LOSSY)).toEqual(expected);
+    });
+
+    it("reads the WebP quality an advanced project set, and the scale otherwise", () => {
+        const advanced: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageWebpQuality: 55 };
+        expect(planAssetImageTranscode(candidate(png()), advanced)).toMatchObject({ quality: 55 });
+        expect(planAssetImageTranscode(candidate(png()), { ...LOSSY, imageQuality: 40 }))
+            .toMatchObject({ quality: 40 });
+    });
+
+    it("shrinks an image past the cap, and leaves one inside it alone", () => {
+        // The fixture is 64x64. Enlarging would spend bytes on pixels no artist drew, so the cap
+        // only ever works downwards.
+        const capped: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageMaxDimension: 32 };
+        expect(planAssetImageTranscode(candidate(png()), capped))
+            .toMatchObject({ resizeTo: { width: 32, height: 32 } });
+        expect(planAssetImageTranscode(candidate(png()), { ...capped, imageMaxDimension: 512 }))
+            .toMatchObject({ resizeTo: null });
+        // Auto has no cap at all: a build cannot tell art drawn at twice the stage size from art
+        // that is meant to be that size.
+        expect(planAssetImageTranscode(candidate(png()), { ...LOSSY, imageMaxDimension: 32 }))
+            .toMatchObject({ resizeTo: null });
     });
 
     it("refuses an APNG even when it would otherwise qualify", () => {
@@ -170,7 +196,7 @@ describe("planAssetImageTranscode", () => {
 
     it("still converts a baked character avatar, whose id is synthetic but slash-free", () => {
         expect(planAssetImageTranscode(candidate(png(), { manifestKey: "character-avatar:yuki:a1%2Bb2" }), LOSSY))
-            .toEqual({ action: "lossy" });
+            .toMatchObject({ action: "lossy" });
     });
 
     it("refuses a format it does not convert, including WebP itself", () => {

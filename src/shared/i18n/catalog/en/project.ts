@@ -63,6 +63,11 @@ export const project = {
         crash: "Crashes",
         mobile: "Mobile",
     },
+    /** The two ways a track's settings can be stated. */
+    compressionMode: {
+        auto: "Automatic",
+        advanced: "Advanced",
+    },
     distribution: {
         description: "Kept with the project and shared by everyone who builds it. A build accepts only patches made under the key it was built with.",
         absent: "No key yet.",
@@ -452,6 +457,24 @@ export const project = {
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
+        imageModeTitle: "Image settings",
+        imageModeDescription: "Automatic uses one quality. Advanced sets the encoder's values.",
+        imageWebpQualityTitle: "WebP quality",
+        imageWebpQualityDescription: "Quality passed to the WebP encoder, from 1 to 100.",
+        imageMaxDimensionTitle: "Maximum size",
+        imageMaxDimensionDescription: "Images longer than this on their longest edge are scaled down. 0 keeps every image at the size it was saved.",
+        audioModeTitle: "Audio settings",
+        audioModeDescription: "Automatic uses one quality. Advanced sets the encoder's values.",
+        audioBitrateKbpsTitle: "Bitrate",
+        audioBitrateKbpsDescription: "AAC bitrate, in kbit/s.",
+        audioSampleRateHzTitle: "Maximum sample rate",
+        audioSampleRateHzDescription: "Audio recorded above this rate is resampled down to it. 0 keeps every recording at its own rate.",
+        videoModeTitle: "Video settings",
+        videoModeDescription: "Automatic uses one quality. Advanced sets the encoder's values.",
+        videoCrfTitle: "CRF",
+        videoCrfDescription: "VP9 constant rate factor. Lower is better quality and a larger file.",
+        videoMaxHeightTitle: "Maximum height",
+        videoMaxHeightDescription: "Video taller than this is scaled down. 0 keeps every clip at its own size.",
         compressImagesTitle: "Compress images",
         compressImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
         imageQualityTitle: "Image quality",

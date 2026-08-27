@@ -26,10 +26,16 @@ function audioReport(codec: string, sampleRate?: string): ProbeReport {
     };
 }
 
-function videoReport(codec = "h264", tags?: Record<string, string>): ProbeReport {
+function videoReport(codec = "h264", tags?: Record<string, string>, height?: number): ProbeReport {
     return {
         streams: [
-            { index: 0, codec_type: "video", codec_name: codec, ...(tags ? { tags } : {}) },
+            {
+                index: 0,
+                codec_type: "video",
+                codec_name: codec,
+                ...(tags ? { tags } : {}),
+                ...(height ? { height } : {}),
+            },
             { index: 1, codec_type: "audio", codec_name: "aac" },
         ],
     };
@@ -147,6 +153,39 @@ describe("planAssetMediaCompression", () => {
             expect(planAssetMediaCompression(candidate({ report: audioReport("flac", rate) }), ALL_ON))
                 .toMatchObject({ sampleRateHz: null });
         }
+    });
+
+    it("scales a video down past the cap, and leaves one inside it alone", () => {
+        const capped: AssetCompressionConfiguration = { ...ALL_ON, videoMode: "advanced", videoMaxHeight: 720 };
+        expect(planAssetMediaCompression(
+            candidate({ assetType: "video", report: videoReport("h264", undefined, 1080) }),
+            capped,
+        )).toMatchObject({ maxHeight: 720 });
+        for (const height of [720, 480, undefined]) {
+            expect(planAssetMediaCompression(
+                candidate({ assetType: "video", report: videoReport("h264", undefined, height) }),
+                capped,
+            )).toMatchObject({ maxHeight: null });
+        }
+        // Auto never resizes.
+        expect(planAssetMediaCompression(
+            candidate({ assetType: "video", report: videoReport("h264", undefined, 2160) }),
+            { ...ALL_ON, videoMaxHeight: 720 },
+        )).toMatchObject({ maxHeight: null });
+    });
+
+    it("takes the encoder settings an advanced project stated", () => {
+        const advanced: AssetCompressionConfiguration = {
+            ...ALL_ON,
+            audioMode: "advanced", audioBitrateKbps: 96, audioSampleRateHz: 0,
+            videoMode: "advanced", videoCrf: 40,
+        };
+        expect(planAssetMediaCompression(candidate({ report: audioReport("flac", "96000") }), advanced))
+            .toMatchObject({ bitrateKbps: 96, sampleRateHz: null });
+        expect(planAssetMediaCompression(
+            candidate({ assetType: "video", report: videoReport() }),
+            advanced,
+        )).toMatchObject({ crf: 40 });
     });
 
     it("carries the authored quality through to the encoder settings", () => {
