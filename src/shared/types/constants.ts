@@ -88,4 +88,14 @@ export enum CacheNamespace {
      * the encoding time it already paid once.
      */
     OptimizedImages = "optimized-images",
+    /**
+     * Compiler toolchains a build downloads because the host has none, one
+     * directory per toolchain and version.
+     *
+     * The largest thing in here by a wide margin - a Zig toolchain is a few
+     * hundred megabytes even pruned - which is exactly why it is listed as its
+     * own bucket rather than folded into the build dependencies beside it: an
+     * author deciding what to reclaim needs to see that number on its own.
+     */
+    Toolchains = "toolchains",
 }

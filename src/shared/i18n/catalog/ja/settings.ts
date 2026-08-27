@@ -255,6 +255,10 @@ export const settings = {
             description:
                 "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー",
         },
+        zigMirror: {
+            label: "コンパイラーツールチェーンのミラー",
+            description: "ビルドがダウンロードするコンパイラーツールチェーンのミラー",
+        },
         downloadRewrites: {
             label: "ダウンロード先の書き換え",
         },
@@ -447,6 +451,10 @@ export const settings = {
                 buildDependencies: {
                     label: "プラグインのビルド用ファイル",
                     description: "ビルドしたゲームに含めるためプラグインが取ってくるアーカイブ",
+                },
+                toolchains: {
+                    label: "コンパイラーツールチェーン",
+                    description: "ビルドのために取得したコンパイラー。次に必要になったとき再取得されます",
                 },
                 browser: {
                     label: "画面のキャッシュ",
