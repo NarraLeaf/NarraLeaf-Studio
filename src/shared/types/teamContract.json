@@ -8,6 +8,7 @@
     "clients",
     "live",
     "overlay",
+    "admin",
     "password-sign-in",
     "project-history"
   ],
@@ -46,7 +47,21 @@
     "live.say",
     "overlay.list",
     "overlay.put",
-    "overlay.drop"
+    "overlay.drop",
+    "admin.users.list",
+    "admin.users.create",
+    "admin.users.disable",
+    "admin.users.enable",
+    "admin.users.grantAdmin",
+    "admin.users.revokeAdmin",
+    "admin.users.revokeTokens",
+    "admin.tokens.mint",
+    "admin.settings.list",
+    "admin.settings.set",
+    "admin.keys.list",
+    "admin.keys.rotate",
+    "admin.audit.list",
+    "admin.server.status"
   ],
   "topics": {
     "projects": "projects",
@@ -55,7 +70,11 @@
     "projectOverlay": "project:{project}/overlay",
     "projectClients": "project:{project}/clients",
     "projectLive": "project:{project}/live",
-    "live": "live:{session}"
+    "live": "live:{session}",
+    "adminUsers": "admin/users",
+    "adminSettings": "admin/settings",
+    "adminKeys": "admin/keys",
+    "adminRefusals": "admin/refusals"
   },
   "frames": {
     "fromServer": [
