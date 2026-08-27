@@ -8,7 +8,7 @@ import {
 import {compileDocumentPathPattern} from "../documentPath";
 import {defineDocumentSpec} from "../registry";
 import {authoredName, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
-import {countConflicts, decision, mergeKeyed} from "./mergeHelpers";
+import {countConflicts, decision, keyedRowLabel, mergeKeyed} from "./mergeHelpers";
 import {isJsonObject, parameterFromPath, requireDocumentObject} from "./parseHelpers";
 
 /**
@@ -139,14 +139,9 @@ export function merge3AssetsMetadata(
     const assets = mergeKeyed(base?.assets, mine.assets, theirs.assets);
     const decisions: DocumentMergeDecision[] = assets.rows.map(row => {
         const present = (row.mine.value ?? row.theirs.value ?? row.base.value) as AssetMetadataEntry | undefined;
-        // Which of the three words this row gets is decided by the BASE, not by which side is
-        // empty: "mine does not have it" is an addition by them when the base did not have it
-        // either, and a removal by me when it did. The two read identically from the sides alone.
-        const label = row.mine.present && row.theirs.present && row.base.present ? LABEL.changed
-            : !row.mine.present || !row.theirs.present ? (row.base.present ? LABEL.removed : LABEL.added)
-                : LABEL.added;
         return decision(["assets", row.key], row, {
-            label,
+            // Decided by the base rather than by which side is empty - see `keyedRowLabel`.
+            label: keyedRowLabel(row, LABEL),
             subject: authoredName(present?.name),
         });
     });

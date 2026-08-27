@@ -16,7 +16,7 @@ import {
 import {compileDocumentPathPattern} from "../documentPath";
 import {defineDocumentSpec} from "../registry";
 import {change, diffKeyed, fromToParams, previewValue, sameJsonValue} from "./diffHelpers";
-import {countConflicts, decision, mergeKeyed} from "./mergeHelpers";
+import {countConflicts, decision, keyedRowLabel, mergeKeyed} from "./mergeHelpers";
 import {parameterFromPath, rejectNewerSchema, requireDocumentObject, requireOptionalMap} from "./parseHelpers";
 
 /**
@@ -115,11 +115,7 @@ export function merge3Localization(
         // story text id or a `key:`/`char:` handle, none of which the author typed, and `subject` is
         // defined as the author's own word. What they recognise a row by is the two translations
         // beside it, which is what {@link DocumentMergeSide.value} carries.
-        decision(["units", row.key], row, {
-            label: row.mine.present && row.theirs.present && row.base.present ? LABEL.changed
-                : row.mine.present && row.theirs.present ? LABEL.added
-                    : row.base.present ? LABEL.removed : LABEL.added,
-        }));
+        decision(["units", row.key], row, {label: keyedRowLabel(row, LABEL)}));
 
     return {
         document: {

@@ -192,13 +192,16 @@ describe("readMergeDocument", () => {
     });
 
     it("reports a spec with no three-way merge", async () => {
+        // The palette, and it is one of the formats whose lack of a `merge3` is the answer rather
+        // than a gap: a colour stack is small, whole, and read as one thing. The mixer used to
+        // stand here and now merges per track, which is what this file is the other half of.
         const root = tmp();
-        const document = `${JSON.stringify({ schemaVersion: 1, tracks: [] }, null, 2)}\n`;
-        write(root, "editor/audio-tracks.json", "<<<<<<< ours");
-        write(root, "editor/audio-tracks.json~mine", document);
-        write(root, "editor/audio-tracks.json~theirs", document);
+        const document = `${JSON.stringify({ schemaVersion: 3, colors: [] }, null, 2)}\n`;
+        write(root, "editor/brand.json", "<<<<<<< ours");
+        write(root, "editor/brand.json~mine", document);
+        write(root, "editor/brand.json~theirs", document);
 
-        expect((await readMergeDocument(root, "editor/audio-tracks.json")).blocked).toBe("no-merge3");
+        expect((await readMergeDocument(root, "editor/brand.json")).blocked).toBe("no-merge3");
     });
 
     it("reports a side that is not there", async () => {

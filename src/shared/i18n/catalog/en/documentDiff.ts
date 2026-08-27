@@ -235,6 +235,18 @@ export const documentDiff = {
         statusReviewed: "Now reviewed",
     },
     /**
+     * Tier 2 only, the developer-authored named strings.
+     *
+     * Three words rather than the comparison's fuller list, because these are decision rows: what a
+     * merge asks about one key is which side's definition to keep, and the key itself - the one map
+     * in the project whose keys somebody typed - is what identifies the row.
+     */
+    localizationKeys: {
+        added: "Named string added",
+        removed: "Named string removed",
+        changed: "Named string changed",
+    },
+    /**
      * Tier 1, the interface document: Surfaces and the elements on them.
      *
      * `subject` carries the author's own word - a Surface's name, an element's name - and is drawn
@@ -396,6 +408,8 @@ export const documentDiff = {
         loopOn: "Loops by default",
         loopOff: "Plays once by default",
         order: "Tracks reordered",
+        /** Tier 2 only: a merge decides a whole track at a time, never a field of one. */
+        changed: "Track changed",
     },
     /**
      * Tier 1, the project's saved and global variables.
@@ -416,6 +430,8 @@ export const documentDiff = {
         /** The key the value is kept under, which a rename is designed never to touch. */
         storageKey: "Values already saved are no longer found",
         description: "Note changed",
+        /** Tier 2 only: a merge decides a whole variable at a time, never a field of one. */
+        changed: "Variable changed",
     },
     /**
      * Tier 1, the fields one save slot carries.
