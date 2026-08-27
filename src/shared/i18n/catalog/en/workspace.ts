@@ -662,6 +662,8 @@ export const workspace = {
              */
             task: {
                 weatherBake: "Baking screen effect",
+                toolchainDownload: "Downloading build tools",
+                pluginDownload: "Downloading plugin files",
             },
             openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",

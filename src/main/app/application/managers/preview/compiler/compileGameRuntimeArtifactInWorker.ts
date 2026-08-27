@@ -5,6 +5,7 @@ import type {
     CompileWorkerOutboundMessage,
     ShippedContentAuditReport,
 } from "@/buildWorker/compileWorkerProtocol";
+import { DownloadTaskBridge } from "../../tasks/downloadTasks";
 import { bakeWeatherClipsForPack } from "../../weather/weatherClipsForPack";
 import { screenEffectBakeThreads } from "../../weather/screenEffectQuality";
 import type {
@@ -14,7 +15,7 @@ import type {
 
 type CompileWorkerHostApp = Pick<
     App,
-    "getDistDir" | "getDefaultGameIconPath" | "getWeatherBakeManager" | "globalState"
+    "getDistDir" | "getDefaultGameIconPath" | "getWeatherBakeManager" | "globalState" | "getTaskScheduler"
 >;
 
 export type CompileWorkerHooks = {
@@ -102,12 +103,20 @@ export async function compileGameRuntimeArtifactInWorker(
             env: process.env,
         });
         hooks?.onStart?.(worker);
+        // Whatever this compile has to fetch, on the status bar while it does. Owned here rather
+        // than by the four callers because none of them knows a download is possible: it happens
+        // several layers inside the compile, only for a project whose plugins declare binaries, and
+        // only on the first build of a machine.
+        const downloads = new DownloadTaskBridge(app.getTaskScheduler(), `compile:${worker.pid ?? process.pid}`);
         let settled = false;
         const settle = (fn: () => void) => {
             if (settled) {
                 return;
             }
             settled = true;
+            // A killed worker sends no closing event for a transfer it was in the middle of, so the
+            // end of the compile closes whatever is still open.
+            downloads.endAll();
             fn();
         };
         // The compile emits no protocol logs, but plugin-data resolution can
@@ -115,6 +124,10 @@ export async function compileGameRuntimeArtifactInWorker(
         worker.stdout?.on("data", chunk => process.stdout.write(chunk));
         worker.stderr?.on("data", chunk => process.stderr.write(chunk));
         worker.on("message", (message: CompileWorkerOutboundMessage) => {
+            if (message.type === "download") {
+                downloads.accept(message.event);
+                return;
+            }
             if (message.type === "done") {
                 worker.kill();
                 if (message.audit) {

@@ -622,6 +622,8 @@ export const workspace = {
              */
             task: {
                 weatherBake: "画面エフェクトを焼き込み中",
+                toolchainDownload: "ビルドツールをダウンロード中",
+                pluginDownload: "プラグインのファイルをダウンロード中",
             },
             openConsole: "コンソールを開く",
             unsavedChanges: "未保存の変更",

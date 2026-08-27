@@ -53,6 +53,9 @@ const SPELLCHECK_DICTIONARIES_RELATIVE = path.join(
 const OPTIMIZED_IMAGES_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.OptimizedImages);
 const COMPRESSED_MEDIA_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.CompressedMedia);
 
+/** Compiler toolchains fetched for a build; must agree with `zigCacheRoot`. */
+const TOOLCHAINS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.Toolchains);
+
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
 }
@@ -128,6 +131,11 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             id: "buildDependencies",
             dirs: [path.join(userDataDir, BUILD_DEPS_RELATIVE)],
             displayPath: path.join(userDataDir, BUILD_DEPS_RELATIVE),
+        },
+        {
+            id: "toolchains",
+            dirs: [path.join(userDataDir, TOOLCHAINS_RELATIVE)],
+            displayPath: path.join(userDataDir, TOOLCHAINS_RELATIVE),
         },
         {
             id: "electronBuilder",

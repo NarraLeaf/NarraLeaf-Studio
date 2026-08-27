@@ -61,6 +61,7 @@ import {
     collectSceneEffects,
     listNumericStoryVariables,
     sceneWritesAsUncertain,
+    sceneWritesBefore,
     unionVariableRanges,
     variableRangesEqual,
     type SceneFlowBlueprintWrites,
@@ -83,6 +84,15 @@ export type SceneFlowCoverage = {
     takenBranchIds: Set<string>;
     /** The same, ignoring conditions. */
     structuralBranchIds: Set<string>;
+    /**
+     * The unreachable scenes worth naming: those with at least one predecessor a path DOES reach.
+     *
+     * One bad guard closes a door, and everything behind that door is unreachable too - a fixture
+     * with one impossible condition on its entry scene's only exit turned eleven of twelve scenes
+     * unreachable, which is one mistake and eleven findings. A report that names only the frontier
+     * names the door; what is behind it follows from that and needs no sentence of its own.
+     */
+    frontierUnreachableSceneIds: Set<StorySceneId>;
     /** `/ending` row ids a feasible path reaches. */
     reachedEndingIds: Set<StoryBlockId>;
     /** The same, ignoring conditions. */
@@ -101,6 +111,15 @@ export type SceneFlowCoverageOptions = {
     blueprintWrites?: SceneFlowBlueprintWrites;
     /** Prebuilt graph, when the caller already has one for this exact document. */
     graph?: SceneFlowGraph;
+    /**
+     * Variable keys something outside this story writes, which this walk therefore cannot bound.
+     *
+     * `saved` and `persistent` outlive any one document: a counter another story moves has an
+     * arrival value here that no walk of THIS scene graph can see, and seeding it from its declared
+     * default would be describing a playthrough nobody has. Seeded `unknown`, which is absorbing, so
+     * no guard on one ever prunes.
+     */
+    externallyWrittenKeys?: ReadonlySet<string>;
     /**
      * Whether the project holds a writer this analysis cannot read — a `scriptModule` blueprint, say.
      *
@@ -139,12 +158,15 @@ function armGuard(scene: { blocks: Record<StoryBlockId, StoryBlock> }, blockId: 
 }
 
 /** The state a story starts in: every numeric variable at its declared default, or unknown. */
-function seedState(variables: readonly SceneFlowNumericVariable[]): VariableState {
+function seedState(
+    variables: readonly SceneFlowNumericVariable[],
+    externallyWritten: ReadonlySet<string>,
+): VariableState {
     const state: VariableState = new Map();
     for (const variable of variables) {
         // A missing default is not zero. The compiler seeds a saved variable to `null` and skips a
         // scene-local with none, so a number the author never stated is a number nobody knows.
-        state.set(variable.key, variable.defaultValue === null
+        state.set(variable.key, variable.defaultValue === null || externallyWritten.has(variable.key)
             ? UNKNOWN
             : { kind: "known", min: variable.defaultValue, max: variable.defaultValue });
     }
@@ -295,7 +317,7 @@ export function computeSceneFlowCoverage(
     const updates = new Map<StorySceneId, number>();
     const queue: StorySceneId[] = [];
 
-    const seed = seedState(variables);
+    const seed = seedState(variables, options.externallyWrittenKeys ?? new Set());
     const push = (sceneId: StorySceneId, state: VariableState): void => {
         if (!document.scenes[sceneId]) {
             return;
@@ -341,16 +363,27 @@ export function computeSceneFlowCoverage(
         // The scene's own unguarded writes run on every visit, so they are applied before anything
         // leaves; the arms' writes are applied per arm, on the way out.
         const afterScene = applyToState(entered, sceneEffects.get(sceneId) ?? [], variables);
-        // What a guard written anywhere in this scene has to be judged against - see the header.
-        const guardBound = applyToState(entered, sceneWritesAsUncertain(document, sceneId, options.blueprintWrites), variables);
+        // The blunt bound, used for any arm whose position in the scene cannot be read.
+        const wholeSceneBound = applyToState(
+            entered,
+            sceneWritesAsUncertain(document, sceneId, options.blueprintWrites),
+            variables,
+        );
 
         for (const exit of continuations.get(sceneId) ?? []) {
             // An arm the graph does not know is taken rather than pruned: it is a malformed document
             // (an option with no `choice` above it), and deleting a path because of that would be
             // reporting the defect twice, the second time as content nobody can reach.
             const arm = exit.branchId ? armsById.get(exit.branchId) : undefined;
-            if (arm && !armIsPassable(scene, arm, guardBound)) {
-                continue;
+            if (arm) {
+                // Rows above this arm have run and rows below it have not, so the writes that can
+                // have moved the counter are the ones before it. Where that cannot be read - a
+                // `goto`, a guard inside a loop - the whole-scene bound stands in.
+                const before = sceneWritesBefore(document, sceneId, arm.blockId, options.blueprintWrites);
+                const bound = before ? applyToState(entered, before, variables) : wholeSceneBound;
+                if (!armIsPassable(scene, arm, bound)) {
+                    continue;
+                }
             }
             if (arm) {
                 takenBranchIds.add(arm.id);
@@ -370,6 +403,7 @@ export function computeSceneFlowCoverage(
         return {
             reachableSceneIds: new Set(structural.sceneIds),
             structuralSceneIds: structural.sceneIds,
+            frontierUnreachableSceneIds: new Set(),
             takenBranchIds: new Set(structural.branchIds),
             structuralBranchIds: structural.branchIds,
             reachedEndingIds: new Set(structural.endingIds),
@@ -380,12 +414,39 @@ export function computeSceneFlowCoverage(
     return {
         reachableSceneIds,
         structuralSceneIds: structural.sceneIds,
+        frontierUnreachableSceneIds: frontierOf(structural, continuations, reachableSceneIds),
         takenBranchIds,
         structuralBranchIds: structural.branchIds,
         reachedEndingIds,
         structuralEndingIds: structural.endingIds,
         settled: true,
     };
+}
+
+/**
+ * The unreachable scenes a path gets *next to* - the doors, not the rooms behind them.
+ *
+ * A scene is on the frontier when something structurally leads into it from a scene a feasible path
+ * does reach. Everything else that is unreachable is unreachable because one of these is, and a
+ * report that listed all of them would say one mistake eleven times.
+ */
+function frontierOf(
+    structural: { sceneIds: Set<StorySceneId> },
+    continuations: Map<StorySceneId, SceneFlowContinuation[]>,
+    reachable: ReadonlySet<StorySceneId>,
+): Set<StorySceneId> {
+    const frontier = new Set<StorySceneId>();
+    for (const sceneId of reachable) {
+        for (const exit of continuations.get(sceneId) ?? []) {
+            if (exit.kind === "ending" || exit.kind === "stop") {
+                continue;
+            }
+            if (structural.sceneIds.has(exit.target) && !reachable.has(exit.target)) {
+                frontier.add(exit.target);
+            }
+        }
+    }
+    return frontier;
 }
 
 /** How many times one scene's state may move before it is widened to unknown. */

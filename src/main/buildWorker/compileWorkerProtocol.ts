@@ -1,3 +1,4 @@
+import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
 import type {
     GameRuntimeArtifactCompileInput,
     GameRuntimeArtifactCompileResult,
@@ -49,8 +50,22 @@ export type CompileWorkerErrorMessage = {
     message: string;
 };
 
+/**
+ * A redistributable this compile is fetching, so a build that has stopped for a download says so.
+ *
+ * A plugin may declare binaries whose licence lets a game ship them but not a public registry mirror
+ * them, and the first build on a machine pulls each one. That happens here, in a process with no
+ * window; the byte count crosses so the main process can put it on the status bar in the language
+ * that window is showing.
+ */
+export type CompileWorkerDownloadMessage = {
+    type: "download";
+    event: DownloadProgressEvent;
+};
+
 export type CompileWorkerInboundMessage = CompileWorkerStartMessage;
 
 export type CompileWorkerOutboundMessage =
     | CompileWorkerDoneMessage
+    | CompileWorkerDownloadMessage
     | CompileWorkerErrorMessage;

@@ -291,6 +291,14 @@ export interface GlobalStateType extends Record<string, any> {
      */
     "build.electronBuilderBinariesMirror": string;
     /**
+     * Base URL for the Zig toolchain a build downloads when the host has none; "" = the
+     * official ziglang.org source. A third source rather than a mode of either above for
+     * the same reason those two are separate: the layout is its own
+     * (`<mirror><version>/<archive>`), and nothing about the other two implies it. Takes
+     * precedence over the `NARRALEAF_ZIG_MIRROR` environment variable.
+     */
+    "build.zigMirror": string;
+    /**
      * Ordered prefix substitutions applied to download URLs Studio did not choose - the
      * plugin `.zip` and icon a registry index names, and the archive a plugin's
      * `contributes.buildDependencies` names. Those arrive inside a document, so no
@@ -511,6 +519,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
     "build.electronBuilderBinariesMirror": "",
+    "build.zigMirror": "",
     "network.downloadRewrites": [],
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",

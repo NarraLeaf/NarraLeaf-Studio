@@ -242,6 +242,10 @@ export const settings = {
             label: "构建工具下载镜像",
             description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址",
         },
+        zigMirror: {
+            label: "编译工具链下载镜像",
+            description: "构建时下载编译工具链所用的镜像地址",
+        },
         downloadRewrites: {
             label: "下载地址替换",
         },
@@ -428,6 +432,10 @@ export const settings = {
                 buildDependencies: {
                     label: "插件构建文件",
                     description: "插件为打包进游戏而下载的压缩包",
+                },
+                toolchains: {
+                    label: "编译工具链",
+                    description: "构建时下载的编译器，下次需要时会重新下载",
                 },
                 browser: {
                     label: "界面缓存",

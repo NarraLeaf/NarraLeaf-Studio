@@ -5,6 +5,8 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { promisify } from "util";
+import { readBodyWithProgress } from "@shared/types/downloadProgress";
+import { reportDownload } from "./downloadReporting";
 
 /**
  * Pre-provisions electron-builder's winCodeSign cache on Windows hosts that
@@ -75,12 +77,20 @@ async function canCreateSymlinks(): Promise<boolean> {
     }
 }
 
+/** Names this transfer for the readout; one per build, so a constant is enough. */
+const WIN_CODE_SIGN_TRANSFER_ID = "winCodeSign";
+
 async function downloadArchive(url: string): Promise<Buffer> {
     const response = await fetch(url);
     if (!response.ok) {
         throw new Error(`download failed with HTTP ${response.status}`);
     }
-    const buffer = Buffer.from(await response.arrayBuffer());
+    // Read chunk by chunk rather than through `arrayBuffer()`, which produces the whole body at once
+    // and so can report nothing between "started" and "finished". The bundle is a few tens of
+    // megabytes over whatever connection the author has; that wait deserves a number.
+    const buffer = await readBodyWithProgress(response, (done, total) => {
+        reportDownload({ phase: "advance", id: WIN_CODE_SIGN_TRANSFER_ID, done, total });
+    });
     const sha512 = createHash("sha512").update(buffer).digest("base64");
     if (sha512 !== WIN_CODE_SIGN_SHA512) {
         throw new Error(`checksum mismatch for ${url}`);
@@ -118,7 +128,14 @@ export async function ensureWinCodeSignCache(log: Log, binariesMirrorUrl?: strin
         log("info", "preparing winCodeSign cache (host cannot create symlinks)");
         const url = `${binariesMirror(binariesMirrorUrl)}${WIN_CODE_SIGN_NAME}/${WIN_CODE_SIGN_NAME}.7z`;
         await fs.mkdir(path.dirname(finalDir), { recursive: true });
-        await fs.writeFile(archivePath, await downloadArchive(url));
+        reportDownload({ phase: "start", id: WIN_CODE_SIGN_TRANSFER_ID, kind: "toolchainDownload" });
+        try {
+            await fs.writeFile(archivePath, await downloadArchive(url));
+        } finally {
+            // Closed on the way out either way: a transfer that failed is still a transfer that is
+            // no longer happening, and the reason goes to the log below where it can be read.
+            reportDownload({ phase: "end", id: WIN_CODE_SIGN_TRANSFER_ID });
+        }
         await execFileAsync(path7za, ["x", "-bd", "-y", `-o${stagingDir}`, "-xr!darwin", archivePath]);
         // rcedit is what the packaging step actually needs from the bundle.
         await fs.access(path.join(stagingDir, "rcedit-x64.exe"));

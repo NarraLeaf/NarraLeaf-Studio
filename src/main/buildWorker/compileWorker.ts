@@ -5,6 +5,7 @@ import type {
     CompileWorkerOutboundMessage,
     ShippedContentAuditReport,
 } from "./compileWorkerProtocol";
+import { setDownloadReporter } from "./downloadReporting";
 
 /**
  * Artifact-compile worker entry, forked as an Electron utility process. Running
@@ -30,6 +31,12 @@ const parentPort = (process as unknown as { parentPort: ParentPort }).parentPort
 function send(message: CompileWorkerOutboundMessage): void {
     parentPort.postMessage(message);
 }
+
+// The one thing this compile does that is neither reading nor writing a local file: fetching what a
+// project needs and this machine has not got - the redistributables a plugin declares, and the
+// toolchain a protected build compiles with. Registered at load rather than per compile because the
+// downloaders sit several layers in, none of which has any business carrying a progress channel.
+setDownloadReporter(event => send({ type: "download", event }));
 
 /**
  * Load and run the audit bundle sitting beside this one.
