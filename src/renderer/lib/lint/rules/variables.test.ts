@@ -1138,6 +1138,65 @@ describe("variables/condition-never-holds", () => {
         })).toEqual([]);
     });
 
+    it("does not count the write the guarded arm itself applies", async () => {
+        // `if affection >= 50 { affection += 100 }`. The bound used to hold that `+100`, so the rule
+        // could never find the shape it exists for. The write is inside the arm the guard opens, so
+        // it cannot have run before the guard was tested.
+        const guard = binary(">=", varRead(AFFECTION_REF, "affection"), num(50));
+        const ctx = createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    {
+                        id: "if1",
+                        kind: "control",
+                        payload: { control: "condition" },
+                        children: [{
+                            id: "b1",
+                            kind: "control",
+                            payload: {
+                                control: "conditionBranch",
+                                branch: "if",
+                                condition: { kind: "expression", expression: expr("affection >= 50", guard) },
+                            },
+                            children: [incBy("w1", AFFECTION_REF, 100, "affection")],
+                        }],
+                    },
+                    incBy("w2", AFFECTION_REF, 1, "affection"),
+                ], ),
+            ], "a")],
+        });
+
+        const findings = await runAsync("variables/condition-never-holds", ctx);
+        expect(findings).toHaveLength(1);
+        // Only the `+1` below it is uncertain-but-possible, and it sits after the guard, so the
+        // bound is the arrival value alone.
+        expect(findings[0]?.messageParams).toMatchObject({ variable: "affection", bound: "0..0" });
+    });
+
+    it("leaves a loop's own stop condition alone", async () => {
+        // `/repeat until affection >= 10` around the rows that earn affection. In document order the
+        // writes are all BELOW the condition, but the condition is re-tested after each lap, so they
+        // precede it - and judging it on the starting value reports the loop working as broken.
+        // Found by running this over a real project, not by reasoning about it.
+        const guard = binary(">=", varRead(AFFECTION_REF, "affection"), num(10));
+        const ctx = createTestLintContext({
+            stories: [storyFrom("s1", "Story", [
+                scene("a", "A", [
+                    numberDeclaration("affection", "affection", 0),
+                    {
+                        id: "r1",
+                        kind: "control",
+                        payload: { control: "repeat", until: { kind: "expression", expression: expr("affection >= 10", guard) } },
+                        children: [incBy("w1", AFFECTION_REF, 1, "affection")],
+                    },
+                ]),
+            ], "a")],
+        });
+
+        expect(await runAsync("variables/condition-never-holds", ctx)).toEqual([]);
+    });
+
     it("counts the guard's own scene, not only what arrives at it", async () => {
         // The write sits above the guard in the SAME scene. Judging on the arrival range alone would
         // report a condition the row two lines up makes reachable.

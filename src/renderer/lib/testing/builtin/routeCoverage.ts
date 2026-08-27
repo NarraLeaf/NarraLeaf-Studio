@@ -1,7 +1,7 @@
 import { scanProjectStoryEntryPoints } from "@shared/story/storyReachability";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { StoryDocument, StorySceneId } from "@shared/types/story";
-import { listStoryEndings } from "@shared/types/story";
+import { listSceneBlocksInDocumentOrder, listScenesInDocumentOrder, listStoryEndings, storyVariableRefKey } from "@shared/types/story";
 import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFlowModel";
 import { computeSceneFlowCoverage } from "@/apps/workspace/modules/story-flow/sceneFlowCoverage";
 import { collectBlueprintVariableWrites } from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
@@ -92,6 +92,7 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
             const opaqueWriters = Object.values(blueprintDocument?.blueprints ?? {})
                 .some(blueprint => blueprint && blueprint.program?.kind !== "graph");
 
+            const writtenByStory = new Map(stories.map(story => [story.id, storyWrittenKeys(story.document)]));
             const analysed = stories.filter(story => (byStory.get(story.id)?.size ?? 0) > 0);
             if (analysed.length === 0) {
                 return skip("noEntryPoint");
@@ -113,11 +114,23 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                     continue;
                 }
                 const graph = buildSceneFlowGraph(story.document);
+                // What this story's own graph cannot bound: a counter another story moves, or one a
+                // surface handler writes on the player's own schedule.
+                const externallyWrittenKeys = new Set(blueprintWrites.ambient);
+                for (const [storyId, keys] of writtenByStory) {
+                    if (storyId === story.id) {
+                        continue;
+                    }
+                    for (const key of keys) {
+                        externallyWrittenKeys.add(key);
+                    }
+                }
                 const coverage = computeSceneFlowCoverage(story.document, entrySceneIds, {
                     graph,
                     registry,
                     blueprintWrites,
                     opaqueWriters,
+                    externallyWrittenKeys,
                 });
                 if (!coverage.settled) {
                     // The walk hit its own guard rail, so it does not know which scenes had settled.
@@ -127,10 +140,9 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
                     continue;
                 }
 
-                for (const sceneId of coverage.structuralSceneIds) {
-                    if (coverage.reachableSceneIds.has(sceneId)) {
-                        continue;
-                    }
+                // The frontier only: a scene behind an unreachable one is unreachable *because* of
+                // it, and naming both says one mistake twice.
+                for (const sceneId of coverage.frontierUnreachableSceneIds) {
                     const scene = story.document.scenes[sceneId];
                     if (!scene) {
                         continue;
@@ -165,7 +177,9 @@ export function createRouteCoverageTest(host: BuiltInTestHost): TestDefinition {
 
                 for (const ending of listStoryEndings(story.document)) {
                     if (coverage.reachedEndingIds.has(ending.endingId)
-                        || !coverage.structuralEndingIds.has(ending.endingId)) {
+                        || !coverage.structuralEndingIds.has(ending.endingId)
+                        // An ending in a scene nothing reaches belongs to that scene's finding.
+                        || !coverage.reachableSceneIds.has(ending.sceneId)) {
                         continue;
                     }
                     unreachableEndings += 1;
@@ -211,6 +225,22 @@ function readRegistry(services: ReturnType<BuiltInTestHost["services"]>): Variab
         console.warn("[route-coverage] variable registry unavailable", error);
         return [];
     }
+}
+
+/** Every variable key one document assigns, disabled rows included - see `storyGuards` for why. */
+function storyWrittenKeys(document: StoryDocument): Set<string> {
+    const keys = new Set<string>();
+    for (const scene of listScenesInDocumentOrder(document)) {
+        if (!scene) {
+            continue;
+        }
+        for (const block of listSceneBlocksInDocumentOrder(scene)) {
+            if (block.kind === "action" && block.payload.action === "setVariable") {
+                keys.add(storyVariableRefKey(block.payload.target));
+            }
+        }
+    }
+    return keys;
 }
 
 /** All or nothing, the same bargain `reachable-endings` strikes: one verdict about the whole project. */

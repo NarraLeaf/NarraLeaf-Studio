@@ -608,6 +608,8 @@ export const workspace = {
              */
             task: {
                 weatherBake: "烘焙屏幕效果",
+                toolchainDownload: "下载构建工具",
+                pluginDownload: "下载插件文件",
             },
             openConsole: "打开控制台",
             unsavedChanges: "未保存的更改",

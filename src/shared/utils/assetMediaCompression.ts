@@ -22,9 +22,8 @@
  */
 
 import {
-    assetTrackCompression,
-    audioBitrateKbpsForQuality,
-    videoCrfForQuality,
+    resolveAudioCompression,
+    resolveVideoCompression,
     type AssetCompressionConfiguration,
 } from "@shared/types/assetCompression";
 import { classifyStreams, probeCarriesAlpha, type ProbeReport } from "@shared/utils/mediaSupport";
@@ -60,7 +59,19 @@ export type AssetMediaCompressionPlan =
         sampleRateHz: number | null;
     }
     /** Re-encode as VP9 with Vorbis in WebM, keep the result only if it is enough smaller. */
-    | { action: "video"; crf: number; lossySource: boolean }
+    | {
+        action: "video";
+        crf: number;
+        lossySource: boolean;
+        /**
+         * Scale down to this height, or `null` to keep the source's.
+         *
+         * Only ever set downwards, and only above the cap, for the same reason the audio side
+         * resamples only downwards: enlarging a picture spends the bitrate on pixels the camera or
+         * the artist never produced.
+         */
+        maxHeight: number | null;
+    }
     | { action: "skip"; reason: AssetMediaSkipReason };
 
 export type AssetMediaCandidate = {
@@ -139,7 +150,7 @@ export function planAssetMediaCompression(
     // video stream into a container chosen for the new audio codec, and the two
     // containers this pipeline can write disagree about which codecs they carry.
     const track = video.length > 0 ? "video" : "audio";
-    const policy = assetTrackCompression(config, track);
+    const policy = track === "video" ? resolveVideoCompression(config) : resolveAudioCompression(config);
     if (!policy.enabled) {
         return { action: "skip", reason: "not-enabled" };
     }
@@ -151,30 +162,44 @@ export function planAssetMediaCompression(
         if (probeCarriesAlpha(candidate.report)) {
             return { action: "skip", reason: "alpha" };
         }
+        const video = policy as ReturnType<typeof resolveVideoCompression>;
         // Video sources are lossy in every practical case, and the ones that are
         // not are so much larger than anything VP9 produces that the bar makes
         // no difference to them.
-        return { action: "video", crf: videoCrfForQuality(policy.quality), lossySource: true };
+        return {
+            action: "video",
+            crf: video.crf,
+            lossySource: true,
+            maxHeight: capBelow(video.maxHeight, sourceHeight(candidate.report)),
+        };
     }
 
+    const sound = policy as ReturnType<typeof resolveAudioCompression>;
     return {
         action: "audio",
-        bitrateKbps: audioBitrateKbpsForQuality(policy.quality),
+        bitrateKbps: sound.bitrateKbps,
         lossySource: !audio.every(stream => audioIsLossless(stream.codec)),
-        sampleRateHz: resampleTarget(candidate.report),
+        sampleRateHz: capBelow(sound.sampleRateHz, sourceSampleRate(candidate.report)),
     };
 }
 
 /**
- * The rate a delivery copy is capped at.
+ * A cap, applied only where it would actually take something away.
  *
- * 48 kHz is what every consumer output device runs at, and what a 96 kHz master is resampled to
- * on its way to one whatever this build does. Doing it in the encoder rather than in the player
- * means the bits are spent on the part of the signal that survives the trip.
+ * Both caps this file carries - the sample rate and the height - are one-way. Handing the encoder a
+ * number above what the source has would not raise its quality; it would spend the same bits
+ * describing detail that was never recorded, and produce a file that is worse and larger at once.
+ * A source whose figure is unknown is left alone, which is the same answer for the same reason.
  */
-const DELIVERY_SAMPLE_RATE_HZ = 48_000;
+function capBelow(cap: number | null, source: number | null): number | null {
+    if (cap === null || source === null) {
+        return null;
+    }
+    return source > cap ? cap : null;
+}
 
-function resampleTarget(report: ProbeReport): number | null {
+/** The highest rate any audio stream is recorded at, or null when the report does not say. */
+function sourceSampleRate(report: ProbeReport): number | null {
     let highest = 0;
     for (const stream of report.streams ?? []) {
         if ((stream.codec_type ?? "").toLowerCase() !== "audio") {
@@ -185,7 +210,21 @@ function resampleTarget(report: ProbeReport): number | null {
             highest = Math.max(highest, rate);
         }
     }
-    return highest > DELIVERY_SAMPLE_RATE_HZ ? DELIVERY_SAMPLE_RATE_HZ : null;
+    return highest > 0 ? highest : null;
+}
+
+/** The tallest video stream, or null when the report does not say. */
+function sourceHeight(report: ProbeReport): number | null {
+    let tallest = 0;
+    for (const stream of report.streams ?? []) {
+        if ((stream.codec_type ?? "").toLowerCase() !== "video" || stream.disposition?.attached_pic === 1) {
+            continue;
+        }
+        if (typeof stream.height === "number" && Number.isFinite(stream.height)) {
+            tallest = Math.max(tallest, stream.height);
+        }
+    }
+    return tallest > 0 ? tallest : null;
 }
 
 /**

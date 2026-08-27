@@ -316,3 +316,100 @@ describe("computeSceneFlowCoverage", () => {
         expect(coverage.takenBranchIds.has("scene-flow:branch:arm1")).toBe(false);
     });
 });
+
+describe("what the walk refuses to over-report", () => {
+    it("names the door, not every room behind it", () => {
+        // One impossible guard on the only way out of the entry closes four scenes. That is one
+        // mistake; a report that named all four would say it four times.
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["j1"]),
+                jump("j1", "b"),
+            ]),
+            scene("b", "B", [jump("j2", "c")]),
+            scene("c", "C", [jump("j3", "d")]),
+            scene("d", "D", []),
+        ]);
+
+        const coverage = coverageOf(doc);
+        expect([...coverage.structuralSceneIds].sort()).toEqual(["a", "b", "c", "d"]);
+        expect([...coverage.reachableSceneIds]).toEqual(["a"]);
+        // Only `b` is next to something a path reaches.
+        expect([...coverage.frontierUnreachableSceneIds]).toEqual(["b"]);
+    });
+
+    it("keeps two doors when two of them are shut", () => {
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                choice("c1", ["o1", "o2"]),
+                option("o1", ["j1"], "left", compare("<=", 0)),
+                option("o2", ["j2"], "right", compare("<=", 0)),
+                jump("j1", "b"),
+                jump("j2", "c"),
+            ]),
+            scene("b", "B", []),
+            scene("c", "C", []),
+        ]);
+
+        expect([...coverageOf(doc).frontierUnreachableSceneIds].sort()).toEqual(["b", "c"]);
+    });
+
+    it("says nothing about a counter something outside this story writes", () => {
+        // The walk covers one story's graph. A `saved` counter chapter two also moves arrives here
+        // holding a number this walk never saw, so seeding it from the declared default would be
+        // describing a playthrough nobody has.
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["j1"]),
+                jump("j1", "b"),
+            ]),
+            scene("b", "B", []),
+        ]);
+
+        expect(coverageOf(doc).reachableSceneIds.has("b")).toBe(false);
+        const withExternal = computeSceneFlowCoverage(doc, new Set(["a"]), {
+            externallyWrittenKeys: new Set([AFFECTION_KEY]),
+        });
+        expect(withExternal.reachableSceneIds.has("b")).toBe(true);
+        expect([...withExternal.frontierUnreachableSceneIds]).toEqual([]);
+    });
+
+    it("judges an arm against the rows above it, not the ones its own body runs", () => {
+        // `if affection >= 50 { affection += 100 }` used to be judged against a bound that already
+        // held the `+100`, so the check could never find it. Reading the rows in order removes the
+        // write the arm itself applies - it cannot have run before the arm was chosen.
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["w1", "j1"]),
+                incBy("w1", 100),
+                jump("j1", "b"),
+            ]),
+            scene("b", "B", []),
+        ]);
+
+        expect(coverageOf(doc).reachableSceneIds.has("b")).toBe(false);
+    });
+
+    it("falls back to the whole scene when a goto can send the run backwards", () => {
+        // With a `goto` in the scene, a row written after the guard can still precede it, so reading
+        // document order literally would narrow the bound - and narrowing is what reports a working
+        // branch as dead.
+        const doc = document([
+            scene("a", "Start", [
+                declaration(0),
+                { id: "lbl", kind: "control", parentId: null, childrenIds: [], payload: { control: "label", name: "top" } } as StoryBlock,
+                ...ifGroup("if1", "arm1", compare(">=", 50), ["j1"]),
+                incBy("w1", 100),
+                { id: "gt", kind: "control", parentId: null, childrenIds: [], payload: { control: "goto", targetLabel: "top" } } as StoryBlock,
+                jump("j1", "b"),
+            ]),
+            scene("b", "B", []),
+        ]);
+
+        expect(coverageOf(doc).reachableSceneIds.has("b")).toBe(true);
+    });
+});

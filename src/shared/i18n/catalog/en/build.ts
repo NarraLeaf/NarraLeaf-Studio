@@ -339,9 +339,9 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",
-        "lossy-images": "Images are re-encoded at quality {quality} and lose detail permanently.",
-        "lossy-audio": "Audio is re-encoded at quality {quality} and loses detail permanently.",
-        "lossy-video": "Video is re-encoded at quality {quality} and loses detail permanently.",
+        "lossy-images": "Images are re-encoded at quality {setting} and lose detail permanently.",
+        "lossy-audio": "Audio is re-encoded at {setting} kbit/s and loses detail permanently.",
+        "lossy-video": "Video is re-encoded at CRF {setting} and loses detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",

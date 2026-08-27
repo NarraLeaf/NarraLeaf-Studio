@@ -867,6 +867,7 @@ export const help = {
                 + "\n"
                 + "- Compression is lossy. It produces much smaller files, and what it drops cannot be recovered.\n"
                 + "- Each switch applies to every package the project builds, on every platform.\n"
+                + "- A track can be set by one quality or by the encoder's own values. Switching to the second starts from what the first was already producing.\n"
                 + "- The project keeps the files as they were imported. Only the shipped copy is compressed.\n"
                 + "- A file that would not come out meaningfully smaller ships unchanged, as does video carrying "
                 + "transparency.\n"

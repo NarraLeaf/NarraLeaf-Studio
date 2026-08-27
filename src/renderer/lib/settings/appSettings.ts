@@ -1220,6 +1220,24 @@ export const AppSettings: AppSettingDefinition[] = [
         },
     },
     {
+        // Read by `zigToolchain.zigMirror`, ahead of the NARRALEAF_ZIG_MIRROR environment
+        // variable. A third field for the reason the second one exists: the layout is
+        // `<mirror><version>/<archive>`, which neither of the two above can be made to produce.
+        key: "build.zigMirror",
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.Source,
+        label: "Compiler toolchain mirror",
+        labelKey: "settings.items.zigMirror.label",
+        description: "Mirror for the compiler toolchain a build downloads.",
+        descriptionKey: "settings.items.zigMirror.description",
+        defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
+    },
+    {
         // The rewrite table (see @shared/utils/downloadSource). Rendered by its own panel:
         // an ordered list of rules is not a value the generic control layer can edit, and
         // the panel owns reading and writing this key exactly as the keybindings panel does.

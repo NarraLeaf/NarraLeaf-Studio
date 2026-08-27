@@ -15,6 +15,11 @@ const BUCKET_LABELS: Array<{ id: CacheBucketId; labelKey: TranslationKey; descri
         descriptionKey: "settings.data.cache.buckets.electronBuilder.description",
     },
     {
+        id: "toolchains",
+        labelKey: "settings.data.cache.buckets.toolchains.label",
+        descriptionKey: "settings.data.cache.buckets.toolchains.description",
+    },
+    {
         id: "buildDependencies",
         labelKey: "settings.data.cache.buckets.buildDependencies.label",
         descriptionKey: "settings.data.cache.buckets.buildDependencies.description",
