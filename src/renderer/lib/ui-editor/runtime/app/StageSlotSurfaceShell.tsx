@@ -203,8 +203,14 @@ export function useStageSlotSurfaceRuntime(input: {
     options: GameUiSlotHostOptions;
     surface: UIStageSurface;
     slotId: UIStageSlotId;
+    /**
+     * Which drawing of this slot's surface this is, for the slot that can have several at once - see
+     * `stageSlotRuntimeScopeId`. Left at zero by every slot drawn once, which is all of them but
+     * choice, and by the first menu when there are several.
+     */
+    slot?: number;
 }): StageSlotSurfaceRuntime {
-    const { options, surface, slotId } = input;
+    const { options, surface, slotId, slot = 0 } = input;
     const {
         sessionId,
         core,
@@ -214,8 +220,8 @@ export function useStageSlotSurfaceRuntime(input: {
         widgetPatchesByScopeRef,
     } = options;
     const runtimeScopeId = useMemo(
-        () => stageSlotRuntimeScopeId(sessionId, slotId, surface.id),
-        [sessionId, slotId, surface.id],
+        () => stageSlotRuntimeScopeId(sessionId, slotId, surface.id, slot),
+        [sessionId, slotId, surface.id, slot],
     );
     const hostAdapterRef = useRef<UIHostAdapter | null>(null);
     const document = bundle.ui.uidoc;

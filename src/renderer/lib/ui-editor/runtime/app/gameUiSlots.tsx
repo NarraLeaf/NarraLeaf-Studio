@@ -11,7 +11,8 @@ import type {
 import { createDialogSlotComponent } from "./DialogSlotSurface";
 import type { DialogClickTargets } from "./dialogClickTargets";
 import { createNotificationSlotComponent } from "./NotificationSlotSurface";
-import { createChoiceSlotComponent, type ChoiceSlotRuntime } from "./ChoiceSlotSurface";
+import { createChoiceSlotComponent } from "./ChoiceSlotSurface";
+import type { ChoiceMenus } from "./choiceMenus";
 import { createNvlSlotComponent } from "./NvlSlotSurface";
 import { createOnStageSlotNode } from "./OnStageSlotSurface";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
@@ -42,9 +43,9 @@ export function createGameUiSlotComponents(input: {
     logLabel: string;
     slotHostOptions: GameUiSlotHostOptions;
     setDialogVirtualClickTarget: (target: HTMLElement | null) => void;
-    setChoiceRuntime: (runtime: ChoiceSlotRuntime | null) => void;
+    choiceMenus: ChoiceMenus;
 }): GameUiSlots {
-    const { uidoc, logLabel, slotHostOptions, setDialogVirtualClickTarget, setChoiceRuntime } = input;
+    const { uidoc, logLabel, slotHostOptions, setDialogVirtualClickTarget, choiceMenus } = input;
     const dialogSurface = findStageSurfaceForSlot(uidoc, "dialog", logLabel);
     const notificationSurface = findStageSurfaceForSlot(uidoc, "notification", logLabel);
     const choiceSurface = findStageSurfaceForSlot(uidoc, "choice", logLabel);
@@ -62,7 +63,7 @@ export function createGameUiSlotComponents(input: {
             ? createNotificationSlotComponent(slotHostOptions, notificationSurface)
             : undefined,
         menu: choiceSurface
-            ? createChoiceSlotComponent(slotHostOptions, choiceSurface, setChoiceRuntime)
+            ? createChoiceSlotComponent(slotHostOptions, choiceSurface, choiceMenus)
             : undefined,
         nvlDialog: nvlSurface
             ? createNvlSlotComponent(slotHostOptions, nvlSurface)
@@ -177,7 +178,8 @@ export type LiveGameUiCallbackDeps = {
     requireLiveGame: (operation: string) => LiveGame;
     /** Latest LiveGame or null; read lazily so callbacks stay stable across session churn. */
     getLiveGame: () => LiveGame | null;
-    choiceRuntimeRef: MutableRefObject<ChoiceSlotRuntime | null>;
+    /** The choice menus on the stage (see `ChoiceMenus`); more than one can be. */
+    choiceMenus: ChoiceMenus;
     /** Fallback nametag captured from `LiveGame.onCharacterPrompt` (see `wireNametagPrompt`). */
     currentDialogNametagRef: MutableRefObject<string | null>;
     /** The engine dialog boxes the custom dialog surfaces have mounted (see `DialogClickTargets`). */
@@ -288,7 +290,7 @@ function toBlueprintHistoryEntries(raw: unknown): BlueprintGameHistoryEntry[] {
  */
 export async function fastForwardToNextChoice(
     liveGame: LiveGame,
-    choiceRuntimeRef: MutableRefObject<ChoiceSlotRuntime | null>,
+    choiceMenus: ChoiceMenus,
 ): Promise<void> {
     const fastForward = (liveGame as {
         fastForward?: (options?: { until?: "menu" | "end" }) => Promise<unknown>;
@@ -301,7 +303,7 @@ export async function fastForwardToNextChoice(
     // registers while a menu is mounted) or we hit the safety bound.
     const maxSteps = 5000;
     for (let step = 0; step < maxSteps; step++) {
-        if (choiceRuntimeRef.current != null) {
+        if (choiceMenus.current() != null) {
             return;
         }
         liveGame.skipDialog();
@@ -315,7 +317,7 @@ export async function fastForwardToNextChoice(
  * no React state — so hosts can build them once per session.
  */
 export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGameUiCallbacks {
-    const { requireLiveGame, getLiveGame, choiceRuntimeRef, currentDialogNametagRef, dialogClickTargets } = deps;
+    const { requireLiveGame, getLiveGame, choiceMenus, currentDialogNametagRef, dialogClickTargets } = deps;
 
     return {
         getCurrentNametag: (): string | null => {
@@ -383,7 +385,10 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         getChoiceCountInGame: (): number => {
-            return choiceRuntimeRef.current?.count ?? 0;
+            // The newest menu on the stage. A graph running inside one never reaches here - the
+            // choice surface binds this call to its own menu - so this answers the callers that are
+            // outside every menu.
+            return choiceMenus.current()?.count ?? 0;
         },
 
         isNvlModeInGame: (): boolean => {
@@ -394,7 +399,7 @@ export function createLiveGameUiCallbacks(deps: LiveGameUiCallbackDeps): LiveGam
         },
 
         selectChoiceInGame: async (index: number): Promise<void> => {
-            const runtime = choiceRuntimeRef.current;
+            const runtime = choiceMenus.current();
             if (!runtime) {
                 throw new Error("Select Choice: no active choice menu");
             }
