@@ -191,7 +191,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     );
 
     return (
-        <div className="shrink-0 border-t border-edge bg-surface-sunken">
+        <div className="shrink-0 border-t border-edge bg-surface-sunken" data-help-topic="inputActions">
             <button
                 type="button"
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
