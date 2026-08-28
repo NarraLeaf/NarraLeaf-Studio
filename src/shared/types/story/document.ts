@@ -1865,6 +1865,37 @@ export type StoryTransitionRef = {
     props?: Record<string, StoryLiteralValue>;
 };
 
+/**
+ * The transition a stored ref actually names, with "it names none" read as `none`.
+ *
+ * `kind` is required by the type above and absent on disk all the same. The v17→v18 migration used
+ * to run a `StoryTransitionRef` through the transform migration - the two answer to the same field
+ * name on different payloads - and returned `{mode: "props", to: {}}`: the row kept its transition
+ * field and lost the only word in it. That is fixed where it was written, but every document a
+ * build with the defect migrated still carries such a ref, and the word is not recoverable, because
+ * nothing else in the row says which transition it was.
+ *
+ * A row that names no transition is a row that plays a cut, which is exactly what `none` means, so
+ * it is read as `none` rather than as a transition this build cannot find. The change lands
+ * instantly either way; the difference is that an author is no longer told to fix a row whose only
+ * fault is a field that was eaten, on a build where picking `none` writes no `kind` either.
+ *
+ * Every reader of a stored `kind` asks through here - the story compiler, the
+ * `story/transition-unavailable` lint rule, the inspector's picker, the quick-edit chips and the
+ * script export - so none of them can reach a different verdict about the same row.
+ */
+export function storyTransitionKindOf(transition: { kind?: unknown } | null | undefined): StoryTransitionKind {
+    const kind = transition?.kind;
+    // A blank string is the same statement as an absent one, and reaches here the same way.
+    if (typeof kind !== "string" || kind.trim() === "") {
+        return "none";
+    }
+    // Not necessarily a member of the union: a word off disk this build has never heard of stays
+    // itself, so {@link isPlayableStoryTransitionKind} can still report it. The declared type of
+    // `StoryTransitionRef.kind` already makes the same claim about the same string.
+    return kind as StoryTransitionKind;
+}
+
 export type StoryDiagnosticsMeta = {
     sourceLine?: number;
     sourceColumn?: number;

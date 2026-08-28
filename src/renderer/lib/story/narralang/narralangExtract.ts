@@ -47,6 +47,7 @@ import {
     displayableSubjectWord,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    storyTransitionKindOf,
 } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
@@ -295,7 +296,9 @@ function transitionSlots(
     ref: StoryTransitionRef | undefined,
     context: "scene" | "character",
 ): NarralangSlots {
-    if (!ref || ref.kind === "none") {
+    // A ref that names no kind is a row that names no transition - see `storyTransitionKindOf` - so
+    // it exports as a plain line rather than as a transition the script cannot spell.
+    if (!ref || storyTransitionKindOf(ref) === "none") {
         return {};
     }
     if (ref.kind === "custom" || (ref.props && Object.keys(ref.props).length > 0)) {

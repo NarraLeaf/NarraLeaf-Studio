@@ -20,6 +20,7 @@ import {
     revealableStageObjectDeclarations,
     sceneLabelNames,
     shownStageObjectKeys,
+    storyTransitionKindOf,
     type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
@@ -1213,15 +1214,17 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
  * name is the precise test and the structural one is the loose one.
  *
  * The `kind` must be a string, not merely present: the NVL panel's `transition` is a transform ref,
- * which has no `kind` at all, and is not this rule's business.
+ * which has no `kind` at all, and is not this rule's business. Neither is a transition ref whose own
+ * `kind` is missing or blank - {@link storyTransitionKindOf} reads that as `none`, the compiler
+ * reads it the same way, and a cut a row asked for is not a transition it failed to get.
  */
 function transitionKindNamedByBlock(block: StoryBlock): string | null {
     const transition = (block.payload as { transition?: unknown }).transition;
     if (!transition || typeof transition !== "object") {
         return null;
     }
-    const kind = (transition as { kind?: unknown }).kind;
-    return typeof kind === "string" ? kind : null;
+    const kind = storyTransitionKindOf(transition as { kind?: unknown });
+    return kind === "none" ? null : kind;
 }
 
 /**

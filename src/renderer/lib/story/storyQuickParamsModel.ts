@@ -1,4 +1,5 @@
 import type { StoryBlock } from "@shared/types/story";
+import { storyTransitionKindOf } from "@shared/types/story";
 import { formatStorySecondsValue } from "@shared/utils/storyTime";
 
 /**
@@ -67,8 +68,10 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         return [durationParam("duration", "", payload.durationMs ?? 0, WAIT_PRESETS_MS, ms => ({ ...payload, mode: "duration", durationMs: ms }))];
     }
     if (payload.action === "setBackground") {
+        // A ref that names no kind is a cut, the same as one that says `none` — see
+        // `storyTransitionKindOf` — and a cut has no length, so the row offers no number to edit.
         const transition = payload.transition;
-        if (!transition) {
+        if (!transition || storyTransitionKindOf(transition) === "none") {
             return [];
         }
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];
@@ -78,7 +81,7 @@ export function getQuickParams(block: StoryBlock): QuickParam[] {
         // `expression` compiles to `char(src, transition)`. Same rule as `setBackground` above - the
         // number appears only once a transition exists, so a quick edit never has to invent a kind.
         const transition = payload.transition;
-        if (!transition) {
+        if (!transition || storyTransitionKindOf(transition) === "none") {
             return [];
         }
         return [durationParam("d", "d", transition.durationMs ?? 0, undefined, ms => ({ ...payload, transition: { ...transition, durationMs: ms } }))];

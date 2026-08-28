@@ -1558,6 +1558,34 @@ describe("compileStudioStoryToNlr", () => {
         expect(findTransition(compiled)).toBeUndefined();
     });
 
+    it("plays a ref that names no kind as a cut, and says nothing about it either", async () => {
+        // The shape the v17→v18 migration used to leave behind when it ran a transition ref through
+        // the transform migration: the row keeps its `transition` field and loses the only word in
+        // it. The word is not recoverable from anything else in the row, so this is read as the cut
+        // it now names rather than reported as a transition this build cannot find - "choose a
+        // transition on this row" is not advice an author can act on about a field that was eaten,
+        // and the row is indistinguishable from one that was never given a transition at all.
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "setBackground",
+                assetId: "asset-bg",
+                transition: { mode: "props", to: {} } as unknown as StoryTransitionRef,
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ bg }, ["bg"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
     it("reports a kind outside the union as an error and plays the change as a cut", async () => {
         // The bug this file's `default` branch used to hide. A stored `kind` is a string on disk, so
         // a document written by a newer Studio - or one carrying a kind since retired - reaches the

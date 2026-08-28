@@ -1447,6 +1447,20 @@ describe("story/transition-unavailable", () => {
         )).toEqual([]);
     });
 
+    it("says nothing about a row whose transition lost its kind", () => {
+        // What a document migrated by a build with the v17→v18 defect carries: a transition ref that
+        // kept its field and lost its word. The compiler reads that as `none` and plays a cut, so
+        // this rule cannot call it an unavailable transition - the two halves have to agree, and
+        // refusing the build over a word that is simply gone gives the author nothing to fix.
+        expect(run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [
+                { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { mode: "props", to: {} } } },
+                { id: "b2", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "", durationMs: 400 } } },
+            ])])),
+        )).toEqual([]);
+    });
+
     it("stays quiet about a disabled row", () => {
         expect(run(
             "story/transition-unavailable",
