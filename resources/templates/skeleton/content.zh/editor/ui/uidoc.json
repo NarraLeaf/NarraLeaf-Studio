@@ -707,7 +707,6 @@
             "opacity": 1
           },
           "props": {
-            "assetId": null,
             "fitMode": "cover",
             "flipX": false,
             "flipY": false,
@@ -3683,7 +3682,6 @@
             "opacity": 1
           },
           "props": {
-            "assetId": null,
             "fitMode": "cover",
             "flipX": false,
             "flipY": false,
@@ -4229,7 +4227,6 @@
             "opacity": 1
           },
           "props": {
-            "assetId": "93bad884-1f14-4ad2-85fb-c05d7b5ffef6",
             "fitMode": "cover",
             "flipX": false,
             "flipY": false,
@@ -40094,7 +40091,6 @@
         "opacity": 1
       },
       "props": {
-        "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce",
         "fitMode": "cover",
         "flipX": false,
         "flipY": false,
@@ -40104,7 +40100,12 @@
         "borderRadius": 0,
         "borderWidth": 0,
         "borderStyle": "none",
-        "clipContent": true
+        "clipContent": true,
+        "fillType": "image",
+        "imageFill": {
+          "mode": "cover",
+          "assetId": "5322b0e3-f48d-4b77-bfcd-7406613191ce"
+        }
       }
     },
     "c6d9dc8d-9524-4102-985e-5612b971a776": {

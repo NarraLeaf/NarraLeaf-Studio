@@ -97,6 +97,7 @@ import {
     profileCoversBundleId,
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
+import { codecArchiveDir } from "../../../../buildWorker/codecBinary";
 import { perTargetUnpackPattern } from "../../../../buildWorker/perTargetPayload";
 import { ensureZigToolchain } from "../../../../buildWorker/zigToolchain";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
@@ -1529,7 +1530,10 @@ export class GameBuildManager {
                     : {}),
                 rewrites: currentDownloadRewrites(),
             });
-            return { compiler, workDir };
+            // The archive is named rather than left to the package: see
+            // codecArchiveDir, which is what makes this work inside a packaged
+            // Studio at all.
+            return { compiler, workDir, archiveDir: codecArchiveDir() };
         } catch (error) {
             throw new Error(
                 `${reason} needs a C toolchain to compile this title's content codec, and one could `

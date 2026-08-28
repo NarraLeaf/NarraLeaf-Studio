@@ -84,6 +84,13 @@ files:
     to: public
     filter:
       - '**/*'
+# The one thing the patterns above cannot say. node_modules is copied by a
+# separate walker that reads only the `!` patterns from `files` and applies an
+# extension blocklist of its own, so no pattern here can put back a file that
+# list drops - and it drops every `*.a`, which is how @narraleaf/bindings names
+# the precompiled archives a protected game build links against. This hook is
+# the only way to keep them; it explains itself.
+onNodeModuleFile: ./project/build/keep-precompiled-archives.js
 extraMetadata:
   main: dist/main/index.js
 # The two file types Studio owns, and the only two paths a launch from outside will act on

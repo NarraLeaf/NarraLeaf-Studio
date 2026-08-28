@@ -11,7 +11,7 @@ import type {
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { ensureVariantExists, replaceVariant, setGroupTransitionOnAllVariants } from "./appearancePatch";
 import { isUsableAppearanceModel } from "./initialAppearanceModel";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
+import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { CompactContainerAppearance } from "./compact/CompactContainerAppearance";
 import { CompactButtonAppearance } from "./compact/CompactButtonAppearance";
 import { CompactTextAppearance } from "./compact/CompactTextAppearance";
@@ -331,7 +331,7 @@ export function AppearanceAuthoringPanel({
                             setContainerMotionVisible={setContainerMotionVisible}
                             motionFieldsConfigured={containerMotionFieldsConfigured}
                             resolveInspectorRectangleLike={
-                                kind === "image" ? getImageWidgetRectangleProps : undefined
+                                kind === "image" ? getRectangleLikeProps : undefined
                             }
                         />
                     )}

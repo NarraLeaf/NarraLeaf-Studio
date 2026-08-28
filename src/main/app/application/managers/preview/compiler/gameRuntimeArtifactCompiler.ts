@@ -49,6 +49,7 @@ import {
 } from "@narraleaf/bindings";
 import { PER_TARGET_DIR_NAME, runningPlatformKeysFor } from "../../../../../buildWorker/perTargetPayload";
 import {
+    codecArchiveDir,
     codecPlacementsFor,
     hostCodecTarget,
     placeCodecBinary,
@@ -1119,10 +1120,11 @@ async function resolveTitleCompile(options: {
     mirror?: string;
     rewrites?: readonly DownloadRewriteRule[];
     workDir: string;
-}): Promise<{ compiler: string; workDir: string } | null> {
+}): Promise<{ compiler: string; workDir: string; archiveDir: string } | null> {
     if (!options.wanted) {
         return null;
     }
+    const archiveDir = codecArchiveDir();
     const refuse = (detail: string): never => {
         throw new Error(
             `${options.reason} needs a C toolchain to compile this title's content codec, and one `
@@ -1135,7 +1137,7 @@ async function resolveTitleCompile(options: {
     };
     if (options.explicitCompiler) {
         await fs.mkdir(options.workDir, { recursive: true });
-        return { compiler: options.explicitCompiler, workDir: options.workDir };
+        return { compiler: options.explicitCompiler, workDir: options.workDir, archiveDir };
     }
     if (!options.userDataDir) {
         // The cache lives under it, so without one there is nowhere to put a
@@ -1150,7 +1152,7 @@ async function resolveTitleCompile(options: {
             ...(options.rewrites ? { rewrites: options.rewrites } : {}),
         });
         await fs.mkdir(options.workDir, { recursive: true });
-        return { compiler, workDir: options.workDir };
+        return { compiler, workDir: options.workDir, archiveDir };
     } catch (error) {
         return refuse(error instanceof Error ? error.message : String(error));
     }
