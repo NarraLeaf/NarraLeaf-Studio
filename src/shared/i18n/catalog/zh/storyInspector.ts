@@ -449,7 +449,7 @@ export const storyInspector = {
         puppetParamValue: "数值",
         puppetParamAdd: "添加参数",
         puppetParamRemove: "移除参数",
-        puppetNoParams: "这一行还没有设置任何参数",
+        puppetNoParams: "该行尚未设置任何参数",
         notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
@@ -518,7 +518,7 @@ export const storyInspector = {
         endingName: "结局名称",
         endingPage: "结束后显示的页面",
         // 两个不是页面的答案。它们都是决定，所以都按决定来措辞。
-        endingPageInherit: "与工程设置相同",
+        endingPageInherit: "与项目设置相同",
         endingPageNone: "不显示任何页面",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",

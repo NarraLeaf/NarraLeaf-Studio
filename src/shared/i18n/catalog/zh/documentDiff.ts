@@ -273,8 +273,8 @@ export const documentDiff = {
         nodeMoved: "在画布上移动",
         nodeType: "节点类型改变",
         nodeField: "{field} 改动",
-        edgeAdded: "新增连线",
-        edgeRemoved: "删除连线",
+        edgeAdded: "新增连接",
+        edgeRemoved: "删除连接",
     },
     assets: {
         added: "新增资产",
@@ -448,7 +448,7 @@ export const documentDiff = {
         voiceNaming: "语音文件命名",
         voiceCast: "语音分配",
         voiceChoices: "选项语音",
-        dialogue: "对话",
+        dialogue: "对白",
         dialogueAutoForwardPause: "自动前进时的停顿时长",
         preferences: "玩家默认设置",
         prefTextSpeed: "文字速度",
@@ -598,7 +598,7 @@ export const documentDiff = {
      * make a file, they made a project, a story, a set of pages.
      */
     name: {
-        project: "工程设置",
+        project: "项目设置",
         storyIndex: "故事列表",
         story: "故事",
         animationIndex: "动效列表",
@@ -716,8 +716,8 @@ export const documentDiff = {
         none: "该工程没有正在进行的合并",
         automerged: "全部内容已自动合并，完成后记录为一个版本",
         count: {
-            one: "有 {count} 个文件两边都改过，请选择保留哪一边",
-            other: "有 {count} 个文件两边都改过，请选择保留哪一边",
+            one: "有 {count} 个文件在两边均被修改，选择保留其中一边",
+            other: "有 {count} 个文件在两边均被修改，选择保留其中一边",
         },
         takeMine: "保留我的",
         takeTheirs: "保留对方的",
@@ -737,9 +737,9 @@ export const documentDiff = {
         },
         notSaved: "完成合并之前不会写入任何文件",
         abandon: "放弃合并",
-        abandonConfirm: "放弃这次合并？",
+        abandonConfirm: "放弃合并",
         abandonConfirmDetail:
-            "所有文件都会回到从服务器获取之前的状态，包括已经自动合并的文件；本地内容不会丢失，需要时可以再次获取",
+            "所有文件将恢复到从服务器获取前的状态，包括已自动合并的文件。本地内容不会丢失，需要时可再次获取。",
         /**
          * 第二档：在一个文件内部逐条变更选边。
          *
@@ -794,8 +794,8 @@ export const documentDiff = {
         showAll: "显示全部改动",
         /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
         notMarked: {
-            one: "另有 {count} 条改动没有标在这里：",
-            other: "另有 {count} 条改动没有标在这里：",
+            one: "另有 {count} 条改动未标在此处：",
+            other: "另有 {count} 条改动未标在此处：",
         },
         onOtherPages: "{count} 条在其他页面",
         onOtherGraphs: "{count} 条在其他蓝图",
@@ -810,7 +810,7 @@ export const documentDiff = {
         assetsAbsent: "{count} 项不在该版本中",
         assetsFailed: "{count} 项无法读取",
         notDrawn: "该版本的页面无法绘制",
-        emptyGraph: "这张图里没有节点",
+        emptyGraph: "该图中没有节点",
         tooLarge: "该文件过大，无法在此绘制",
         unreadable: "该文件无法按界面文档读取：{error}",
         readFailed: "该版本无法读取：{error}",

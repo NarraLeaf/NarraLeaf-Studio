@@ -14,7 +14,7 @@ export const workspace = {
             confirm: "确认",
             setSource: "设为源语言",
             removeLanguage: "移除语言",
-            removeConfirm: "移除 {name}？",
+            removeConfirm: "移除 {name}",
             removeConfirmDetail: "译文仍保留在磁盘上，再次添加该语言时会恢复",
             openTable: "打开翻译表",
             progress: "已翻译 {completed}/{total}",
@@ -23,17 +23,17 @@ export const workspace = {
         },
         settings: {
             menu: "语言设置…",
-            title: "{name}的语言设置",
+            title: "{name} 的语言设置",
             displayNameLabel: "显示名称",
             fallbackLabel: "回退语言",
-            fallbackHint: "这里缺少译文的条目改用该语言，该语言也没有时使用源语言",
+            fallbackHint: "此处缺少译文的条目将改使用该语言；该语言亦无译文时使用源语言",
             fallbackLoops: "会绕回本语言",
         },
         exchange: {
             exportMenu: "导出翻译…",
             importMenu: "导入翻译…",
             importDialogTitle: "选择翻译文件",
-            exportTitle: "导出{name}的翻译",
+            exportTitle: "导出 {name} 的翻译",
             formatLabel: "格式",
             formatCsv: "CSV",
             formatCsvHint: "Excel、Google 表格",
@@ -51,9 +51,9 @@ export const workspace = {
             exportEmpty: "没有可导出的条目",
             importFailed: "无法读取该文件",
             importUnsupported: "可导入的格式为 CSV、XLIFF、PO 与 JSON",
-            importNoRows: "该文件里没有翻译条目",
+            importNoRows: "该文件中没有翻译条目",
             importWarnings: "有 {count} 条被跳过，第一条：{first}",
-            localeMismatch: "该文件标注的语言是 {declared}，仍要导入到{name}吗？",
+            localeMismatch: "该文件标注的语言是 {declared}，导入目标为 {name}",
             localeMismatchDetail: "译文写入所选语言，与文件中的标注无关",
         },
         table: {
@@ -91,16 +91,16 @@ export const workspace = {
             reviewPendingCount: "{count} 条待校对",
             reviewAllClear: "没有待校对的条目",
             staleHint: "翻译之后原文有改动；重新保存该译文即可标记为最新",
-            placeholderHint: "请保留 {n} 占位符，它们用于渲染内联数值",
+            placeholderHint: "保留 {n} 占位符，它们用于渲染内联数值",
             tagsLabel: "标记",
-            applyStyle: "把这个样式给选中的文字",
-            placeToken: "把它放在这里",
-            clearStyle: "去掉选中文字的样式",
+            applyStyle: "将样式应用到选中的文本",
+            placeToken: "插入此处",
+            clearStyle: "清除选中文本的样式",
             clearStyleShort: "纯文本",
-            runTagHint: "把 ‹n› 标记抄到对应的词上，它们带着样式、停顿与立绘切换",
+            runTagHint: "将 ‹n› 标记添加到对应词上，并保留样式、停顿与立绘切换",
             emptyStory: "该故事没有可翻译的文本",
             emptyFilter: "没有符合当前筛选的条目",
-            noStories: "请先创建故事；故事中的台词会显示在这里供翻译",
+            noStories: "创建故事后，故事中的对白将显示在此处以供翻译",
             statusUntranslated: "未翻译",
             statusMachine: "机翻",
             statusTranslated: "已翻译",
@@ -123,7 +123,7 @@ export const workspace = {
             more: "更多",
             confirm: "确认",
             removeLanguage: "移除配音语言",
-            removeConfirm: "移除 {name}？",
+            removeConfirm: "移除 {name}",
             removeConfirmDetail: "配音指派仍保留在磁盘上，再次添加该语言时会恢复",
             openTable: "打开配音表",
             progress: "已配音 {covered}/{total}",
@@ -132,7 +132,7 @@ export const workspace = {
             exportPickup: "导出补录脚本（仅待更新）",
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
-            pickupEmpty: "没有需要补录的台词",
+            pickupEmpty: "没有需要补录的语音",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
@@ -171,7 +171,7 @@ export const workspace = {
             reject: "退回",
             clipMissing: "音频缺失",
             outdatedHint: "导入该配音之后台词有改动；重新导入音频即可标记为最新",
-            noStories: "请先创建故事；故事中的口白台词会显示在这里供配音",
+            noStories: "创建故事后，故事中的对白将显示在此处以供配音",
             emptyStory: "该故事没有可配音的口白台词",
             emptyFilter: "没有符合当前筛选条件的内容",
             auditionAllClear: "没有待试听的内容",
@@ -211,7 +211,7 @@ export const workspace = {
             story: "故事大纲",
             storyDocuments: "故事脚本",
             interface: "界面文档",
-            characters: "人物",
+            characters: "角色",
             localization: "本地化",
             voice: "配音",
             variables: "持久变量",
@@ -243,7 +243,7 @@ export const workspace = {
             checkpointNothing: "无需提交：当前版本和这些文件已经一致",
             checkpointFailed: "提交版本失败：{error}",
             restore: "恢复到该版本",
-            restoreConfirm: "确认恢复 {version}？",
+            restoreConfirm: "恢复 {version}",
             restoreExplain: "工程中的每个文件都会被替换为该版本的内容；当前状态会先提交为一个版本，恢复结果作为新版本追加，不会删除任何版本",
             cancel: "取消",
             restoreDone: "已恢复到 {version}，正在重新打开为普通工作区",
@@ -267,7 +267,7 @@ export const workspace = {
             storyDocumentRead: "读取故事脚本",
             storyDocumentParse: "解析故事脚本",
             interfaceDocumentRead: "读取界面文档",
-            charactersRead: "读取人物",
+            charactersRead: "读取角色",
             pluginLoad: "加载插件",
             pluginHostLoad: "加载插件系统",
         },
@@ -284,8 +284,8 @@ export const workspace = {
             project: "工程",
         },
         menu: {
-            undoNamed: "撤销{step}",
-            redoNamed: "重做{step}",
+            undoNamed: "撤销 {step}",
+            redoNamed: "重做 {step}",
         },
         entry: {
             edit: "编辑",
@@ -313,12 +313,12 @@ export const workspace = {
         },
         destination: "服务器",
         projectOnServer: "项目名：{name}",
-        noAccountHere: "本机在这台服务器上没有账号",
+        noAccountHere: "本机在该服务器上没有账号",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
         // 向服务器问到的结果，只在有事可做时才画出来。一切正常的工程什么都不写：
         // 每天都在的一行「一切正常」没有人会读。
-        notThere: "该服务器上没有这个项目",
+        notThere: "该服务器上没有此项目",
         // 有响应、并且确实持有这个项目的服务器。在同步状态还无话可说时显示：
         // 地址旁边那个词会被读成是在说服务器，而工作区开始自己检查之后，
         //「未检查」就不再是事实了。
@@ -356,11 +356,11 @@ export const workspace = {
         liveNoInstance: "该服务器还没有回应本机",
         liveNoRepository: "此项目没有版本历史",
         liveNoRevision: "先记录一个版本才能开始实时会话",
-        liveCloneRequired: "该会话属于 {project}，打开那个项目才能加入",
-        // 只有开始会话才会遇到：加入会直接对齐房间开始时的版本，不再存在「够不到」的副本。
-        liveVersionMismatch: "此项目与服务器都有对方没有的版本",
-        // 补救办法与分叉那条一样写成第二行，而不是把第一行拉长。
-        liveVersionMismatchNext: "先从服务器获取版本并处理差异，然后再试一次",
+        liveCloneRequired: "该会话属于 {project}，打开该项目才能加入",
+        liveVersionMismatch: "该会话开始时的版本早于此项目当前的版本",
+        // 补救办法。会话无法重新基于更新的版本，两份副本只能先在服务器上会合，所以这里必须说出来。
+        // 与分叉那条一样写成第二行，而不是把第一行拉长。
+        liveVersionMismatchNext: "先把本机的改动上传到服务器，再请主持方重新开始会话",
         liveRoomGone: "该会话已经关闭",
         liveRoomGoneNext: "可以自己开始一场，或等待主持方重新开启",
         // 口令错和口令没人用是同一句，因为服务器答的就是同一句：分开答等于把猜测变成一张
@@ -370,7 +370,7 @@ export const workspace = {
         // 这不是拒绝。申请还挂在服务器上，只是这个窗口不再等了。
         liveJoinUnanswered: "无人应答",
         liveJoinUnansweredNext: "等对方回来后，从启动器的 Team 页面再申请一次",
-        liveRoomStoryUnknown: "该会话没有说它在改哪个故事，请主持方更新 Studio",
+        liveRoomStoryUnknown: "该会话未指明所编辑的故事，请主持方更新 Studio",
         liveStoryNotHere: "该会话所改的故事不在此项目中",
         liveStoryNotHereNext: "请主持方把该故事上传到服务器，然后再试一次",
         liveRefused: "服务器拒绝了这场会话",
@@ -437,7 +437,7 @@ export const workspace = {
         livePendingOne: "1 项修改正在等待主持方",
         livePendingMany: "{count} 项修改正在等待主持方",
         // 会话拿走了什么，整体说一次，而不是让作者一个控件一个控件地撞出来。
-        liveFrozenWhat: "会话期间保存故事、角色、译文与配音、整个资产库（含文件本身），以及项目自身的表（词典、音频轨道、资产集、变量、命名字符串、变体、DLC 与配色）；其余内容是当前的，且为只读",
+        liveFrozenWhat: "会话期间只保存该会话的故事，此项目中其余内容是当前的，且为只读",
         liveUnavailableHere: "实时会话期间不可用",
         // 别人正在写的行，集中在一处读，不必逐行去找标记。
         liveClaimsLabel: "正在被编辑的行",
@@ -667,10 +667,10 @@ export const workspace = {
             frozenTitle: "当前不保存任何改动",
             frozenDetailRevision: "当前正在查看版本 {version}，查看期间的改动不会保存",
             frozenDetailManual: "工作区已冻结，解除冻结后恢复保存",
-            // 实时会话只保存自己携带的文档，其余一律拒绝，所以上面那个标题
+            // 实时会话只保存自己的那份故事，其余一律拒绝，所以上面那个标题
             // 对作者正在打字的那份文件是假的。
             frozenTitleSession: "该文件不会被保存",
-            frozenDetailSession: "实时会话进行中，只保存会话携带的文档；离开会话后可以改动其余内容",
+            frozenDetailSession: "实时会话进行中，只有会话的故事会保存；离开会话后可以改动其余内容",
             // 合并没有「解除冻结」这一步：工作树里同时放着两边，只有把合并做完才行。
             frozenDetailMerge: "有一次合并尚未完成，在版本面板中完成合并后恢复保存",
             consoleFrozen: "写入被拒绝，工作区已冻结（{reason}）：{path}",
@@ -760,7 +760,7 @@ export const workspace = {
             restore: "恢复到该版本",
             // 明说是哪个版本，免得这个框被当成在问另一个——作者是从一列版本里点进来的。
             // `{version}` 是 `#12`，若进入时没带标签则是短哈希。
-            restoreConfirm: "恢复到版本 {version}？",
+            restoreConfirm: "恢复到版本 {version}",
             // 两句话，一句都不能少。第一句是作者要同意的事；第二句是同意它为什么安全，少了它
             // 就是把一个可回退的操作演成不可逆的，而一个被当成不可逆的功能没人敢用。
             // 「先记录」是字面意思：检查点在写下第一个字节之前就提交，而检查点打不出来时整个
@@ -902,23 +902,23 @@ export const workspace = {
                 picker: {
                     title: "连接服务器",
                     // 选定服务器后立即向它询问：这个工程在它上面会变成什么，取决于它已经有什么。
-                    reading: "正在读取这台服务器上的项目",
+                    reading: "正在读取该服务器上的项目",
                     // 服务器上已经有这个工程——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
                     // 此时没有什么可决定的，所以名称是陈述，不是提问。
-                    already: "这台服务器上已经有这个工程，名为 {name}。",
+                    already: "该服务器上已经有此项目，名为 {name}。",
                     nameLabel: "在服务器上的名称",
                     namePlaceholder: "my-game",
                     nameHint: "可用字母、数字、点、连字符与下划线。",
                     // 两条都是服务器的拒绝，只是提前说：一条只会回一个状态码，
                     // 另一条要等对话框关闭、发布已经做了一半才出现。
                     nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
-                    nameTaken: "这台服务器上已有同名项目。",
+                    nameTaken: "该服务器上已有同名项目。",
                     // 服务器从未见过这个工程时按钮做的事：登记、连接，并把本机的全部版本发上去。
                     createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
                     // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
                     add: "添加服务器…",
-                    unknownServer: "该项目使用 {host}，这台服务器还没有添加到本机",
+                    unknownServer: "该项目使用 {host}，该服务器尚未添加到本机",
                 },
                 // 只有这一个字段。实测：后端只保留 URL 的**源**，仓库靠它自己的 id 认，
                 // 所以真的没有第二样东西要填——旁边不需要「仓库名」。
@@ -962,24 +962,24 @@ export const workspace = {
                 syncing: "正在从服务器获取版本…",
                 syncedNothing: "已是最新",
                 publish: {
-                    publishing: "正在把此项目放到服务器上…",
-                    noToken: "本机无法请求这台服务器登记该项目，请用令牌重新添加它。",
-                    refused: "这台服务器拒绝了此处登录的账号，项目未被登记。",
-                    unreachable: "这台服务器没有响应，项目未被登记。",
-                    wrongRepository: "这台服务器登记的是另一个项目，因此没有上传任何内容。",
+                    publishing: "正在将此项目上传到服务器…",
+                    noToken: "本机无法向该服务器注册此项目，请使用令牌重新添加。",
+                    refused: "该服务器拒绝了当前登录的账号，项目未被注册。",
+                    unreachable: "该服务器没有响应，项目未被注册。",
+                    wrongRepository: "该服务器注册的是另一个项目，因此没有上传任何内容。",
                     // 这个名字已经被别的项目占了。直接说补救办法，因为补救办法只有换一个名字。
                     nameTaken: "这台服务器上已经有另一个项目叫这个名字，请换一个。",
                     // 同一个仓库，以它当初发布时的名字在那台服务器上；而这台服务器的运维规定
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
                     alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
-                    unknown: "这台服务器没有登记该项目。",
+                    unknown: "该服务器未注册此项目。",
                     // 不是拒绝：这个项目以前就在那台服务器上（复制过来的工程目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
                     connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",
                 },
                 signIn: {
                     // 项目指向的服务器在本机没有账号时出现。
-                    required: "连接项目到这台服务器需要先在本机添加账号。",
+                    required: "连接项目到该服务器需要先在本机添加账号。",
                     signedInAs: "已登录为 {name}",
                     signOut: "退出登录",
                 },
@@ -1113,7 +1113,7 @@ export const workspace = {
             replaceAll: "替换全部",
             replaceRow: "替换这一行",
             // 计划里要改的东西已经被删掉或改过了。替换要么整体生效，要么什么都不做，所以这里直接拒绝。
-            replaceStale: "工程刚刚变过，请重新搜索",
+            replaceStale: "项目内容刚发生变更，请重新搜索",
             // 实体分组排在前面：这个框先回答「打开叫 X 的东西」，再回答「找到写着 X 的那句」。
             groups: {
                 scene: "场景",
@@ -1151,7 +1151,7 @@ export const workspace = {
             },
         },
         closeConfirm: {
-            message: "关闭当前工作区？",
+            message: "关闭当前工作区",
             detail: "未保存的更改会自动保存",
         },
         // 关闭过程中工作区自己说的话，一个阶段一句（见 `WorkspaceCloseStage`）。

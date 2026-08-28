@@ -43,7 +43,7 @@ export const properties = {
     diagnostics: {
         title: "静态检查",
         selectOnCanvas: "→ 在画布中选中",
-        help: "图结构与绑定问题请打开蓝图编辑器；实时执行轨迹只在开发模式中显示",
+        help: "图结构与绑定问题在蓝图编辑器中查看；实时执行轨迹仅在开发模式中显示",
     },
     layout: {
         title: "布局",
@@ -127,7 +127,7 @@ export const properties = {
         modeLabel: "模式",
         selectMode: "选择模式",
         previewAlt: "填充预览",
-        selectImage: "选择一张图片",
+        selectImage: "选择图片",
         selectHint: "点击打开资产浏览器",
         changeImage: "更换图片",
         openEditor: "点击打开编辑器",
@@ -153,7 +153,7 @@ export const properties = {
     references: {
         label: "引用位置",
         building: "正在扫描项目…",
-        none: "没有任何地方引用它",
+        none: "未找到任何引用",
         unknown: "无法确定使用情况",
         unknownDetail: "{location} 无法读取",
         count: {
@@ -184,7 +184,7 @@ export const properties = {
         cropTitle: "裁剪缩略图",
         error: {
             workspaceNotReady: "工作区尚未就绪",
-            selectImage: "请选择一个图片资产",
+            selectImage: "选择图片资产",
             loadAsset: "加载资产失败",
             deleteFailed: "删除缩略图失败",
             saveFailed: "保存缩略图失败",
@@ -253,8 +253,8 @@ export const properties = {
             info: "模型信息",
             entry: "入口文件",
             entryAuto: "自动识别：{entry}",
-            entryUnresolvedNone: "未能识别入口文件，请手动选择",
-            entryUnresolvedAmbiguous: "有多个文件可能是入口，请手动选择",
+            entryUnresolvedNone: "未能识别入口文件，手动选择",
+            entryUnresolvedAmbiguous: "有多个文件可能是入口，手动选择",
             files: "文件",
             fileCount: {
                 one: "{count} 个文件",

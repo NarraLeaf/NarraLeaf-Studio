@@ -2,8 +2,8 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetChrome = {
     docker: {
-        insert: "插入{name}",
-        drawing: "正在绘制 {name}，请在画布上拖动以创建",
+        insert: "插入 {name}",
+        drawing: "正在绘制 {name}，在画布上拖动以创建",
         moreInsertElements: "更多插入元素",
         components: "组件",
         openComponentLibrary: "打开组件库",
