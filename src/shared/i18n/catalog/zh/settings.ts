@@ -437,6 +437,10 @@ export const settings = {
                     label: "编译工具链",
                     description: "构建时下载的编译器，下次需要时会重新下载",
                 },
+                puppetRuntimes: {
+                    label: "模型运行时源文件",
+                    description: "构建角色模型运行时解压的 SDK 包，下次构建时会重新解压",
+                },
                 browser: {
                     label: "界面缓存",
                     description: "为加快启动而保留的界面状态",
