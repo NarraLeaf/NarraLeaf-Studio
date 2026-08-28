@@ -34,6 +34,7 @@ import {
     sceneLabelNames,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyTransitionKindOf,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
@@ -2474,7 +2475,11 @@ function TransitionEditor(props: {
     context: TransitionEditorContext;
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
-    const value = props.value ?? { kind: "none" as const };
+    // A stored ref whose `kind` is missing names no transition, and a row that names none is a cut -
+    // see `storyTransitionKindOf`. The picker says None rather than sitting blank on a word it has
+    // no option for, and the fields a kind governs stay hidden until one is chosen.
+    const stored = props.value;
+    const value: StoryTransitionRef = stored ? { ...stored, kind: storyTransitionKindOf(stored) } : { kind: "none" };
     const kind = value.kind;
     const realKind = kind === "none" ? "dissolve" : kind;
     const setBase = (patch: Partial<StoryTransitionRef>) => props.onChange({ ...value, kind: realKind, ...patch });

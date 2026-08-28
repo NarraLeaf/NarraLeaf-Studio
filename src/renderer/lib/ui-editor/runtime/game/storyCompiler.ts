@@ -101,6 +101,7 @@ import {
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
+    storyTransitionKindOf,
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
@@ -5382,7 +5383,15 @@ function createAnimationTransform(
 }
 
 async function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): Promise<unknown | undefined> {
-    if (!transition || transition.kind === "none") {
+    // A ref that names no kind plays a cut, the same as one that says `none` - see
+    // `storyTransitionKindOf`. Deliberately not reported: the row names no transition, so there is
+    // none for this build to be missing, and the row an eaten `kind` leaves behind is
+    // indistinguishable from one the author never gave a transition to.
+    //
+    // `kind === "none"` is stated here as well as asked through the helper, and has to be: the
+    // literal comparison is what narrows `none` out of the union, without which `kind` is not
+    // `never` at the bottom of the switch and the exhaustiveness gate there cannot compile.
+    if (!transition || transition.kind === "none" || storyTransitionKindOf(transition) === "none") {
         return undefined;
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
