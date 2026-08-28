@@ -4,6 +4,7 @@ import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
 import { STORY_DOCUMENT_SCHEMA_VERSION } from "@shared/types/story/document";
+import { STORY_DOCUMENT_MIN_SUPPORTED_VERSION } from "@shared/story/migrateStoryDocument";
 import { MERGE_DECISION_LIMIT, readMergeDocument, resolveDocumentChanges } from "./mergeDocument";
 
 /**
@@ -63,9 +64,10 @@ function conflictedLocale(root: string, options: { base?: boolean } = {}): void 
 /**
  * One story with one scene, whose rows are `id -> narration text`.
  *
- * Written at schema v1 unless told otherwise, deliberately: v1 is where the migration ladder does
- * real work, so a merge that came back with rows intact and `schemaVersion` at the current value has
- * demonstrated the whole parse-migrate-normalize-serialize path rather than just the JSON.
+ * Written at the ladder's floor unless told otherwise, deliberately: a document at the current
+ * version could reach the end of a merge without the ladder having been consulted at all, so a merge
+ * that came back with rows intact and `schemaVersion` at the current value has demonstrated the whole
+ * parse-migrate-normalize-serialize path rather than just the JSON.
  */
 function storyText(options: { schemaVersion?: number; rows: Record<string, string> }): string {
     const blocks = Object.fromEntries(Object.entries(options.rows).map(([id, value]) => [id, {
@@ -76,7 +78,7 @@ function storyText(options: { schemaVersion?: number; rows: Record<string, strin
         payload: { action: "narration", text: { textId: `t-${id}`, value } },
     }]));
     return `${JSON.stringify({
-        schemaVersion: options.schemaVersion ?? 1,
+        schemaVersion: options.schemaVersion ?? STORY_DOCUMENT_MIN_SUPPORTED_VERSION,
         id: "story-1",
         name: "A Story",
         chapters: [{ id: "ch1", name: "Chapter One", sceneIds: ["s1"] }],
@@ -319,8 +321,8 @@ describe("resolveDocumentChanges", () => {
         expect(text("shared")).toBe("theirs");
         expect(text("fromMine")).toBe("only mine");
         expect(text("fromTheirs")).toBe("only theirs");
-        // And the result is at the current schema version, migrated rather than stamped: the
-        // sidecars below are written at v1, which is where the ladder does the most work.
+        // And the result is at the current schema version: the sidecars are written at the ladder's
+        // floor, so this could only be true if the ladder ran.
         expect(written.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
     });
 

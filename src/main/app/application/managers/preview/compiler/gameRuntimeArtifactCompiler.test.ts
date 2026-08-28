@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
     createProjectMaterial,
@@ -1475,8 +1476,8 @@ async function createMinimalProject(
     await fs.mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
     await fs.mkdir(path.join(projectPath, "assets"), { recursive: true });
     await fs.writeFile(
-        path.join(projectPath, "project.json"),
-        JSON.stringify({
+        path.join(projectPath, "Fixture Project.nlproj"),
+        encodeProjectConfig({
             name: "Fixture Project",
             identifier: "fixture.project",
             ...(options.app ? { app: options.app } : {}),
@@ -1492,8 +1493,7 @@ async function createMinimalProject(
                     },
                 },
             },
-        }),
-        "utf-8",
+        }) as unknown as Uint8Array,
     );
     await fs.writeFile(
         path.join(projectPath, "editor", "ui", "uidoc.json"),

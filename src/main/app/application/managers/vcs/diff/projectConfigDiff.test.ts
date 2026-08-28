@@ -66,9 +66,11 @@ function rowAt(diff: DocumentDiff, path: string): DocumentChange | undefined {
 }
 
 describe("the project configuration diff", () => {
-    it("resolves a spec for the dynamic name and for the legacy one", () => {
+    it("resolves a spec for the dynamic name, and for that name only", () => {
         expect(specForDocumentPath(PATH)?.kind).toBe("project");
-        expect(specForDocumentPath("project.json")?.kind).toBe("project");
+        // The name projects used before the extension existed. It is not a project config any more,
+        // so a file with that name in a revision is an ordinary file and compares as bytes.
+        expect(specForDocumentPath("project.json")).toBeUndefined();
     });
 
     it("reads the msgpack and names the game rather than counting bytes", () => {
@@ -146,21 +148,6 @@ describe("the project configuration diff", () => {
         expect(row?.children?.[0].label).toEqual({
             key: "documentDiff.project.field",
             params: { field: "mode", to: "loud" },
-        });
-    });
-
-    it("still reads the legacy project.json, which is JSON and not msgpack", () => {
-        const diff = diffDocumentBytes({
-            path: "project.json",
-            base: Buffer.from(JSON.stringify(config()), "utf-8"),
-            head: Buffer.from(JSON.stringify(config({ identifier: "com.example.renamed" })), "utf-8"),
-            spec: specForDocumentPath("project.json"),
-        });
-
-        expect(diff.tier).toBe("semantic");
-        expect(rowAt(diff, "identifier")?.label.params).toEqual({
-            from: "com.example.mygame",
-            to: "com.example.renamed",
         });
     });
 });
