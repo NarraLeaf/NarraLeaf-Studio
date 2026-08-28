@@ -8,7 +8,7 @@ import { collectInteractionDiagnostics } from "./interactionDiagnostics";
 const SURFACE_ID = "surface-1";
 
 /** Hidden and 10x10, so an element the player is meant to reach earns two of the three findings. */
-function unreachable(id: string, type: string, behavior?: UIElement["behavior"]): UIElement {
+function unreachable(id: string, type: string): UIElement {
     return {
         id,
         type,
@@ -17,7 +17,6 @@ function unreachable(id: string, type: string, behavior?: UIElement["behavior"])
         childrenIds: [],
         layout: { x: 0, y: 0, width: 10, height: 10, opacity: 1, visible: false },
         props: {},
-        ...(behavior ? { behavior } : {}),
     };
 }
 
@@ -94,29 +93,21 @@ function idsFor(element: UIElement, blueprintDocument?: BlueprintDocument): stri
 describe("collectInteractionDiagnostics", () => {
     /**
      * The regression this file exists for. These rules were written when a handler lived on the
-     * element as `behavior.events`, and were never taught the owner record that replaced it - so for
-     * four months they saw nothing at all on any widget the editor had wired, which is all of them.
+     * element itself, and were never taught the owner record that replaced it - so for four months
+     * they saw nothing at all on any widget the editor had wired, which is all of them.
      */
-    it("reports a widget wired through its own blueprint, not only one wired on the element", () => {
+    it("reports a widget wired through its own blueprint", () => {
         const element = unreachable("btn", "nl.button");
 
         expect(idsFor(element, blueprintDocumentWiring("btn", "blueprint.event.head.mouseClick")))
             .toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
     });
 
-    it("still reports the element-shaped wiring, which can be on disk", () => {
-        const element = unreachable("btn", "nl.button", {
-            events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-1", eventId: "onClick" } },
-        });
-
-        expect(idsFor(element)).toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
-    });
-
     /**
      * The half of the slot list these rules must NOT read. A graph that runs on mount says nothing
      * about whether the player can reach the element, so scenery that initialises itself is not an
-     * unreachable button - and the element-shaped reading, having no slot list to consult, used to
-     * report it as one.
+     * unreachable button - and the reading these rules used to do, having no slot list to consult,
+     * reported it as one.
      */
     it("says nothing about a widget whose only graph runs on mount", () => {
         const element = unreachable("btn", "nl.button");
@@ -130,15 +121,11 @@ describe("collectInteractionDiagnostics", () => {
     });
 
     /**
-     * Without a blueprint document the rules can still see the element-shaped wiring. Reporting
-     * nothing at all would be the safer-looking answer and the wrong one: it is the state the whole
-     * regression above consisted of.
+     * Whether anything answers a player is written only in the blueprint document, so a caller with
+     * none to hand gets silence rather than a guess - the rules would otherwise report every widget
+     * on the page as an unreachable button.
      */
-    it("falls back to the element-shaped wiring when no blueprint document is supplied", () => {
-        const element = unreachable("btn", "nl.button", {
-            events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-1", eventId: "onClick" } },
-        });
-
-        expect(idsFor(element, undefined)).toEqual(["ix:hidden-events:btn", "ix:small-hit:btn"]);
+    it("claims nothing when no blueprint document is supplied", () => {
+        expect(idsFor(unreachable("btn", "nl.button"), undefined)).toEqual([]);
     });
 });

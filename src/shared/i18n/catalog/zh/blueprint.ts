@@ -157,11 +157,6 @@ export const blueprint = {
             callSignatureStale: "函数签名已更改，请重新选择“{name}”以更新引脚",
             recursiveCall: "Fn“{name}”直接或间接调用了自身；游戏运行时深度递归会被中止",
         },
-        widget: {
-            legacyHooksPresent: "uidoc 中存在旧版事件钩子（非图形修订版本）",
-            legacyHookWrongBlueprint: "旧版钩子“{slot}”指向了另一个蓝图",
-            legacyHookUnsupported: "旧版钩子“{slot}”不支持 {type}",
-        },
         condition: {
             returnMissing: "条件应返回一个布尔值",
             returnNotBoolean: "条件必须返回布尔值，但此处返回的是 {type}",

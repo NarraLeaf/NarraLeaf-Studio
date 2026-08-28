@@ -1,20 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
-import type { UIElement } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
     acquireBlueprintWidgetLocals,
     BLUEPRINT_MEMO_SLOT_PREFIX,
     releaseBlueprintWidgetLocals,
 } from "./blueprintWidgetLocals";
-import { listElementOwnedBlueprintIds } from "./widgetPrivateBlueprintHeads";
+import { resolveWidgetPrivateBlueprintId } from "./widgetPrivateBlueprintHeads";
 
 const SURFACE_ID = "surface-1";
 const ELEMENT_ID = "btn";
-
-function element(behavior?: UIElement["behavior"]): Pick<UIElement, "id" | "behavior"> {
-    return { id: ELEMENT_ID, ...(behavior ? { behavior } : {}) };
-}
 
 function ownerRecord(ownerKey: string, blueprintId: string): BlueprintDocument {
     return {
@@ -24,46 +19,31 @@ function ownerRecord(ownerKey: string, blueprintId: string): BlueprintDocument {
     } as unknown as BlueprintDocument;
 }
 
-describe("listElementOwnedBlueprintIds", () => {
+describe("resolveWidgetPrivateBlueprintId", () => {
     /**
      * The regression this exists for. The only thing that drops a widget's lifecycle locals reads
-     * this list, and reading it off the element alone answered "nothing" for every widget the editor
+     * this, and reading it off the element instead answered "nothing" for every widget the editor
      * wires - so their stores were created on every dispatch and never removed.
      */
     it("names the blueprint an owner record points at", () => {
-        expect(listElementOwnedBlueprintIds(
-            element(),
-            { surfaceId: SURFACE_ID },
+        expect(resolveWidgetPrivateBlueprintId(
             ownerRecord(`widgetMain:${SURFACE_ID}:${ELEMENT_ID}`, "bp-own"),
-        )).toEqual(["bp-own"]);
+            { surfaceId: SURFACE_ID },
+            ELEMENT_ID,
+        )).toBe("bp-own");
     });
 
     it("reads a component's element from the component's own owner key, not the surface's", () => {
         const document = ownerRecord(`componentWidgetMain:comp-1:${ELEMENT_ID}`, "bp-comp");
 
-        expect(listElementOwnedBlueprintIds(element(), { surfaceId: SURFACE_ID, componentId: "comp-1" }, document))
-            .toEqual(["bp-comp"]);
+        expect(resolveWidgetPrivateBlueprintId(document, { surfaceId: SURFACE_ID, componentId: "comp-1" }, ELEMENT_ID))
+            .toBe("bp-comp");
         // Without the component id the same element resolves against a key nothing holds.
-        expect(listElementOwnedBlueprintIds(element(), { surfaceId: SURFACE_ID }, document)).toEqual([]);
+        expect(resolveWidgetPrivateBlueprintId(document, { surfaceId: SURFACE_ID }, ELEMENT_ID)).toBeUndefined();
     });
 
-    it("carries both spellings at once, deduplicated and ordered", () => {
-        const withLegacy = element({
-            events: {
-                mouseClick: { kind: "blueprintEvent", blueprintId: "bp-own", eventId: "click" },
-                keyDown: { kind: "blueprintEvent", blueprintId: "bp-legacy", eventId: "key" },
-            },
-        });
-
-        expect(listElementOwnedBlueprintIds(
-            withLegacy,
-            { surfaceId: SURFACE_ID },
-            ownerRecord(`widgetMain:${SURFACE_ID}:${ELEMENT_ID}`, "bp-own"),
-        )).toEqual(["bp-legacy", "bp-own"]);
-    });
-
-    it("answers an empty list rather than throwing when there is no blueprint document", () => {
-        expect(listElementOwnedBlueprintIds(element(), { surfaceId: SURFACE_ID }, undefined)).toEqual([]);
+    it("answers nothing rather than throwing when there is no blueprint document", () => {
+        expect(resolveWidgetPrivateBlueprintId(undefined, { surfaceId: SURFACE_ID }, ELEMENT_ID)).toBeUndefined();
     });
 });
 
@@ -82,19 +62,19 @@ describe("the locals a released widget leaves behind", () => {
      */
     const MEMO = `${BLUEPRINT_MEMO_SLOT_PREFIX}remembered`;
 
-    it("are gone once the ids the element owns are released", () => {
+    it("are gone once the blueprint the element owns is released", () => {
         const scope = "surface-1:7";
         acquireBlueprintWidgetLocals(SURFACE_ID, ELEMENT_ID, "bp-own", blueprint, scope)[MEMO] = "from the last visit";
         expect(acquireBlueprintWidgetLocals(SURFACE_ID, ELEMENT_ID, "bp-own", blueprint, scope)[MEMO])
             .toBe("from the last visit");
 
-        for (const blueprintId of listElementOwnedBlueprintIds(
-            element(),
-            { surfaceId: SURFACE_ID },
+        const owned = resolveWidgetPrivateBlueprintId(
             ownerRecord(`widgetMain:${SURFACE_ID}:${ELEMENT_ID}`, "bp-own"),
-        )) {
-            releaseBlueprintWidgetLocals(SURFACE_ID, ELEMENT_ID, blueprintId, scope);
-        }
+            { surfaceId: SURFACE_ID },
+            ELEMENT_ID,
+        );
+        expect(owned).toBeDefined();
+        releaseBlueprintWidgetLocals(SURFACE_ID, ELEMENT_ID, owned!, scope);
 
         expect(acquireBlueprintWidgetLocals(SURFACE_ID, ELEMENT_ID, "bp-own", blueprint, scope)[MEMO])
             .toBeUndefined();

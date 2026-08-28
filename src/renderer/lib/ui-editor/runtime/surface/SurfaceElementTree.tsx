@@ -50,7 +50,7 @@ import {
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
-import { listElementOwnedBlueprintIds } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
+import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -814,7 +814,6 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
         layout: { ...element.layout },
         props: element.props ? { ...element.props } : undefined,
         style: element.style ? { ...element.style } : undefined,
-        behavior: element.behavior ? { ...element.behavior } : undefined,
         valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
         extra: element.extra ? { ...element.extra } : undefined,
     };
@@ -1196,12 +1195,11 @@ function renderElementTree(
                     surfaceId={surface.id}
                     elementId={resolved.id}
                     elementType={resolved.type}
-                    ownedBlueprintIds={listElementOwnedBlueprintIds(
-                        resolved,
-                        { surfaceId: surface.id, componentId },
+                    ownedBlueprintId={resolveWidgetPrivateBlueprintId(
                         blueprintBindingContext?.blueprintDocument,
+                        { surfaceId: surface.id, componentId },
+                        resolved.id,
                     )}
-                    initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}
                     componentId={componentId}
                     componentParams={componentParams}

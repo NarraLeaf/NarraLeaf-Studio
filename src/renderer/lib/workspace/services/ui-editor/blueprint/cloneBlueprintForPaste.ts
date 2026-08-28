@@ -1,5 +1,5 @@
 import type { Blueprint } from "@shared/types/blueprint/document";
-import type { UIBehaviorBinding, UIElementValueBinding } from "@shared/types/ui-editor/document";
+import type { UIElementValueBinding } from "@shared/types/ui-editor/document";
 import {
     ELEMENT_REF_PARAM_ELEMENT_ID,
     ELEMENT_REF_PARAM_SURFACE_ID,
@@ -107,30 +107,6 @@ export function cloneWidgetValueBlueprintForPaste(input: {
         propPath: input.propPath,
     };
     return cloned;
-}
-
-/**
- * Remap `blueprintEvent` bindings on pasted elements when the referenced blueprint was duplicated.
- */
-export function remapElementBehaviorBlueprintIds(
-    events: Record<string, UIBehaviorBinding> | undefined,
-    blueprintIdMap: Record<string, string>,
-): Record<string, UIBehaviorBinding> | undefined {
-    if (!events) {
-        return undefined;
-    }
-    let changed = false;
-    const next: Record<string, UIBehaviorBinding> = { ...events };
-    for (const [key, ev] of Object.entries(next)) {
-        if (ev.kind === "blueprintEvent") {
-            const nb = blueprintIdMap[ev.blueprintId];
-            if (nb) {
-                next[key] = { ...ev, blueprintId: nb };
-                changed = true;
-            }
-        }
-    }
-    return changed ? next : events;
 }
 
 export function remapElementValueBindingBlueprintIds(

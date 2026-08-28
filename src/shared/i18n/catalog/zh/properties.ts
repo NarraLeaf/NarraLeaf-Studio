@@ -88,7 +88,6 @@ export const properties = {
     },
     events: {
         title: "事件",
-        legacy: "检测到旧版事件 ID",
     },
     blueprintEntry: {
         gameUiLogic: "游戏界面逻辑",

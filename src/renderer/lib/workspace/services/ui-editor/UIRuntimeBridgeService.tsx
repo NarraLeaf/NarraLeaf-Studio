@@ -143,7 +143,6 @@ export class UIRuntimeBridgeService extends Service<UIRuntimeBridgeService> impl
             },
             props: root.props ? { ...root.props } : undefined,
             style: root.style ? { ...root.style } : undefined,
-            behavior: root.behavior ? { ...root.behavior } : undefined,
             valueBindings: root.valueBindings ? { ...root.valueBindings } : undefined,
             extra: root.extra ? { ...root.extra } : undefined,
         };

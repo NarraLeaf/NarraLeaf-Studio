@@ -235,7 +235,6 @@ export const documentDiff = {
         elementLayout: "位置或尺寸改动",
         elementStyle: "样式改动",
         elementProps: "内容改动",
-        elementBehavior: "行为改动",
         elementBinding: "绑定改动",
         elementAnimation: "动画改动",
         elementField: "{field} 改动",

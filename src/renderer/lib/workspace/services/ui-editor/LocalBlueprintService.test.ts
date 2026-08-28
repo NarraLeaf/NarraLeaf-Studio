@@ -91,11 +91,6 @@ function buttonElement(): UIElement {
         parentId: "root-a",
         childrenIds: [],
         layout: { x: 0, y: 0, width: 100, height: 40, visible: true, opacity: 1 },
-        behavior: {
-            events: {
-                mouseClick: { kind: "blueprintEvent", blueprintId: "bp-main", eventId: "mouseClick" },
-            },
-        },
     };
 }
 
@@ -216,23 +211,6 @@ function createHarness() {
         },
         restoreDocumentFromHistory(document: UIDocument) {
             this.document = document;
-        },
-        stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string) {
-            for (const element of Object.values(this.document.elements)) {
-                const events = element.behavior?.events;
-                if (!events) {
-                    continue;
-                }
-                for (const [eventName, binding] of Object.entries(events)) {
-                    if (
-                        binding.kind === "blueprintEvent" &&
-                        binding.blueprintId === blueprintId &&
-                        binding.eventId === layerEventId
-                    ) {
-                        events[eventName] = { kind: "noop" };
-                    }
-                }
-            }
         },
     };
     // Blueprint undo stacks live in HistoryService now; this service supplies the snapshots.
@@ -676,15 +654,13 @@ describe("LocalBlueprintService history", () => {
         ]);
     });
 
-    it("restores UI behavior changes recorded in a blueprint transaction", () => {
-        const { service, graphDocument, uidoc } = createHarness();
+    it("puts back a layer deleted inside a blueprint transaction", () => {
+        const { service, graphDocument } = createHarness();
 
         service.runBlueprintHistoryTransaction("bp-main", () => {
-            uidoc.stripBlueprintLayerBindings("surface-a", "bp-main", "mouseClick");
             service.removeEventGraph("bp-main", "mouseClick");
         });
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick.kind).toBe("noop");
         expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.kind).toBe("graph");
         if (graphDocument.blueprintDocument.blueprints["bp-main"].program.kind === "graph") {
             expect(graphDocument.blueprintDocument.blueprints["bp-main"].program.graphs.events.mouseClick).toBeUndefined();
@@ -692,11 +668,6 @@ describe("LocalBlueprintService history", () => {
 
         expect(service.undoBlueprint("bp-main")).toBe(true);
 
-        expect(uidoc.document.elements["button-a"].behavior?.events?.mouseClick).toEqual({
-            kind: "blueprintEvent",
-            blueprintId: "bp-main",
-            eventId: "mouseClick",
-        });
         const bp = graphDocument.blueprintDocument.blueprints["bp-main"];
         expect(bp.program.kind).toBe("graph");
         if (bp.program.kind === "graph") {
