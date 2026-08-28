@@ -246,7 +246,6 @@ export const NARRALANG_DEFAULT_DIALECT: NarralangDialect = {
                 // The rare per-line attributes sit BEFORE the separator, where the parse is
                 // unambiguous without quoting the text.
                 { slot: "voice", lead: "voice", value: "name" },
-                { slot: "pause", lead: "pause", value: ["word", "seconds"] },
                 { slot: "text", attach: SPEAKER_SEPARATOR, value: "text", keepEmpty: true },
             ],
         },
