@@ -462,7 +462,7 @@ describe("storyModel", () => {
         }
     });
 
-    it("preserves dialogue pause and displayable effect fields through normalization", () => {
+    it("preserves a legacy dialogue key and displayable effect fields through normalization", () => {
         const now = "2026-06-08T00:00:00.000Z";
         const document = createEmptyStoryDocument({
             id: STORY_ID_1,
@@ -471,6 +471,10 @@ describe("storyModel", () => {
             generateId: idFactory(),
         });
         const scene = document.scenes[document.entrySceneId!];
+        // `pauseAfter` left the dialogue payload when the engine dropped the sentence config
+        // field it fed, and the schema version was deliberately not bumped along with it - so a
+        // document written before that still carries the key. Cast, because the type no longer
+        // admits it; the assertion below is what the decision not to migrate actually means.
         insertBlockInScene(scene, {
             id: "say",
             kind: "nodeAction",
@@ -482,7 +486,7 @@ describe("storyModel", () => {
                 pauseAfter: 400,
                 text: { textId: "t1", role: "dialogue", value: "Hi" },
             },
-        }, { parentId: null });
+        } as unknown as StoryBlock, { parentId: null });
         insertBlockInScene(scene, {
             id: "fx",
             kind: "action",
@@ -499,6 +503,7 @@ describe("storyModel", () => {
         const normalized = normalizeStoryDocument(document, now);
         const normalizedScene = normalized.scenes[document.entrySceneId!];
 
+        // Carried, not read: nothing in Studio or the engine consults it any more.
         expect((normalizedScene.blocks.say.payload as any).pauseAfter).toBe(400);
         expect((normalizedScene.blocks.fx.payload as any).transform.clipReveal).toEqual({ kind: "wipe", direction: "right", reverse: true });
         expect((normalizedScene.blocks.fx.payload as any).transform.durationMs).toBe(500);
