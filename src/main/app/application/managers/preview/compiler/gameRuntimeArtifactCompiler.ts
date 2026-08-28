@@ -227,7 +227,7 @@ export type GameRuntimeArtifactCompileInput = {
     /**
      * `build.zigMirror` as the author set it, for the toolchain a codec build
      * needs. Empty or absent is the official source. Carried on the input for the
-     * same reason `hostCacheRoot` is: this runs off the main process, where the
+     * same reason `hostUserDataDir` is: this runs off the main process, where the
      * setting is out of reach.
      */
     zigMirror?: string;
@@ -287,8 +287,8 @@ export type GameRuntimeArtifactCompileInput = {
      * process (see compileGameRuntimeArtifactInWorker), where app.getPath is
      * unavailable.
      */
-    hostCacheRoot?: string;
-    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
+    hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
@@ -617,7 +617,7 @@ export async function compileGameRuntimeArtifact(
         /* Named so the sentence tells the author which switch to reach for. */
         reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
         ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
-        ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
+        ...(input.hostUserDataDir ? { userDataDir: input.hostUserDataDir } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
         ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
         workDir: imageDir,
@@ -832,7 +832,7 @@ export async function compileGameRuntimeArtifact(
              * name a file per machine. See mergeSidecarEntries. */
             platformKeys: nativePayloadKeys,
             destinationDirFor: payloadDirFor,
-            ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
+            ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
         const packPuppetRuntimes = await copyPuppetRuntimes({
@@ -1116,7 +1116,7 @@ async function resolveTitleCompile(options: {
     wanted: boolean;
     reason: string;
     explicitCompiler?: string;
-    cacheRoot?: string;
+    userDataDir?: string;
     mirror?: string;
     rewrites?: readonly DownloadRewriteRule[];
     workDir: string;
@@ -1139,15 +1139,15 @@ async function resolveTitleCompile(options: {
         await fs.mkdir(options.workDir, { recursive: true });
         return { compiler: options.explicitCompiler, workDir: options.workDir, archiveDir };
     }
-    if (!options.cacheRoot) {
-        // The toolchain lives under it, so without one there is nowhere to put a
+    if (!options.userDataDir) {
+        // The cache lives under it, so without one there is nowhere to put a
         // toolchain. A packaged build always carries it; a caller that asked for
         // packaging without it is a defect rather than a state.
         return refuse("this build was started without a cache directory to keep one in");
     }
     try {
         const compiler = await ensureZigToolchain({
-            cacheRoot: options.cacheRoot,
+            userDataDir: options.userDataDir,
             ...(options.mirror ? { mirror: options.mirror } : {}),
             ...(options.rewrites ? { rewrites: options.rewrites } : {}),
         });
@@ -2125,8 +2125,8 @@ async function copyRuntimePlugins(input: {
     platformKeys: readonly string[];
     /** Where one target's files go. See perTargetPayload.ts. */
     destinationDirFor: (platformKey: string) => string;
-    hostCacheRoot?: string;
-    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
+    hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
     pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
@@ -2168,7 +2168,7 @@ async function copyRuntimePlugins(input: {
                 destinationDir: input.destinationDirFor(platformKey),
                 plugin,
                 platformKey,
-                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
+                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             }));
         }
@@ -2250,8 +2250,8 @@ async function copyPluginSidecars(input: {
     destinationDir: string;
     plugin: GameRuntimePluginSource;
     platformKey: string;
-    hostCacheRoot?: string;
-    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
+    hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackSidecarEntry[]> {
     const { plugin, platformKey } = input;
@@ -2276,7 +2276,7 @@ async function copyPluginSidecars(input: {
                 platformKey,
                 target,
                 where,
-                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
+                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             });
             // The include path is also the path inside the sidecar directory
@@ -2333,8 +2333,8 @@ async function resolveSidecarInclude(input: {
     platformKey: string;
     target: { sha256: Record<string, string> };
     where: string;
-    hostCacheRoot?: string;
-    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
+    hostUserDataDir?: string;
+    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<{ sourcePath: string; relativePath: string }> {
     const { include, plugin, platformKey, where } = input;
@@ -2357,7 +2357,7 @@ async function resolveSidecarInclude(input: {
                 `so "${include}" cannot be shipped`,
             );
         }
-        if (!input.hostCacheRoot) {
+        if (!input.hostUserDataDir) {
             // A programming error rather than an author's: whoever asked for a
             // sidecar platform key owes the compile a cache root as well.
             throw new Error(
@@ -2365,7 +2365,7 @@ async function resolveSidecarInclude(input: {
             );
         }
         const dependencyDir = await ensurePluginBuildDependency({
-            cacheRoot: input.hostCacheRoot,
+            userDataDir: input.hostUserDataDir,
             dependencyId,
             platformKey,
             target: dependencyTarget,
