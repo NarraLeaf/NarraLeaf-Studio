@@ -23,7 +23,7 @@ export const storyVars = {
     },
     saved: {
         title: "存档变量",
-        hint: "在工程里定义，值保存在存档文件中",
+        hint: "在项目里定义，值保存在存档文件中",
     },
     // 说明词跟随故事行上的写法：`/global` 声明的就叫「全局变量」，键名保持 persistent 不动
     persistent: {

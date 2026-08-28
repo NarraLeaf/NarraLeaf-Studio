@@ -30,7 +30,7 @@ export const story = {
         newSceneTitle: "新建场景",
         newScenePlaceholder: "输入场景名称",
         deleteStoryConfirm: "删除故事“{name}”",
-        deleteStoryDetail: "此操作将从工程中移除该故事文档",
+        deleteStoryDetail: "此操作将从项目中移除该故事文档",
         deleteChapterConfirm: "删除章节“{name}”",
         deleteChapterDetail: {
             one: "章节里的 {count} 个场景会一并删除",
@@ -262,8 +262,8 @@ export const story = {
         },
         bulkConfirmDetail: "这些行将插入到当前行下方，计为一次撤销操作",
         scriptFile: "该文件为故事脚本，使用「导入脚本」导入",
-        // 实时会话期间从其他工程粘贴的行。每场会话只提示一次。
-        sessionRowsOnly: "实时会话期间，从其他工程粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
+        // 实时会话期间从其他项目粘贴的行。每场会话只提示一次。
+        sessionRowsOnly: "实时会话期间，从其他项目粘贴的行只带来行本身；离开会话后重新粘贴，才能带上译文、配音与资产",
         translationsCarried: {
             other: "已带入 {count} 条译文",
         },
@@ -271,7 +271,7 @@ export const story = {
             other: "已跳过 {count} 条译文",
         },
     },
-    // 粘贴到另一个工程里的行。行落位之后，只报一次结果。
+    // 粘贴到另一个项目里的行。行落位之后，只报一次结果。
     crossProject: {
         pasted: {
             other: "已粘贴 {count} 行",
@@ -460,12 +460,12 @@ export const story = {
     /**
      * 右键点击被标记的词时弹出的面板。
      *
-     * `addToDictionary` 指的是工程词典，不是本机的：词随仓库一起走，所以写同一份剧本的人拼写一致。
+     * `addToDictionary` 指的是项目词典，不是本机的：词随仓库一起走，所以写同一份剧本的人拼写一致。
      */
     spellcheck: {
         checking: "正在找替换建议…",
         noSuggestions: "没有建议",
-        addToDictionary: "加入工程词典",
+        addToDictionary: "加入项目词典",
     },
     /** 右键点击词典标记时弹出的面板：一个动作，以及它背后的词条。 */
     dictionary: {
@@ -1055,7 +1055,7 @@ export const story = {
         param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
         rename: { label: "改名", detail: "改变角色说话时显示的名字" },
-        say: { label: "对白", detail: "一句对白" },
+        say: { label: "对白", detail: "写一行对白" },
         image: { label: "图片", detail: "在舞台上声明图片，由 /show 显示" },
         text: { label: "文本", detail: "在舞台上声明文本，由 /show 显示" },
         video: { label: "视频", detail: "在舞台上声明视频，由 /show 显示" },

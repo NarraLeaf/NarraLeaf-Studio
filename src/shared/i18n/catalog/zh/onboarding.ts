@@ -25,7 +25,7 @@ export const onboarding = {
     },
     welcome: {
         title: "欢迎",
-        expectation: "界面与故事编辑器的初始设置。选中即刻生效，均可在设置中修改。",
+        expectation: "界面与故事编辑器的设置，共六屏。每一项选中即刻生效，均可在设置中修改",
         haveSettings: "来自其他安装的设置",
     },
     language: {
@@ -39,7 +39,7 @@ export const onboarding = {
     },
     zoom: {
         title: "界面缩放",
-        expectation: "Studio 界面的显示比例。当前窗口即为实时预览",
+        expectation: "Studio 界面绘制的大小。本窗口跟随该设置",
         custom: "自定义",
         surface: "预览的界面",
     },
@@ -50,14 +50,14 @@ export const onboarding = {
     },
     team: {
         title: "团队服务器",
-        expectation: "团队服务器的连接设置。未连接服务器时，全部功能仍可使用",
+        expectation: "共享项目的存放位置。服务器不是必需的",
         connect: "连接服务器",
         connected: "已登录",
         none: "项目保存在本机",
     },
     story: {
         title: "故事编辑器",
-        expectation: "场景编辑器的输入与显示方式",
+        expectation: "场景编辑器的阅读与输入方式",
     },
     import: {
         action: "导入设置文件…",
@@ -65,12 +65,12 @@ export const onboarding = {
     },
     done: {
         title: "设置完成",
-        expectation: "所有选项均可在设置中修改。在任意位置按 F1 可查看当前位置的帮助",
+        expectation: "这里问到的每一项都在设置中。按 F1 查看光标所在处的说明",
         docs: "打开文档",
     },
     skipConfirm: {
         title: "跳过设置",
-        message: "Studio 将以默认设置启动。向导中的每一项均可在设置中修改。",
+        message: "Studio 将以默认设置启动。设置流程不再出现，其中的每一项都在设置中。",
     },
     nav: {
         skip: "跳过设置",

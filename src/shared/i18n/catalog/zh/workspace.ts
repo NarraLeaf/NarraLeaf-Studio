@@ -132,14 +132,14 @@ export const workspace = {
             exportPickup: "导出补录脚本（仅待更新）",
             importAudio: "导入音频…",
             exportDone: "已导出到 {path}",
-            pickupEmpty: "没有需要补录的语音",
+            pickupEmpty: "没有需要补录的对白",
             importSummary: "已关联 {linked} 条（{unmatched} 条未匹配，{failed} 条失败）",
             importFailed: "无法导入音频文件",
             importScript: "导入录音本…",
             importScriptSummary: "应用了 {applied} 行（{unchanged} 行未变，{unknown} 行没有语音）",
             importScriptFailed: "无法读取该录音本",
             namingTitle: "录音文件名规则",
-            namingHint: "可用占位符：{tokens}；导入的音频按此名称与台词匹配",
+            namingHint: "可用占位符：{tokens}；导入的音频按此名称与对白匹配",
             namingReset: "恢复默认",
             choicesTitle: "为选项配音",
         },
@@ -170,9 +170,9 @@ export const workspace = {
             approve: "通过",
             reject: "退回",
             clipMissing: "音频缺失",
-            outdatedHint: "导入该配音之后台词有改动；重新导入音频即可标记为最新",
+            outdatedHint: "导入该配音之后对白有改动；重新导入音频即可标记为最新",
             noStories: "创建故事后，故事中的对白将显示在此处以供配音",
-            emptyStory: "该故事没有可配音的口白台词",
+            emptyStory: "该故事没有可配音的对白",
             emptyFilter: "没有符合当前筛选条件的内容",
             auditionAllClear: "没有待试听的内容",
             auditionPendingCount: "{count} 项待处理",
@@ -192,7 +192,7 @@ export const workspace = {
             state: "恢复模式：只读，未加载插件",
             exit: "退出恢复模式",
         },
-        intro: "运行一项检查会加载工程的对应部分并报告结果；可以加载的部分能够照常浏览",
+        intro: "运行一项检查会加载项目的对应部分并报告结果；可以加载的部分能够照常浏览",
         problems: {
             title: "发现的问题",
             count: "{count}",
@@ -206,7 +206,7 @@ export const workspace = {
             run: "运行",
             rerun: "重新运行",
             runAll: "全部运行",
-            project: "工程清单",
+            project: "项目清单",
             assets: "资产索引",
             story: "故事大纲",
             storyDocuments: "故事脚本",
@@ -218,23 +218,23 @@ export const workspace = {
             audioTracks: "音轨",
         },
         details: {
-            noStories: "该工程没有故事",
+            noStories: "该项目没有故事",
             storiesRead: "已读取 {count} 个故事文档",
         },
         tools: {
             title: "工具",
-            openFolder: "打开工程目录",
+            openFolder: "打开项目目录",
             copyAll: "复制全部信息",
             copiedAll: "诊断信息已复制",
-            openFolderFailed: "无法打开工程目录：{error}",
+            openFolderFailed: "无法打开项目目录：{error}",
         },
         lore: {
             title: "版本历史",
             loading: "正在检查版本控制",
             unavailable: "版本控制不可用：{reason}",
-            notARepository: "该工程从未启用过版本控制",
+            notARepository: "该项目从未启用过版本控制",
             noService: "版本控制服务未在本窗口启动",
-            disabledHint: "该工程没有可供恢复的版本历史",
+            disabledHint: "该项目没有可供恢复的版本历史",
             head: "当前位于版本 {version}，分支 {branch}",
             emptyHistory: "还没有提交过任何版本",
             noMessage: "（无说明）",
@@ -244,22 +244,22 @@ export const workspace = {
             checkpointFailed: "提交版本失败：{error}",
             restore: "恢复到该版本",
             restoreConfirm: "恢复 {version}",
-            restoreExplain: "工程中的每个文件都会被替换为该版本的内容；当前状态会先提交为一个版本，恢复结果作为新版本追加，不会删除任何版本",
+            restoreExplain: "项目中的每个文件都会被替换为该版本的内容；当前状态会先提交为一个版本，恢复结果作为新版本追加，不会删除任何版本",
             cancel: "取消",
             restoreDone: "已恢复到 {version}，正在重新打开为普通工作区",
             restoreUnrecorded: "文件已恢复，但新版本提交失败：{error}",
             restoreFailed: "恢复失败：{error}",
         },
         offer: {
-            message: "该工程未能正常加载",
-            detailOne: "有一个文件无法读取，本窗口中缺少工程的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
-            detailMany: "有 {count} 个文件无法读取，本窗口中缺少工程的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            message: "该项目未能正常加载",
+            detailOne: "有一个文件无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
+            detailMany: "有 {count} 个文件无法读取，本窗口中缺少项目的一部分内容；此时继续编辑可能把残缺的状态写回磁盘，覆盖仍然完好的文件",
             enter: "以恢复模式打开",
         },
         operations: {
             enteredBecause: "触发恢复模式的错误",
             shellService: "启动恢复模式的服务",
-            preflight: "检查工程目录",
+            preflight: "检查项目目录",
             assetsShardCreate: "创建资产索引",
             assetsShardRead: "读取资产索引",
             storyIndexRead: "读取故事大纲",
@@ -281,7 +281,7 @@ export const workspace = {
             audioLoop: "音频标记",
             uiSurface: "界面",
             blueprint: "蓝图",
-            project: "工程",
+            project: "项目",
         },
         menu: {
             undoNamed: "撤销 {step}",
@@ -316,7 +316,7 @@ export const workspace = {
         noAccountHere: "本机在该服务器上没有账号",
         // 打开设置。添加服务器与退出登录都在那里。
         manage: "管理服务器…",
-        // 向服务器问到的结果，只在有事可做时才画出来。一切正常的工程什么都不写：
+        // 向服务器问到的结果，只在有事可做时才画出来。一切正常的项目什么都不写：
         // 每天都在的一行「一切正常」没有人会读。
         notThere: "该服务器上没有此项目",
         // 有响应、并且确实持有这个项目的服务器。在同步状态还无话可说时显示：
@@ -409,7 +409,7 @@ export const workspace = {
         // 已经不是其他人正在看的那一份。
         liveEndedDiverged: "本机的副本与会话不再一致，已退出会话",
         liveEndedDivergedNext: "重新加入前先从服务器获取",
-        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的工程都画这个控件，
+        // 标题栏上的协作控件，以及它背后的对话框。凡是指向 Team 服务器的项目都画这个控件，
         // 包括当前开不了房间的那些：一个要等条件齐备才出现的控件，没法用来查出还缺什么，
         // 所以它改为置灰并说明自己在等哪一个答复。
         livePresence: "实时会话",
@@ -417,9 +417,9 @@ export const workspace = {
         liveUnsupported: "该服务器不提供实时会话",
         liveNobody: "此项目没有进行中的实时会话",
         liveRoomOpen: "{name} 开着一场实时会话",
-        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结工程。
+        // 两个不可撤销的动作各自会做什么，在按下之前说明。两者都要数秒、都不能取消、都会冻结项目。
         liveStartWhat: "开始会记录一个检查点、上传到服务器，并冻结此项目中除会话所携带的文档以外的一切",
-        // 报告有别人的房间时，同时说清楚从哪里进。所有入口都在启动器，因为加入往往要先取得工程。
+        // 报告有别人的房间时，同时说清楚从哪里进。所有入口都在启动器，因为加入往往要先取得项目。
         liveJoinFromLauncher: "从启动器的 Team 页面加入",
         // 会话改的是哪一份文档。进入前是选择器，进入后是一个值。
         liveStory: "故事",
@@ -687,7 +687,7 @@ export const workspace = {
                 dlc: "DLC",
                 assetSets: "资产集",
                 brand: "配色方案",
-                dictionary: "工程词典",
+                dictionary: "项目词典",
                 saveSchema: "存档字段",
                 characters: "角色",
                 project: "项目设置",
@@ -749,8 +749,8 @@ export const workspace = {
             // 是这个功能能造成的最坏结果。
             //
             // 按它「离开的模式」命名（docs/help-system.md §4）。原文案「回到当前版本」说的是仓库那边
-            // 发生了什么，而它就摆在一个真的会覆盖工程的按钮旁边、顶着一个逆时针箭头，读起来像
-            // 「把我的工程退回去」。现在这个说法读不出那层意思：它停掉的只有「查看」。
+            // 发生了什么，而它就摆在一个真的会覆盖项目的按钮旁边、顶着一个逆时针箭头，读起来像
+            // 「把我的项目退回去」。现在这个说法读不出那层意思：它停掉的只有「查看」。
             returnToCurrent: "退出历史查看",
             returning: "正在退出历史查看…",
             // 整个界面里唯一会改动作者磁盘文件的动作，下面三句话是它与「工作没了」之间唯一的东西。
@@ -780,7 +780,7 @@ export const workspace = {
             // 还没有版本库的项目。按「缺什么」命名，而不是按机制命名。
             //
             // 原文案是「没有版本历史」，与下面的 `noHistory`（仓库存在但还没有版本）几乎撞车。
-            // 这一条说的是「这个工程根本没纳入版本控制」，所以改成与下面按钮 `enable` 对齐的说法。
+            // 这一条说的是「这个项目根本没纳入版本控制」，所以改成与下面按钮 `enable` 对齐的说法。
             notVersioned: "未启用版本控制",
             enable: "启用版本控制",
             // 只有一行：启用会往作者的项目目录里写东西并对它取独占锁，所以在他按下之前先说清做什么。
@@ -792,7 +792,7 @@ export const workspace = {
             noHistory: "还没有版本",
             history: "历史",
             loadingHistory: "正在读取版本历史…",
-            // 列表末尾，只在这次读取是「读满了上限」而不是「读到工程开头」时出现。说的是作者能得到
+            // 列表末尾，只在这次读取是「读满了上限」而不是「读到项目开头」时出现。说的是作者能得到
             // 什么，而不是怎么取的——「加载更多」描述的是机制，而那个机制（用更大的上限重读一遍）
             // 不该是他们需要知道的事。
             loadMoreHistory: "显示更早的版本",
@@ -815,7 +815,7 @@ export const workspace = {
             authorLabel: "提交版本记录的作者",
             authorPlaceholder: "作者名",
             authorSave: "保存",
-            // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个工程，然后等后端把它的
+            // 绝不是瞬时的：管线要先把这个窗口没保存的东西落完，再暂存整个项目，然后等后端把它的
             // store 写到磁盘上。
             committing: "正在提交该版本…",
             // 「还没人看过」，这和「干净」不是一回事——而这个区别很重要，因为「看」就是一次扫描，
@@ -823,7 +823,7 @@ export const workspace = {
             nothingToCommit: "自上个版本以来没有变更",
             closingWithApp: "Studio 正在关闭，重启后再试",
             commitBeforeSync: "从服务器获取之前先提交版本",
-            branchDiverged: "本工程与服务器都有新的版本，先获取服务器的版本再发送",
+            branchDiverged: "本项目与服务器都有新的版本，先获取服务器的版本再发送",
             changesUnknown: "未检查",
             noChanges: "没有变更",
             changesCount: "{count} 项变更",
@@ -870,10 +870,10 @@ export const workspace = {
             systemMessage: {
                 unnamed: "未命名的版本",
                 enabled: "已启用版本控制",
-                created: "已创建工程",
+                created: "已创建项目",
                 merge: "合并",
                 checkpoint: "检查点",
-                checkpointClose: "关闭工程前的检查点",
+                checkpointClose: "关闭项目前的检查点",
                 checkpointBuild: "构建前的检查点",
                 checkpointRestore: "还原前的检查点",
                 checkpointLiveSession: "实时会话前的检查点",
@@ -901,9 +901,9 @@ export const workspace = {
                 more: "更多操作",
                 picker: {
                     title: "连接服务器",
-                    // 选定服务器后立即向它询问：这个工程在它上面会变成什么，取决于它已经有什么。
+                    // 选定服务器后立即向它询问：这个项目在它上面会变成什么，取决于它已经有什么。
                     reading: "正在读取该服务器上的项目",
-                    // 服务器上已经有这个工程——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
+                    // 服务器上已经有这个项目——按仓库 id 比对，那是两端改名之后唯一还成立的身份。
                     // 此时没有什么可决定的，所以名称是陈述，不是提问。
                     already: "该服务器上已经有此项目，名为 {name}。",
                     nameLabel: "在服务器上的名称",
@@ -913,7 +913,7 @@ export const workspace = {
                     // 另一条要等对话框关闭、发布已经做了一半才出现。
                     nameInvalid: "服务器上的名称只能包含字母、数字、点、连字符与下划线。",
                     nameTaken: "该服务器上已有同名项目。",
-                    // 服务器从未见过这个工程时按钮做的事：登记、连接，并把本机的全部版本发上去。
+                    // 服务器从未见过这个项目时按钮做的事：登记、连接，并把本机的全部版本发上去。
                     createAndSend: "新建并上传",
                     empty: "尚未添加服务器",
                     // 列表的最后一行。省略号是「会打开别处」的既有写法：它打开设置并关闭本对话框。
@@ -973,7 +973,7 @@ export const workspace = {
                     // 一个仓库只能有一个名字。要说出名字，因为作者接下来要做的就是连到那个项目。
                     alreadyPublished: "这个项目在那台服务器上已经叫 {name}，而这台服务器规定一个项目只有一个名字。",
                     unknown: "该服务器未注册此项目。",
-                    // 不是拒绝：这个项目以前就在那台服务器上（复制过来的工程目录带着同一个仓库），
+                    // 不是拒绝：这个项目以前就在那台服务器上（复制过来的项目目录带着同一个仓库），
                     // 而它是以当初发布的名字登记的。要说出来，因为作者输入的名字并不是地址里的那个。
                     connectedAs: "这个项目在那台服务器上已经叫 {name}，已按这个名字连接。用「发送」把本机的版本放到服务器那份之上。",
                 },
@@ -1106,7 +1106,7 @@ export const workspace = {
             wholeWord: "全词匹配",
             regex: "使用正则表达式",
             invalidPattern: "表达式无效",
-            // 全工程替换剧情正文。按钮上的数字是匹配次数，不是行数，也不是列表里显示的条数。
+            // 全项目替换剧情正文。按钮上的数字是匹配次数，不是行数，也不是列表里显示的条数。
             // 开关行末尾那个展开替换行的按钮。搜索是常事，所以面板默认只有搜索框。
             toggleReplace: "替换",
             replacePlaceholder: "替换为",

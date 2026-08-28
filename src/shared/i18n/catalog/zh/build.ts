@@ -38,7 +38,7 @@ export const build = {
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
     // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择变体的那一页，
-    // 它决定其余各页描述的是哪一个变体，只在工程存在可选变体时出现；`plugins` 只在有插件
+    // 它决定其余各页描述的是哪一个变体，只在项目存在可选变体时出现；`plugins` 只在有插件
     // 索要取值时出现。
     section: {
         variant: "变体",
@@ -59,7 +59,7 @@ export const build = {
     // 第一页：本次构建产出哪一个变体，以及该变体发布的值。
     variant: {
         // 标在「该变体自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
-        inherited: "来自工程",
+        inherited: "来自项目",
         // 该变体的剧情止于何处。数的是指向它的截断行，因此正式变体恒为完整剧情
         boundary: "剧情结束处",
         endsNever: "剧情播放至结尾",
@@ -131,7 +131,7 @@ export const build = {
             title: "导出补丁",
             kindLabel: "导出",
             kindPatch: "补丁",
-            dlcVariantHint: "在 工程 ▸ 应用 的 DLC 上设置。",
+            dlcVariantHint: "在 项目 ▸ 应用 的 DLC 上设置。",
             dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}。",
             baselineModeLabel: "本补丁更新的构建",
             baselineModeVariant: "在本次导出中构建",
@@ -167,12 +167,12 @@ export const build = {
             },
             exportAction: "导出",
             busy: "已有构建正在运行",
-            noKey: "本工程尚未创建分发密钥。先创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
-            noKeyAction: "打开「工程」页",
+            noKey: "本项目尚未创建分发密钥。先创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
+            noKeyAction: "打开「项目」页",
         },
     signing: {
         empty: "选择可签名的目标后，此处会列出对应平台",
-        // 工程配置里存在 "linux" 名下，但它与 Linux 无关：签名文件落在这次构建
+        // 项目配置里存在 "linux" 名下，但它与 Linux 无关：签名文件落在这次构建
         // 产出的每一个产物旁边。
         detached: "分离签名",
         none: "不签名",
@@ -182,7 +182,7 @@ export const build = {
         editInProject: "在「项目 ▸ 设置」中管理",
         remove: "从本机移除",
         removeConfirm: "从本机移除 {label}",
-        removeConfirmDetail: "它的密钥材料会在本机删除；使用它的工程在重新导入之前都会以未签名方式构建",
+        removeConfirmDetail: "它的密钥材料会在本机删除；使用它的项目在重新导入之前都会以未签名方式构建",
         removeAction: "移除",
         chooseFile: "选择…",
         noFile: "未选择",
@@ -268,7 +268,7 @@ export const build = {
         "version-missing": "未设置项目版本，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
         // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
-        "variants-unreadable": "无法读取工程的变体：{reason}",
+        "variants-unreadable": "无法读取项目的变体：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
@@ -311,7 +311,7 @@ export const build = {
         unsigned: "未做代码签名；玩家首次打开时可能看到安全提示",
         "unsigned-android": "使用本地调试签名，可用于旁加载安装；这样签出的 AAB 不能用作 Google Play 的上传密钥。选择 release keystore 以发行身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用；请选择一份 Apple 签名凭据；从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
-        "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",
+        "signing-credential-missing": "本机没有本项目为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",
         "signing-credential-expired": "{platform} 签名证书不在有效期内（{notBefore} 至 {notAfter}），签名会失败；请向签发方续期并导入新证书",
         "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期；在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码；重新导入一次即可重新保存密码",
@@ -322,7 +322,7 @@ export const build = {
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整；请在「钥匙串访问」中打开它确认原因",
         "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书；产物能在本机运行，在其他 Mac 上会被拒绝，也无法公证",
         "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只接受 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
-        "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}；请修改工程标识符，或导入与之匹配的描述文件",
+        "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}；请修改项目标识符，或导入与之匹配的描述文件",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
@@ -341,7 +341,7 @@ export const build = {
      * 构建报告：一次已结束的运行产出了什么，以及它从资产库中带走了什么。
      * 由该次运行发出的通知打开。
      *
-     * 两个词分工明确：产物是构建写出的文件，资产是工程资产库中的条目。报告两者都给出。
+     * 两个词分工明确：产物是构建写出的文件，资产是项目资产库中的条目。报告两者都给出。
      */
     report: {
         title: "构建报告",
@@ -405,7 +405,7 @@ export const build = {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
         other: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
     },
-    contentStaleDeclaration: "{variant} 变体中为 {location} 列出的某个场景已不在本工程中",
+    contentStaleDeclaration: "{variant} 变体中为 {location} 列出的某个场景已不在本项目中",
     contentKept: {
         one: "{variant} 构建包含 {count} 个场景",
         other: "{variant} 构建包含 {count} 个场景",
@@ -431,16 +431,16 @@ export const build = {
         one: "构建已中止：有 {count} 个资产无法播放，详见控制台",
         other: "构建已中止：有 {count} 个资产无法播放，详见控制台",
     },
-    networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
+    networkNodeDisallowed: "{blueprint} 发起了网络请求，本项目不允许",
     pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上无效",
     networkSummary: {
-        one: "构建已中止：{count} 个网络节点无法运行。在工程设置中修改网络策略，或删除该节点",
-        other: "构建已中止：{count} 个网络节点无法运行。在工程设置中修改网络策略，或删除这些节点",
+        one: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除该节点",
+        other: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除这些节点",
     },
-    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本工程的网络请求白名单内",
+    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本项目的网络请求白名单内",
     networkAllowlistSummary: {
-        one: "构建已停止：{count} 个地址不在网络请求白名单内。在工程设置中添加该地址，或修改对应节点",
-        other: "构建已停止：{count} 个地址不在网络请求白名单内。在工程设置中添加这些地址，或修改对应节点",
+        one: "构建已停止：{count} 个地址不在网络请求白名单内。在项目设置中添加该地址，或修改对应节点",
+        other: "构建已停止：{count} 个地址不在网络请求白名单内。在项目设置中添加这些地址，或修改对应节点",
     },
     mediaUnchecked: {
         one: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",

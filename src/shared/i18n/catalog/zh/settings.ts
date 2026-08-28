@@ -85,7 +85,7 @@ export const settings = {
         },
         screenEffectThreads: {
             label: "屏幕效果的线程数",
-            description: "屏幕效果渲染使用的线程数。自动模式根据本机配置选择",
+            description: "编码器运行时用多少个线程画帧。自动模式根据本机配置选择",
             options: {
                 auto: "自动",
             },
@@ -208,9 +208,9 @@ export const settings = {
         spellcheckLanguage: {
             label: "拼写检查语言",
             description: "在故事正文中标出拼写错误。译文一律不检查",
-            noDictionary: "尚未安装本工程所用语言的拼写词典。",
+            noDictionary: "尚未安装本项目所用语言的拼写词典。",
             options: {
-                followProject: "跟随工程语言",
+                followProject: "跟随项目语言",
                 off: "不检查拼写",
             },
         },
@@ -340,13 +340,13 @@ export const settings = {
         },
         resetWorkspaceLayout: {
             label: "还原工作区布局",
-            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态；工程内容不受影响",
+            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态；项目内容不受影响",
             action: "还原",
             confirm: "还原布局",
         },
         resetAllPreferences: {
             label: "还原所有设置",
-            description: "把所有设置恢复为默认值；工程、工程历史和统计数据不受影响",
+            description: "把所有设置恢复为默认值；项目、项目历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
         },

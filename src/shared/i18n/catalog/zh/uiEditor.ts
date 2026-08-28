@@ -69,7 +69,7 @@ export const uiEditor = {
             other: "有 {count} 个界面响应该意图，删除后不再响应",
         },
         actionOptions: "意图选项",
-        empty: "本工程没有输入意图",
+        empty: "本项目没有输入意图",
         noMatches: "无匹配项",
         answered: {
             other: "{count} 个界面",
