@@ -369,18 +369,40 @@ export async function listThreads(
     return { ok: true, value: { threads, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
-/** One thread and everything in it. */
+export interface ThreadWithComments {
+    thread: TeamThread;
+    /** Oldest first, which is the order a conversation is read in. */
+    comments: TeamComment[];
+    /** Where to carry on from, absent once the last comment is in hand. Opaque; hand it back as it came. */
+    cursor?: string;
+}
+
+/**
+ * One thread, and a page of what has been said in it.
+ *
+ * A page rather than the whole conversation, because a server will not build an
+ * answer of unbounded size and nothing stops an account writing a hundred
+ * thousand comments on one thread. `thread.comments` is how many there are in
+ * all, so a reader knows what this is a page of, and the cursor is how it asks
+ * for the next one — the same shape {@link listThreads} has.
+ *
+ * Whoever draws a conversation decides what to do about the rest of it. What
+ * this must not do is answer with the first fifty and let them read as all of
+ * them, which is what a client that ignored the cursor would show.
+ */
 export async function getThread(
     remoteOrigin: string,
     thread: string,
-): Promise<TeamOutcome<{ thread: TeamThread; comments: TeamComment[] }>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread });
+    within: { limit?: number; after?: string } = {},
+): Promise<TeamOutcome<ThreadWithComments>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread, ...within });
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const read = from === null ? null : readThread(from["thread"]);
     const comments = readList(answered.value, "comments", readComment);
     if (read === null || comments === null) return unreadable();
-    return { ok: true, value: { thread: read, comments } };
+    const cursor = from === null ? undefined : text(from, "cursor");
+    return { ok: true, value: { thread: read, comments, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
 /** Open a conversation on an anchor, with the comment that starts it. */
