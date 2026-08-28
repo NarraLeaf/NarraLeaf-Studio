@@ -53,6 +53,7 @@ import type {
     GameRuntimePackV1,
     GameRuntimeSidecarMessage,
 } from "@shared/types/gameRuntime";
+import { sidecarEntryForThisMachine } from "@shared/types/gameRuntime";
 import { resolveInsideRoot } from "./runtimeProtocol";
 
 export const SIDECAR_PROTOCOL_VERSION = 1;
@@ -799,11 +800,19 @@ class SidecarInstance {
         }
         const exists = this.deps.entryExists ?? ((candidate: string) => fsSync.existsSync(candidate));
         let resolved: string | null = null;
+        /* What to spawn HERE. A pack that serves several machines names one file
+         * per machine, because the name is not the same on all of them. */
+        const entry = sidecarEntryForThisMachine(this.declaration.entry);
+        if (!entry) {
+            this.deps.log("warning", `sidecar ${this.label}: this build ships nothing for this machine`);
+            this.entryPathCache = null;
+            return null;
+        }
         try {
-            const candidate = resolveInsideRoot(this.deps.appDir, this.declaration.entry);
+            const candidate = resolveInsideRoot(this.deps.appDir, entry);
             resolved = exists(candidate) ? candidate : null;
             if (!resolved) {
-                this.deps.log("warning", `sidecar ${this.label}: entry is missing from this build (${this.declaration.entry})`);
+                this.deps.log("warning", `sidecar ${this.label}: entry is missing from this build (${entry})`);
             }
         } catch (error) {
             this.deps.log("error", `sidecar ${this.label}: entry path is not inside the app dir: ${describeError(error)}`);
