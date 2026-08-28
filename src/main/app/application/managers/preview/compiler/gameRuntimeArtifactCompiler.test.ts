@@ -421,7 +421,7 @@ describe("game runtime artifact compiler", () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
-        const hostUserDataDir = path.join(tempDir, "userData");
+        const hostCacheRoot = path.join(tempDir, "userData");
         await createRuntimeDist(runtimeDistDir);
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
@@ -431,7 +431,7 @@ describe("game runtime artifact compiler", () => {
         // offline machine would; the compile must not reach the network.
         const dependencyBytes = "redistributable library bytes";
         const dependencySha256 = sha256OfText(dependencyBytes);
-        const sourcePath = buildDependencySourcePath(hostUserDataDir, dependencySha256);
+        const sourcePath = buildDependencySourcePath(hostCacheRoot, dependencySha256);
         await fs.mkdir(path.dirname(sourcePath), { recursive: true });
         await fs.writeFile(sourcePath, dependencyBytes, "utf-8");
         const fetchMock = vi.fn();
@@ -460,7 +460,7 @@ describe("game runtime artifact compiler", () => {
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47342),
             platformKeys: [SIDECAR_PLATFORM_KEY],
-            hostUserDataDir,
+            hostCacheRoot,
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 

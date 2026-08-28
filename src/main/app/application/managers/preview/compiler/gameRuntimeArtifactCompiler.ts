@@ -57,6 +57,7 @@ import {
     type CodecPlacement,
 } from "../../../../../buildWorker/codecBinary";
 import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
+import { compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "../../../../../buildWorker/mainProcessBytecode";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
@@ -227,7 +228,7 @@ export type GameRuntimeArtifactCompileInput = {
     /**
      * `build.zigMirror` as the author set it, for the toolchain a codec build
      * needs. Empty or absent is the official source. Carried on the input for the
-     * same reason `hostUserDataDir` is: this runs off the main process, where the
+     * same reason `hostCacheRoot` is: this runs off the main process, where the
      * setting is out of reach.
      */
     zigMirror?: string;
@@ -287,8 +288,8 @@ export type GameRuntimeArtifactCompileInput = {
      * process (see compileGameRuntimeArtifactInWorker), where app.getPath is
      * unavailable.
      */
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
@@ -537,7 +538,28 @@ export async function compileGameRuntimeArtifact(
      * could answer for them.
      */
     const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell);
+    // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
+    // the experimental debuggable build stay readable source so an author can inspect and step
+    // through the real main process; the web shell has no main.js at all.
+    //
+    // The bytecode is produced by this build worker, so it carries the host's CPU architecture, and
+    // a V8 cache is not portable across architectures. One app directory serves every target in the
+    // build and main.js sits at its shared root, so bytecode is only safe when every architecture
+    // that root will be packaged for is the host's own. A universal macOS build (one root, two
+    // architectures) and any cross-architecture target (e.g. an Intel-Mac game from an Apple-Silicon
+    // Studio) therefore keep readable main.js - shipping bytecode there would refuse to boot on the
+    // player's machine. `runningPlatformKeysFor` expands each target key, universal included, into
+    // its `<platform>-<arch>` running keys; every one must be this host's.
+    // Re-keying the guard's masked table happens on every shipped desktop build; shipping it as
+    // bytecode additionally requires that every architecture the shared app root is packaged for is
+    // the host's own (a V8 cache does not port across architectures, and one app root serves every
+    // target - see the comment above and mainProcessBytecode.ts).
+    const reseedGuard = mode === "production" && input.debuggable !== true && shell === "electron";
+    const hostRunningKey = `${process.platform}-${process.arch}`;
+    const servedRunningKeys = nativePayloadKeys.flatMap(runningPlatformKeysFor);
+    const bytecodeMain = reseedGuard
+        && servedRunningKeys.length > 0 && servedRunningKeys.every(key => key === hostRunningKey);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell, bytecodeMain, reseedGuard);
     // The support binary ships for protection, and also for a build that carries a
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
@@ -617,7 +639,7 @@ export async function compileGameRuntimeArtifact(
         /* Named so the sentence tells the author which switch to reach for. */
         reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
         ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
-        ...(input.hostUserDataDir ? { userDataDir: input.hostUserDataDir } : {}),
+        ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
         ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
         workDir: imageDir,
@@ -832,7 +854,7 @@ export async function compileGameRuntimeArtifact(
              * name a file per machine. See mergeSidecarEntries. */
             platformKeys: nativePayloadKeys,
             destinationDirFor: payloadDirFor,
-            ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+            ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
         const packPuppetRuntimes = await copyPuppetRuntimes({
@@ -1116,7 +1138,7 @@ async function resolveTitleCompile(options: {
     wanted: boolean;
     reason: string;
     explicitCompiler?: string;
-    userDataDir?: string;
+    cacheRoot?: string;
     mirror?: string;
     rewrites?: readonly DownloadRewriteRule[];
     workDir: string;
@@ -1139,15 +1161,15 @@ async function resolveTitleCompile(options: {
         await fs.mkdir(options.workDir, { recursive: true });
         return { compiler: options.explicitCompiler, workDir: options.workDir, archiveDir };
     }
-    if (!options.userDataDir) {
-        // The cache lives under it, so without one there is nowhere to put a
+    if (!options.cacheRoot) {
+        // The toolchain lives under it, so without one there is nowhere to put a
         // toolchain. A packaged build always carries it; a caller that asked for
         // packaging without it is a defect rather than a state.
         return refuse("this build was started without a cache directory to keep one in");
     }
     try {
         const compiler = await ensureZigToolchain({
-            userDataDir: options.userDataDir,
+            cacheRoot: options.cacheRoot,
             ...(options.mirror ? { mirror: options.mirror } : {}),
             ...(options.rewrites ? { rewrites: options.rewrites } : {}),
         });
@@ -1179,10 +1201,29 @@ async function copyRuntimeFiles(
     payloadDirFor: (platformKey: string) => string,
     /** Leave the interface code out; the caller puts it in the store instead. */
     sealsShell: boolean,
+    /** Ship main.js as V8 bytecode behind a small loader rather than as readable source. */
+    bytecodeMain: boolean,
+    /** Re-key the guard's masked table in main.js per game (applies whether or not it is bytecode). */
+    reseedGuard: boolean,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         if (sealsShell && isSealedShellFile(fileName)) {
+            continue;
+        }
+        // A shipped, non-debuggable build hardens its main.js. The guard's masked table is re-keyed
+        // per game either way; then, when the target architecture is the host's, the readable source
+        // becomes a main.jsc image and main.js becomes the small loader that runs it. Only main.js -
+        // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
+        // renderer three go into the store (above). See mainProcessBytecode.ts.
+        if (fileName === "main.js" && reseedGuard) {
+            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            if (bytecodeMain) {
+                await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
+                await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
+            } else {
+                await fs.writeFile(path.join(appDir, fileName), source, "utf8");
+            }
             continue;
         }
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
@@ -2125,8 +2166,8 @@ async function copyRuntimePlugins(input: {
     platformKeys: readonly string[];
     /** Where one target's files go. See perTargetPayload.ts. */
     destinationDirFor: (platformKey: string) => string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
     pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
@@ -2168,7 +2209,7 @@ async function copyRuntimePlugins(input: {
                 destinationDir: input.destinationDirFor(platformKey),
                 plugin,
                 platformKey,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             }));
         }
@@ -2250,8 +2291,8 @@ async function copyPluginSidecars(input: {
     destinationDir: string;
     plugin: GameRuntimePluginSource;
     platformKey: string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackSidecarEntry[]> {
     const { plugin, platformKey } = input;
@@ -2276,7 +2317,7 @@ async function copyPluginSidecars(input: {
                 platformKey,
                 target,
                 where,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             });
             // The include path is also the path inside the sidecar directory
@@ -2333,8 +2374,8 @@ async function resolveSidecarInclude(input: {
     platformKey: string;
     target: { sha256: Record<string, string> };
     where: string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<{ sourcePath: string; relativePath: string }> {
     const { include, plugin, platformKey, where } = input;
@@ -2357,7 +2398,7 @@ async function resolveSidecarInclude(input: {
                 `so "${include}" cannot be shipped`,
             );
         }
-        if (!input.hostUserDataDir) {
+        if (!input.hostCacheRoot) {
             // A programming error rather than an author's: whoever asked for a
             // sidecar platform key owes the compile a cache root as well.
             throw new Error(
@@ -2365,7 +2406,7 @@ async function resolveSidecarInclude(input: {
             );
         }
         const dependencyDir = await ensurePluginBuildDependency({
-            userDataDir: input.hostUserDataDir,
+            cacheRoot: input.hostCacheRoot,
             dependencyId,
             platformKey,
             target: dependencyTarget,

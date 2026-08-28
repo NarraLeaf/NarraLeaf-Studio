@@ -33,13 +33,13 @@ afterAll(() => fs.rmSync(scratch, { recursive: true, force: true }));
 
 describe.skipIf(!hasRealSdk)("buildLive2DRuntime", () => {
     it("bundles a loadable runtime out of the author's SDK and Studio's glue", async () => {
-        const userDataDir = path.join(scratch, "userData");
+        const cacheRoot = path.join(scratch, "nl-cache");
         const targetDir = path.join(scratch, "project", "runtimes", "puppet", "live2d");
 
         const result = await buildLive2DRuntime({
             archivePath: REAL_SDK,
             targetDir,
-            userDataDir,
+            cacheRoot,
             glueDir: GLUE_DIR,
         });
 
@@ -141,25 +141,25 @@ describe.skipIf(!hasRealSdk)("buildLive2DRuntime", () => {
     it("keys its staging on the archive's content, not its path", async () => {
         // Re-picking the same download must not produce a second staging tree, and a different build
         // must not land in the first one's.
-        const userDataDir = path.join(scratch, "userData2");
+        const cacheRoot = path.join(scratch, "nl-cache2");
         const copied = path.join(scratch, "renamed-sdk.zip");
         await fsp.copyFile(REAL_SDK, copied);
 
         const first = await buildLive2DRuntime({
             archivePath: REAL_SDK,
             targetDir: path.join(scratch, "p1", "live2d"),
-            userDataDir,
+            cacheRoot,
             glueDir: GLUE_DIR,
         });
         const second = await buildLive2DRuntime({
             archivePath: copied,
             targetDir: path.join(scratch, "p2", "live2d"),
-            userDataDir,
+            cacheRoot,
             glueDir: GLUE_DIR,
         });
 
         expect(second.bytes).toBe(first.bytes);
-        const staged = await fsp.readdir(path.dirname(live2dStagingDir(userDataDir, "x")));
+        const staged = await fsp.readdir(path.dirname(live2dStagingDir(cacheRoot, "x")));
         expect(staged).toHaveLength(1);
     }, 300_000);
 
@@ -168,7 +168,7 @@ describe.skipIf(!hasRealSdk)("buildLive2DRuntime", () => {
         await expect(buildLive2DRuntime({
             archivePath: path.join(GLUE_DIR, "index.js"),
             targetDir,
-            userDataDir: path.join(scratch, "userData3"),
+            cacheRoot: path.join(scratch, "nl-cache3"),
             glueDir: GLUE_DIR,
         })).rejects.toThrow(/not a readable \.zip archive/);
         // Nothing half-written: the project directory is not even created on the failure path.

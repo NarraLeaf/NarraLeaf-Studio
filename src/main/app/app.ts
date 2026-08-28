@@ -236,9 +236,9 @@ export class App extends BaseApp {
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
         // Everything is read through a function rather than captured: this constructor runs before
-        // Electron is ready, and `getUserDataDir` has no answer until it is.
+        // Electron is ready, and `getCacheRootDir` has no answer until it is.
         this.spellcheckManager = new SpellcheckManager({
-            userDataDir: () => this.getUserDataDir(),
+            cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
         });
 
