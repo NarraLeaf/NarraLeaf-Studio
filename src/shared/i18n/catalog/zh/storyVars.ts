@@ -19,7 +19,7 @@ export const storyVars = {
     },
     scene: {
         title: "场景变量",
-        hint: "在故事里用 /local 声明，点击行可跳到声明处",
+        hint: "在故事中使用 /local 声明，点击行可跳到声明处",
     },
     saved: {
         title: "存档变量",
@@ -28,6 +28,6 @@ export const storyVars = {
     // 说明词跟随故事行上的写法：`/global` 声明的就叫「全局变量」，键名保持 persistent 不动
     persistent: {
         title: "全局变量",
-        hint: "在工程里定义，应用级，与蓝图共享",
+        hint: "在项目中定义，应用级，与蓝图共享",
     },
 } satisfies LocaleNamespace<"storyVars">;

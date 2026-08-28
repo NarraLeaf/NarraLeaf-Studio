@@ -47,7 +47,7 @@ export const test = {
     },
     report: {
         title: "测试报告",
-        empty: "无结果",
+        empty: "没有任何结果",
         none: "尚未运行",
         rerun: "重新运行",
         severityFilter: "级别",
@@ -59,7 +59,7 @@ export const test = {
     reason: {
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
-        parameterEmpty: "本工程中「{parameter}」没有可选值",
+        parameterEmpty: "本项目中「{parameter}」没有可选值",
     },
     console: {
         channel: "测试",
@@ -76,20 +76,20 @@ export const test = {
     },
     builtin: {
         projectDiagnostics: {
-            title: "工程诊断",
+            title: "项目诊断",
             description: "将工程检查的全部规则作为一项测试运行",
             summary: {
-                passed: "未发现问题",
+                passed: "没有发现问题",
                 failed: "{errors} 个错误，{warnings} 个警告",
             },
         },
         walkthrough: {
             title: "结局通关",
-            description: "从故事的入口场景开始运行游戏，直至到达指定结局",
+            description: "从故事的入口场景开始，实际运行游戏直到某个结局",
             parameter: {
                 ending: {
                     label: "结局",
-                    description: "需要到达的结局",
+                    description: "要走到的结局",
                     option: "{story} / {scene} / {ending}",
                     unnamed: "未命名结局",
                 },
@@ -97,21 +97,21 @@ export const test = {
             log: {
                 planned: "已规划路线：{scenes} 个场景，{decisions} 处选择",
                 choosing: "{scene}：选择「{option}」",
-                improvised: "以「{option}」应答了路线之外的选择",
+                improvised: "路线之外的选择，以「{option}」通过",
             },
             finding: {
                 endingMissing: "该结局已不在故事中",
-                noEntryPoint: "未指定《{story}》的起始场景",
-                unreachable: "从《{story}》的起点无法到达 {ending}",
-                optionMissing: "{scene} 未提供「{option}」，该路线无法通行",
-                otherEnding: "到达的是 {reached}，而非 {ending}",
-                endedWithoutEnding: "故事已结束，未到达 {ending}",
-                stalled: "推进 {steps} 步后停止，未到达 {ending}",
-                cancelled: "推进 {steps} 步后取消",
+                noEntryPoint: "没有任何地方指定《{story}》从哪个场景开始",
+                unreachable: "从《{story}》的起点走不到 {ending}",
+                optionMissing: "{scene} 没有给出「{option}」，这条路线走不通",
+                otherEnding: "走到的是 {reached}，不是 {ending}",
+                endedWithoutEnding: "故事结束了，但没有走到 {ending}",
+                stalled: "推进 {steps} 步后停住，没有走到 {ending}",
+                cancelled: "推进 {steps} 步后被取消",
                 exit: {
-                    closed: "游戏在到达 {ending} 前关闭",
-                    stopped: "游戏在到达 {ending} 前被停止",
-                    crashed: "游戏在到达 {ending} 前崩溃",
+                    closed: "游戏在走到 {ending} 之前关闭了",
+                    stopped: "游戏在走到 {ending} 之前被停止",
+                    crashed: "游戏在走到 {ending} 之前崩溃了",
                     failedToStart: "游戏未能启动",
                 },
             },
@@ -141,7 +141,7 @@ export const test = {
         },
         reachableEndings: {
             title: "结局可达性",
-            description: "故事的每条路径是否都能到达 /ending",
+            description: "故事的每一条路径是否都能走到 /ending",
             // 跳过是正常状态：只说工程当前的样子，以及缺的那一样东西，不写成作者做错了什么。
             skipped: {
                 noEndings: "有入口的故事均未写入 /ending",
@@ -150,15 +150,15 @@ export const test = {
                 storiesUnread: "有故事无法读取",
             },
             finding: {
-                pathRunsOut: "推进在此停止，未到达任何结局",
-                optionRunsOut: "「{option}」推进至末尾，未到达任何结局",
+                pathRunsOut: "推进到此停止，未到达任何结局",
+                optionRunsOut: "「{option}」走到头也没有到达任何结局",
                 endingUnreached: "没有路径能到达「{name}」",
-                endingUnreachedUnnamed: "没有路径能到达该结局",
+                endingUnreachedUnnamed: "没有路径可以到达该结局",
             },
             // 数字放在冒号后面，任何数量都读得通；通过的这次也照样报出没人到得了的结局。
             summary: {
-                passed: "每条路径均到达结局。未到达的结局：{unreached} / {endings}",
-                failed: "未到达结局的路径：{errors} 条。未到达的结局：{unreached} / {endings}",
+                passed: "每条路径都到达了结局。无人到达的结局：{unreached} / {endings}",
+                failed: "走到头的路径：{errors} 条。无人到达的结局：{unreached} / {endings}",
             },
         },
     },
