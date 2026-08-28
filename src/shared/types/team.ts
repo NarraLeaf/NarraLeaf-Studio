@@ -246,6 +246,26 @@ export const TEAM_LIVE_PAYLOAD_LIMIT = 16 * 1024;
 /** The most any single field describing an installation may be. */
 export const TEAM_INSTANCE_FIELD_LIMIT = 256;
 
+/**
+ * The most a server sends in one answer, and so the least this build's reader may hold.
+ *
+ * **The only limit here that bounds what arrives rather than what is sent**, and the
+ * distinction is worth stating because getting it the wrong way round ends sessions.
+ * Everything above bounds one field Studio writes; this bounds the whole of what comes
+ * back, which is a page of rows rather than one of them - so it is far larger than the
+ * largest thing this side ever sends, and a transport ceiling set from one of the others
+ * refuses ordinary answers.
+ *
+ * Taken from the contract rather than reasoned out here, so that a deployment which
+ * raises what it composes cannot leave this client refusing what that deployment sends.
+ *
+ * The contract states one more figure beside it - what the rows on a single page may
+ * weigh - which is how a server decides where to end a page. Nothing on this side
+ * composes one, so it has no constant here; what a reader needs is the cursor or the
+ * count that comes back with a page that was cut.
+ */
+export const TEAM_ANSWER_BYTES_LIMIT = 2 * 1024 * 1024;
+
 /* ----------------------------------------------------------------- anchors */
 
 /**
