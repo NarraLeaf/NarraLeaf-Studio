@@ -498,7 +498,7 @@ export class GameTestManager {
                 mode: "preview",
                 encryptionKey,
                 platformKeys: [hostSidecarPlatformKey()],
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
             }, {
                 onStart: worker => { session.compileWorker = worker; },
