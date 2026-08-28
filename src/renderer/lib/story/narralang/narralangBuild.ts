@@ -623,8 +623,6 @@ function buildDraft(
                 }
                 voiceAssetId = asset.value;
             }
-            const pauseWord = wordOf(slots, "pause");
-            const pauseMs = msOf(slots, "pause");
             return {
                 kind: "nodeAction",
                 payload: prune({
@@ -633,7 +631,6 @@ function buildDraft(
                     speakerName: character ? undefined : speaker,
                     text: segmentOf(ctx, textOf(slots, "text"), "dialogue"),
                     voiceAssetId,
-                    pauseAfter: pauseWord === "click" ? true : pauseMs,
                 }),
             };
         }

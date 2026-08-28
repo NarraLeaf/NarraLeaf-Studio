@@ -11,7 +11,6 @@ export const storyInspector = {
     unassigned: "未割り当て",
 
     section: {
-        timing: "タイミング",
         conditions: "条件",
         appearance: "見た目",
         blueprint: "ブループリント",
@@ -415,11 +414,6 @@ export const storyInspector = {
 
     narration: {
         editHint: "行をダブルクリックすると地の文を編集できる",
-    },
-
-    dialogue: {
-        pauseAfter: "この行のあとで止める",
-        pauseSeconds: "停止（秒、任意）",
     },
 
     choice: {
