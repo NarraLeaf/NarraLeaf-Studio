@@ -199,6 +199,14 @@ export type GameBuildWorkerTarget = {
     formats: GameBuildFormat[];
     /** The single arch to package for; see GameBuildTarget.arch for why one. */
     arch: GameBuildArch;
+    /**
+     * `<platform>-<arch>`, the name this target's machine code was staged under.
+     *
+     * Computed by the manager rather than spelled again here, because it has to
+     * match the name the compile used exactly and two independent spellings of
+     * one key is how the koffi copy shipped nothing for a year.
+     */
+    platformKey: string;
     /** Electron fuse set for this platform's binaries. */
     fuses: GameBuildWorkerFuses;
     /**

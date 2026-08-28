@@ -305,7 +305,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47340),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 
@@ -346,7 +346,7 @@ describe("game runtime artifact compiler", () => {
 
         await expect(compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47341),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         })).rejects.toThrow(
             new RegExp(`Sidecar "${SIDECAR_ID}" of plugin "${SIDECAR_PLUGIN_ID}".+bin/tool\\.exe.+sha256`, "s"),
@@ -395,7 +395,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47342),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             hostUserDataDir,
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
@@ -426,7 +426,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47343),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 
@@ -1793,6 +1793,54 @@ describe("weather clips in the pack", () => {
         expect(report?.excluded.map(entry => entry.name)).toEqual(["spare.png"]);
         expect(report?.excluded[0].bytes).toBe("unreferenced bytes".length);
         expect(report?.excludedBytes).toBe("unreferenced bytes".length);
+    });
+
+    /*
+     * The defect this replaced: a build packaging for Windows and macOS together
+     * wrote one copy of the codec addon, of whichever machine was doing the
+     * packaging, and every package but that one shipped an image its loader
+     * refuses. It was silent - the build succeeded, the installer was produced,
+     * and the game failed on a player's machine at first start.
+     */
+    it("stages a codec copy for every target a packaged build serves", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const hostKey = process.platform === "win32" ? "windows-x64" : `${process.platform === "darwin" ? "macos" : "linux"}-${process.arch}`;
+        const otherKey = hostKey === "linux-x64" ? "windows-x64" : "linux-x64";
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: [hostKey, otherKey],
+            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        // Nothing at the app root: the packaging step is what puts one there, and
+        // a copy sitting at the root would ship to every package unconditionally.
+        await expect(fs.access(path.join(result.appDir, RUNTIME_SUPPORT_FILENAME))).rejects.toThrow();
+
+        const staged = await Promise.all([hostKey, otherKey].map(key =>
+            fs.readFile(path.join(result.appDir, "platform", key, RUNTIME_SUPPORT_FILENAME))));
+        // Different machines, so different images - the assertion the old code
+        // would have failed, since it wrote the same bytes to both.
+        expect(staged[0].equals(staged[1])).toBe(false);
+
+        /*
+         * That the two are bound to ONE store - that the copy for each machine
+         * opens the store this compile sealed - is proved in the codec package
+         * itself, where it can be checked for every target rather than only for
+         * the machine running the suite. Loading one here would also leave the
+         * temporary tree undeletable on Windows, which is the same lock that
+         * makes the shipped binary a copy rather than the built file.
+         */
     });
 
     it("carries the library whole for a preview, and reports nothing about it", async () => {

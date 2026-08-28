@@ -97,8 +97,10 @@ import {
     profileCoversBundleId,
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
+import { perTargetUnpackPattern } from "../../../../buildWorker/perTargetPayload";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProtocol";
+
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
@@ -1810,24 +1812,26 @@ export class GameBuildManager {
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
         let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
-        // Plugin sidecars are per <platform>-<arch>, but one compiled app dir
-        // serves every desktop target in the request (the packaging worker takes
-        // a single appDir). So they can only ship when the request resolves to
-        // one key: with several, one platform's package would carry the other's
-        // binaries, and the game would try to spawn an executable its OS cannot
-        // run. Ship none and say why, rather than ship the wrong one.
-        const sidecarPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
+        // One compiled app dir serves every desktop target in the request, and
+        // the parts of it that are machine code cannot be the same in each -
+        // so the compile stages them per target and the packaging step brings
+        // the right ones to the app root. See buildWorker/perTargetPayload.ts.
+        const desktopPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
             target.platform,
             normalizeGameBuildArch(target.platform, target.arch),
         )))];
-        const sidecarPlatformKey = sidecarPlatformKeys.length === 1 ? sidecarPlatformKeys[0] : undefined;
-        if (!sidecarPlatformKey
+        if (desktopPlatformKeys.length > 1
             && pluginSelection.selected.some(source => source.manifest.contributes.sidecars.length > 0)) {
+            // Sidecars are the one payload still held to one target per build,
+            // and the obstacle is the pack rather than the copying: it carries a
+            // single name for the file to spawn, which on Windows ends in .exe
+            // and elsewhere does not, so a pack serving two platforms could only
+            // be right about one of them.
             this.emit(session, {
                 level: "warning",
                 source: "Build",
                 message: `plugin sidecars ship for one platform per build, but this build targets `
-                    + `${sidecarPlatformKeys.join(", ")}; no sidecar is packaged. `
+                    + `${desktopPlatformKeys.join(", ")}; no sidecar is packaged. `
                     + "Build one desktop target at a time to include them.",
             });
         }
@@ -1866,7 +1870,7 @@ export class GameBuildManager {
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
                 ...(distribution ? { distribution } : {}),
-                ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
+                platformKeys: desktopPlatformKeys,
                 // Every desktop target this one pack serves. A plugin's platform-scoped build config
                 // resolves against it: one platform selected is one answer, several are an answer
                 // only when the author gave them all the same value.
@@ -2014,6 +2018,10 @@ export class GameBuildManager {
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
+                platformKey: buildDependencyPlatformKey(
+                    target.platform,
+                    normalizeGameBuildArch(target.platform, target.arch),
+                ),
                 formats: target.formats,
                 arch: normalizeGameBuildArch(target.platform, target.arch),
                 fuses: gameFusesForPlatform(
@@ -3724,6 +3732,14 @@ function buildAsarUnpackPatterns(sealed: boolean): string[] {
     if (sealed) {
         patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
     }
+    /*
+     * And the staging area, which holds nothing but machine code the OS loader
+     * opens - that is what it is for. It needs saying separately because these
+     * patterns are matched against the path a file is read FROM, while the
+     * spellings above describe where a file is written TO, and a staged file is
+     * read from one place and written to the other.
+     */
+    patterns.push(perTargetUnpackPattern());
     return patterns;
 }
 
