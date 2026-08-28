@@ -1,3 +1,4 @@
+import { execFileSync } from "child_process";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
@@ -1666,7 +1667,15 @@ describe("weather clips in the pack", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        /*
+         * Tolerated, and only here. A compile that builds a codec for its title
+         * loads the result to seal with, and Windows will not unlink a loaded
+         * image - so the working copy outlives this suite. A real build has the
+         * same lock and does not care: the compile runs in a utility process that
+         * exits, and the next build finds nothing held. Failing the run over a
+         * temporary directory would report a locked file as a broken compiler.
+         */
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     });
 
     it("carries a produced clip under the id the running game asks for", async () => {
@@ -1796,6 +1805,53 @@ describe("weather clips in the pack", () => {
     });
 
     /*
+     * A C toolchain, if this machine keeps one. Compiling a codec for a title is
+     * the shipping path now, so a test of that path needs a compiler; fetching one
+     * would pull 76 MB into a unit test, so it is looked for and the test says so
+     * when there is none.
+     */
+    function localToolchain(): string | null {
+        const candidates = [process.env.ZIG, process.platform === "win32" ? "zig.exe" : "zig"]
+            .filter((entry): entry is string => Boolean(entry));
+        for (const candidate of candidates) {
+            try {
+                execFileSync(candidate, ["version"], { stdio: "ignore" });
+                return candidate;
+            } catch {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    /*
+     * The ruling this enforces: a build that cannot compile its codec for the
+     * title STOPS. It used to write the material into the prebuilt image and carry
+     * on with a warning, which handed the author a package that any copy of the
+     * codec package can open, having told them their content was protected.
+     */
+    it("refuses to build protected content it cannot compile a codec for", async () => {
+        const projectPath = path.join(tempDir, "refuses");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist-refuses");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        await expect(compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: ["windows-x64"],
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            // No toolchain, and nowhere to put one.
+        })).rejects.toThrow(/Asset protection needs a C toolchain/);
+    });
+
+    /*
      * The defect this replaced: a build packaging for Windows and macOS together
      * wrote one copy of the codec addon, of whichever machine was doing the
      * packaging, and every package but that one shipped an image its loader
@@ -1803,6 +1859,13 @@ describe("weather clips in the pack", () => {
      * and the game failed on a player's machine at first start.
      */
     it("stages a codec copy for every target a packaged build serves", async () => {
+        const toolchain = localToolchain();
+        if (!toolchain) {
+            // Loud rather than silent: this needs a C toolchain, and a machine
+            // without one has not run it. Set ZIG, or put zig on PATH.
+            console.warn("[compiler] SKIPPED per-target staging: no C toolchain (set ZIG to run it)");
+            return;
+        }
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         await createRuntimeDist(runtimeDistDir);
@@ -1821,6 +1884,7 @@ describe("weather clips in the pack", () => {
             packaging: true,
             platformKeys: [hostKey, otherKey],
             encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            titleCompiler: toolchain as string,
         });
 
         // Nothing at the app root: the packaging step is what puts one there, and
@@ -1837,8 +1901,7 @@ describe("weather clips in the pack", () => {
          * the codec package can open. An author who asked for protection is told
          * that rather than left to assume the stronger answer.
          */
-        expect(result.codecCompiledForTitle).toBe(false);
-        expect(result.notices.some(notice => notice.includes("not compiled for this title"))).toBe(true);
+        expect(result.codecCompiledForTitle).toBe(true);
 
         /*
          * And it hands over a copy this machine can open. Something has to read
