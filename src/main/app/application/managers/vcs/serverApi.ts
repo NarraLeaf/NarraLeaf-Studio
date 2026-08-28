@@ -13,7 +13,7 @@
 import https from "https";
 import tls from "tls";
 
-import { trustedCertificates } from "./authorityTrust";
+import { reachThroughTrustStores } from "./authorityTrust";
 import { parseServerAddress, type ServerEndpoint } from "./serverDiscovery";
 
 /** Where the sign-in route lives, versioned as the server versions it. */
@@ -31,21 +31,37 @@ export interface Answer {
     body: string;
 }
 
-/** Ask once, and let the failure through as it is. */
-export function request(
+/** What one request is, apart from which authorities it is willing to be answered by. */
+export interface RequestOptions {
+    method: "GET" | "POST" | "DELETE";
+    path: string;
+    /**
+     * Absent for the one route that is asked before there is anything to present:
+     * signing in with a password is how a token is obtained, so it cannot carry one.
+     * An empty header is not the same thing as no header, and this must not send one.
+     */
+    token?: string;
+    userDataDir: string;
+    body?: string;
+}
+
+/**
+ * Ask, and let the failure through as it is.
+ *
+ * The trust stores are tried one at a time rather than merged into one list, for the
+ * reason `authorityTrust` sets out: two authorities named the same way hide one another
+ * in a single list, and this product names them after machines. A server the platform
+ * already agrees with is still reached in one connection.
+ */
+export function request(endpoint: ServerEndpoint, options: RequestOptions): Promise<Answer> {
+    return reachThroughTrustStores(options.userDataDir, (ca) => askOnce(endpoint, options, ca));
+}
+
+/** One request, against one set of authorities. */
+function askOnce(
     endpoint: ServerEndpoint,
-    options: {
-        method: "GET" | "POST" | "DELETE";
-        path: string;
-        /**
-         * Absent for the one route that is asked before there is anything to present:
-         * signing in with a password is how a token is obtained, so it cannot carry one.
-         * An empty header is not the same thing as no header, and this must not send one.
-         */
-        token?: string;
-        userDataDir: string;
-        body?: string;
-    },
+    options: RequestOptions,
+    ca: string[] | undefined,
 ): Promise<Answer> {
     const payload = options.body === undefined ? undefined : Buffer.from(options.body, "utf-8");
     const settings: https.RequestOptions & tls.ConnectionOptions = {
@@ -61,7 +77,7 @@ export function request(
                 : { "content-type": "application/json", "content-length": payload.length }),
         },
         rejectUnauthorized: true,
-        ca: trustedCertificates(options.userDataDir),
+        ca,
         ALPNProtocols: ["http/1.1"],
         // An IP address is not a valid SNI name; the same reasoning as the probe.
         servername: /^[\d.]+$/.test(endpoint.host) || endpoint.host.includes(":")

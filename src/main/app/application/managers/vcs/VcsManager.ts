@@ -68,7 +68,12 @@ import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "
 import { readWorkingSetFile } from "./workingFile";
 // Same again: a child process and `fs`, with no backend in it. It is a value import
 // because trusting an authority happens on a failed sign-in, which is not a cold path.
-import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from "./authorityTrust";
+import {
+    authorityDirectory,
+    authorityInstallPlan,
+    rememberAcceptedAuthority,
+    runAuthorityInstall,
+} from "./authorityTrust";
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
@@ -1806,6 +1811,14 @@ export class VcsManager extends Manager {
         await fs.access(target);
 
         const outcome = await runAuthorityInstall(authorityInstallPlan(target));
+        if (outcome.installed) {
+            // The platform's store has it now, and this process cannot see it there: node
+            // read that store once, when it first needed it, and answers from that reading
+            // for as long as it runs. The copy is what the probe that follows this - and
+            // the sign-in after that - build their chain against, so that pressing the
+            // button is the end of the matter rather than the first half of it.
+            await rememberAcceptedAuthority(this.app.getUserDataDir(), target);
+        }
         this.app.logger.info(
             "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
         );
