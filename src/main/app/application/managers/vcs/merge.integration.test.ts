@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
-import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported, type VcsServerSession } from "@shared/types/vcs";
+import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     branchMergeResolveMine,
     branchMergeStart,
@@ -25,7 +25,7 @@ import {
 import { abortMerge, readMergeState, resolveConflicts, restartConflicts, unresolveConflicts } from "./merge";
 import { commitWorkingTree } from "./repository";
 import { setRevisionMetadata } from "./lore";
-import { signInToServer } from "./serverSession";
+import { LORE_TEST_SERVER, loreTestIdentity, loreTestSession, signInLoreTestAccount } from "./loreTestAccount";
 import { readRevisionKind } from "./repository";
 import { blobAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, syncFromRemote, writeRemote } from "./remote";
@@ -60,48 +60,15 @@ import { VcsManager } from "./VcsManager";
  *   npx vitest run src/main/app/application/managers/vcs/merge.integration.test.ts
  * ```
  *
- * **A server that verifies identities needs a token as well**, and the two variables below
- * are how one is given. A NarraLeaf Team server issues them from its sign-in endpoint:
- *
- * ```bash
- * LORE_TEST_TOKEN=$(curl -sk -X POST "https://127.0.0.1:41402/api/studio/v1/sign-in" \
- *   -H "Content-Type: application/json" -d '{"username":"alice","password":"..."}' \
- *   | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).token")
- * LORE_TEST_AUTH="https://127.0.0.1:41402" npx vitest run ...
- * ```
+ * **A server that verifies identities needs a token as well.** `loreTestAccount.ts` is where
+ * that is arranged, for this file and for the five others with a remote block.
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
-const TOKEN = (process.env.LORE_TEST_TOKEN ?? "").trim();
-const AUTH = (process.env.LORE_TEST_AUTH ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const remoteEnabled = supported && SERVER !== "";
-
-/**
- * The account every online call has to be made as, once a token is in play.
- *
- * ⚠ **`identity` on online globals is the ACCOUNT ID, not a name.** It is the key Lore's
- * per-user session store is looked up by, and a name in its place fails every later call with
- * `No token stored` - which reads as a token that was never presented rather than one filed under
- * a different key. `serverSession.ts` says so where the sign-in is written, and this is the second
- * place that has to know it: the local block's `spec@narraleaf` is fine because nothing there goes
- * online, and the remote block used to be runnable only against a server that verifies nobody.
- *
- * Resolved once and shared, because signing in is a machine-level act - the store is Lore's own
- * and outlives the process, so a second login would be the same write again.
- */
-let signedIn: Promise<VcsServerSession | null> | null = null;
-
-function sessionFor(root: string): Promise<VcsServerSession | null> {
-    if (TOKEN === "") {
-        return Promise.resolve(null);
-    }
-    signedIn ??= signInToServer(
-        { repositoryPath: root, offline: false, cache: true },
-        { remoteUrl: SERVER, authUrl: AUTH, token: TOKEN, userDataDir: os.tmpdir() },
-    );
-    return signedIn;
-}
+/** The author the local block commits as, and the identity a run with no token goes online as. */
+const AUTHOR = "spec@narraleaf";
 
 const DOCUMENT = "doc.json";
 /** A second conflicted file, so "one side per PATH" can be told from "one side for the merge". */
@@ -153,26 +120,9 @@ function offline(root: string): LoreGlobals {
 }
 
 /**
- * Globals for a call that reaches the network, as the account the token belongs to.
- *
- * The identity is a module variable rather than a parameter because every call site here is
- * written inline (`pushToRemote(online(root))`) and the account is not known until a sign-in has
- * happened. {@link accountFor} sets it once, before the first online call of the remote block.
- */
-let onlineIdentity = "spec@narraleaf";
-/**
- * The stored sign-in a `VcsManager` in this block has to be given.
- *
- * The manager does not take an identity for its online calls - it reads one out of the settings,
- * the way the real one does (`resolveOnlineIdentity`). A manager handed an empty settings store
- * therefore goes online as the author's name, which against a server that verifies is the same
- * `No token stored` one step further in: `sync` finds no branch and reports a clean, empty result,
- * so a spec about conflicts fails saying the sync produced none.
- */
-let serverSession: VcsServerSession | null = null;
-
+/** Globals for a call that reaches the network, as the account the token belongs to. */
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false, identity: onlineIdentity };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 function write(root: string, relative: string, contents: string): void {
@@ -298,10 +248,12 @@ function fakeApp(): BaseApp {
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         // The one setting a manager reads here: the sign-in it makes its online calls as. Empty
-        // for the local block, which never goes online. See {@link serverSession}.
+        // for the local block, which never goes online.
         getGlobalState: () => ({
-            get: (key: string) =>
-                (key === "versionControl.serverSessions" && serverSession ? [serverSession] : undefined),
+            get: (key: string) => {
+                const session = loreTestSession();
+                return key === "versionControl.serverSessions" && session ? [session] : undefined;
+            },
         }),
     } as unknown as BaseApp;
 }
@@ -780,8 +732,7 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         await commitAll(authorGlobals, authorRoot, "base");
 
         // Before the first call that leaves this machine, and only once for the whole block.
-        serverSession = await sessionFor(authorRoot);
-        onlineIdentity = serverSession?.account.userId ?? onlineIdentity;
+        await signInLoreTestAccount(authorRoot);
 
         const url = serverUrl(name);
         await writeRemote(authorRoot, url);

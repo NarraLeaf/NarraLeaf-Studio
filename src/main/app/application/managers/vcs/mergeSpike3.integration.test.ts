@@ -1,6 +1,6 @@
 import fs from "fs";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     closeStore,
@@ -18,6 +18,7 @@ import {
 } from "./lore";
 import { loreString } from "./lore/values";
 import { blobAt, listFilesAt } from "./revisionReader";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
@@ -49,19 +50,22 @@ import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote"
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
 const PERSIST = (process.env.NLS_SPIKE_PERSIST ?? "").trim();
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const DOCUMENT = "doc.json";
 
 const BASE_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue", version: 7 }, null, 2)}\n`;
 const MINE_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (main)", version: 7 }, null, 2)}\n`;
 const THEIRS_TEXT = `${JSON.stringify({ id: "scene", title: "Prologue (feature)", version: 7 }, null, 2)}\n`;
 
+/** The author these spikes commit as, and the identity a run with no token goes online as. */
+const AUTHOR = "spike@narraleaf";
+
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "spike@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 function report(name: string, observations: unknown): void {
@@ -84,6 +88,11 @@ async function commitAll(globals: LoreGlobals, root: string, message: string): P
 }
 
 describe.skipIf(!supported || PERSIST === "")("R3 - does a fresh process recover after a sync", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("builds a synced repository, or reads one a previous process left behind", async () => {
         const observations: Record<string, unknown> = { persistRoot: PERSIST };
         const root = path.join(PERSIST, "project");

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     closeStore,
@@ -19,6 +19,7 @@ import {
     type StoreHandle,
 } from "./lore";
 import { blobAt, listFilesAt } from "./revisionReader";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
@@ -65,7 +66,7 @@ import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote"
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const remoteEnabled = supported && SERVER !== "";
 
 const DOCUMENT = "doc.json";
@@ -142,13 +143,16 @@ function tmp(prefix: string): string {
     return root;
 }
 
+/** The author these spikes commit as, and the identity a run with no token goes online as. */
+const AUTHOR = "spike@narraleaf";
+
 /** `storeKeepAlive` left unset: with it on every flush waits out the window (§4.22). */
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "spike@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 function track(session: Session): Session {
@@ -420,6 +424,11 @@ async function recover(fixture: Poisoned, variant: Variant) {
 // ===========================================================================
 
 describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one process", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("measures resetLoreLibraryForRetry, both orderings, and what else the poison touches", async () => {
         const observations: Record<string, unknown> = { run: RUN, server: SERVER };
         try {
@@ -605,6 +614,11 @@ describe.skipIf(!remoteEnabled)("R4 - recovering from the sync poisoning in one 
  * B never clones, so if B goes dark it is not because of anything B did.
  */
 describe.skipIf(!remoteEnabled)("R5 - the blast radius of one project's remote traffic", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("attributes the poison to a call, and to a repository or to the process", async () => {
         const observations: Record<string, unknown> = { run: RUN, server: SERVER };
         const stages: Record<string, unknown>[] = [];
@@ -670,6 +684,11 @@ describe.skipIf(!remoteEnabled)("R5 - the blast radius of one project's remote t
  * session that R2 read successfully and the sessions that cannot read anything.
  */
 describe.skipIf(!remoteEnabled)("R6 - attributing the blindness to a call", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("reads one base revision after every step of connecting and committing", async () => {
         const observations: Record<string, unknown> = { run: RUN, server: SERVER };
         const stages: Record<string, unknown>[] = [];

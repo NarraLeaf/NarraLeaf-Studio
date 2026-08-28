@@ -2,7 +2,7 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
-import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported, type VcsServerSession } from "@shared/types/vcs";
+import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     commit,
     createRepository,
@@ -12,7 +12,7 @@ import {
     type LoreGlobals,
 } from "./lore";
 import { publishToRemote, pushToRemote, writeRemote } from "./remote";
-import { signInToServer } from "./serverSession";
+import { LORE_TEST_SERVER, loreTestIdentity, loreTestSession, signInLoreTestAccount } from "./loreTestAccount";
 import { VcsManager } from "./VcsManager";
 import type { BaseApp } from "../../baseApp";
 
@@ -35,16 +35,15 @@ import type { BaseApp } from "../../baseApp";
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
-const TOKEN = (process.env.LORE_TEST_TOKEN ?? "").trim();
-const AUTH = (process.env.LORE_TEST_AUTH ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const remoteEnabled = supported && SERVER !== "";
 
 const DOCUMENT = "doc.json";
 const REVISIONS = 4;
 
 const roots: string[] = [];
-let signedIn: VcsServerSession | null = null;
+/** The author, and the identity a run with no token goes online as. */
+const AUTHOR = "spec@narraleaf";
 
 function tmp(prefix: string): string {
     const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -54,11 +53,11 @@ function tmp(prefix: string): string {
 
 /** Offline and unable to become anything else, which is what makes the assertion below mean something. */
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "spec@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false, identity: signedIn?.account.userId ?? "spec@narraleaf" };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 /** A manager with the sign-in a real one would have; see `merge.integration.test.ts` on why. */
@@ -67,8 +66,10 @@ function fakeApp(): BaseApp {
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         getGlobalState: () => ({
-            get: (key: string) =>
-                (key === "versionControl.serverSessions" && signedIn ? [signedIn] : undefined),
+            get: (key: string) => {
+                const session = loreTestSession();
+                return key === "versionControl.serverSessions" && session ? [session] : undefined;
+            },
         }),
     } as unknown as BaseApp;
 }
@@ -84,12 +85,7 @@ describe.skipIf(!remoteEnabled)("a cloned project", () => {
         const url = `${SERVER}/clonedhistory-${Date.now().toString(36)}`;
         const authorRoot = tmp("nl-clonehist-author-");
 
-        if (TOKEN !== "") {
-            signedIn = await signInToServer(
-                { repositoryPath: authorRoot, offline: false, cache: true },
-                { remoteUrl: SERVER, authUrl: AUTH, token: TOKEN, userDataDir: os.tmpdir() },
-            );
-        }
+        await signInLoreTestAccount(authorRoot);
 
         const created = await createRepository(offline(authorRoot), {
             repositoryUrl: VCS_UNCONFIGURED_REMOTE_URL,

@@ -766,13 +766,29 @@ parent 数量一直是 2，而本地合并怎么写都对。
    于是以作者名上网——**不报错**，`sync` 只是找不到分支、答一个干净的空结果，
    于是一条关于冲突的 spec 失败在「没有冲突」上。
 
-现在两边都接好了，用 `LORE_TEST_TOKEN` / `LORE_TEST_AUTH` 两个环境变量（命令行写在文件头）。
-没给令牌时行为照旧，所以一台裸 loreserver 依然能跑。
+现在**每一个有远端块的文件都接好了**，共用 `loreTestAccount.ts`：三个环境变量在那里读一次，
+`signInLoreTestAccount()` 在每个远端 `describe` 的 `beforeAll` 里登录一次（进程内只登录一次），
+`loreTestIdentity(AUTHOR)` 给上网的 globals 填账号 id、给没有令牌的运行填回作者名。
+所以一台裸 loreserver 照旧能跑，一台验身份的服务器也能一条命令跑完整个目录：
 
-⚠ **只接了 `merge.integration.test.ts` 一个文件。** `remote.integration.test.ts`、
-`onlineCommitCheck.integration.test.ts`、`mergeSpike*` 都还是写死的 `spec@narraleaf`，
-对着验身份的服务器跑会成片失败。要跑它们就把同一套 `accountFor` / `onlineIdentity`
-搬过去，而不是以为自己碰上了新缺陷。
+```bash
+LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:41502" \
+  LORE_TEST_TOKEN="$(nlteam token mint <user> --root <台子> …)" \
+  npx vitest run src/main/app/application/managers/vcs/
+```
+
+`serverSession.integration.test.ts` 以前只认 `LORE_TEST_AUTH_URL`，于是这条命令会静默跳过它；
+现在两个名字都收。
+
+⚠ **那台服务器的证书颁发机构必须是这台机器已经信任的。** `signInToServer` 没有 pinning 钩子——
+客户端库拿宿主自己的信任库建链，Windows 上连 `SSL_CERT_FILE` 都不看（`authorityTrust.ts` 开头
+写了原因）。所以 `nlteam init` 新起一台服务器跑测试会卡在 `transport error`，而那句话被归类成
+`certificate`：不是缺陷，是这台机器不认识那个新 CA。可行的做法是**整份复制一台已经被信任的台子**
+（`tls/` 一起复制——证书按主机名签、跟端口无关），端口整组错开再起。
+
+❗ **每条远端 spec 都会在服务器上留一个工程登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
+测试进程没有 Team 会话）。所以跑之前先复制一份台子、跑完把复制的那份整个删掉，比事后去共用台子上
+一条条摘干净省事得多。真要摘：`DELETE FROM projects WHERE ...`，就是 `projects.forget` 做的事。
 
 ### 4.36 ❗ 克隆不会把历史本身带下来，于是克隆出来的工程**没有历史**（已修）
 
