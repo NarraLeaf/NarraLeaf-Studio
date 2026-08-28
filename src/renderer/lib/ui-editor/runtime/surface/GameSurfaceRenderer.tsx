@@ -10,7 +10,6 @@ import {
 } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import {
-    normalizeUISurfaceInputMode,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
 import {
@@ -24,7 +23,7 @@ import {
     claimInputLaneVisit,
     handOffInputToLaneBehind,
     readPointerEventDevice,
-    readSurfaceHitChain,
+    readSurfaceHitNodes,
     readWheelGesture,
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
 import {
@@ -240,9 +239,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * field existed already did - so an old document routes exactly as it used to. `none` takes the
      * surface out of input altogether, keyboard included: it is drawn, and nothing else.
      */
-    const inputMode = normalizeUISurfaceInputMode(surface.input);
-    const laneInteractive = interactive && inputMode !== "none";
-    const laneKeyboardInteractive = keyboardInteractive && inputMode !== "none";
+    const laneInteractive = interactive;
+    const laneKeyboardInteractive = keyboardInteractive;
     const actionVocabulary = document.actions;
     const surfaceActions = surface.actions;
     /**
@@ -313,10 +311,11 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
                       vocabulary: actionVocabulary,
                       enablements: surfaceActions,
                       signal,
-                      hitChain: readSurfaceHitChain({
+                      hitChain: readSurfaceHitNodes({
                           document,
                           target: event.target,
                           surfaceRoot: shell,
+                          gesture: input.gesture,
                       }),
                   })
                 : [];
@@ -327,7 +326,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             if (wheel && consumed) {
                 wheelGestureGate.claim(eventTime);
             }
-            if (stopsAtLane(inputMode, consumed)) {
+            if (stopsAtLane(hits)) {
                 event.stopPropagation();
                 return consumed;
             }
@@ -338,7 +337,6 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             actionVocabulary,
             dispatchSurfaceInputAction,
             document,
-            inputMode,
             laneInteractive,
             laneKey,
             surfaceActions,
@@ -359,6 +357,20 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
 
     const handleSurfaceDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
         runLaneStep(event, { gesture: "doubleClick", device: readPointerEventDevice(event.nativeEvent) });
+    }, [runLaneStep]);
+
+    /**
+     * The middle button, which arrives as `auxclick` rather than as a click.
+     *
+     * `click` is the primary button only, so a wheel press reaches nothing without this. The event
+     * fires for every non-primary button, so the number is checked: the secondary one already has a
+     * gesture of its own and would otherwise raise two.
+     */
+    const handleSurfaceAuxClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        if (event.button !== 1) {
+            return;
+        }
+        runLaneStep(event, { gesture: "middleClick", device: readPointerEventDevice(event.nativeEvent) });
     }, [runLaneStep]);
 
     const handleSurfaceRightClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
@@ -454,7 +466,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         overflow: "hidden",
         // A surface that takes no input is click-through as well as inert, so the thing behind it is
         // reachable rather than merely unblocked-in-principle.
-        ...(inputMode === "none" ? { pointerEvents: "none" as const } : surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -464,7 +476,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         backgroundColor: backgroundColor ?? getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
-        ...(inputMode === "none" ? { pointerEvents: "none" as const } : surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
 
     if (!rootElement) {
@@ -475,16 +487,16 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // A surface out of input is passive as well as inert. Widget wrappers set `pointer-events:
         // auto` on themselves, so making only the shell click-through would leave every widget on it
         // still blocking whatever is behind - which is the opposite of what "none" says.
-        <SurfacePassiveContext.Provider value={passive || inputMode === "none"}>
+        <SurfacePassiveContext.Provider value={passive}>
         <div
             ref={shellRef}
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
-            data-ui-surface-input={inputMode}
             style={shellStyle}
             onClick={laneInteractive ? handleSurfaceClick : undefined}
             onDoubleClick={laneInteractive ? handleSurfaceDoubleClick : undefined}
+            onAuxClick={laneInteractive ? handleSurfaceAuxClick : undefined}
             onContextMenu={laneInteractive ? handleSurfaceRightClick : undefined}
             onWheel={laneInteractive ? handleSurfaceWheel : undefined}
         >

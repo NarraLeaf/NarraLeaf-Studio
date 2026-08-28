@@ -273,75 +273,11 @@
                       "id": "head",
                       "type": "blueprint.event.head.action",
                       "params": {
-                        "actionId": "dismiss"
+                        "actionId": "closeLog"
                       },
                       "meta": {
                         "editorLayout": {
                           "x": 0,
-                          "y": 0
-                        }
-                      }
-                    },
-                    "byKey": {
-                      "id": "byKey",
-                      "type": "blueprint.string.equals",
-                      "params": {
-                        "b": "key",
-                        "__inlineLiteralPins": [
-                          "b"
-                        ]
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 220
-                        }
-                      }
-                    },
-                    "entries": {
-                      "id": "entries",
-                      "type": "blueprint.element.ref",
-                      "params": {
-                        "surfaceId": "8a607acd-95dd-4af7-9994-686c20891c18",
-                        "elementId": "5aab5352-98e9-4d9e-af03-1938fa5b5032",
-                        "elementType": "nl.list"
-                      },
-                      "meta": {
-                        "editorLayout": {
-                          "x": 0,
-                          "y": 400
-                        }
-                      }
-                    },
-                    "atBottom": {
-                      "id": "atBottom",
-                      "type": "blueprint.element.list.isScrolledToEnd",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 280,
-                          "y": 400
-                        }
-                      }
-                    },
-                    "either": {
-                      "id": "either",
-                      "type": "blueprint.boolean.or",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 540,
-                          "y": 300
-                        }
-                      }
-                    },
-                    "br": {
-                      "id": "br",
-                      "type": "if",
-                      "params": {},
-                      "meta": {
-                        "editorLayout": {
-                          "x": 800,
                           "y": 0
                         }
                       }
@@ -352,7 +288,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1060,
+                          "x": 280,
                           "y": 0
                         }
                       }
@@ -363,7 +299,7 @@
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 1320,
+                          "x": 540,
                           "y": 0
                         }
                       }
@@ -373,67 +309,7 @@
                     {
                       "from": {
                         "nodeId": "head",
-                        "port": "source"
-                      },
-                      "to": {
-                        "nodeId": "byKey",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "entries",
-                        "port": "element"
-                      },
-                      "to": {
-                        "nodeId": "atBottom",
-                        "port": "list"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "byKey",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "either",
-                        "port": "a"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "atBottom",
-                        "port": "atEnd"
-                      },
-                      "to": {
-                        "nodeId": "either",
-                        "port": "b"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "either",
-                        "port": "result"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "condition"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "head",
                         "port": "then"
-                      },
-                      "to": {
-                        "nodeId": "br",
-                        "port": "in"
-                      }
-                    },
-                    {
-                      "from": {
-                        "nodeId": "br",
-                        "port": "true"
                       },
                       "to": {
                         "nodeId": "clr",
@@ -23040,6 +22916,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-28T01:37:27.414Z"
+    "updatedAt": "2026-08-28T02:39:01.921Z"
   }
 }

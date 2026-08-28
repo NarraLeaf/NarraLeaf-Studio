@@ -53,6 +53,7 @@ export const NO_HELD_INPUTS: UIHeldInputs = { keys: new Set(), buttons: new Set(
  */
 const POINTER_GESTURE_HOLD_BUTTONS: Partial<Record<UIInputPointerGesture, number>> = {
     click: 0,
+    middleClick: 1,
     rightClick: 2,
 };
 
