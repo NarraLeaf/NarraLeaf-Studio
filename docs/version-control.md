@@ -824,6 +824,39 @@ LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:4150
 
 ⚠ `signInRecovery.test.ts` 盯的是克隆的**调用顺序**，所以它多了 `history` + `release` 两步。
 
+### 4.37 ❗ 服务器**拒绝**令牌，Studio 却说不出那是拒绝（已修）
+
+上一条把整个目录接到验身份的服务器上之后，第一次看见这个。拿一个签名无效的令牌登录，
+服务器答的原话是：
+
+```
+authLoginWithToken: exchanging external token:
+  code: 'The request does not have valid authentication credentials',
+  message: "the token presented for exchange was not accepted"
+```
+
+一望而知是「拒绝」，而 `describeSignInFailure` 把它归成了 **`unknown`**——那条正则找的是
+`unauthenticated` / `permission denied` / `invalid` / `expired` / `refused` 五个词，
+这句话**一个都不含**（`not have valid` 不是 `invalid`，`authentication` 不是 `unauthenticated`）。
+
+后果落在文案上：设置面里那句话从
+「**The server refused this token. It may have expired or been revoked.**」
+退成「**The server could not be added.**」——恰好把「令牌过期了、去换一个」这个唯一的下一步吞掉。
+
+**为什么一直没人看见**：这条路只有在**这台机器已经信任那个颁发机构之后**才走得到。
+在那之前每次登录都断在传输层，被上面的 `certificate` 分支接走了。而「已经信任」恰恰是
+真实作者的常态——第一次点过「信任」以后就一直是。
+
+**修法**：把那个判断抽成 `isSignInRefusal(message)`（`serverSession.ts`，已导出），
+词表补上 `not accepted` 与 `valid authentication credentials`——后者是 gRPC 的
+`UNAUTHENTICATED` 规范句、不是 loreserver 自己的措辞，所以值得按原句收。
+单测在 `serverSession.test.ts`，用的就是上面这句实测原文。
+
+`serverSession.integration.test.ts` 那条 `certificate` 断言也跟着改了：它现在收
+**`certificate` 或 `refused` 两者之一，并且拒收第三种答案**。测试问不出这台机器信不信那个 CA
+——`diagnoseEndpoint` 读的是 Node 自带的机构表，而后端客户端读的是操作系统那份，
+所以一个「本账号已信任的私有 CA」在探针眼里是不受信的、在登录时却好用。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

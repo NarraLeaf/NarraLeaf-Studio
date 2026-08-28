@@ -306,6 +306,24 @@ export async function signInToServer(
 }
 
 /**
+ * Whether an endpoint's sentence is it REFUSING the token, rather than anything else.
+ *
+ * The words are the ones real refusals actually use, and the last two were missing long
+ * enough to matter: gRPC's canonical UNAUTHENTICATED text is "The request does not have
+ * valid authentication credentials", which contains neither `unauthenticated` nor
+ * `invalid`, and loreserver's own is "the token presented for exchange was not accepted".
+ * Without them an expired or revoked token came back as `unknown`, so the panel said "The
+ * server could not be added" where it had a sentence naming the cause and the remedy.
+ *
+ * It went unseen because it is only reachable on a machine that already trusts the
+ * authority: until it does, every sign-in fails on the transport and never gets this far.
+ */
+export function isSignInRefusal(message: string): boolean {
+    return /unauthenticated|permission denied|invalid|expired|refused|not accepted|valid authentication credentials/i
+        .test(message);
+}
+
+/**
  * Turn what the backend said into the one thing the author has to do next.
  *
  * The transport sentence is the interesting case and the reason this is async: it means
@@ -357,7 +375,7 @@ async function describeSignInFailure(
     // The endpoint answered and said no. Its own words name which no it was - expired,
     // revoked, meant for another server - and none of those is something this layer
     // could put better.
-    if (/unauthenticated|permission denied|invalid|expired|refused/i.test(message)) {
+    if (isSignInRefusal(message)) {
         return new VcsSignInError({ kind: "refused", detail: message }, message);
     }
     return new VcsSignInError({ kind: "unknown", detail: message }, message);
