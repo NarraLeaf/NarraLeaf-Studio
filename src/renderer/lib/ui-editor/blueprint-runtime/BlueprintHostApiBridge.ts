@@ -70,7 +70,6 @@ import {
 } from "@shared/types/ui-editor/widgetAddress";
 import {
     findUISurfaceActionEnablement,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
 } from "@shared/types/ui-editor/inputAction";
 import {
@@ -2254,17 +2253,15 @@ function normalizeGamePreferenceValue(
 /**
  * `Is Action Held` - whether the player is holding a gesture this surface reads as this action.
  *
- * Resolved through the surface rather than off the vocabulary alone, because the surface is what
- * says how the action is raised here: `overrideBindings` replaces the project's set, `addBindings`
- * extends it, and a surface that overrides an action with nothing has said that gesture is not its
- * business - which reads as never held, exactly as it fires nothing. A surface that says nothing
- * about the action falls back to the project's bindings, which is the same answer
- * `resolveSurfaceActionBindings` gives the dispatch path for the same input.
+ * Asked of the surface as well as the action, because a surface that does not answer the action is
+ * not holding it: the answer has to match what the same input would fire there, and an interface
+ * that fires nothing holds nothing.
  *
- * `overControls` is honoured for a pointer hold the way it is for a pointer press: a panel-wide
- * "hold to advance" must not run while the player is holding the Back button down. It is asked of
- * where the press *landed* rather than of where the pointer is now, because it is one press
- * throughout however far it has since been dragged.
+ * A control under the press takes the hold the way it takes a press: a panel-wide "hold to advance"
+ * must not run while the player is holding the Back button down. It is asked of where the press
+ * *landed* rather than of where the pointer is now, because it is one press throughout however far
+ * it has since been dragged. Only a gesture a control never runs out of can be held - a scroll is
+ * an instant, not a state - so the question is the plain one and never the scroller's.
  */
 function readInputActionHeld(document: UIDocument, surfaceId: string, actionId: string): boolean {
     const trimmedId = actionId.trim();
@@ -2274,18 +2271,20 @@ function readInputActionHeld(document: UIDocument, surfaceId: string, actionId: 
     }
     const surface = document.surfaces.find(entry => entry.id === surfaceId);
     const enablement = findUISurfaceActionEnablement(surface?.actions, trimmedId);
-    const bindings = resolveSurfaceActionBindings(def, enablement);
+    if (!enablement) {
+        return false;
+    }
+    const bindings = resolveSurfaceActionBindings(def);
     if (bindings.length === 0) {
         return false;
     }
     const tracker = getSharedInputHoldTracker();
     const held = tracker.read();
-    const standsDownOverControls = readUISurfaceActionOverControls(enablement) === "skip";
     return bindings.some(binding => {
         if (!isInputBindingHeld(binding, held)) {
             return false;
         }
-        if (binding.kind !== "pointer" || !standsDownOverControls) {
+        if (binding.kind !== "pointer") {
             return true;
         }
         const chain = readSurfaceHitChain({
