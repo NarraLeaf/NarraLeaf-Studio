@@ -424,14 +424,6 @@ interface IUIDocumentService extends IService {
     updateComponentElementLayout(componentId: string, elementId: string, layoutPatch: Partial<UILayout>): void;
     updateComponentElementProps(componentId: string, elementId: string, propsPatch: Record<string, unknown>): void;
     updateComponentElementExtra(componentId: string, elementId: string, extraPatch: Record<string, unknown>): void;
-    setComponentElementBlueprintEvent(
-        componentId: string,
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void;
-    clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void;
-    stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void;
     renameComponentElement(componentId: string, elementId: string, name: string): void;
     reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void;
     deleteComponentElements(componentId: string, elementIds: string[]): void;
@@ -479,21 +471,6 @@ interface IUIDocumentService extends IService {
         | { ok: true; newRootIds: string[] }
         | { ok: false; reason: "invalid_clipboard" | "invalid_target" };
     renameElement(elementId: string, name: string): void;
-    /**
-     * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.
-     */
-    setElementBlueprintEvent(
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void;
-    /** Remove behavior binding and drop the referenced event graph slot from the blueprint document. */
-    clearElementBlueprintEvent(elementId: string, eventName: string): void;
-    /**
-     * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
-     * Does not remove the graph from the blueprint document - call LocalBlueprintService.removeEventGraph after.
-     */
-    stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
 }
 
 interface IUIGraphService extends IService {
@@ -767,7 +744,6 @@ interface ILocalBlueprintService extends IService {
         ownerKey: string | null;
         ownerRecord: BlueprintPrivateOwnerRecord | null;
         blueprint: Blueprint | null;
-        uiBehavior: unknown;
     };
     runBlueprintHistoryTransaction<T>(
         blueprintId: string,
@@ -886,7 +862,6 @@ interface ILocalBlueprintService extends IService {
     ): void;
     deleteBlueprintVariable(blueprintId: string, variableId: string): void;
     ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
-    adoptLegacyEventGraphToSlot(blueprintId: string, slotId: string, legacyEventId: string, displayName?: string): void;
     renameEventGraph(blueprintId: string, eventId: string, displayName: string): void;
     removeEventGraph(blueprintId: string, eventId: string): void;
     listEventGraphIds(blueprintId: string): string[];

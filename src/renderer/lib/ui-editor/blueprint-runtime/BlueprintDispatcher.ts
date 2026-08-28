@@ -400,7 +400,7 @@ function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | u
 }
 
 /**
- * Dispatch a UI element behavior event into a blueprint event graph or TypeScript module (M3-min + M5).
+ * Dispatch a widget UI event into its private blueprint event graph or TypeScript module.
  *
  * Resolves to whether a listener actually ran. The caller bubbles an event nothing listened to, so
  * this answer has to come from the dispatch itself rather than from a second reading of the document:
@@ -458,14 +458,8 @@ export async function dispatchBlueprintUiEvent(options: {
         : undefined;
     const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.activeBlueprintId : undefined;
     const widgetPrivateEventSupported = Boolean(getWidgetLogicEvent(el.type, eventName));
-    const legacyBinding = el.behavior?.events?.[eventName];
 
-    const blueprintId =
-        widgetPrivateEventSupported && activeWidgetBlueprintId
-            ? activeWidgetBlueprintId
-            : legacyBinding?.kind === "blueprintEvent"
-              ? legacyBinding.blueprintId
-              : undefined;
+    const blueprintId = widgetPrivateEventSupported ? activeWidgetBlueprintId : undefined;
     if (!blueprintId) {
         return false;
     }
@@ -475,9 +469,7 @@ export async function dispatchBlueprintUiEvent(options: {
     }
     if (bp.program.kind === "scriptModule") {
         const mod = getMountedBlueprintModule(blueprintId);
-        const fn =
-            mod?.events?.[eventName] ??
-            (legacyBinding?.kind === "blueprintEvent" ? mod?.events?.[legacyBinding.eventId] : undefined);
+        const fn = mod?.events?.[eventName];
         if (typeof fn !== "function") {
             return false;
         }

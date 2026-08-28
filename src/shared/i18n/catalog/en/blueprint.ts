@@ -163,11 +163,6 @@ export const blueprint = {
             callSignatureStale: "Function signature changed; re-select \"{name}\" to update its pins.",
             recursiveCall: "Fn \"{name}\" calls itself, directly or indirectly. Deep recursion is stopped while the game runs.",
         },
-        widget: {
-            legacyHooksPresent: "Legacy event hooks in uidoc (non-graph revision).",
-            legacyHookWrongBlueprint: "Legacy hook \"{slot}\" points to another blueprint.",
-            legacyHookUnsupported: "Legacy hook \"{slot}\" is not supported for {type}.",
-        },
         condition: {
             returnMissing: "Condition should return a boolean value.",
             returnNotBoolean: "Condition must return a boolean, but this returns {type}.",

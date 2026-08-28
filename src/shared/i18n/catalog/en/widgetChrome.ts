@@ -74,11 +74,6 @@ export const widgetChrome = {
         emptyLayer: "Empty layer",
         openControlBlueprint: "Open control blueprint",
         noBlueprintForControl: "No blueprint for this control",
-        legacyHookCount: {
-            one: "{count} legacy hook in uidoc.",
-            other: "{count} legacy hooks in uidoc.",
-        },
-        eventSchemaMismatch: "Event schema mismatch. See diagnostics in the editor.",
     },
     dockerItems: {
         size: "Size",

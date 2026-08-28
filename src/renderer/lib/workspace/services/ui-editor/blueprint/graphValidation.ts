@@ -36,7 +36,6 @@ import {
     resolveBlueprintFnCallTarget,
     type BlueprintFnDeclaration,
 } from "./fnCatalog";
-import { listUiSlotsWiredToBlueprintLayer } from "@/lib/ui-editor/blueprint-runtime/widgetBlueprintLayerSlots";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { pickBehaviorGraphEntry } from "@/lib/ui-editor/blueprint-runtime/pickBehaviorGraphEntry";
 import { adaptBlueprintGraphIr } from "@/lib/ui-editor/blueprint-runtime/adaptBlueprintGraphIr";
@@ -87,11 +86,6 @@ export type ValidateBlueprintDocumentGraphsOptions = {
     savedVariables?: readonly VariableRegistryEntry[];
 };
 
-type BlueprintEventHook = {
-    slotName: string;
-    binding: { kind: "blueprintEvent"; blueprintId: string; eventId: string };
-};
-
 function reportDuplicatePinConnection(
     out: BlueprintGraphEditorDiagnostic[],
     seenPins: Map<string, BlueprintGraphEdge>,
@@ -139,20 +133,6 @@ function isExecInputEdge(
     return entry.pins.some(pin => pin.id === edge.to.port && pin.kind === "input" && pin.semantic === "exec");
 }
 
-function collectBlueprintEventHooks(element: UIElement): BlueprintEventHook[] {
-    const events = element.behavior?.events;
-    if (!events) {
-        return [];
-    }
-    const out: BlueprintEventHook[] = [];
-    for (const [slotName, b] of Object.entries(events)) {
-        if (b?.kind === "blueprintEvent") {
-            out.push({ slotName, binding: b });
-        }
-    }
-    return out;
-}
-
 /**
  * Owners whose "On Call" graph produces a value via a Return Value node: widget value bindings and
  * synchronous story blueprints (inline value interpolations + control-flow conditions).
@@ -177,7 +157,6 @@ function buildNodeValidationPaletteContext(ctx: {
     blueprintOwner?: BlueprintOwnerRef;
     widgetElementType?: string;
     widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
-    layerUiSlots?: string[];
     isBlueprintValueGraph?: boolean;
     isComponentDefinitionGraph?: boolean;
 }): BlueprintPaletteContext | null {
@@ -189,7 +168,6 @@ function buildNodeValidationPaletteContext(ctx: {
         owner: ctx.blueprintOwner,
         widgetElementType: ctx.widgetElementType,
         widgetBlueprintEvents: ctx.widgetBlueprintEvents,
-        widgetEventLayerSlots: ctx.layerUiSlots,
         isBlueprintValueGraph: ctx.isBlueprintValueGraph ?? isBlueprintValueGraphOwner(ctx.blueprintOwner),
         isSyncOnlyGraph: isStorySyncValueOwner(ctx.blueprintOwner),
         isComponentDefinitionGraph: ctx.isComponentDefinitionGraph,
@@ -411,61 +389,6 @@ function validateBlueprintFnRules(
     }
 }
 
-/** Cross-checks widget private blueprint compatibility and any legacy event hooks (Workspace-only). */
-export function validateBlueprintWidgetMainEventWiring(
-    doc: BlueprintDocument,
-    blueprintId: string,
-    ctx: { element: UIElement; surfaceId: string } | null | undefined,
-): BlueprintGraphEditorDiagnostic[] {
-    if (!ctx?.element) {
-        return [];
-    }
-    const { element, surfaceId } = ctx;
-    const bp: Blueprint | undefined = doc.blueprints[blueprintId];
-    if (!bp || bp.owner.kind !== "widgetMain") {
-        return [];
-    }
-    if (bp.owner.elementId !== element.id || bp.owner.surfaceId !== surfaceId) {
-        return [];
-    }
-
-    const out: BlueprintGraphEditorDiagnostic[] = [];
-    const legacyHooks = collectBlueprintEventHooks(element);
-    const supportedEventIds = new Set(listWidgetLogicEventIds(element.type));
-
-    if (bp.program.kind !== "graph") {
-        if (legacyHooks.length > 0) {
-            out.push({
-                severity: "warning",
-                code: "blueprint.widget_legacy_hooks_present",
-                message: translate("blueprint.diagnostics.widget.legacyHooksPresent"),
-            });
-        }
-        return out;
-    }
-
-    for (const hook of legacyHooks) {
-        if (hook.binding.blueprintId !== blueprintId) {
-            out.push({
-                severity: "warning",
-                code: "blueprint.widget_legacy_hook_wrong_blueprint",
-                message: translate("blueprint.diagnostics.widget.legacyHookWrongBlueprint", { slot: hook.slotName }),
-            });
-            continue;
-        }
-        if (!supportedEventIds.has(hook.slotName)) {
-            out.push({
-                severity: "warning",
-                code: "blueprint.widget_legacy_hook_unsupported_slot",
-                message: translate("blueprint.diagnostics.widget.legacyHookUnsupported", { slot: hook.slotName, type: element.type }),
-            });
-            continue;
-        }
-    }
-
-    return out;
-}
-
 export function validateBlueprintGraphIr(
     ir: BlueprintGraphIr,
     ctx: {
@@ -477,8 +400,6 @@ export function validateBlueprintGraphIr(
         validSavedVariableIds?: ReadonlySet<string>;
         variableValueTypes?: readonly BlueprintVariableTypeOption[];
         persistentVariableValueTypes?: readonly BlueprintVariableTypeOption[];
-        /** Widget UI slots referencing this event layer (when known). */
-        layerUiSlots?: string[];
         widgetElementType?: string;
         widgetBlueprintEvents?: readonly BlueprintWidgetEventCapabilityRef[];
         blueprintOwner?: BlueprintOwnerRef;
@@ -874,18 +795,7 @@ export function validateBlueprintDocumentGraphs(
 ): BlueprintGraphEditorDiagnostic[] {
     const bp = doc.blueprints[blueprintId];
     if (!bp || bp.program.kind !== "graph") {
-        const base =
-            bp && bp.program.kind !== "graph"
-                ? validateBlueprintBindingsForBlueprint(doc, blueprintId)
-                : [];
-        const wiring =
-            bp && options?.widgetElement && options.widgetSurfaceId
-                ? validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
-                      element: options.widgetElement,
-                      surfaceId: options.widgetSurfaceId,
-                  })
-                : [];
-        return [...base, ...wiring];
+        return bp ? validateBlueprintBindingsForBlueprint(doc, blueprintId) : [];
     }
     const accessibleVariables = buildAccessibleBlueprintVariableOptions({
         doc,
@@ -906,10 +816,6 @@ export function validateBlueprintDocumentGraphs(
     const validSavedVariableIds = new Set((options?.savedVariables ?? []).map(variable => variable.id));
     const out: BlueprintGraphEditorDiagnostic[] = [];
     for (const [eventId, eg] of Object.entries(bp.program.graphs.events ?? {})) {
-        const layerUiSlots =
-            options?.widgetElement && options.widgetSurfaceId
-                ? listUiSlotsWiredToBlueprintLayer(options.widgetElement, blueprintId, eventId)
-                : undefined;
         out.push(
             ...validateBlueprintGraphIr(ensureIr(eg.graph), {
                 blueprintId,
@@ -920,7 +826,6 @@ export function validateBlueprintDocumentGraphs(
                 validSavedVariableIds,
                 variableValueTypes,
                 persistentVariableValueTypes,
-                layerUiSlots,
                 widgetElementType: options?.widgetElement?.type,
                 widgetBlueprintEvents: options?.widgetBlueprintEvents,
                 blueprintOwner: bp.owner,
@@ -950,14 +855,6 @@ export function validateBlueprintDocumentGraphs(
         );
     }
     out.push(...validateBlueprintBindingsForBlueprint(doc, blueprintId));
-    if (options?.widgetElement && options.widgetSurfaceId) {
-        out.push(
-            ...validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
-                element: options.widgetElement,
-                surfaceId: options.widgetSurfaceId,
-            }),
-        );
-    }
     return out;
 }
 
