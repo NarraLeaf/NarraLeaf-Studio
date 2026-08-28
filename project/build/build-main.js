@@ -21,7 +21,7 @@ const { rootDir, isDev } = require('./utils');
         platform: 'node', // Electron main runs in Node context
         format: 'cjs',
         bundle: true,
-        // @narraleaf/encryption is kept external (required from node_modules, not bundled).
+        // @narraleaf/bindings is kept external (required from node_modules, not bundled).
         // koffi likewise: it resolves its own .node addon by path at runtime, which
         // bundling breaks. lorelib itself is loaded through a computed require of the
         // @lore-vcs/sdk-<platform> package, which esbuild cannot follow and therefore
@@ -37,7 +37,7 @@ const { rootDir, isDev } = require('./utils');
         // downloaded installer to the OS. Bundling it would work until one of those paths did
         // not, and the failure would only show up on a real update - the one code path nobody
         // exercises before shipping. asarUnpack already puts node_modules on disk as real files.
-        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi', 'electron-updater'],
+        external: ['electron', 'esbuild', '@narraleaf/bindings', 'koffi', 'electron-updater'],
         sourcemap: isDev(),
         minify: !isDev(),
         keepNames: true,
@@ -56,10 +56,10 @@ const { rootDir, isDev } = require('./utils');
         // reads template/resource files relative to itself at runtime. 7zip-bin
         // (already in electron-builder's closure) resolves its bundled 7za.exe
         // relative to its own __dirname, so it must not be inlined either.
-        // @narraleaf/encryption is a native addon: it loads a platform-specific
+        // @narraleaf/bindings is a native addon: it loads a platform-specific
         // binary by path, so it must resolve from node_modules, not be bundled
         // (same reason the artifact compile worker keeps it external).
-        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
+        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/bindings'],
         sourcemap: isDev(),
         minify: !isDev(),
         keepNames: true,
@@ -107,7 +107,7 @@ const { rootDir, isDev } = require('./utils');
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        // Same externals as the main bundle: @narraleaf/encryption is a native
+        // Same externals as the main bundle: @narraleaf/bindings is a native
         // addon whose computed-require sidecars resolve by path at runtime, and koffi
         // loads its own binary by path — bundling either breaks resolution.
         //
@@ -118,7 +118,7 @@ const { rootDir, isDev } = require('./utils');
         // kept it external all along; this worker needed it once it started
         // unpacking a toolchain, and the symptom was a protected build quietly
         // shipping the weaker codec because the compiler "could not be obtained".
-        external: ['electron', '@narraleaf/encryption', 'koffi', '7zip-bin'],
+        external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
         sourcemap: isDev(),
         minify: !isDev(),
         keepNames: true,
@@ -137,7 +137,7 @@ const { rootDir, isDev } = require('./utils');
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        external: ['electron', '@narraleaf/bindings', 'koffi'],
         sourcemap: isDev(),
         minify: !isDev(),
         target: ['node18'],

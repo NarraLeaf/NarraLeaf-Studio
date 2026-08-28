@@ -18,7 +18,7 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { runtimeSupportPathFor } from "@narraleaf/encryption";
+import { archiveReaderPathFor } from "@narraleaf/bindings";
 
 /** Studio's platform names against the ones the codec package's directories use. */
 const CODEC_PLATFORM_NAMES: Readonly<Record<string, string>> = {
@@ -121,10 +121,10 @@ export async function placeCodecBinary(
 /** Put the prebuilt image for `codecTarget` at `destination`. */
 export async function writeSupportBinary(codecTarget: string, destination: string): Promise<void> {
     if (codecTarget !== UNIVERSAL_CODEC_TARGET) {
-        await fs.copyFile(runtimeSupportPathFor(codecTarget), destination);
+        await fs.copyFile(archiveReaderPathFor(codecTarget), destination);
         return;
     }
-    const slices = await Promise.all(UNIVERSAL_CODEC_SLICES.map(slice => fs.readFile(runtimeSupportPathFor(slice))));
+    const slices = await Promise.all(UNIVERSAL_CODEC_SLICES.map(slice => fs.readFile(archiveReaderPathFor(slice))));
     await fs.writeFile(destination, buildFatMachO(slices));
 }
 

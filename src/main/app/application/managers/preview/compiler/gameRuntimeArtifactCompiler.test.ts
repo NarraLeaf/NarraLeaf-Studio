@@ -7,19 +7,19 @@ import { fileURLToPath } from "url";
 import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    createProjectMaterial,
-    createSealedLayer,
-    derivePackEncryptionKey,
-    projectVerificationKey,
-    runtimeSupportPath,
-    LAYER_FILE_EXTENSION,
-} from "@narraleaf/encryption";
+    createProjectToken,
+    createAssetOverlay,
+    derivePackKey,
+    projectStamp,
+    archiveReaderPath,
+    OVERLAY_FILE_EXTENSION,
+} from "@narraleaf/bindings";
 import {
-    openSealedBundle,
-    openSealedLayer,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-} from "@narraleaf/encryption/runtime";
+    openAssetArchive,
+    openAssetOverlay,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+} from "@narraleaf/bindings/read";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
 import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
@@ -71,7 +71,7 @@ describe("game runtime artifact compiler", () => {
 
     afterEach(async () => {
         vi.unstubAllGlobals();
-        // The protected-store test process.dlopen()s the packed nlcrypto.node; on
+        // The protected-store test process.dlopen()s the packed bindings.node; on
         // Windows a loaded native module cannot be unlinked until the process
         // exits, so a plain rm throws EPERM on that one file. Retry briefly, then
         // leave the locked binary for the OS temp sweep rather than failing the
@@ -685,7 +685,7 @@ describe("game runtime artifact compiler", () => {
         await fs.mkdir(pluginInstallDir, { recursive: true });
         await fs.writeFile(path.join(pluginInstallDir, "runtime.js"), "export default {};", "utf-8");
 
-        const packKey = derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16));
+        const packKey = derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16));
         const manifest = {
             manifestVersion: 2 as const,
             id: "acme.sample-plugin",
@@ -718,9 +718,9 @@ describe("game runtime artifact compiler", () => {
         await expect(fs.access(path.join(result.appDir, "assets"))).rejects.toThrow();
         await expect(fs.access(path.join(result.appDir, "plugins"))).rejects.toThrow();
         // The consolidated store and the support binary are present.
-        await expect(fs.access(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME))).resolves.toBeUndefined();
-        await expect(fs.access(path.join(result.appDir, RUNTIME_SUPPORT_FILENAME))).resolves.toBeUndefined();
-        expect(result.packPath).toBe(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME));
+        await expect(fs.access(path.join(result.appDir, ASSET_ARCHIVE_FILENAME))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, ARCHIVE_READER_FILENAME))).resolves.toBeUndefined();
+        expect(result.packPath).toBe(path.join(result.appDir, ASSET_ARCHIVE_FILENAME));
 
         // The asset is addressed by an extension-free store entry; the media type
         // is still known from the manifest.
@@ -734,9 +734,9 @@ describe("game runtime artifact compiler", () => {
 
         // The shipped binary was patched with this build's per-title secret, so it
         // opens the store with NO key passed at all.
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -749,9 +749,9 @@ describe("game runtime artifact compiler", () => {
 
         // The per-title secret is load-bearing and lives ONLY in the shipped
         // binary: the pristine, unpatched codec cannot open the store.
-        await expect(openSealedBundle(
-            runtimeSupportPath(),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        await expect(openAssetArchive(
+            archiveReaderPath(),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         )).rejects.toThrow();
     });
 
@@ -871,7 +871,7 @@ describe("game runtime artifact compiler", () => {
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
             debuggable: true,
-            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
         expect(result.pack.debuggable).toBe(true);
@@ -884,9 +884,9 @@ describe("game runtime artifact compiler", () => {
         const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
         expect(manifest.narraleaf.debuggable).toBe(true);
 
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -919,12 +919,12 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -982,12 +982,12 @@ describe("game runtime artifact compiler", () => {
             entry: { kind: "surface", surfaceId: "surface-main" },
             outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
             mode: "production",
-            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -1168,7 +1168,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47340),
             mode: "production",
@@ -1197,7 +1197,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47341),
             mode: "production",
@@ -1207,27 +1207,27 @@ describe("game runtime artifact compiler", () => {
         });
 
         expect(result.pack.addOns?.verificationKey)
-            .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+            .toBe(projectStamp(projectMaterial, "com.example.patchable"));
         // What a later patch export reads to decide whether this build can be sent the difference
         // rather than a whole pack. Dropped, every patch made for this build silently goes back to
         // replacing the content of every other patch installed beside it.
         expect(result.pack.addOns?.packDeltaVersion).toBe(PACK_DELTA_VERSION);
         // Loose payload, and still a binary beside it.
         await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
-        const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);
+        const binaryPath = path.join(result.appDir, ARCHIVE_READER_FILENAME);
         await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 
         // Bound to this title: a patch for it opens, and the same patch does not
         // open against the pristine binary the package ships.
-        const patchPath = path.join(tempDir, `patch${LAYER_FILE_EXTENSION}`);
-        const writer = await createSealedLayer(patchPath, {
+        const patchPath = path.join(tempDir, `patch${OVERLAY_FILE_EXTENSION}`);
+        const writer = await createAssetOverlay(patchPath, {
             projectMaterial,
             titleId: "com.example.patchable",
         });
         await writer.add("assets/probe", Buffer.from("patched bytes"));
         await writer.finalize();
 
-        const reader = await openSealedLayer(binaryPath, patchPath, {
+        const reader = await openAssetOverlay(binaryPath, patchPath, {
             verificationKey: result.pack.addOns?.verificationKey,
         });
         try {
@@ -1236,7 +1236,7 @@ describe("game runtime artifact compiler", () => {
         } finally {
             await reader.close();
         }
-        await expect(openSealedLayer(runtimeSupportPath(), patchPath, {
+        await expect(openAssetOverlay(archiveReaderPath(), patchPath, {
             verificationKey: result.pack.addOns?.verificationKey,
         })).rejects.toThrow();
     });
@@ -1254,7 +1254,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const release = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47342),
             mode: "production",
@@ -1264,18 +1264,18 @@ describe("game runtime artifact compiler", () => {
             distribution: { key: projectMaterial, titleId: "com.example.full" },
         });
 
-        const demoPatch = path.join(tempDir, `demo${LAYER_FILE_EXTENSION}`);
-        const writer = await createSealedLayer(demoPatch, {
+        const demoPatch = path.join(tempDir, `demo${OVERLAY_FILE_EXTENSION}`);
+        const writer = await createAssetOverlay(demoPatch, {
             projectMaterial,
             titleId: "com.example.full-demo",
         });
         await writer.add("assets/probe", Buffer.from("demo bytes"));
         await writer.finalize();
 
-        await expect(openSealedLayer(
-            path.join(release.appDir, RUNTIME_SUPPORT_FILENAME),
+        await expect(openAssetOverlay(
+            path.join(release.appDir, ARCHIVE_READER_FILENAME),
             demoPatch,
-            { verificationKey: projectVerificationKey(projectMaterial, "com.example.full-demo") },
+            { verificationKey: projectStamp(projectMaterial, "com.example.full-demo") },
         )).rejects.toThrow();
     });
 });
@@ -1436,8 +1436,8 @@ function previewCompileInput(
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
     await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// main", "utf-8");
-    await fs.writeFile(path.join(runtimeDistDir, "native.js"), "// native", "utf-8");
-    await fs.writeFile(path.join(runtimeDistDir, "gate.js"), "// gate", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "bindings.js"), "// bindings", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "vendor.js"), "// vendor", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "preload.js"), "// preload", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.js"), "// renderer", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");
@@ -1846,7 +1846,7 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: ["windows-x64"],
-            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
             // No toolchain, and nowhere to put one.
         })).rejects.toThrow(/Asset protection needs a C toolchain/);
     });
@@ -1883,16 +1883,16 @@ describe("weather clips in the pack", () => {
             mode: "production",
             packaging: true,
             platformKeys: [hostKey, otherKey],
-            encryptionKey: derivePackEncryptionKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
             titleCompiler: toolchain as string,
         });
 
         // Nothing at the app root: the packaging step is what puts one there, and
         // a copy sitting at the root would ship to every package unconditionally.
-        await expect(fs.access(path.join(result.appDir, RUNTIME_SUPPORT_FILENAME))).rejects.toThrow();
+        await expect(fs.access(path.join(result.appDir, ARCHIVE_READER_FILENAME))).rejects.toThrow();
 
         const staged = await Promise.all([hostKey, otherKey].map(key =>
-            fs.readFile(path.join(result.appDir, "platform", key, RUNTIME_SUPPORT_FILENAME))));
+            fs.readFile(path.join(result.appDir, "platform", key, ARCHIVE_READER_FILENAME))));
 
         /*
          * And it says which protection it produced. This compile was given no
@@ -1932,9 +1932,9 @@ describe("weather clips in the pack", () => {
          * checks it for every target on whichever machine runs it.
          */
         if (process.platform !== "win32") {
-            const reader = await openSealedBundle(
-                path.join(result.appDir, "platform", hostKey, RUNTIME_SUPPORT_FILENAME),
-                path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+            const reader = await openAssetArchive(
+                path.join(result.appDir, "platform", hostKey, ARCHIVE_READER_FILENAME),
+                path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
             );
             try {
                 const sealedPack = JSON.parse((await reader.read("pack")).toString("utf-8"));

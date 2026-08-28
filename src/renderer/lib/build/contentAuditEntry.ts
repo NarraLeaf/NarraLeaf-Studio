@@ -13,7 +13,7 @@
 
 import fs from "fs/promises";
 import path from "path";
-import { openSealedBundle, RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption/runtime";
+import { openAssetArchive, ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
@@ -42,7 +42,7 @@ async function openArtifact(appDir: string, supportBinaryPath?: string): Promise
     reader: ShippedArtifactReader;
     close(): Promise<void>;
 }> {
-    const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+    const bundlePath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
     if (await fileHasContent(bundlePath)) {
         /*
          * The codec is not in the app dir any more, and on a cross build the copy
@@ -50,8 +50,8 @@ async function openArtifact(appDir: string, supportBinaryPath?: string): Promise
          * process can open; the old path stays as the answer for an installed
          * game, which is the other thing this is pointed at.
          */
-        const sealed = await openSealedBundle(
-            supportBinaryPath ?? path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        const sealed = await openAssetArchive(
+            supportBinaryPath ?? path.join(appDir, ARCHIVE_READER_FILENAME),
             bundlePath,
         );
         const pack = JSON.parse(

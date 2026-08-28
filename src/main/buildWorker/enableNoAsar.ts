@@ -15,7 +15,7 @@
  * itself. `asarUnpack` putting `node_modules` on disk is only half of it: a
  * worker still *loaded* from `.../app.asar/dist/main/buildWorker.js` walks up to
  * `.../app.asar/node_modules`, a path inside a file, and every external require
- * in the bundle (electron-builder, 7zip-bin, @narraleaf/encryption) fails with
+ * in the bundle (electron-builder, 7zip-bin, @narraleaf/bindings) fails with
  * MODULE_NOT_FOUND - in packaged builds only, long after packaging succeeded.
  * So the worker is unpacked too and forked from the real path; see
  * `asarUnpack` in electron-builder.yml and `GameBuildManager.resolveWorkerPath`,

@@ -40,13 +40,13 @@ import {
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import {
-    bindRuntimeBinary,
-    createSealedBundle,
-    projectVerificationKey,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-    type SealedBundleWriter,
-} from "@narraleaf/encryption";
+    prepareArchiveReader,
+    createAssetArchive,
+    projectStamp,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+    type AssetArchiveWriter,
+} from "@narraleaf/bindings";
 import { PER_TARGET_DIR_NAME } from "../../../../../buildWorker/perTargetPayload";
 import {
     codecPlacementsFor,
@@ -96,7 +96,7 @@ import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } fr
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
 /** Asset types whose payload is a directory tree rather than one file. */
 const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
-// "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
+// "bindings.js" and "vendor.js" are opaque support modules of @narraleaf/bindings
 // that the packaged main.js requires (via computed requires the bundler cannot
 // inline) from its own directory at startup; they are produced by the runtime
 // build (build-runtime.js) and must ship next to main.js in every pack, so they
@@ -104,7 +104,7 @@ const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 // run unconditionally at load, so a pack missing either crashes on launch
 // regardless of whether asset protection is enabled. Keep this list in sync with
 // RUNTIME_SUPPORT_SIDECARS in project/build/build-runtime.js.
-const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "gate.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
+const REQUIRED_RUNTIME_FILES = ["main.js", "bindings.js", "vendor.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 // The web shell replaces the Electron trio with the browser bridge bundle; the
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
@@ -324,7 +324,7 @@ export type GameRuntimeArtifactCompileInput = {
     shell?: "electron" | "web";
     /**
      * Opaque pack key for asset protection. When set, packaged output is
-     * protected via @narraleaf/encryption; when absent, output is written
+     * protected via @narraleaf/bindings; when absent, output is written
      * verbatim (protection off).
      */
     encryptionKey?: string;
@@ -471,7 +471,7 @@ export type GameRuntimeArtifactCompileResult = {
  */
 type PackTarget =
     | { kind: "loose" }
-    | { kind: "sealed"; writer: SealedBundleWriter };
+    | { kind: "sealed"; writer: AssetArchiveWriter };
 
 type AssetMetadataRecord = {
     id?: unknown;
@@ -553,11 +553,11 @@ export async function compileGameRuntimeArtifact(
         : nativePayloadKeys.length > 0
             ? codecPlacementsFor(
                 nativePayloadKeys,
-                platformKey => path.join(payloadDirFor(platformKey), RUNTIME_SUPPORT_FILENAME),
+                platformKey => path.join(payloadDirFor(platformKey), ARCHIVE_READER_FILENAME),
             )
             : [{
                 platformKey: hostCodecTarget(),
-                destination: path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+                destination: path.join(appDir, ARCHIVE_READER_FILENAME),
                 slices: [hostCodecTarget()],
             }];
     /*
@@ -586,7 +586,7 @@ export async function compileGameRuntimeArtifact(
         slices.add(hostCodecTarget());
     }
     for (const slice of slices) {
-        images[slice] = path.join(imageDir, slice, RUNTIME_SUPPORT_FILENAME);
+        images[slice] = path.join(imageDir, slice, ARCHIVE_READER_FILENAME);
         await fs.mkdir(path.dirname(images[slice]), { recursive: true });
     }
 
@@ -688,7 +688,7 @@ export async function compileGameRuntimeArtifact(
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
     if (input.distribution && needsSupportBinary && !input.encryptionKey) {
-        await bindRuntimeBinary(images, {
+        await prepareArchiveReader(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
         }, titleCompile ?? undefined);
@@ -706,8 +706,8 @@ export async function compileGameRuntimeArtifact(
              * the store the macOS package built beside it opens - which is what
              * lets one compile serve a build that produces several packages.
              */
-            writer: await createSealedBundle(
-                path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+            writer: await createAssetArchive(
+                path.join(appDir, ASSET_ARCHIVE_FILENAME),
                 images,
                 input.distribution
                     ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
@@ -885,7 +885,7 @@ export async function compileGameRuntimeArtifact(
             ...(input.distribution
                 ? {
                     addOns: {
-                        verificationKey: projectVerificationKey(
+                        verificationKey: projectStamp(
                             input.distribution.key,
                             input.distribution.titleId,
                         ),
@@ -918,7 +918,7 @@ export async function compileGameRuntimeArtifact(
         if (target.kind === "sealed") {
             await target.writer.add(GAME_RUNTIME_BUNDLE_PACK_ENTRY, packJson);
             await target.writer.finalize();
-            packPath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+            packPath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
         } else {
             packPath = path.join(appDir, "pack.json");
             await fs.writeFile(packPath, packJson);
@@ -1185,7 +1185,7 @@ async function copyRuntimeFiles(
  * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
  * this application already depends on and already signs. It cannot be bundled - it resolves its own
  * `.node` by path at run time - so it ships as a directory beside the game's `main.js`, the way
- * `native.js`/`gate.js` ship for the encryption addon.
+ * `bindings.js`/`vendor.js` ship for the addon.
  *
  * The directory is `koffi/`, deliberately not `node_modules/koffi/`. electron-builder derives the
  * app's `node_modules` from the staged `package.json`'s dependencies and ships nothing else under
@@ -1247,7 +1247,7 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
  * this application already depends on and already signs. It cannot be bundled - it resolves its own
  * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
- * the way `native.js`/`gate.js` ship for the encryption addon.
+ * the way `bindings.js`/`vendor.js` ship for the addon.
  *
  * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
  * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM

@@ -2,8 +2,8 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { createSealedBundle } from "@narraleaf/encryption";
-import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption/runtime";
+import { createAssetArchive } from "@narraleaf/bindings";
+import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY, gameRuntimeBundleAssetEntry, gameRuntimeBundleModelEntry } from "@shared/utils/gameRuntimeBundle";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION, type GameRuntimePackV1 } from "@shared/types/gameRuntime";
@@ -86,14 +86,14 @@ function packNaming(assetIds: string[], modelBundles: string[]): GameRuntimePack
  * ships.
  */
 async function copyProtectionComponent(appDir: string): Promise<void> {
-    const packageRoot = path.dirname(path.dirname(require.resolve("@narraleaf/encryption")));
+    const packageRoot = path.dirname(path.dirname(require.resolve("@narraleaf/bindings")));
     const prebuild = path.join(
         packageRoot,
         "prebuilds",
         `${process.platform}-${process.arch}`,
-        "nlcrypto.node",
+        "bindings.node",
     );
-    await fs.copyFile(prebuild, path.join(appDir, "nlcrypto.node"));
+    await fs.copyFile(prebuild, path.join(appDir, "bindings.node"));
 }
 
 /** Write a protected package into a fresh app dir, with the entries a caller names. */
@@ -104,9 +104,9 @@ async function sealPackage(
     const appDir = path.join(tempDir, `app-${crypto.randomBytes(4).toString("hex")}`);
     await fs.mkdir(appDir, { recursive: true });
     await copyProtectionComponent(appDir);
-    const writer = await createSealedBundle(
-        path.join(appDir, RUNTIME_BUNDLE_FILENAME),
-        path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+    const writer = await createAssetArchive(
+        path.join(appDir, ASSET_ARCHIVE_FILENAME),
+        path.join(appDir, ARCHIVE_READER_FILENAME),
     );
     await writer.add(GAME_RUNTIME_BUNDLE_PACK_ENTRY, Buffer.from(JSON.stringify(pack), "utf-8"));
     for (const [name, content] of Object.entries(entries)) {

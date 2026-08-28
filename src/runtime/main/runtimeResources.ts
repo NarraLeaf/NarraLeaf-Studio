@@ -2,15 +2,15 @@ import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
 import {
-    LAYER_DESCRIPTOR_ENTRY,
-    LAYER_FILE_EXTENSION,
-    openSealedBundle,
-    openSealedLayer,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-    type SealedBundleReader,
-    type SealedLayerReader,
-} from "@narraleaf/encryption/runtime";
+    OVERLAY_DESCRIPTOR_ENTRY,
+    OVERLAY_FILE_EXTENSION,
+    openAssetArchive,
+    openAssetOverlay,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+    type AssetArchiveReader,
+    type AssetOverlayReader,
+} from "@narraleaf/bindings/read";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
     GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
@@ -106,10 +106,10 @@ export async function createRuntimeResources(
     appDir: string,
     options: RuntimeResourcesOptions = {},
 ): Promise<RuntimeResources> {
-    const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+    const bundlePath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
     const base: RuntimeResources = await fileExists(bundlePath)
-        ? new SealedRuntimeResources(await openSealedBundle(
-            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        ? new SealedRuntimeResources(await openAssetArchive(
+            path.join(appDir, ARCHIVE_READER_FILENAME),
             bundlePath,
         ))
         : new LooseRuntimeResources(appDir);
@@ -127,7 +127,7 @@ export async function createRuntimeResources(
  * cannot disagree about what kind of build this is.
  */
 export function isSealedBuildSync(appDir: string): boolean {
-    return fsSync.existsSync(path.join(appDir, RUNTIME_BUNDLE_FILENAME));
+    return fsSync.existsSync(path.join(appDir, ASSET_ARCHIVE_FILENAME));
 }
 
 /**
@@ -222,7 +222,7 @@ class SealedRuntimeResources implements RuntimeResources {
     /** De-duplicates concurrent reads of the same entry while one is in flight. */
     private readonly pendingReads = new Map<string, Promise<Buffer>>();
 
-    constructor(private readonly reader: SealedBundleReader) {}
+    constructor(private readonly reader: AssetArchiveReader) {}
 
     readPack(): Promise<Buffer> {
         return this.reader.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY);
@@ -351,7 +351,7 @@ export interface RuntimeResourcesOptions {
 type OpenPatch = {
     /** Filename, which is what a reader of the log has in front of them. */
     label: string;
-    reader: SealedLayerReader;
+    reader: AssetOverlayReader;
     /**
      * Whether the file proved it came from the project that built this game.
      *
@@ -630,12 +630,12 @@ type LayerDescriptor = {
     };
 };
 
-async function readLayerDescriptor(reader: SealedLayerReader): Promise<LayerDescriptor> {
-    if (!reader.has(LAYER_DESCRIPTOR_ENTRY)) {
+async function readLayerDescriptor(reader: AssetOverlayReader): Promise<LayerDescriptor> {
+    if (!reader.has(OVERLAY_DESCRIPTOR_ENTRY)) {
         return {};
     }
     try {
-        const parsed = JSON.parse((await reader.read(LAYER_DESCRIPTOR_ENTRY)).toString("utf-8")) as unknown;
+        const parsed = JSON.parse((await reader.read(OVERLAY_DESCRIPTOR_ENTRY)).toString("utf-8")) as unknown;
         if (!parsed || typeof parsed !== "object") {
             return {};
         }
@@ -698,7 +698,7 @@ function layerKinds(): LayerKind[] {
         {
             rank: 1,
             directories: [PATCH_DIRECTORY_NAME],
-            matches: name => name.endsWith(LAYER_FILE_EXTENSION),
+            matches: name => name.endsWith(OVERLAY_FILE_EXTENSION),
             noun: "patch",
         },
     ];
@@ -772,7 +772,7 @@ async function openLayers(
         return [];
     }
 
-    const binaryPath = path.join(appDir, RUNTIME_SUPPORT_FILENAME);
+    const binaryPath = path.join(appDir, ARCHIVE_READER_FILENAME);
     if (!await fileExists(binaryPath)) {
         // The build was made without a distribution key, so it has nothing to read a
         // layer through. Worth one line: the files are sitting there and the player
@@ -785,7 +785,7 @@ async function openLayers(
     for (const [at, entry] of found.entries()) {
         const label = path.basename(entry.file);
         try {
-            const reader = await openSealedLayer(binaryPath, entry.file, {
+            const reader = await openAssetOverlay(binaryPath, entry.file, {
                 ...(build.verificationKey ? { verificationKey: build.verificationKey } : {}),
             });
             const descriptor = await readLayerDescriptor(reader);

@@ -1,4 +1,4 @@
-import { LAYER_FILE_EXTENSION } from "@narraleaf/encryption";
+import { OVERLAY_FILE_EXTENSION } from "@narraleaf/bindings";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { openPayload } from "../../build/patchPayload";
@@ -118,7 +118,7 @@ export class GameBuildSelectPatchFileHandler extends IPCHandler<IPCEventType.gam
                 buttonLabel: "Save patch",
                 // The suffix is two extensions deep on purpose, so the filter has
                 // to match the whole tail rather than the generic one.
-                filters: [{ name: "Patch", extensions: [LAYER_FILE_EXTENSION.replace(/^\./, "")] }],
+                filters: [{ name: "Patch", extensions: [OVERLAY_FILE_EXTENSION.replace(/^\./, "")] }],
                 ...(defaultPath ? { defaultPath } : {}),
             });
             if (result.canceled || !result.filePath) {
