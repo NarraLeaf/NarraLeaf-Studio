@@ -640,8 +640,6 @@ function InspectorFields(props: {
                     label: character.profile.getName(),
                 })),
             ];
-            const pauseEnabled = payload.pauseAfter !== undefined;
-            const pauseMs = typeof payload.pauseAfter === "number" ? payload.pauseAfter : undefined;
             return (
                 <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={2}>
@@ -653,22 +651,6 @@ function InspectorFields(props: {
                         />
                         <TextIdReadout text={payload.text} />
                     </FieldGrid>
-                    <Section title={t("storyInspector.section.timing")}>
-                        <FieldGrid cols={2}>
-                            <ToggleField
-                                label={t("storyInspector.dialogue.pauseAfter")}
-                                checked={pauseEnabled}
-                                onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
-                            />
-                            {pauseEnabled ? (
-                                <SecondsField
-                                    label={t("storyInspector.dialogue.pauseSeconds")}
-                                    value={pauseMs}
-                                    onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
-                                />
-                            ) : null}
-                        </FieldGrid>
-                    </Section>
                     <VoiceInspectorSection block={block} />
                 </div>
             );

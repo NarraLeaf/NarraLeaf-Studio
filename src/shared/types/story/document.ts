@@ -633,8 +633,6 @@ export type StoryNodeActionPayload =
           speakerName?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
-          /** Auto-pause after the line: `true` waits for a click, a number waits that many ms. */
-          pauseAfter?: boolean | number;
       }
     | {
           action: "choice";
