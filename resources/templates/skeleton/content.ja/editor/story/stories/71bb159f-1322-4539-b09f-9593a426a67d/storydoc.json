@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 17,
+  "schemaVersion": 23,
   "id": "71bb159f-1322-4539-b09f-9593a426a67d",
   "name": "スケルトン",
   "entrySceneId": "f306e2d5-70c0-421b-ba8a-c7b2d3ce9d33",
@@ -50,9 +50,9 @@
               "kind": "throughColor",
               "durationMs": 800,
               "props": {
-                "color": "#000000",
-                "hold": 25
-              }
+                "color": "#000000"
+              },
+              "holdMs": 200
             }
           }
         },
@@ -109,13 +109,16 @@
             "operation": "enter",
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
-              "mode": "preset",
-              "preset": "center",
-              "durationMs": 400,
-              "props": {
+              "mode": "props",
+              "to": {
                 "zoom": 0.52,
-                "yoffset": -50
-              }
+                "position": {
+                  "xalign": 0.5,
+                  "yalign": 0.5,
+                  "yoffset": -50
+                }
+              },
+              "durationMs": 400
             },
             "transition": {
               "kind": "fadeIn",
@@ -194,9 +197,9 @@
               "kind": "throughColor",
               "durationMs": 800,
               "props": {
-                "color": "#000000",
-                "hold": 25
-              }
+                "color": "#000000"
+              },
+              "holdMs": 200
             }
           }
         },
@@ -294,13 +297,16 @@
             "operation": "enter",
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
-              "mode": "preset",
-              "preset": "center",
-              "durationMs": 400,
-              "props": {
+              "mode": "props",
+              "to": {
                 "zoom": 0.52,
-                "yoffset": -50
-              }
+                "position": {
+                  "xalign": 0.5,
+                  "yalign": 0.5,
+                  "yoffset": -50
+                }
+              },
+              "durationMs": 400
             },
             "transition": {
               "kind": "fadeIn",
@@ -410,9 +416,9 @@
               "kind": "throughColor",
               "durationMs": 800,
               "props": {
-                "color": "#000000",
-                "hold": 25
-              }
+                "color": "#000000"
+              },
+              "holdMs": 200
             }
           }
         },
@@ -650,13 +656,16 @@
             "operation": "enter",
             "characterId": "77eb07ac-4af6-48c0-80c1-7db3de78a9ce",
             "transform": {
-              "mode": "preset",
-              "preset": "center",
-              "durationMs": 400,
-              "props": {
+              "mode": "props",
+              "to": {
                 "zoom": 0.52,
-                "yoffset": -50
-              }
+                "position": {
+                  "xalign": 0.5,
+                  "yalign": 0.5,
+                  "yoffset": -50
+                }
+              },
+              "durationMs": 400
             },
             "transition": {
               "kind": "fadeIn",
@@ -817,10 +826,15 @@
           "childrenIds": [],
           "payload": {
             "action": "camera",
-            "operation": "zoom",
-            "zoom": 1.12,
-            "durationMs": 2600,
-            "easing": "easeOut"
+            "operation": "transform",
+            "transform": {
+              "mode": "props",
+              "to": {
+                "zoom": 1.12
+              },
+              "durationMs": 2600,
+              "easing": "easeOut"
+            }
           }
         },
         "a3dfeea5-1bdd-4943-b649-9140875e67ea": {

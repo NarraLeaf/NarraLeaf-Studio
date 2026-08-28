@@ -113,7 +113,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         const configFileName = findProjectConfigFileName(fileStats);
 
         if (!configFileName) {
-            throw new RendererError("Project config not found: no .nlproj or project.json in project root");
+            throw new RendererError("Project config not found: no .nlproj in project root");
         }
 
         const configPath = join(projectPath, configFileName);

@@ -7641,7 +7641,7 @@ describe("sound node transport", () => {
                     play: {
                         id: "play",
                         type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
-                        params: { soundAssetId: "asset-theme", soundChannel: "bgm" },
+                        params: { soundAssetId: "asset-theme", audioTrackId: "bgm" },
                     },
                     duck: {
                         id: "duck",
@@ -7664,9 +7664,8 @@ describe("sound node transport", () => {
             blueprintLocals: {},
         });
 
-        // The node stores the pre-track "soundChannel"; resolveTrackId maps it to that channel's
-        // seeded bus so a graph written before tracks existed still plays on the BGM bus. Every
-        // unwired override travels as undefined, which is what lets the track supply the default.
+        // Every unwired override travels as undefined, which is what lets the track supply the
+        // default.
         expect(log.play).toEqual([{
             assetId: "asset-theme",
             audioTrackId: "bgm",

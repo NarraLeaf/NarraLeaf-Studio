@@ -31,7 +31,7 @@ import {
     StoryTransformSequenceProps,
 } from "@shared/types/story";
 import { assertValidStoryEntityId, assertValidStoryId, isValidStoryEntityId, isValidStoryId } from "@shared/utils/storyId";
-import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument";
+import { migrateStoryDocumentToLatest, STORY_DOCUMENT_MIN_SUPPORTED_VERSION } from "@shared/story/migrateStoryDocument";
 import {
     assertSupportedStoryDocument,
     normalizeOptionalNonNegativeNumber,
@@ -295,7 +295,12 @@ export function normalizeStoryAnimationIndex(index: StoryAnimationIndex, now: st
  * per-change conflict resolver composes one out of three sides and hands it to
  * `storySpec.serialize`. See `@shared/story/normalizeStoryDocument`.
  */
-export { assertSupportedStoryDocument, migrateStoryDocumentToLatest, normalizeStoryDocument };
+export {
+    assertSupportedStoryDocument,
+    migrateStoryDocumentToLatest,
+    normalizeStoryDocument,
+    STORY_DOCUMENT_MIN_SUPPORTED_VERSION,
+};
 
 export function normalizeStoryAnimationAsset(asset: StoryAnimationAsset, now: string): StoryAnimationAsset {
     assertSupportedStoryAnimationAsset(asset);

@@ -28,7 +28,6 @@ import {
     BLUEPRINT_VALUE_TYPE_SOUND_HANDLE,
     normalizeBlueprintSoundHandle,
 } from "@shared/types/blueprint/valueTypes";
-import { normalizeBlueprintSoundChannel } from "../../blueprint-runtime/BlueprintHostApiBridge";
 import { DEFAULT_AUDIO_TRACK_ID } from "@shared/types/audioTrack";
 import {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE as AUDIO_TRACK_OPTIONS_SOURCE,
@@ -68,13 +67,6 @@ export {
     BLUEPRINT_AUDIO_TRACK_OPTIONS_SOURCE,
     BLUEPRINT_SOUND_PARAM_TRACK,
 } from "./audioTrackParams";
-
-/**
- * The pre-track channel select. Kept as a constant, not as a control: a graph written before tracks
- * existed still carries it, and both the document migration and {@link resolveTrackId} need the
- * spelling to read it back. Nothing writes it any more.
- */
-export const BLUEPRINT_SOUND_PARAM_CHANNEL = "soundChannel";
 
 const handleIn: BlueprintNodePinDef = {
     id: "handle",
@@ -245,24 +237,11 @@ function resolveAssetId(ctx: SoundExecuteCtx): string {
     return typeof param === "string" ? param.trim() : "";
 }
 
-/**
- * The track id this node plays on.
- *
- * A graph saved before tracks existed carries `soundChannel` instead; `migrateBlueprintDocument`
- * rewrites it on read, but a graph can still reach execution unmigrated (a plugin building nodes at
- * runtime, a host call), so the same mapping is applied here. Both arms land on the built-in track
- * for that channel, which reproduces the old behaviour exactly.
- */
+/** The track id this node plays on; `null` leaves the transport to pick the project's default. */
 function resolveTrackId(ctx: SoundExecuteCtx): string | null {
     const stored = ctx.params[SOUND_PARAM_TRACK];
     const trackId = typeof stored === "string" ? stored.trim() : "";
-    if (trackId) {
-        return trackId;
-    }
-    const legacy = ctx.params[BLUEPRINT_SOUND_PARAM_CHANNEL];
-    return legacy === undefined || legacy === null
-        ? null
-        : DEFAULT_AUDIO_TRACK_ID[normalizeBlueprintSoundChannel(legacy)];
+    return trackId ? trackId : null;
 }
 
 /**
