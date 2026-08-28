@@ -13,6 +13,7 @@ import {
     createBranch,
     createRepository,
     flushRepository,
+    history,
     openStore,
     releaseRepository,
     repositoryStatus,
@@ -501,6 +502,43 @@ describe.skipIf(!supported)("closing a merge", () => {
      *  - **the merge's three sides are gone from disk**, so the commit carried none of them into
      *    the author's history (§4.23) and `readMergeState` no longer reports a merge.
      */
+    /**
+     * The revision that closes a merge has TWO parents, and Studio's own path is what has to.
+     *
+     * §4.26 measured this on a revision the backend committed for itself. What it did not measure
+     * is the commit Studio makes: `commitWorkingTree` stages the repository root first, which
+     * §4.25's experiment did not do, and a stage that re-recorded the tree as an ordinary change
+     * set would produce a single-parent commit - right content, closed merge state, and two lines
+     * that never joined. From outside that looks like nothing at all until a push is refused.
+     *
+     * Pinned here because a push cannot be: the remote half of this file needs a server, and a
+     * server that verifies identities cannot be reached from a test process at all yet (§4.34).
+     * This is the half that can run everywhere, and it is the half that would catch a regression
+     * in Studio's own commit rather than in the backend's.
+     */
+    it("records both parents, so the merge joins the two lines", async () => {
+        const fixture = await twoSided("nl-merge-parents-");
+        await branchMergeStart(fixture.globals, { branch: "feature" });
+        await flushRepository(fixture.globals);
+        await releaseRepository(fixture.globals);
+
+        const manager = new VcsManager(fakeApp());
+        try {
+            await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
+        } finally {
+            await manager.closeProject(fixture.root);
+        }
+
+        const globals = offline(fixture.root);
+        const graph = await history(globals, {});
+        const tip = [...graph.nodes.values()].sort((a, b) => b.number - a.number)[0];
+        expect(tip.parents).toHaveLength(2);
+        // Both of them, and specifically the two branch tips the merge was between - a revision
+        // with two parents that were not those would join the wrong lines.
+        expect([...tip.parents].sort()).toEqual([fixture.mine, fixture.theirs].sort());
+        await releaseRepository(globals);
+    }, 300_000);
+
     it("takes a side per path, records one revision, and reads the result back", async () => {
         const fixture = await twoSidedPair("nl-merge-complete-");
         await branchMergeStart(fixture.globals, { branch: "feature" });
