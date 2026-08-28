@@ -27,6 +27,41 @@
 /** The directory under the app root that holds one subdirectory per target. */
 export const PER_TARGET_DIR_NAME = "platform";
 
+/** Studio's platform names against the ones a running game reports for itself. */
+const RUNNING_PLATFORM_NAMES: Readonly<Record<string, string>> = {
+    windows: "win32",
+    macos: "darwin",
+    linux: "linux",
+};
+
+/**
+ * The `<process.platform>-<process.arch>` keys one build target serves.
+ *
+ * A pack records what to spawn under these rather than under Studio's own target
+ * names, so a running game can find its own entry with no table at all: it knows
+ * what `process` says about it and nothing else. The translation happens once,
+ * here, in the half that already has to know both vocabularies.
+ *
+ * A universal macOS package serves two, because it really does run on two.
+ * Anything this does not recognise answers nothing rather than a guess - the
+ * same rule the codec's table follows, and for the same reason.
+ */
+export function runningPlatformKeysFor(platformKey: string): string[] {
+    const separator = platformKey.lastIndexOf("-");
+    if (separator <= 0) {
+        return [];
+    }
+    const platform = RUNNING_PLATFORM_NAMES[platformKey.slice(0, separator)];
+    const arch = platformKey.slice(separator + 1);
+    if (!platform || !arch) {
+        return [];
+    }
+    if (arch === "universal") {
+        return platform === "darwin" ? ["darwin-x64", "darwin-arm64"] : [];
+    }
+    return [`${platform}-${arch}`];
+}
+
 /**
  * The `files` entries that resolve one target's staged payload onto the app root.
  *

@@ -108,13 +108,19 @@ export const UI_INPUT_ACTION_PRESETS: readonly {
     id: string;
     bindings: readonly UIInputBinding[];
 }[] = [
+    // Blank first, and drawn as its own kind of row: starting from nothing is the choice an author
+    // who already knows what they want makes, and it is not one of the templates - it is the way
+    // past them.
+    { id: "blank", bindings: [] },
     { id: "advance", bindings: [{ kind: "pointer", gesture: "click" }] },
     { id: "back", bindings: [{ kind: "key", key: "Escape" }] },
     { id: "backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
     { id: "hideInterface", bindings: [{ kind: "pointer", gesture: "longPress" }] },
     { id: "menu", bindings: [{ kind: "pointer", gesture: "rightClick" }] },
-    { id: "blank", bindings: [] },
 ];
+
+/** The preset that lays nothing down, drawn apart from the templates. */
+export const UI_INPUT_ACTION_BLANK_PRESET_ID = "blank";
 
 export function findUIInputActionPreset(id: string): (typeof UI_INPUT_ACTION_PRESETS)[number] | undefined {
     return UI_INPUT_ACTION_PRESETS.find(preset => preset.id === id);
