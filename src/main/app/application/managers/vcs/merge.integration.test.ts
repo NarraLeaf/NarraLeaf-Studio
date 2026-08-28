@@ -719,7 +719,29 @@ describe.skipIf(!supported)("closing a merge", () => {
 });
 
 describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
-    /** Unique per run: the server keeps repositories by name, so a fixed one collides. */
+    /**
+     * Unique per run: the server keeps repositories by name, so a fixed one collides.
+     *
+     * ⚠ **Each run leaves one registration per spec behind, and nothing here removes them.**
+     * Taking a project off a server's list is a Team call and this process has no Team session -
+     * it speaks to the repository, not to the service in front of it. So a server used for this
+     * accumulates `conflict-…`, `orientation-…`, `readback-…` and `pushafter-…` rows, which
+     * matters because the one people point at is shared. Sweep them from a Studio that is signed
+     * in to it, which does have the session:
+     *
+     * ```js
+     * const origin = "lore://127.0.0.1:41337";
+     * const listed = await window.__NLS_RENDERER_INTERFACE__.team.call(origin, "projects.list", {});
+     * for (const p of listed.data.value.projects) {
+     *     if (/^(conflict|orientation|readback|pushafter)-/.test(p.name)) {
+     *         await window.__NLS_RENDERER_INTERFACE__.team.call(origin, "projects.forget", { project: p.id });
+     *     }
+     * }
+     * ```
+     *
+     * It removes the listing only - the repository and its revisions stay - so nothing that was
+     * swept is destroyed, and a name can be registered again.
+     */
     function serverUrl(name: string): string {
         return `${SERVER}/${name}-${Date.now().toString(36)}`;
     }
