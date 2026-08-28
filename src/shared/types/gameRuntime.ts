@@ -112,14 +112,43 @@ export type GameRuntimeProjectIcon = {
  * into this app dir. Anything the manifest says about other platforms is not a
  * fact about this artifact, so the runtime must not read it as one.
  */
+/** What a running game calls the machine it is on. */
+export function runningPlatformKey(): string {
+    return `${process.platform}-${process.arch}`;
+}
+
+/**
+ * The file this machine should spawn for a sidecar, or null when the pack
+ * carries nothing for it.
+ *
+ * Null is a real answer rather than a failure: a plugin may ship a sidecar for
+ * Windows and not for Linux, and the Linux build of the same game is expected to
+ * run without it. The caller reports it the way it reports a missing file.
+ */
+export function sidecarEntryForThisMachine(
+    entry: GameRuntimePackSidecarEntry["entry"],
+    key: string = runningPlatformKey(),
+): string | null {
+    if (typeof entry === "string") {
+        return entry;
+    }
+    return entry[key] ?? null;
+}
+
 export type GameRuntimePackSidecarEntry = {
     /** `contributes.sidecars[].id`, the name the runtime API addresses it by. */
     id: string;
     /**
      * The executable (or, for `kind: "node"`, the .js file) to run, relative to
      * the app dir - e.g. `sidecars/{pluginId}/{sidecarId}/bin/tool.exe`.
+     *
+     * A map when one pack serves several machines, keyed by what the game
+     * reports about itself: `${process.platform}-${process.arch}`. The name is
+     * not the same on all of them - it ends in .exe on Windows and does not
+     * elsewhere - so a single name could only ever be right about one, which is
+     * why a build serving two platforms used to ship no sidecars at all.
      */
-    entry: string;
+    entry: string | Record<string, string>;
     /**
      * `executable` spawns the binary directly and talks to it over stdin/stdout; `node` runs the
      * .js as an Electron utility process and talks to it over `process.parentPort`, which is the
