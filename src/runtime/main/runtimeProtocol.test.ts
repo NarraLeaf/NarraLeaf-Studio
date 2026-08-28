@@ -36,7 +36,6 @@ function createPack(): GameRuntimePackV1 {
                 },
                 uigraphs: {
                     schemaVersion: 2,
-                    graphs: {},
                     blueprintDocument: {
                         schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
                         blueprints: {},

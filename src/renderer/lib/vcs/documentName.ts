@@ -179,15 +179,18 @@ interface UnclaimedDocument {
 /**
  * The documents the registry does not answer for, in order of specificity.
  *
- * Not every file Studio writes has a document spec - the story index, the animation library and the
- * asset browser's own shards have none - and a path a spec does not claim would otherwise fall
- * through to being named after itself, which is exactly the four rows the version rail was drawing.
+ * Not every file Studio writes has a document spec - the animation library and the asset browser's
+ * own shards have none - and a path a spec does not claim would otherwise fall through to being
+ * named after itself, which is exactly the four rows the version rail was drawing.
+ *
+ * The story index used to be the first entry here and is now claimed by `storyIndexSpec`, which
+ * answers with the same key one step earlier. Its name is therefore in `DOCUMENT_KIND_NAME_KEY`
+ * only, and the two spellings cannot drift because there is no longer a second one.
  *
  * **First match wins, so the order is load-bearing**: `editor/story/animations/index.json` is also
  * a `<animationId>.json`, and the animation list is not an animation.
  */
 const UNCLAIMED_DOCUMENTS: readonly UnclaimedDocument[] = [
-    { pattern: compileDocumentPathPattern("editor/story/index.json"), key: "documentDiff.name.storyIndex" },
     {
         pattern: compileDocumentPathPattern("editor/story/animations/index.json"),
         key: "documentDiff.name.animationIndex",

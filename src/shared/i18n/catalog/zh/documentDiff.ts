@@ -66,6 +66,7 @@ export const documentDiff = {
         projectLanguages: "语言",
         projectPlugins: "插件",
         saveFields: "存档字段",
+        stories: "故事",
         storyBlocks: "故事行",
         storyChapters: "章节",
         storyScenes: "场景",
@@ -77,6 +78,23 @@ export const documentDiff = {
         uiSurfaces: "界面",
         variables: "变量",
         voiceUnits: "语音",
+    },
+    /**
+     * 第二层，故事列表：工程里有哪些故事、它们叫什么。
+     *
+     * 只有合并行，因为列表本身还没有语义 diff——比较时按结构走。
+     * `subject` 带的是故事自己的标题，所以下面这些不再重复它。
+     */
+    storyIndex: {
+        added: "新增故事",
+        removed: "删除故事",
+        /** 一边新增另一边删除，或者两边本就没有共同祖先。 */
+        changed: "故事改动",
+        renamed: "故事改名",
+        /** `dlcId`、`importSource`、`exportMeta`，都没有作者写过的名字。 */
+        entryField: "{field} 改动",
+        defaultStory: "开场故事改动",
+        documentField: "{field} 改动",
     },
     story: {
         renamed: "故事改名",

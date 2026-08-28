@@ -70,7 +70,6 @@ function blueprint(
 function uigraphs(...blueprints: Blueprint[]): UIGraphDocument {
     return {
         schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-        graphs: {},
         blueprintDocument: {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
             blueprints: Object.fromEntries(blueprints.map(one => [one.id, one])),

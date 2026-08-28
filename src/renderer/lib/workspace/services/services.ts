@@ -81,7 +81,6 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
-    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
     LiteralValue,
@@ -506,18 +505,6 @@ interface IUIGraphService extends IService {
     isDirty(): boolean;
     getRevision(): number;
     applyGraphMutation(mutator: (document: UIGraphDocument) => void): void;
-    createGraph(input: {
-        name?: string;
-        nodes?: Record<string, UIGraph["nodes"][string]>;
-        entries?: UIGraph["entries"];
-        edges?: UIGraph["edges"];
-        variables?: UIGraph["variables"];
-        meta?: UIGraph["meta"];
-    }): UIGraph;
-    updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
-    deleteGraph(graphId: string): void;
-    /** One-shot: the raw persistent variables read at load before the M-VAR migration relocated them. */
-    consumeLegacyPersistentVariables(): Record<string, BlueprintPersistentVariable> | null;
 }
 
 interface IVariableRegistryService extends IService {

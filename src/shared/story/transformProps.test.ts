@@ -7,7 +7,7 @@ import {
     storyTransformPropsConflicts,
     storyTransformPropsToNlr,
 } from "./transformProps";
-import { expandLegacyDisplayableEffect, expandLegacyTransformPreset } from "./transformLegacy";
+import { expandLegacyTransformPreset } from "./transformLegacy";
 
 describe("the structured filter", () => {
     it("emits in one canonical order whatever order the record was built in, with the right units", () => {
@@ -121,7 +121,7 @@ describe("a mirror is a lone negative scaleX", () => {
     });
 });
 
-describe("the v17 -> v18 expansion tables", () => {
+describe("the placement and gesture vocabulary", () => {
     it("expands all twenty transform presets, and only three of them leave the bag", () => {
         expect(expandLegacyTransformPreset("none").to).toEqual({});
         expect(expandLegacyTransformPreset("left").to).toEqual({ position: { xalign: 0.25, yalign: 0.5 } });
@@ -154,24 +154,5 @@ describe("the v17 -> v18 expansion tables", () => {
         expect(expandLegacyTransformPreset("circleClose").clipReveal).toEqual({ kind: "circleClose" });
         expect(expandLegacyTransformPreset("wipe", { direction: "right", reverse: true }).clipReveal)
             .toEqual({ kind: "wipe", direction: "right", reverse: true });
-    });
-
-    it("expands all twelve displayable effect operations", () => {
-        expect(expandLegacyDisplayableEffect("mask", { maskAssetId: "asset-1" }).to).toEqual({ maskAssetId: "asset-1" });
-        expect(expandLegacyDisplayableEffect("clearMask", {}).to).toEqual({ maskAssetId: null });
-        expect(expandLegacyDisplayableEffect("clip", { clipPath: "circle(40%)" }).to).toEqual({ clipPath: "circle(40%)" });
-        expect(expandLegacyDisplayableEffect("clearClip", {}).to).toEqual({ clipPath: null });
-        // Parsed where the string permits it, raw where it does not.
-        expect(expandLegacyDisplayableEffect("filter", { filter: "blur(4px)" }).to).toEqual({ filter: { blur: 4 } });
-        expect(expandLegacyDisplayableEffect("filter", { filter: "blur(5px) brightness(0.75)" }).to).toEqual({ filterRaw: "blur(5px) brightness(0.75)" });
-        expect(expandLegacyDisplayableEffect("clearFilter", {}).to).toEqual({ filter: null });
-        expect(expandLegacyDisplayableEffect("backdrop", { backdropFilter: "blur(8px)" }).to).toEqual({ backdropFilter: "blur(8px)" });
-        expect(expandLegacyDisplayableEffect("blend", { mixBlendMode: "screen" }).to).toEqual({ mixBlendMode: "screen" });
-        expect(expandLegacyDisplayableEffect("darken", { darkness: 0.6 }).to).toEqual({ filter: { brightness: 0.4 } });
-        expect(expandLegacyDisplayableEffect("circleReveal", { effectProps: { from: 0, to: 150 } }).clipReveal)
-            .toEqual({ kind: "circleReveal", fromRadius: 0, toRadius: 150 });
-        expect(expandLegacyDisplayableEffect("circleClose", {}).clipReveal).toEqual({ kind: "circleClose" });
-        expect(expandLegacyDisplayableEffect("wipe", { effectProps: { direction: "top" } }).clipReveal)
-            .toEqual({ kind: "wipe", direction: "top" });
     });
 });

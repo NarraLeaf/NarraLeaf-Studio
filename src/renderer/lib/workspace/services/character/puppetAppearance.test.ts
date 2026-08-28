@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CharacterAppearance, emptyAppearance } from "./CharacterAppearance";
-import { migrateCharacterStore } from "./migrateAppearance";
+import { findUnreadableCharacterAppearance } from "./migrateAppearance";
 import type { PuppetAppearance } from "./types";
 import { KNOWN_PUPPET_RUNTIME_IDS, knownPuppetRuntime } from "@shared/utils/puppetRuntimes";
 
@@ -22,13 +22,11 @@ describe("puppet appearance", () => {
         expect(appearance.toJSON()).toEqual(puppet());
     });
 
-    it("survives the store migration", () => {
-        // The migration reads an unrecognised kind as the *pre-rework* store and rewrites it, so a
-        // kind it does not know is deleted rather than ignored. This is the guard for that.
-        const store = [{ profile: { name: "Doll", appearance: puppet() } }];
-        const report = migrateCharacterStore(store);
-        expect(report.migrated).toBe(0);
-        expect(store[0].profile.appearance).toEqual(puppet());
+    it("is a kind the store reader recognises", () => {
+        // The reader refuses a store holding an appearance kind it does not know, so a kind missing
+        // from the shared list makes the whole cast unreadable rather than merely unsupported. This
+        // is the guard for that.
+        expect(findUnreadableCharacterAppearance([{ profile: { name: "Doll", appearance: puppet() } }])).toBeNull();
     });
 
     it("starts empty and is not silently sourced", () => {
@@ -60,11 +58,9 @@ describe("puppet appearance", () => {
             expect(appearance.resolveDrawList({})).toEqual([]);
         });
 
-        it("survives the store migration", () => {
-            const store = [{ profile: { name: "Doll", appearance: puppet({ kind }) } }];
-            const report = migrateCharacterStore(store);
-            expect(report.migrated).toBe(0);
-            expect(store[0].profile.appearance).toEqual(puppet({ kind }));
+        it("is a kind the store reader recognises", () => {
+            expect(findUnreadableCharacterAppearance([{ profile: { name: "Doll", appearance: puppet({ kind }) } }]))
+                .toBeNull();
         });
 
         it("starts pointed at the runtime it was created for", () => {

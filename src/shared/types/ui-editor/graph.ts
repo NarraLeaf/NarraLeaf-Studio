@@ -3,19 +3,13 @@ import type { BlueprintDocument, BlueprintOwnerRef } from "../blueprint/document
 
 export type UIGraphId = string;
 
-/** M2: local instance blueprints live in `blueprintDocument`; `graphs` holds visual IR fragments. */
+/** Local instance blueprints live in `blueprintDocument`. */
 export const UI_GRAPH_DOCUMENT_SCHEMA_VERSION = 2 as const;
 
 export type UIGraphDocumentVersion = typeof UI_GRAPH_DOCUMENT_SCHEMA_VERSION;
 
 export type UIGraphDocument = {
     schemaVersion: UIGraphDocumentVersion;
-    /**
-     * Legacy behavior-graph documents (UIGraph IR). Blueprint M2+ event graphs are stored only under
-     * {@link BlueprintDocument} at `Blueprint.program.graphs.events[eventId].graph` - do not use this map as the
-     * source of truth for blueprint events.
-     */
-    graphs: Record<UIGraphId, UIGraph>;
     meta?: {
         createdAt?: string;
         updatedAt?: string;

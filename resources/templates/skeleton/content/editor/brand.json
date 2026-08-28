@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 3,
   "colors": [
     { "id": "primary", "value": "#40A8C4", "builtin": true },
     { "id": "secondary", "value": "#2E6E80", "builtin": true },
@@ -29,5 +29,6 @@
     { "id": "text.subtle", "name": "Subtle text", "value": "#6E7681" },
     { "id": "border.strong", "name": "Selected border", "value": "nlbrand:primary/0.7" },
     { "id": "surface.active", "name": "Active fill", "value": "#1D414D" }
-  ]
+  ],
+  "fonts": []
 }

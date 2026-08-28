@@ -11,6 +11,7 @@ import {
     localizationDocumentSpec,
     localizationKeysSpec,
     storyDocumentSpec,
+    storyIndexSpec,
     uiDocumentSpec,
     uiGraphsSpec,
     variableRegistrySpec,
@@ -53,6 +54,7 @@ describe("document specs agree with ProjectNameConvention", () => {
      */
     it("puts the wave-2 documents where the convention says they go", () => {
         expect(charactersSpec.pathFor()).toBe(of([...ProjectNameConvention.EditorServices, "character.json"]));
+        expect(storyIndexSpec.pathFor()).toBe(of(ProjectNameConvention.EditorStoryIndex));
         expect(storyDocumentSpec.pathFor({ storyId: "abc" }))
             .toBe(of(ProjectNameConvention.EditorStoryDocument("abc")));
         expect(assetsMetadataSpec.pathFor({ type: AssetType.Image }))

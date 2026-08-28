@@ -78,25 +78,11 @@ describe("resolveSoundPlayback", () => {
         expect(resolveSoundPlayback({ assetId: "a1", audioTrackId: "bgm" }, TRACKS).fadeInMs).toBe(0);
     });
 
-    it("maps a pre-track soundChannel to that channel's seeded bus", () => {
-        // The legacy arm: a graph that reached the runtime unmigrated must still land on the BGM
-        // bus and inherit Music's loop default.
-        expect(resolveSoundPlayback({ assetId: "a1", channel: "bgm" }, TRACKS)).toMatchObject({
-            busId: "bgm",
-            loop: true,
-        });
-    });
-
     it("resolves a v1 track id through the alias table", () => {
         // v1 seeded `music`/`sfx`; the stored references in graphs were never rewritten, so the
         // old spelling has to keep landing on the bus that took its place.
         expect(resolveSoundPlayback({ assetId: "a1", audioTrackId: "music" }, TRACKS).busId).toBe("bgm");
         expect(resolveSoundPlayback({ assetId: "a1", audioTrackId: "sfx" }, TRACKS).busId).toBe("sound");
-    });
-
-    it("prefers an explicit track over a legacy channel", () => {
-        expect(resolveSoundPlayback({ assetId: "a1", audioTrackId: "voice", channel: "bgm" }, TRACKS).busId)
-            .toBe("voice");
     });
 
     it("falls back to the built-ins when the host carries no track list", () => {

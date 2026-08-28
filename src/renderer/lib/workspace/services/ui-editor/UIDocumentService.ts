@@ -1,4 +1,5 @@
 import {
+    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
     UI_DOCUMENT_SCHEMA_VERSION,
     UIDocument,
     UISurface,
@@ -292,30 +293,6 @@ function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurf
         height: component.previewMeta?.height ?? DEFAULT_COMPONENT_SIZE.height,
     };
 }
-
-type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
-
-type LegacyUISurface = {
-    id: UISurfaceId;
-    name: string;
-    host: UIHost;
-    kind: LegacyUISurfaceKind;
-    designSize: UISurfaceDesignSize;
-    rootElementId: UIElementId;
-    settings?: {
-        backgroundColor?: string;
-        stageElementType?: UIStageSlotId;
-    };
-    route?: {
-        id?: string;
-    };
-    slots?: Record<string, UISlotDefinition>;
-};
-
-type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
-    schemaVersion: 1;
-    surfaces: LegacyUISurface[];
-};
 
 function cloneJson<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
@@ -1695,44 +1672,34 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return document;
     }
 
+    /**
+     * Whatever was on disk, at the current version - or a refusal.
+     *
+     * The ladder that used to run from v1 is gone. Every step it held was a no-op past v1: the bumps
+     * from v2 to v10 each recorded that an older Studio must refuse a newer document, and none of
+     * them converted anything, so the "migration" was the version stamp plus the normalize pass that
+     * runs on a current document anyway. v1 was the one real step, and the surfaces it converted -
+     * `playerStageSurface` / `playerOverlaySurface`, before a stage surface named the slot it mounts
+     * into - have not been written by any build for months.
+     *
+     * So there is a floor and no rungs. v10 is read because it differs from v11 by nothing a reader
+     * has to reconstruct; below that a document is refused rather than opened as though the missing
+     * shapes were merely absent.
+     */
     private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }
-        if (document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
-            return this.normalizeSpecialChildSlots(this.ensureComponentLibrary(document));
+        if (document.schemaVersion < UI_DOCUMENT_MIN_SUPPORTED_VERSION) {
+            throw new RendererError(
+                `UI document schema v${document.schemaVersion} is older than this Studio version can read`
+                + ` (v${UI_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest supported)`,
+            );
         }
-        if (document.schemaVersion === 1) {
-            return this.migrateFromLegacyDocument(document);
-        }
-        if (document.schemaVersion === 2) {
-            return this.migrateFromV2Document(document);
-        }
-        if (document.schemaVersion === 3) {
-            return this.migrateFromV3Document(document);
-        }
-        if (document.schemaVersion === 4) {
-            return this.migrateFromV4Document(document);
-        }
-        if (document.schemaVersion === 5) {
-            return this.migrateFromV5Document(document);
-        }
-        if (document.schemaVersion === 6) {
-            return this.migrateFromV6Document(document);
-        }
-        if (document.schemaVersion === 7) {
-            return this.migrateFromV7Document(document);
-        }
-        if (document.schemaVersion === 8) {
-            return this.migrateFromV8Document(document);
-        }
-        if (document.schemaVersion === 9) {
-            return this.migrateFromV9Document(document);
-        }
-        if (document.schemaVersion === 10) {
-            return this.migrateFromV10Document(document);
-        }
-        throw new RendererError("UI document migration is not implemented");
+        return this.normalizeSpecialChildSlots({
+            ...this.ensureComponentLibrary(document),
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
     }
 
     private withComponentLibrary(document: UIDocument): UIDocument {
@@ -1746,86 +1713,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     private ensureComponentLibrary(document: UIDocument): UIDocument {
         return this.withComponentLibrary(document);
-    }
-
-    private migrateFromLegacyDocument(document: UIDocument): UIDocument {
-        const legacy = document as LegacyUIDocument;
-        const migratedSurfaces = legacy.surfaces.map(surface => this.migrateLegacySurface(surface));
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            surfaces: migratedSurfaces,
-        });
-    }
-
-    private migrateFromV2Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    private migrateFromV3Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P5 hard cutover marker: documents authored on schema 4 (unified container model) bump to current. */
-    private migrateFromV4Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P6: list child slots distinguish item template children from authored scrollbar parts. */
-    private migrateFromV5Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P7: per-property Blueprint Value bindings live on UIElement.valueBindings. */
-    private migrateFromV6Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P8: slider widgets own authored track / handle container parts. */
-    private migrateFromV7Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P9: project-level UI component library. */
-    private migrateFromV8Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P10: Game UI stage slots are normalized and Dialog gets slot-private widgets. */
-    private migrateFromV9Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P11: `nvl` stage slot plus list-like Game UI slot widgets. */
-    private migrateFromV10Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
     }
 
     private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
@@ -1927,44 +1814,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         return document;
-    }
-
-    private migrateLegacySurface(surface: LegacyUISurface): UISurface {
-        const settings = surface.settings
-            ? { backgroundColor: surface.settings.backgroundColor }
-            : undefined;
-
-        if (surface.kind === "appSurface") {
-            return {
-                id: surface.id,
-                name: surface.name,
-                host: "app",
-                kind: "appSurface",
-                designSize: surface.designSize,
-                rootElementId: surface.rootElementId,
-                settings,
-            };
-        }
-
-        const stageMount: UIStageSurfaceMount = {
-            kind: "slot",
-            slotId: normalizeUIStageSlotId(surface.settings?.stageElementType),
-        };
-
-        return {
-            id: surface.id,
-            name: surface.name,
-            host: "player",
-            kind: "stageSurface",
-            designSize: surface.designSize,
-            rootElementId: surface.rootElementId,
-            settings: {
-                backgroundColor: "transparent",
-                ...(settings ?? {}),
-            },
-            mount: stageMount,
-            slots: surface.slots,
-        };
     }
 
     private createEmptyDocument(): UIDocument {

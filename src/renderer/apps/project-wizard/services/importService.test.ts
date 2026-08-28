@@ -27,7 +27,7 @@ function listing(entries: { name: string; ext: string | null; type: string }[]) 
 }
 
 const STUDIO_PROJECT = listing([{ name: "MyGame", ext: ".nlproj", type: "file" }]);
-const LEGACY_PROJECT = listing([{ name: "project", ext: ".json", type: "file" }]);
+const PRE_NLPROJ_PROJECT = listing([{ name: "project", ext: ".json", type: "file" }]);
 const NOT_A_PROJECT = listing([{ name: "notes", ext: ".txt", type: "file" }]);
 
 function unpacked(extra: Record<string, unknown> = {}) {
@@ -85,11 +85,14 @@ describe("ImportService.importProject", () => {
         expect(mocks.workspace.importProjectPackage).toHaveBeenCalledWith(PACKAGE, TARGET);
     });
 
-    it("accepts a legacy project.json layout", async () => {
+    it("refuses a folder whose only config is the pre-nlproj project.json", async () => {
+        // That name is not a project config any more, here or in the launcher. Reporting it as
+        // imported would hand the launcher a folder it then refuses to open, which is the one
+        // outcome this check exists to prevent.
         mocks.workspace.importProjectPackage.mockResolvedValue(unpacked());
-        mocks.fs.list.mockResolvedValue(LEGACY_PROJECT);
+        mocks.fs.list.mockResolvedValue(PRE_NLPROJ_PROJECT);
 
-        expect((await runImport()).status).toBe("imported");
+        expect(await runImport()).toEqual({ status: "notAProject", root: TARGET });
     });
 
     /**
