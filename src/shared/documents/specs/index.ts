@@ -38,7 +38,6 @@ export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
 export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
 export {DLC_DOCUMENT_PATH, dlcSpec} from "./dlc";
 export {
-    LEGACY_PROJECT_CONFIG_DOCUMENT_PATH,
     PROJECT_CONFIG_DOCUMENT_PATH,
     projectConfigSpec,
 } from "./project";

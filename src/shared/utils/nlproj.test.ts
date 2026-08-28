@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
     decodeProjectConfig,
     encodeProjectConfig,
-    findLegacyProjectConfigFileName,
     findNlprojConfigFileName,
     findProjectConfigFileName,
     type DirEntry,
@@ -68,15 +67,12 @@ describe("project config finders", () => {
             .toBe("com.example.game.nlproj");
     });
 
-    it("returns the legacy config filename with its extension", () => {
-        const entries = [entry("project", ".json")];
-        expect(findLegacyProjectConfigFileName(entries)).toBe("project.json");
-        expect(findProjectConfigFileName(entries)).toBe("project.json");
-    });
-
-    it("prefers nlproj over the legacy config when both are present", () => {
-        const entries = [entry("project", ".json"), entry("Demo", ".nlproj")];
-        expect(findProjectConfigFileName(entries)).toBe("Demo.nlproj");
+    it("does not accept the pre-nlproj project.json as a project config", () => {
+        expect(findProjectConfigFileName([entry("project", ".json")])).toBeNull();
+        // And it is not merely outranked: a directory holding both opens as the `.nlproj` one, which
+        // is the same answer it would give if the json were any other file.
+        expect(findProjectConfigFileName([entry("project", ".json"), entry("Demo", ".nlproj")]))
+            .toBe("Demo.nlproj");
     });
 
     it("ignores directories and unrelated files", () => {

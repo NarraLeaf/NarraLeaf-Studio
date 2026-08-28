@@ -17,7 +17,7 @@ export interface LaunchOpenLookup {
     resolveFile(candidate: string): string | null;
     /** The absolute path of `candidate` if it names an existing directory, otherwise null. */
     resolveDirectory(candidate: string): string | null;
-    /** Whether `directory` holds a project config (`*.nlproj`, or the legacy `project.json`). */
+    /** Whether `directory` holds a project config (`*.nlproj`). */
     isProjectDirectory(directory: string): boolean;
     /** The containing directory of a file path. Injected so this module needs no `path`. */
     dirname(filePath: string): string;

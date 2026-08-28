@@ -810,20 +810,6 @@ function readMixPreferences(
     };
 }
 
-/**
- * Which mixer channel a clip plays on. These are the engine's own `SoundType`
- * values, so the player's per-channel volume preference applies without the
- * host doing anything.
- */
-export const BLUEPRINT_SOUND_CHANNELS = ["bgm", "sound", "voice"] as const;
-export type BlueprintSoundChannel = (typeof BLUEPRINT_SOUND_CHANNELS)[number];
-
-export function normalizeBlueprintSoundChannel(value: unknown): BlueprintSoundChannel {
-    return BLUEPRINT_SOUND_CHANNELS.includes(value as BlueprintSoundChannel)
-        ? value as BlueprintSoundChannel
-        : "sound";
-}
-
 export type BlueprintSoundPlayInput = {
     assetId: string;
     /**
@@ -839,12 +825,6 @@ export type BlueprintSoundPlayInput = {
     volume?: number | null;
     /** Fade-in in milliseconds; absent means a hard start (a fade belongs to the moment). */
     fadeInMs?: number | null;
-    /**
-     * The pre-track channel select, kept only so a graph or a host call written before tracks
-     * existed still plays on the bus it named. Read only when `audioTrackId` is unset, and mapped
-     * to that channel's built-in track by the transport. Nothing writes it any more.
-     */
-    channel?: BlueprintSoundChannel;
 };
 
 /**

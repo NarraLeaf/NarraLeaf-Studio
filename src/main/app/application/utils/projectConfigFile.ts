@@ -3,7 +3,7 @@ import path from "path";
 import { decodeProjectConfig, findProjectConfigFileName, type ProjectConfigData } from "@shared/utils/nlproj";
 
 /**
- * Read a project's config (`.nlproj` or legacy `project.json`) from its root
+ * Read a project's config (`.nlproj`) from its root
  * directory. Returns null when the directory has no recognizable config file.
  * Shared by the game pack compiler and plugin dependency checks.
  */

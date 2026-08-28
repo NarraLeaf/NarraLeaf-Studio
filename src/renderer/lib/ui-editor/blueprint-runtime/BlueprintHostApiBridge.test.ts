@@ -1511,7 +1511,7 @@ describe("createDevModeBlueprintHostApi sound transport", () => {
         const hostApi = createHostApi({});
 
         // The editor's surface preview. A graph built there has to run end to end.
-        await expect(hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 1 }))
+        await expect(hostApi.sound.play({ assetId: "a1", audioTrackId: "bgm", loop: true, volume: 1 }))
             .resolves.toBeNull();
         await expect(hostApi.sound.setVolume({ kind: "soundHandle", id: "s1" }, 0.5)).resolves.toBeUndefined();
         await expect(hostApi.sound.seek({ kind: "soundHandle", id: "s1" }, 1000)).resolves.toBeUndefined();
@@ -1526,10 +1526,10 @@ describe("createDevModeBlueprintHostApi sound transport", () => {
             },
         });
 
-        const handle = await hostApi.sound.play({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+        const handle = await hostApi.sound.play({ assetId: "a1", audioTrackId: "bgm", loop: true, volume: 0.4 });
 
         expect(handle).toEqual({ kind: "soundHandle", id: "s7" });
-        expect(seen[0]).toEqual({ assetId: "a1", channel: "bgm", loop: true, volume: 0.4 });
+        expect(seen[0]).toEqual({ assetId: "a1", audioTrackId: "bgm", loop: true, volume: 0.4 });
     });
 });
 
