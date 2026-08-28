@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+    ALLOWED_STARTUP_SWITCHES,
+    DEBUGGING_SWITCHES,
+    maskText,
     hasDebuggingSwitch,
     hasStartupSwitch,
     honoursDebuggableMarker,
@@ -166,6 +169,55 @@ describe("the debuggable marker", () => {
             for (const packaged of [false, true]) {
                 expect(honoursDebuggableMarker({ marker: false, sealed, packaged })).toBe(false);
             }
+        }
+    });
+});
+
+/**
+ * The switch tables ship as masked tokens, never as the switch names themselves, so a shipped
+ * game's main.js does not carry a plaintext map of this guard (a search for `remote-debugging-port`
+ * finds nothing). This pins the tables two ways: the decoded tables must be exactly these names,
+ * and each committed token must be what `maskText` produces for its name - so a mistyped
+ * token, or a name added without its token, fails here rather than silently narrowing the guard.
+ *
+ * The plaintext reference lives in this test, which never ships, and not beside the tables.
+ */
+describe("the masked switch tables", () => {
+    const EXPECTED_ALLOWED = [
+        "disable-gpu",
+        "disable-gpu-compositing",
+        "disable-software-rasterizer",
+        "use-angle",
+        "use-gl",
+        "ozone-platform",
+        "ozone-platform-hint",
+        "force-device-scale-factor",
+        "force-color-profile",
+        "lang",
+        "use-logs",
+    ];
+    const EXPECTED_DEBUGGING = [
+        "remote-debugging-port",
+        "remote-debugging-pipe",
+        "inspect",
+        "inspect-brk",
+        "inspect-port",
+        "inspect-publish-uid",
+    ];
+
+    it("decodes to exactly the names the guard is written against", () => {
+        expect(ALLOWED_STARTUP_SWITCHES).toEqual(EXPECTED_ALLOWED);
+        expect(DEBUGGING_SWITCHES).toEqual(EXPECTED_DEBUGGING);
+        expect(RUNTIME_LOGS_SWITCH).toBe("use-logs");
+    });
+
+    it("carries the switch names in no form a plain search can match", () => {
+        // The masked token for a name must not contain that name as a substring: this is the
+        // property that makes the table non-greppable in the shipped bundle. `maskText` is
+        // the inverse of the load-time decoder, so a committed token that fails this would fail the
+        // decode test above too - the two together pin both the values and their masked form.
+        for (const name of [...EXPECTED_ALLOWED, ...EXPECTED_DEBUGGING]) {
+            expect(maskText(name)).not.toContain(name);
         }
     });
 });

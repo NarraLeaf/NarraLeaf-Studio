@@ -337,7 +337,7 @@ export class PreviewManager {
                 platformKeys: [hostSidecarPlatformKey()],
                 // `dep:` sidecar includes resolve through the build dependency
                 // cache, so the compile needs its root even in preview.
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
             }, {
                 // Tracked so `cancelLaunches` can kill the compile mid-flight; without this a stop

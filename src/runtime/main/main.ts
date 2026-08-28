@@ -100,6 +100,7 @@ import {
     hasStartupSwitch,
     honoursDebuggableMarker,
     reviewStartupArguments,
+    revealMaskedText,
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
 import { silenceRuntimeConsole } from "./runtimeConsole";
@@ -422,8 +423,11 @@ function refuseStartupArguments(): boolean {
     }
     // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
     // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing.
-    logRuntime("error", `refusing to start: this build does not accept ${refused.join(", ")}`);
+    // exits and says nothing. The fixed half of the line is masked so it is not a plaintext beacon
+    // in the bundle pointing a search straight at this refusal - the log file still reads plainly,
+    // reconstructed here at write time; the token decodes to
+    // "refusing to start: this build does not accept ".
+    logRuntime("error", `${revealMaskedText("KR__zaSfe1NzBv6QvJpsXj9Qqdyvj3YEIRfozNv-mXNeKVn22KLVdVAxFODb7g")}${refused.join(", ")}`);
     app.quit();
     return true;
 }

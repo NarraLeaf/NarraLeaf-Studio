@@ -67,7 +67,7 @@ export class PuppetRuntimeInstallSdkHandler extends IPCHandler<IPCEventType.pupp
             const built = await buildLive2DRuntime({
                 archivePath,
                 targetDir,
-                userDataDir: app.getUserDataDir(),
+                cacheRoot: app.getCacheRootDir(),
                 // The same path in development and in a packaged build: `resolveResource` already
                 // resolves to `<root>/resources` or `Resources/`, and electron-builder's
                 // `extraResources` copies the whole tree.

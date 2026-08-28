@@ -456,6 +456,10 @@ export const settings = {
                     label: "コンパイラーツールチェーン",
                     description: "ビルドのために取得したコンパイラー。次のビルドで必要になったとき再取得される",
                 },
+                puppetRuntimes: {
+                    label: "モデルランタイムのソースファイル",
+                    description: "キャラクターモデルのランタイムを構築するために展開した SDK。次に構築するとき再展開される",
+                },
                 browser: {
                     label: "画面のキャッシュ",
                     description: "起動を速くするために保持する画面の状態",
