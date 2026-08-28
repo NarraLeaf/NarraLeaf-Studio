@@ -162,53 +162,6 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         return this.revision;
     }
 
-    public createGraph(input: {
-        name?: string;
-        nodes?: Record<string, UIGraph["nodes"][string]>;
-        entries?: UIGraph["entries"];
-        edges?: UIGraph["edges"];
-        variables?: UIGraph["variables"];
-        meta?: UIGraph["meta"];
-    }): UIGraph {
-        const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const graphId = uuidService.generate();
-
-        const graph: UIGraph = {
-            id: graphId,
-            name: input.name ?? `Graph ${graphId.slice(0, 6)}`,
-            entries: input.entries ?? {},
-            nodes: input.nodes ?? {},
-            edges: input.edges ?? [],
-            variables: input.variables,
-            meta: input.meta,
-        };
-
-        this.mutateDocument(document => {
-            document.graphs[graphId] = graph;
-        });
-
-        return graph;
-    }
-
-    public updateGraph(graphId: string, updater: (graph: UIGraph) => void): void {
-        this.mutateDocument(document => {
-            const graph = document.graphs[graphId];
-            if (!graph) {
-                return;
-            }
-            updater(graph);
-        });
-    }
-
-    public deleteGraph(graphId: string): void {
-        this.mutateDocument(document => {
-            if (!(graphId in document.graphs)) {
-                return;
-            }
-            delete document.graphs[graphId];
-        });
-    }
-
     /**
      * Public mutation entry for coordinated updates (e.g. LocalBlueprintService).
      */
@@ -359,7 +312,6 @@ export class UIGraphService extends Service<UIGraphService> implements IUIGraphS
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
         return {
             schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-            graphs: {},
             blueprintDocument: createInitialBlueprintDocument(() => uuidService.generate()),
             meta: {
                 createdAt: now,

@@ -483,7 +483,6 @@ function blueprint(
 function uigraphs(...blueprints: Blueprint[]): UIGraphDocument {
     return {
         schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-        graphs: {},
         blueprintDocument: {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
             blueprints: Object.fromEntries(blueprints.map(one => [one.id, one])),
@@ -521,7 +520,6 @@ describe("ui-graphs spec: reading", () => {
     it("refuses a document a newer Studio wrote, or one shaped wrongly", () => {
         expect(() => parseUiGraphs({...uigraphs(), schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION + 1}))
             .toThrow(/newer version of Studio/);
-        expect(() => parseUiGraphs({...uigraphs(), graphs: []})).toThrow(/"graphs"/);
         expect(() => parseUiGraphs({...uigraphs(), blueprintDocument: []}))
             .toThrow(/"blueprintDocument" must be an object/);
         expect(() => parseUiGraphs({...uigraphs(), blueprintDocument: {blueprints: []}})).toThrow(/"blueprints"/);
@@ -652,26 +650,6 @@ describe("ui-graphs spec: diff", () => {
             subject: "Main menu",
             label: {key: "documentDiff.uiGraphs.blueprintAdded", params: {nodes: 2}},
         });
-    });
-
-    it("reads the older root-level graph record on the same terms", () => {
-        const legacy = (x: number): UIGraphDocument => ({
-            ...uigraphs(),
-            graphs: {
-                "g-1": {
-                    id: "g-1",
-                    name: "Legacy",
-                    entries: {},
-                    nodes: {"n-1": {id: "n-1", type: "old.node", meta: {editorLayout: {x, y: 0}}}},
-                    edges: [],
-                },
-            },
-        });
-
-        expect(paths(diffGraphs(legacy(0), legacy(90)).changes)).toEqual([
-            ["graphs", "g-1", "nodes", "n-1"],
-            ["graphs", "g-1", "nodes", "n-1", "editorLayout"],
-        ]);
     });
 
     /** By the name the author gave the blueprint, and before anything is cut to the budget. */
