@@ -15,9 +15,9 @@ const MIN_HIT_AREA = 20 * 20;
  * Where this surface's widgets keep their blueprints.
  *
  * Optional because a caller may have no blueprint document to hand - a preview built from a
- * document alone. Every one of the rules below is about an element the player is meant to reach, so
- * without it they can only see the element-shaped wiring, which is the older of the two spellings
- * and no longer the one the editor writes. See `widgetPrivateBlueprintHeads`.
+ * document alone. Every rule below is about an element the player is meant to reach, and whether
+ * anything answers a player is written only in the blueprint document, so without it these rules
+ * claim nothing rather than guessing. See `widgetPrivateBlueprintHeads`.
  */
 export type InteractionDiagnosticsScope = WidgetBlueprintOwnerScope & {
     blueprintDocument?: BlueprintDocument;

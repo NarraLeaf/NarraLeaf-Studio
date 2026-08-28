@@ -293,9 +293,6 @@ describe("UIDocumentService surface creation", () => {
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
 
-        expect(interactionLayer.behavior?.events?.mouseClick).toBeUndefined();
-        expect(interactionLayer.behavior?.events?.keyUp).toBeUndefined();
-
         expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]).toBeUndefined();
         const contentBlueprint = blueprintDocument.blueprints[`widget-main-${stack.id}`];
         expect(contentBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: stack.id });
@@ -722,11 +719,6 @@ describe("UIDocumentService surface creation", () => {
             elementId: button.id,
             propPath: "label",
         });
-        button.behavior = {
-            events: {
-                mouseClick: { kind: "blueprintEvent", blueprintId: widgetBlueprintId, eventId: "click" },
-            },
-        };
         button.valueBindings = {
             label: { kind: "blueprintValue", blueprintId: valueBlueprintId, valueType: "string" },
         };
@@ -833,12 +825,12 @@ describe("UIDocumentService surface creation", () => {
         expect(getUIComponentLink(duplicatedLinkedInstance)).toEqual({ componentId: component.id, linked: true });
         expect(duplicatedDoc.components).toHaveLength(1);
 
-        const duplicatedEvent = duplicatedButton.behavior?.events?.mouseClick;
-        expect(duplicatedEvent?.kind).toBe("blueprintEvent");
-        if (duplicatedEvent?.kind !== "blueprintEvent") {
-            throw new Error("Expected duplicated button event blueprint binding");
+        const duplicatedWidgetBlueprintId =
+            blueprintDocument.ownerRecords[`widgetMain:${duplicated.id}:${duplicatedButton.id}`]?.activeBlueprintId;
+        expect(duplicatedWidgetBlueprintId).toBeTruthy();
+        if (!duplicatedWidgetBlueprintId) {
+            throw new Error("Expected the duplicated button to own a blueprint");
         }
-        const duplicatedWidgetBlueprintId = duplicatedEvent.blueprintId;
         const duplicatedLabelBinding = duplicatedButton.valueBindings?.label;
         const duplicatedValueBlueprintId =
             duplicatedLabelBinding?.kind === "blueprintValue" ? duplicatedLabelBinding.blueprintId : undefined;
@@ -1053,7 +1045,6 @@ describe("UIDocumentService component library", () => {
             parentId: rootId,
             childrenIds: [],
             layout: { x: 0, y: 0, width: 200, height: 60 },
-            behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-hit", eventId: "click" } } },
         } as unknown as UIElement;
         doc.elements[rootId]!.childrenIds.push(hit.id);
         doc.elements[hit.id] = hit;
@@ -1097,14 +1088,15 @@ describe("UIDocumentService component library", () => {
         const component = service.createComponentFromElements(surface.id, [hit.id], "Save slot")!;
         const copy = component.elements[component.rootElementId]!;
 
-        // The binding survives, and names the clone rather than the surface's blueprint.
-        const boundId = (copy.behavior?.events?.mouseClick as { blueprintId?: string } | undefined)?.blueprintId;
+        // The blueprint follows the element into the component, as a clone rather than the original:
+        // an owner record still naming `bp-hit` would run the surface's blueprint from inside the
+        // component and drive the element still out there.
+        const boundId = blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId;
         expect(boundId).toBeTruthy();
         expect(boundId).not.toBe("bp-hit");
 
         const cloned = blueprintDocument.blueprints[boundId!]!;
         expect(cloned.owner).toMatchObject({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id });
-        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId).toBe(boundId);
 
         // The whole point of the remap: an element ref inside the clone points at the component's
         // copy. Left alone it would reach back out and drive the element still on the surface.

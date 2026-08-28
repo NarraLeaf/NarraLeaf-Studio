@@ -30,7 +30,7 @@ describe("collectSurfaceFlushElementIds", () => {
                     id: "root",
                     type: "nl.root",
                     parentId: null,
-                    childrenIds: ["value", "flush", "legacy", "plain"],
+                    childrenIds: ["value", "flush", "plain"],
                     layout: { x: 0, y: 0, width: 320, height: 180 },
                 },
                 value: {
@@ -49,18 +49,6 @@ describe("collectSurfaceFlushElementIds", () => {
                     parentId: "root",
                     childrenIds: [],
                     layout: { x: 0, y: 50, width: 80, height: 40 },
-                },
-                legacy: {
-                    id: "legacy",
-                    type: "nl.text",
-                    parentId: "root",
-                    childrenIds: [],
-                    layout: { x: 0, y: 100, width: 80, height: 40 },
-                    behavior: {
-                        events: {
-                            flush: { kind: "blueprintEvent", blueprintId: "legacy-bp", eventId: "flush" },
-                        },
-                    },
                 },
                 plain: {
                     id: "plain",
@@ -121,7 +109,6 @@ describe("collectSurfaceFlushElementIds", () => {
         expect(collectSurfaceFlushElementIds({ document, blueprintDocument, surface })).toEqual([
             "value",
             "flush",
-            "legacy",
         ]);
     });
 });

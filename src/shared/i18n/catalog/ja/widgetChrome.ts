@@ -75,10 +75,6 @@ export const widgetChrome = {
         emptyLayer: "空のレイヤー",
         openControlBlueprint: "このコントロールのブループリントを開く",
         noBlueprintForControl: "このコントロールにブループリントがない",
-        legacyHookCount: {
-            other: "uidoc に旧形式のフックが {count} 個ある",
-        },
-        eventSchemaMismatch: "イベントスキーマが一致しない。エディタの診断を見る",
     },
     dockerItems: {
         size: "サイズ",

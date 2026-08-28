@@ -119,16 +119,11 @@ type BlueprintHistoryScope = {
     ownerKey?: string;
 };
 
-type UIBehaviorSnapshot = {
-    elements: Record<string, UIElement["behavior"] | undefined>;
-};
-
 export type BlueprintEditorHistorySnapshot = {
     blueprintId: string;
     ownerKey: string | null;
     ownerRecord: BlueprintPrivateOwnerRecord | null;
     blueprint: Blueprint | null;
-    uiBehavior: UIBehaviorSnapshot;
     /**
      * The project-level variable registry, captured so persistent-variable CRUD (which lives in its
      * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
@@ -150,38 +145,10 @@ function cloneBlueprintHistoryValue<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
 }
 
-function captureUIBehaviorSnapshot(document: UIDocument): UIBehaviorSnapshot {
-    const elements: UIBehaviorSnapshot["elements"] = {};
-    for (const [elementId, element] of Object.entries(document.elements)) {
-        elements[elementId] = cloneBlueprintHistoryValue(element.behavior);
-    }
-    return { elements };
-}
-
-function applyUIBehaviorSnapshot(current: UIDocument, target: UIBehaviorSnapshot): UIDocument {
-    const next = cloneBlueprintHistoryValue(current);
-    for (const [elementId, behavior] of Object.entries(target.elements)) {
-        const element = next.elements[elementId];
-        if (!element) {
-            continue;
-        }
-        if (behavior === undefined) {
-            delete element.behavior;
-        } else {
-            element.behavior = cloneBlueprintHistoryValue(behavior);
-        }
-    }
-    return next;
-}
-
 function areBlueprintHistorySnapshotsEqual(
     a: BlueprintEditorHistorySnapshot,
     b: BlueprintEditorHistorySnapshot,
 ): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapshot): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
 }
 
@@ -401,13 +368,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const blueprint = bpDoc.blueprints[blueprintId] ?? null;
         const resolvedOwnerKey = ownerKey ?? this.resolveBlueprintOwnerKey({ blueprintId });
         const ownerRecord = resolvedOwnerKey ? bpDoc.ownerRecords[resolvedOwnerKey] ?? null : null;
-        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         return {
             blueprintId,
             ownerKey: resolvedOwnerKey,
             ownerRecord: cloneBlueprintHistoryValue(ownerRecord),
             blueprint: cloneBlueprintHistoryValue(blueprint),
-            uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
             registry: cloneBlueprintHistoryValue(this.getVariableRegistryService().getRegistry()),
             saveSchema: cloneBlueprintHistoryValue(this.getSaveSchemaService().getSchema()),
         };
@@ -1041,7 +1006,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     private restoreBlueprintHistorySnapshot(snapshot: BlueprintEditorHistorySnapshot): void {
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
-        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
 
         graph.applyGraphMutation(document => {
             const bpDoc = document.blueprintDocument;
@@ -1059,13 +1023,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             assertValidBlueprintDocument(bpDoc);
         });
-        const currentUIDocument = uidoc.getDocument();
-        if (!areUIBehaviorSnapshotsEqual(captureUIBehaviorSnapshot(currentUIDocument), snapshot.uiBehavior)) {
-            uidoc.restoreDocumentFromHistory(
-                applyUIBehaviorSnapshot(currentUIDocument, snapshot.uiBehavior),
-                { skipAfterMutateHook: true },
-            );
-        }
         const registryService = this.getVariableRegistryService();
         if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
             registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
@@ -1456,40 +1413,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             // A new layer joins the end of the author's list; an upsert of an existing one
             // keeps its place, because the reconciliation only appends what is unlisted.
             captureBlueprintEventOrder(graphs);
-        });
-    }
-
-    public adoptLegacyEventGraphToSlot(
-        blueprintId: string,
-        slotId: string,
-        legacyEventId: string,
-        displayName?: string,
-    ): void {
-        this.applyBlueprintEdit({ blueprintId }, doc => {
-            const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
-                return;
-            }
-            const graphs = bp.program.graphs;
-            if (graphs.events[slotId]) {
-                return;
-            }
-            const legacy = graphs.events[legacyEventId];
-            if (!legacy) {
-                return;
-            }
-            // The adopted layer takes the legacy one's place rather than being appended:
-            // re-keying a layer is not the author moving it down the list.
-            const adopted = listBlueprintEventIds(graphs).map(id => (id === legacyEventId ? slotId : id));
-            graphs.events[slotId] = {
-                ...legacy,
-                id: slotId,
-                name: legacy.name ?? displayName,
-            };
-            if (legacyEventId !== slotId) {
-                delete graphs.events[legacyEventId];
-            }
-            graphs.eventIds = adopted;
         });
     }
 

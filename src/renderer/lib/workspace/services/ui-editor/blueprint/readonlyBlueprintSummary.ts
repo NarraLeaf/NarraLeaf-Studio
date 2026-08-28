@@ -3,7 +3,6 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import { listWidgetLogicEventIds } from "@shared/types/ui-editor/widgetLogic";
 import { getActiveBlueprintId } from "./ownerRecords";
 import { componentWidgetMainOwnerKey, surfaceMainOwnerKey, widgetMainOwnerKey } from "./ownerKeys";
-import { validateBlueprintWidgetMainEventWiring } from "./graphValidation";
 
 /** Read-only inspector summary for a widget instance main blueprint (Blueprint M2). */
 export type ReadonlyBlueprintWidgetSummary = {
@@ -14,9 +13,6 @@ export type ReadonlyBlueprintWidgetSummary = {
     brokenBindingCount: number;
     eventGraphCount: number;
     supportedEventCount: number;
-    legacyHookCount: number;
-    /** Errors/warnings from cross-checking the widget schema against stored event members. */
-    eventSchemaIssueCount: number;
 };
 
 export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSummary {
@@ -27,8 +23,6 @@ export function emptyReadonlyBlueprintWidgetSummary(): ReadonlyBlueprintWidgetSu
         brokenBindingCount: 0,
         eventGraphCount: 0,
         supportedEventCount: 0,
-        legacyHookCount: 0,
-        eventSchemaIssueCount: 0,
     };
 }
 
@@ -86,14 +80,6 @@ export function buildReadonlySurfaceMainSummary(
     };
 }
 
-function countLegacyUiBlueprintEvents(element: UIElement): number {
-    const events = element.behavior?.events;
-    if (!events) {
-        return 0;
-    }
-    return Object.values(events).filter(b => b.kind === "blueprintEvent").length;
-}
-
 /**
  * Build summary for the widgetMain tied to (surfaceId, element) using current BlueprintDocument.
  */
@@ -113,8 +99,6 @@ export function buildReadonlyWidgetMainSummary(
         return {
             ...emptyReadonlyBlueprintWidgetSummary(),
             supportedEventCount,
-            legacyHookCount: countLegacyUiBlueprintEvents(element),
-            eventSchemaIssueCount: 0,
         };
     }
 
@@ -131,14 +115,6 @@ export function buildReadonlyWidgetMainSummary(
         eventGraphCount = Object.keys(bp.program.graphs.events ?? {}).length;
     }
 
-    const eventWiringDiags = options.componentId
-        ? []
-        : validateBlueprintWidgetMainEventWiring(doc, blueprintId, {
-              element,
-              surfaceId,
-          });
-    const eventSchemaIssueCount = eventWiringDiags.filter(d => d.severity !== "info").length;
-
     return {
         hasWidgetMain: true,
         blueprintId,
@@ -147,7 +123,5 @@ export function buildReadonlyWidgetMainSummary(
         brokenBindingCount,
         eventGraphCount,
         supportedEventCount,
-        legacyHookCount: countLegacyUiBlueprintEvents(element),
-        eventSchemaIssueCount,
     };
 }

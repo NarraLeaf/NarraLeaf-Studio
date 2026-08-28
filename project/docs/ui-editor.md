@@ -101,7 +101,6 @@
 - Function graph service API 存在，但 Workspace UI 暴露不完整。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
 - Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。
-- `UIBehaviorAction` 类型层基本只有 `noop`，旧 actions 行为绑定没有形成完整动作系统。
 - Page 作为游戏内 layer 的真实运行时 host 语义仍待 page/layer API 完成。
 
 ## 修改建议

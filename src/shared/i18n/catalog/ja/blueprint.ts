@@ -157,11 +157,6 @@ export const blueprint = {
             callSignatureStale: "関数のシグネチャが変わった。ピンを更新するには「{name}」を選び直す",
             recursiveCall: "関数「{name}」が自分自身を呼んでいる。直接でも間接でも、深い再帰は実行時に打ち切られる",
         },
-        widget: {
-            legacyHooksPresent: "uidoc に旧形式のイベントフックがある（グラフではないリビジョン）",
-            legacyHookWrongBlueprint: "旧形式のフック「{slot}」が別のブループリントを指している",
-            legacyHookUnsupported: "旧形式のフック「{slot}」は {type} では使えない",
-        },
         condition: {
             returnMissing: "条件は真偽値を返す必要がある",
             returnNotBoolean: "条件は真偽値を返す必要があるが、これが返すのは {type}",

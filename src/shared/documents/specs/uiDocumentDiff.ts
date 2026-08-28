@@ -86,7 +86,6 @@ const LABEL = {
     elementLayout: "documentDiff.uiDocument.elementLayout",
     elementStyle: "documentDiff.uiDocument.elementStyle",
     elementProps: "documentDiff.uiDocument.elementProps",
-    elementBehavior: "documentDiff.uiDocument.elementBehavior",
     elementBinding: "documentDiff.uiDocument.elementBinding",
     elementAnimation: "documentDiff.uiDocument.elementAnimation",
     elementField: "documentDiff.uiDocument.elementField",
@@ -100,7 +99,6 @@ const ELEMENT_PROPERTIES: readonly {readonly key: string; readonly label: string
     {key: "layout", label: LABEL.elementLayout},
     {key: "style", label: LABEL.elementStyle},
     {key: "props", label: LABEL.elementProps},
-    {key: "behavior", label: LABEL.elementBehavior},
     {key: "valueBindings", label: LABEL.elementBinding},
     {key: "animation", label: LABEL.elementAnimation},
 ];

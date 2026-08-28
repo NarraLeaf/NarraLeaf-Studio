@@ -300,7 +300,6 @@ export const documentDiff = {
         elementLayout: "Position or size changed",
         elementStyle: "Style changed",
         elementProps: "Contents changed",
-        elementBehavior: "Behavior changed",
         elementBinding: "Binding changed",
         elementAnimation: "Animation changed",
         elementField: "{field} changed",

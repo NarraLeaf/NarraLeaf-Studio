@@ -13,9 +13,13 @@
  * Back button beside it removed one page, so the same intent got two different answers depending on
  * which the player reached for.
  *
- * The key itself is no longer written on the five screens either. "Escape means dismiss" is one
- * entry of the project's action vocabulary, and each screen answers `dismiss` — so the binding is
- * checked once here, and each screen is only asked whether it answers the action at all.
+ * The key itself is not written on the five screens: it is a binding of one entry of the project's
+ * action vocabulary, and a screen only says which entries it answers. Which entry that is differs
+ * by screen, and has to — bindings belong to the action, so a screen answering one gesture more
+ * than the others carries its own entry to carry that gesture, and the log does (a wheel down, once
+ * the entries are at the bottom). So the entry is resolved per screen from the key rather than
+ * named here, and what is asserted of all five is what actually has to hold: exactly one of the
+ * entries a screen answers is triggered by Escape, and the route out of it is the same everywhere.
  *
  * Swept from the surface list rather than named one page at a time — a screen added without a way
  * out reads, on its own, like a screen nobody had got to yet.
@@ -27,7 +31,6 @@ import {
     BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION,
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK,
-    BLUEPRINT_NODE_TYPE_FLOW_IF,
     BLUEPRINT_NODE_TYPE_PAGE_BACK,
     BLUEPRINT_NODE_TYPE_PAGE_CLEAR,
     BLUEPRINT_NODE_TYPE_SOUND_PLAY,
@@ -50,8 +53,8 @@ type UIDoc = {
     actions?: Record<string, UIInputActionDef>;
 };
 
-/** The vocabulary entry the five screens answer. */
-const DISMISS = "dismiss";
+/** The key that takes a screen off, whichever vocabulary entry a given screen reaches it through. */
+const ESCAPE = "Escape";
 
 const TEMPLATE = path.join(process.cwd(), "resources/templates/skeleton/content");
 
@@ -78,6 +81,26 @@ function surfaceNamed(name: string): Surface {
     const surface = document.surfaces.find(candidate => candidate.name === name);
     expect(surface, `no surface named ${name}`).toBeDefined();
     return surface!;
+}
+
+/**
+ * The vocabulary entry this screen leaves by.
+ *
+ * Exactly one of the entries a screen answers has to be triggered by the key: none leaves the
+ * player holding a screen with no way off it, and two runs two routes out on one press.
+ */
+function escapeActionOf(surface: Surface): string {
+    const answered = (surface.actions ?? []).map(entry => entry.actionId);
+    const byEscape = answered.filter(actionId =>
+        (document.actions?.[actionId]?.bindings ?? []).some(
+            binding => binding.kind === "key" && binding.key === ESCAPE,
+        ),
+    );
+    expect(
+        byEscape,
+        `${surface.name} answers ${answered.length} actions, ${byEscape.length} of them bound to ${ESCAPE}`,
+    ).toHaveLength(1);
+    return byEscape[0]!;
 }
 
 function buttonsOn(surfaceName: string, elementName: string): Element[] {
@@ -149,40 +172,22 @@ function assertClearsThenSteps(graph: Graph, headId: string, port: string): void
 }
 
 describe("every starter screen leaves a running game the same way", () => {
-    it("says once, for the whole project, that Escape means dismiss", () => {
-        const dismiss = document.actions?.[DISMISS];
-        expect(dismiss, "the template declares no dismiss action").toBeDefined();
-        expect(dismiss!.bindings).toContainEqual({ kind: "key", key: "Escape" });
-    });
-
-    it.each(SCREENS)("%s answers the dismiss action by taking the overlay off", screenName => {
+    it.each(SCREENS)("%s takes the overlay off when the key it answers is pressed", screenName => {
         const surface = surfaceNamed(screenName);
-        expect(
-            surface.actions?.map(entry => entry.actionId),
-            `${screenName} does not answer ${DISMISS}`,
-        ).toContain(DISMISS);
+        const actionId = escapeActionOf(surface);
 
         const graphs = graphsOf(
             blueprint => blueprint.owner.kind === "surfaceMain" && blueprint.owner.surfaceId === surface.id,
         ).filter(graph =>
             Object.values(graph.nodes).some(
                 node => node.type === BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION
-                    && node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] === DISMISS,
+                    && node.params?.[BLUEPRINT_NODE_PARAM_INPUT_ACTION_ID] === actionId,
             ),
         );
-        expect(graphs, `${screenName} has ${graphs.length} graphs answering ${DISMISS}`).toHaveLength(1);
+        expect(graphs, `${screenName} has ${graphs.length} graphs answering ${actionId}`).toHaveLength(1);
 
         const graph = graphs[0]!;
-        const head = only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION);
-        // The log is the one screen whose answer is conditional — the key closes it from anywhere,
-        // the wheel only once the entries are at the bottom — so the route out starts one node
-        // further along. It is the same pair of nodes at the end of it either way.
-        const first = next(graph, head.id, "then");
-        if (first.type === BLUEPRINT_NODE_TYPE_FLOW_IF) {
-            assertClearsThenSteps(graph, first.id, "true");
-        } else {
-            assertClearsThenSteps(graph, head.id, "then");
-        }
+        assertClearsThenSteps(graph, only(graph, BLUEPRINT_NODE_TYPE_EVENT_HEAD_ACTION).id, "then");
     });
 
     it.each(SCREENS)("%s answers its Back button the same way Escape does", screenName => {

@@ -19,25 +19,6 @@ describe("resolveWidgetEventLayerSlotsForPalette", () => {
             ownerKind: "widgetMain",
             widgetElement: element({ id: "list", type: "nl.list" }),
             graphView: { kind: "event", graphId: "scroll" },
-            blueprintId: "bp",
-            widgetBlueprintEvents: [{ id: "scroll" }],
-        })).toEqual(["scroll"]);
-    });
-
-    it("prefers explicit UI behavior layer wiring when present", () => {
-        expect(resolveWidgetEventLayerSlotsForPalette({
-            ownerKind: "widgetMain",
-            widgetElement: element({
-                id: "list",
-                type: "nl.list",
-                behavior: {
-                    events: {
-                        scroll: { kind: "blueprintEvent", blueprintId: "bp", eventId: "custom-layer" },
-                    },
-                },
-            }),
-            graphView: { kind: "event", graphId: "custom-layer" },
-            blueprintId: "bp",
             widgetBlueprintEvents: [{ id: "scroll" }],
         })).toEqual(["scroll"]);
     });
@@ -47,7 +28,6 @@ describe("resolveWidgetEventLayerSlotsForPalette", () => {
             ownerKind: "widgetMain",
             widgetElement: element({ id: "button", type: "nl.button" }),
             graphView: { kind: "event", graphId: "custom-layer" },
-            blueprintId: "bp",
             widgetBlueprintEvents: [{ id: "mouseClick" }],
         })).toEqual([]);
     });

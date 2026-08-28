@@ -255,7 +255,7 @@ describe("ui-document spec: diff", () => {
                     layout: {x: 40, y: 8, width: 100, height: 40},
                     style: {color: "nlbrand:text.primary"},
                     props: {text: "Continue"},
-                    behavior: {events: {click: {kind: "noop"}}},
+                    valueBindings: {text: {kind: "blueprintValue", blueprintId: "bp-1", valueType: "string"}},
                 }),
             ],
         );
@@ -270,7 +270,7 @@ describe("ui-document spec: diff", () => {
             ["surfaces", "surf-1", "elements", "el-a", "layout"],
             ["surfaces", "surf-1", "elements", "el-a", "style"],
             ["surfaces", "surf-1", "elements", "el-a", "props"],
-            ["surfaces", "surf-1", "elements", "el-a", "behavior"],
+            ["surfaces", "surf-1", "elements", "el-a", "valueBindings"],
         ]);
         expect(result.total).toBe(5);
     });
