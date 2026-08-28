@@ -14,10 +14,9 @@ import {isJsonObject, requireDocumentObject, requireOptionalMap} from "./parseHe
  * `Changed (12488 → 12502)` - a byte count, for a rename. `decode` is what removed that; see
  * `DocumentSpec.decode`.
  *
- * Two paths, because the document has had two names. The current one takes the project's name
- * (`sanitizeProjectFileName` decides its spelling), the legacy one is the fixed `project.json` that
- * projects created before the extension existed still carry. Neither pattern contains the other -
- * a `.nlproj` is never a `project.json` - so the registry keeps both without either winning.
+ * One path, taking the project's own name (`sanitizeProjectFileName` decides its spelling). The
+ * fixed `project.json` projects used before the extension existed is not read any more, here or
+ * anywhere - see `findProjectConfigFileName`.
  *
  * **Read-side only.** `parse` is a shape gate, not a migration: `ProjectService` owns reading and
  * writing the real thing, normalizes fourteen configuration groups on the way in through
@@ -29,18 +28,11 @@ import {isJsonObject, requireDocumentObject, requireOptionalMap} from "./parseHe
  */
 export const PROJECT_CONFIG_DOCUMENT_PATH = `<projectName>${NLPROJ_EXT}`;
 
-/** The fixed name projects created before {@link PROJECT_CONFIG_DOCUMENT_PATH} existed still use. */
-export const LEGACY_PROJECT_CONFIG_DOCUMENT_PATH = "project.json";
-
 export const projectConfigSpec = defineDocumentSpec<ProjectConfigData>({
     kind: "project",
     version: 1,
-    paths: [PROJECT_CONFIG_DOCUMENT_PATH, LEGACY_PROJECT_CONFIG_DOCUMENT_PATH],
-    // Decided by the path rather than by sniffing the first byte: the two names are two eras of
-    // this document and each era has exactly one format, so there is nothing to guess.
-    decode: (bytes, path) => path.toLowerCase().endsWith(NLPROJ_EXT)
-        ? decodeProjectConfig(bytes)
-        : JSON.parse(new TextDecoder().decode(bytes)),
+    paths: [PROJECT_CONFIG_DOCUMENT_PATH],
+    decode: bytes => decodeProjectConfig(bytes),
     parse: (raw, context) => {
         const record = requireDocumentObject(raw, context, "a project configuration");
         // The two fields nothing downstream can do without: the name is the game's, and the

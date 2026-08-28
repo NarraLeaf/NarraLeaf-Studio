@@ -12,7 +12,7 @@ import { findProjectConfigFileName } from "@shared/utils/nlproj";
  * knows nothing about where it came from.
  *
  * Decided the same way `relocateRecentProject` decides what the author pointed at, and the same
- * way the workspace decides what it is opening: a `.nlproj` (or the legacy `project.json`) in the
+ * way the workspace decides what it is opening: a `.nlproj` in the
  * root. Anything that passes here passes what opens it next.
  *
  * A listing that cannot be read answers false rather than throwing. The caller's job at that
