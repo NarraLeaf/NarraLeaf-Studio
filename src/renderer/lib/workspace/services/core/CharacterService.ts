@@ -12,7 +12,7 @@ import { ICharacterService, Services, WorkspaceContext } from "../services";
 import { Character } from "../character/Character";
 import { CharacterProfile } from "../character/CharacterProfile";
 import { CharacterAppearanceKind, CharacterGroup, StoredCharacter } from "../character/types";
-import { CHARACTER_STORE_VERSION, isNewerCharacterStore, migrateCharacterStore } from "../character/migrateAppearance";
+import { CHARACTER_STORE_VERSION, isNewerCharacterStore } from "../character/migrateAppearance";
 import {
     applyCharacterSpeakerFallback,
     planCharacterSpeakerFallback,
@@ -483,51 +483,11 @@ export class CharacterService extends Service<CharacterService> implements IChar
         }
 
         this.applyLoadResult(result);
-        await this.reportFlattenedForms(result);
         this.emitChange();
     }
 
     private async loadCharacters(): Promise<void> {
-        const result = await loadDocument(charactersSpec, this.storage(), charactersSpec.pathFor());
-        this.applyLoadResult(result);
-        await this.reportFlattenedForms(result);
-    }
-
-    /**
-     * Tell the author which differentials the appearance migration had to flatten.
-     *
-     * The migration itself now runs inside `spec.parse`, which returns a document and cannot return
-     * a report beside it - so the names are recovered by running it a second time over a fresh copy
-     * of the bytes on disk. That costs one extra read, and only on a store whose bytes are not
-     * already what saving would write: i.e. once, on the first open after an upgrade, which is
-     * exactly when a pre-rework store is still on disk to be read.
-     *
-     * Worth the read rather than dropped: these differentials could not compose under the old model
-     * either (its resolver took the first variant that happened to have an asset), so the flattened
-     * result is not a faithful translation of anything and the author has to be told to check it.
-     */
-    private async reportFlattenedForms(result: {status: string; normalized?: boolean}): Promise<void> {
-        if (result.status !== "loaded" || result.normalized) {
-            return;
-        }
-        let characters: unknown[];
-        try {
-            const raw = await this.storage().read(charactersSpec.pathFor());
-            const parsed = raw === null ? null : JSON.parse(raw) as {characters?: unknown};
-            characters = Array.isArray(parsed?.characters) ? parsed.characters : [];
-        } catch {
-            // The document parsed a moment ago, so a failure here is a race with something else
-            // writing, not a fault worth reporting on top of a load that succeeded.
-            return;
-        }
-        const report = migrateCharacterStore(characters);
-        if (report.multiGroupForms.length === 0) {
-            return;
-        }
-        this.getContext().services.get<UIService>(Services.UI).showError(
-            `These character differentials could not compose before the appearance rework and were flattened; `
-            + `please check the result: ${report.multiGroupForms.join(", ")}`,
-        );
+        this.applyLoadResult(await loadDocument(charactersSpec, this.storage(), charactersSpec.pathFor()));
     }
 
     /**

@@ -15,6 +15,7 @@ import type {
     StoryScene,
 } from "@shared/types/story/document";
 import {STORY_DOCUMENT_SCHEMA_VERSION} from "@shared/types/story/document";
+import {STORY_DOCUMENT_MIN_SUPPORTED_VERSION} from "@shared/story/migrateStoryDocument";
 
 /**
  * `parse` without `loadDocument`, so a rejection can be inspected rather than quarantined. The
@@ -178,10 +179,11 @@ describe("story spec: the parse/serialize round trip", () => {
     }
 
     it("stamps the current schema version on every version the ladder knows", () => {
-        // Every rung, not only the current one: a document at any older version must come out at the
-        // current one or not come out at all. There is no third answer, and "half-migrated" is the
-        // one the DocumentSpec contract singles out as the outcome that must not happen.
-        for (let version = 1; version <= STORY_DOCUMENT_SCHEMA_VERSION; version += 1) {
+        // Every rung, not only the current one: a document at any version the ladder still reaches
+        // must come out at the current one or not come out at all. There is no third answer, and
+        // "half-migrated" is the one the DocumentSpec contract singles out as the outcome that must
+        // not happen.
+        for (let version = STORY_DOCUMENT_MIN_SUPPORTED_VERSION; version <= STORY_DOCUMENT_SCHEMA_VERSION; version += 1) {
             const parsed = parseStory(STORY_PATH, {
                 ...story(scene("s1", "Prologue", [block("b1", "hello")])),
                 schemaVersion: version,
@@ -190,9 +192,25 @@ describe("story spec: the parse/serialize round trip", () => {
         }
     });
 
+    it("refuses every version below the ladder's floor, and names it", () => {
+        // The other side of the same contract. Below the floor the answer is `corrupt`, and it has
+        // to carry both numbers: an author who sees only "could not be read" cannot tell a damaged
+        // file from a project made before this build could read one.
+        for (const version of [1, 13, 17, STORY_DOCUMENT_MIN_SUPPORTED_VERSION - 1]) {
+            expect(() => parseStory(STORY_PATH, {
+                ...story(scene("s1", "Prologue", [block("b1", "hello")])),
+                schemaVersion: version,
+            })).toThrow(new RegExp(`v${version} is older than this Studio version can read`));
+        }
+    });
+
     it("treats a document with no schemaVersion as the oldest, not as the newest", () => {
+        // Which now means it is refused rather than migrated - the ladder reads an absent version as
+        // v1, and v1 is under the floor. The property being pinned is unchanged and is the one that
+        // matters: an absent version must never be READ AS CURRENT, because a document a newer
+        // Studio wrote would then be accepted and written back with its fields stripped.
         const {schemaVersion: _omitted, ...withoutVersion} = story(scene("s1", "Prologue", [block("b1", "hi")]));
-        expect(parseStory(STORY_PATH, withoutVersion).schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
+        expect(() => parseStory(STORY_PATH, withoutVersion)).toThrow(/v1 is older than this Studio version can read/);
     });
 
     it("is a fixed point: parse, write, read gives the same document and the same bytes", () => {
@@ -213,13 +231,22 @@ describe("story spec: the parse/serialize round trip", () => {
     });
 
     it("is a fixed point for an OLD document too, where the migration actually does work", () => {
-        // The case that matters: at v1 the ladder rewrites payloads on the way up. The second pass
-        // must then be a no-op, or a merge of a partner's older document would drift on every write.
+        // The case that matters: at the ladder's floor a step rewrites payloads on the way up - here
+        // the transition's percentage hold becomes a length of time. The second pass must then be a
+        // no-op, or a merge of a partner's older document would drift on every write.
+        const held = jump("j1", "s2");
+        (held.payload as Record<string, unknown>).transition = {
+            kind: "throughColor",
+            durationMs: 800,
+            props: {color: "#000000", hold: 25},
+        };
         const once = parseStory(STORY_PATH, {
-            ...story(scene("s1", "Prologue", [block("b1", "hello")])),
-            schemaVersion: 1,
+            ...story(scene("s1", "Prologue", [held]), scene("s2", "Act One", [block("b1", "hello")])),
+            schemaVersion: STORY_DOCUMENT_MIN_SUPPORTED_VERSION,
         });
 
+        expect((once.scenes.s1.blocks.j1.payload as Record<string, unknown>).transition)
+            .toEqual({kind: "throughColor", durationMs: 800, holdMs: 200, props: {color: "#000000"}});
         expect(roundTrip(once)).toStrictEqual(once);
         expect(storyDocumentSpec.serialize(roundTrip(once))).toBe(storyDocumentSpec.serialize(once));
     });

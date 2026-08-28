@@ -8,7 +8,6 @@ import {
     parseAssetOrderDocument,
     serializeAssetOrderDocument,
 } from "../assetOrder";
-import { legacyShardTypesFor, mergeAssetOrderDocuments } from "../assetCategoryShards";
 
 /** Whether two order documents list the same rows in the same places. */
 function sameOrder(left: AssetOrderDocument, right: AssetOrderDocument): boolean {
@@ -58,11 +57,10 @@ export class AssetOrderManager {
             if (result.ok) {
                 this.orders[category] = parseAssetOrderDocument(result.data);
             } else {
-                // Absent or unparseable: no opinion about order, except whatever the type-named
-                // files this category was merged from still remember. The shards' own key order
-                // stands in for the rest, which is what every build before this file shipped
-                // already showed the author.
-                this.orders[category] = await this.readLegacyOrders(category);
+                // Absent or unparseable: no opinion about order. The group shard's own key order
+                // stands in, which is what every build before this file shipped already showed the
+                // author, and the file is written on this same open.
+                this.orders[category] = { assetIds: [], groupIds: [] };
                 this.missingCategories.add(category);
             }
         }
@@ -132,25 +130,5 @@ export class AssetOrderManager {
             this.missingCategories.delete(category);
         }
         return result;
-    }
-
-    /** The type-named order files behind a category, read in member order. Absent files say nothing. */
-    private async readLegacyOrders(category: AssetCategory): Promise<AssetOrderDocument> {
-        const legacyTypes = legacyShardTypesFor(category);
-        if (legacyTypes.length === 0) {
-            return { assetIds: [], groupIds: [] };
-        }
-
-        const filesystemService = this.context.services.get<FileSystemService>(Services.FileSystem);
-        const documents: AssetOrderDocument[] = [];
-        for (const type of legacyTypes) {
-            const path = this.context.project.resolve(["assets", `assets.order.${type}.json`]);
-            const result = await filesystemService.readJSON<unknown>(path);
-            if (result.ok) {
-                documents.push(parseAssetOrderDocument(result.data));
-            }
-        }
-
-        return mergeAssetOrderDocuments(documents);
     }
 }

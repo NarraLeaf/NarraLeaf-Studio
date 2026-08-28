@@ -24,18 +24,10 @@ import { Services } from "../../services";
 const AUDIO_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const VIDEO_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 
-const AUDIO_GROUPS = "assets.groups.audio.json";
-const VIDEO_GROUPS = "assets.groups.video.json";
 const MEDIA_GROUPS = "assets.groups.media.json";
-const AUDIO_ORDER = "assets.order.audio.json";
-const VIDEO_ORDER = "assets.order.video.json";
-const MEDIA_ORDER = "assets.order.media.json";
-const AUDIO_METADATA = "assets.metadata.audio.json";
-const VIDEO_METADATA = "assets.metadata.video.json";
 
-/** A group record in the shape the type-sharded builds wrote: `type`, no `category`. */
-function legacyGroup(id: string, name: string, type: AssetType): string {
-    return `{"id":"${id}","name":"${name}","type":"${type}","createdAt":0,"updatedAt":0}`;
+function group(id: string, name: string, category: AssetCategory): string {
+    return `{"id":"${id}","name":"${name}","category":"${category}","createdAt":0,"updatedAt":0}`;
 }
 
 function groupsShard(...records: string[]): string {
@@ -196,79 +188,19 @@ function lastWrite(writes: { path: string; data: string }[], suffix: string): st
     return [...writes].reverse().find(write => write.path.endsWith(suffix))?.data;
 }
 
-describe("folders, merging audio + video into media", () => {
-    it("keeps every group, with its id unchanged, under the merged section", async () => {
+describe("a category's folder shard", () => {
+    it("reads the shard that is there, and writes nothing", async () => {
         const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
+            [MEDIA_GROUPS]: groupsShard(group("group_kept", "Cutscenes", AssetCategory.Media)),
         });
 
         const { groupManager } = await initAssets(harness);
 
-        const media = groupManager.getGroups(AssetCategory.Media);
-        expect(media.map(group => group.id)).toEqual(["group_a", "group_v"]);
-        expect(media.map(group => group.category)).toEqual([AssetCategory.Media, AssetCategory.Media]);
-    });
-
-    it("leaves the assets in those groups filed, because their groupId never had to change", async () => {
-        const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-            [AUDIO_METADATA]: metadataShard(assetRecord(AUDIO_A, AssetType.Audio, "group_a")),
-            [VIDEO_METADATA]: metadataShard(assetRecord(VIDEO_B, AssetType.Video, "group_v")),
-        });
-
-        const { metadataManager } = await initAssets(harness);
-
-        expect(metadataManager.getAssets()[AssetType.Audio][AUDIO_A].groupId).toBe("group_a");
-        expect(metadataManager.getAssets()[AssetType.Video][VIDEO_B].groupId).toBe("group_v");
-    });
-
-    it("writes the merged shard and does not touch either file it read", async () => {
-        const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-        });
-
-        await initAssets(harness);
-
-        expect(Object.keys(JSON.parse(lastWrite(harness.writes, MEDIA_GROUPS)!))).toEqual(["group_a", "group_v"]);
-        // The old shards are still exactly what they were: read, never rewritten, never deleted.
-        expect(harness.writes.some(write => write.path.endsWith(AUDIO_GROUPS))).toBe(false);
-        expect(harness.writes.some(write => write.path.endsWith(VIDEO_GROUPS))).toBe(false);
-        expect(harness.present[AUDIO_GROUPS]).toBe(groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)));
-        expect(harness.present[VIDEO_GROUPS]).toBe(groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)));
-    });
-
-    it("keeps two same-named folders as two rows rather than de-duplicating them", async () => {
-        // They were never one object: different ids, different assets. Collapsing them would move
-        // one side's files into the other side's folder.
-        const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Chapter 1", AssetType.Video)),
-        });
-
-        const { groupManager } = await initAssets(harness);
-
-        const media = groupManager.getGroups(AssetCategory.Media);
-        expect(media.map(group => group.id)).toEqual(["group_a", "group_v"]);
-        expect(media.map(group => group.name)).toEqual(["Chapter 1", "Chapter 1"]);
-    });
-
-    it("does not run again once the merged shard exists", async () => {
-        const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-            [MEDIA_GROUPS]: groupsShard(legacyGroup("group_kept", "Already merged", AssetType.Audio)),
-        });
-
-        const { groupManager } = await initAssets(harness);
-
-        expect(groupManager.getGroups(AssetCategory.Media).map(group => group.id)).toEqual(["group_kept"]);
+        expect(groupManager.getGroups(AssetCategory.Media).map(one => one.id)).toEqual(["group_kept"]);
         expect(harness.writes.some(write => write.path.endsWith(MEDIA_GROUPS))).toBe(false);
     });
 
-    it("leaves a category whose shard is simply absent with no folders, and creates the file", async () => {
+    it("leaves a category whose shard is absent with no folders, and creates the file", async () => {
         const harness = createHarness({});
 
         const { groupManager } = await initAssets(harness);
@@ -277,70 +209,29 @@ describe("folders, merging audio + video into media", () => {
         expect(JSON.parse(lastWrite(harness.writes, MEDIA_GROUPS)!)).toEqual({});
     });
 
-    it("still reads the folders out of the legacy shards when the write that would create the merged file is refused", async () => {
+    it("still opens when the write that would create the file is refused", async () => {
         // The open a frozen workspace performs, and the one a version restore performs while it
-        // re-reads the working tree. Creating the merged shard is an optimisation for the next open;
-        // if it were a precondition for reading, every such open would come up with no folders at
-        // all - or fail outright on the read-back of a file that was never written.
-        const harness = createHarness({
-            ...emptyMetadataShards(),
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-        }, { refuseWrites: true });
+        // re-reads the working tree. Creating the shard is an optimisation for the next open; if it
+        // were a precondition for reading, every such open would fail on the read-back of a file
+        // that was never written.
+        const harness = createHarness({ ...emptyMetadataShards() }, { refuseWrites: true });
 
         const { groupManager } = await initAssets(harness);
 
-        expect(groupManager.getGroups(AssetCategory.Media).map(group => group.id)).toEqual(["group_a", "group_v"]);
-        // The refusal really did keep the file off the disk, so the next open repeats the merge.
+        expect(groupManager.getGroups(AssetCategory.Media)).toEqual([]);
+        // The refusal really did keep the file off the disk, so the next open tries again.
         expect(harness.present[MEDIA_GROUPS]).toBeUndefined();
     });
 
-    it("refuses to migrate a legacy shard that is on disk and cannot be read, and writes nothing", async () => {
-        // The other half of "absent contributes nothing": a shard that exists but does not parse
-        // holds folders this merge cannot see. Treating it as empty would write a merged file
-        // without them - and every open after that would read the merged file and never look at
-        // the audio shard again, turning one bad read into a permanent loss.
-        const harness = createHarness({
-            [AUDIO_GROUPS]: "{ not json at all",
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-        });
+    it("refuses a shard that is on disk and cannot be read, and writes nothing", async () => {
+        // The other half of "absent means no folders": a shard that exists but does not parse holds
+        // folders this open cannot see. Treating it as empty would write an empty file over them,
+        // and every open after that would read the file that was written - one bad read turned into
+        // a permanent loss.
+        const harness = createHarness({ [MEDIA_GROUPS]: "{ not json at all" });
 
-        await expect(initAssets(harness)).rejects.toThrow(/legacy assets groups shard/);
+        await expect(initAssets(harness)).rejects.toThrow(/assets groups shard/);
 
         expect(harness.writes.some(write => write.path.endsWith(MEDIA_GROUPS))).toBe(false);
-        expect(harness.present[MEDIA_GROUPS]).toBeUndefined();
-    });
-});
-
-describe("row order, merging audio + video into media", () => {
-    it("concatenates the two legacy orders, audio first, and writes them to the new file", async () => {
-        const harness = createHarness({
-            [AUDIO_GROUPS]: groupsShard(legacyGroup("group_a", "Chapter 1", AssetType.Audio)),
-            [VIDEO_GROUPS]: groupsShard(legacyGroup("group_v", "Cutscenes", AssetType.Video)),
-            [AUDIO_METADATA]: metadataShard(assetRecord(AUDIO_A, AssetType.Audio)),
-            [VIDEO_METADATA]: metadataShard(assetRecord(VIDEO_B, AssetType.Video)),
-            [AUDIO_ORDER]: JSON.stringify({ assetIds: [AUDIO_A], groupIds: ["group_a"] }),
-            [VIDEO_ORDER]: JSON.stringify({ assetIds: [VIDEO_B], groupIds: ["group_v"] }),
-        });
-
-        await initAssets(harness);
-
-        expect(JSON.parse(lastWrite(harness.writes, MEDIA_ORDER)!)).toEqual({
-            assetIds: [AUDIO_A, VIDEO_B],
-            groupIds: ["group_a", "group_v"],
-        });
-    });
-
-    it("still lists an id neither legacy order mentioned", async () => {
-        // The order file is a hint, never a filter: an asset missing from the browser reads as a
-        // failed import, and the author imports it again.
-        const harness = createHarness({
-            [VIDEO_METADATA]: metadataShard(assetRecord(VIDEO_B, AssetType.Video)),
-            [AUDIO_ORDER]: JSON.stringify({ assetIds: [AUDIO_A], groupIds: [] }),
-        });
-
-        const { metadataManager } = await initAssets(harness);
-
-        expect(metadataManager.listOrdered(AssetType.Video)).toEqual([VIDEO_B]);
     });
 });

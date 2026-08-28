@@ -144,7 +144,6 @@ const CATEGORY_BY_CONVENTION_PATH: readonly (readonly [readonly string[], Change
     [ProjectNameConvention.EditorBrand, "settings"],
     [ProjectNameConvention.Assets, "assets"],
     [ProjectNameConvention.ProjectResources, "assets"],
-    [ProjectNameConvention.ProjectConfigLegacy, "settings"],
     [ProjectNameConvention.Scripts, "other"],
     [ProjectNameConvention.PuppetRuntimes, "other"],
     [ProjectNameConvention.NLCache, "other"],
