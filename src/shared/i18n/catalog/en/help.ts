@@ -446,6 +446,73 @@ export const help = {
                 + "- The project check reports characters the script uses that no font in the list can "
                 + "draw, for each language.",
         },
+        inputActions: {
+            title: "Input actions",
+            body:
+                "An input action is a name for something a player wants to do, together with the gestures "
+                + "that trigger it. A blueprint answers the name, so the gestures can change without the "
+                + "graph changing with them.\n"
+                + "\n"
+                + "Three steps put one on screen.\n"
+                + "\n"
+                + "- Name the action in the Input Actions panel and give it its bindings.\n"
+                + "- Open the interface that reacts to it, and switch the action on in its Input section.\n"
+                + "- Add an On Action node to that interface's blueprint and pick the action.\n"
+                + "\n"
+                + "An interface answers nothing until it is switched on, so naming an action does not make "
+                + "every screen react to it.",
+        },
+        inputActionBindings: {
+            title: "Bindings and devices",
+            body:
+                "A binding is one way to trigger an action. An action takes as many as it needs, so the same "
+                + "action can be a key on a desktop and a gesture on a phone.\n"
+                + "\n"
+                + "The picker is grouped by device, and each device names the gesture the way it produces it.\n"
+                + "\n"
+                + "- Mouse: click, double click, right click, middle click, and the wheel.\n"
+                + "- Trackpad: sliding left and right, which a wheel cannot do.\n"
+                + "- Touch screen: tap, long press, and sliding in four directions.\n"
+                + "- Keyboard: press the combination to record it.\n"
+                + "\n"
+                + "A gesture that more than one device produces is added once and works on all of them. Each "
+                + "binding is marked with the devices that reach it.\n"
+                + "\n"
+                + "A long press comes only from a finger, so an action bound to it alone does nothing on a "
+                + "desktop.",
+        },
+        inputActionAnswering: {
+            title: "Answering an action",
+            body:
+                "An interface's Input section lists every action the project names. Each one is off until "
+                + "the interface answers it.\n"
+                + "\n"
+                + "After an action fires, the input either stops at that interface or carries on to what is "
+                + "drawn behind it. It stops unless the action says otherwise.\n"
+                + "\n"
+                + "A control under the pointer takes the input first, so an action bound to a click does not "
+                + "fire when the player clicked a button inside the interface.\n"
+                + "\n"
+                + "A scrolling list is the one exception, and only for a scroll: it keeps the scroll while it "
+                + "has somewhere left to travel and lets it through once it does not. That is what lets one "
+                + "more pull at the bottom of a list close the page the list is in.",
+        },
+        inputActionsInBlueprints: {
+            title: "Actions in blueprints",
+            body:
+                "Three nodes read input actions.\n"
+                + "\n"
+                + "- On Action runs when the action fires. It reports which device raised it and where the "
+                + "pointer was. It belongs to an interface or to the global blueprint, not to one widget.\n"
+                + "- Is Action Held answers whether the action is held at this moment. A key, a mouse button "
+                + "and a long press can be held; a scroll is an instant and a double click is a sequence, so "
+                + "both read false.\n"
+                + "- Get Input Device answers which device the player is using, for a line that has to read "
+                + "differently on a phone.\n"
+                + "\n"
+                + "A widget that reacts to being clicked uses its own Mouse Click head instead. An action is "
+                + "what the interface does with an input nothing on it wanted.",
+        },
         uiSurfaces: {
             title: "Game screens",
             body:
@@ -454,13 +521,7 @@ export const help = {
                 + "\n"
                 + "- The surface is drawn at the size the game draws it, so the placement matches what players "
                 + "see.\n"
-                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.\n"
-                + "- An input action takes as many bindings as it needs, and each binding is marked with the "
-                + "devices that reach it. Touch needs no actions of its own.\n"
-                + "- The four scroll bindings are reached by a wheel, a trackpad and a finger dragging the "
-                + "screen. The direction is the one the view moves in.\n"
-                + "- Where a line has to read differently on a touch screen, read the device with Get Input "
-                + "Device, branch on it, and set the text for each.",
+                + "- A surface belongs to the game. Changing one changes the shipped game, not Studio.",
         },
         uiComponents: {
             title: "Reusable parts",

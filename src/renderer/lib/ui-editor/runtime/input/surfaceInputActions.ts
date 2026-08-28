@@ -21,10 +21,11 @@
  *  - A binding matches or it does not. Pointer gestures compare by name; keys compare by the
  *    canonical spelling `normalizeUIInputBinding` already put them in, which is the same spelling
  *    the `On Key Down` heads use.
- *  - `overControls: "skip"` (the default) stands a pointer binding down over a control the player
- *    operates. A panel-wide "click advances" must not fire when the click landed on the Back button
- *    inside the panel.
- *  - `consume` (default true) decides whether the lane walk stops here.
+ *  - A control under the pointer has already spoken for the input, so the action stands down. A
+ *    panel-wide "click advances" must not fire when the click landed on the Back button inside the
+ *    panel. See {@link pointerInputClaimedByControl} for the one gesture a control can be under and
+ *    still not want.
+ *  - `consume` (default true) decides whether the input stops here.
  *  - An enablement naming an action the project does not define is ignored, silently. Copying a
  *    surface between projects leaves exactly that, it is inert, and refusing to load the surface
  *    over it would be a far worse answer than doing nothing.
@@ -40,15 +41,14 @@ import type { UIElement } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
     readUISurfaceActionConsume,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
     type UIInputActionDef,
     type UIInputBinding,
     type UIInputPointerGesture,
     type UISurfaceActionEnablement,
-    type UISurfaceInputMode,
 } from "@shared/types/ui-editor/inputAction";
 import type { UIInputActionEventPayload, UIInputActionSource } from "@shared/types/ui-editor/inputActionEvent";
+import { isWheelPointerGesture } from "./wheelGesture";
 import { normalizeVideoProps, UI_VIDEO_ELEMENT_TYPE } from "@shared/types/ui-editor/video";
 
 /**
@@ -128,6 +128,49 @@ export function hitChainHasOperableElement(
     return hitChain.some(element => isOperableHitElement(element));
 }
 
+/** One element under the pointer, with what its own scroller can still do. */
+export type UIInputHitNode = {
+    element: Pick<UIElement, "type" | "props"> | null | undefined;
+    /**
+     * Whether this node's own scroller can still travel the way the gesture asks.
+     *
+     * Read off the DOM by the caller, because scroll position is not in the document. False for a
+     * node that does not scroll, and for every gesture that is not a scroll.
+     */
+    scrollerCanTravel?: boolean;
+};
+
+/**
+ * Whether something under the pointer has already spoken for this input.
+ *
+ * An action declared on a surface is what the surface does with an input **nothing on it wanted**.
+ * A click on a Back button is the button's; a panel-wide "click advances" firing as well would
+ * spend a line on a player who was aiming at the button. So a control in the chain takes the input
+ * and the action stands down - and there is no setting for it, because this is a fact about what
+ * the player hit rather than a policy an author picks.
+ *
+ * **A scroll is the one input a control can be under and still not want.** A list scrolls until it
+ * reaches its end; past that the wheel is doing nothing, and an action bound to it - "one more pull
+ * at the bottom closes the log" - is the only thing left that can answer. So a scroller claims a
+ * scroll while it can still travel that way and lets it go when it cannot. Every other gesture is
+ * claimed by any control it lands on: a button does not run out of clicks.
+ */
+export function pointerInputClaimedByControl(
+    chain: readonly UIInputHitNode[],
+    gesture: UIInputPointerGesture,
+): boolean {
+    const scrolling = isWheelPointerGesture(gesture);
+    for (const node of chain) {
+        if (!isOperableHitElement(node.element)) {
+            continue;
+        }
+        if (!scrolling || node.scrollerCanTravel) {
+            return true;
+        }
+    }
+    return false;
+}
+
 function bindingMatchesSignal(binding: UIInputBinding, signal: UIInputSignal): boolean {
     if (binding.kind === "pointer") {
         return signal.kind === "pointer" && binding.gesture === signal.gesture;
@@ -149,13 +192,14 @@ export function resolveSurfaceInputActionHits(input: {
     enablements: readonly UISurfaceActionEnablement[] | undefined;
     signal: UIInputSignal;
     /** The elements under the pointer, innermost first. Empty for a key. */
-    hitChain?: readonly (Pick<UIElement, "type" | "props"> | null | undefined)[];
+    hitChain?: readonly UIInputHitNode[];
 }): UISurfaceInputActionHit[] {
     const { vocabulary, enablements, signal } = input;
     if (!enablements?.length) {
         return [];
     }
-    const overControl = signal.kind === "pointer" && hitChainHasOperableElement(input.hitChain ?? []);
+    const claimed = signal.kind === "pointer"
+        && pointerInputClaimedByControl(input.hitChain ?? [], signal.gesture);
 
     const hits: UISurfaceInputActionHit[] = [];
     for (const enablement of enablements) {
@@ -165,11 +209,11 @@ export function resolveSurfaceInputActionHits(input: {
             // reports them where the author can see them, and routing simply steps over them.
             continue;
         }
-        const bindings = resolveSurfaceActionBindings(def, enablement);
+        const bindings = resolveSurfaceActionBindings(def);
         if (!bindings.some(binding => bindingMatchesSignal(binding, signal))) {
             continue;
         }
-        if (overControl && readUISurfaceActionOverControls(enablement) === "skip") {
+        if (claimed) {
             continue;
         }
         hits.push({
@@ -189,29 +233,15 @@ export function hitsConsumeInput(hits: readonly UISurfaceInputActionHit[]): bool
     return hits.some(hit => hit.consume);
 }
 
-/** What stopped an input at a lane. */
-export type UIInputLaneStop = "capture" | "consume";
-
 /**
- * Whether the input stops at a lane that has just answered, and what stopped it.
+ * Whether the input stops at a lane that has just answered.
  *
- * The whole stopping rule, in one place, so that the two things able to end an input's travel are
- * read off one function rather than two conditions that could drift:
- *
- *  - `capture` (the default, `UI_SURFACE_DEFAULT_INPUT_MODE`) stops it whether or not anything on
- *    the surface listened - which is exactly what every surface authored before input modes existed
- *    already did, so a document that predates them behaves as it always has.
- *  - `pass` lets it carry on to whatever is behind.
- *  - An action that fired with `consume` stops it either way. An element head firing does not: a
- *    head is "I want this", not "this is mine", and a lane that stopped because a decorative panel
- *    happened to listen would be the ownership rule back under another name.
- *
- * `none` never reaches here. A surface out of input is click-through, so the browser aims nothing at
- * it in the first place.
+ * A surface is drawn over what is behind it, and an input that lands on its content stops there.
+ * The one thing that sends it further is an action saying so: firing with `consume` off means "this
+ * was mine, and there is still something in it for whatever is behind". Input nothing answered does
+ * not pass, because a surface that let it through would be a hole in the interface that nothing on
+ * screen accounts for.
  */
-export function stopsAtLane(input: UISurfaceInputMode, consumed: boolean): UIInputLaneStop | null {
-    if (consumed) {
-        return "consume";
-    }
-    return input === "capture" ? "capture" : null;
+export function stopsAtLane(hits: readonly UISurfaceInputActionHit[]): boolean {
+    return hits.length === 0 || hits.some(hit => hit.consume);
 }

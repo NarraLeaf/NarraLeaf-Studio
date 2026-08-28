@@ -13,6 +13,15 @@ import { sortSurfaceDiagnostics } from "./types";
 
 export type CollectSurfaceDiagnosticsOptions = {
     blueprintDocument?: BlueprintDocument;
+    /**
+     * Set when `surfaceId` names a component editor rather than a surface.
+     *
+     * A component's widgets keep their blueprints under a different owner key, and the caller has
+     * already decided which it is - it had to, in order to hand this the adapted document. Parsing
+     * the id again here is not available anyway: the parser lives beside the adapter in `apps/`,
+     * which this tree may not import.
+     */
+    componentId?: string;
 };
 
 export function collectSurfaceDiagnostics(
@@ -39,7 +48,11 @@ export function collectSurfaceDiagnostics(
         ...collectStageDiagnostics(surface),
         ...collectResourceDiagnostics(elements),
         ...collectLayoutDiagnostics(document, surface, elements),
-        ...collectInteractionDiagnostics(document, elements),
+        ...collectInteractionDiagnostics(document, elements, {
+            surfaceId,
+            componentId: options?.componentId,
+            blueprintDocument: options?.blueprintDocument,
+        }),
     ];
 
     const bp = options?.blueprintDocument;

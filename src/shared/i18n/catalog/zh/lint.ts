@@ -207,7 +207,7 @@ export const lint = {
             messageCharacter: "指向的角色已不存在",
             messageTextKey: "指向的文本键在工程中未声明",
             messageDlc: "指向的 DLC 在工程中不存在",
-            messageInputAction: "指向的输入操作在工程中未声明",
+            messageInputAction: "指向的输入意图在工程中未声明",
         },
         blueprintElementRefMissing: {
             title: "控件缺失",

@@ -1146,6 +1146,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             : documentService;
         const all = collectSurfaceDiagnostics(diagnosticDocumentService.getDocument(), deferredUiSelection.surfaceId, {
             blueprintDocument: bp,
+            componentId: componentId ?? undefined,
         });
         const idSet = new Set(deferredUiSelection.elementIds);
         const picked = all.filter(d => !d.elementId || idSet.has(d.elementId)).slice(0, 5);

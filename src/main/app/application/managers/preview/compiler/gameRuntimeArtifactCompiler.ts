@@ -229,6 +229,15 @@ export type GameRuntimeArtifactCompileInput = {
      */
     zigMirror?: string;
     /**
+     * A C toolchain the caller has already got hold of, used instead of fetching
+     * one.
+     *
+     * For a machine that keeps its own - an author who builds offline, or a test
+     * that must not pull 76 MB to check the path it is testing. Absent is the
+     * normal case: the toolchain is fetched once and cached.
+     */
+    titleCompiler?: string;
+    /**
      * Every build target this one artifact serves.
      *
      * One compile is not one platform: the desktop compile serves whichever desktop targets the
@@ -594,13 +603,18 @@ export async function compileGameRuntimeArtifact(
      */
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),
+        /* Named so the sentence tells the author which switch to reach for. */
+        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
         ...(input.hostUserDataDir ? { userDataDir: input.hostUserDataDir } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
         ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
         workDir: imageDir,
-        onNotice: message => notices.push(message),
     });
     if (!titleCompile) {
+        /* Not a packaged build: a preview, whose binary is never handed to
+         * anyone, so the prebuilt image with this pack's material written into it
+         * is all it needs. */
         for (const [slice, destination] of Object.entries(images)) {
             await writeSupportBinary(slice, destination);
         }
@@ -1050,57 +1064,68 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
 }
 
 /**
- * The C toolchain a per-title build needs, or nothing and a sentence saying why.
+ * The C toolchain a shipped build's codec is compiled with.
  *
  * Only for a build that will be packaged. A preview runs from the app dir on
- * this machine and is thrown away; downloading a compiler to make its binary
- * unique to a title nobody will ship would be the cost of the feature with none
- * of the point.
+ * this machine and is thrown away; fetching a compiler to make its binary unique
+ * to a title nobody will ship would be the cost of the feature with none of the
+ * point.
  *
- * Failing to get one is not a failed build. The material still goes into the
- * shipped image, the store is still sealed, and the game still works - what is
- * lost is that a published copy of the codec package cannot open it, which is
- * one attack rather than the protection. Refusing to build would trade a working
- * artifact for a stronger one the author cannot produce right now, on a machine
- * that may simply be offline.
+ * Not getting one FAILS THE BUILD, and that is a decision rather than an
+ * oversight. The alternative was to write the material into the prebuilt image
+ * instead: the game would work, the store would still be sealed, and what would
+ * be lost is that a published copy of the codec package could open it - the one
+ * thing the whole arrangement exists to prevent. An author who switched
+ * protection on and got a build back has been told they are protected. Handing
+ * them a weaker artifact with a line on a console is telling them something else
+ * quietly, and the difference only shows up when somebody has already published
+ * the game.
+ *
+ * So it stops, and the author decides: fix the machine, or turn off the thing
+ * that needs it.
  */
 async function resolveTitleCompile(options: {
     wanted: boolean;
+    reason: string;
+    explicitCompiler?: string;
     userDataDir?: string;
     mirror?: string;
     rewrites?: readonly DownloadRewriteRule[];
     workDir: string;
-    onNotice: (message: string) => void;
 }): Promise<{ compiler: string; workDir: string } | null> {
     if (!options.wanted) {
         return null;
     }
+    const refuse = (detail: string): never => {
+        throw new Error(
+            `${options.reason} needs a C toolchain to compile this title's content codec, and one `
+            + `could not be obtained: ${detail}
+`
+            + "Fix that and build again, or turn the feature off. It is not built without it: a "
+            + "codec that is not compiled for this title can be opened by any copy of the codec "
+            + "package, which is what protecting the content is for.",
+        );
+    };
+    if (options.explicitCompiler) {
+        await fs.mkdir(options.workDir, { recursive: true });
+        return { compiler: options.explicitCompiler, workDir: options.workDir };
+    }
     if (!options.userDataDir) {
         // The cache lives under it, so without one there is nowhere to put a
-        // toolchain. A packaged build always carries it; this is a caller that
-        // asked for packaging without it, which is a defect rather than a state.
-        options.onNotice("the content codec is not compiled for this title: no cache directory was given");
-        return null;
+        // toolchain. A packaged build always carries it; a caller that asked for
+        // packaging without it is a defect rather than a state.
+        return refuse("this build was started without a cache directory to keep one in");
     }
     try {
         const compiler = await ensureZigToolchain({
             userDataDir: options.userDataDir,
             ...(options.mirror ? { mirror: options.mirror } : {}),
             ...(options.rewrites ? { rewrites: options.rewrites } : {}),
-            log: (level, message) => {
-                if (level !== "info") {
-                    options.onNotice(message);
-                }
-            },
         });
         await fs.mkdir(options.workDir, { recursive: true });
         return { compiler, workDir: options.workDir };
     } catch (error) {
-        options.onNotice(
-            "the content codec ships as built rather than compiled for this title, because the "
-            + `toolchain could not be obtained: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return null;
+        return refuse(error instanceof Error ? error.message : String(error));
     }
 }
 

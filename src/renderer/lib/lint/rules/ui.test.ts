@@ -735,21 +735,6 @@ describe("ui/gesture-answered-twice", () => {
         ).toEqual([]);
     });
 
-    it("says nothing when the page was told to fire over controls anyway", async () => {
-        const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
-        const document = actionPage({
-            leaf: hit.element,
-            enablements: [{ actionId: "advance", overControls: "fire" }],
-        });
-
-        expect(
-            await run(
-                "ui/gesture-answered-twice",
-                createTestLintContext({ uiDocument: document, blueprintDocument: hit.blueprints }),
-            ),
-        ).toEqual([]);
-    });
-
     it("says nothing when the two answer different gestures", async () => {
         const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
         // A key binding is not a gesture a pointer can collide with, and a wheel is not a click.

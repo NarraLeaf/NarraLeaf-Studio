@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 11,
+  "schemaVersion": 12,
   "id": "ed52d95a-eb34-44e1-be18-b8c0404901a7",
   "name": "UI Document",
   "surfaces": [
@@ -54,14 +54,7 @@
       },
       "actions": [
         {
-          "actionId": "dismiss",
-          "addBindings": [
-            {
-              "kind": "pointer",
-              "gesture": "wheelDown"
-            }
-          ],
-          "overControls": "fire"
+          "actionId": "closeLog"
         }
       ]
     },
@@ -56219,6 +56212,20 @@
         {
           "kind": "key",
           "key": "Escape"
+        }
+      ]
+    },
+    "closeLog": {
+      "id": "closeLog",
+      "name": "Close the log",
+      "bindings": [
+        {
+          "kind": "key",
+          "key": "Escape"
+        },
+        {
+          "kind": "pointer",
+          "gesture": "wheelDown"
         }
       ]
     },
