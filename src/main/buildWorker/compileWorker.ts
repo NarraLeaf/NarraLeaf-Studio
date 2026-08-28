@@ -53,12 +53,15 @@ setStepProgressReporter(progress => send({ type: "progress", progress }));
  * where those aliases mean something else. A missing bundle is a Studio defect and throws - a check
  * that quietly did not run would be worse than one that was never written.
  */
-async function auditShippedContent(appDir: string): Promise<ShippedContentAuditReport> {
+async function auditShippedContent(
+    appDir: string,
+    supportBinaryPath: string | null,
+): Promise<ShippedContentAuditReport> {
     const modulePath = path.join(__dirname, "contentAudit.js");
     const audit = require(modulePath) as {
-        runShippedContentAudit(appDir: string): Promise<ShippedContentAuditReport>;
+        runShippedContentAudit(appDir: string, supportBinaryPath?: string): Promise<ShippedContentAuditReport>;
     };
-    return await audit.runShippedContentAudit(appDir);
+    return await audit.runShippedContentAudit(appDir, supportBinaryPath ?? undefined);
 }
 
 parentPort.on("message", event => {
@@ -82,7 +85,7 @@ parentPort.on("message", event => {
             // there belongs to a build of that variant, which is what reports it. It is the caller
             // that knows this, because it is the caller that throws the package away.
             const audit = result.assetReport && !message.input.forComparison
-                ? await auditShippedContent(result.appDir)
+                ? await auditShippedContent(result.appDir, result.codecHostImage)
                 : undefined;
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })

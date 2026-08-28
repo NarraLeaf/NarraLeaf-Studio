@@ -1839,6 +1839,19 @@ describe("weather clips in the pack", () => {
          */
         expect(result.codecCompiledForTitle).toBe(false);
         expect(result.notices.some(notice => notice.includes("not compiled for this title"))).toBe(true);
+
+        /*
+         * And it hands over a copy this machine can open. Something has to read
+         * the store back - the shipped-content audit does, on every narrowed
+         * build - and once the shipped copies are staged per target, one of them
+         * may be for another machine and none of them is at the path that used to
+         * be searched. The first real build after that change failed exactly
+         * there, so the path is part of the result now rather than assumed.
+         */
+        expect(result.codecHostImage).toBeTruthy();
+        await expect(fs.access(result.codecHostImage as string)).resolves.toBeUndefined();
+        // Outside the app dir: it is a working file, not something a player receives.
+        expect(path.relative(result.appDir, result.codecHostImage as string).startsWith("..")).toBe(true);
         // Different machines, so different images - the assertion the old code
         // would have failed, since it wrote the same bytes to both.
         expect(staged[0].equals(staged[1])).toBe(false);
