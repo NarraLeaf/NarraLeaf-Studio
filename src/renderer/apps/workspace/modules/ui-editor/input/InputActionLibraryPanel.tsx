@@ -42,15 +42,17 @@ function countAnsweringSurfaces(documentService: UIDocumentService | null): Reco
  * in one place. An author who has just written "click here means advance" on a page finds the word
  * "advance" defined one section down the same rail.
  *
- * Only the *defaults* live here. Which interface answers which action, and with what extra
- * bindings, is the interface's own business and is set in its Input section.
+ * The actions live here and only here: an interface says whether it answers one, not what it is.
+ * That makes this the place an author starts from rather than one they visit, so it opens with the
+ * rail rather than waiting to be found - it was the one section here that did not, and it sat under
+ * a component library long enough to push it off the bottom of the window.
  */
 export function InputActionLibraryPanel({ documentService, uiService }: InputActionLibraryPanelProps) {
     const { t, tn } = useTranslation();
     // Browsable while frozen, as the component library is: reading the vocabulary costs nothing,
     // and only creating, renaming, rebinding and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
-    const [open, setOpen] = useState(false);
+    const [open, setOpen] = useState(true);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
