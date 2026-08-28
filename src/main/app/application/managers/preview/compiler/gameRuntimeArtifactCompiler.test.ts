@@ -1829,6 +1829,16 @@ describe("weather clips in the pack", () => {
 
         const staged = await Promise.all([hostKey, otherKey].map(key =>
             fs.readFile(path.join(result.appDir, "platform", key, RUNTIME_SUPPORT_FILENAME))));
+
+        /*
+         * And it says which protection it produced. This compile was given no
+         * cache directory, so there is nowhere to put a toolchain and the codec
+         * ships as built - a working protected build, but one a published copy of
+         * the codec package can open. An author who asked for protection is told
+         * that rather than left to assume the stronger answer.
+         */
+        expect(result.codecCompiledForTitle).toBe(false);
+        expect(result.notices.some(notice => notice.includes("not compiled for this title"))).toBe(true);
         // Different machines, so different images - the assertion the old code
         // would have failed, since it wrote the same bytes to both.
         expect(staged[0].equals(staged[1])).toBe(false);

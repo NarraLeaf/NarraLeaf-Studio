@@ -48,7 +48,14 @@ import {
     type SealedBundleWriter,
 } from "@narraleaf/encryption";
 import { PER_TARGET_DIR_NAME } from "../../../../../buildWorker/perTargetPayload";
-import { codecTargetFor, hostCodecTarget, writeSupportBinary } from "../../../../../buildWorker/codecBinary";
+import {
+    codecPlacementsFor,
+    hostCodecTarget,
+    placeCodecBinary,
+    writeSupportBinary,
+    type CodecPlacement,
+} from "../../../../../buildWorker/codecBinary";
+import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
@@ -214,6 +221,13 @@ export type GameRuntimeArtifactCompileInput = {
      * load.
      */
     platformKeys?: readonly string[];
+    /**
+     * `build.zigMirror` as the author set it, for the toolchain a codec build
+     * needs. Empty or absent is the official source. Carried on the input for the
+     * same reason `hostUserDataDir` is: this runs off the main process, where the
+     * setting is out of reach.
+     */
+    zigMirror?: string;
     /**
      * Every build target this one artifact serves.
      *
@@ -396,6 +410,17 @@ export type GameRuntimeArtifactCompileResult = {
      */
     notices: string[];
     /**
+     * Whether this build's codec binaries were compiled for this title, rather
+     * than the shipped ones written into.
+     *
+     * On the result rather than in `notices` because it is the difference between
+     * an attack that has to be repeated for every game and one that has to be
+     * mounted once, and an author who asked for protection should be told which
+     * they got in the voice that difference deserves. Null when the question does
+     * not arise: an unprotected build, or a preview.
+     */
+    codecCompiledForTitle: boolean | null;
+    /**
      * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
      * the library out.
      *
@@ -499,26 +524,61 @@ export async function compileGameRuntimeArtifact(
      * copy, of this machine's image, and every package but one shipped a binary
      * its loader refuses.
      */
-    const supportBinaries: Record<string, string> = {};
-    if (needsSupportBinary) {
-        for (const platformKey of nativePayloadKeys.length > 0 ? nativePayloadKeys : [null]) {
-            const destination = path.join(
-                platformKey === null ? appDir : payloadDirFor(platformKey),
-                RUNTIME_SUPPORT_FILENAME,
-            );
-            await fs.mkdir(path.dirname(destination), { recursive: true });
-            /* Null is a compile with no target named - a preview, which runs on
-             * this machine, so this machine's image is the right one. */
-            const codecTarget = platformKey === null ? hostCodecTarget() : codecTargetFor(platformKey);
-            if (!codecTarget) {
-                throw new Error(`no content codec is built for ${platformKey}`);
-            }
-            // createSealedBundle binds this pack's protection material into the copies
-            // when it opens the store (below), so no key material is handled here or
-            // written into any JS. An unprotected build has no store to open, so it
-            // binds them on its own further down.
-            await writeSupportBinary(codecTarget, destination);
-            supportBinaries[codecTarget] = destination;
+    /* Collected here and reported once the artifact is written; the first of them
+     * is raised by the codec below. */
+    const notices: string[] = [];
+/* A compile with no target named is a preview: it runs from this app dir on
+     * this machine, so there is one copy, here, for this machine. */
+    const placements = !needsSupportBinary
+        ? []
+        : nativePayloadKeys.length > 0
+            ? codecPlacementsFor(
+                nativePayloadKeys,
+                platformKey => path.join(payloadDirFor(platformKey), RUNTIME_SUPPORT_FILENAME),
+            )
+            : [{
+                platformKey: hostCodecTarget(),
+                destination: path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+                slices: [hostCodecTarget()],
+            }];
+    /*
+     * Every image the placements are made of, and where each is produced.
+     *
+     * Produced somewhere neutral rather than at the shipped path, because a
+     * universal package's copy is two images in one file and neither of them is
+     * that file. Everything below hands this map to the codec package, which
+     * either writes this build's material into each or compiles each for this
+     * title; the placements are assembled from the result afterwards.
+     */
+    const imageDir = path.join(outputRoot, "codec-images");
+    const images: Record<string, string> = {};
+    for (const slice of new Set(placements.flatMap(placement => placement.slices))) {
+        images[slice] = path.join(imageDir, slice, RUNTIME_SUPPORT_FILENAME);
+        await fs.mkdir(path.dirname(images[slice]), { recursive: true });
+    }
+
+    /*
+     * The toolchain that makes this build's binaries its own.
+     *
+     * With one, each image is built for this game alone, and a
+     * published copy of the codec package opens nothing this build sealed -
+     * which is the whole reason compiling the codec here exists. Without one, the
+     * material is written into the prebuilt image instead, which is where this
+     * stood before and is still a working protected build; it is just one that
+     * an attacker only has to defeat once for every game rather than once per
+     * game. Whichever it is, it is said out loud on the build log.
+     */
+    const titleCompile = await resolveTitleCompile({
+        wanted: placements.length > 0 && Boolean(input.packaging),
+        ...(input.hostUserDataDir ? { userDataDir: input.hostUserDataDir } : {}),
+        ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
+        ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
+        workDir: imageDir,
+        onNotice: message => notices.push(message),
+    });
+    if (!titleCompile) {
+        for (const [slice, destination] of Object.entries(images)) {
+            await writeSupportBinary(slice, destination);
         }
     }
 
@@ -532,7 +592,6 @@ export async function compileGameRuntimeArtifact(
         throw new Error(`Blueprint script compile failed:\n${detail}`);
     }
     const bundleId = crypto.randomUUID();
-    const notices: string[] = [];
     // Set from inside the assembly below, and read after it to decide whether the library must be
     // narrowed. A `let` rather than a return value because the assembler answers with a bundle, and
     // this is a fact about how that bundle was produced rather than part of it.
@@ -591,10 +650,11 @@ export async function compileGameRuntimeArtifact(
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
     if (input.distribution && needsSupportBinary && !input.encryptionKey) {
-        await bindRuntimeBinary(supportBinaries, {
+        await bindRuntimeBinary(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
-        });
+        }, titleCompile ?? undefined);
+        await placeCodecImages(placements, images);
     }
 
     // Everything below either writes loose files or streams into the store; on
@@ -610,13 +670,24 @@ export async function compileGameRuntimeArtifact(
              */
             writer: await createSealedBundle(
                 path.join(appDir, RUNTIME_BUNDLE_FILENAME),
-                supportBinaries,
+                images,
                 input.distribution
                     ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
                     : undefined,
+                titleCompile ?? undefined,
             ),
         }
         : { kind: "loose" };
+    /*
+     * After the codec package has had its say and not before: whichever route was
+     * taken, the images only carry this build's material once it has written them
+     * or compiled them, and a copy taken earlier would be a copy of the wrong
+     * thing. Once placed, the app dir holds what ships and the images do not
+     * matter.
+     */
+    if (input.encryptionKey) {
+        await placeCodecImages(placements, images);
+    }
 
     // The marker is written either way, but on a sealed artifact it reaches only half as far: the
     // runtime honours it while this app directory is run by hand and refuses it in the packaged
@@ -836,6 +907,9 @@ export async function compileGameRuntimeArtifact(
             pack,
             copiedAssetCount: Object.keys(assetManifest).length,
             notices,
+            codecCompiledForTitle: placements.length > 0 && Boolean(input.packaging)
+                ? titleCompile !== null
+                : null,
             collapsedBuildAxis,
             ...(shipped ? { assetReport: shipped.report } : {}),
         };
@@ -947,6 +1021,71 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
             `(${RUNTIME_BUILD_MANIFEST_FILENAME} reports mode ${JSON.stringify(manifest.mode)}). ` +
             `Run "yarn build:runtime" to rebuild it.`,
         );
+    }
+}
+
+/**
+ * The C toolchain a codec build needs, or nothing and a sentence saying why.
+ *
+ * Only for a build that will be packaged. A preview runs from the app dir on
+ * this machine and is thrown away; downloading a compiler to make its binary
+ * unique to a title nobody will ship would be the cost of the feature with none
+ * of the point.
+ *
+ * Failing to get one is not a failed build. The material still goes into the
+ * shipped image, the store is still sealed, and the game still works - what is
+ * lost is that a published copy of the codec package cannot open it, which is
+ * one attack rather than the protection. Refusing to build would trade a working
+ * artifact for a stronger one the author cannot produce right now, on a machine
+ * that may simply be offline.
+ */
+async function resolveTitleCompile(options: {
+    wanted: boolean;
+    userDataDir?: string;
+    mirror?: string;
+    rewrites?: readonly DownloadRewriteRule[];
+    workDir: string;
+    onNotice: (message: string) => void;
+}): Promise<{ compiler: string; workDir: string } | null> {
+    if (!options.wanted) {
+        return null;
+    }
+    if (!options.userDataDir) {
+        // The cache lives under it, so without one there is nowhere to put a
+        // toolchain. A packaged build always carries it; this is a caller that
+        // asked for packaging without it, which is a defect rather than a state.
+        options.onNotice("the content codec is not compiled for this title: no cache directory was given");
+        return null;
+    }
+    try {
+        const compiler = await ensureZigToolchain({
+            userDataDir: options.userDataDir,
+            ...(options.mirror ? { mirror: options.mirror } : {}),
+            ...(options.rewrites ? { rewrites: options.rewrites } : {}),
+            log: (level, message) => {
+                if (level !== "info") {
+                    options.onNotice(message);
+                }
+            },
+        });
+        await fs.mkdir(options.workDir, { recursive: true });
+        return { compiler, workDir: options.workDir };
+    } catch (error) {
+        options.onNotice(
+            "the content codec ships as built rather than compiled for this title, because the "
+            + `toolchain could not be obtained: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        return null;
+    }
+}
+
+/** Assemble each package's copy from the images produced for it. */
+async function placeCodecImages(
+    placements: readonly CodecPlacement[],
+    images: Readonly<Record<string, string>>,
+): Promise<void> {
+    for (const placement of placements) {
+        await placeCodecBinary(placement, images);
     }
 }
 

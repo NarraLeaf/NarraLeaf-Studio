@@ -1880,6 +1880,13 @@ export class GameBuildManager {
                 // Electron on the far side.
                 hostUserDataDir: this.app.getUserDataDir(),
                 downloadRewrites: currentDownloadRewrites(),
+                // Where the compiler for a codec build is fetched from. Same
+                // shape as the Electron mirror above and read the same way: a
+                // setting, because an environment variable would be a second place
+                // to configure one thing that only this product reads.
+                ...(this.readStringSetting("build.zigMirror")
+                    ? { zigMirror: this.readStringSetting("build.zigMirror") as string }
+                    : {}),
                 assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
@@ -1955,6 +1962,27 @@ export class GameBuildManager {
         // has nothing to say that the first did not.
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
+        }
+        // Which protection this build actually got. A build whose codec is compiled
+        // for it cannot be opened by a published copy of the codec package; one
+        // whose codec was written into can, by anyone who has worked out how once.
+        // The author asked for protection either way, so they are told which.
+        const compiledForTitle = desktopArtifact?.codecCompiledForTitle ?? null;
+        if (compiledForTitle === true) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "the content codec is compiled for this title; no other build can open its content",
+            });
+        } else if (compiledForTitle === false) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "the content codec ships as built rather than compiled for this title, so "
+                    + "protection here rests on the same binary every game carries. The reason is "
+                    + "above; the content is still protected, and a later build with a working "
+                    + "toolchain fixes it.",
+            });
         }
         // Same rule, and the same reason: what the library came to is a fact about the project under
         // this variant, not about which package was written from it.
