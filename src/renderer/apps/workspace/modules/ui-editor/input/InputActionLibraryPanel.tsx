@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { ChevronDown, MoreVertical, Plus, Pointer } from "lucide-react";
+import { ChevronDown, FilePlus2, MoreVertical, Plus, Pointer } from "lucide-react";
 import {
+    UI_INPUT_ACTION_BLANK_PRESET_ID,
     UI_INPUT_ACTION_PRESETS,
     type UIInputActionDef,
     type UIInputBinding,
@@ -14,6 +15,7 @@ import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { InputBindingList } from "./InputBindingList";
 import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { onInputActionPanelFocus } from "./inputActionPanelFocus";
 
 type InputActionLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -53,6 +55,8 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     // and only creating, renaming, rebinding and deleting are off.
     const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const [open, setOpen] = useState(true);
+    const [highlighted, setHighlighted] = useState(false);
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -79,6 +83,18 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
      * from the row like anything else, and nothing records that it was used. Blank is on the same
      * list rather than being a different button, because picking a starting point is one decision.
      */
+    // Somebody on the other side of the workspace has said they need an action. Open, come into
+    // view, and mark the section for long enough to be found - the request means "where is this",
+    // so answering it silently would be the same as not answering.
+    useEffect(() => onInputActionPanelFocus(() => {
+        setOpen(true);
+        setHighlighted(true);
+        window.setTimeout(() => {
+            rootRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }, 0);
+        window.setTimeout(() => setHighlighted(false), 1600);
+    }), []);
+
     const handleCreate = useCallback(
         async (presetId: string) => {
             if (!documentService) {
@@ -107,16 +123,21 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     const openCreateMenu = useCallback(
         (event: MouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
-            setMenuItems(
-                UI_INPUT_ACTION_PRESETS.map(preset => ({
-                    id: `preset:${preset.id}`,
-                    label: t(`uiEditor.inputActions.presets.${preset.id}` as never),
-                    onClick: () => {
-                        hideMenu();
-                        void handleCreate(preset.id);
-                    },
-                })),
-            );
+            const rows = UI_INPUT_ACTION_PRESETS.map(preset => ({
+                id: `preset:${preset.id}`,
+                label: t(`uiEditor.inputActions.presets.${preset.id}` as never),
+                // Blank carries a picture and the templates do not: it is the row that lays nothing
+                // down, and the mark is what keeps it from reading as one more template whose name
+                // happens to be Blank.
+                ...(preset.id === UI_INPUT_ACTION_BLANK_PRESET_ID
+                    ? { icon: <FilePlus2 className="h-4 w-4" aria-hidden /> }
+                    : {}),
+                onClick: () => {
+                    hideMenu();
+                    void handleCreate(preset.id);
+                },
+            }));
+            setMenuItems([rows[0]!, { id: "preset-separator", separator: true }, ...rows.slice(1)]);
             showMenu(event);
         },
         [handleCreate, hideMenu, showMenu, t],
@@ -193,7 +214,13 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     );
 
     return (
-        <div className="shrink-0 border-t border-edge bg-surface-sunken" data-help-topic="inputActions">
+        <div
+            ref={rootRef}
+            className={`shrink-0 border-t bg-surface-sunken transition-colors ${
+                highlighted ? "border-primary/45 bg-primary/5" : "border-edge"
+            }`}
+            data-help-topic="inputActions"
+        >
             <button
                 type="button"
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
