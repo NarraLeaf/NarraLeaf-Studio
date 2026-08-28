@@ -5,7 +5,7 @@ import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { promisify } from "util";
-import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace } from "@shared/types/constants";
 import { readBodyWithProgress } from "@shared/types/downloadProgress";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { describeRewrite, rewriteDownloadUrl } from "@shared/utils/downloadSource";
@@ -27,7 +27,7 @@ import { reportDownload } from "./downloadReporting";
  * - a directory under this name is a finished toolchain or it is not there, never a half-extracted
  * tree a later build would try to compile with.
  *
- * Deliberately Electron-free, like the rest of this directory: `userDataDir` arrives as an argument
+ * Deliberately Electron-free, like the rest of this directory: `cacheRoot` arrives as an argument
  * so this can run in either build worker or on the main process, and the author's download rewrites
  * arrive as data for the same reason.
  *
@@ -157,8 +157,8 @@ const PRUNED_LEVELS: Readonly<Record<string, { keepFiles: "all" | ReadonlySet<st
 };
 
 export type EnsureZigToolchainOptions = {
-    /** Electron's userData directory. A parameter so this module stays Electron-free. */
-    userDataDir: string;
+    /** Studio's cache root, `App.getCacheRootDir()`. A parameter so this module stays Electron-free. */
+    cacheRoot: string;
     /** `build.zigMirror`, as the author set it. Empty or absent means the official source. */
     mirror?: string;
     /**
@@ -185,9 +185,9 @@ export function zigMirror(configured?: string): string {
     return mirror.endsWith("/") ? mirror : `${mirror}/`;
 }
 
-/** The cache root; must agree with `cacheInventory`, which is what offers to delete it. */
-export function zigCacheRoot(userDataDir: string): string {
-    return path.join(userDataDir, UserDataNamespace.Cache, CacheNamespace.Toolchains);
+/** The toolchain directory; must agree with `cacheInventory`, which is what offers to delete it. */
+export function zigCacheRoot(cacheRoot: string): string {
+    return path.join(cacheRoot, CacheNamespace.Toolchains);
 }
 
 /** The executable inside a toolchain directory. */
@@ -204,7 +204,7 @@ export function zigExecutablePath(toolchainDir: string): string {
  * later somewhere that says nothing about the cause.
  */
 export async function ensureZigToolchain(options: EnsureZigToolchainOptions): Promise<string> {
-    const { userDataDir, log } = options;
+    const { cacheRoot, log } = options;
     const hostKey = `${process.platform}-${process.arch}`;
     const release = ZIG_RELEASES[hostKey];
     if (!release) {
@@ -214,7 +214,7 @@ export async function ensureZigToolchain(options: EnsureZigToolchainOptions): Pr
         );
     }
 
-    const finalDir = path.join(zigCacheRoot(userDataDir), `zig-${ZIG_VERSION}`);
+    const finalDir = path.join(zigCacheRoot(cacheRoot), `zig-${ZIG_VERSION}`);
     const executable = zigExecutablePath(finalDir);
     // The directory only ever appears complete - it is renamed into place - so its presence is the
     // whole check. The executable rather than the directory, so a tree somebody emptied by hand is
