@@ -229,6 +229,15 @@ export type GameRuntimeArtifactCompileInput = {
      */
     zigMirror?: string;
     /**
+     * A C toolchain the caller has already got hold of, used instead of fetching
+     * one.
+     *
+     * For a machine that keeps its own - an author who builds offline, or a test
+     * that must not pull 76 MB to check the path it is testing. Absent is the
+     * normal case: the toolchain is fetched once and cached.
+     */
+    titleCompiler?: string;
+    /**
      * Every build target this one artifact serves.
      *
      * One compile is not one platform: the desktop compile serves whichever desktop targets the
@@ -421,6 +430,16 @@ export type GameRuntimeArtifactCompileResult = {
      */
     codecCompiledForTitle: boolean | null;
     /**
+     * A copy of the codec this machine can load, carrying what this build sealed
+     * with. Null when the build sealed nothing.
+     *
+     * The shipped copies are staged per target and one of them may be for another
+     * machine entirely, so "the binary in the app dir" is no longer a thing that
+     * exists, let alone something this process can open. Anything that has to
+     * read the artifact back - the shipped-content audit does - is told where.
+     */
+    codecHostImage: string | null;
+    /**
      * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
      * the library out.
      *
@@ -552,7 +571,21 @@ export async function compileGameRuntimeArtifact(
      */
     const imageDir = path.join(outputRoot, "codec-images");
     const images: Record<string, string> = {};
-    for (const slice of new Set(placements.flatMap(placement => placement.slices))) {
+    /*
+     * One image for this machine as well, whether or not this machine is a target.
+     *
+     * Something has to be able to OPEN what was just sealed - the audit that
+     * proves the shipped game still reaches every asset it asks for does exactly
+     * that - and only an image built for this machine can be loaded here. When
+     * this machine is a target it is the copy that ships; when it is not (a
+     * Linux package built on a Mac) it exists only to be read here, out in the
+     * staging directory rather than in the app dir, so it ships nowhere.
+     */
+    const slices = new Set(placements.flatMap(placement => placement.slices));
+    if (placements.length > 0) {
+        slices.add(hostCodecTarget());
+    }
+    for (const slice of slices) {
         images[slice] = path.join(imageDir, slice, RUNTIME_SUPPORT_FILENAME);
         await fs.mkdir(path.dirname(images[slice]), { recursive: true });
     }
@@ -570,13 +603,18 @@ export async function compileGameRuntimeArtifact(
      */
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),
+        /* Named so the sentence tells the author which switch to reach for. */
+        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
         ...(input.hostUserDataDir ? { userDataDir: input.hostUserDataDir } : {}),
         ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
         ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
         workDir: imageDir,
-        onNotice: message => notices.push(message),
     });
     if (!titleCompile) {
+        /* Not a packaged build: a preview, whose binary is never handed to
+         * anyone, so the prebuilt image with this pack's material written into it
+         * is all it needs. */
         for (const [slice, destination] of Object.entries(images)) {
             await writeSupportBinary(slice, destination);
         }
@@ -910,6 +948,7 @@ export async function compileGameRuntimeArtifact(
             codecCompiledForTitle: placements.length > 0 && Boolean(input.packaging)
                 ? titleCompile !== null
                 : null,
+            codecHostImage: images[hostCodecTarget()] ?? null,
             collapsedBuildAxis,
             ...(shipped ? { assetReport: shipped.report } : {}),
         };
@@ -1025,57 +1064,68 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
 }
 
 /**
- * The C toolchain a codec build needs, or nothing and a sentence saying why.
+ * The C toolchain a shipped build's codec is compiled with.
  *
  * Only for a build that will be packaged. A preview runs from the app dir on
- * this machine and is thrown away; downloading a compiler to make its binary
- * unique to a title nobody will ship would be the cost of the feature with none
- * of the point.
+ * this machine and is thrown away; fetching a compiler to make its binary unique
+ * to a title nobody will ship would be the cost of the feature with none of the
+ * point.
  *
- * Failing to get one is not a failed build. The material still goes into the
- * shipped image, the store is still sealed, and the game still works - what is
- * lost is that a published copy of the codec package cannot open it, which is
- * one attack rather than the protection. Refusing to build would trade a working
- * artifact for a stronger one the author cannot produce right now, on a machine
- * that may simply be offline.
+ * Not getting one FAILS THE BUILD, and that is a decision rather than an
+ * oversight. The alternative was to write the material into the prebuilt image
+ * instead: the game would work, the store would still be sealed, and what would
+ * be lost is that a published copy of the codec package could open it - the one
+ * thing the whole arrangement exists to prevent. An author who switched
+ * protection on and got a build back has been told they are protected. Handing
+ * them a weaker artifact with a line on a console is telling them something else
+ * quietly, and the difference only shows up when somebody has already published
+ * the game.
+ *
+ * So it stops, and the author decides: fix the machine, or turn off the thing
+ * that needs it.
  */
 async function resolveTitleCompile(options: {
     wanted: boolean;
+    reason: string;
+    explicitCompiler?: string;
     userDataDir?: string;
     mirror?: string;
     rewrites?: readonly DownloadRewriteRule[];
     workDir: string;
-    onNotice: (message: string) => void;
 }): Promise<{ compiler: string; workDir: string } | null> {
     if (!options.wanted) {
         return null;
     }
+    const refuse = (detail: string): never => {
+        throw new Error(
+            `${options.reason} needs a C toolchain to compile this title's content codec, and one `
+            + `could not be obtained: ${detail}
+`
+            + "Fix that and build again, or turn the feature off. It is not built without it: a "
+            + "codec that is not compiled for this title can be opened by any copy of the codec "
+            + "package, which is what protecting the content is for.",
+        );
+    };
+    if (options.explicitCompiler) {
+        await fs.mkdir(options.workDir, { recursive: true });
+        return { compiler: options.explicitCompiler, workDir: options.workDir };
+    }
     if (!options.userDataDir) {
         // The cache lives under it, so without one there is nowhere to put a
-        // toolchain. A packaged build always carries it; this is a caller that
-        // asked for packaging without it, which is a defect rather than a state.
-        options.onNotice("the content codec is not compiled for this title: no cache directory was given");
-        return null;
+        // toolchain. A packaged build always carries it; a caller that asked for
+        // packaging without it is a defect rather than a state.
+        return refuse("this build was started without a cache directory to keep one in");
     }
     try {
         const compiler = await ensureZigToolchain({
             userDataDir: options.userDataDir,
             ...(options.mirror ? { mirror: options.mirror } : {}),
             ...(options.rewrites ? { rewrites: options.rewrites } : {}),
-            log: (level, message) => {
-                if (level !== "info") {
-                    options.onNotice(message);
-                }
-            },
         });
         await fs.mkdir(options.workDir, { recursive: true });
         return { compiler, workDir: options.workDir };
     } catch (error) {
-        options.onNotice(
-            "the content codec ships as built rather than compiled for this title, because the "
-            + `toolchain could not be obtained: ${error instanceof Error ? error.message : String(error)}`,
-        );
-        return null;
+        return refuse(error instanceof Error ? error.message : String(error));
     }
 }
 

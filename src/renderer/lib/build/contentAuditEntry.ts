@@ -37,14 +37,23 @@ async function fileHasContent(filePath: string): Promise<boolean> {
  * otherwise. The decision is made by looking at the package, never by being told, so the audit reads
  * whatever was actually produced.
  */
-async function openArtifact(appDir: string): Promise<{
+async function openArtifact(appDir: string, supportBinaryPath?: string): Promise<{
     pack: GameRuntimePackV1;
     reader: ShippedArtifactReader;
     close(): Promise<void>;
 }> {
     const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
     if (await fileHasContent(bundlePath)) {
-        const sealed = await openSealedBundle(path.join(appDir, RUNTIME_SUPPORT_FILENAME), bundlePath);
+        /*
+         * The codec is not in the app dir any more, and on a cross build the copy
+         * that is there is for another machine. The compile hands over one this
+         * process can open; the old path stays as the answer for an installed
+         * game, which is the other thing this is pointed at.
+         */
+        const sealed = await openSealedBundle(
+            supportBinaryPath ?? path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            bundlePath,
+        );
         const pack = JSON.parse(
             Buffer.from(await sealed.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY)).toString("utf-8"),
         ) as GameRuntimePackV1;
@@ -80,8 +89,11 @@ async function openArtifact(appDir: string): Promise<{
     };
 }
 
-export async function runShippedContentAudit(appDir: string): Promise<ShippedContentAuditResult> {
-    const artifact = await openArtifact(appDir);
+export async function runShippedContentAudit(
+    appDir: string,
+    supportBinaryPath?: string,
+): Promise<ShippedContentAuditResult> {
+    const artifact = await openArtifact(appDir, supportBinaryPath);
     try {
         return await auditShippedContent({ pack: artifact.pack, reader: artifact.reader });
     } finally {

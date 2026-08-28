@@ -110,7 +110,15 @@ const { rootDir, isDev } = require('./utils');
         // Same externals as the main bundle: @narraleaf/encryption is a native
         // addon whose computed-require sidecars resolve by path at runtime, and koffi
         // loads its own binary by path — bundling either breaks resolution.
-        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        //
+        // 7zip-bin for a third version of the same reason, and it is the one that
+        // was found the hard way: it computes the path to its executable from its
+        // own __dirname, so bundled it points at wherever the bundle happens to
+        // live and the extractor is simply not there. The packaging worker has
+        // kept it external all along; this worker needed it once it started
+        // unpacking a toolchain, and the symptom was a protected build quietly
+        // shipping the weaker codec because the compiler "could not be obtained".
+        external: ['electron', '@narraleaf/encryption', 'koffi', '7zip-bin'],
         sourcemap: isDev(),
         minify: !isDev(),
         keepNames: true,
