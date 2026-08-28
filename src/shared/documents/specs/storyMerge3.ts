@@ -7,7 +7,7 @@ import type {
     DocumentMergeSide,
 } from "../diff";
 import {authoredName, sameJsonValue} from "./diffHelpers";
-import {countConflicts, KeyedMergeRow, mergeKeyed} from "./mergeHelpers";
+import {byKey, countConflicts, KeyedMergeRow, labelled as label, mergeKeyed, stripFields} from "./mergeHelpers";
 
 /**
  * Three-way merge of one story - and, as much as anything, the cases it declines to merge.
@@ -377,10 +377,6 @@ function refineBlock(
 
 // --- labels ---------------------------------------------------------------------------------
 
-function label(key: string, params?: Record<string, string | number>): DocumentChangeLabel {
-    return params && Object.keys(params).length > 0 ? {key, params} : {key};
-}
-
 function documentFieldLabel(row: KeyedMergeRow<unknown>): DocumentChangeLabel {
     if (row.key === "name") {
         return label(LABEL.renamed);
@@ -439,19 +435,6 @@ function blockCount(row: KeyedMergeRow<StoryScene>): number {
 
 // --- plumbing -------------------------------------------------------------------------------
 
-/**
- * Field rows in key order, so the same pair of documents produces the same list every run.
- *
- * `mergeKeyed` keeps mine's key order, which is right for a collection whose insertion order is
- * data and wrong for the fields of a record: those arrive in whatever order the object was built
- * in, so an editor's document and a freshly parsed one would list the same two decisions in
- * different orders. The keyed collections above are NOT sorted here - their order is the author's
- * reading order, which `sceneRank` and the scene's own arrays already state.
- */
-function byKey<V>(rows: readonly KeyedMergeRow<V>[]): KeyedMergeRow<V>[] {
-    return [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-}
-
 function build(
     path: readonly string[],
     row: {outcome: DocumentMergeDecision["outcome"]; mine: DocumentMergeSide; theirs: DocumentMergeSide},
@@ -466,28 +449,6 @@ function build(
         mine: row.mine,
         theirs: row.theirs,
     };
-}
-
-/**
- * A record's own fields, minus the ones handled elsewhere and minus any explicit `undefined`.
- *
- * The `undefined` filter is not defensive tidying: an own key holding `undefined` cannot come out of
- * `JSON.parse` but can come out of an in-memory document, `mergeKeyed` counts it as present, and the
- * canonical encoder refuses to write it - so it would turn a merge into a document that cannot be
- * saved, at the very end of the pipeline.
- */
-function stripFields(record: unknown, skip: ReadonlySet<string>): Fields {
-    const out: Fields = {};
-    if (!record || typeof record !== "object") {
-        return out;
-    }
-    for (const [key, value] of Object.entries(record as Fields)) {
-        if (skip.has(key) || value === undefined) {
-            continue;
-        }
-        out[key] = value;
-    }
-    return out;
 }
 
 function scenesOf(document: StoryDocument | undefined): Record<string, StoryScene> {

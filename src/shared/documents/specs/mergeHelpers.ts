@@ -1,4 +1,4 @@
-import {DocumentMergeDecision, DocumentMergeSide} from "../diff";
+import {DocumentChangeLabel, DocumentMergeDecision, DocumentMergeSide} from "../diff";
 import {sameJsonValue} from "./diffHelpers";
 
 /**
@@ -164,20 +164,66 @@ export function keyedRowLabel(
     return row.base.present ? labels.removed : labels.added;
 }
 
-/** Build a decision row, leaving out what there is nothing to put in. */
+/**
+ * Build a decision row, leaving out what there is nothing to put in.
+ *
+ * `label` takes a bare key for the common case and a whole {@link DocumentChangeLabel} for a row
+ * whose wording needs a parameter - a field name the format has no authored word for. Both spellings
+ * arrive at the same shape, so a surface never has to know which one a spec used.
+ */
 export function decision(
     path: readonly string[],
     row: Pick<KeyedMergeRow<unknown>, "outcome" | "mine" | "theirs">,
-    options: {label?: string; subject?: string} = {},
+    options: {label?: string | DocumentChangeLabel; subject?: string} = {},
 ): DocumentMergeDecision {
     return {
         path,
         outcome: row.outcome,
-        ...(options.label ? {label: {key: options.label}} : {}),
+        ...(options.label ? {label: typeof options.label === "string" ? {key: options.label} : options.label} : {}),
         ...(options.subject ? {subject: options.subject} : {}),
         mine: row.mine,
         theirs: row.theirs,
     };
+}
+
+/** A label with its parameters, or without them when there are none to carry. */
+export function labelled(key: string, params?: Record<string, string | number>): DocumentChangeLabel {
+    return params && Object.keys(params).length > 0 ? {key, params} : {key};
+}
+
+/**
+ * Field rows in key order, so the same pair of documents produces the same list every run.
+ *
+ * `mergeKeyed` keeps mine's key order, which is right for a collection whose insertion order is
+ * data and wrong for the fields of a record: those arrive in whatever order the object was built
+ * in, so an editor's document and a freshly parsed one would list the same two decisions in
+ * different orders. A keyed collection is NOT sorted with this - its order is the author's reading
+ * order, which the document's own arrays state.
+ */
+export function byKey<V>(rows: readonly KeyedMergeRow<V>[]): KeyedMergeRow<V>[] {
+    return [...rows].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}
+
+/**
+ * A record's own fields, minus the ones handled elsewhere and minus any explicit `undefined`.
+ *
+ * The `undefined` filter is not defensive tidying: an own key holding `undefined` cannot come out of
+ * `JSON.parse` but can come out of an in-memory document, `mergeKeyed` counts it as present, and the
+ * canonical encoder refuses to write it - so it would turn a merge into a document that cannot be
+ * saved, at the very end of the pipeline.
+ */
+export function stripFields(record: unknown, skip: ReadonlySet<string>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (!record || typeof record !== "object") {
+        return out;
+    }
+    for (const [key, value] of Object.entries(record as Record<string, unknown>)) {
+        if (skip.has(key) || value === undefined) {
+            continue;
+        }
+        out[key] = value;
+    }
+    return out;
 }
 
 /** How many of a decision list the author still has to settle. */
