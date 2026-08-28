@@ -452,9 +452,16 @@ export function resolveLocalizedStoredText(
 
 /**
  * Match the player's system language against the configured locales.
- * Tries exact (case-insensitive) matches first across all candidates, then
- * prefix matches in both directions ("zh-CN" system ↔ "zh" config and vice
- * versa). Returns null when nothing matches.
+ *
+ * `candidates` arrives in the player's own order of preference (`navigator.languages`), and that
+ * order outranks how closely a code matches: the first candidate the project can serve at all wins.
+ * Each one is tried exact (case-insensitive) and then by prefix in both directions ("zh-CN" system
+ * ↔ "zh" config and vice versa) before the next candidate is considered. Scoring a whole pass at a
+ * time instead would let a language the player put last beat one they put first - a Chinese player
+ * whose list begins "zh-CN" and ends "ja", reading a project that offers `zh`, would be handed
+ * Japanese.
+ *
+ * Returns null when nothing matches.
  */
 export function matchSystemLocale(
     locales: readonly LocalizationLocaleEntry[],
@@ -468,8 +475,6 @@ export function matchSystemLocale(
         if (exact) {
             return exact.code;
         }
-    }
-    for (const candidate of normalized) {
         const prefixed = locales.find(locale => {
             const code = locale.code.toLowerCase();
             return candidate.startsWith(`${code}-`) || code.startsWith(`${candidate}-`);
