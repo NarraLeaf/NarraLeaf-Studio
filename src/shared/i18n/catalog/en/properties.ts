@@ -96,7 +96,6 @@ export const properties = {
     },
     events: {
         title: "Events",
-        legacy: "Legacy event ids detected.",
     },
     blueprintEntry: {
         gameUiLogic: "Game UI Logic",

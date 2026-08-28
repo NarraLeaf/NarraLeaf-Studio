@@ -4,7 +4,8 @@ import { useTranslation } from "@/lib/i18n";
 import { useBlueprintEventBindingState } from "./useBlueprintEventBindingState";
 
 /**
- * Properties-panel block: wire widget runtime events to blueprint layers (uidoc `blueprintEvent`).
+ * Properties-panel block: the runtime events this widget type raises, so an author can see what its
+ * own blueprint can start on.
  */
 export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorData>) {
     const { t } = useTranslation();
@@ -29,9 +30,6 @@ export function BlueprintEventBindingField(props: CustomFieldProps<UIInspectorDa
                     </span>
                 ))}
             </div>
-            {rows.some(row => row.legacyGraphEventId && row.legacyGraphEventId !== row.eventId) ? (
-                <p className="text-2xs text-warning">{t("properties.events.legacy")}</p>
-            ) : null}
         </div>
     );
 }

@@ -94,7 +94,6 @@ export const properties = {
     },
     events: {
         title: "イベント",
-        legacy: "旧形式のイベント id が見つかった",
     },
     blueprintEntry: {
         gameUiLogic: "ゲーム UI のロジック",

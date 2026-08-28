@@ -278,7 +278,6 @@ export const documentDiff = {
         elementLayout: "位置か大きさを変更",
         elementStyle: "スタイルを変更",
         elementProps: "中身を変更",
-        elementBehavior: "ふるまいを変更",
         elementBinding: "結びつけを変更",
         elementAnimation: "アニメーションを変更",
         elementField: "{field} を変更",

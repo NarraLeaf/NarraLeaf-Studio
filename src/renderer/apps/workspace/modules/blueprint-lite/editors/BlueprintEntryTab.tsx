@@ -412,7 +412,6 @@ function ElementLiteralSurfacePreview({
             },
             props: element.props ? { ...element.props } : undefined,
             style: element.style ? { ...element.style } : undefined,
-            behavior: element.behavior ? { ...element.behavior } : undefined,
             valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
             extra: element.extra ? { ...element.extra } : undefined,
         };
@@ -1396,7 +1395,6 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
         (layerId: string) => {
             const wasActive = editor.graphView?.kind === "event" && editor.graphView.graphId === layerId;
             localBp.runBlueprintHistoryTransaction(payload.blueprintId, () => {
-                blueprintDocumentService.stripBlueprintLayerBindings(payload.surfaceId ?? "", payload.blueprintId, layerId);
                 localBp.removeEventGraph(payload.blueprintId, layerId);
             });
             if (wasActive) {
@@ -1408,15 +1406,7 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
                 }
             }
         },
-        [
-            blueprintDocumentService,
-            clearGraphView,
-            editor.graphView,
-            localBp,
-            payload.blueprintId,
-            payload.surfaceId,
-            selectEventGraph,
-        ],
+        [clearGraphView, editor.graphView, localBp, payload.blueprintId, selectEventGraph],
     );
 
     const onDeleteSelectedNode = useCallback(() => {
@@ -1505,10 +1495,9 @@ function BlueprintEntryTabInner({ tabId, payload }: EditorComponentProps<Bluepri
             ownerKind: payload.ownerKind,
             widgetElement,
             graphView: editor.graphView,
-            blueprintId: payload.blueprintId,
             widgetBlueprintEvents: widgetLogicEvents,
         });
-    }, [editor.graphView, payload.blueprintId, payload.ownerKind, widgetElement, widgetLogicEvents]);
+    }, [editor.graphView, payload.ownerKind, widgetElement, widgetLogicEvents]);
 
     const paletteContext = useMemo(() => {
         const gk = editor.graphView?.kind ?? "event";

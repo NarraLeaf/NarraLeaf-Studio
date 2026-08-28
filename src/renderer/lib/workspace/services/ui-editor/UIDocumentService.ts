@@ -15,7 +15,6 @@ import {
     UIElementValueBindingValueType,
     UIComponentDefinition,
     UIComponentId,
-    UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
     isUIFlowLayoutParentElement,
@@ -63,7 +62,6 @@ import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditor
 import {
     cloneWidgetMainBlueprintForPaste,
     cloneWidgetValueBlueprintForPaste,
-    remapElementBehaviorBlueprintIds,
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
@@ -524,10 +522,10 @@ function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
 /**
  * An element as it goes into a component definition.
  *
- * `behavior` survives, because it is what makes the component worth placing: an author who selects a
- * working save slot and asks for a component should get a working save slot, not a picture of one.
- * The blueprints those bindings name are cloned alongside (see `carryWidgetBlueprintsIntoComponent`),
- * so they point at the copy rather than at the elements still sitting on the surface.
+ * The private blueprints of the elements taken in are cloned alongside (see
+ * `carryWidgetBlueprintsIntoComponent`) and re-keyed to the component, because that is what makes
+ * the component worth placing: an author who selects a working save slot and asks for a component
+ * should get a working save slot, not a picture of one.
  *
  * `valueBindings` does not survive, and that is deliberate rather than an oversight. A value binding
  * inside a component instance is cached without the instance in its key, so every placement would
@@ -2243,12 +2241,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.extra = copy.extra
                 ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
                 : undefined;
-            if (copy.behavior?.events) {
-                copy.behavior = {
-                    ...copy.behavior,
-                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -2456,12 +2448,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 copy.props = copy.props ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext) : undefined;
                 copy.style = copy.style ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext) : undefined;
                 copy.extra = copy.extra ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext) : undefined;
-                if (copy.behavior?.events) {
-                    copy.behavior = {
-                        ...copy.behavior,
-                        events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                    };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -2739,12 +2725,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.extra = copy.extra
                 ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
                 : undefined;
-            if (copy.behavior?.events) {
-                copy.behavior = {
-                    ...copy.behavior,
-                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -2990,14 +2970,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 cloned.owner = { kind: "componentWidgetMain", componentId, elementId: newElementId };
                 carried.push({ ownerKey: componentWidgetMainOwnerKey(componentId, newElementId), blueprint: cloned });
             }
-            // Element bindings name the blueprint by id, so they have to follow the clone; a copy
-            // still pointing at the original would run the surface's blueprint from inside the
-            // instance and drive the elements that are still out there.
-            for (const element of Object.values(componentElements)) {
-                if (element.behavior) {
-                    element.behavior = remapSurfaceDuplicateReferenceValue(element.behavior, remapContext) as UIElement["behavior"];
-                }
-            }
         }
 
         const component: UIComponentDefinition = {
@@ -3139,10 +3111,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.id = idMap[oldId];
             copy.parentId = element.parentId ? idMap[element.parentId] ?? null : null;
             copy.childrenIds = element.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
-            if (copy.behavior?.events) {
-                const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                copy.behavior = { ...copy.behavior, events: remapped };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -3281,92 +3249,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...extraPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public setComponentElementBlueprintEvent(
-        componentId: string,
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void {
-        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const bpDoc = localBp.getBlueprintDocument();
-        const bp = bpDoc.blueprints[ref.blueprintId];
-        const slot = bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
-        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
-        localBp.ensureEventGraph(ref.blueprintId, ref.eventId, slot ? undefined : defaultLayerName);
-        this.mutateDocument(document => {
-            const component = (document.components ?? []).find(item => item.id === componentId);
-            const element = component?.elements[elementId];
-            if (!component || !element) {
-                return;
-            }
-            element.behavior = element.behavior ?? {};
-            element.behavior.events = element.behavior.events ?? {};
-            element.behavior.events[eventName] = {
-                kind: "blueprintEvent",
-                blueprintId: ref.blueprintId,
-                eventId: ref.eventId,
-            };
-            component.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void {
-        const component = (this.getDocument().components ?? []).find(item => item.id === componentId);
-        const current = component?.elements[elementId]?.behavior?.events?.[eventName];
-        if (current?.kind === "blueprintEvent") {
-            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-            localBp.removeEventGraph(current.blueprintId, current.eventId);
-        }
-        this.mutateDocument(document => {
-            const liveComponent = (document.components ?? []).find(item => item.id === componentId);
-            const target = liveComponent?.elements[elementId];
-            if (!liveComponent || !target?.behavior?.events?.[eventName]) {
-                return;
-            }
-            const { [eventName]: _removed, ...rest } = target.behavior.events;
-            target.behavior = {
-                ...target.behavior,
-                events: Object.keys(rest).length > 0 ? rest : undefined,
-            };
-            liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void {
-        this.mutateDocument(document => {
-            const component = (document.components ?? []).find(item => item.id === componentId);
-            if (!component) {
-                return;
-            }
-            let componentChanged = false;
-            for (const el of Object.values(component.elements)) {
-                const events = el.behavior?.events;
-                if (!events) {
-                    continue;
-                }
-                let changed = false;
-                const nextEvents = { ...events };
-                for (const [eventName, binding] of Object.entries(nextEvents)) {
-                    if (
-                        binding.kind === "blueprintEvent" &&
-                        binding.blueprintId === blueprintId &&
-                        binding.eventId === layerEventId
-                    ) {
-                        nextEvents[eventName] = { kind: "noop" };
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    el.behavior = { ...el.behavior, events: nextEvents };
-                    componentChanged = true;
-                }
-            }
-            if (componentChanged) {
-                component.updatedAt = new Date().toISOString();
-            }
         }, { history: false });
     }
 
@@ -3562,7 +3444,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     ...(defaultChildrenResult?.elementPatch?.props ?? {}),
                 },
                 style: defaultChildrenResult?.elementPatch?.style ?? element.style,
-                behavior: undefined,
                 valueBindings: undefined,
                 extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
             };
@@ -3571,7 +3452,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 component.elements[child.id] = {
                     ...child,
                     parentId: elementId,
-                    behavior: undefined,
                     valueBindings: undefined,
                 };
             }
@@ -3747,7 +3627,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         const materializedIds = Object.values(idMap);
-        const pageBehavior = cloneJson(instance.behavior);
         this.mutateDocument(doc => {
             const liveInstance = doc.elements[elementId];
             if (!liveInstance) {
@@ -3770,10 +3649,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       ? idMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
-                if (copy.behavior?.events) {
-                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                    copy.behavior = { ...copy.behavior, events: remapped };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -3783,7 +3658,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         ...liveInstance.layout,
                     };
                     copy.name = liveInstance.name;
-                    copy.behavior = pageBehavior;
                     if (copy.extra?.componentLink) {
                         const { componentLink: _removed, ...rest } = copy.extra;
                         copy.extra = Object.keys(rest).length > 0 ? rest : undefined;
@@ -3870,7 +3744,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             layout,
             props: defaultElement.props,
             style: defaultElement.style,
-            behavior: defaultElement.behavior,
             extra:
                 isListLikeWidgetType(parent.type)
                     ? ({
@@ -3910,7 +3783,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(defaultChildrenResult?.elementPatch?.props ?? {}),
             },
             style: defaultChildrenResult?.elementPatch?.style ?? element.style,
-            behavior: defaultChildrenResult?.elementPatch?.behavior ?? element.behavior,
             extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
         };
 
@@ -4007,10 +3879,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     .filter(cid => payload.elements[cid])
                     .map(cid => elementIdMap[cid]);
 
-                if (copy.behavior?.events) {
-                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                    copy.behavior = { ...copy.behavior, events: remapped };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -4134,113 +4002,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         return { ok: true, newRootIds };
-    }
-
-    public setElementBlueprintEvent(
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void {
-        const surfaceId = this.getElementSurfaceId(elementId);
-        const historyService = surfaceId ? this.getHistoryService() : null;
-        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
-        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const bpDoc = localBp.getBlueprintDocument();
-        const bp = bpDoc.blueprints[ref.blueprintId];
-        const slot =
-            bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
-        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
-        localBp.ensureEventGraph(
-            ref.blueprintId,
-            ref.eventId,
-            slot ? undefined : defaultLayerName,
-        );
-        this.mutateDocument(document => {
-            const el = document.elements[elementId];
-            if (!el) {
-                return;
-            }
-            el.behavior = el.behavior ?? {};
-            el.behavior.events = el.behavior.events ?? {};
-            const binding: UIBehaviorBinding = {
-                kind: "blueprintEvent",
-                blueprintId: ref.blueprintId,
-                eventId: ref.eventId,
-            };
-            el.behavior.events[eventName] = binding;
-        }, { history: false });
-        if (surfaceId && historyService && beforeHistory) {
-            historyService.record({
-                surfaceId,
-                before: beforeHistory,
-                after: historyService.captureSnapshot(surfaceId),
-            });
-        }
-    }
-
-    public clearElementBlueprintEvent(elementId: string, eventName: string): void {
-        const surfaceId = this.getElementSurfaceId(elementId);
-        const historyService = surfaceId ? this.getHistoryService() : null;
-        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
-        const el = this.getDocument().elements[elementId];
-        const cur = el?.behavior?.events?.[eventName];
-        if (cur?.kind === "blueprintEvent") {
-            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-            localBp.removeEventGraph(cur.blueprintId, cur.eventId);
-        }
-        this.mutateDocument(document => {
-            const target = document.elements[elementId];
-            if (!target?.behavior?.events?.[eventName]) {
-                return;
-            }
-            const { [eventName]: _removed, ...rest } = target.behavior.events;
-            target.behavior = {
-                ...target.behavior,
-                events: Object.keys(rest).length > 0 ? rest : undefined,
-            };
-        }, { history: false });
-        if (surfaceId && historyService && beforeHistory) {
-            historyService.record({
-                surfaceId,
-                before: beforeHistory,
-                after: historyService.captureSnapshot(surfaceId),
-            });
-        }
-    }
-
-    public stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void {
-        this.mutateDocument(document => {
-            const rootId = resolveSurfaceRootElementId(document, surfaceId);
-            if (!rootId) {
-                return;
-            }
-            const ids = collectSubtreeElementIds(document, rootId);
-            for (const elId of ids) {
-                const el = document.elements[elId];
-                if (!el) {
-                    continue;
-                }
-                const events = el.behavior?.events;
-                if (!events) {
-                    continue;
-                }
-                let changed = false;
-                const nextEvents = { ...events };
-                for (const [eventName, binding] of Object.entries(nextEvents)) {
-                    if (
-                        binding.kind === "blueprintEvent" &&
-                        binding.blueprintId === blueprintId &&
-                        binding.eventId === layerEventId
-                    ) {
-                        nextEvents[eventName] = { kind: "noop" };
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    el.behavior = { ...el.behavior, events: nextEvents };
-                }
-            }
-        }, { history: false });
     }
 
     private getProjectDesignSize(): UISurfaceDesignSize {

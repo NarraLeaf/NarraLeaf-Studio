@@ -208,7 +208,6 @@ export type UIElement = {
     layout: UILayout;
     style?: UIStyle;
     props?: Record<string, unknown>;
-    behavior?: UIBehavior;
     valueBindings?: Record<string, UIElementValueBinding>;
     /**
      * How this element arrives and leaves - the same record a Surface uses for its page animation.
@@ -340,19 +339,6 @@ export type UILayout = {
 };
 
 export type UIStyle = Record<string, unknown>;
-
-export type UIBehavior = {
-    events?: Record<string, UIBehaviorBinding>;
-};
-
-export type UIBehaviorBinding =
-    | { kind: "noop" }
-    | { kind: "actions"; actions: UIBehaviorAction[] }
-    /** M2: event handler targets an event graph entry on an instance main blueprint. */
-    | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
-
-export type UIBehaviorAction =
-    | { kind: "noop" };
 
 /**
  * True when this element acts as a flow-layout parent: direct children use flex inside the parent

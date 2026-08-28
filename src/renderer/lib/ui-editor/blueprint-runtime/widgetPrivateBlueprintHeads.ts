@@ -1,16 +1,15 @@
 /**
  * Reading a widget's own blueprint: which slots it listens on, and whether it listens at all.
  *
- * A widget's handlers used to be recorded on the element, as `behavior.events[slot] =
- * {kind: "blueprintEvent", blueprintId, eventId}`. They are not any more: the element's private
- * blueprint is found through `blueprintDocument.ownerRecords`, keyed by `(surface, element)` - or by
- * `(component, element)` inside a component definition - and the slot a graph answers is decided by
- * the *head node* in it, not by the graph's name.
+ * A widget's handlers are not written on the element. Its private blueprint is found through
+ * `blueprintDocument.ownerRecords`, keyed by `(surface, element)` - or by `(component, element)`
+ * inside a component definition - and the slot a graph answers is decided by the *head node* in it,
+ * rather than by the graph's name.
  *
- * Both readings still have to be asked, because the old shape can still be on disk. What must not
- * happen is a caller asking only the first: every widget the current editor wires carries no
- * `behavior` at all, so a check written against it alone answers "listens to nothing" for the whole
- * project. That is what this module exists to stop being written a fourth time.
+ * That indirection is the whole reason this module exists. Handlers used to sit on the element as
+ * `behavior.events[slot]`, and for four months after they stopped, two checks were still reading
+ * that field and so answering "listens to nothing" for every widget in every project. Anything
+ * asking what a widget listens to goes through here.
  */
 
 import type { Blueprint, BlueprintDocument } from "@shared/types/blueprint/document";
@@ -109,59 +108,16 @@ function interactionSlotIds(elementType: string): string[] {
  * `dispatchKind` is what separates the two halves of a widget's slot list, and only the interaction
  * half belongs here: a widget whose single graph is an `init` is not something a player reaches for,
  * so its being hidden, transparent or tiny says nothing. Asking that question of the whole slot list
- * - which the element-shaped reading used to do, having no other list to consult - reports scenery
- * that runs a graph on mount as though it were an unreachable button.
+ * reports scenery that runs a graph on mount as though it were an unreachable button.
  */
 export function elementListensForPlayerInput(
     element: UIElement,
     scope: WidgetBlueprintOwnerScope,
     blueprintDocument: BlueprintDocument | null | undefined,
 ): boolean {
-    const slots = interactionSlotIds(element.type);
-    if (slots.length === 0) {
-        return false;
-    }
-
-    const bound = element.behavior?.events;
-    if (bound) {
-        for (const slotId of slots) {
-            const binding = bound[slotId];
-            if (!binding) {
-                continue;
-            }
-            if (binding.kind === "blueprintEvent" || (binding.kind === "actions" && binding.actions.length > 0)) {
-                return true;
-            }
-        }
-    }
-
     if (!getWidgetLogicApi(element.type)?.supportsPrivateBlueprint) {
         return false;
     }
-    return slots.some(slotId => widgetPrivateBlueprintHasSlotHead(blueprintDocument, scope, element, slotId));
-}
-
-/**
- * Every blueprint this element owns the lifecycle of, both spellings.
- *
- * What an unmounting element has to release. The two arms can name the same id and can name
- * different ones, so the result is deduplicated and sorted: it becomes a dependency key, and a key
- * that moved because a map's iteration order did would re-run the release effect for nothing.
- */
-export function listElementOwnedBlueprintIds(
-    element: Pick<UIElement, "id" | "behavior">,
-    scope: WidgetBlueprintOwnerScope,
-    blueprintDocument: BlueprintDocument | null | undefined,
-): string[] {
-    const ids = new Set<string>();
-    for (const binding of Object.values(element.behavior?.events ?? {})) {
-        if (binding?.kind === "blueprintEvent") {
-            ids.add(binding.blueprintId);
-        }
-    }
-    const own = resolveWidgetPrivateBlueprintId(blueprintDocument, scope, element.id);
-    if (own) {
-        ids.add(own);
-    }
-    return [...ids].sort();
+    return interactionSlotIds(element.type)
+        .some(slotId => widgetPrivateBlueprintHasSlotHead(blueprintDocument, scope, element, slotId));
 }

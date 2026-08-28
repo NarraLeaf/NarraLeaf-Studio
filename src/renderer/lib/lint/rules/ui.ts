@@ -46,8 +46,8 @@ import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
  *  - **Runtime semantics decide what counts as wired, not the inspector.** A click travels: an
  *    element with no listener hands the event to its parent (`isPointerPositionElementEvent`), a
  *    list row's clicks belong to the list, and an `On Element Click` head anywhere in the project
- *    listens without the widget carrying any binding at all. A rule that read only the widget's own
- *    `behavior` would report a working button on every one of those shapes.
+ *    listens without the widget carrying any wiring of its own at all. A rule that read only the
+ *    widget's own blueprint would report a working button on every one of those shapes.
  */
 
 // ---------------------------------------------------------------------------
@@ -440,21 +440,12 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
 const CLICK_EVENT_ID = "mouseClick";
 const LIST_ITEM_CLICK_EVENT_ID = "itemClick";
 
-/** Whether the widget's own `behavior` record runs anything for this slot. */
-function hasBehaviorBinding(element: UIElement, eventId: string): boolean {
-    const binding = element.behavior?.events?.[eventId];
-    if (!binding) {
-        return false;
-    }
-    return binding.kind === "blueprintEvent" || (binding.kind === "actions" && binding.actions.length > 0);
-}
-
 /**
  * Whether the widget's own blueprint carries a head node that starts on this slot.
  *
  * Answered by the shared reader rather than here, because this rule is not the only place that has
- * to ask: the surface editor's interaction diagnostics ask the same question of the same two
- * spellings, and they spent four months answering it with the element-shaped half alone. See
+ * to ask: the surface editor's interaction diagnostics ask the same question, and they spent four
+ * months answering it by reading a field on the element that widgets stopped carrying. See
  * `widgetPrivateBlueprintHeads`.
  */
 function hasPrivateBlueprintHead(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
@@ -507,13 +498,12 @@ function isClickHandledSomewhere(
         if (elementClickTargets.has(`${site.surface.id}\u0000${element.id}`)) {
             return true;
         }
-        if (hasBehaviorBinding(element, CLICK_EVENT_ID) || hasPrivateBlueprintHead(ctx, site.surface.id, element, CLICK_EVENT_ID)) {
+        if (hasPrivateBlueprintHead(ctx, site.surface.id, element, CLICK_EVENT_ID)) {
             return true;
         }
         if (
             isListLikeWidgetType(element.type)
-            && (hasBehaviorBinding(element, LIST_ITEM_CLICK_EVENT_ID)
-                || hasPrivateBlueprintHead(ctx, site.surface.id, element, LIST_ITEM_CLICK_EVENT_ID))
+            && hasPrivateBlueprintHead(ctx, site.surface.id, element, LIST_ITEM_CLICK_EVENT_ID)
         ) {
             return true;
         }
@@ -525,19 +515,14 @@ function isClickHandledSomewhere(
  * Widgets whose silence is a defect.
  *
  * A button, because a button exists to be pressed - one that does nothing is the defect this rule
- * was written for, and it is invisible on the canvas. Plus any widget carrying an explicit `noop`
- * on its click slot, whatever its type: `noop` is not a state an author picks, it is what a binding
- * degrades to when the graph it pointed at is deleted, so an image or a container wearing one used
- * to do something and now does not.
+ * was written for, and it is invisible on the canvas. No other type: an image or a container that
+ * runs nothing when pressed is scenery, which is the overwhelmingly common case and not a defect.
  *
- * A button with interaction switched off is not a candidate: it is drawn as unavailable and takes no
- * clicks, so having no handler is the correct state and reporting it would be a warning whose only
- * fix is to make the widget lie.
+ * A button with interaction switched off is not a candidate either: it is drawn as unavailable and
+ * takes no clicks, so having no handler is the correct state and reporting it would be a warning
+ * whose only fix is to make the widget lie.
  */
 function isClickableCandidate(element: UIElement): boolean {
-    if (element.behavior?.events?.[CLICK_EVENT_ID]?.kind === "noop") {
-        return true;
-    }
     return element.type === "nl.button" && elementProps(element).interactionDisabled !== true;
 }
 
@@ -726,11 +711,11 @@ function hasPointerHeadNode(ctx: LintContext, surfaceId: string, element: UIElem
     return widgetPrivateBlueprintHasSlotHead(ctx.blueprintDocument, { surfaceId }, element, eventId, "silent");
 }
 
-/** Every pointer gesture this widget answers on its own, by graph head or by behavior binding. */
+/** Every pointer gesture this widget answers on its own, by a head node in its own blueprint. */
 function widgetAnsweredGestures(ctx: LintContext, surfaceId: string, element: UIElement): Set<UIInputPointerGesture> {
     const answered = new Set<UIInputPointerGesture>();
     for (const [eventId, gestures] of Object.entries(POINTER_EVENT_SLOT_GESTURES)) {
-        if (hasBehaviorBinding(element, eventId) || hasPointerHeadNode(ctx, surfaceId, element, eventId)) {
+        if (hasPointerHeadNode(ctx, surfaceId, element, eventId)) {
             for (const gesture of gestures) {
                 answered.add(gesture);
             }
