@@ -14,6 +14,10 @@
  * the arrays, so every slot it adds or deletes leaves one stale, and canonical serialization would
  * then be free to reorder the records underneath them. Refusing to open is the honest outcome;
  * silently degrading the author's order is not.
+ *
+ * The ladder that reads these stops at `BLUEPRINT_DOCUMENT_MIN_SUPPORTED_VERSION`. The versions
+ * named above it are kept as the record of what each one changed; the ones below are history only,
+ * and a document at one of them is refused. See `@shared/blueprint/migrateBlueprintDocument`.
  */
 export const BLUEPRINT_DOCUMENT_SCHEMA_VERSION = 10 as const;
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import {
+    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
     UI_DOCUMENT_SCHEMA_VERSION,
     getUIComponentLink,
     type UIElement,
@@ -551,12 +552,15 @@ describe("UIDocumentService surface creation", () => {
         expect(migrated.elements[sentence.id]!.props?.appearance).toBeTruthy();
     });
 
-    it("migrates legacy stage mounts and slot aliases", () => {
+    it("normalizes stage mounts and slot aliases", () => {
+        // Not a version step and never was: `normalizeSpecialChildSlots` runs on every read, so a
+        // surface whose mount names a slot this build has no reading for lands `onStage` whatever
+        // version the document claims. The floor is used here only to prove it is not gated on one.
         const { service } = createHarness();
         const base = service.getDocument();
         const migrated = (service as any).migrateIfNeeded({
             ...base,
-            schemaVersion: 9,
+            schemaVersion: UI_DOCUMENT_MIN_SUPPORTED_VERSION,
             surfaces: [
                 base.surfaces[0]!,
                 {
@@ -606,6 +610,15 @@ describe("UIDocumentService surface creation", () => {
             expect(surface.settings?.backgroundColor).toBe("transparent");
         }
     });
+
+    it.each([[1], [5], [UI_DOCUMENT_MIN_SUPPORTED_VERSION - 1]])(
+        "refuses a v%i document rather than reading it as one whose fields are merely absent",
+        version => {
+            const { service } = createHarness();
+            expect(() => (service as any).migrateIfNeeded({ ...service.getDocument(), schemaVersion: version }))
+                .toThrow(/older than this Studio version can read/);
+        },
+    );
 
     it("renames the main Page display name while preserving the main surface id", () => {
         const { service } = createHarness();
