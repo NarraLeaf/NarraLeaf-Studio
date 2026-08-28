@@ -14,6 +14,7 @@ import type { VcsServerDiscovery } from "@shared/types/vcs";
 // certificate is the fixture here and node's crypto cannot mint one; the alternative was a
 // second DER encoder in a test file, or a key pasted into the repository and left to expire.
 import { buildSelfSignedCertificate } from "../../../../buildWorker/mobile/x509";
+import { acceptedDirectory, rememberAcceptedAuthority } from "./authorityTrust";
 import {
     parseServerAddress,
     probeVcsServer,
@@ -137,6 +138,14 @@ async function silentPort(): Promise<number> {
 const trusted = identity("localhost");
 /** One it is not told about, which is every server the first time it is reached. */
 const stranger = identity("localhost");
+/**
+ * One the author accepts partway through. It is its own identity rather than `stranger`
+ * because accepting an authority is permanent for the rest of this file, and the tests
+ * above it are asserting that the same certificate is refused.
+ */
+const accepted = identity("localhost");
+/** A second one, so that two accepted authorities carry one subject between them. */
+const alsoAccepted = identity("localhost");
 
 let userDataDir = "";
 let defaultAuthorities: string[] = [];
@@ -290,6 +299,84 @@ describe("probing an address", () => {
             expect(probe.discovery).toEqual(DOCUMENT);
         } finally {
             await endpoint.close();
+        }
+    });
+
+    it("goes on answering untrusted for an authority that was met and not accepted", { timeout: 30_000 }, async () => {
+        // The first probe writes the certificate to disk, because the prompt has to name a
+        // file before anybody has answered anything. Nothing may read that as an answer:
+        // an author who looks at a fingerprint and refuses it must be asked again.
+        const endpoint = await serve(stranger, serving(JSON.stringify(DOCUMENT)));
+        try {
+            expect((await probeVcsServer(endpoint.address, { userDataDir })).kind).toBe("untrusted");
+            expect((await probeVcsServer(endpoint.address, { userDataDir })).kind).toBe("untrusted");
+        } finally {
+            await endpoint.close();
+        }
+    });
+
+    it("answers ready once the author has accepted the authority, without a restart", { timeout: 30_000 }, async () => {
+        // The whole of what happens when somebody presses the button, in order. What makes
+        // this worth a test is the step in the middle: the platform's store is where the
+        // authority actually goes, and node read that store before any of this and will
+        // answer from that reading until Studio is restarted. So the answer has to come
+        // from the copy Studio keeps, or a probe run a second after the press says the
+        // same thing it said a second before it.
+        const endpoint = await serve(accepted, serving(JSON.stringify(DOCUMENT)));
+        try {
+            const first = await probeVcsServer(endpoint.address, { userDataDir });
+            expect(first.kind).toBe("untrusted");
+            if (first.kind !== "untrusted") return;
+
+            await rememberAcceptedAuthority(userDataDir, first.authority.path);
+
+            const second = await probeVcsServer(endpoint.address, { userDataDir });
+            expect(second.kind).toBe("ready");
+            if (second.kind !== "ready") return;
+            expect(second.discovery).toEqual(DOCUMENT);
+
+            // Kept apart from the certificates every probe writes, which is what lets the
+            // one above go on being refused while this one is not.
+            const kept = path.join(acceptedDirectory(userDataDir), path.basename(first.authority.path));
+            expect(await fs.readFile(kept, "utf-8")).toBe(new crypto.X509Certificate(accepted.cert).toString());
+        } finally {
+            await endpoint.close();
+        }
+    });
+
+    it("keeps every authority usable where they carry one subject between them", { timeout: 30_000 }, async () => {
+        // An authority here is named after the machine its server runs on, so two servers
+        // on two machines called the same thing are two different keys under one name -
+        // and so is a server whose storage root was made twice. Offered in one list, the
+        // last of them wins the lookup and the others report themselves as never trusted:
+        // measured, `DEPTH_ZERO_SELF_SIGNED_CERT`, which reads as a server nobody accepted.
+        // Each store is therefore put the question on its own.
+        const second = await serve(alsoAccepted, serving(JSON.stringify(DOCUMENT)));
+        try {
+            const first = await probeVcsServer(second.address, { userDataDir });
+            expect(first.kind).toBe("untrusted");
+            if (first.kind !== "untrusted") return;
+            await rememberAcceptedAuthority(userDataDir, first.authority.path);
+            expect((await probeVcsServer(second.address, { userDataDir })).kind).toBe("ready");
+        } finally {
+            await second.close();
+        }
+
+        // The one accepted before it, under the same subject, still answers.
+        const earlier = await serve(accepted, serving(JSON.stringify(DOCUMENT)));
+        try {
+            expect((await probeVcsServer(earlier.address, { userDataDir })).kind).toBe("ready");
+        } finally {
+            await earlier.close();
+        }
+
+        // And so does a server the machine itself trusts, which is the one an accepted
+        // authority would take down with it if the two lists were merged into one.
+        const platform = await serve(trusted, serving(JSON.stringify(DOCUMENT)));
+        try {
+            expect((await probeVcsServer(platform.address, { userDataDir })).kind).toBe("ready");
+        } finally {
+            await platform.close();
         }
     });
 

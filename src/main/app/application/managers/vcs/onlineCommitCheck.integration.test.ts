@@ -13,6 +13,7 @@ import {
     stage,
     type LoreGlobals,
 } from "./lore";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import { blobAt } from "./revisionReader";
 
 /**
@@ -37,11 +38,19 @@ import { blobAt } from "./revisionReader";
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
+/**
+ * The author both arms commit as.
+ *
+ * The first arm's online globals keep it even against a server that verifies identities: they
+ * carry `offline: false` with no remote registered, so nothing about them leaves the machine.
+ * Only the second arm signs in - see ./loreTestAccount.ts.
+ */
+const AUTHOR = "check@narraleaf";
 
 describe.skipIf(!supported)("does an online commit hide its own content", () => {
     it("commits offline, online, then offline again, and reads all three back", async () => {
         const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-")));
-        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: "check@narraleaf", cache: true };
+        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
         const online: LoreGlobals = { ...offline, offline: false };
 
         const write = (name: string, text: string) => fs.writeFileSync(path.join(root, name), text, "utf-8");
@@ -104,11 +113,13 @@ describe.skipIf(!supported)("does an online commit hide its own content", () => 
      * `offline: false` actually reaches a server. Two commits, same repository, same
      * process, differing only in the flag.
      */
-    it.skipIf(!process.env.LORE_TEST_REMOTE)("repeats it on a repository that is registered with a server", async () => {
-        const server = (process.env.LORE_TEST_REMOTE ?? "").trim();
+    it.skipIf(!LORE_TEST_SERVER)("repeats it on a repository that is registered with a server", async () => {
+        const server = LORE_TEST_SERVER;
         const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-online-commit-remote-")));
-        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: "check@narraleaf", cache: true };
-        const online: LoreGlobals = { ...offline, offline: false };
+        // The one call here that reaches a server wants the account its token belongs to.
+        await signInLoreTestAccount(root);
+        const offline: LoreGlobals = { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
+        const online: LoreGlobals = { ...offline, offline: false, identity: loreTestIdentity(AUTHOR) };
         const url = `${server}/online-commit-${Date.now().toString(36)}`;
 
         const write = (name: string, text: string) => fs.writeFileSync(path.join(root, name), text, "utf-8");

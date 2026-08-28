@@ -6,6 +6,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+# `packages: read` is what lets the run's own GITHUB_TOKEN pull the @narraleaf
+# scope from GitHub Packages. Declared explicitly because the repository default
+# is contents-only, and a workflow that names any permission gets exactly what it
+# names - so `contents: read` has to be spelled out beside it.
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   verify:
     # ubuntu-latest ships a licensed Android SDK. That is the point of running
@@ -36,6 +44,23 @@ jobs:
       # run legitimately writes one. The dependency the mobile tests rely on
       # (@narraleaf/studio-shell) is pinned exactly in package.json, so a fresh
       # resolve still gets the same templates.
+      # GitHub Packages serves the whole @narraleaf scope and asks for a
+      # credential on every package it holds, the ones whose repositories are
+      # public included. The run's own GITHUB_TOKEN is enough and is the right
+      # thing to reach for: it is minted for this job, dies with it, and is
+      # masked in the log, so no long-lived personal token has to be stored as a
+      # repository secret.
+      #
+      # It reaches @narraleaf/bindings - which is private, and belongs to
+      # NarraLeaf-Encryption rather than to this repository - only because that
+      # package grants this repository read access under "Manage Actions access".
+      # Withdrawing that grant is how this repository loses the dependency, and
+      # that is the intended control: nothing here can widen it.
+      - name: Authenticate to GitHub Packages
+        run: node .github/scripts/write-packages-credential.mjs
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install dependencies
         run: yarn install --no-immutable
 
@@ -152,6 +177,13 @@ jobs:
 
       # Same reasoning as the verify job: yarn.lock is deliberately not
       # committed, so an immutable install would fail on every run.
+      # See the same step in the verify job for why this is the run's own
+      # GITHUB_TOKEN and not a stored personal token.
+      - name: Authenticate to GitHub Packages
+        run: node .github/scripts/write-packages-credential.mjs
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install dependencies
         run: yarn install --no-immutable
 

@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
 import fs from "fs/promises";
+import fsSync from "fs";
+import { createRequire } from "module";
 import os from "os";
 import path from "path";
 import { archiveReaderPathFor } from "@narraleaf/bindings";
 import { GAME_BUILD_ARCHS_BY_PLATFORM } from "@shared/types/gameBuild";
 import {
+    codecArchiveDir,
     codecPlacementsFor,
     codecTargetFor,
     hostCodecTarget,
@@ -13,6 +16,9 @@ import {
     UNIVERSAL_CODEC_TARGET,
     writeSupportBinary,
 } from "./codecBinary";
+
+const require_ = createRequire(__filename);
+const REPO_ROOT = path.resolve(__dirname, "..", "..", "..");
 
 describe("codecTargetFor", () => {
     it("translates every desktop target a build can ask for", () => {
@@ -168,5 +174,56 @@ describe("writeSupportBinary", () => {
         } finally {
             await fs.rm(dir, { recursive: true, force: true });
         }
+    });
+});
+
+/*
+ * The archive a per-title codec build links against, and the two things that
+ * have to be true for a *packaged* Studio to find it. Both are invisible to
+ * every other check: tsc and the rest of this suite read the module out of
+ * node_modules, where nothing has been dropped and no path names an archive.
+ *
+ * This is the failure they let through, on a shipped 0.8.0:
+ *
+ *   [Build] build failed: Error: no precompiled archive for win32-x64
+ *
+ * on the first protected build an author asked a packaged Studio for.
+ */
+describe("the archive a per-title build links against", () => {
+    const desktopTargets = ["win32-x64", "win32-arm64", "darwin-x64", "darwin-arm64", "linux-x64", "linux-arm64"];
+
+    it("is where codecArchiveDir says, for every desktop target a build can produce", async () => {
+        for (const target of desktopTargets) {
+            const archive = path.join(codecArchiveDir(), target, "core.a");
+            await expect(fs.access(archive), archive).resolves.toBeUndefined();
+        }
+    });
+
+    /*
+     * electron-builder drops every `*.a` under node_modules by default
+     * (`excludedExts` in app-builder-lib), which is exactly how these are named.
+     * No `files` pattern can put them back - node_modules is copied by a walker
+     * that reads only the `!` patterns - so the one lever is the
+     * `onNodeModuleFile` hook, and this asserts the config still pulls it and
+     * that it still answers for the files that need it. Deleting the line from
+     * electron-builder.yml packages successfully and breaks every protected
+     * build; that is what this is here for.
+     */
+    it("is kept by the packaging hook electron-builder.yml names", () => {
+        const config = fsSync.readFileSync(path.join(REPO_ROOT, "electron-builder.yml"), "utf8");
+        const named = /^onNodeModuleFile:\s*(\S+)\s*$/m.exec(config);
+        expect(named, "electron-builder.yml must name an onNodeModuleFile hook").not.toBeNull();
+
+        const { onNodeModuleFile } = require_(path.resolve(REPO_ROOT, named![1])) as {
+            onNodeModuleFile?: (file: string) => boolean;
+        };
+        expect(typeof onNodeModuleFile, "the hook must export onNodeModuleFile").toBe("function");
+
+        for (const target of desktopTargets) {
+            const archive = path.join(codecArchiveDir(), target, "core.a");
+            expect(onNodeModuleFile!(archive), archive).toBe(true);
+        }
+        // And only those: the defaults it overrides are worth keeping everywhere else.
+        expect(onNodeModuleFile!(path.join(REPO_ROOT, "node_modules", "koffi", "build", "x.a"))).toBe(false);
     });
 });

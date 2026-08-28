@@ -235,7 +235,9 @@ export function AddServerModal({
         // everything it needs. A refusal is still nothing to say - see the note above.
         const result = await listProjects(remoteOrigin);
         if (!alive.current || !result.ok) return;
-        const projects = result.value.length;
+        // What the server holds rather than how many rows it sent: one answer is bounded,
+        // and a deployment past that bound would otherwise be reported at the bound.
+        const projects = result.value.total;
         setStage(current => (current.kind === "joined" ? { ...current, projects } : current));
     }, []);
 

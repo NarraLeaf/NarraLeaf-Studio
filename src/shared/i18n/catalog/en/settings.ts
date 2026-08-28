@@ -496,7 +496,7 @@ export const settings = {
                 },
                 toolchains: {
                     label: "Compiler toolchains",
-                    description: "Compilers downloaded for a build. Downloaded again the next time one needs them.",
+                    description: "Compilers downloaded for a build. Downloaded again the next time a build needs them.",
                 },
                 browser: {
                     label: "Interface cache",
@@ -512,7 +512,7 @@ export const settings = {
                 },
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
-                    description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
+                    description: "Word lists downloaded for spellchecking. The project's own terms are not included.",
                 },
                 optimizedImages: {
                     label: "Re-encoded build images",
@@ -523,12 +523,12 @@ export const settings = {
                     description: "Audio and video re-encoded for a build. Produced again the next time one runs.",
                 },
                 psdImports: {
-                    label: "PSD import leftovers",
+                    label: "PSD import working files",
                     description: "Layer images written while importing a PSD.",
                 },
                 logs: {
                     label: "Logs",
-                    description: "What an exported diagnostics file is built from.",
+                    description: "The logs an exported diagnostics file is built from.",
                 },
             },
         },

@@ -766,13 +766,29 @@ parent 数量一直是 2，而本地合并怎么写都对。
    于是以作者名上网——**不报错**，`sync` 只是找不到分支、答一个干净的空结果，
    于是一条关于冲突的 spec 失败在「没有冲突」上。
 
-现在两边都接好了，用 `LORE_TEST_TOKEN` / `LORE_TEST_AUTH` 两个环境变量（命令行写在文件头）。
-没给令牌时行为照旧，所以一台裸 loreserver 依然能跑。
+现在**每一个有远端块的文件都接好了**，共用 `loreTestAccount.ts`：三个环境变量在那里读一次，
+`signInLoreTestAccount()` 在每个远端 `describe` 的 `beforeAll` 里登录一次（进程内只登录一次），
+`loreTestIdentity(AUTHOR)` 给上网的 globals 填账号 id、给没有令牌的运行填回作者名。
+所以一台裸 loreserver 照旧能跑，一台验身份的服务器也能一条命令跑完整个目录：
 
-⚠ **只接了 `merge.integration.test.ts` 一个文件。** `remote.integration.test.ts`、
-`onlineCommitCheck.integration.test.ts`、`mergeSpike*` 都还是写死的 `spec@narraleaf`，
-对着验身份的服务器跑会成片失败。要跑它们就把同一套 `accountFor` / `onlineIdentity`
-搬过去，而不是以为自己碰上了新缺陷。
+```bash
+LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:41502" \
+  LORE_TEST_TOKEN="$(nlteam token mint <user> --root <台子> …)" \
+  npx vitest run src/main/app/application/managers/vcs/
+```
+
+`serverSession.integration.test.ts` 以前只认 `LORE_TEST_AUTH_URL`，于是这条命令会静默跳过它；
+现在两个名字都收。
+
+⚠ **那台服务器的证书颁发机构必须是这台机器已经信任的。** `signInToServer` 没有 pinning 钩子——
+客户端库拿宿主自己的信任库建链，Windows 上连 `SSL_CERT_FILE` 都不看（`authorityTrust.ts` 开头
+写了原因）。所以 `nlteam init` 新起一台服务器跑测试会卡在 `transport error`，而那句话被归类成
+`certificate`：不是缺陷，是这台机器不认识那个新 CA。可行的做法是**整份复制一台已经被信任的台子**
+（`tls/` 一起复制——证书按主机名签、跟端口无关），端口整组错开再起。
+
+❗ **每条远端 spec 都会在服务器上留一个工程登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
+测试进程没有 Team 会话）。所以跑之前先复制一份台子、跑完把复制的那份整个删掉，比事后去共用台子上
+一条条摘干净省事得多。真要摘：`DELETE FROM projects WHERE ...`，就是 `projects.forget` 做的事。
 
 ### 4.36 ❗ 克隆不会把历史本身带下来，于是克隆出来的工程**没有历史**（已修）
 
@@ -807,6 +823,39 @@ parent 数量一直是 2，而本地合并怎么写都对。
 否则一次在线读怎么都会绿。夹具必须推四个修订，一个修订的工程证不了任何事。
 
 ⚠ `signInRecovery.test.ts` 盯的是克隆的**调用顺序**，所以它多了 `history` + `release` 两步。
+
+### 4.37 ❗ 服务器**拒绝**令牌，Studio 却说不出那是拒绝（已修）
+
+上一条把整个目录接到验身份的服务器上之后，第一次看见这个。拿一个签名无效的令牌登录，
+服务器答的原话是：
+
+```
+authLoginWithToken: exchanging external token:
+  code: 'The request does not have valid authentication credentials',
+  message: "the token presented for exchange was not accepted"
+```
+
+一望而知是「拒绝」，而 `describeSignInFailure` 把它归成了 **`unknown`**——那条正则找的是
+`unauthenticated` / `permission denied` / `invalid` / `expired` / `refused` 五个词，
+这句话**一个都不含**（`not have valid` 不是 `invalid`，`authentication` 不是 `unauthenticated`）。
+
+后果落在文案上：设置面里那句话从
+「**The server refused this token. It may have expired or been revoked.**」
+退成「**The server could not be added.**」——恰好把「令牌过期了、去换一个」这个唯一的下一步吞掉。
+
+**为什么一直没人看见**：这条路只有在**这台机器已经信任那个颁发机构之后**才走得到。
+在那之前每次登录都断在传输层，被上面的 `certificate` 分支接走了。而「已经信任」恰恰是
+真实作者的常态——第一次点过「信任」以后就一直是。
+
+**修法**：把那个判断抽成 `isSignInRefusal(message)`（`serverSession.ts`，已导出），
+词表补上 `not accepted` 与 `valid authentication credentials`——后者是 gRPC 的
+`UNAUTHENTICATED` 规范句、不是 loreserver 自己的措辞，所以值得按原句收。
+单测在 `serverSession.test.ts`，用的就是上面这句实测原文。
+
+`serverSession.integration.test.ts` 那条 `certificate` 断言也跟着改了：它现在收
+**`certificate` 或 `refused` 两者之一，并且拒收第三种答案**。测试问不出这台机器信不信那个 CA
+——`diagnoseEndpoint` 读的是 Node 自带的机构表，而后端客户端读的是操作系统那份，
+所以一个「本账号已信任的私有 CA」在探针眼里是不受信的、在登录时却好用。
 
 ## 5. 服务端策略
 

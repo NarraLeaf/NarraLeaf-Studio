@@ -42,10 +42,13 @@ export {
     sayInLiveSession,
     teamCall,
     withdrawClient,
+    type MemberListing,
     type OverlayReading,
+    type ProjectListing,
     type TeamAck,
     type TeamOutcome,
     type ThreadPage,
+    type ThreadWithComments,
 } from "./teamCall";
 export {
     refuseLiveSessionEntry,

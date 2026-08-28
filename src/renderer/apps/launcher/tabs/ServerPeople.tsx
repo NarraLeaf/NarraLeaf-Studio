@@ -60,7 +60,7 @@ export function ServerPeople({ remoteOrigin }: { remoteOrigin: string }) {
                 setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            setMembers(result.value);
+            setMembers(result.value.members);
         })();
     }, [remoteOrigin]);
 

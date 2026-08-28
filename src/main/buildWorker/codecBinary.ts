@@ -17,8 +17,10 @@
  */
 
 import fs from "fs/promises";
+import { createRequire } from "module";
 import path from "path";
 import { archiveReaderPathFor } from "@narraleaf/bindings";
+import { unpackAsarPath } from "../utils/asarPath";
 
 /** Studio's platform names against the ones the codec package's directories use. */
 const CODEC_PLATFORM_NAMES: Readonly<Record<string, string>> = {
@@ -56,6 +58,34 @@ export function codecTargetFor(platformKey: string): string | null {
 /** This machine's image, which is what a compile with no target named wants. */
 export function hostCodecTarget(): string {
     return `${process.platform}-${process.arch}`;
+}
+
+/**
+ * Where the per-title build reads `<target>/core.a` - the precompiled half of
+ * the codec, which the generated unit carrying a title's material is linked
+ * against. Every caller that compiles a codec passes this; the ones that only
+ * copy a prebuilt image do not need it.
+ *
+ * The codec package answers this itself, relative to its own directory, and is
+ * right everywhere except inside a packaged Studio. There it is addressed
+ * through `app.asar`, and the archive is the one file it hands to a program that
+ * is not this process: the C toolchain is an ordinary OS process, and a path
+ * inside an archive Electron mounts is not one the OS can open. Electron's
+ * patched `fs` hides that from the package's own existence check, so the failure
+ * arrives as whatever the compiler says about an input it cannot read rather
+ * than as the missing-archive error the package writes.
+ *
+ * The unpacked twin is the same bytes at a path anything can open - every
+ * node_modules file is on disk there (`asarUnpack` in electron-builder.yml, and
+ * `onNodeModuleFile` beside it, which is what keeps `.a` files in the package at
+ * all). Outside a packaged build this resolves to a real directory already and
+ * changes nothing.
+ */
+export function codecArchiveDir(): string {
+    // `<root>/dist/index.js` -> `<root>`, which is where the package keeps its
+    // prebuilds. Resolvable by construction: this module imports the package.
+    const packageRoot = path.dirname(path.dirname(createRequire(__filename).resolve("@narraleaf/bindings")));
+    return unpackAsarPath(path.join(packageRoot, "prebuilds"));
 }
 
 /**

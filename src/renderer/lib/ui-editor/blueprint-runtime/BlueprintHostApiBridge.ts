@@ -101,8 +101,8 @@ import { getSliderProps } from "@/lib/ui-editor/widget-modules/builtin/slider/he
 import { getListProps, resolveListItemsBindingArray } from "@/lib/ui-editor/widget-modules/builtin/list/helpers";
 import { getButtonProps } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getFrameProps } from "@/lib/ui-editor/widget-modules/builtin/frame/helpers";
+import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
 import type { ImageFill, ImageFillCropPlacement, ImageFillMode } from "@shared/types/ui-editor/imageFill";
 import { DEFAULT_RECTANGLE_CROP_PLACEMENT } from "@shared/types/ui-editor/rectangleLike";
@@ -1707,7 +1707,7 @@ function readImageProperties(
     overrides: ReadonlyMap<string, DevModeWidgetRuntimePatch>,
     address: string,
 ): BlueprintImageProperties {
-    const p = getImageWidgetRectangleProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
+    const p = getRectangleLikeProps(withWidgetPropOverride(assertImageElement(document, address), overrides, address));
     const fill = p.imageFill ?? null;
     const assetId = fill?.assetId?.trim() || null;
     return {
@@ -3101,7 +3101,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     }
                     let nextProps: Record<string, unknown> = { ...(el.props ?? {}) };
                     if (fillChanged) {
-                        const previousFill = getImageWidgetRectangleProps(el).imageFill;
+                        const previousFill = getRectangleLikeProps(el).imageFill;
                         const nextFill: ImageFill = {
                             ...previousFill,
                             mode: fitMode,

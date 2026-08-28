@@ -265,7 +265,7 @@ export class TestRunService extends Service<TestRunService> implements ITestRunS
         this.disposeChannel = consoleService.registerChannel({
             id: TEST_CONSOLE_CHANNEL,
             label: translate("test.console.channel"),
-            description: "Test runs: their live output and their verdict",
+            description: "Test runs and their verdicts",
         });
 
         this.disposeGameTestEvents?.();

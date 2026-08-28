@@ -1028,7 +1028,7 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
                 });
                 return;
             }
-            setHeld({ reading: false, projects: read.value, problem: null });
+            setHeld({ reading: false, projects: read.value.projects, problem: null });
         });
 
         return () => { live = false; };
