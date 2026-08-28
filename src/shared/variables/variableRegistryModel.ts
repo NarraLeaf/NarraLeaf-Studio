@@ -4,7 +4,6 @@
  * field. No services, no I/O - unit-testable in isolation.
  */
 
-import type { BlueprintPersistentVariable } from "../types/blueprint/document";
 import type { StoryVariableValueType } from "../types/story/document";
 import {
     VARIABLE_REGISTRY_SCHEMA_VERSION,
@@ -43,27 +42,6 @@ function isRecord(v: unknown): v is Record<string, unknown> {
     return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-/**
- * A registry entry from a legacy blueprint persistent variable.
- *
- * The entry `id` takes over the old `storageKey` (not the old blueprint `id`) so that the story
- * document's `StoryVariableRef` persistent arm - which addresses by `storageKey` - resolves to this
- * entry directly, and a later storageKey→variableId symmetrization would be a no-op rename. In
- * practice `id === storageKey` already (the blueprint factory sets `storageKey: id`), so this only
- * matters for hand-edited documents where they diverged.
- */
-export function registryEntryFromBlueprintPersistent(v: BlueprintPersistentVariable): VariableRegistryEntry {
-    const storageKey = v.storageKey?.trim() || v.id;
-    return {
-        id: storageKey,
-        name: v.name,
-        // The legacy field held persistent variables and nothing else; there is no scope to read.
-        scope: "persistent",
-        valueType: normalizePersistentValueType(v.valueType),
-        ...withDefaultValue(v.defaultValue),
-        storageKey,
-    };
-}
 
 /**
  * `{ defaultValue }` only when there is one - never `{ defaultValue: undefined }`.
@@ -77,28 +55,6 @@ function withDefaultValue(value: unknown): Pick<VariableRegistryEntry, "defaultV
     return value === undefined ? {} : { defaultValue: value as VariableRegistryEntry["defaultValue"] };
 }
 
-/**
- * Build registry entries from the legacy `BlueprintDocument.persistentVariables` map. Returns the
- * entries keyed by their (storageKey-derived) id, plus the id remap the blueprint migration applies
- * to every `persistentVariableId` node param so runtime lookups keep resolving.
- */
-export function seedRegistryEntriesFromBlueprintPersistent(
-    persistentVariables: Record<string, BlueprintPersistentVariable> | undefined,
-): { entries: Record<string, VariableRegistryEntry>; idRemap: Record<string, string> } {
-    const entries: Record<string, VariableRegistryEntry> = {};
-    const idRemap: Record<string, string> = {};
-    for (const [oldId, v] of Object.entries(persistentVariables ?? {})) {
-        if (!isRecord(v) || typeof v.storageKey !== "string" || typeof v.id !== "string") {
-            continue;
-        }
-        const entry = registryEntryFromBlueprintPersistent(v);
-        entries[entry.id] = entry;
-        if (oldId !== entry.id) {
-            idRemap[oldId] = entry.id;
-        }
-    }
-    return { entries, idRemap };
-}
 
 /**
  * Load-time migration for the registry file. Newer-than-latest is refused by the caller.

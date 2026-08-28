@@ -6,7 +6,6 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphNode,
-    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
