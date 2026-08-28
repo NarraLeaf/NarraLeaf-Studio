@@ -30,8 +30,10 @@ import {merge3Story} from "./storyMerge3";
  *     anything reads it, and one whose `schemaVersion` is present but not a number is refused too -
  *     see the note on that check below, it is the hole through which a newer document could
  *     otherwise be down-levelled in silence.
- *  2. `migrateStoryDocumentToLatest` ends in an unconditional stamp, so everything else arrives at
- *     the current version.
+ *  2. `migrateStoryDocumentToLatest` refuses anything below its floor by name, and ends in an
+ *     unconditional stamp, so everything it does return arrives at the current version. A document
+ *     under the floor leaves through `parse`'s catch as `corrupt`, naming the version it is at and
+ *     the oldest one this build reads - which is the outcome that lets an author act on it.
  *  3. `assertSupportedStoryDocument` then refuses anything that is not exactly the current version,
  *     which turns step 2 from "the ladder is believed to be complete" into a post-condition.
  *  4. The ladder and the normalize pass are both **pure and deterministic** - no clock, no

@@ -1,8 +1,13 @@
-import type { StoryClipReveal, StoryTransformProps, StoryTransformRef } from "../types/story/document";
-import { parseStoryFilter, pruneStoryTransformProps } from "./transformProps";
+import type { StoryClipReveal, StoryTransformProps } from "../types/story/document";
 
 /**
- * The v17→v18 expansion of the two closed enums into the one prop bag.
+ * What the placement and gesture words mean, as the prop bag they each stand for.
+ *
+ * These twenty words were once a closed `StoryTransformPreset` enum and the only way to state a
+ * transform. The bag replaced them, but the words did not go away: the inspector still offers them,
+ * the command line still accepts them, and every surface that has to answer the inverse question -
+ * given an xalign, which word lands there - reads the same table. So this is a live vocabulary with
+ * a legacy spelling, not a converter.
  *
  * Every value has a determinate expansion and none of them needed a judgement call, because the
  * expansions were already written down twice: `getInlineTransformProps` (the props a preset folds into
@@ -10,8 +15,8 @@ import { parseStoryFilter, pruneStoryTransformProps } from "./transformProps";
  * agreeing in one place. Where they disagreed - the two placement families dropped an explicit `zoom`
  * the folding path kept - the union is taken, which is the reading that loses nothing.
  *
- * Kept in `@shared` rather than beside the migration because the story compiler's own tests build
- * legacy documents, and the runtime bundle may not import from `@/lib/workspace/**`.
+ * Kept in `@shared` rather than beside the story editor because the runtime's own transform props
+ * read it too, and the runtime bundle may not import from `@/lib/workspace/**`.
  */
 
 /** The 20 values `StoryTransformPreset` held, as they survive only in documents on disk. */
@@ -21,11 +26,6 @@ export type LegacyStoryTransformPreset =
     | "slideLeft" | "slideRight" | "slideUp" | "slideDown"
     | "zoom" | "scale" | "rotate" | "flip" | "opacity" | "darken"
     | "circleReveal" | "circleClose" | "wipe";
-
-/** The 12 `displayable` operations that were single props of the bag. */
-export type LegacyDisplayableEffectOperation =
-    | "mask" | "clearMask" | "clip" | "clearClip" | "filter" | "clearFilter"
-    | "backdrop" | "blend" | "darken" | "circleReveal" | "circleClose" | "wipe";
 
 type LegacyParams = Record<string, unknown>;
 
@@ -163,99 +163,4 @@ function wipeDirection(value: string | undefined): StoryClipReveal["direction"] 
 
 function pruneClipReveal(reveal: StoryClipReveal): StoryClipReveal {
     return Object.fromEntries(Object.entries(reveal).filter(([, value]) => value !== undefined)) as StoryClipReveal;
-}
-
-/** A whole legacy transform ref (preset + loose props + timing) as a v18 one. */
-export function migrateLegacyTransformRef(ref: unknown): StoryTransformRef | undefined {
-    if (!ref || typeof ref !== "object") {
-        return undefined;
-    }
-    const legacy = ref as Record<string, unknown>;
-    if (legacy.mode === "animation") {
-        return prunedRef({
-            mode: "animation",
-            animationId: typeof legacy.animationId === "string" ? legacy.animationId : undefined,
-            durationMs: typeof legacy.durationMs === "number" ? legacy.durationMs : undefined,
-            easing: typeof legacy.easing === "string" ? legacy.easing : undefined,
-        });
-    }
-    // Already migrated (or authored fresh): a v18 ref carries `to` / `from` / `clipReveal` and no preset.
-    if (legacy.to !== undefined || legacy.from !== undefined || legacy.clipReveal !== undefined) {
-        return ref as StoryTransformRef;
-    }
-    const params = (legacy.props && typeof legacy.props === "object" ? legacy.props : {}) as LegacyParams;
-    const { to, clipReveal } = expandLegacyTransformPreset(legacy.preset as string | undefined, params);
-    return prunedRef({
-        mode: "props",
-        to: pruneStoryTransformProps(to),
-        clipReveal,
-        durationMs: typeof legacy.durationMs === "number" ? legacy.durationMs : undefined,
-        easing: typeof legacy.easing === "string" ? legacy.easing : undefined,
-    });
-}
-
-function prunedRef(ref: StoryTransformRef): StoryTransformRef {
-    return Object.fromEntries(Object.entries(ref).filter(([, value]) => value !== undefined)) as StoryTransformRef;
-}
-
-/**
- * A legacy `displayable` payload's effect operation as the prop it set.
- *
- * `maskAssetId` is the asset id verbatim - the bag stores an id, not a URL, so nothing is resolved
- * here. `filter` is parsed into the structured record when the string permits it and falls back to
- * `filterRaw` when it does not, which is the honest answer for a chain whose order matters. Each
- * `clear*` becomes the channel's neutral, spelled `null`.
- */
-export function expandLegacyDisplayableEffect(
-    operation: LegacyDisplayableEffectOperation | string,
-    payload: Record<string, unknown>,
-): LegacyPresetExpansion {
-    const to: StoryTransformProps = {};
-    switch (operation) {
-        case "mask":
-            to.maskAssetId = typeof payload.maskAssetId === "string" ? payload.maskAssetId : null;
-            return { to };
-        case "clearMask":
-            to.maskAssetId = null;
-            return { to };
-        case "clip":
-            to.clipPath = typeof payload.clipPath === "string" ? payload.clipPath : null;
-            return { to };
-        case "clearClip":
-            to.clipPath = null;
-            return { to };
-        case "filter": {
-            const parsed = parseStoryFilter(typeof payload.filter === "string" ? payload.filter : null);
-            if (parsed.filterRaw !== undefined) {
-                to.filterRaw = parsed.filterRaw;
-            } else {
-                to.filter = parsed.filter ?? {};
-            }
-            return { to };
-        }
-        case "clearFilter":
-            to.filter = null;
-            return { to };
-        case "backdrop":
-            to.backdropFilter = typeof payload.backdropFilter === "string" ? payload.backdropFilter : null;
-            return { to };
-        case "blend":
-            to.mixBlendMode = typeof payload.mixBlendMode === "string" ? payload.mixBlendMode : "normal";
-            return { to };
-        case "darken": {
-            const darkness = typeof payload.darkness === "number" ? payload.darkness : 0;
-            to.filter = { brightness: 1 - Math.min(1, Math.max(0, darkness)) };
-            return { to };
-        }
-        case "circleReveal":
-        case "circleClose":
-        case "wipe": {
-            const params = (payload.effectProps && typeof payload.effectProps === "object"
-                ? payload.effectProps
-                : {}) as LegacyParams;
-            return expandLegacyTransformPreset(operation, params);
-        }
-        default:
-            return { to };
-    }
 }
