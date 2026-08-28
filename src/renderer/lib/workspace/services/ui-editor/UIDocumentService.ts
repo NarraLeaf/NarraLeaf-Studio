@@ -122,15 +122,14 @@ import {
 import type { UIStructField } from "@shared/types/ui-editor/struct";
 import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
 import {
+    dedupeUIInputBindings,
     normalizeUIInputActionLibrary,
     normalizeUIInputBindings,
     normalizeUISurfaceActionEnablements,
-    normalizeUISurfaceInputMode,
     pruneUISurfaceActionEnablements,
     type UIInputActionDef,
     type UIInputBinding,
     type UISurfaceActionEnablement,
-    type UISurfaceInputMode,
 } from "@shared/types/ui-editor/inputAction";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
@@ -1036,13 +1035,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Bindings start empty: the project default is what every surface inherits, so guessing one
      * would silently wire a gesture the author never asked for into every interface at once.
      */
-    public createInputAction(name: string): UIInputActionDef | null {
+    public createInputAction(name: string, bindings?: readonly UIInputBinding[]): UIInputActionDef | null {
         const actionName = name.trim();
         if (!actionName) {
             return null;
         }
         const actionId = this.getContext().services.get<UuidService>(Services.Uuid).generate();
-        const action: UIInputActionDef = { id: actionId, name: actionName, bindings: [] };
+        const action: UIInputActionDef = {
+            id: actionId,
+            name: actionName,
+            // A preset lays these down once and is spent. Nothing records which one it was, so the
+            // action is editable from here on exactly as one typed from nothing would be.
+            bindings: normalizeUIInputBindings(bindings ?? []),
+        };
         this.mutateDocument(document => {
             document.actions = { ...(document.actions ?? {}), [actionId]: action };
         }, { history: false });
@@ -1109,21 +1114,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: false });
     }
 
-    /** What this surface does with input that lands on it. */
-    public setSurfaceInputMode(surfaceId: string, mode: UISurfaceInputMode): void {
-        this.updateSurface(surfaceId, surface => {
-            surface.input = normalizeUISurfaceInputMode(mode);
-        }, { mergeKey: `surface:${surfaceId}:input` });
-    }
-
     /**
      * Whether this surface answers one of the project's actions.
      *
-     * Enabling adds a bare enablement - no added bindings, no override - so the surface starts on
-     * the project's defaults and the row an author sees says exactly that. Disabling removes the
-     * record rather than flagging it off: a surface that does not answer an action has nothing to
-     * store about it, and a hidden set of per-surface bindings that reappear on re-enable is a
-     * state nobody can see.
+     * Enabling adds a bare enablement: the action's own bindings are what it answers to, and the
+     * row an author sees says exactly that. Disabling removes the record rather than flagging it
+     * off - a surface that does not answer an action has nothing to store about it.
      */
     public setSurfaceActionEnabled(surfaceId: string, actionId: string, enabled: boolean): void {
         const id = actionId.trim();
@@ -1172,10 +1168,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 const value = patch[key];
                 if (value === undefined) {
                     delete enablement[key];
-                    continue;
-                }
-                if (key === "addBindings" || key === "overrideBindings") {
-                    enablement[key] = normalizeUIInputBindings(value);
                     continue;
                 }
                 (enablement as Record<string, unknown>)[key] = value;
@@ -1662,9 +1654,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             delete document.actions;
         }
         for (const surface of document.surfaces) {
-            if (surface.input !== undefined) {
-                surface.input = normalizeUISurfaceInputMode(surface.input);
-            }
+            // Surfaces no longer carry an input mode. Documents written before v12 do, and the field
+            // is dropped here as well as in the migration so that one pasted in from an older
+            // project does not carry a setting nothing reads.
+            delete (surface as { input?: unknown }).input;
             if (surface.actions !== undefined) {
                 surface.actions = normalizeUISurfaceActionEnablements(surface.actions);
             }
@@ -1696,10 +1689,95 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 + ` (v${UI_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest supported)`,
             );
         }
+        const from = document.schemaVersion;
+        const carried = from < 12 ? this.migrateSurfaceBindingOverrides(document) : document;
         return this.normalizeSpecialChildSlots({
-            ...this.ensureComponentLibrary(document),
+            ...this.ensureComponentLibrary(carried),
             schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
         });
+    }
+
+    /**
+     * v12: a surface that changed an action's bindings gets an action of its own.
+     *
+     * Until v12 a surface could add bindings to an action or replace them outright, so the gestures
+     * an action answered to were spread across every surface that answered it. The record is gone,
+     * and dropping it through the normalizer would take the gestures with it - a Log page that
+     * closed on a scroll would quietly close on nothing. So the override is read one last time here
+     * and turned into what it was always describing: a separate action, with the bindings that
+     * surface actually used, named after the one it came from.
+     *
+     * Surfaces that overrode the same action the same way share the action this mints, because they
+     * were one statement written twice. A surface whose override worked out to the project's own
+     * bindings is left pointing at the original - there was nothing to carry.
+     */
+    private migrateSurfaceBindingOverrides(document: UIDocument): UIDocument {
+        type LegacyEnablement = UISurfaceActionEnablement & {
+            addBindings?: unknown;
+            overrideBindings?: unknown;
+        };
+
+        const vocabulary = normalizeUIInputActionLibrary(document.actions);
+        if (Object.keys(vocabulary).length === 0) {
+            return document;
+        }
+        const minted = new Map<string, string>();
+        let changed = false;
+
+        const takenIds = new Set(Object.keys(vocabulary));
+        const mintId = (base: string): string => {
+            let candidate = base;
+            let n = 2;
+            while (takenIds.has(candidate)) {
+                candidate = `${base}-${n}`;
+                n += 1;
+            }
+            takenIds.add(candidate);
+            return candidate;
+        };
+
+        for (const surface of document.surfaces ?? []) {
+            const enablements = surface.actions as LegacyEnablement[] | undefined;
+            if (!enablements?.length) {
+                continue;
+            }
+            for (const enablement of enablements) {
+                const def = vocabulary[enablement.actionId];
+                if (!def) {
+                    continue;
+                }
+                const override = enablement.overrideBindings !== undefined
+                    ? normalizeUIInputBindings(enablement.overrideBindings)
+                    : dedupeUIInputBindings([
+                        ...def.bindings,
+                        ...normalizeUIInputBindings(enablement.addBindings),
+                    ]);
+                if (enablement.overrideBindings === undefined && enablement.addBindings === undefined) {
+                    continue;
+                }
+                const signature = `${enablement.actionId}:${JSON.stringify(override)}`;
+                if (signature === `${enablement.actionId}:${JSON.stringify(def.bindings)}`) {
+                    continue;
+                }
+                let mintedId = minted.get(signature);
+                if (!mintedId) {
+                    mintedId = mintId(`${def.id}-${surface.id}`);
+                    minted.set(signature, mintedId);
+                    vocabulary[mintedId] = {
+                        id: mintedId,
+                        name: `${def.name} (${surface.name})`,
+                        bindings: override,
+                    };
+                }
+                enablement.actionId = mintedId;
+                changed = true;
+            }
+        }
+
+        if (!changed) {
+            return document;
+        }
+        return { ...document, actions: vocabulary };
     }
 
     private withComponentLibrary(document: UIDocument): UIDocument {

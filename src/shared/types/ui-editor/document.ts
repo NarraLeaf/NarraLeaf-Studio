@@ -1,6 +1,6 @@
 import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
-import type { UIInputActionDef, UISurfaceActionEnablement, UISurfaceInputMode } from "./inputAction";
+import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
@@ -8,7 +8,7 @@ import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 11 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 12 as const;
 
 /**
  * The oldest UI document version this build can read.
@@ -82,14 +82,13 @@ export type UIAppSurface = {
     rootElementId: UIElementId;
     settings?: UISurfaceSettings;
     /**
-     * What this surface does with input that lands on it. Absent means `capture` (see
-     * `UI_SURFACE_DEFAULT_INPUT_MODE`), which is what every surface authored before the field
-     * existed already did.
-     */
-    input?: UISurfaceInputMode;
-    /**
-     * Which of the project's actions this surface answers, and how. An id here names an entry of
+     * Which of the project's actions this surface answers. An id here names an entry of
      * {@link UIDocument.actions}; absent means it answers none of them.
+     *
+     * Input that lands on this surface's content stops here whether or not an action answered it,
+     * unless the action that answered says otherwise. There is no surface-wide setting for that: a
+     * surface drawn over another is drawn over it, and an action is the only thing that knows
+     * whether what it just did leaves anything for the surface behind to do.
      */
     actions?: UISurfaceActionEnablement[];
 };
@@ -104,8 +103,6 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
-    /** @see UIAppSurface.input */
-    input?: UISurfaceInputMode;
     /** @see UIAppSurface.actions */
     actions?: UISurfaceActionEnablement[];
 };
