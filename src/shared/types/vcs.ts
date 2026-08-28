@@ -269,7 +269,15 @@ export interface VcsCommitResult {
     revision: RevisionId;
     /** Monotonic per repository. */
     number: number;
-    kind: VcsRevisionKind;
+    /**
+     * What this revision was labelled, or absent because it was not labelled at all.
+     *
+     * Absent for the commit that closes a merge, and that is a recorded trade rather than an
+     * oversight: the label is written to the staged revision, and while a merge is staged that
+     * write replaces the merge itself. A reader that needs to tell a merge from anything else has
+     * the revision's two parents, which is what the history draws it by.
+     */
+    kind: VcsRevisionKind | undefined;
     /** Files the commit added or changed, as the backend counted them. */
     fileCount: number;
 }

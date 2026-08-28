@@ -392,6 +392,8 @@ stage → commit（不 set）              -> rev3 无 probe.kind          ✅ �
 顺带实测：Lore 自己也往同一张表里写 `branch` / `timestamp` / `message` / `created-by` /
 `committed-by`。所以 Studio 的键必须带前缀（`narraleaf.kind`），而**提交信息与作者名是读得回来的**。
 
+❗ **合并开着的时候，那个暂存修订就是这次合并，写它会把合并换掉**——见 §4.34。
+
 ### 4.22 `repositoryFlush` 会等满 `storeKeepAliveSeconds`
 
 写路径末尾那一句强制的 flush（§4.11），耗时**不是**取决于要落盘多少东西，而是等前面那些
@@ -703,34 +705,69 @@ Failed to parse JSON from <project>/editor/story/index.json
 > 编译失败，那正是该被问『这种情况怎么说』的地方」——确实如此：构建/预览在合并态下同样要拒绝，
 > 但话术不是「解除冻结」而是「先把合并做完」。
 
-### 4.34 同步产生的合并做完之后，**推送仍然被当成分岔**，要再同步一次
+### 4.34 ❗ 给暂存修订写元数据，会把那次**合并换掉**（已修）
 
-真机复现两次（两个工程，一个历史完好），步骤就是作者会做的那些：
+真机上看到的是：作者把每个冲突选完、按「完成合并」（合并状态确实关了、工作树干净），
+再上传**仍然** `branchPush: Branch has diverged`；再按一次「从服务器获取」（静默、无冲突、
+多一个修订）之后才能发出去。
 
-1. A 提交并上传 → 服务器前进；
-2. B 从同一基线改另一处并提交 → 上传被拒，`Branch has diverged`；
-3. B 同步 → 冲突 → 逐条选边 → `completeMerge`。新修订写出来了，
-   `readMergeState` 答 `inProgress: false`，工作树干净；
-4. **再上传，仍然是 `branchPush: Branch has diverged, sync to merge remote changes`**，
-   `getSyncState` 两边都 `ahead`；
-5. 再同步一次 → **静默成功**（`conflicts: []`、`revisionsReceived: 1`，本地多出一个修订）；
-6. 再上传 → 成功。
+**合并修订的两个 parent 是同一个修订**——作者自己的 tip，写了两遍：
 
-第 5 步多出一个本地修订，所以它不是一次快进；也就是说，第 3 步写出的那个修订
-**在服务器看来并没有把两条线接上**。
+```
+1 942e699fbb <-
+2 5eca573ac6 <- 942e699fbb
+3 274134c073 <- 5eca573ac6,5eca573ac6      ← 合并；远端 tip cfa2e56266 不在里面
+```
 
-**不是「`commitWorkingTree` 丢了第二个 parent」。** 本地 `branchMergeStart` 上实测过（见
-`merge.integration.test.ts` 里那条 spec）：同一条 `VcsManager.completeMerge` 写出的修订
-`parents.length === 2`。所以分岔只出在**同步产生的合并**上，跟 §4.26
-（同步合并的 parent[0] 是拉下来那一边）是同一个方向的差异。
+所以 §4.26「合并修订确实有两个 parent」**数对了、人错了**：`parents.length === 2` 一直成立，
+而两条线从来没接上。
 
-⚠ **还没定性到具体哪一步。** 要在测试里重现它得有一台**验身份**的服务器，而
-`merge.integration.test.ts` 的远端那半现在连不上：`publishToRemote` 直接报
-`repositoryCreate: connecting to remote: No token stored`。Lore 的会话存在它自己的
-按系统用户的 auth store 里，测试进程得先 `loginWithToken` 才能跑——这一条本身也是欠账。
+#### 定到哪一行
 
-屏幕上目前不致于卡死：轨道红字写的就是「先获取服务器的版本再发送」，而那正是能让它发出去的
-动作。代价是多按一次，以及「我刚把合并做完了，它说我没合并」这一瞬。
+对着真服务器做的对照（每种写法一个独立仓库，都是同步产生的冲突）：
+
+| 怎么收尾 | parent 含远端 tip | 推得上去 |
+|---|---|---|
+| `stage` + `commit`（离线 / 在线 / 保活存储 / 先读 history / 先读 status / 同一个 store 里解冲突） | ✅ | ✅ |
+| `commit`（不 stage） | ✅ | ✅ |
+| **`stage` + `revisionMetadataSet` + `commit`** | ❌ | ❌ |
+| `stage` + `commit` + `revisionMetadataSet` | ✅ | ✅（但标签落到下一个修订，见 §4.21） |
+| `commitWorkingTree` / `VcsManager.completeMerge` | ❌ | ❌ |
+
+即 **§4.21 那一行就是原因**：`revisionMetadataSet` 写的是暂存修订，而合并开着的时候
+**那个暂存修订就是这次合并**，写它等于把它换成一个普通的暂存修订，
+随后的 commit 于是把本地 tip 当成两个 parent 都写上。
+
+#### 修法：合并那次提交**不打标签**
+
+`commitWorkingTree` 现在在 stage 之后问一次状态（`scan:false, revisionOnly:true`，本来就要问），
+`revisionMerged && revisionStaged` 为真就跳过 `setRevisionMetadata`，并且 `VcsCommitResult.kind`
+返回 `undefined`——**记下的是什么就答什么**。
+
+提前排除的替代方案：改成提交之后再打标签——实测它会落到**下一个**修订（正是 §4.21），
+合并照样没标签，而下一次普通提交会被标两次。
+
+屏幕上不损失什么：版本轨画历史时 `row.merge`（两个 parent）**比** `kind` **先被问到**，
+合并行拿的是合并图标；而被折叠掉的只有 `checkpoint`，没标签不会被折叠。
+
+守卫在 `merge.integration.test.ts`：本地那条管 parent 是不是那两个分支 tip（不需服务器），
+远端那条管「同步产生的合并做完之后一次就推得上去」。**两条缺一不可**：
+parent 数量一直是 2，而本地合并怎么写都对。
+
+### 4.35 跑远端集成测试要先登录，而 `identity` 得是**账号 id**
+
+以前远端那半只能对着一台**不验身份**的 loreserver 跑；对着真服务器第一句就是
+`repositoryCreate: connecting to remote: No token stored`。两个坑，都是同一回事的两面：
+
+1. **裸 globals**：上网的调用 `identity` 必须是登录拿到的**账号 id**，不是人名。
+   Lore 的会话存在按系统用户的 auth store 里，**就是按这个键查的**（`serverSession.ts` 写了）；
+2. **`VcsManager`**：它不接受 identity 参数，而是从设置里读
+   `versionControl.serverSessions`（`resolveOnlineIdentity`）。测试里那个空的 `fakeApp`
+   于是以作者名上网——**不报错**，`sync` 只是找不到分支、答一个干净的空结果，
+   于是一条关于冲突的 spec 失败在「没有冲突」上。
+
+现在两边都接好了，用 `LORE_TEST_TOKEN` / `LORE_TEST_AUTH` 两个环境变量（命令行写在文件头）。
+没给令牌时行为照旧，所以一台裸 loreserver 依然能跑。
 
 ## 5. 服务端策略
 
