@@ -9,14 +9,14 @@ import { VcsSignInError, diagnoseEndpoint, readServerSessions, signInToServer } 
 /**
  * Signing in, against a REAL server that verifies who is calling.
  *
- * Skipped unless `LORE_TEST_AUTH_URL` names one, on the same argument
+ * Skipped unless `LORE_TEST_AUTH` names one, on the same argument
  * `remote.integration.test.ts` makes about `LORE_TEST_REMOTE`: every behaviour worth
  * asserting here is a property of the backend and of a TLS stack, and a mock would assert
  * Studio's idea of both. This file exists because that idea was wrong twice.
  *
  * ```bash
  * # A server that issues tokens, e.g. one supervised by NarraLeaf Team:
- * LORE_TEST_AUTH_URL="https://127.0.0.1:41402" \
+ * LORE_TEST_AUTH="https://127.0.0.1:41402" \
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   yarn vitest run src/main/app/application/managers/vcs/serverSession.integration.test.ts
  * ```
@@ -26,7 +26,13 @@ import { VcsSignInError, diagnoseEndpoint, readServerSessions, signInToServer } 
  * machine that has trusted it makes the third test's diagnosis wrong and it says so.
  */
 
-const AUTH_URL = (process.env.LORE_TEST_AUTH_URL ?? "").trim();
+/**
+ * Where to sign in.
+ *
+ * `LORE_TEST_AUTH` is the name the rest of this directory uses, and `LORE_TEST_AUTH_URL` is
+ * the one this file was born with - both are taken, so one command runs the whole directory.
+ */
+const AUTH_URL = (process.env.LORE_TEST_AUTH ?? process.env.LORE_TEST_AUTH_URL ?? "").trim();
 const REMOTE = (process.env.LORE_TEST_REMOTE ?? "lore://127.0.0.1:41337").trim();
 const TOKEN = (process.env.LORE_TEST_TOKEN ?? "").trim();
 const enabled = AUTH_URL !== "" && (isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH));
