@@ -1860,21 +1860,7 @@ export class GameBuildManager {
             target.platform,
             normalizeGameBuildArch(target.platform, target.arch),
         )))];
-        if (desktopPlatformKeys.length > 1
-            && pluginSelection.selected.some(source => source.manifest.contributes.sidecars.length > 0)) {
-            // Sidecars are the one payload still held to one target per build,
-            // and the obstacle is the pack rather than the copying: it carries a
-            // single name for the file to spawn, which on Windows ends in .exe
-            // and elsewhere does not, so a pack serving two platforms could only
-            // be right about one of them.
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `plugin sidecars ship for one platform per build, but this build targets `
-                    + `${desktopPlatformKeys.join(", ")}; no sidecar is packaged. `
-                    + "Build one desktop target at a time to include them.",
-            });
-        }
+
         let contentAudit: ShippedContentAuditReport | null = null;
         if (desktopTargets.length > 0) {
             // Off the main thread: sealing a protected pack is many seconds of
