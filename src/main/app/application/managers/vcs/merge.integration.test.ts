@@ -4,7 +4,7 @@ import os from "os";
 import path from "path";
 import { afterAll, describe, expect, it } from "vitest";
 import { mergeDecisionKey } from "@shared/documents/mergeApply";
-import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
+import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported, type VcsServerSession } from "@shared/types/vcs";
 import {
     branchMergeResolveMine,
     branchMergeStart,
@@ -23,6 +23,9 @@ import {
     type StoreHandle,
 } from "./lore";
 import { abortMerge, readMergeState, resolveConflicts, restartConflicts, unresolveConflicts } from "./merge";
+import { commitWorkingTree } from "./repository";
+import { setRevisionMetadata } from "./lore";
+import { signInToServer } from "./serverSession";
 import { readRevisionKind } from "./repository";
 import { blobAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, syncFromRemote, writeRemote } from "./remote";
@@ -56,11 +59,49 @@ import { VcsManager } from "./VcsManager";
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   npx vitest run src/main/app/application/managers/vcs/merge.integration.test.ts
  * ```
+ *
+ * **A server that verifies identities needs a token as well**, and the two variables below
+ * are how one is given. A NarraLeaf Team server issues them from its sign-in endpoint:
+ *
+ * ```bash
+ * LORE_TEST_TOKEN=$(curl -sk -X POST "https://127.0.0.1:41402/api/studio/v1/sign-in" \
+ *   -H "Content-Type: application/json" -d '{"username":"alice","password":"..."}' \
+ *   | node -pe "JSON.parse(require('fs').readFileSync(0,'utf8')).token")
+ * LORE_TEST_AUTH="https://127.0.0.1:41402" npx vitest run ...
+ * ```
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
 const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const TOKEN = (process.env.LORE_TEST_TOKEN ?? "").trim();
+const AUTH = (process.env.LORE_TEST_AUTH ?? "").trim();
 const remoteEnabled = supported && SERVER !== "";
+
+/**
+ * The account every online call has to be made as, once a token is in play.
+ *
+ * ⚠ **`identity` on online globals is the ACCOUNT ID, not a name.** It is the key Lore's
+ * per-user session store is looked up by, and a name in its place fails every later call with
+ * `No token stored` - which reads as a token that was never presented rather than one filed under
+ * a different key. `serverSession.ts` says so where the sign-in is written, and this is the second
+ * place that has to know it: the local block's `spec@narraleaf` is fine because nothing there goes
+ * online, and the remote block used to be runnable only against a server that verifies nobody.
+ *
+ * Resolved once and shared, because signing in is a machine-level act - the store is Lore's own
+ * and outlives the process, so a second login would be the same write again.
+ */
+let signedIn: Promise<VcsServerSession | null> | null = null;
+
+function sessionFor(root: string): Promise<VcsServerSession | null> {
+    if (TOKEN === "") {
+        return Promise.resolve(null);
+    }
+    signedIn ??= signInToServer(
+        { repositoryPath: root, offline: false, cache: true },
+        { remoteUrl: SERVER, authUrl: AUTH, token: TOKEN, userDataDir: os.tmpdir() },
+    );
+    return signedIn;
+}
 
 const DOCUMENT = "doc.json";
 /** A second conflicted file, so "one side per PATH" can be told from "one side for the merge". */
@@ -111,8 +152,27 @@ function offline(root: string): LoreGlobals {
     return globals;
 }
 
+/**
+ * Globals for a call that reaches the network, as the account the token belongs to.
+ *
+ * The identity is a module variable rather than a parameter because every call site here is
+ * written inline (`pushToRemote(online(root))`) and the account is not known until a sign-in has
+ * happened. {@link accountFor} sets it once, before the first online call of the remote block.
+ */
+let onlineIdentity = "spec@narraleaf";
+/**
+ * The stored sign-in a `VcsManager` in this block has to be given.
+ *
+ * The manager does not take an identity for its online calls - it reads one out of the settings,
+ * the way the real one does (`resolveOnlineIdentity`). A manager handed an empty settings store
+ * therefore goes online as the author's name, which against a server that verifies is the same
+ * `No token stored` one step further in: `sync` finds no branch and reports a clean, empty result,
+ * so a spec about conflicts fails saying the sync produced none.
+ */
+let serverSession: VcsServerSession | null = null;
+
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: onlineIdentity };
 }
 
 function write(root: string, relative: string, contents: string): void {
@@ -237,7 +297,12 @@ function fakeApp(): BaseApp {
     const noop = () => undefined;
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
-        getGlobalState: () => ({ get: () => undefined }),
+        // The one setting a manager reads here: the sign-in it makes its online calls as. Empty
+        // for the local block, which never goes online. See {@link serverSession}.
+        getGlobalState: () => ({
+            get: (key: string) =>
+                (key === "versionControl.serverSessions" && serverSession ? [serverSession] : undefined),
+        }),
     } as unknown as BaseApp;
 }
 
@@ -568,10 +633,17 @@ describe.skipIf(!supported)("closing a merge", () => {
                 });
                 expect(sha256(bytes)).toBe(sha256(Buffer.from(text, "utf-8")));
             }
-            expect(done.revision.kind).toBe("commit");
+            // ⚠ **The revision that closes a merge is deliberately NOT labelled**, which is the
+            // one thing here that changed after §4.34 and the one that looks like a regression.
+            // The label is written to the STAGED revision, and while a merge is staged that
+            // write replaces the merge - the commit then records the local tip twice and the
+            // author's push is refused after they have resolved everything. The label costs
+            // nothing on screen: the history draws a two-parent revision with the merge icon
+            // before it consults `kind`, and only `checkpoint` is ever collapsed out.
+            expect(done.revision.kind).toBeUndefined();
 
             await manager.closeProject(fixture.root);
-            expect(await readRevisionKind(offline(fixture.root), done.revision.revision)).toBe("commit");
+            expect(await readRevisionKind(offline(fixture.root), done.revision.revision)).toBeUndefined();
         } finally {
             await manager.closeProject(fixture.root);
         }
@@ -685,6 +757,10 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         writeDeep(authorRoot, sides.file, sides.base);
         await commitAll(authorGlobals, authorRoot, "base");
 
+        // Before the first call that leaves this machine, and only once for the whole block.
+        serverSession = await sessionFor(authorRoot);
+        onlineIdentity = serverSession?.account.userId ?? onlineIdentity;
+
         const url = serverUrl(name);
         await writeRemote(authorRoot, url);
         await publishToRemote(online(authorRoot), { url, repositoryId: created.repository });
@@ -716,6 +792,55 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
      * and every conflicted sync degraded to the `["*"]` placeholder. An author cannot resolve
      * `*`, and no UI can draw it.
      */
+    /**
+     * **The merge the author finished is one the server takes**, which is what makes finishing it
+     * finishing it.
+     *
+     * The defect this pins was invisible to everything else in the build and cost an author a
+     * second round trip they were given no reason for: every conflict resolved, "Finish merge"
+     * pressed, the merge state closed, the working tree clean - and the push still refused with
+     * `Branch has diverged`. Pressing Get again reported no conflicts, made a revision of its own,
+     * and only then would the work send.
+     *
+     * The cause is one line, and it is measured down to that line in §4.34: `commitWorkingTree`
+     * labelled the STAGED revision with the revision kind, and while a merge is staged that
+     * revision IS the merge - writing to it replaced it, and the commit that followed recorded the
+     * local tip as both of its parents. Two parents, so nothing counted them; the same one twice,
+     * so the two lines never joined.
+     *
+     * Asserted on the parents AND on the push, because either alone would have passed while the
+     * defect was live: the parent count was already 2, and a local merge (the spec in the block
+     * above) joins correctly either way. Only a merge a sync produced, pushed to the server it came
+     * from, fails.
+     */
+    it("closes a synced merge into something the server accepts", async () => {
+        const fixture = await divergedProject("pushafter");
+        await syncFromRemote(online(fixture.root));
+        const remoteTip = (await repositoryStatus(online(fixture.root), { scan: false, revisionOnly: true }))
+            .revision?.revisionRemote ?? "";
+        await releaseRepository(online(fixture.root));
+        expect(remoteTip).not.toBe("");
+
+        const manager = new VcsManager(fakeApp());
+        try {
+            await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
+        } finally {
+            await manager.closeProject(fixture.root);
+        }
+
+        const graph = await history(offline(fixture.root), {});
+        const tip = [...graph.nodes.values()].sort((a, b) => b.number - a.number)[0];
+        await releaseRepository(offline(fixture.root));
+        // The incoming side is one of the two parents. Before the fix both of them were the
+        // author's own tip, which is a merge revision that joins a line to itself.
+        expect(tip.parents).toContain(remoteTip);
+        expect(new Set(tip.parents).size).toBe(2);
+
+        // And the server takes it, first time, with no second sync in between.
+        await expect(pushToRemote(online(fixture.root))).resolves.toBeTruthy();
+        await releaseRepository(online(fixture.root));
+    }, 300_000);
+
     it("names the conflicting paths instead of answering with a placeholder", async () => {
         const { root: authorRoot, globals: authorGlobals } = await divergedProject("conflict");
 
