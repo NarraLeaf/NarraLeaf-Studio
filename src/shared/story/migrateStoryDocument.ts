@@ -60,13 +60,12 @@ export function migrateStoryDocumentToLatest(document: StoryDocument): StoryDocu
     if (version < 22) {
         migrated = migrateStoryDocumentV21toV22(migrated);
     }
-    // The stamp is unconditional, and has to be. The step above ends by writing
-    // STORY_DOCUMENT_SCHEMA_VERSION rather than the version it actually produces, so the ladder only
-    // *looks* like it walks version by version: bumping the constant without adding a step left v3
-    // documents falling through untouched and then failing assertSupportedStoryDocument, while the
-    // v2 tests kept passing because the step stamps whatever the constant currently says. Landing the
-    // stamp here means the next additive bump cannot reopen that hole - v23 is such a bump (a jump
-    // learned to come back) and needs nothing but this line.
+    // The stamp is unconditional, and has to be. Most bumps are additive - a document at the
+    // version below is already valid at the new one, because it cannot contain a field that did not
+    // exist to be written - so they get no step, and this line is their entire migration. v23 (a
+    // jump learned to come back) is one such. When the ladder tried to stamp inside each step
+    // instead, adding a bump without a step left those documents falling through untouched and then
+    // failing `assertSupportedStoryDocument`, while the tests for the steps kept passing.
     return { ...migrated, schemaVersion: STORY_DOCUMENT_SCHEMA_VERSION };
 }
 
