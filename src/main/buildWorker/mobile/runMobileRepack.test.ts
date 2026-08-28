@@ -5,7 +5,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
-import { derivePackKey, isProtectedPayload } from "@narraleaf/encryption";
+import { derivePackKey, isPackedPayload } from "@narraleaf/bindings";
 import { parseBinaryManifest } from "./axml";
 import { parseArscPackageNames } from "./arsc";
 import { verifyApkV2 } from "./apkSigningV2";
@@ -150,7 +150,7 @@ describe("runMobileRepack against the real shell templates", () => {
         // back verbatim and the package's own detector agrees.
         const bgm = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}assets/bgm.ogg`)!);
         expect(Buffer.compare(bgm, Buffer.alloc(4096, 7))).toBe(0);
-        expect(isProtectedPayload(bgm)).toBe(false);
+        expect(isPackedPayload(bgm)).toBe(false);
     });
 
     it("produces an AAB beside the APK, signed by the same identity", async () => {
@@ -230,7 +230,7 @@ describe("runMobileRepack against the real shell templates", () => {
         const wwwEntries = index.entries.filter(entry => entry.name.startsWith(wwwRoot) && !entry.name.endsWith("/"));
         expect(wwwEntries.length).toBeGreaterThan(0);
         for (const entry of wwwEntries) {
-            expect(isProtectedPayload(readEntryBytes(apk, entry))).toBe(true);
+            expect(isPackedPayload(readEntryBytes(apk, entry))).toBe(true);
         }
 
         // A known plaintext file is not shipped as its plaintext.
@@ -239,13 +239,13 @@ describe("runMobileRepack against the real shell templates", () => {
 
         // The entry-document override is protected too, not served as HTML.
         const indexBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === `${wwwRoot}index.html`)!);
-        expect(isProtectedPayload(indexBytes)).toBe(true);
+        expect(isPackedPayload(indexBytes)).toBe(true);
         expect(indexBytes.toString("utf8")).not.toContain("mobile variant");
 
         // shell-config.json stays plain: it is the bootstrap the decoder reads,
         // and it carries the key the shell hands to that decoder.
         const cfgBytes = readEntryBytes(apk, index.entries.find(entry => entry.name === shellConfigPath)!);
-        expect(isProtectedPayload(cfgBytes)).toBe(false);
+        expect(isPackedPayload(cfgBytes)).toBe(false);
         expect(JSON.parse(cfgBytes.toString("utf8")).contentKey).toBe(contentKey);
 
         // Still a valid, installable package.

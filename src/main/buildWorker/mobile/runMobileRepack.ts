@@ -2,7 +2,7 @@ import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
-import { protectBuffer } from "@narraleaf/encryption";
+import { packBuffer } from "@narraleaf/bindings";
 import { readKeystore } from "./keystoreReader";
 import { buildAab } from "./buildAab";
 import { signJar } from "./jarSigning";
@@ -105,7 +105,7 @@ async function siteEntries(
             // Read and protect one file at a time. The package is assembled in
             // memory anyway (see MAX_PAYLOAD_BYTES), so this holds one plaintext
             // file beyond that, not the whole payload at once.
-            const data = protectBuffer(await fs.readFile(file.absolutePath), contentKey);
+            const data = packBuffer(await fs.readFile(file.absolutePath), contentKey);
             entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
             counted.advance();
         } else {
@@ -120,7 +120,7 @@ async function siteEntries(
     const overrideBytes = Buffer.from(indexHtmlOverride, "utf8");
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: contentKey ? protectBuffer(overrideBytes, contentKey) : overrideBytes },
+        source: { kind: "buffer", data: contentKey ? packBuffer(overrideBytes, contentKey) : overrideBytes },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {

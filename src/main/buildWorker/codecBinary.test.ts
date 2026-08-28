@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { runtimeSupportPathFor } from "@narraleaf/encryption";
+import { archiveReaderPathFor } from "@narraleaf/bindings";
 import { GAME_BUILD_ARCHS_BY_PLATFORM } from "@shared/types/gameBuild";
 import {
     codecPlacementsFor,
@@ -56,10 +56,10 @@ describe("codecTargetFor", () => {
                 expect(target, `no codec target for ${key}`).not.toBeNull();
                 if (target === UNIVERSAL_CODEC_TARGET) {
                     for (const slice of UNIVERSAL_CODEC_SLICES) {
-                        await expect(fs.access(runtimeSupportPathFor(slice))).resolves.toBeUndefined();
+                        await expect(fs.access(archiveReaderPathFor(slice))).resolves.toBeUndefined();
                     }
                 } else {
-                    await expect(fs.access(runtimeSupportPathFor(target as string))).resolves.toBeUndefined();
+                    await expect(fs.access(archiveReaderPathFor(target as string))).resolves.toBeUndefined();
                 }
             }
         }
@@ -93,7 +93,7 @@ describe("placeCodecBinary", () => {
             const images: Record<string, string> = {};
             for (const slice of UNIVERSAL_CODEC_SLICES) {
                 images[slice] = path.join(dir, slice);
-                await fs.copyFile(runtimeSupportPathFor(slice), images[slice]);
+                await fs.copyFile(archiveReaderPathFor(slice), images[slice]);
             }
             const destination = path.join(dir, "shipped", "bindings.node");
             await placeCodecBinary(
@@ -125,7 +125,7 @@ describe("writeSupportBinary", () => {
             const destination = path.join(dir, "bindings.node");
             await writeSupportBinary("linux-x64", destination);
             const written = await fs.readFile(destination);
-            const source = await fs.readFile(runtimeSupportPathFor("linux-x64"));
+            const source = await fs.readFile(archiveReaderPathFor("linux-x64"));
             expect(written.equals(source)).toBe(true);
         } finally {
             await fs.rm(dir, { recursive: true, force: true });
@@ -150,7 +150,7 @@ describe("writeSupportBinary", () => {
             expect(image.readUInt32BE(4)).toBe(UNIVERSAL_CODEC_SLICES.length);
 
             for (const [index, slice] of UNIVERSAL_CODEC_SLICES.entries()) {
-                const thin = await fs.readFile(runtimeSupportPathFor(slice));
+                const thin = await fs.readFile(archiveReaderPathFor(slice));
                 const at = 8 + 20 * index;
                 const cputype = image.readUInt32BE(at);
                 const offset = image.readUInt32BE(at + 8);

@@ -3,7 +3,7 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
-import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption";
+import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
@@ -105,7 +105,7 @@ import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProto
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
-import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY, type TitleCompileOptions } from "@narraleaf/encryption";
+import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
@@ -1520,7 +1520,7 @@ export class GameBuildManager {
      * was sealed the other way is not a lesser patch - it is a file the game will
      * not open at all.
      */
-    private async titleCompileOptions(workDir: string, reason: string): Promise<TitleCompileOptions> {
+    private async titleCompileOptions(workDir: string, reason: string): Promise<ReaderBuildOptions> {
         try {
             const compiler = await ensureZigToolchain({
                 userDataDir: this.app.getUserDataDir(),
@@ -1608,7 +1608,7 @@ export class GameBuildManager {
              * halves have to be built the same way or the patch is dead on
              * arrival.
              */
-            const writer = await createSealedLayer(outputFile, {
+            const writer = await createAssetOverlay(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
             }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
@@ -1625,7 +1625,7 @@ export class GameBuildManager {
                 // stating the resolved one is what makes that checkable from the file alone.
                 ...(dlc ? { dlc: { id: dlc.id, attachTo: appTagId } } : {}),
             };
-            await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+            await writer.add(OVERLAY_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
 
             /*
              * What this patch changes about the game's content, rather than a pack of its own.
@@ -1662,7 +1662,7 @@ export class GameBuildManager {
             let skipped = 0;
             let bytes = 0;
             for (const name of payload.names) {
-                if (name === LAYER_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
+                if (name === OVERLAY_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
                     // A payload cannot carry either name, but a future one that did
                     // would collide with what was written above rather than being
                     // noticed, so both are dropped here instead.
@@ -3766,7 +3766,7 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  * Only payload that must exist as a real file on disk leaves the asar. The
  * sealed pair does: the codec addon is dlopen'ed by the OS loader, and it then
  * reads the bundle through its own native file I/O - neither goes through
- * Electron's asar-aware fs. native.js (the addon's loader sidecar) and icons
+ * Electron's asar-aware fs. bindings.js (the addon's loader sidecar) and icons
  * (consumed by native image/shell APIs) stay loose for the same reason.
  * Unencrypted assets have no such constraint: the runtime reads them with
  * readFile/stat/ranged createReadStream, which Electron serves from inside
@@ -3782,12 +3782,12 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
     // koffi's addon has to be a real file on disk to be loaded, so it cannot stay inside the
-    // archive - the same reason native.js is here. It ships as a plain `koffi/` directory rather
+    // archive - the same reason bindings.js is here. It ships as a plain `koffi/` directory rather
     // than under `node_modules`, which electron-builder reserves for the dependency tree it builds
     // itself and drops everything else from.
-    const patterns = ["native.js", "icons/**", "sidecars/**", "koffi/**"];
+    const patterns = ["bindings.js", "icons/**", "sidecars/**", "koffi/**"];
     if (sealed) {
-        patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
+        patterns.push(ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME);
     }
     /*
      * And the staging area, which holds nothing but machine code the OS loader

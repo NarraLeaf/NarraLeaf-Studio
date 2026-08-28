@@ -377,7 +377,7 @@ describe("GAME_BUILD_ARCHS_BY_PLATFORM", () => {
     // strip a large installed base of *players* from every game built with Studio.
     //
     // Host and target are different questions. Nothing in the pipeline needs an Intel Mac to
-    // produce an Intel-Mac game: @narraleaf/encryption vendors a prebuilt darwin-x64
+    // produce an Intel-Mac game: @narraleaf/bindings vendors a prebuilt darwin-x64
     // bindings.node, and electron-builder downloads Electron's x64 runtime. If this assertion is
     // in your way, the answer is not to delete it.
     it("still offers x64 and universal for macOS, because a game's host is not Studio's host", () => {

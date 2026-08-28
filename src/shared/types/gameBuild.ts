@@ -559,7 +559,7 @@ export function deriveGameAppId(identifier: string | undefined, projectName: str
  *
  * None of that touches this table. A game packaged on Apple Silicon still ships for Intel Macs, and
  * must keep doing so - that is a large installed base of *players*, who are not running Studio.
- * Nothing in the pipeline needs an Intel Mac to produce it either: @narraleaf/encryption vendors a
+ * Nothing in the pipeline needs an Intel Mac to produce it either: @narraleaf/bindings vendors a
  * prebuilt `darwin-x64` bindings.node, and Electron's own x64 runtime is downloaded by
  * electron-builder. `macos: [..., "x64", ...]` is therefore load-bearing, and gameBuild.test.ts
  * asserts it stays.

@@ -1,11 +1,11 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import { derivePackKey } from "@narraleaf/encryption";
+import { derivePackKey } from "@narraleaf/bindings";
 
 /**
  * Resolves the opaque per-project key used when asset protection is enabled.
- * The key material is produced by @narraleaf/encryption from locally persisted
+ * The key material is produced by @narraleaf/bindings from locally persisted
  * secrets; this module only reads (or creates on first use) those secrets and
  * hands them off. The secrets never leave the machine and the key itself is
  * never stored.

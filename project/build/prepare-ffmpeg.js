@@ -201,7 +201,7 @@ const MACOS_BUILD_SCRIPT = 'project/build/build-ffmpeg-macos.sh';
  *
  * None of that touches the *game* build targets: a game packaged on Apple Silicon still ships for
  * Intel Macs (GAME_BUILD_ARCHS_BY_PLATFORM in src/shared/types/gameBuild.ts). Those bytes are
- * @narraleaf/encryption's prebuilt darwin-x64 bindings.node plus Electron's own x64 runtime,
+ * @narraleaf/bindings's prebuilt darwin-x64 bindings.node plus Electron's own x64 runtime,
  * neither of which is staged here.
  *
  * On any non-macOS host, and on a Mac with no Command Line Tools, staging is skipped and conversion

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { patchExportBlocker, type PatchExportSelection } from "./patchExportReadiness";
 
 const READY: PatchExportSelection = {
-    outputFile: "D:/out/patch/game.patch.dat",
+    outputFile: "D:/out/patch/game.assetpatch",
     baselineMode: "variant",
     baselineAppDir: "",
     readingBaseline: false,

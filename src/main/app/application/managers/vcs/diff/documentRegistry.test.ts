@@ -24,7 +24,7 @@ const MAIN_ENTRY = path.resolve(__dirname, "../../../../../index.ts");
 const ROOT = path.resolve(__dirname, "../../../../../../..");
 
 /** Externals must match the real build; see project/build/build-main.js. */
-const EXTERNAL = ["electron", "esbuild", "@narraleaf/encryption", "koffi"];
+const EXTERNAL = ["electron", "esbuild", "@narraleaf/bindings", "koffi"];
 
 describe("document specs are registered in the main process", () => {
     it("has a non-empty registry once the diff engine is loaded", () => {
