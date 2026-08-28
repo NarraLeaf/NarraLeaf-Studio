@@ -7,7 +7,6 @@ export const storyInspector = {
     noVariablesDeclared: "尚未声明变量",
     unassigned: "未指定",
     section: {
-        timing: "时机",
         conditions: "条件",
         appearance: "外观",
         blueprint: "蓝图",
@@ -379,10 +378,6 @@ export const storyInspector = {
     },
     narration: {
         editHint: "双击该行以编辑旁白文本",
-    },
-    dialogue: {
-        pauseAfter: "本行后暂停",
-        pauseSeconds: "暂停秒数（可选）",
     },
     choice: {
         prompt: "提示语",

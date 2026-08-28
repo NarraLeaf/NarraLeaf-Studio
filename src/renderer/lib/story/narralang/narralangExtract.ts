@@ -499,18 +499,12 @@ function nodeActionShape(ctx: NarralangExtractContext, block: StoryBlock, payloa
                 ? characterName(ctx, block.id, payload.characterId)
                 : asName(payload.speakerName ?? "");
             const voice = payload.voiceAssetId ? assetName(ctx, block.id, payload.voiceAssetId) : undefined;
-            const pause = payload.pauseAfter === true
-                ? asWord("click")
-                : typeof payload.pauseAfter === "number"
-                    ? asSeconds(payload.pauseAfter)
-                    : undefined;
             return {
                 form: "statement",
                 verb: "dialogue",
                 slots: {
                     speaker,
                     voice,
-                    pause,
                     text: { kind: "text", text: textOf(ctx, block.id, payload.text, "dialogueText") },
                 },
             };
