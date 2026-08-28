@@ -334,57 +334,6 @@ describe("extractUIDocumentAssetReferences", () => {
         expect(references[0].dormant).toBeUndefined();
     });
 
-    it("reads the legacy bare assetId on nl.image", () => {
-        const references = uiReferences(doc([uiElement("e1", "nl.image", { assetId: "legacy-1" })]));
-
-        expect(references[0]).toMatchObject({ assetId: "legacy-1", field: "assetId" });
-    });
-
-    it("keeps the legacy prop as a dormant reference when an imageFill supplies the picture", () => {
-        // `getImageWidgetRectangleProps` renders img-1, so legacy-1 draws nothing today - but
-        // clearing the fill brings it back, which is the whole point of reporting dormant sites.
-        const references = uiReferences(
-            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "image", imageFill: { mode: "cover", assetId: "img-1" } })]),
-        );
-
-        const byAsset = Object.fromEntries(references.map(reference => [reference.assetId, reference]));
-        expect(Object.keys(byAsset).sort()).toEqual(["img-1", "legacy-1"]);
-        expect(byAsset["img-1"].dormant).toBeUndefined();
-        expect(byAsset["legacy-1"].dormant).toBe(true);
-    });
-
-    it("still reads the legacy prop when imageFill exists but holds no asset", () => {
-        // The runtime gates on `!hasAssetInFill`, not on the presence of the object. Testing for the
-        // object dropped this reference and the widget rendered an asset nothing claimed to use.
-        const references = uiReferences(
-            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", imageFill: { mode: "cover", assetId: null } })]),
-        );
-
-        expect(references).toHaveLength(1);
-        expect(references[0]).toMatchObject({ assetId: "legacy-1", field: "assetId" });
-        expect(references[0].dormant).toBeUndefined();
-    });
-
-    it("treats the legacy prop as live even when fillType says colour", () => {
-        // The legacy upgrade forces `fillType: "image"`, so reading the stored fillType inverted the
-        // flag and showed a live reference as "inactive" in the delete dialog.
-        const references = uiReferences(
-            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", fillType: "color" })]),
-        );
-
-        expect(references).toHaveLength(1);
-        expect(references[0].dormant).toBeUndefined();
-    });
-
-    it("marks the legacy prop dormant when a backgroundImage wins instead", () => {
-        const references = uiReferences(
-            doc([uiElement("e1", "nl.image", { assetId: "legacy-1", backgroundImage: "app://fs/abc" })]),
-        );
-
-        expect(references).toHaveLength(1);
-        expect(references[0]).toMatchObject({ assetId: "legacy-1", dormant: true });
-    });
-
     it("finds a Surface's background image, which no element holds", () => {
         const document = {
             ...doc([]),
@@ -406,8 +355,8 @@ describe("extractUIDocumentAssetReferences", () => {
     });
 
     it("reads a widget's bare assetId and posterAssetId", () => {
-        // Before `nl.video` this walk knew `imageFill`, `fontAssetId`, and `nl.image`'s legacy bare
-        // id - nothing else. A widget naming its prop `assetId` was preloaded by the shipped game
+        // Before `nl.video` this walk knew `imageFill` and `fontAssetId` and nothing else. A widget
+        // naming its prop `assetId` was preloaded by the shipped game
         // (`surfaceResourcePreload.ts` matches that literal name) and simultaneously absent from
         // "what uses this asset", which is the one place an author looks before deleting it.
         const references = uiReferences(

@@ -73,7 +73,7 @@ export function ServerProjectPicker({ value, onPick }: ServerProjectPickerProps)
             setProblem(PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
             return;
         }
-        setProjects(result.value);
+        setProjects(result.value.projects);
     }, []);
 
     useEffect(() => {

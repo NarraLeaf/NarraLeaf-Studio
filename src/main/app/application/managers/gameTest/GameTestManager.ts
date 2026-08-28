@@ -459,7 +459,7 @@ export class GameTestManager {
         try {
             session.controlPort = await allocateLocalPort();
             this.ensureNotCancelled(session);
-            this.emitConsole(session, "verbose", "artifact compile started");
+            this.emitConsole(session, "verbose", "game compile started");
 
             const pluginSelection = await this.selectRuntimePlugins(session.projectPath);
             if (pluginSelection.errors.length > 0) {
@@ -507,7 +507,7 @@ export class GameTestManager {
             });
             session.compileWorker = null;
             this.ensureNotCancelled(session);
-            this.emitConsole(session, "verbose", `artifact compile finished: ${artifact.copiedAssetCount} asset(s)`);
+            this.emitConsole(session, "verbose", `game compiled: ${artifact.copiedAssetCount} asset(s)`);
 
             const binary = resolvePreviewRunnerBinaryForApp(this.app);
             // The last point at which a cancel is free: everything from here to the end of this
@@ -701,7 +701,7 @@ export class GameTestManager {
             });
             const exited = await waitForChildExit(child, SHUTDOWN_TIMEOUT_MS);
             if (!exited && isChildRunning(child)) {
-                this.emitConsole(session, "warning", "the game did not exit in time; killing it");
+                this.emitConsole(session, "warning", "the game did not exit in time; stopping the process");
                 child.kill("SIGTERM");
                 await waitForChildExit(child, FORCE_KILL_GRACE_MS);
                 if (isChildRunning(child)) {

@@ -248,12 +248,35 @@ function readServerRevision(value: unknown): VcsServerRevision | null {
     };
 }
 
+/**
+ * A list a server answers in one go, and how many rows it holds in all.
+ *
+ * **`total` above the length of the list means the answer was cut**, and there is no
+ * cursor to ask for the rest with. That is the shape on the wire rather than an omission
+ * here: a server bounds these two lists instead of paging them, because a cursor only
+ * bounds anything if every client honours it and a client reading them whole would go on
+ * drawing the first page and calling it the whole server. The count is what it has
+ * instead, and it is the only thing that says the list in hand is short.
+ *
+ * So a screen drawing one of these has something to say when the two differ. Nothing here
+ * decides what: the library's job is that a caller cannot fail to be told.
+ */
+export interface ProjectListing {
+    projects: VcsServerProject[];
+    /** How many the server holds, whatever the ceiling on one answer left out. */
+    total: number;
+}
+
 /** Every project on a server, over the session rather than over the REST route. */
-export async function listProjects(remoteOrigin: string): Promise<TeamOutcome<VcsServerProject[]>> {
+export async function listProjects(remoteOrigin: string): Promise<TeamOutcome<ProjectListing>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.projectsList);
     if (!answered.ok) return answered;
     const projects = readList(answered.value, "projects", readServerProject);
-    return projects === null ? unreadable() : { ok: true, value: projects };
+    const from = record(answered.value);
+    if (projects === null || from === null) return unreadable();
+    // A server too old to state one held everything it listed, so the length is the
+    // honest count for it - and never a figure below the rows actually in hand.
+    return { ok: true, value: { projects, total: count(from, "total") ?? projects.length } };
 }
 
 /**
@@ -317,8 +340,15 @@ export async function forgetProject(
     return answered.ok ? { ok: true, value: {} } : answered;
 }
 
+/** Every account on a server, and how many there are. Bounded the way {@link ProjectListing} is. */
+export interface MemberListing {
+    members: VcsServerMember[];
+    /** How many the server holds, whatever the ceiling on one answer left out. */
+    total: number;
+}
+
 /** Every account on a server, as a name beside a piece of work. */
-export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<VcsServerMember[]>> {
+export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<MemberListing>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.membersList);
     if (!answered.ok) return answered;
     const members = readList(answered.value, "members", (item) => {
@@ -339,7 +369,9 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Vcs
             ...(createdAt === undefined ? {} : { createdAt }),
         } satisfies VcsServerMember;
     });
-    return members === null ? unreadable() : { ok: true, value: members };
+    const from = record(answered.value);
+    if (members === null || from === null) return unreadable();
+    return { ok: true, value: { members, total: count(from, "total") ?? members.length } };
 }
 
 /* ---------------------------------------------------------------- conversations */
@@ -369,18 +401,40 @@ export async function listThreads(
     return { ok: true, value: { threads, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
-/** One thread and everything in it. */
+export interface ThreadWithComments {
+    thread: TeamThread;
+    /** Oldest first, which is the order a conversation is read in. */
+    comments: TeamComment[];
+    /** Where to carry on from, absent once the last comment is in hand. Opaque; hand it back as it came. */
+    cursor?: string;
+}
+
+/**
+ * One thread, and a page of what has been said in it.
+ *
+ * A page rather than the whole conversation, because a server will not build an
+ * answer of unbounded size and nothing stops an account writing a hundred
+ * thousand comments on one thread. `thread.comments` is how many there are in
+ * all, so a reader knows what this is a page of, and the cursor is how it asks
+ * for the next one — the same shape {@link listThreads} has.
+ *
+ * Whoever draws a conversation decides what to do about the rest of it. What
+ * this must not do is answer with the first fifty and let them read as all of
+ * them, which is what a client that ignored the cursor would show.
+ */
 export async function getThread(
     remoteOrigin: string,
     thread: string,
-): Promise<TeamOutcome<{ thread: TeamThread; comments: TeamComment[] }>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread });
+    within: { limit?: number; after?: string } = {},
+): Promise<TeamOutcome<ThreadWithComments>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread, ...within });
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const read = from === null ? null : readThread(from["thread"]);
     const comments = readList(answered.value, "comments", readComment);
     if (read === null || comments === null) return unreadable();
-    return { ok: true, value: { thread: read, comments } };
+    const cursor = from === null ? undefined : text(from, "cursor");
+    return { ok: true, value: { thread: read, comments, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
 /** Open a conversation on an anchor, with the comment that starts it. */
@@ -807,6 +861,18 @@ export interface OverlayReading {
     head?: string;
     /** How many records the whole project holds, whatever this read narrowed to. */
     total: number;
+    /**
+     * Where to carry on from, absent once the last record is in hand. Opaque; hand it
+     * back as `before` on the next read.
+     *
+     * **Present means this is a page and not the whole of what was asked for.** An
+     * overlay record's body may be 64 KiB, so a project carrying a few long ones is past
+     * what a server puts in one answer, and what comes back is the first page of it.
+     * Whoever draws the records decides what to do about the rest; what this must not do
+     * is hand back part of a project's overlay and let it read as all of it - the same
+     * shape {@link ThreadPage} has, and for the same reason.
+     */
+    cursor?: string;
 }
 
 /**
@@ -820,7 +886,15 @@ export interface OverlayReading {
 export async function listOverlay(
     remoteOrigin: string,
     project: string,
-    within: { document?: string; element?: string; kind?: string; revision?: string; limit?: number } = {},
+    within: {
+        document?: string;
+        element?: string;
+        kind?: string;
+        revision?: string;
+        limit?: number;
+        /** The cursor from the previous page. Nothing else belongs here. */
+        before?: string;
+    } = {},
 ): Promise<TeamOutcome<OverlayReading>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayList, { project, ...within });
     if (!answered.ok) return answered;
@@ -828,9 +902,15 @@ export async function listOverlay(
     const from = record(answered.value);
     if (records === null || from === null) return unreadable();
     const head = text(from, "head");
+    const cursor = text(from, "cursor");
     return {
         ok: true,
-        value: { records, ...(head === undefined ? {} : { head }), total: count(from, "total") ?? records.length },
+        value: {
+            records,
+            ...(head === undefined ? {} : { head }),
+            total: count(from, "total") ?? records.length,
+            ...(cursor === undefined ? {} : { cursor }),
+        },
     };
 }
 

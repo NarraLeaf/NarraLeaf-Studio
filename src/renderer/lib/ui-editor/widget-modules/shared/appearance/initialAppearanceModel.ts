@@ -15,7 +15,6 @@ import type { ContainerWidgetProps } from "@shared/types/ui-editor/container";
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { buttonPropsToImageFillBaseline } from "@/lib/ui-editor/widget-modules/builtin/button/helpers";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 
 /** Stable id for the primary variant (blueprint / runtime default). */
@@ -599,7 +598,7 @@ export function patchTextAppearanceDefaultRows(
  * Append missing property groups for older `nl.image` documents (pre-appearance or pre-transform keys).
  */
 export function ensureImageAppearanceHasAllKeys(model: AppearanceModel, element: UIElement): AppearanceModel {
-    const rl = getImageWidgetRectangleProps(element);
+    const rl = getRectangleLikeProps(element);
     let changed = false;
     const variants = model.variants.map(v => {
         const have = new Set(v.propertyGroups.map(g => g.key));

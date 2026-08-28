@@ -23,6 +23,7 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
+import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
 import type { LiveUIOp } from "@shared/live/ops";
 import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
@@ -1627,7 +1628,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
-        return this.normalizeInputModel(this.migrateSchemaVersion(document));
+        return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+    }
+
+    /**
+     * Every `nl.image` written in the shape that came before `imageFill`, rewritten into it.
+     *
+     * A normalizer rather than a numbered migration, for the reason `normalizeInputModel` gives: it
+     * reconstructs nothing a reader could not have derived, so a document that has been through it
+     * is not a different schema. What makes it worth running at all is that it *converges* - the
+     * load path saves when normalizing changed anything, so an old element is rewritten once and
+     * the translation stops having to live at render time.
+     *
+     * Component definitions are walked as well as surfaces. A component's elements are the same
+     * elements with a different owner, and one authored before the current shape would otherwise
+     * keep the old keys wherever it was placed.
+     */
+    private normalizeLegacyImageProps(document: UIDocument): UIDocument {
+        const pools = [document.elements, ...(document.components ?? []).map(component => component.elements)];
+        for (const pool of pools) {
+            for (const element of Object.values(pool ?? {})) {
+                if (element.type !== UI_IMAGE_ELEMENT_TYPE) {
+                    continue;
+                }
+                const folded = foldLegacyImageProps(element.props);
+                if (folded) {
+                    element.props = folded;
+                }
+            }
+        }
+        return document;
     }
 
     /**

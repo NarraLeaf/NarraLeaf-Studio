@@ -195,7 +195,7 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            setProjects(result.value);
+            setProjects(result.value.projects);
         })();
     }, [chosen, reload]);
 

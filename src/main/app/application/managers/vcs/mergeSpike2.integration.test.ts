@@ -2,7 +2,7 @@ import crypto from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     branchMergeResolve,
@@ -31,6 +31,7 @@ import {
 // field declared `LoreString` has to be handed the encoded value, not a bare string.
 import { loreString, loreStringArray } from "./lore/values";
 import { blobAt, listFilesAt, mergeBase, readEntryBytes, readRevisionGraph, threeWay } from "./revisionReader";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
@@ -65,7 +66,7 @@ import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote"
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const remoteEnabled = supported && SERVER !== "";
 
 const DOCUMENT = "doc.json";
@@ -150,16 +151,19 @@ function tmp(prefix: string): string {
     return root;
 }
 
+/** The author these spikes commit as, and the identity a run with no token goes online as. */
+const AUTHOR = "spike@narraleaf";
+
 /**
  * `storeKeepAlive` left unset on purpose: with it on, every flush waits out the
  * keep-alive window (§4.22, ~10 s measured) and these experiments flush repeatedly.
  */
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "spike@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 function track(session: Session): Session {
@@ -567,6 +571,11 @@ describe.skipIf(!supported)("L3 - branchMergeResolveTheirs alone", () => {
 // ===========================================================================
 
 describe.skipIf(!remoteEnabled)("R1 - resolving a sync conflict", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("names every event the sync emits, then resolves with hand-written bytes", async () => {
         const observations: Record<string, unknown> = {};
         try {
@@ -736,6 +745,11 @@ describe.skipIf(!remoteEnabled)("R1 - resolving a sync conflict", () => {
  * hypothesis under test is that a connected repository's store needs the remote.
  */
 describe.skipIf(!remoteEnabled)("R2 - blob reads on a connected repository", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("isolates which step of connecting a server breaks blobAt", async () => {
         const observations: Record<string, unknown> = {};
         try {

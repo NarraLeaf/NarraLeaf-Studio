@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 import { isVcsSignInAddress, vcsAuthorityIsVouchedFor } from "@shared/types/vcs";
 import type { VcsServerAuthority } from "@shared/types/vcs";
 import { authorityInstallPlan } from "./authorityTrust";
-import { VcsSignInError, decodeServerAccount, readSignInToken, signInToServer } from "./serverSession";
+import {
+    VcsSignInError,
+    decodeServerAccount,
+    isSignInRefusal,
+    readSignInToken,
+    signInToServer,
+} from "./serverSession";
 
 /**
  * Reading a token, and refusing the things that are not one.
@@ -240,5 +246,40 @@ describe("the install plan", () => {
         const plan = authorityInstallPlan(certificate);
         if (process.platform === "win32") expect(plan.argv).toContain("-user");
         if (process.platform === "darwin") expect(plan.argv).not.toContain("-d");
+    });
+});
+
+
+describe("telling a refusal from anything else the endpoint says", () => {
+    /**
+     * The sentence a real server sends, measured against loreserver 0.8.6 behind a Team
+     * auth endpoint that had already been trusted on this machine.
+     *
+     * It reads as a refusal to a person and used to read as `unknown` to Studio, which
+     * meant the panel offered "The server could not be added" instead of the sentence
+     * that names the cause and the remedy.
+     */
+    const MEASURED =
+        `authLoginWithToken: exchanging external token: code: `
+        + `'The request does not have valid authentication credentials', `
+        + `message: "the token presented for exchange was not accepted"`;
+
+    it("reads the sentence a server sends for a token it will not take", () => {
+        expect(isSignInRefusal(MEASURED)).toBe(true);
+    });
+
+    it("still reads the wordings that were already known", () => {
+        expect(isSignInRefusal("rpc error: code = Unauthenticated")).toBe(true);
+        expect(isSignInRefusal("permission denied for this repository")).toBe(true);
+        expect(isSignInRefusal("token is expired")).toBe(true);
+        expect(isSignInRefusal("invalid signature")).toBe(true);
+    });
+
+    it("does not read the failures that are somebody else's to explain", () => {
+        // The transport branch answers these before this predicate is reached, and it has
+        // a remedy of its own: nothing here may take them.
+        expect(isSignInRefusal("transport error")).toBe(false);
+        expect(isSignInRefusal("failed to connect to auth endpoint")).toBe(false);
+        expect(isSignInRefusal("no authentication implementation registered for scheme")).toBe(false);
     });
 });
