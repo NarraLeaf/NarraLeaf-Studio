@@ -65,6 +65,7 @@
     "admin.settings.set",
     "admin.keys.list",
     "admin.keys.rotate",
+    "admin.keys.retire",
     "admin.audit.list",
     "admin.server.status"
   ],
