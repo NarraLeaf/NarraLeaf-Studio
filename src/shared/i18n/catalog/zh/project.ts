@@ -19,8 +19,8 @@ export const project = {
             description: "颜色、字体，以及由它们上色的控件",
         },
         project: {
-            title: "工程",
-            description: "分发密钥、工程检查规则，以及会中止构建的条件",
+            title: "项目",
+            description: "分发密钥、项目检查规则，以及会中止构建的条件",
         },
         runtimes: {
             title: "运行时",
@@ -53,7 +53,7 @@ export const project = {
         brandControls: "控件",
         typography: "字体",
         distribution: "分发密钥",
-        linting: "工程检查",
+        linting: "项目检查",
         security: "安全",
         signing: "签名",
         imageCompression: "图像压缩",
@@ -82,17 +82,17 @@ export const project = {
         backAria: "返回项目概览",
     },
     /**
-     * 工程页面的设置只读时，写在页面顶部的那句话。
+     * 项目页面的设置只读时，写在页面顶部的那句话。
      *
-     * 工程配置是一份文件，任何冻结都不会放它过去，所以这些字段是一起变灰的——
+     * 项目配置是一份文件，任何冻结都不会放它过去，所以这些字段是一起变灰的——
      * 而在已经禁用的字段上放提示，本来就很难摸到。
      *
      * ⚠ 会话那句**不列举**还能编辑的是哪些。这些页面能到的三张表各有自己的文档、由会话携带，
      * 在这里点名它们等于留一份会落后于词汇表的清单；「会话携带的那些」不会落后。
      */
     frozen: {
-        live: "实时会话期间，工程自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
-        frozen: "工程被冻结期间，工程自身的设置是只读的。",
+        live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
+        frozen: "项目被冻结期间，项目自身的设置是只读的。",
     },
     details: {
         nameLabel: "应用名称",
@@ -141,7 +141,7 @@ export const project = {
             persistence: "持久变量、已解锁内容与插件数据",
         },
     },
-    // 变体：同一个工程能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
+    // 变体：同一个项目能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
     appTags: {
         add: "新增变体",
@@ -164,7 +164,7 @@ export const project = {
         assetAxesTitle: "本版本使用的美术",
         assetAxisUnset: "与正式版相同",
         // 该变体的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
-        // 清单一起覆盖：一个变体要么有自己的清单，要么读工程的。
+        // 清单一起覆盖：一个变体要么有自己的清单，要么读项目的。
         // 该变体的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
         ending: {
             title: "剧本结束后显示的页面",
@@ -419,7 +419,7 @@ export const project = {
         encryptAssetsWebHint: "Web 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
-        signingDescription: "为每个平台指定签名凭据。证书与密码仅保存在本机，工程中仅记录所选凭据",
+        signingDescription: "为每个平台指定签名凭据。证书与密码仅保存在本机，项目中仅记录所选凭据",
         imageModeTitle: "图像压缩方式",
         imageWebpQualityTitle: "WebP 质量",
         imageWebpQualityDescription: "传给 WebP 编码器的质量，取值 1 到 100",
@@ -436,15 +436,15 @@ export const project = {
         videoMaxHeightTitle: "视频最大高度",
         videoMaxHeightDescription: "高度超过这个像素数的视频会被缩小；填 0 保持原有尺寸",
         compressImagesTitle: "启用图像压缩",
-        compressImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        compressImagesDescription: "将图像重编码为有损 WebP，对本项目构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
         imageQualityTitle: "图像质量",
         imageQualityDescription: "压缩图像时使用的质量，取值 1 到 100",
         compressAudioTitle: "启用音频压缩",
-        compressAudioDescription: "将音频重编码为有损 AAC，对本工程构建的每一个包生效；体积明显更小，损失的音质无法恢复",
+        compressAudioDescription: "将音频重编码为有损 AAC，对本项目构建的每一个包生效；体积明显更小，损失的音质无法恢复",
         audioQualityTitle: "音频质量",
         audioQualityDescription: "压缩音频时使用的质量，取值 1 到 100",
         compressVideoTitle: "启用视频压缩",
-        compressVideoDescription: "将视频重编码为有损 VP9，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        compressVideoDescription: "将视频重编码为有损 VP9，对本项目构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
         videoQualityTitle: "视频质量",
         videoQualityDescription: "压缩视频时使用的质量，取值 1 到 100",
         // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。

@@ -30,7 +30,7 @@ export const properties = {
             answersNone: "该界面不响应任何意图",
             addActions: "添加意图",
             addTitle: "添加意图",
-            addEmpty: "本工程的意图该界面都已响应",
+            addEmpty: "本项目的意图该界面都已响应",
             addConfirm: "添加",
             addCreate: "创建意图",
             removeAction: "不再响应 {name}",

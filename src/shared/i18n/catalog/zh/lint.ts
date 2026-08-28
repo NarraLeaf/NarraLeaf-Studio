@@ -18,11 +18,11 @@ export const lint = {
     rule: {
         assetsUnused: {
             title: "未使用的资产",
-            description: "工程中没有任何引用指向该资产",
+            description: "项目中没有任何引用指向该资产",
             message: "{asset} 未被任何位置引用",
             messageIndexUnresolved: "未能列出未使用的资产：{location} 指向的资产无法识别",
             messageIndexUnreadable: "未能列出未使用的资产：{location} 无法读取",
-            messageIndexNotBuilt: "未能列出未使用的资产：本工程无法扫描",
+            messageIndexNotBuilt: "未能列出未使用的资产：本项目无法扫描",
         },
         assetsMissing: {
             title: "资产缺失",
@@ -37,8 +37,8 @@ export const lint = {
         },
         assetsOversized: {
             title: "过大的文件",
-            description: "构建携带的文件超过本工程设定的大小上限",
-            // 两个数字都写进句子：这个文件多大，以及工程定的是多少，这样不用打开设置页也能处理。
+            description: "构建携带的文件超过本项目设定的大小上限",
+            // 两个数字都写进句子：这个文件多大，以及项目定的是多少，这样不用打开设置页也能处理。
             message: "{asset} 为 {size}，超过构建可携带的 {limit}",
         },
         assetsGroupIncomplete: {
@@ -74,13 +74,13 @@ export const lint = {
         },
         networkFetchNotAllowlisted: {
             title: "不在白名单内的地址",
-            description: "Fetch 节点指向本工程不允许的地址",
-            message: "{url} 不在本工程的网络请求白名单内",
+            description: "Fetch 节点指向本项目不允许的地址",
+            message: "{url} 不在本项目的网络请求白名单内",
         },
         networkFetchDisallowed: {
             title: "无网络许可的网络节点",
-            description: "网络策略为不允许联网的工程中存在网络节点",
-            message: "{blueprint} 发起网络请求，本工程的网络策略不允许",
+            description: "网络策略为不允许联网的项目中存在网络节点",
+            message: "{blueprint} 发起网络请求，本项目的网络策略不允许",
         },
         storyInvalidCommand: {
             title: "无效指令",
@@ -104,7 +104,7 @@ export const lint = {
         },
         storyJumpMissing: {
             title: "场景缺失",
-            description: "jump 指向工程中不存在的场景",
+            description: "jump 指向项目中不存在的场景",
             message: "跳转目标场景在故事中已不存在",
         },
         storyEmptyChoice: {
@@ -135,8 +135,8 @@ export const lint = {
         },
         storyAppTagUnknown: {
             title: "未知的构建变体",
-            description: "该行比较的构建变体在工程中不存在",
-            message: "工程中没有名为「{name}」的构建变体，该行不会进入任何构建",
+            description: "该行比较的构建变体在项目中不存在",
+            message: "项目中没有名为「{name}」的构建变体，该行不会进入任何构建",
         },
         storyRowsAfterEnding: {
             title: "结局之后的行",
@@ -152,10 +152,10 @@ export const lint = {
         },
         storyCutPointOrphan: {
             title: "没有对应变体的截断点",
-            description: "工程中没有构建变体时写下的截断点",
+            description: "项目中没有构建变体时写下的截断点",
             // 这一行是失效而不是写错，所以句子说的是它现在的状态，而不是作者做了什么。两种处理都写进去，
             // 因为任何一种都是完整的答案。
-            message: "本工程没有构建变体，该截断点不会截断任何内容。可新增构建变体，或删除该行",
+            message: "本项目没有构建变体，该截断点不会截断任何内容。可新增构建变体，或删除该行",
         },
         storyCutPointUnreachable: {
             title: "无法到达的截断点",
@@ -183,10 +183,10 @@ export const lint = {
         },
         storyCharacterMissing: {
             title: "不存在的角色",
-            description: "该行指定的角色不在本工程中",
+            description: "该行指定的角色不在本项目中",
             // 句子里不写出对象：引用解析不到时只剩存下来的 id，而它是一个 UUID，
-            // 把 UUID 写进报告等于给作者一个在工程里搜不到的词。
-            message: "该行指定的角色不在本工程中",
+            // 把 UUID 写进报告等于给作者一个在项目里搜不到的词。
+            message: "该行指定的角色不在本项目中",
         },
         storyTransitionUnavailable: {
             title: "转场不可用",
@@ -196,29 +196,29 @@ export const lint = {
         },
         blueprintReferenceMissing: {
             title: "目标缺失",
-            description: "节点指向工程中已不存在的对象",
+            description: "节点指向项目中已不存在的对象",
             // 兜底句；每一类都另有自己的句子，因为「对象」正是作者没法据以行动的那个词。
-            message: "指向的对象在工程中已不存在",
+            message: "指向的对象在项目中已不存在",
             messageSurface: "打开的页面已不存在",
             messageStory: "开始的故事已不存在",
             messageScene: "指向的场景已不存在",
             messageChoice: "指向的选项已不存在",
             messageEnding: "指向的结局已不存在",
             messageCharacter: "指向的角色已不存在",
-            messageTextKey: "指向的文本键在工程中未声明",
-            messageDlc: "指向的 DLC 在工程中不存在",
-            messageInputAction: "指向的输入意图在工程中未声明",
+            messageTextKey: "指向的文本键在项目中未声明",
+            messageDlc: "指向的 DLC 在项目中不存在",
+            messageInputAction: "指向的输入意图在项目中未声明",
         },
         blueprintElementRefMissing: {
             title: "控件缺失",
-            description: "节点绑定的控件在工程中已不存在",
+            description: "节点绑定的控件在项目中已不存在",
             message: "绑定的控件已不存在",
         },
         blueprintFnTargetMissing: {
             title: "函数缺失",
             description: "Call Fn 节点调用的函数在当前作用域中不存在",
             // 兜底句，用于没有签名快照的调用：那时只剩一对 id，
-            // 把 id 写进报告等于给作者一个在工程里搜不到的词。
+            // 把 id 写进报告等于给作者一个在项目里搜不到的词。
             message: "调用的函数在当前作用域中不存在",
             messageNamed: "调用的 {name} 在当前作用域中不存在",
         },
@@ -239,7 +239,7 @@ export const lint = {
         },
         uiUnlocalizedText: {
             title: "未本地化的文本",
-            description: "工程已有第二种语言，文本仍直接写在控件上",
+            description: "项目已有第二种语言，文本仍直接写在控件上",
             message: "{text} 未绑定本地化键",
         },
         uiPageUnreachable: {
@@ -254,13 +254,13 @@ export const lint = {
         },
         uiComponentMissing: {
             title: "缺失的组件",
-            description: "引用了工程中不存在的组件的实例",
-            message: "该实例引用的组件在此工程中不存在",
+            description: "引用了项目中不存在的组件的实例",
+            message: "该实例引用的组件在此项目中不存在",
         },
         uiFrameTargetMissing: {
             title: "缺失的嵌入页面",
-            description: "页面控件嵌入了工程中不存在的页面",
-            message: "该页面控件嵌入的页面在此工程中不存在",
+            description: "页面控件嵌入了项目中不存在的页面",
+            message: "该页面控件嵌入的页面在此项目中不存在",
         },
         uiListItemFieldMissing: {
             title: "条目字段不存在",
@@ -299,7 +299,7 @@ export const lint = {
         },
         variablesReadNeverWritten: {
             title: "永远不会变的条件",
-            description: "条件判断读取了某个变量，而整个工程从来没有给它赋过值",
+            description: "条件判断读取了某个变量，而整个项目从来没有给它赋过值",
             message: "{count} 处条件判断读取了 {variable}，但没有任何地方给它赋值",
         },
         variablesRandomOutsideAssignment: {
@@ -346,18 +346,18 @@ export const lint = {
         },
         voiceStale: {
             title: "语音过期",
-            description: "台词在录音之后发生过修改",
-            message: "{locale} 录音比台词旧",
+            description: "对白在录音之后发生过修改",
+            message: "{locale} 录音比对白旧",
         },
         voiceOrphan: {
             title: "孤立的语音",
-            description: "对应的台词已不存在",
+            description: "对应的对白已不存在",
             message: "{count} 条 {locale} 录音没有对应的行",
         },
         brandBrokenLink: {
             title: "断开的颜色链接",
             description: "颜色指向无法解析的配色条目",
-            // 这三条和多数规则相反，会在句子里点出自己的出处：这类问题挂在工程上，
+            // 这三条和多数规则相反，会在句子里点出自己的出处：这类问题挂在项目上，
             // 旁边那一列位置是空的，{where} 是几十条同类问题之间唯一的区分。
             message: "{where} 使用的 {color} 不在配色方案中",
             messageChain: "{where} 使用的 {color} 指向 {missing}，配色方案中没有该颜色",
@@ -365,18 +365,18 @@ export const lint = {
         },
         typographyGlyphCoverage: {
             title: "缺少字形",
-            description: "文本用到了工程里任何字体都画不出的字符",
-            message: "工程字体画不出“{character}”（{count} 处）",
-            messageInLanguage: "{language}中工程字体画不出“{character}”（{count} 处）",
-            messageMore: "另有 {count} 个字符工程字体画不出",
-            messageMoreInLanguage: "{language}中另有 {count} 个字符工程字体画不出",
+            description: "文本用到了项目里任何字体都画不出的字符",
+            message: "项目字体画不出“{character}”（{count} 处）",
+            messageInLanguage: "{language}中项目字体画不出“{character}”（{count} 处）",
+            messageMore: "另有 {count} 个字符项目字体画不出",
+            messageMoreInLanguage: "{language}中另有 {count} 个字符项目字体画不出",
             messageUnreadable: "{font} 读不出来，未检查字形覆盖",
             messageUnloadable: "{font} 是 .{format} 字体，游戏无法用它绘制文字",
         },
         typographyLocaleNoFont: {
             title: "语言没有字体",
-            description: "工程里每一款字体都被限定给了别的语言",
-            message: "{language}没有可用的工程字体",
+            description: "项目里每一款字体都被限定给了别的语言",
+            message: "{language}没有可用的项目字体",
         },
     },
     message: {
@@ -424,7 +424,7 @@ export const lint = {
         lineAria: "第 {line} 行",
     },
     command: {
-        runProject: "检查工程",
+        runProject: "检查项目",
         category: "检查",
     },
     console: {
@@ -438,12 +438,12 @@ export const lint = {
         blocked: "{count} 个问题中止了构建",
         // 逐级写全「面板 → 分页 → 那一行」：这道闸默认开着，没进过这个面板的作者根本不知道
         // 有这么个设置，只说「在检查设置里」等于让人自己去翻。
-        blockedHint: "可在「项目 ▸ 工程 ▸ 构建前检查」中调整",
-        skipped: "已跳过工程检查",
+        blockedHint: "可在「项目 ▸ 项目 ▸ 构建前检查」中调整",
+        skipped: "已跳过项目检查",
     },
     settings: {
         runOnBuild: "构建前检查",
-        runOnBuildHint: "将工程检查纳入正式构建",
+        runOnBuildHint: "将项目检查纳入正式构建",
         failBuildOn: "中止构建的级别",
         failBuildOnError: "错误",
         failBuildOnWarning: "警告及错误",

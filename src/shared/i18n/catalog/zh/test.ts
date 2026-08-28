@@ -77,7 +77,7 @@ export const test = {
     builtin: {
         projectDiagnostics: {
             title: "项目诊断",
-            description: "将工程检查的全部规则作为一项测试运行",
+            description: "将项目检查的全部规则作为一项测试运行",
             summary: {
                 passed: "没有发现问题",
                 failed: "{errors} 个错误，{warnings} 个警告",
@@ -142,7 +142,7 @@ export const test = {
         reachableEndings: {
             title: "结局可达性",
             description: "故事的每一条路径是否都能走到 /ending",
-            // 跳过是正常状态：只说工程当前的样子，以及缺的那一样东西，不写成作者做错了什么。
+            // 跳过是正常状态：只说项目当前的样子，以及缺的那一样东西，不写成作者做错了什么。
             skipped: {
                 noEndings: "有入口的故事均未写入 /ending",
                 noEntryPoint: "没有故事标明起始位置",
