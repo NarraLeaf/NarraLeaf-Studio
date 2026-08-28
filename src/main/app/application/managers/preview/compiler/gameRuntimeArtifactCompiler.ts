@@ -56,6 +56,7 @@ import {
     type CodecPlacement,
 } from "../../../../../buildWorker/codecBinary";
 import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
+import { compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "../../../../../buildWorker/mainProcessBytecode";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
@@ -536,7 +537,28 @@ export async function compileGameRuntimeArtifact(
      * could answer for them.
      */
     const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell);
+    // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
+    // the experimental debuggable build stay readable source so an author can inspect and step
+    // through the real main process; the web shell has no main.js at all.
+    //
+    // The bytecode is produced by this build worker, so it carries the host's CPU architecture, and
+    // a V8 cache is not portable across architectures. One app directory serves every target in the
+    // build and main.js sits at its shared root, so bytecode is only safe when every architecture
+    // that root will be packaged for is the host's own. A universal macOS build (one root, two
+    // architectures) and any cross-architecture target (e.g. an Intel-Mac game from an Apple-Silicon
+    // Studio) therefore keep readable main.js - shipping bytecode there would refuse to boot on the
+    // player's machine. `runningPlatformKeysFor` expands each target key, universal included, into
+    // its `<platform>-<arch>` running keys; every one must be this host's.
+    // Re-keying the guard's masked table happens on every shipped desktop build; shipping it as
+    // bytecode additionally requires that every architecture the shared app root is packaged for is
+    // the host's own (a V8 cache does not port across architectures, and one app root serves every
+    // target - see the comment above and mainProcessBytecode.ts).
+    const reseedGuard = mode === "production" && input.debuggable !== true && shell === "electron";
+    const hostRunningKey = `${process.platform}-${process.arch}`;
+    const servedRunningKeys = nativePayloadKeys.flatMap(runningPlatformKeysFor);
+    const bytecodeMain = reseedGuard
+        && servedRunningKeys.length > 0 && servedRunningKeys.every(key => key === hostRunningKey);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell, bytecodeMain, reseedGuard);
     // The support binary ships for protection, and also for a build that carries a
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
@@ -1177,10 +1199,29 @@ async function copyRuntimeFiles(
     payloadDirFor: (platformKey: string) => string,
     /** Leave the interface code out; the caller puts it in the store instead. */
     sealsShell: boolean,
+    /** Ship main.js as V8 bytecode behind a small loader rather than as readable source. */
+    bytecodeMain: boolean,
+    /** Re-key the guard's masked table in main.js per game (applies whether or not it is bytecode). */
+    reseedGuard: boolean,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
         if (sealsShell && isSealedShellFile(fileName)) {
+            continue;
+        }
+        // A shipped, non-debuggable build hardens its main.js. The guard's masked table is re-keyed
+        // per game either way; then, when the target architecture is the host's, the readable source
+        // becomes a main.jsc image and main.js becomes the small loader that runs it. Only main.js -
+        // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
+        // renderer three go into the store (above). See mainProcessBytecode.ts.
+        if (fileName === "main.js" && reseedGuard) {
+            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            if (bytecodeMain) {
+                await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
+                await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
+            } else {
+                await fs.writeFile(path.join(appDir, fileName), source, "utf8");
+            }
             continue;
         }
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));

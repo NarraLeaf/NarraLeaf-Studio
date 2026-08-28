@@ -99,6 +99,7 @@ import {
     hasDebuggingSwitch,
     hasStartupSwitch,
     honoursDebuggableMarker,
+    REFUSAL_LOG_PREFIX,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
@@ -422,8 +423,11 @@ function refuseStartupArguments(): boolean {
     }
     // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
     // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing.
-    logRuntime("error", `refusing to start: this build does not accept ${refused.join(", ")}`);
+    // exits and says nothing. The fixed half of the line is masked in the bundle (it would otherwise
+    // be a plaintext beacon pointing a search straight at this refusal) and reconstructed here, so
+    // the log file still reads plainly. `REFUSAL_LOG_PREFIX` is "refusing to start: this build does
+    // not accept ".
+    logRuntime("error", `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`);
     app.quit();
     return true;
 }
