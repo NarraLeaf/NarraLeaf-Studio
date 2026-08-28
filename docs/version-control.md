@@ -886,12 +886,15 @@ authLoginWithToken: exchanging external token:
 守卫在 `src/renderer/apps/project-wizard/starterTemplateSettled.test.ts`：七条断言逐条对应
 上表那四个理由，每条都做过 non-vacuous 验证（把模板改坏，对应那条必红）。
 
-⚠ **留给协作的那半没有解**，写在这里备查：一份**已经在服务器上、且早于上述两次改形**的工程，
-第一个用新 Studio 打开它的人会拿到一项自己没做的改动（`uidoc.json` 一兆多），而**界面上没有任何
-一句话说那是格式升级**——版本轨只说「1 项变更 · 界面页面」。他若提交，仍在旧 Studio 上的队友
-就再也读不了这份文档（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION` 是**硬拒**，
-"UI document schema is newer than this Studio version"）；他若不提交，每个人都永远背着同一项
-幽灵改动，并且每次合并都会撞上。要不要在界面上说明、以及要不要拦住这次提交，是产品决定。
+**混版本不在射程内，这是裁决而不是疏漏**（2026-08-28，用户）。Studio 还没发布，眼下正是在为发布
+**砍掉**更早的兼容形状，所以「一队人跑着两个 Studio 版本」这个人群目前不存在：地板以下的文档直接
+拒绝，收敛把还在的旧形状一次改写掉，都是有意的。上面那段现象因此只会落在**本机的老工程**上，
+打开一次就过去了。
+
+发布之后混版本才成立，届时要面对的是这三件事，先记在这里免得重新推导一遍：老工程升级格式时，
+① 版本轨只说「1 项变更 · 界面页面」，没有一句话说那是格式升级；② 升级一旦提交，仍在旧 Studio 上
+的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
+than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
 
 ## 5. 服务端策略
 
