@@ -41,6 +41,10 @@ const lore = vi.hoisted(() => {
                 lore.wrote.push({ root, url });
                 return undefined;
             },
+            readRevisionGraph: async () => {
+                calls.push("history");
+                return new Map();
+            },
             cloneInto: async () => {
                 calls.push("clone");
                 if (lore.missing.count > 0) {
@@ -111,7 +115,12 @@ describe("cloning against a backend that has lost its session", () => {
         const cloned = await new VcsManager(fakeApp()).cloneRepository(REMOTE, DESTINATION);
 
         expect(cloned.fileCount).toBe(12);
-        expect(lore.calls).toEqual(["clone", "signIn", "clone", "release", "writeRemote"]);
+        // `history` is the prefetch that makes the copy's own past readable offline; it runs last,
+        // after the address is written, and opens a store of its own to do it - which is the second
+        // `release`. See `VcsManager.fetchRevisionHistory`. Every case below that has no `history`
+        // is one where the clone itself threw, so there is no copy to prefetch anything into.
+        expect(lore.calls)
+            .toEqual(["clone", "signIn", "clone", "release", "writeRemote", "history", "release"]);
         // The token goes to the server the copy is coming from, on the address the session
         // recorded - not to a repository, which is a store this does not touch.
         expect(lore.signIn).toHaveBeenCalledWith(
