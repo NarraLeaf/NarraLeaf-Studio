@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { runtimeSupportPathFor } from "@narraleaf/encryption";
+import { GAME_BUILD_ARCHS_BY_PLATFORM } from "@shared/types/gameBuild";
 import {
     codecTargetFor,
     hostCodecTarget,
@@ -36,6 +37,30 @@ describe("codecTargetFor", () => {
 
     it("names this machine the way the package names its directories", () => {
         expect(hostCodecTarget()).toBe(`${process.platform}-${process.arch}`);
+    });
+
+    /*
+     * Driven off the list the build dialog offers rather than a list written
+     * here, because the two drifting apart is the failure: the codec package
+     * shipped four images while Studio offered six desktop targets, and a
+     * protected build for either arm64 desktop had nothing to ship. Nothing said
+     * so - the compiler asked for the host's image and got it.
+     */
+    it("has a real image for every desktop target a build can be asked for", async () => {
+        for (const [platform, archs] of Object.entries(GAME_BUILD_ARCHS_BY_PLATFORM)) {
+            for (const arch of archs) {
+                const key = `${platform}-${arch}`;
+                const target = codecTargetFor(key);
+                expect(target, `no codec target for ${key}`).not.toBeNull();
+                if (target === UNIVERSAL_CODEC_TARGET) {
+                    for (const slice of UNIVERSAL_CODEC_SLICES) {
+                        await expect(fs.access(runtimeSupportPathFor(slice))).resolves.toBeUndefined();
+                    }
+                } else {
+                    await expect(fs.access(runtimeSupportPathFor(target as string))).resolves.toBeUndefined();
+                }
+            }
+        }
     });
 });
 
