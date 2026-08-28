@@ -439,7 +439,7 @@ export const settings = {
                 },
                 browser: {
                     label: "界面缓存",
-                    description: "界面为加快下次启动而保留的数据",
+                    description: "为加快启动而保留的界面状态",
                 },
                 pluginIcons: {
                     label: "插件商店缩略图",
@@ -451,7 +451,7 @@ export const settings = {
                 },
                 spellcheckDictionaries: {
                     label: "拼写词典",
-                    description: "为拼写检查下载的词表。工程自己的词条不在这里",
+                    description: "为拼写检查下载的词表，不含工程自己的词条",
                 },
                 optimizedImages: {
                     label: "构建重编码图像",
@@ -462,7 +462,7 @@ export const settings = {
                     description: "构建时重新编码的音频与视频。下次构建会重新生成",
                 },
                 psdImports: {
-                    label: "PSD 导入残留",
+                    label: "PSD 导入临时文件",
                     description: "导入 PSD 时写下的分层图片",
                 },
                 logs: {
