@@ -2,7 +2,7 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetAppearance = {
     panel: {
-        invalidModel: "此元素没有有效的外观数据，请从资产面板新建一个",
+        invalidModel: "此元素缺少有效的外观数据，在资产面板中新建",
     },
     state: {
         label: "状态",
@@ -16,7 +16,7 @@ export const widgetAppearance = {
         on: "开",
         off: "关",
         openMenuAria: "打开动画字段菜单",
-        offHint: "该字段的动效已关闭，请开启后再配置时长与缓动效果",
+        offHint: "该字段的动效已关闭，开启后再配置时长与缓动效果",
         enable: "启用动效",
         clearFieldTitle: "清除该字段的动效",
         type: "类型",
@@ -52,7 +52,7 @@ export const widgetAppearance = {
         sidesTitle: "边框各边",
         sidesExpandAria: "展开边框各边",
         toggleVisibilityAria: "切换边框可见性",
-        multipleSidesHint: "多边样式，请使用紧凑边框面板进行编辑",
+        multipleSidesHint: "多边样式，使用紧凑边框面板编辑",
         styleLabel: "边框样式",
         styleSolid: "实线",
         styleDashed: "虚线",
@@ -123,11 +123,11 @@ export const widgetAppearance = {
         active: "激活",
         disabled: "禁用",
         focused: "聚焦",
-        addOverride: "添加{state}",
-        removeOverride: "移除{state}",
+        addOverride: "添加 {state}",
+        removeOverride: "移除 {state}",
         addRemoveAria: "添加或移除状态覆盖",
         removeOverrideTitle: "移除状态覆盖",
-        removeConfirm: "移除此模块的所有{state}覆盖？此操作无法撤销",
+        removeConfirm: "移除此模块的所有 {state} 覆盖。此操作无法撤销",
     },
     conditions: {
         hovered: "悬停",
@@ -138,7 +138,7 @@ export const widgetAppearance = {
         when: "当",
         toggleTitle: "要求 {condition} = true（循环：未设 → true → false）",
         overridesTitle: "状态覆盖（高级）",
-        overridesHint: "只覆盖单一状态（hover/active/disabled/focused）时请使用模块标题栏；同一属性以最后匹配的行为准",
+        overridesHint: "仅覆盖单一状态（hover/active/disabled/focused）时使用模块标题栏；同一属性以最后匹配的行为准",
         conditionalRows: "条件行",
         removeRow: "移除行",
         addRowManually: "手动添加行",
