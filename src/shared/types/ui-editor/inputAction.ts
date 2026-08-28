@@ -7,12 +7,12 @@
  * decorative image on top. The three records below split it into the two halves it always was:
  *
  *  - **The project says what the gestures mean.** {@link UIInputActionDef} is one entry of a
- *    vocabulary the whole project shares - an id, a name an author reads, and the bindings a
- *    surface gets unless it says otherwise.
+ *    vocabulary the whole project shares - an id, a name an author reads, and the bindings that
+ *    trigger it. The bindings live here and only here.
  *  - **A surface says which of them it answers.** {@link UISurfaceActionEnablement} is that
- *    surface's reply for one action: extra bindings, or a set that replaces the project's, plus
- *    whether firing it ends the walk and what it does over a control the player can operate.
- *  - **A surface says whether input reaches it at all.** {@link UISurfaceInputMode}.
+ *    surface's reply for one action: it answers it, and says whether firing it stops the input
+ *    there. A surface that needs a different gesture declares its own action rather than editing
+ *    somebody else's.
  *
  * Kept pure and in `shared` for the reason `structLibrary.ts` is: the editor writes through it, the
  * build reads it, and a test can drive it with no workspace behind it.
@@ -48,7 +48,11 @@ import { getWidgetLogicApi } from "./widgetLogic";
  * asking `signal.kind === "pointer"`: a long press landing on a button must give way exactly as a
  * click does, and a separate kind would silently walk past that test.
  *
- * Appended to, never reordered - the binding picker enumerates the tuple in order.
+ * The order here is free. The binding picker does not enumerate this tuple: it offers each device
+ * the gestures that device can produce, under the name that device produces them by, so a mouse row
+ * never lists a sideways scroll and a touch row says "slide" rather than "scroll". What the tuple
+ * still is, is the one spelling of the list - a gesture that exists in the type and in no picker is
+ * the failure it prevents.
  */
 export const UI_INPUT_POINTER_GESTURES = [
     "click",
@@ -59,6 +63,7 @@ export const UI_INPUT_POINTER_GESTURES = [
     "wheelLeft",
     "wheelRight",
     "longPress",
+    "middleClick",
 ] as const;
 
 export type UIInputPointerGesture = (typeof UI_INPUT_POINTER_GESTURES)[number];
@@ -89,42 +94,50 @@ export type UIInputActionDef = {
     bindings: UIInputBinding[];
 };
 
-/** How a surface answers one action from the project vocabulary. */
-export type UISurfaceActionEnablement = {
-    actionId: string;
-    /** Extra bindings on top of the project defaults. */
-    addBindings?: UIInputBinding[];
-    /** Replaces the project defaults entirely when present. */
-    overrideBindings?: UIInputBinding[];
-    /** Whether firing this action stops the lane walk. Default true. */
-    consume?: boolean;
-    /** Whether a pointer binding stands down over an operable control. Default "skip". */
-    overControls?: "skip" | "fire";
-};
+/**
+ * The bindings a new action starts with when the author picks a preset.
+ *
+ * A template and nothing more: the preset is spent the moment the action exists, and every binding
+ * it laid down is editable and removable like any other. There is no link back to it, so a preset
+ * changing in a later Studio cannot reach into a project that used it.
+ *
+ * The names are in the catalog under `uiEditor.inputActions.presets`, because the name a preset
+ * lays down becomes author data in the language the author is working in.
+ */
+export const UI_INPUT_ACTION_PRESETS: readonly {
+    id: string;
+    bindings: readonly UIInputBinding[];
+}[] = [
+    { id: "advance", bindings: [{ kind: "pointer", gesture: "click" }] },
+    { id: "back", bindings: [{ kind: "key", key: "Escape" }] },
+    { id: "backlog", bindings: [{ kind: "pointer", gesture: "wheelUp" }] },
+    { id: "hideInterface", bindings: [{ kind: "pointer", gesture: "longPress" }] },
+    { id: "menu", bindings: [{ kind: "pointer", gesture: "rightClick" }] },
+    { id: "blank", bindings: [] },
+];
 
-/** What a surface does with input that lands on it at all. */
-export type UISurfaceInputMode = "capture" | "pass" | "none";
-
-export const UI_SURFACE_INPUT_MODES = ["capture", "pass", "none"] as const;
+export function findUIInputActionPreset(id: string): (typeof UI_INPUT_ACTION_PRESETS)[number] | undefined {
+    return UI_INPUT_ACTION_PRESETS.find(preset => preset.id === id);
+}
 
 /**
- * What a surface with nothing written down does.
+ * How a surface answers one action from the project vocabulary.
  *
- * `capture`, because that is what every surface authored before this record existed already did -
- * the pointer stopped at the topmost one. A document that predates the field therefore loads
- * behaving exactly as it did.
+ * **An action carries its own bindings and nothing here changes them.** A surface answers the action
+ * or it does not. The record used to let a surface add bindings to an action or replace them, which
+ * put the same question in two places: the vocabulary said what the gesture was, and any surface
+ * could say something else, so reading an action meant reading every surface that answered it. A
+ * surface that needs a different gesture declares its own action - one entry, one set of bindings,
+ * legible from the panel that holds it.
  */
-export const UI_SURFACE_DEFAULT_INPUT_MODE: UISurfaceInputMode = "capture";
+export type UISurfaceActionEnablement = {
+    actionId: string;
+    /** Whether firing this action stops the input here. Default true. */
+    consume?: boolean;
+};
 
-/** An action fired without saying otherwise ends the walk. */
+/** An action fired without saying otherwise stops the input here. */
 export const UI_SURFACE_ACTION_DEFAULT_CONSUME = true;
-
-/** A pointer binding stands down over a control the player can operate, unless told to fire anyway. */
-export const UI_SURFACE_ACTION_DEFAULT_OVER_CONTROLS: NonNullable<UISurfaceActionEnablement["overControls"]> = "skip";
-
-export function isUISurfaceInputMode(value: unknown): value is UISurfaceInputMode {
-    return typeof value === "string" && (UI_SURFACE_INPUT_MODES as readonly string[]).includes(value);
-}
 
 /** The key a binding is the same as another one by. */
 function bindingIdentity(binding: UIInputBinding): string {
@@ -183,20 +196,15 @@ export function dedupeUIInputBindings(bindings: readonly UIInputBinding[]): UIIn
 }
 
 /**
- * The bindings one surface answers one action with.
+ * The bindings one action is triggered by, wherever it is answered.
  *
- * `overrideBindings` wins **by being present**, not by being non-empty: a surface that lists an
- * action and overrides it with nothing is saying "here, this action has no gesture", which is a
- * different statement from "here, use the project's" and has to survive a round trip as one.
+ * One line, and a named function all the same: it is the only place bindings come from, and having
+ * a name for that is what keeps a second source from growing back at a call site.
  */
 export function resolveSurfaceActionBindings(
     def: Pick<UIInputActionDef, "bindings"> | null | undefined,
-    enablement?: UISurfaceActionEnablement | null,
 ): UIInputBinding[] {
-    if (enablement?.overrideBindings) {
-        return dedupeUIInputBindings(enablement.overrideBindings);
-    }
-    return dedupeUIInputBindings([...(def?.bindings ?? []), ...(enablement?.addBindings ?? [])]);
+    return dedupeUIInputBindings(def?.bindings ?? []);
 }
 
 /**
@@ -225,6 +233,7 @@ const POINTER_GESTURE_DEVICES: Record<UIInputPointerGesture, readonly UIInputAct
     wheelLeft: ["pointer", "touch"],
     wheelRight: ["pointer", "touch"],
     longPress: ["touch"],
+    middleClick: ["pointer"],
 };
 
 /**
@@ -250,9 +259,9 @@ export function inputBindingReachesDevice(binding: UIInputBinding, device: UIInp
 /**
  * Whether the player operates elements of this type directly.
  *
- * This is the question `overControls: "skip"` asks. A panel-wide "click advances" must not fire
- * when the click landed on the Back button inside the panel, and the only way to know is whether
- * the thing under the pointer is a control or scenery.
+ * This is the question routing asks of everything under the pointer. A panel-wide "click advances"
+ * must not fire when the click landed on the Back button inside the panel, and the only way to know
+ * is whether the thing under the pointer is a control or scenery.
  *
  * **Declared on the widget logic table, not derived from it**, and that is a deliberate retreat
  * from the obvious derivation. "Has an interaction event of its own beyond the shared displayable
@@ -308,11 +317,6 @@ export function normalizeUIInputActionLibrary(value: unknown): Record<string, UI
     return out;
 }
 
-/** A stored surface mode, falling back to what a surface without one has always done. */
-export function normalizeUISurfaceInputMode(value: unknown): UISurfaceInputMode {
-    return isUISurfaceInputMode(value) ? value : UI_SURFACE_DEFAULT_INPUT_MODE;
-}
-
 /** A stored enablement, or null when it names no action. */
 export function normalizeUISurfaceActionEnablement(value: unknown): UISurfaceActionEnablement | null {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -324,19 +328,8 @@ export function normalizeUISurfaceActionEnablement(value: unknown): UISurfaceAct
         return null;
     }
     const out: UISurfaceActionEnablement = { actionId };
-    if (raw.addBindings !== undefined) {
-        out.addBindings = normalizeUIInputBindings(raw.addBindings);
-    }
-    // Presence is the statement (see `resolveSurfaceActionBindings`), so an override that
-    // normalizes to nothing stays an override rather than collapsing into "use the defaults".
-    if (raw.overrideBindings !== undefined) {
-        out.overrideBindings = normalizeUIInputBindings(raw.overrideBindings);
-    }
     if (typeof raw.consume === "boolean") {
         out.consume = raw.consume;
-    }
-    if (raw.overControls === "skip" || raw.overControls === "fire") {
-        out.overControls = raw.overControls;
     }
     return out;
 }
@@ -367,13 +360,6 @@ export function findUISurfaceActionEnablement(
 /** Whether firing this enablement ends the walk. */
 export function readUISurfaceActionConsume(enablement: UISurfaceActionEnablement | null | undefined): boolean {
     return enablement?.consume ?? UI_SURFACE_ACTION_DEFAULT_CONSUME;
-}
-
-/** What a pointer binding of this enablement does over a control the player can operate. */
-export function readUISurfaceActionOverControls(
-    enablement: UISurfaceActionEnablement | null | undefined,
-): NonNullable<UISurfaceActionEnablement["overControls"]> {
-    return enablement?.overControls ?? UI_SURFACE_ACTION_DEFAULT_OVER_CONTROLS;
 }
 
 /**

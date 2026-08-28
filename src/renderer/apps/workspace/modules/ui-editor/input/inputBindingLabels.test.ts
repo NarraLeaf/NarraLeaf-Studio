@@ -2,25 +2,30 @@ import { describe, expect, it } from "vitest";
 import { en } from "@shared/i18n/catalog/en";
 import { flattenCatalog } from "@shared/i18n/flatten";
 import type { InterpolationParams, TranslationKey } from "@shared/i18n";
-import { UI_INPUT_POINTER_GESTURES } from "@shared/types/ui-editor/inputAction";
-import { UI_INPUT_ACTION_SOURCES } from "@shared/types/ui-editor/inputActionEvent";
+import {
+    UI_INPUT_POINTER_GESTURES,
+    inputBindingDevices,
+} from "@shared/types/ui-editor/inputAction";
 import {
     INPUT_BINDING_DEVICES,
+    INPUT_DEVICE_GESTURE_OFFERS,
+    getInputBindingDeviceActs,
     getInputBindingDevices,
     getInputBindingDevicesLabel,
-    getInputDeviceGestures,
     getInputDeviceLabel,
     getInputPointerGestureLabel,
 } from "./inputBindingLabels";
 
 /**
- * What the two author panels say about which device reaches a binding.
+ * What the author panels say about which device does what.
  *
- * The chips are one flat row and the add menu is grouped by device, so both are drawn from the
- * derivation in `@shared/types/ui-editor/inputAction` rather than from anything stored. These are
- * the answers a panel would be lying about if they drifted: a gesture that reaches two devices has
- * to appear under both, a gesture that reaches none would silently vanish from the picker, and a
- * device with no name in the catalogue would be drawn as its own key.
+ * The panels split the model's `pointer` into a mouse and a trackpad, which is a display decision
+ * and therefore one that can drift from the model without anything failing to compile. These are
+ * the answers a panel would be lying about if it did: a gesture reachable in the model that no row
+ * offers would be unbindable, and a row offering one the model cannot raise would be a control that
+ * does nothing.
+ *
+ * Comments in English per project convention.
  */
 
 /** Resolves a key to itself, so a test can assert which key a label came from. */
@@ -30,11 +35,21 @@ const catalogKeys = new Set(flattenCatalog(en).keys());
 
 describe("input binding devices", () => {
     it("lists the devices of a binding in the panels' order", () => {
-        expect(getInputBindingDevices({ kind: "pointer", gesture: "click" })).toEqual(["pointer", "touch"]);
-        expect(getInputBindingDevices({ kind: "pointer", gesture: "wheelUp" })).toEqual(["pointer", "touch"]);
-        expect(getInputBindingDevices({ kind: "pointer", gesture: "rightClick" })).toEqual(["pointer"]);
+        expect(getInputBindingDevices({ kind: "pointer", gesture: "click" })).toEqual([
+            "mouse",
+            "trackpad",
+            "touch",
+        ]);
+        expect(getInputBindingDevices({ kind: "pointer", gesture: "middleClick" })).toEqual(["mouse"]);
         expect(getInputBindingDevices({ kind: "pointer", gesture: "longPress" })).toEqual(["touch"]);
         expect(getInputBindingDevices({ kind: "key", key: "Escape" })).toEqual(["key"]);
+    });
+
+    it("does not claim a plain mouse scrolls sideways", () => {
+        // The defect the split exists for: the model reaches both with `pointer`, and a row called
+        // Mouse offering them was describing hardware most players do not have.
+        expect(getInputBindingDevices({ kind: "pointer", gesture: "wheelLeft" })).toEqual(["trackpad", "touch"]);
+        expect(getInputBindingDevices({ kind: "pointer", gesture: "wheelRight" })).toEqual(["trackpad", "touch"]);
     });
 
     it("marks every binding with at least one device", () => {
@@ -44,44 +59,84 @@ describe("input binding devices", () => {
     });
 
     it("names each device on its own line", () => {
-        expect(getInputBindingDevicesLabel({ kind: "pointer", gesture: "click" }, echo)).toBe(
-            `uiEditor.inputActions.device.pointer
-uiEditor.inputActions.device.touch`,
+        expect(getInputBindingDevicesLabel({ kind: "pointer", gesture: "longPress" }, echo)).toBe(
+            "uiEditor.inputActions.device.touch",
         );
     });
 
-    it("offers no device a binding cannot reach", () => {
-        expect(INPUT_BINDING_DEVICES).not.toContain("gamepad");
+    it("names every device in the source catalogue", () => {
         for (const device of INPUT_BINDING_DEVICES) {
-            expect(UI_INPUT_ACTION_SOURCES).toContain(device);
             expect(catalogKeys).toContain(`uiEditor.inputActions.device.${device}`);
         }
     });
 });
 
-describe("the gestures each device group offers", () => {
+describe("what each device offers", () => {
     it("offers every gesture under at least one device", () => {
         for (const gesture of UI_INPUT_POINTER_GESTURES) {
-            const groups = INPUT_BINDING_DEVICES.filter(device => getInputDeviceGestures(device).includes(gesture));
-            expect(groups.length).toBeGreaterThan(0);
+            const offered = INPUT_BINDING_DEVICES.some(device =>
+                INPUT_DEVICE_GESTURE_OFFERS[device].some(offer => offer.gesture === gesture),
+            );
+            expect({ gesture, offered }).toEqual({ gesture, offered: true });
         }
     });
 
-    it("offers a gesture two devices reach under both of them", () => {
-        for (const gesture of ["click", "wheelUp", "wheelDown", "wheelLeft", "wheelRight"] as const) {
-            expect(getInputDeviceGestures("pointer")).toContain(gesture);
-            expect(getInputDeviceGestures("touch")).toContain(gesture);
+    it("offers nothing the model cannot raise from that device", () => {
+        for (const device of INPUT_BINDING_DEVICES) {
+            for (const offer of INPUT_DEVICE_GESTURE_OFFERS[device]) {
+                // The panels' mouse and trackpad are both the model's `pointer`.
+                const source = device === "touch" ? "touch" : "pointer";
+                expect({ device, gesture: offer.gesture }).toEqual({
+                    device,
+                    gesture: inputBindingDevices({ kind: "pointer", gesture: offer.gesture }).has(source)
+                        ? offer.gesture
+                        : "unreachable",
+                });
+            }
         }
     });
 
-    it("leaves the keyboard group to key capture", () => {
-        expect(getInputDeviceGestures("key")).toEqual([]);
+    it("keeps the trackpad row to what no mouse can do", () => {
+        expect(INPUT_DEVICE_GESTURE_OFFERS.trackpad.map(offer => offer.gesture)).toEqual([
+            "wheelRight",
+            "wheelLeft",
+        ]);
     });
 
-    it("names every gesture in the source catalogue", () => {
+    it("names a slide for the finger, which travels against the scroll", () => {
+        // The one reversal in the whole feature, and the one every table of it gets backwards:
+        // content follows the finger, so sliding down carries the viewport up.
+        const named = (key: string) =>
+            INPUT_DEVICE_GESTURE_OFFERS.touch.find(offer => offer.labelKey.endsWith(key))?.gesture;
+        expect(named("touchSlideDown")).toBe("wheelUp");
+        expect(named("touchSlideUp")).toBe("wheelDown");
+        expect(named("touchSlideRight")).toBe("wheelLeft");
+        expect(named("touchSlideLeft")).toBe("wheelRight");
+    });
+
+    it("leaves the keyboard row to key capture", () => {
+        expect(INPUT_DEVICE_GESTURE_OFFERS.key).toEqual([]);
+    });
+
+    it("names every offer and every gesture in the source catalogue", () => {
+        for (const device of INPUT_BINDING_DEVICES) {
+            for (const offer of INPUT_DEVICE_GESTURE_OFFERS[device]) {
+                expect(catalogKeys).toContain(offer.labelKey);
+            }
+        }
         for (const gesture of UI_INPUT_POINTER_GESTURES) {
             expect(catalogKeys).toContain(getInputPointerGestureLabel(gesture, echo));
         }
-        expect(getInputDeviceLabel("touch", echo)).toBe("uiEditor.inputActions.device.touch");
+        expect(getInputDeviceLabel("trackpad", echo)).toBe("uiEditor.inputActions.device.trackpad");
+    });
+
+    it("says what one binding is called on each machine it works on", () => {
+        expect(getInputBindingDeviceActs({ kind: "pointer", gesture: "wheelUp" }, echo)).toBe(
+            [
+                "uiEditor.inputActions.device.mouse uiEditor.inputActions.menu.mouseWheelUp",
+                "uiEditor.inputActions.device.trackpad uiEditor.inputActions.gesture.wheelUp",
+                "uiEditor.inputActions.device.touch uiEditor.inputActions.menu.touchSlideDown",
+            ].join("\n"),
+        );
     });
 });

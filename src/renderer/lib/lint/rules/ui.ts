@@ -6,7 +6,6 @@ import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/d
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
@@ -752,10 +751,8 @@ function widgetAnsweredGestures(ctx: LintContext, surfaceId: string, element: UI
  *
  * Three things are deliberately *not* reported:
  *
- *  - **`overControls: "fire"`.** That is the author saying "fire anyway, over controls included";
- *    the pair running is then the thing they asked for rather than the thing they missed.
  *  - **A widget the runtime already stands down over**, itself or anywhere up its ancestry. The
- *    same walk `hitChainHasOperableElement` does, because a rule that judged only the widget would
+ *    same walk `pointerInputClaimedByControl` does, because a rule that judged only the widget would
  *    report every container inside a list.
  *  - **A head somewhere else pointed at this widget** (`On Element Click`). Those run from a graph
  *    the locator here does not name, so the row would send an author to a widget whose own blueprint
@@ -780,16 +777,13 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
             continue;
         }
         for (const enablement of enablements) {
-            if (readUISurfaceActionOverControls(enablement) !== "skip") {
-                continue;
-            }
             const action = document.actions?.[enablement.actionId];
             if (!action) {
                 // An enablement naming an action the project does not define. Inert at run time and
                 // reported where the vocabulary is; nothing here can collide with it.
                 continue;
             }
-            const collides = resolveSurfaceActionBindings(action, enablement).some(
+            const collides = resolveSurfaceActionBindings(action).some(
                 binding => binding.kind === "pointer" && answered.has(binding.gesture),
             );
             if (!collides) {

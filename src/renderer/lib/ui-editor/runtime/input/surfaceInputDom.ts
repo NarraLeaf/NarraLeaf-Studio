@@ -14,7 +14,7 @@
 
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
-import type { UIPointerInputDevice } from "./surfaceInputActions";
+import type { UIInputHitNode, UIPointerInputDevice } from "./surfaceInputActions";
 
 const UI_ELEMENT_ID_ATTR = "data-ui-element-id";
 
@@ -145,6 +145,80 @@ export function readSurfaceHitChain(input: {
         node = node.parentElement;
     }
     return chain;
+}
+
+/**
+ * How far one node's own scroller can still travel the way a scroll gesture asks.
+ *
+ * The gesture names where the viewport goes, so `wheelUp` is answered by content above the fold -
+ * `scrollTop` above nothing. A node that does not scroll answers no to every direction, which is
+ * the same answer as a scroller already at that end and means the same thing here: it has nothing
+ * left to do with this input.
+ *
+ * A single pixel of slack, because a scroller sitting exactly at its end reports fractional values
+ * on a scaled stage and would otherwise read as "one pixel left to go" forever.
+ */
+function scrollerCanTravel(node: Element, gesture: UIInputPointerGesture): boolean {
+    const slack = 1;
+    switch (gesture) {
+        case "wheelUp":
+            return node.scrollTop > slack;
+        case "wheelDown":
+            return node.scrollTop + node.clientHeight < node.scrollHeight - slack;
+        case "wheelLeft":
+            return node.scrollLeft > slack;
+        case "wheelRight":
+            return node.scrollLeft + node.clientWidth < node.scrollWidth - slack;
+        default:
+            return false;
+    }
+}
+
+/**
+ * The elements under the pointer, each with what its own scroller can still do.
+ *
+ * The same walk {@link readSurfaceHitChain} makes, carrying the one thing the document cannot say.
+ * Whether a list has more to scroll is a fact about this frame, not about the project, so it is
+ * read here and handed to the routing rule as a plain answer - which is what lets that rule stay a
+ * pure function with no DOM behind it.
+ *
+ * An element is one node in the document and several on screen: a widget's own wrapper plus
+ * whatever it renders inside, and the node that actually scrolls is usually one of the inner ones.
+ * The walk therefore carries a scroller it has passed up to the next element id it reaches, and
+ * drops it there - so a list is credited with the viewport inside it, and the container around the
+ * list is not credited with the same one.
+ */
+export function readSurfaceHitNodes(input: {
+    document: UIDocument;
+    target: EventTarget | null;
+    surfaceRoot: Element | null;
+    gesture: UIInputPointerGesture;
+}): UIInputHitNode[] {
+    const { document, surfaceRoot, gesture } = input;
+    const start =
+        input.target instanceof Element
+            ? input.target
+            : input.target instanceof Node
+              ? input.target.parentElement
+              : null;
+    const nodes: UIInputHitNode[] = [];
+    let carriedScroller = false;
+    let node: Element | null = start;
+    while (node && (!surfaceRoot || surfaceRoot.contains(node))) {
+        if (!carriedScroller && scrollerCanTravel(node, gesture)) {
+            carriedScroller = true;
+        }
+        const elementId = node.getAttribute(UI_ELEMENT_ID_ATTR);
+        if (elementId) {
+            const element = readDocumentElement(document, elementId);
+            if (element) {
+                nodes.push({ element, scrollerCanTravel: carriedScroller });
+            }
+            carriedScroller = false;
+        }
+        node = node.parentElement;
+    }
+    return nodes;
 }
 
 function cloneInputEvent(event: Event): Event | null {

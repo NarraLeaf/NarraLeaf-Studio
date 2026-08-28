@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { MouseEvent } from "react";
 import { ChevronDown, MoreVertical, Plus, Pointer } from "lucide-react";
-import type { UIInputActionDef, UIInputBinding } from "@shared/types/ui-editor/inputAction";
+import {
+    UI_INPUT_ACTION_PRESETS,
+    type UIInputActionDef,
+    type UIInputBinding,
+} from "@shared/types/ui-editor/inputAction";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -66,24 +70,55 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     // numbers can move and no more.
     const answeredCounts = useMemo(() => countAnsweringSurfaces(documentService), [actions, documentService]);
 
-    const handleCreate = useCallback(async () => {
-        if (!documentService) {
-            return;
-        }
-        const suggestedName = t("uiEditor.naming.inputAction", { index: actions.length + 1 });
-        const name = inputDialog
-            ? await inputDialog.show({
-                  title: t("uiEditor.inputActions.createTitle"),
-                  initialValue: suggestedName,
-                  required: true,
-                  maxLength: 100,
-              })
-            : suggestedName;
-        if (!name) {
-            return;
-        }
-        documentService.createInputAction(name);
-    }, [actions.length, documentService, inputDialog, t]);
+    /**
+     * Create one action, starting from a preset.
+     *
+     * The preset fills in the name and the bindings and is then spent: what it laid down is edited
+     * from the row like anything else, and nothing records that it was used. Blank is on the same
+     * list rather than being a different button, because picking a starting point is one decision.
+     */
+    const handleCreate = useCallback(
+        async (presetId: string) => {
+            if (!documentService) {
+                return;
+            }
+            const preset = UI_INPUT_ACTION_PRESETS.find(entry => entry.id === presetId);
+            const suggestedName = preset && preset.id !== "blank"
+                ? t(`uiEditor.inputActions.presets.${preset.id}` as never)
+                : t("uiEditor.naming.inputAction", { index: actions.length + 1 });
+            const name = inputDialog
+                ? await inputDialog.show({
+                      title: t("uiEditor.inputActions.createTitle"),
+                      initialValue: suggestedName,
+                      required: true,
+                      maxLength: 100,
+                  })
+                : suggestedName;
+            if (!name) {
+                return;
+            }
+            documentService.createInputAction(name, preset?.bindings ?? []);
+        },
+        [actions.length, documentService, inputDialog, t],
+    );
+
+    const openCreateMenu = useCallback(
+        (event: MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            setMenuItems(
+                UI_INPUT_ACTION_PRESETS.map(preset => ({
+                    id: `preset:${preset.id}`,
+                    label: t(`uiEditor.inputActions.presets.${preset.id}` as never),
+                    onClick: () => {
+                        hideMenu();
+                        void handleCreate(preset.id);
+                    },
+                })),
+            );
+            showMenu(event);
+        },
+        [handleCreate, hideMenu, showMenu, t],
+    );
 
     const handleRename = useCallback(
         async (action: UIInputActionDef) => {
@@ -156,7 +191,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     );
 
     return (
-        <div className="shrink-0 border-t border-edge bg-surface-sunken">
+        <div className="shrink-0 border-t border-edge bg-surface-sunken" data-help-topic="inputActions">
             <button
                 type="button"
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
@@ -172,7 +207,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                     <button
                         type="button"
                         className="flex min-h-7 w-full items-center justify-center gap-1 rounded-md border border-edge text-xs text-fg-muted hover:bg-fill hover:text-fg"
-                        onClick={() => void handleCreate()}
+                        onClick={openCreateMenu}
                         {...freeze.writes(!documentService, t("uiEditor.inputActions.create"))}
                     >
                         <Plus className="h-3.5 w-3.5" aria-hidden />

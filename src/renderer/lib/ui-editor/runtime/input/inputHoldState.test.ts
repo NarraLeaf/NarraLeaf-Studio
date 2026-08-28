@@ -283,38 +283,25 @@ describe("hostApi.input.isActionHeld", () => {
         getSharedInputHoldTracker();
     }
 
-    it("answers from the project's bindings for a surface that says nothing about the action", () => {
+    it("answers from the action's own bindings", () => {
         armTracker();
-        const hostApi = createHostApi(undefined);
-
-        expect(hostApi.input.isActionHeld("advance")).toBe(false);
+        const hostApi = createHostApi([{ actionId: "advance" }]);
 
         window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
 
+        // One action, one set of gestures, wherever it is answered. There is no per-surface set to
+        // fall back from any more.
         expect(hostApi.input.isActionHeld("advance")).toBe(true);
     });
 
-    it("answers from the surface's own bindings where it has replaced the project's", () => {
+    it("reads an action this surface does not answer as never held", () => {
         armTracker();
-        const hostApi = createHostApi([
-            { actionId: "advance", overrideBindings: [{ kind: "key", key: "Enter" }] },
-        ]);
-
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
-        expect(hostApi.input.isActionHeld("advance")).toBe(false);
-
-        window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
-        expect(hostApi.input.isActionHeld("advance")).toBe(true);
-    });
-
-    it("reads an action a surface has overridden with nothing as never held", () => {
-        armTracker();
-        const hostApi = createHostApi([{ actionId: "advance", overrideBindings: [] }]);
+        const hostApi = createHostApi([]);
 
         window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", bubbles: true }));
 
-        // The surface has said the gesture is not its business. Reading it as held here would
-        // contradict the fact that pressing it there fires nothing.
+        // The interface answers nothing here, so nothing is held here either - which is the same
+        // sentence as "pressing it there fires nothing".
         expect(hostApi.input.isActionHeld("advance")).toBe(false);
     });
 
@@ -328,19 +315,17 @@ describe("hostApi.input.isActionHeld", () => {
         expect(hostApi.input.isActionHeld("   ")).toBe(false);
     });
 
-    it("stands a pointer hold down over a control, unless the surface says to fire anyway", () => {
+    it("stands a pointer hold down over a control", () => {
         armTracker();
         const button = document.createElement("div");
         button.setAttribute("data-ui-element-id", "back");
         document.body.appendChild(button);
-        const skipping = createHostApi([{ actionId: "dismiss" }]);
-        const firing = createHostApi([{ actionId: "dismiss", overControls: "fire" }]);
+        const hostApi = createHostApi([{ actionId: "dismiss" }]);
 
         button.dispatchEvent(new MouseEvent("pointerdown", { button: 0, bubbles: true }));
 
         // A panel-wide "hold to dismiss" must not run while the player is holding the Back button.
-        expect(skipping.input.isActionHeld("dismiss")).toBe(false);
-        expect(firing.input.isActionHeld("dismiss")).toBe(true);
+        expect(hostApi.input.isActionHeld("dismiss")).toBe(false);
     });
 
     it("holds a pointer gesture pressed on scenery", () => {
