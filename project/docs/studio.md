@@ -37,7 +37,7 @@ const story = context.services.get<StoryService>(Services.Story);
 
 | Service | 入口文件 | 何时先读 |
 | --- | --- | --- |
-| `Project` | `services/core/ProjectService.ts` | 需要项目配置、`.nlproj` / legacy `project.json` 读取。 |
+| `Project` | `services/core/ProjectService.ts` | 需要项目配置，读 `.nlproj`。 |
 | `FileSystem` | `services/core/FileSystem.ts` | 需要 renderer 到 main 的文件读写 IPC。 |
 | `Uuid` | `services/core/UuidService.ts` | 需要统一生成 id。 |
 | `UI` | `services/core/UIService.ts`、`services/ui/*` | 需要 panel、editor tab、dialog、notification、focus、keybinding。 |
@@ -70,7 +70,7 @@ const story = context.services.get<StoryService>(Services.Story);
 
 ## 常用项目路径
 
-- Project config：`.nlproj`，legacy fallback 为 `project.json`。
+- Project config：`.nlproj`。（`.nlproj` 之前的 `project.json` 已不再被读取。）
 - Studio/global settings：Electron `userData/state/global.json`。
 - Service private store：`editor/services/<namespace>.json`（项目内容，受版本控制）。
 - Studio 自身状态的 service store：`.nlstudio/services/<namespace>.json`（面板布局、通知历史、最近颜色；不受版本控制）。分类表在 `src/shared/vcs/serviceStores.ts`，缺省是项目内容。
