@@ -148,13 +148,25 @@ describe("matchSystemLocale", () => {
         { code: "pt-BR", displayName: "Português (Brasil)" },
     ];
 
-    it("prefers an exact match (case-insensitive) across all candidates", () => {
+    it("skips candidates the project cannot serve, and matches case-insensitively", () => {
         expect(matchSystemLocale(locales, ["fr-FR", "ZH-cn"])).toBe("zh-CN");
     });
 
     it("falls back to prefix matches in both directions", () => {
         expect(matchSystemLocale(locales, ["en-US"])).toBe("en");
         expect(matchSystemLocale(locales, ["pt"])).toBe("pt-BR");
+    });
+
+    it("prefers the player's first candidate even when a later one matches exactly", () => {
+        // A Chinese player's `navigator.languages` on a project offering zh/en/ja: "zh-CN" only
+        // matches `zh` by prefix, "ja" matches exactly. The prefix hit on the language they put
+        // first has to win, or the game reads Japanese to a Chinese speaker.
+        const project = [
+            { code: "zh", displayName: "中文" },
+            { code: "en", displayName: "English" },
+            { code: "ja", displayName: "日本語" },
+        ];
+        expect(matchSystemLocale(project, ["zh-CN", "zh-Hans-CN", "en-US", "ja"])).toBe("zh");
     });
 
     it("returns null when nothing matches", () => {
