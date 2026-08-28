@@ -290,7 +290,7 @@ const corpus: Record<string, StoryScene> = {
         { id: "b2", kind: "nodeAction", payload: { action: "narration", text: text("夕阳把走廊染成橘色。", "narration") } },
         { id: "b3", kind: "action", payload: { action: "character", operation: "enter", characterId: "char-alice", pose: "pose-smile", transform: { to: { position: { xalign: 0.25, yalign: 0.5 } }, durationMs: 300 } } },
         { id: "b4", kind: "nodeAction", payload: { action: "dialogue", characterId: "char-alice", text: text("你也留到这么晚啊。", "dialogue") } },
-        { id: "b5", kind: "nodeAction", payload: { action: "dialogue", speakerName: "？？？", text: text("听着: 别回头。", "dialogue"), voiceAssetId: "asset-voice", pauseAfter: true } },
+        { id: "b5", kind: "nodeAction", payload: { action: "dialogue", speakerName: "？？？", text: text("听着: 别回头。", "dialogue"), voiceAssetId: "asset-voice" } },
         { id: "b-var", kind: "declaration", payload: { scope: "scene", name: "trust", valueType: "number", defaultValue: 0, storageKey: "b-var" } },
         { id: "b6", kind: "nodeAction", payload: { action: "choice", prompt: text("要说点什么吗？", "choicePrompt") }, children: ["b7", "b9"] },
         { id: "b7", kind: "nodeAction", payload: { action: "choiceOption", text: text("「其实我在等你。」", "choiceText") }, children: ["b8"] },

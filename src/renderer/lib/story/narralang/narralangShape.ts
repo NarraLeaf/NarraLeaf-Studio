@@ -180,7 +180,6 @@ export type NarralangSlot =
     // Prose
     | "text"
     | "prompt"
-    | "pause"
     // Transform tail
     | "placement"
     | "transformTransition"
