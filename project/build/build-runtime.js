@@ -18,6 +18,10 @@ function runtimeHtml() {
     // injected into <head> at serve time by the runtime main process
     // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
     // project's per-launch `allowHttp` flag which is only known at runtime.
+    // That policy does not permit inline scripts; the same serve-time step stamps its nonce onto
+    // every inline <script> here, which is what lets the import map below run at all. An inline
+    // script this document grows will be nonced with it - one written with its own `src` will not,
+    // and does not need to be.
     // No `lang`: this document is built once and shipped inside every game, so it cannot name a
     // language any of them is in, and `en` was answering for all of them - the attribute picks the
     // Han forms a fallback font draws, so a Japanese title was being set in an English page's face.

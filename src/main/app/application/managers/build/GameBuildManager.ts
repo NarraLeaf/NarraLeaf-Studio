@@ -6,6 +6,7 @@ import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electro
 import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { electronBuilderCacheRoot } from "../storage/cacheInventory";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
@@ -97,6 +98,7 @@ import {
     profileCoversBundleId,
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
+import { codecArchiveDir } from "../../../../buildWorker/codecBinary";
 import { perTargetUnpackPattern } from "../../../../buildWorker/perTargetPayload";
 import { ensureZigToolchain } from "../../../../buildWorker/zigToolchain";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
@@ -715,7 +717,7 @@ export class GameBuildManager {
             normalizeGameBuildArch(target.platform, target.arch),
         )))];
         const dependencyGaps = await checkBuildDependencies(
-            this.app.getUserDataDir(),
+            this.app.getCacheRootDir(),
             collectBuildDependencyRequirements(
                 pluginSelection.selected.map(source => source.manifest),
                 binaryPlatformKeys,
@@ -1148,7 +1150,7 @@ export class GameBuildManager {
             // configuration resolves to the same answer it did in the build. A
             // patch has no targets of its own to read it from.
             ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
-            hostUserDataDir: this.app.getUserDataDir(),
+            hostCacheRoot: this.app.getCacheRootDir(),
             downloadRewrites: currentDownloadRewrites(),
             assetReplacements,
         }, {
@@ -1323,7 +1325,7 @@ export class GameBuildManager {
                 ...(patchPlatforms(options.projectConfig).length > 0
                     ? { platforms: patchPlatforms(options.projectConfig) }
                     : {}),
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
                 assetReplacements: options.assetReplacements,
             }, {
@@ -1417,7 +1419,7 @@ export class GameBuildManager {
             ...(patchPlatforms(options.projectConfig).length > 0
                 ? { platforms: patchPlatforms(options.projectConfig) }
                 : {}),
-            hostUserDataDir: this.app.getUserDataDir(),
+            hostCacheRoot: this.app.getCacheRootDir(),
             downloadRewrites: currentDownloadRewrites(),
             assetReplacements: options.assetReplacements,
         }, {
@@ -1523,13 +1525,16 @@ export class GameBuildManager {
     private async titleCompileOptions(workDir: string, reason: string): Promise<ReaderBuildOptions> {
         try {
             const compiler = await ensureZigToolchain({
-                userDataDir: this.app.getUserDataDir(),
+                cacheRoot: this.app.getCacheRootDir(),
                 ...(this.readStringSetting("build.zigMirror")
                     ? { mirror: this.readStringSetting("build.zigMirror") as string }
                     : {}),
                 rewrites: currentDownloadRewrites(),
             });
-            return { compiler, workDir };
+            // The archive is named rather than left to the package: see
+            // codecArchiveDir, which is what makes this work inside a packaged
+            // Studio at all.
+            return { compiler, workDir, archiveDir: codecArchiveDir() };
         } catch (error) {
             throw new Error(
                 `${reason} needs a C toolchain to compile this title's content codec, and one could `
@@ -1904,7 +1909,7 @@ export class GameBuildManager {
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from
                 // Electron on the far side.
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
                 // Where the compiler for a codec build is fetched from. Same
                 // shape as the Electron mirror above and read the same way: a
@@ -2988,7 +2993,20 @@ export class GameBuildManager {
             const worker = utilityProcess.fork(workerPath, [], {
                 serviceName: "narraleaf-game-build",
                 stdio: "pipe",
-                env: process.env,
+                // ELECTRON_BUILDER_CACHE is the only way to move the toolchain downloads:
+                // winCodeSign, NSIS, AppImage and a cross-platform target's Electron are fetched
+                // inside app-builder.exe, which reads that variable and nothing Studio can pass
+                // it. Left unset they land in `%LOCALAPPDATA%/electron-builder/Cache` and the
+                // platform equivalents - several hundred megabytes Studio downloaded, in a
+                // directory that names neither Studio nor the project it was for.
+                //
+                // `electronBuilderCacheRoot` returns the author's own value when they have
+                // exported one, so this assignment cannot override a host that has deliberately
+                // pointed every electron-builder on it somewhere shared.
+                env: {
+                    ...process.env,
+                    ELECTRON_BUILDER_CACHE: electronBuilderCacheRoot(this.app.getCacheRootDir()),
+                },
             });
             session.worker = worker;
             // Everything this build pulls off a network, on the status bar for as long as it takes.
@@ -3268,11 +3286,7 @@ export class GameBuildManager {
         try {
             const result = await compressProjectMedia({
                 projectPath,
-                cacheDir: path.join(
-                    this.app.getUserDataDir(),
-                    UserDataNamespace.Cache,
-                    CacheNamespace.CompressedMedia,
-                ),
+                cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.CompressedMedia),
                 config,
                 app: this.app,
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
@@ -3324,11 +3338,7 @@ export class GameBuildManager {
         try {
             const result = await optimizeProjectImages({
                 projectPath,
-                cacheDir: path.join(
-                    this.app.getUserDataDir(),
-                    UserDataNamespace.Cache,
-                    CacheNamespace.OptimizedImages,
-                ),
+                cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
                 openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
