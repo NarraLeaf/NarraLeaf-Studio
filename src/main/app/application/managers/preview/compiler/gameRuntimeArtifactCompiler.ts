@@ -421,6 +421,16 @@ export type GameRuntimeArtifactCompileResult = {
      */
     codecCompiledForTitle: boolean | null;
     /**
+     * A copy of the codec this machine can load, carrying what this build sealed
+     * with. Null when the build sealed nothing.
+     *
+     * The shipped copies are staged per target and one of them may be for another
+     * machine entirely, so "the binary in the app dir" is no longer a thing that
+     * exists, let alone something this process can open. Anything that has to
+     * read the artifact back - the shipped-content audit does - is told where.
+     */
+    codecHostImage: string | null;
+    /**
      * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
      * the library out.
      *
@@ -552,7 +562,21 @@ export async function compileGameRuntimeArtifact(
      */
     const imageDir = path.join(outputRoot, "codec-images");
     const images: Record<string, string> = {};
-    for (const slice of new Set(placements.flatMap(placement => placement.slices))) {
+    /*
+     * One image for this machine as well, whether or not this machine is a target.
+     *
+     * Something has to be able to OPEN what was just sealed - the audit that
+     * proves the shipped game still reaches every asset it asks for does exactly
+     * that - and only an image built for this machine can be loaded here. When
+     * this machine is a target it is the copy that ships; when it is not (a
+     * Linux package built on a Mac) it exists only to be read here, out in the
+     * staging directory rather than in the app dir, so it ships nowhere.
+     */
+    const slices = new Set(placements.flatMap(placement => placement.slices));
+    if (placements.length > 0) {
+        slices.add(hostCodecTarget());
+    }
+    for (const slice of slices) {
         images[slice] = path.join(imageDir, slice, RUNTIME_SUPPORT_FILENAME);
         await fs.mkdir(path.dirname(images[slice]), { recursive: true });
     }
@@ -910,6 +934,7 @@ export async function compileGameRuntimeArtifact(
             codecCompiledForTitle: placements.length > 0 && Boolean(input.packaging)
                 ? titleCompile !== null
                 : null,
+            codecHostImage: images[hostCodecTarget()] ?? null,
             collapsedBuildAxis,
             ...(shipped ? { assetReport: shipped.report } : {}),
         };
