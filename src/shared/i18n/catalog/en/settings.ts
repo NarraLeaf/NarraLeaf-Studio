@@ -310,6 +310,10 @@ export const settings = {
             label: "Reopen the last project on startup",
             description: "Open the project the last session was in, instead of starting on the launcher.",
         },
+        maximizeOnOpen: {
+            label: "Open workspaces maximized",
+            description: "Fill the screen when a workspace window opens. Switching project keeps the frame of the window it replaces.",
+        },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
             description: "Applies to projects with no setting of their own. Each project can override it.",
@@ -328,7 +332,6 @@ export const settings = {
         menuBarMode: {
             label: "Main menu",
             description: "Where the File, Help and panel menus live in the title bar.",
-            unsupportedPlatform: "On macOS these menus are on the system menu bar.",
         },
         titleBarSearchVisible: {
             label: "Show title bar search box",

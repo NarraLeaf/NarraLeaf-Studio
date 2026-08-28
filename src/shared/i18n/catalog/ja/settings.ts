@@ -304,6 +304,10 @@ export const settings = {
             label: "起動時に前回のプロジェクトを開く",
             description: "ランチャーではなく、前回作業していたプロジェクトを開く",
         },
+        maximizeOnOpen: {
+            label: "ワークスペースを最大化して開く",
+            description: "ワークスペースのウィンドウを画面いっぱいに開く。ウィンドウ内でプロジェクトを切り替えたときは、元のウィンドウの位置とサイズを引き継ぐ",
+        },
         dashboardOnOpen: {
             label: "既定でプロジェクトのダッシュボードを表示",
             description: "個別の設定を持たないプロジェクトに効く。プロジェクトごとに上書きできる",
@@ -322,7 +326,6 @@ export const settings = {
         menuBarMode: {
             label: "メインメニュー",
             description: "タイトルバーでファイル・ヘルプ・各パネルのメニューを置く場所",
-            unsupportedPlatform: "macOS ではこれらのメニューはシステムメニューバーにあります",
         },
         titleBarSearchVisible: {
             label: "タイトルバーの検索欄を表示",
