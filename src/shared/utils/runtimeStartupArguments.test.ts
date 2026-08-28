@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
+    ALLOWED_STARTUP_SWITCHES,
+    buildGuardMaskTable,
+    DEBUGGING_SWITCHES,
     hasDebuggingSwitch,
     hasStartupSwitch,
     honoursDebuggableMarker,
+    parseGuardMaskTable,
+    REFUSAL_LOG_PREFIX,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
 } from "./runtimeStartupArguments";
@@ -166,6 +171,74 @@ describe("the debuggable marker", () => {
             for (const packaged of [false, true]) {
                 expect(honoursDebuggableMarker({ marker: false, sealed, packaged })).toBe(false);
             }
+        }
+    });
+});
+
+/**
+ * The guard's tables ship as one masked blob, never as the switch names themselves, so a shipped
+ * game's main.js does not carry a plaintext map of this guard (a search for `remote-debugging-port`
+ * finds nothing) - and the blob is re-keyed per game so the tokens are not a corpus-wide grep
+ * signature. This pins the decoded values, the masking property, and the re-key round-trip.
+ *
+ * The plaintext reference lives in this test, which never ships, and not beside the tables.
+ */
+describe("the masked guard table", () => {
+    const EXPECTED_ALLOWED = [
+        "disable-gpu",
+        "disable-gpu-compositing",
+        "disable-software-rasterizer",
+        "use-angle",
+        "use-gl",
+        "ozone-platform",
+        "ozone-platform-hint",
+        "force-device-scale-factor",
+        "force-color-profile",
+        "lang",
+        "use-logs",
+    ];
+    const EXPECTED_DEBUGGING = [
+        "remote-debugging-port",
+        "remote-debugging-pipe",
+        "inspect",
+        "inspect-brk",
+        "inspect-port",
+        "inspect-publish-uid",
+    ];
+    const EXPECTED_REFUSAL = "refusing to start: this build does not accept ";
+    const decoded = {
+        seed: 91,
+        step: 31,
+        allowed: EXPECTED_ALLOWED,
+        debugging: EXPECTED_DEBUGGING,
+        logs: "use-logs",
+        refusalPrefix: EXPECTED_REFUSAL,
+    };
+
+    it("decodes to exactly the names and text the guard is written against", () => {
+        expect(ALLOWED_STARTUP_SWITCHES).toEqual(EXPECTED_ALLOWED);
+        expect(DEBUGGING_SWITCHES).toEqual(EXPECTED_DEBUGGING);
+        expect(RUNTIME_LOGS_SWITCH).toBe("use-logs");
+        expect(REFUSAL_LOG_PREFIX).toBe(EXPECTED_REFUSAL);
+    });
+
+    it("masks every name and the refusal line, and round-trips under its key", () => {
+        const blob = buildGuardMaskTable(decoded);
+        for (const name of [...EXPECTED_ALLOWED, ...EXPECTED_DEBUGGING, EXPECTED_REFUSAL]) {
+            expect(blob).not.toContain(name);
+        }
+        expect(parseGuardMaskTable(blob)).toEqual(decoded);
+    });
+
+    it("re-keys to different bytes that still read back the same names", () => {
+        // What the per-game re-key does: same names, different shipped bytes, still non-greppable.
+        const one = buildGuardMaskTable({ ...decoded, seed: 91, step: 31 });
+        const two = buildGuardMaskTable({ ...decoded, seed: 17, step: 5 });
+        expect(one).not.toBe(two);
+        expect(parseGuardMaskTable(two).allowed).toEqual(EXPECTED_ALLOWED);
+        expect(parseGuardMaskTable(two).refusalPrefix).toBe(EXPECTED_REFUSAL);
+        for (const name of [...EXPECTED_ALLOWED, ...EXPECTED_DEBUGGING, EXPECTED_REFUSAL]) {
+            expect(two).not.toContain(name);
         }
     });
 });

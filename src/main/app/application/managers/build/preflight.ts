@@ -246,7 +246,7 @@ export function buildDependencyPlatformKey(platform: GameBuildDesktopPlatform, a
  * megabytes to render it would be worse than the problem it reports.
  */
 export async function checkBuildDependencies(
-    userDataDir: string,
+    cacheRoot: string,
     requirements: BuildDependencyRequirement[],
     /**
      * The author's download rewrites. Probing the declared host while the build would fetch a
@@ -259,13 +259,13 @@ export async function checkBuildDependencies(
     // with several dependencies would otherwise stall the dialog by their sum.
     const probes = await Promise.all(requirements.map(async requirement => ({
         requirement,
-        availability: await probePluginBuildDependency({ userDataDir, target: requirement.target, rewrites }),
+        availability: await probePluginBuildDependency({ cacheRoot, target: requirement.target, rewrites }),
     })));
     return probes.flatMap(({ requirement, availability }) => availability.status === "unavailable"
         ? [{
             ...requirement,
             reason: availability.reason,
-            cachePath: buildDependencySourcePath(userDataDir, requirement.target.sha256),
+            cachePath: buildDependencySourcePath(cacheRoot, requirement.target.sha256),
         }]
         : []);
 }

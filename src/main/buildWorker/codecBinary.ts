@@ -133,7 +133,11 @@ export async function placeCodecBinary(
     placement: CodecPlacement,
     sources: Readonly<Record<string, string>>,
 ): Promise<void> {
-    await fs.mkdir(path.dirname(placement.destination), { recursive: true });
+    // Before the mkdir, not after: a call that refuses its arguments should not
+    // have left a directory behind, and the destination is often somewhere the
+    // caller has no business creating when the placement was never going to
+    // happen. It also keeps the refusal readable - a destination that cannot be
+    // created reports the missing image, rather than reporting the mkdir.
     const files = placement.slices.map(slice => {
         const file = sources[slice];
         if (!file) {
@@ -141,6 +145,7 @@ export async function placeCodecBinary(
         }
         return file;
     });
+    await fs.mkdir(path.dirname(placement.destination), { recursive: true });
     if (files.length === 1) {
         await fs.copyFile(files[0], placement.destination);
         return;

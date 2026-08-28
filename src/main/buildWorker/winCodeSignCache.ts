@@ -33,6 +33,15 @@ const execFileAsync = promisify(execFile);
 
 type Log = (level: "info" | "warning" | "error", message: string) => void;
 
+/**
+ * The same directory app-builder.exe will use, which is the whole point: this pre-provisions a
+ * cache app-builder then finds already populated.
+ *
+ * The environment variable is not a fallback here - `GameBuildManager.runWorker` always sets it,
+ * to Studio's own cache root (or to whatever the author exported, which wins). The platform
+ * defaults below are what an author running this module outside that worker would get, and what
+ * every Studio before the cache root existed got.
+ */
 function builderCacheRoot(): string | null {
     const override = process.env.ELECTRON_BUILDER_CACHE?.trim();
     if (override) {

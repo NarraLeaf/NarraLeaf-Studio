@@ -32,7 +32,7 @@ export type SpellcheckSettingReader = () => string | undefined;
 export type SpellcheckRegistryReader = () => string | undefined;
 
 export type SpellcheckManagerOptions = {
-    userDataDir: () => string;
+    cacheRoot: () => string;
     readSetting: SpellcheckSettingReader;
     readRegistryUrl?: SpellcheckRegistryReader;
 };
@@ -130,7 +130,7 @@ export class SpellcheckManager {
 
     private get cache(): DictionaryCache {
         if (!this.cacheInstance) {
-            this.cacheInstance = new DictionaryCache(this.options.userDataDir());
+            this.cacheInstance = new DictionaryCache(this.options.cacheRoot());
         }
         return this.cacheInstance;
     }
