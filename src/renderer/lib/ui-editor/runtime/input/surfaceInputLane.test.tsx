@@ -3,7 +3,7 @@ import { cleanup, createEvent, fireEvent, render } from "@testing-library/react"
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { UI_DOCUMENT_SCHEMA_VERSION, type UIDocument, type UIElement, type UISurface } from "@shared/types/ui-editor/document";
-import type { UIInputActionDef, UISurfaceActionEnablement, UISurfaceInputMode } from "@shared/types/ui-editor/inputAction";
+import type { UIInputActionDef, UISurfaceActionEnablement } from "@shared/types/ui-editor/inputAction";
 import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 import { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
 import { EditorNodeWrapper } from "@/lib/ui-editor/runtime/EditorNodeWrapper";
@@ -143,13 +143,11 @@ function buildDocument(leaf: { type: string; props?: Record<string, unknown> }):
 
 function renderSurface(options: {
     leaf?: { type: string; props?: Record<string, unknown> };
-    input?: UISurfaceInputMode;
     actions?: UISurfaceActionEnablement[];
 }) {
     const document = buildDocument(options.leaf ?? { type: "nl.container" });
     const surface: UISurface = {
         ...(document.surfaces[0] as UISurface),
-        ...(options.input ? { input: options.input } : {}),
         ...(options.actions ? { actions: options.actions } : {}),
     };
     const dispatchSurfaceInputAction = vi.fn(async (_payload: UIInputActionEventPayload) => undefined);
@@ -247,49 +245,27 @@ describe("a surface answering a declared action", () => {
         expect(firedActionIds(overVideoWithControls.dispatchSurfaceInputAction)).toEqual([]);
     });
 
-    it("takes no input at all when the surface says none", () => {
-        const { dispatchSurfaceInputAction, shell, leafNode } = renderSurface({
-            input: "none",
-            actions: [{ actionId: "advance" }],
-        });
-
-        // The elements are not addressable either: a surface out of input is drawn and nothing else.
-        expect(leafNode).toBeNull();
-        fireEvent.click(shell!);
-
-        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual([]);
-        expect((shell as HTMLElement).style.pointerEvents).toBe("none");
-    });
-
-    it("stops the input at a capturing surface, whether or not it answered", () => {
-        const withAction = renderSurface({ input: "capture", actions: [{ actionId: "advance" }] });
+    it("stops the input whether or not the surface answered it", () => {
+        const withAction = renderSurface({ actions: [{ actionId: "advance" }] });
         fireEvent.click(withAction.leafNode!);
         expect(withAction.onwards).not.toHaveBeenCalled();
         cleanup();
 
-        // The half that changed: capture is about the surface, not about whether anything listened.
-        const withNothing = renderSurface({ input: "capture" });
+        // A surface is drawn over what is behind it, and input that lands on its content stops
+        // there. Nothing on the surface has to have listened for that to be true.
+        const withNothing = renderSurface({});
         fireEvent.click(withNothing.leafNode!);
         expect(withNothing.onwards).not.toHaveBeenCalled();
     });
 
-    it("lets the input through a passing surface when nothing consumed it", () => {
+    it("sends the input on when the action that fired said to", () => {
         const { onwards, leafNode } = renderSurface({
-            input: "pass",
             actions: [{ actionId: "advance", consume: false }],
         });
 
         fireEvent.click(leafNode!);
 
         expect(onwards).toHaveBeenCalledTimes(1);
-    });
-
-    it("stops a passing surface's input once an action consumes it", () => {
-        const { onwards, leafNode } = renderSurface({ input: "pass", actions: [{ actionId: "advance" }] });
-
-        fireEvent.click(leafNode!);
-
-        expect(onwards).not.toHaveBeenCalled();
     });
 });
 
@@ -321,7 +297,10 @@ describe("a touch gesture on a lane", () => {
         expect(firedActionIds(dispatchSurfaceInputAction)).toEqual(["advance"]);
     });
 
-    it("stands down over a control exactly as a click does", () => {
+    it("fires over a control that has nothing to do with a scroll", () => {
+        // A button takes a click and stands between the player and a panel-wide one. It has no use
+        // for a drag, so a drag that began on it is still the surface's - which is the same rule
+        // that lets one more pull at the bottom of a list close the page it is in.
         const { dispatchSurfaceInputAction, leafNode } = renderSurface({
             leaf: { type: "nl.button" },
             actions: [{ actionId: "advance" }],
@@ -329,11 +308,22 @@ describe("a touch gesture on a lane", () => {
 
         fireTouchGesture(leafNode!, { gesture: "wheelDown", clientX: 20, clientY: 40 });
 
+        expect(firedActionIds(dispatchSurfaceInputAction)).toEqual(["advance"]);
+    });
+
+    it("stands down over a control for a gesture that control does take", () => {
+        const { dispatchSurfaceInputAction, leafNode } = renderSurface({
+            leaf: { type: "nl.button" },
+            actions: [{ actionId: "advance" }],
+        });
+
+        fireTouchGesture(leafNode!, { gesture: "click", clientX: 20, clientY: 40 });
+
         expect(firedActionIds(dispatchSurfaceInputAction)).toEqual([]);
     });
 
     it("stops at a capturing surface", () => {
-        const { onwardsTouch, leafNode } = renderSurface({ input: "capture", actions: [{ actionId: "advance" }] });
+        const { onwardsTouch, leafNode } = renderSurface({ actions: [{ actionId: "advance" }] });
 
         fireTouchGesture(leafNode!, { gesture: "wheelDown", clientX: 20, clientY: 40 });
 
@@ -343,13 +333,12 @@ describe("a touch gesture on a lane", () => {
     /**
      * The one this file exists to defend.
      *
-     * A `pass` surface handing a touch gesture to the lane behind is the most easily lost link in
+     * A surface handing a touch gesture to the lane behind is the most easily lost link in
      * the design: it is what a CustomEvent buys over synthesising a touch or a wheel, and nothing
      * else in the walk would fail visibly if it quietly stopped working.
      */
     it("hands the gesture to the lane behind when it passes", () => {
         const { onwardsTouch, leafNode } = renderSurface({
-            input: "pass",
             actions: [{ actionId: "advance", consume: false }],
         });
 
@@ -359,7 +348,7 @@ describe("a touch gesture on a lane", () => {
     });
 
     it("stops once an action consumes it, whatever the mode says", () => {
-        const { onwardsTouch, leafNode } = renderSurface({ input: "pass", actions: [{ actionId: "advance" }] });
+        const { onwardsTouch, leafNode } = renderSurface({ actions: [{ actionId: "advance" }] });
 
         fireTouchGesture(leafNode!, { gesture: "wheelDown", clientX: 20, clientY: 40 });
 

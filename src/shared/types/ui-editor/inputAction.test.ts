@@ -11,10 +11,8 @@ import {
     normalizeUIInputActionLibrary,
     normalizeUIInputBinding,
     normalizeUISurfaceActionEnablements,
-    normalizeUISurfaceInputMode,
     pruneUISurfaceActionEnablements,
     readUISurfaceActionConsume,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
     type UIInputActionDef,
     type UIInputBinding,
@@ -34,58 +32,38 @@ function action(bindings: UIInputBinding[]): UIInputActionDef {
 }
 
 describe("resolveSurfaceActionBindings", () => {
-    it("hands back the project defaults when the surface says nothing", () => {
+    it("hands back the action's own bindings", () => {
         expect(resolveSurfaceActionBindings(action([click, escape]))).toEqual([click, escape]);
-        expect(resolveSurfaceActionBindings(action([click]), { actionId: "advance" })).toEqual([click]);
-    });
-
-    it("appends the surface's own bindings after the defaults", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click]), { actionId: "advance", addBindings: [space] }),
-        ).toEqual([click, space]);
-    });
-
-    it("replaces the defaults entirely when an override is present", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click, escape]), {
-                actionId: "advance",
-                overrideBindings: [space],
-            }),
-        ).toEqual([space]);
-    });
-
-    it("treats an override present but empty as 'no gesture here', not as 'use the defaults'", () => {
-        // The distinction the record exists to carry: a surface that lists an action and binds it to
-        // nothing has said something different from a surface that never overrode it.
-        expect(
-            resolveSurfaceActionBindings(action([click]), { actionId: "advance", overrideBindings: [] }),
-        ).toEqual([]);
-    });
-
-    it("ignores additions while an override stands", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click]), {
-                actionId: "advance",
-                addBindings: [rightClick],
-                overrideBindings: [space],
-            }),
-        ).toEqual([space]);
     });
 
     it("names each binding once, first occurrence winning", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click, escape]), {
-                actionId: "advance",
-                addBindings: [click, space, escape],
-            }),
-        ).toEqual([click, escape, space]);
-        expect(
-            resolveSurfaceActionBindings(null, { actionId: "advance", overrideBindings: [space, space] }),
-        ).toEqual([space]);
+        expect(resolveSurfaceActionBindings(action([click, escape, click]))).toEqual([click, escape]);
     });
 
     it("survives a missing definition", () => {
-        expect(resolveSurfaceActionBindings(undefined, null)).toEqual([]);
+        expect(resolveSurfaceActionBindings(undefined)).toEqual([]);
+        expect(resolveSurfaceActionBindings(null)).toEqual([]);
+    });
+});
+
+describe("UISurfaceActionEnablement", () => {
+    it("carries nothing about bindings", () => {
+        // The record used to let a surface add to an action's bindings or replace them, which put
+        // the same question in two places. Pinned as a shape rather than as prose so a field going
+        // back in has to be a decision rather than an accident.
+        const enablement = normalizeUISurfaceActionEnablements([
+            { actionId: "advance", addBindings: [space], overrideBindings: [rightClick], overControls: "fire" },
+        ])[0];
+        expect(Object.keys(enablement)).toEqual(["actionId"]);
+    });
+
+    it("keeps the one thing a surface does decide", () => {
+        expect(normalizeUISurfaceActionEnablements([{ actionId: "advance", consume: false }])[0]).toEqual({
+            actionId: "advance",
+            consume: false,
+        });
+        expect(readUISurfaceActionConsume({ actionId: "advance" })).toBe(true);
+        expect(readUISurfaceActionConsume({ actionId: "advance", consume: false })).toBe(false);
     });
 });
 
@@ -263,10 +241,7 @@ describe("normalize", () => {
     });
 
     it("round-trips a surface's enablements unchanged", () => {
-        const stored = [
-            { actionId: "advance", addBindings: [space], consume: false, overControls: "fire" as const },
-            { actionId: "skip", overrideBindings: [] },
-        ];
+        const stored = [{ actionId: "advance", consume: false }, { actionId: "skip" }];
         expect(normalizeUISurfaceActionEnablements(stored)).toEqual(stored);
     });
 
@@ -281,18 +256,9 @@ describe("normalize", () => {
         ).toEqual([{ actionId: "advance", consume: false }]);
     });
 
-    it("reads a surface with no mode as capturing", () => {
-        expect(normalizeUISurfaceInputMode(undefined)).toBe("capture");
-        expect(normalizeUISurfaceInputMode("nonsense")).toBe("capture");
-        expect(normalizeUISurfaceInputMode("pass")).toBe("pass");
-        expect(normalizeUISurfaceInputMode("none")).toBe("none");
-    });
-
-    it("reads the defaults an absent field stands for", () => {
+    it("reads the default an absent field stands for", () => {
         expect(readUISurfaceActionConsume(undefined)).toBe(true);
         expect(readUISurfaceActionConsume({ actionId: "advance", consume: false })).toBe(false);
-        expect(readUISurfaceActionOverControls(undefined)).toBe("skip");
-        expect(readUISurfaceActionOverControls({ actionId: "advance", overControls: "fire" })).toBe("fire");
     });
 });
 
