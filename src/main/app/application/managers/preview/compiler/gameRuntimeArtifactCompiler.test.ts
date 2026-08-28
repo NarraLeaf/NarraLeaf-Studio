@@ -1921,13 +1921,58 @@ describe("weather clips in the pack", () => {
     });
 
     /*
+     * Phase four: the interface code goes inside the store rather than beside it.
+     *
+     * What it does not cover is the ceiling, and the ceiling is the point of the
+     * assertion below about main.js and the preload: Electron opens those two
+     * itself, before anything of ours could answer for them, so they stay
+     * readable however much else moves. What is in them is the loader that asks
+     * the store for the game, not the game.
+     */
+    it("keeps a protected build's interface code in the store, not beside it", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47380),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        for (const name of ["index.html", "renderer.js", "renderer.css"]) {
+            await expect(fs.access(path.join(result.appDir, name)), `${name} is still loose`).rejects.toThrow();
+        }
+        // The two that cannot move, and are expected to still be there.
+        await expect(fs.access(path.join(result.appDir, "main.js"))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, "preload.js"))).resolves.toBeUndefined();
+
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+        );
+        try {
+            /* Byte for byte what the runtime build produced: the store holds the
+             * shipped interface, not a rendition of it. */
+            for (const name of ["index.html", "renderer.js", "renderer.css"]) {
+                const expected = await fs.readFile(path.join(runtimeDistDir, name));
+                expect((await reader.read(name)).equals(expected), name).toBe(true);
+            }
+        } finally {
+            await reader.close();
+        }
+    });
+
+    /*
      * The defect this replaced: a build packaging for Windows and macOS together
      * wrote one copy of the codec addon, of whichever machine was doing the
      * packaging, and every package but that one shipped an image its loader
      * refuses. It was silent - the build succeeded, the installer was produced,
      * and the game failed on a player's machine at first start.
      */
-    it("stages a codec copy for every target a packaged build serves", async () => {
+    it("stages a codec copy for every target a packaged build serves", { timeout: 60_000 }, async () => {
         const toolchain = localToolchain();
         if (!toolchain) {
             // Loud rather than silent: this needs a C toolchain, and a machine

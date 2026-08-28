@@ -61,6 +61,8 @@ import {
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
+    isSealedShellFile,
+    SEALED_SHELL_FILES,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import { resolveAppTag, resolveAppTagEndingSurface } from "@shared/types/appTag";
@@ -526,7 +528,15 @@ export async function compileGameRuntimeArtifact(
     const payloadDirFor = (platformKey: string): string => (perTargetPayload
         ? path.join(appDir, PER_TARGET_DIR_NAME, platformKey)
         : appDir);
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor);
+    /*
+     * A protected build keeps its interface code in the store rather than beside
+     * it, so those three are left out here and added to the store further down,
+     * once there is a store to add them to. Everything else is copied either way:
+     * Electron opens main.js and the preload itself, before anything of ours
+     * could answer for them.
+     */
+    const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell);
     // The support binary ships for protection, and also for a build that carries a
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
@@ -725,6 +735,29 @@ export async function compileGameRuntimeArtifact(
      */
     if (input.encryptionKey) {
         await placeCodecImages(placements, images);
+    }
+
+    /*
+     * The interface code, into the store rather than beside it.
+     *
+     * Here rather than with the rest of the runtime files because there was no
+     * store to put them in at that point. What a player receives for these three
+     * is now bytes inside the same blob as the assets, which is the difference
+     * between reading the game's code with a text editor and having to open the
+     * store first.
+     *
+     * The ceiling is real and it is two files wide: Electron opens main.js and
+     * the preload itself, before any of this exists, so they stay readable. What
+     * is behind them is not the game's own code - it is the loader that asks the
+     * store for it.
+     */
+    if (target.kind === "sealed" && sealsShell) {
+        for (const fileName of SEALED_SHELL_FILES) {
+            await target.writer.add(
+                gameRuntimeBundleRuntimeEntry(fileName),
+                await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+            );
+        }
     }
 
     // The marker is written either way, but on a sealed artifact it reaches only half as far: the
@@ -1142,9 +1175,14 @@ async function copyRuntimeFiles(
     platformKeys: readonly string[],
     /** Where one target's machine code goes. See perTargetPayload.ts. */
     payloadDirFor: (platformKey: string) => string,
+    /** Leave the interface code out; the caller puts it in the store instead. */
+    sealsShell: boolean,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
+        if (sealsShell && isSealedShellFile(fileName)) {
+            continue;
+        }
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {

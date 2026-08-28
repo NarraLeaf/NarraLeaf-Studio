@@ -18,6 +18,7 @@ import {
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
+    isSealedShellFile,
 } from "@shared/utils/gameRuntimeBundle";
 import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
 import { dlcAttachesToBuild } from "@shared/types/dlc";
@@ -278,7 +279,12 @@ class SealedRuntimeResources implements RuntimeResources {
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
         const name = gameRuntimeBundleRuntimeEntry(pathname);
-        if (!RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix)) || !this.reader.has(name)) {
+        /* The prefixes bound what the runtime host can reach by path; the shell
+         * files are three exact names rather than a prefix, so widening this does
+         * not widen anything else. */
+        const reachable = isSealedShellFile(name)
+            || RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix));
+        if (!reachable || !this.reader.has(name)) {
             return null;
         }
         return this.readEntry(name);

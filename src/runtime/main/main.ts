@@ -1263,12 +1263,20 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
+                // Bundled runtime files come from the store; anything the store
+                // does not hold falls back to a loose read from the app dir. The
+                // document goes through the same door as the rest now that a
+                // protected build keeps it there too - it just has the CSP put
+                // into it on the way out.
+                const wanted = isIndexDocument(pathname) ? "index.html" : trimLeadingSlashes(pathname);
+                const bundled = await runtimeResources().readRuntimeFile(wanted);
                 if (isIndexDocument(pathname)) {
-                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp, allowlist);
+                    return serveIndexDocument(
+                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, pathname)),
+                        allowHttp,
+                        allowlist,
+                    );
                 }
-                // Bundled runtime files (e.g. plugin entries) come from the store;
-                // static runtime files fall back to a loose read from the app dir.
-                const bundled = await runtimeResources().readRuntimeFile(pathname.replace(/^\/+/, ""));
                 if (bundled) {
                     return serveBytes(bundled, getMimeType(pathname));
                 }
@@ -1482,12 +1490,21 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
+/** Drop the leading slashes a protocol path arrives with; a store entry has none. */
+function trimLeadingSlashes(pathname: string): string {
+    let at = 0;
+    while (at < pathname.length && pathname[at] === "/") {
+        at += 1;
+    }
+    return pathname.slice(at);
+}
+
 async function serveIndexDocument(
-    filePath: string,
+    document: Buffer,
     allowHttp: boolean,
     allowlist: NetworkAllowlist,
 ): Promise<Response> {
-    const html = await fs.readFile(filePath, "utf-8");
+    const html = document.toString("utf-8");
     return new Response(injectRuntimeCsp(html, allowHttp, allowlist), {
         status: 200,
         headers: {
