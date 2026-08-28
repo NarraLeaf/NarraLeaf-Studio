@@ -607,6 +607,7 @@ export const TeamMethod = {
     adminSettingsSet: "admin.settings.set",
     adminKeysList: "admin.keys.list",
     adminKeysRotate: "admin.keys.rotate",
+    adminKeysRetire: "admin.keys.retire",
     adminAuditList: "admin.audit.list",
     adminServerStatus: "admin.server.status",
 } as const;
