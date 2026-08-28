@@ -10,6 +10,18 @@ import { getUISwitchChildSlot } from "./switch";
 
 export const UI_DOCUMENT_SCHEMA_VERSION = 11 as const;
 
+/**
+ * The oldest UI document version this build can read.
+ *
+ * The versions from v2 up were bumps and nothing more: each one recorded that an older Studio must
+ * refuse a newer document (a list slot, a value binding, a stage slot it has no reading for), and
+ * none of them converted a document, so a v10 document differs from a v11 one by nothing a reader
+ * has to reconstruct. Only v1 ever needed real work - surfaces named `playerStageSurface` before a
+ * stage surface named the slot it mounts into - and that step is gone, so v1 is refused with the
+ * rest of what is under the floor. See `UIDocumentService.migrateSchemaVersion`.
+ */
+export const UI_DOCUMENT_MIN_SUPPORTED_VERSION = 10;
+
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
 export type UISurfaceId = string;

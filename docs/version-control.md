@@ -703,6 +703,35 @@ Failed to parse JSON from <project>/editor/story/index.json
 > 编译失败，那正是该被问『这种情况怎么说』的地方」——确实如此：构建/预览在合并态下同样要拒绝，
 > 但话术不是「解除冻结」而是「先把合并做完」。
 
+### 4.34 同步产生的合并做完之后，**推送仍然被当成分岔**，要再同步一次
+
+真机复现两次（两个工程，一个历史完好），步骤就是作者会做的那些：
+
+1. A 提交并上传 → 服务器前进；
+2. B 从同一基线改另一处并提交 → 上传被拒，`Branch has diverged`；
+3. B 同步 → 冲突 → 逐条选边 → `completeMerge`。新修订写出来了，
+   `readMergeState` 答 `inProgress: false`，工作树干净；
+4. **再上传，仍然是 `branchPush: Branch has diverged, sync to merge remote changes`**，
+   `getSyncState` 两边都 `ahead`；
+5. 再同步一次 → **静默成功**（`conflicts: []`、`revisionsReceived: 1`，本地多出一个修订）；
+6. 再上传 → 成功。
+
+第 5 步多出一个本地修订，所以它不是一次快进；也就是说，第 3 步写出的那个修订
+**在服务器看来并没有把两条线接上**。
+
+**不是「`commitWorkingTree` 丢了第二个 parent」。** 本地 `branchMergeStart` 上实测过（见
+`merge.integration.test.ts` 里那条 spec）：同一条 `VcsManager.completeMerge` 写出的修订
+`parents.length === 2`。所以分岔只出在**同步产生的合并**上，跟 §4.26
+（同步合并的 parent[0] 是拉下来那一边）是同一个方向的差异。
+
+⚠ **还没定性到具体哪一步。** 要在测试里重现它得有一台**验身份**的服务器，而
+`merge.integration.test.ts` 的远端那半现在连不上：`publishToRemote` 直接报
+`repositoryCreate: connecting to remote: No token stored`。Lore 的会话存在它自己的
+按系统用户的 auth store 里，测试进程得先 `loginWithToken` 才能跑——这一条本身也是欠账。
+
+屏幕上目前不致于卡死：轨道红字写的就是「先获取服务器的版本再发送」，而那正是能让它发出去的
+动作。代价是多按一次，以及「我刚把合并做完了，它说我没合并」这一瞬。
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

@@ -187,7 +187,6 @@ function uigraphs(nodes: BlueprintGraphNode[], blueprintName = "Main menu"): UIG
     };
     return {
         schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-        graphs: {},
         blueprintDocument: {
             schemaVersion: BLUEPRINT_DOCUMENT_SCHEMA_VERSION,
             blueprints: { "bp-1": one },

@@ -69,8 +69,6 @@ describe("changeCategoryOf", () => {
         ["assets/assets.metadata.image.json", "assets"],
         ["assets/content/ab/cd/ef01", "assets"],
         ["resources/icons/derived/icon.png", "assets"],
-        // The config filename projects used before `.nlproj`. Still opened, so still classified.
-        ["project.json", "settings"],
         ["editor/save-schema.json", "settings"],
         ["scripts/build.js", "other"],
         ["runtimes/puppet/live2d/index.js", "other"],
@@ -107,15 +105,6 @@ describe("changeCategoryOf", () => {
         // characters a filename may not carry are dropped. Both still have to classify above.
         expect(ProjectNameConvention.ProjectConfig("My Game")).toEqual(["My-Game.nlproj"]);
         expect(ProjectNameConvention.ProjectConfig("Chapter: One?")).toEqual(["Chapter-One.nlproj"]);
-    });
-
-    it("keeps the legacy config filename where the current one goes", () => {
-        // A project written before `.nlproj` still opens, so its config still has to classify - and
-        // under the same heading, or the same file changes heading when the project is migrated.
-        expect(ProjectNameConvention.ProjectConfigLegacy.join("/")).toBe("project.json");
-        expect(changeCategoryOf(entry("project.json")))
-            .toBe(changeCategoryOf(entry("Demo.nlproj")));
-        expect(changeCategoryOf(entry("project.json"))).toBe("settings");
     });
 
     it("does not read every .nlproj in the tree as this project's config", () => {

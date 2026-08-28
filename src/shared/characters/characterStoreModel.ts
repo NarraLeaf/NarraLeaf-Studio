@@ -1,10 +1,6 @@
 import {
     CharacterGroup,
-    CharacterPose,
-    ICharacterAppearance,
     isCharacterAppearanceKind,
-    PortraitCrop,
-    PresetAppearance,
     StoredCharacter,
 } from "@shared/types/character/model";
 
@@ -18,7 +14,7 @@ import {
  * would have to store that order somewhere else or lose it to the canonical encoder's key sort.
  */
 export type CharacterStoreDocument = {
-    /** Absent on stores written before the appearance rework; see {@link migrateCharacterStore}. */
+    /** Absent only on stores written before the appearance rework, which are no longer read. */
     version?: number;
     characters: StoredCharacter[];
     groups?: Record<string, CharacterGroup>;
@@ -26,7 +22,7 @@ export type CharacterStoreDocument = {
 
 /**
  * Bumped whenever the persisted character store changes shape. A store with no `version` predates
- * versioning and holds the form/group/variant model this module migrates away from.
+ * versioning and holds the form/group/variant model, which nothing reads any more.
  *
  * v1 → v2 added the `live2d` and `spine` appearance kinds. There is nothing to migrate *forward*:
  * every v1 store is a valid v2 store, and the bump exists entirely for the other direction. Reading
@@ -51,184 +47,29 @@ export function isNewerCharacterStore(version: unknown): boolean {
     return typeof version === "number" && Number.isFinite(version) && version > CHARACTER_STORE_VERSION;
 }
 
-/** The shape the pre-v1 store held, read defensively — it was never validated on the way in. */
-export type LegacyForm = {
-    name?: unknown;
-    groups?: unknown[];
-    variantAssets?: Record<string, { data?: { id?: unknown } }>;
-    portrait?: PortraitCrop;
-};
-
-function fnv1a(input: string): string {
-    let hash = 0x811c9dc5;
-    for (let i = 0; i < input.length; i++) {
-        hash ^= input.charCodeAt(i);
-        hash = Math.imul(hash, 0x01000193) >>> 0;
-    }
-    return hash.toString(36);
-}
-
 /**
- * The pose id a legacy `(form, variant)` pair migrates to.
+ * The name of the first character whose appearance this build cannot read, or `null`.
  *
- * Deterministic on purpose: the story document has to rewrite its own rows from
- * `formName`/`variants` to a pose id, and deriving the id lets it do that without reading the
- * character store at all. The two migrations therefore do not have to run together, or even in the
- * same session — a row whose derived id names no pose is reported by the compiler as a missing
- * pose, which is the outcome we want anyway.
- */
-export function legacyPoseId(formName: string, variantName: string): string {
-    return `p${fnv1a(`${formName}\u0000${variantName}`)}`;
-}
-
-export type LegacyAppearanceMigration = {
-    appearance: PresetAppearance;
-    /**
-     * Forms that declared two or more variant groups. Those were already broken before this
-     * migration — the old resolver walked the selection and took the first variant that happened to
-     * have an asset, so a two-axis differential never composed — and the flattening here cannot
-     * recover an intent the data never expressed. Surfaced so the author can check the result.
-     */
-    multiGroupForms: string[];
-};
-
-/**
- * Flatten the form/group/variant model into a preset appearance: one pose per `(form, variant)`
- * that actually had an asset.
+ * A store used to be *migrated* here: the form/group/variant model was flattened into poses, and -
+ * as the whole point of that pass - an appearance whose `kind` was not recognised was read as the
+ * pre-rework model and replaced with an empty preset. That is destructive by design, and it was the
+ * default path, which is why {@link isNewerCharacterStore} had to be consulted first.
  *
- * Groups are dropped rather than translated. They only ever meant something as a cross product, and
- * the old store had nowhere to put a per-combination image (`variantAssets` is keyed by a single
- * variant name), so there is no combination data to preserve. The form name survives as the pose's
- * `folder`, which is all it was doing in practice.
+ * The migration is gone, and with it the reason to guess. An appearance whose kind this build does
+ * not know is now named and the store refused, which is the answer that loses nothing: the two ways
+ * one can turn up are a store from a newer Studio (already refused by version) and a file somebody
+ * edited by hand, and in both cases the bytes are the author's and belong on disk untouched.
  */
-export function migrateLegacyAppearance(
-    forms: readonly LegacyForm[],
-    defaultFormName: string | null,
-    profilePortrait: PortraitCrop | undefined,
-): LegacyAppearanceMigration {
-    const poses: CharacterPose[] = [];
-    const multiGroupForms: string[] = [];
-    const named = forms.filter(form => typeof form?.name === "string" && form.name.trim());
-    const multipleForms = named.length > 1;
-
-    for (const form of named) {
-        const formName = (form.name as string).trim();
-        const groups = Array.isArray(form.groups) ? form.groups : [];
-        if (groups.length > 1) {
-            multiGroupForms.push(formName);
-        }
-
-        // Group order, then variant order — the order the old resolver walked, so the first pose of
-        // a form is the one it would have landed on.
-        const ordered: string[] = [];
-        for (const group of groups) {
-            const variants = (group as { variants?: unknown[] })?.variants;
-            if (!Array.isArray(variants)) continue;
-            for (const variant of variants) {
-                const name = (variant as { name?: unknown })?.name;
-                if (typeof name === "string" && name.trim()) {
-                    ordered.push(name.trim());
-                }
-            }
-        }
-        // Assets can outlive the group that named them; keep them rather than drop the sprite.
-        for (const name of Object.keys(form.variantAssets ?? {})) {
-            if (!ordered.includes(name)) {
-                ordered.push(name);
-            }
-        }
-
-        for (const variantName of ordered) {
-            const assetId = form.variantAssets?.[variantName]?.data?.id;
-            if (typeof assetId !== "string" || !assetId) {
-                continue;
-            }
-            // The two optional fields are SPREAD IN rather than assigned, and this is the shape the
-            // whole store now has to keep. `folder: undefined` and "no folder" are the same value to
-            // TypeScript and different documents to the canonical encoder, which throws on
-            // `undefined` where `JSON.stringify` silently dropped it - so a pose built the assigning
-            // way is a character store that cannot be saved at all, and it would surface as "the
-            // characters spec is broken" rather than as "this file is corrupt". Inside a migration
-            // it is worse still: it reaches every project that has not been opened since the
-            // appearance rework, at the moment they are opened.
-            const portrait = form.portrait ?? profilePortrait;
-            poses.push({
-                id: legacyPoseId(formName, variantName),
-                name: multipleForms ? `${formName}·${variantName}` : variantName,
-                ...(multipleForms ? { folder: formName } : {}),
-                assetId,
-                ...(portrait ? { portrait } : {}),
-            });
-        }
-    }
-
-    // The old default was a *form*; its first pose is the sprite that form would have shown.
-    const defaultForm = defaultFormName?.trim();
-    const preferred = defaultForm ? poses.find(pose => pose.folder === defaultForm) : undefined;
-
-    return {
-        appearance: {
-            kind: "preset",
-            poses,
-            defaultPoseId: (preferred ?? poses[0])?.id ?? null,
-        },
-        multiGroupForms,
-    };
-}
-
-export type CharacterMigrationReport = {
-    migrated: number;
-    /** `characterName › formName` for every form that was already broken. See {@link LegacyAppearanceMigration}. */
-    multiGroupForms: string[];
-};
-
-type LegacyCharacterConfig = {
-    profile?: {
-        name?: unknown;
-        defaultForm?: unknown;
-        portrait?: PortraitCrop;
-        appearance?: { forms?: unknown[] } | ICharacterAppearance;
-    };
-};
-
-/**
- * True for anything already carrying the current model, so migration is idempotent.
- *
- * Asked of the shared kind list rather than spelled out here, because the answer for an
- * *unrecognised* kind is not "leave it alone" — it is "read it as the pre-rework store and rewrite
- * it", which discards the appearance. A kind this does not recognise is therefore deleted on the
- * next load rather than merely unsupported.
- */
-function isCurrentAppearance(appearance: unknown): appearance is ICharacterAppearance {
-    return isCharacterAppearanceKind((appearance as { kind?: unknown } | null)?.kind);
-}
-
-/**
- * Migrate a raw character store in place. Characters already on the two-kind model are left alone,
- * so this is safe to run on every load.
- */
-export function migrateCharacterStore(characters: unknown[]): CharacterMigrationReport {
-    const report: CharacterMigrationReport = { migrated: 0, multiGroupForms: [] };
-
+export function findUnreadableCharacterAppearance(characters: readonly unknown[]): string | null {
     for (const entry of characters) {
-        const config = entry as LegacyCharacterConfig;
-        const profile = config?.profile;
-        if (!profile || isCurrentAppearance(profile.appearance)) {
+        const profile = (entry as { profile?: { name?: unknown; appearance?: unknown } } | null)?.profile;
+        if (!profile) {
             continue;
         }
-        const forms = Array.isArray((profile.appearance as { forms?: unknown[] })?.forms)
-            ? ((profile.appearance as { forms?: unknown[] }).forms as LegacyForm[])
-            : [];
-        const defaultForm = typeof profile.defaultForm === "string" ? profile.defaultForm : null;
-        const { appearance, multiGroupForms } = migrateLegacyAppearance(forms, defaultForm, profile.portrait);
-
-        profile.appearance = appearance;
-        delete (profile as { defaultForm?: unknown }).defaultForm;
-
-        const characterName = typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : "(unnamed)";
-        report.multiGroupForms.push(...multiGroupForms.map(formName => `${characterName} › ${formName}`));
-        report.migrated += 1;
+        if (isCharacterAppearanceKind((profile.appearance as { kind?: unknown } | null)?.kind)) {
+            continue;
+        }
+        return typeof profile.name === "string" && profile.name.trim() ? profile.name.trim() : "(unnamed)";
     }
-
-    return report;
+    return null;
 }

@@ -14,7 +14,6 @@ import {
     createEmptyVariableRegistry,
     listRegistryEntries,
     normalizePersistentValueType,
-    seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
@@ -27,7 +26,6 @@ import { UuidService } from "../core/UuidService";
 import { StoryService } from "../story/StoryService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { EventEmitter } from "../ui/EventEmitter";
-import { migrateProjectScopedDeclarations } from "./storyDeclarationMigration";
 
 type VariableRegistryServiceEvents = {
     registryChanged: VariableRegistry;
@@ -142,35 +140,6 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         await this.load();
     }
 
-    /**
-     * Convert the `/save` and `/global` declaration rows of a pre-retirement project into registry
-     * entries. See {@link migrateProjectScopedDeclarations} for what the pass does and why it has no
-     * "already ran" flag.
-     *
-     * **Why here and not in a service of its own.** The pass has exactly one owner: it writes this
-     * registry, its whole correctness argument is about this registry's write path (a refused save
-     * must leave the rows standing), and it holds no state between runs. A dedicated service would
-     * add a lifecycle for something that runs once and would then have to be ordered against both
-     * this service and `StoryService` - the ordering problem `activate` exists to remove.
-     *
-     * **Why `activate` and not `init`.** Every service's `init` has completed by the time any
-     * `activate` runs (`WorkspaceContext`), and the UI has not rendered yet. So `StoryService` is
-     * guaranteed up without this service declaring a dependency on it, and no panel can read a
-     * half-converted project.
-     *
-     * Failures are warned and swallowed: `activate` is awaited before the workspace renders, so a
-     * throw here would turn "a variable did not move" into "the project will not open". Nothing was
-     * recorded as done, so the next open tries again.
-     */
-    public async activate(ctx: WorkspaceContext): Promise<void> {
-        try {
-            const storyService = ctx.services.get<StoryService>(Services.Story);
-            await migrateProjectScopedDeclarations(storyService, this);
-        } catch (error) {
-            console.warn("[VariableRegistryService] declaration migration failed", error);
-        }
-    }
-
     public async load(): Promise<VariableRegistry> {
         const result = await loadDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor());
         // Cleared before the branch, not inside it. These services are singletons that re-init on a
@@ -184,9 +153,9 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         this.savedContentKey = null;
 
         if (result.status === "missing") {
-            // The registry is created on first open rather than lazily, so a project that predates
-            // M-VAR gets its blueprint persistent variables seeded once and visibly.
-            await this.save(this.createSeededRegistry());
+            // Created on first open rather than lazily, so `editor/variables.json` exists from the
+            // start and a project's first variable is an edit to a file rather than a new one.
+            await this.save(createEmptyVariableRegistry(new Date().toISOString()));
             return this.getRegistry();
         }
 
@@ -631,16 +600,6 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      * persistent variables (the field being relocated). Once the field is stripped, this seed reads
      * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
      */
-    private createSeededRegistry(): VariableRegistry {
-        const now = new Date().toISOString();
-        const uiGraphService = this.getContext().services.get<UIGraphService>(Services.UIGraph);
-        const legacy = uiGraphService.consumeLegacyPersistentVariables();
-        const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy ?? undefined);
-        const registry = createEmptyVariableRegistry(now);
-        registry.entries = entries;
-        return registry;
-    }
-
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }

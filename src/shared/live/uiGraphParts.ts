@@ -95,14 +95,6 @@ export type LiveUIGraphParts = {
     graphs?: Readonly<Record<string, LiveBlueprintGraphsDelta>>;
     /** Which private blueprint is active for an owner slot, by owner key. */
     owners?: Readonly<Record<string, BlueprintPrivateOwnerRecord | null>>;
-    /**
-     * The older root-level behaviour graphs, whole entries.
-     *
-     * Nothing writes these any more and some projects still carry them. Carried on the same terms as
-     * everything else rather than ignored, because a record no operation can be about is a record a
-     * session would let one machine change alone.
-     */
-    legacyGraphs?: Readonly<Record<UIGraphId, UIGraph | null>>;
 };
 
 /** One node, and which graph of which blueprint it is in. */
@@ -149,12 +141,6 @@ export function diffUIGraphParts(before: UIGraphDocument, after: UIGraphDocument
     );
     if (owners) {
         parts.owners = owners;
-        changed = true;
-    }
-
-    const legacyGraphs = diffRecordMap(before.graphs ?? {}, after.graphs ?? {});
-    if (legacyGraphs) {
-        parts.legacyGraphs = legacyGraphs;
         changed = true;
     }
 
@@ -275,16 +261,6 @@ export function applyUIGraphParts(document: UIGraphDocument, parts: LiveUIGraphP
                 delete blueprintDocument.ownerRecords[ownerKey];
             } else {
                 blueprintDocument.ownerRecords[ownerKey] = record;
-            }
-        }
-    }
-    if (parts.legacyGraphs) {
-        document.graphs = document.graphs ?? {};
-        for (const [graphId, graph] of Object.entries(parts.legacyGraphs)) {
-            if (graph === null) {
-                delete document.graphs[graphId];
-            } else {
-                document.graphs[graphId] = graph;
             }
         }
     }
@@ -480,13 +456,6 @@ export function uiGraphPartsBefore(document: UIGraphDocument, parts: LiveUIGraph
         }
         before.owners = owners;
     }
-    if (parts.legacyGraphs) {
-        const legacyGraphs: Record<UIGraphId, UIGraph | null> = {};
-        for (const graphId of Object.keys(parts.legacyGraphs)) {
-            legacyGraphs[graphId] = copy(document.graphs?.[graphId] ?? null);
-        }
-        before.legacyGraphs = legacyGraphs;
-    }
     return before;
 }
 
@@ -611,7 +580,7 @@ export function uiGraphPartsTouched(
     ]);
     return {
         blueprints: [...blueprints],
-        shell: Boolean(parts.blueprints || parts.owners || parts.legacyGraphs),
+        shell: Boolean(parts.blueprints || parts.owners),
     };
 }
 
@@ -628,8 +597,8 @@ export function uiBlueprintDigest(document: UIGraphDocument | null, blueprintId:
 }
 
 /**
- * Everything about the blueprint document that no blueprint covers: the owner records, the legacy
- * graphs, and the set of blueprint ids.
+ * Everything about the blueprint document that no blueprint covers: the owner records and the set of
+ * blueprint ids.
  *
  * ⚠ `meta` is deliberately not in it. It holds when the document was last written, stamped from the
  * clock of whichever machine wrote it, so hashing it would eject every guest on every save.
@@ -641,7 +610,6 @@ export function uiGraphShellDigest(document: UIGraphDocument | null): string {
     return hash({
         blueprintIds: Object.keys(document.blueprintDocument?.blueprints ?? {}).sort(),
         owners: pruneUndefined(document.blueprintDocument?.ownerRecords ?? {}),
-        legacyGraphs: pruneUndefined(document.graphs ?? {}),
     });
 }
 

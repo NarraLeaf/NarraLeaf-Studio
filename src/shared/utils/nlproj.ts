@@ -24,7 +24,6 @@ export interface ProjectConfigData {
  * answers it has to recognise the same file this module writes.
  */
 export const NLPROJ_EXT = ".nlproj";
-const LEGACY_CONFIG_FILE = "project.json";
 const MAX_FILENAME_LENGTH = 100;
 
 /**
@@ -65,13 +64,6 @@ export function decodeProjectConfig(buffer: Uint8Array): ProjectConfigData {
 }
 
 /**
- * Legacy project.json path for backward compatibility.
- */
-export function getLegacyProjectConfigPath(projectPath: string): string {
-    return join(projectPath, LEGACY_CONFIG_FILE);
-}
-
-/**
  * A directory entry as a listing reports it - the filename arrives split into a stem plus a
  * separate extension (see {@link entryFileName}), which is why these finders match on `ext` and
  * reassemble before returning a filename.
@@ -97,24 +89,15 @@ export function findNlprojConfigFileName(entries: DirEntry[]): string | null {
 }
 
 /**
- * Find the legacy project.json config filename from directory entries.
- * Returns "project.json" or null if not found.
- */
-export function findLegacyProjectConfigFileName(entries: DirEntry[]): string | null {
-    const legacy = entries.find(
-        (e) => e.type === "file" && e.name === "project" && e.ext === ".json"
-    );
-    if (legacy) {
-        return entryFileName(legacy);
-    }
-    return null;
-}
-
-/**
- * Find project config filename from directory entries.
- * Priority: .nlproj first, then project.json.
- * Returns the filename (e.g. "MyProject.nlproj" or "project.json") or null if not found.
+ * Find the project config filename among directory entries.
+ *
+ * One spelling, and deliberately: projects written before `.nlproj` kept their config in a
+ * `project.json`, and that fallback is gone rather than merely unused. A directory holding one is
+ * not a project this build opens, and saying so is better than opening it and writing a `.nlproj`
+ * beside a file it will then ignore.
+ *
+ * Returns the filename (e.g. "MyProject.nlproj") or null if there is none.
  */
 export function findProjectConfigFileName(entries: DirEntry[]): string | null {
-    return findNlprojConfigFileName(entries) ?? findLegacyProjectConfigFileName(entries);
+    return findNlprojConfigFileName(entries);
 }

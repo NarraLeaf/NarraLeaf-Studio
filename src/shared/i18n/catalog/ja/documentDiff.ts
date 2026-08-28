@@ -81,6 +81,7 @@ export const documentDiff = {
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
         saveFields: "セーブ項目",
+        stories: "ストーリー",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",
         storyScenes: "シーン",
@@ -100,6 +101,23 @@ export const documentDiff = {
      * ここではその対象を名乗り直さない。`{field}` を含むものが生のフィールド識別子を引くのは、
      * 生成側が持っているのがそれだけだから。`entrySceneId` に作者の言葉は無い。
      */
+    /**
+     * 第 2 層、ストーリーの一覧。どのストーリーがあり、何と呼ばれているか。
+     *
+     * マージの行だけ。一覧自体にはまだ意味単位の差分がなく、比較は構造をたどる。
+     * `subject` にはストーリー自身の題名が入るので、以下はそれを繰り返さない。
+     */
+    storyIndex: {
+        added: "ストーリーを追加",
+        removed: "ストーリーを削除",
+        /** 片方が追加しもう片方が削除した、または共通の祖先がない。 */
+        changed: "ストーリーを変更",
+        renamed: "ストーリー名を変更",
+        /** `dlcId`、`importSource`、`exportMeta`。どれも作者が書いた名前ではない。 */
+        entryField: "{field} を変更",
+        defaultStory: "開始ストーリーを変更",
+        documentField: "{field} を変更",
+    },
     story: {
         renamed: "ストーリー名を変更",
         /** チャプターの `meta` でも使う。その場合チャプター名は `subject` として届く。 */
