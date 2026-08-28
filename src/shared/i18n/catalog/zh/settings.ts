@@ -310,6 +310,7 @@ export const settings = {
         menuBarMode: {
             label: "主菜单",
             description: "标题栏中「文件」「帮助」以及各面板菜单的位置",
+            unsupportedPlatform: "在 macOS 上，这些菜单位于系统菜单栏",
         },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
