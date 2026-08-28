@@ -23,9 +23,9 @@ export const characters = {
         groupActions: "分组操作",
         namePlaceholder: "输入角色名称",
         groupNamePlaceholder: "输入分组名称",
-        deleteCharacterConfirm: "删除角色“{name}”？",
-        deleteCharacterDetail: "台词保留名字，将其放上舞台的行会失去指向",
-        deleteGroupConfirm: "删除分组“{name}”？",
+        deleteCharacterConfirm: "删除角色“{name}”",
+        deleteCharacterDetail: "对白保留名称，引用该角色的舞台行将失去指向",
+        deleteGroupConfirm: "删除分组“{name}”",
         deleteGroupDetail: "此分组下的角色将变为未分组状态",
     },
     // 这两个删除留下的撤销步骤叫什么（"撤销 删除角色 Hiyori"）。
@@ -34,7 +34,7 @@ export const characters = {
         deleteGroup: "删除分组 {name}",
     },
     create: {
-        nameRequired: "请先给角色起个名字",
+        nameRequired: "输入角色名称",
         unnamed: "未命名",
         appearanceLabel: "立绘类型",
         kindDescription: {
@@ -48,7 +48,7 @@ export const characters = {
         colorReset: "使用名字计算",
     },
     editor: {
-        kind: { preset: "成品差分", layered: "分层立绘", puppet: "自定义运行时" },
+        kind: { preset: "成品立绘", layered: "分层立绘", puppet: "自定义运行时" },
         puppet: {
             model: "模型",
             noModel: "未选择",
@@ -76,18 +76,18 @@ export const characters = {
             describeFailed: "无法读取该模型",
             redescribe: "重新读取模型",
             previewFailed: "无法绘制该模型",
-            setupTitle: "还有两件事要准备",
+            setupTitle: "还需准备两项",
             stepRuntime: "绘制运行时",
             stepModel: "模型",
             runtimeInstalled: "已安装",
-            runtimeMissing: "本工程未安装",
+            runtimeMissing: "本项目未安装",
             runtimeIncomplete: "已安装但不完整",
             runtimeUnchosen: "未选择",
             install: "安装…",
             reinstall: "重新安装…",
             chooseRuntime: "选择运行时",
             importModel: "导入模型…",
-            noModelAssets: "本工程还没有模型资产",
+            noModelAssets: "本项目尚无模型资产",
             modelHint: "模型是一个目录，包含清单文件以及它引用的贴图与动作",
         },
         runtime: {
@@ -112,7 +112,7 @@ export const characters = {
             builtFrom: "由 SDK {version} 构建",
             renamed: "已安装为“{backend}”，在角色上使用该名称",
             remove: "移除",
-            removeConfirm: "移除“{backend}”运行时？",
+            removeConfirm: "移除“{backend}”运行时",
             removeDetail: "使用它的角色保留该名称，并在重新安装之前绘制为空框",
             customName: "运行时名称",
             customNameHint: "同时也是它在 runtimes/puppet/ 下的目录名",
@@ -157,7 +157,7 @@ export const characters = {
         combinations: {
             title: "组合",
             name: "为该组合命名",
-            missing: "这里没有图：{list}",
+            missing: "此处没有图：{list}",
         },
         psd: {
             title: "导入 PSD",
@@ -208,7 +208,7 @@ export const characters = {
             subtitle: "角色编辑器",
         },
         confirm: {
-            deleteTitle: "删除“{name}”？",
+            deleteTitle: "删除“{name}”",
             deletePoseDetail: "指名该姿态的故事行将解析不到姿态",
             deleteAxisDetail: "绑定到它的图层将退回恒定绘制，并释放各标签下的图",
             deleteTagDetail: "该标签下的图将被释放",
@@ -243,7 +243,7 @@ export const characters = {
         addTag: "添加标签",
         error: {
             workspaceNotReady: "工作区尚未就绪",
-            selectImageAsset: "请选择一个图片资产",
+            selectImageAsset: "选择图片资产",
             deleteThumbnailFailed: "删除缩略图失败",
             saveThumbnailFailed: "保存缩略图失败",
             unknown: "未知错误",
@@ -255,7 +255,7 @@ export const characters = {
         variant: "差分：{name}",
         loading: "正在加载预览…",
         failed: "预览失败",
-        placeholder: "请选择一个带有图片的差分以进行预览",
+        placeholder: "选择带有图片的差分以预览",
         noSize: "无尺寸",
         noMetadata: "无元数据",
         zoomOut: "缩小",

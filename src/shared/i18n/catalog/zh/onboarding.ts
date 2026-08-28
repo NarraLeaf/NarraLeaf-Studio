@@ -25,7 +25,7 @@ export const onboarding = {
     },
     welcome: {
         title: "欢迎",
-        expectation: "界面与故事编辑器的设置，共六屏。每一项选中即刻生效，之后都在设置中",
+        expectation: "界面与故事编辑器的设置，共六屏。每一项选中即刻生效，均可在设置中修改",
         haveSettings: "来自其他安装的设置",
     },
     language: {
@@ -45,15 +45,15 @@ export const onboarding = {
     },
     identity: {
         title: "作者",
-        expectation: "记录在每个版本上的名字，以及新建工程时的默认作者",
-        unsigned: "留空则版本记为 {name}",
+        expectation: "用于标记版本提交的作者名，并作为新建项目的默认作者",
+        unsigned: "为空时，版本作者记为 {name}",
     },
     team: {
         title: "团队服务器",
-        expectation: "共享工程的存放位置。服务器不是必需的",
+        expectation: "共享项目的存放位置。服务器不是必需的",
         connect: "连接服务器",
         connected: "已登录",
-        none: "工程保存在本机",
+        none: "项目保存在本机",
     },
     story: {
         title: "故事编辑器",
@@ -65,12 +65,12 @@ export const onboarding = {
     },
     done: {
         title: "设置完成",
-        expectation: "这里的每一项都在设置中。按 F1 查看光标所在处的说明",
+        expectation: "这里问到的每一项都在设置中。按 F1 查看光标所在处的说明",
         docs: "打开文档",
     },
     skipConfirm: {
-        title: "跳过设置？",
-        message: "Studio 将以默认设置打开。设置流程不再出现，其中的每一项都在设置中。",
+        title: "跳过设置",
+        message: "Studio 将以默认设置启动。设置流程不再出现，其中的每一项都在设置中。",
     },
     nav: {
         skip: "跳过设置",
@@ -99,7 +99,7 @@ export const onboarding = {
         console: {
             start: "正在构建预览…",
             assets: "86 个资产，12 个场景",
-            warning: "场景「天台，傍晚」里有个角色没有立绘",
+            warning: "场景「天台，傍晚」中有一个角色缺少立绘",
             done: "预览就绪，用时 3.4 秒",
         },
     },

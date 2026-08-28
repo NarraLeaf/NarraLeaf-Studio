@@ -1622,6 +1622,18 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
+        // Maximized right here rather than once the page reports ready: the window is on screen
+        // from the moment it is constructed, so anything later is the author watching a small
+        // window appear and then jump. The frame above stays as the size it falls back to when the
+        // maximized state is left.
+        //
+        // Not for a window that is not being shown - a build with nobody at the screen has no frame
+        // worth choosing, and a window loading behind the one it replaces takes that window's frame
+        // instead (see `handOverToReplacement`), which is the whole reason a switch reads as one
+        // window changing project.
+        if (!hidden && this.globalState.get("workspace.maximizeOnOpen")) {
+            window.maximize();
+        }
         if (hidden) {
             // Chromium treats a window that is not on screen as backgrounded and drops its timers to
             // one a second. A build runs its whole life that way, and a build is full of debounces,

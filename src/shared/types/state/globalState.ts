@@ -264,6 +264,23 @@ export interface GlobalStateType extends Record<string, any> {
      * home screen is where that choice is made, and it is one click from the project they left.
      */
     "workspace.reopenLastProject": boolean;
+    /**
+     * Open a workspace window maximized rather than at the frame it was placed at.
+     *
+     * Read by `App.launchWorkspace` as each window is built. Off by default: the frame a workspace
+     * arrives at is already chosen for it - centred at 1400x900 from the home screen, and stepped
+     * down and right of the workspace it was opened alongside - and maximizing on top of that
+     * would put a second project exactly over the first, which is the one thing `workspacePlacement`
+     * offsets to avoid. On, it is the author saying they want the screen filled anyway.
+     *
+     * The placed frame is still what the window falls back to when the maximized state is left, so
+     * this decides how a workspace *arrives*, not what size it is.
+     *
+     * Switching project inside a window is exempt: the replacement takes over the frame of the
+     * window it replaces, maximized or not, which is what makes the switch read as one window
+     * changing project. So is a workspace opened to run a build with nobody at the screen.
+     */
+    "workspace.maximizeOnOpen": boolean;
     /** How many projects the home screen and the native Open Recent submenu keep. */
     "workspace.recentProjectsLimit": number;
     /**
@@ -518,6 +535,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.reopenLastProject": false,
+    "workspace.maximizeOnOpen": false,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
