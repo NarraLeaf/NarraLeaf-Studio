@@ -1697,6 +1697,53 @@ describe("UIDocumentService input model normalization", () => {
         expect(loaded.actions?.dismiss?.bindings).toEqual([{ kind: "key", key: "Escape" }]);
     });
 
+    /**
+     * The walk, not the fold - `legacyImageProps.test.ts` covers what one element becomes. What is
+     * asserted here is that a component definition is reached: its elements are the same elements
+     * with a different owner, and one authored before the current shape would otherwise keep the old
+     * keys wherever it was placed.
+     */
+    it("folds the pre-imageFill shape on surfaces and inside component definitions alike", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = JSON.parse(JSON.stringify(initialDocument));
+        stored.elements["on-page"] = {
+            id: "on-page",
+            type: "nl.image",
+            parentId: stored.surfaces[0]!.rootElementId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+            props: { assetId: "art-1" },
+        };
+        stored.components = [{
+            id: "component-1",
+            name: "Card",
+            rootElementId: "in-component",
+            elements: {
+                "in-component": {
+                    id: "in-component",
+                    type: "nl.image",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 10, height: 10 },
+                    props: { assetId: "art-2" },
+                },
+            },
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+        }] as UIDocument["components"];
+
+        const loaded = migrate(service, stored);
+
+        expect(loaded.elements["on-page"]!.props).toEqual({
+            fillType: "image",
+            imageFill: { mode: "cover", assetId: "art-1" },
+        });
+        expect(loaded.components![0]!.elements["in-component"]!.props).toEqual({
+            fillType: "image",
+            imageFill: { mode: "cover", assetId: "art-2" },
+        });
+    });
+
     it("v12 leaves an override that worked out to the project own bindings alone", () => {
         const { service, initialDocument } = createHarness();
         const stored: UIDocument = {

@@ -26,7 +26,6 @@ import { isButtonAppearanceKey, isContainerAppearanceKey, isTextAppearanceKey } 
 import type { ButtonWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/button/types";
 import type { TextWidgetProps } from "@/lib/ui-editor/widget-modules/builtin/text/types";
 import { getContainerProps } from "@/lib/ui-editor/widget-modules/builtin/container/helpers";
-import { getImageWidgetRectangleProps } from "@/lib/ui-editor/widget-modules/builtin/image/helpers";
 import {
     isMotionCapableButtonAppearanceKey,
     isMotionCapableContainerAppearanceKey,
@@ -1057,7 +1056,7 @@ export function resolveImageRectangleLike(
     appearance: AppearanceModel | null | undefined,
     ctx: AppearanceResolveContext
 ): RectangleLikeProps {
-    const baseline = getImageWidgetRectangleProps(element);
+    const baseline = getRectangleLikeProps(element);
     if (!isUsableAppearance(appearance)) {
         return baseline;
     }

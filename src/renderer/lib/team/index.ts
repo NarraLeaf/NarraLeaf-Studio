@@ -46,6 +46,7 @@ export {
     type TeamAck,
     type TeamOutcome,
     type ThreadPage,
+    type ThreadWithComments,
 } from "./teamCall";
 export {
     refuseLiveSessionEntry,
