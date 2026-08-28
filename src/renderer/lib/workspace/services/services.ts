@@ -505,16 +505,6 @@ interface IUIGraphService extends IService {
     isDirty(): boolean;
     getRevision(): number;
     applyGraphMutation(mutator: (document: UIGraphDocument) => void): void;
-    createGraph(input: {
-        name?: string;
-        nodes?: Record<string, UIGraph["nodes"][string]>;
-        entries?: UIGraph["entries"];
-        edges?: UIGraph["edges"];
-        variables?: UIGraph["variables"];
-        meta?: UIGraph["meta"];
-    }): UIGraph;
-    updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
-    deleteGraph(graphId: string): void;
 }
 
 interface IVariableRegistryService extends IService {

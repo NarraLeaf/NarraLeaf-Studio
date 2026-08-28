@@ -208,7 +208,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
             uidoc: document,
             uigraphs: {
                 schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-                graphs: {},
                 blueprintDocument,
             },
             localBlueprints: blueprintDocument,
