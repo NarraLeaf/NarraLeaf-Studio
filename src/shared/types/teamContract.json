@@ -102,6 +102,8 @@
     "suggestion": 65536,
     "overlayBody": 65536,
     "livePayload": 16384,
-    "instanceField": 256
+    "instanceField": 256,
+    "pageBytes": 1048576,
+    "answerBytes": 2097152
   }
 }

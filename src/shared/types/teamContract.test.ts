@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     TEAM_ANCHOR_FIELD_LIMIT,
+    TEAM_ANSWER_BYTES_LIMIT,
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
@@ -147,12 +148,32 @@ describe("the protocol contract", () => {
         expect(TEAM_TOPIC_ADMIN_REFUSALS).toBe(contract.topics["adminRefusals"]);
     });
 
-    it("bounds what it sends at the sizes the contract states", () => {
+    it("states every ceiling the contract does, at the contract's figure", () => {
+        // Every limit the contract carries is one of the lines below, the same way every
+        // topic is. Without this a figure that arrived on the server would be a ceiling
+        // Studio went on applying at whatever number it had - which is how the reader on
+        // the session's socket came to refuse answers the server was entitled to send.
+        expect(Object.keys(contract.limits).slice().sort()).toEqual([
+            "anchorField",
+            "answerBytes",
+            "commentBody",
+            "instanceField",
+            "livePayload",
+            "overlayBody",
+            "pageBytes",
+            "suggestion",
+        ]);
+
         expect(TEAM_ANCHOR_FIELD_LIMIT).toBe(contract.limits["anchorField"]);
         expect(TEAM_COMMENT_BODY_LIMIT).toBe(contract.limits["commentBody"]);
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
         expect(TEAM_LIVE_PAYLOAD_LIMIT).toBe(contract.limits["livePayload"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
+        expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
+
+        // `pageBytes` is where a server ends a page, and nothing on this side composes
+        // one: it is named above so that it cannot arrive unnoticed, and pinned to no
+        // constant because there is nothing here for it to bound.
     });
 });
