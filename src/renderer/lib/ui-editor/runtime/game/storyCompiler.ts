@@ -2588,9 +2588,6 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
                 { src: voiceUrl },
             );
         }
-        if (block.payload.pauseAfter !== undefined) {
-            config.pause = block.payload.pauseAfter;
-        }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
         const eventMap = await resolveSegmentEvents(ctx, block.payload.text, block.id);
         return [recordStatement(ctx, character.say(buildLocalizedSentencePrompt(ctx, block.payload.text, block.id, eventMap) as any, sayConfig), block, block.payload.text.textId)];

@@ -9,7 +9,6 @@ export const storyInspector = {
     unassigned: "Unassigned",
 
     section: {
-        timing: "Timing",
         conditions: "Conditions",
         appearance: "Appearance",
         blueprint: "Blueprint",
@@ -425,11 +424,6 @@ export const storyInspector = {
 
     narration: {
         editHint: "Double-click the row to edit narration text.",
-    },
-
-    dialogue: {
-        pauseAfter: "Pause after line",
-        pauseSeconds: "Pause (s, optional)",
     },
 
     choice: {
