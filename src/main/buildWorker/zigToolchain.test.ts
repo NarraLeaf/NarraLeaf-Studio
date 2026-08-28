@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace } from "@shared/types/constants";
 import { pruneToolchain, zigCacheRoot, zigExecutablePath, zigMirror, ZIG_VERSION } from "./zigToolchain";
 
 /** Build a tree from a list of file paths, so a test can state the shape it means. */
@@ -54,10 +54,10 @@ describe("where a Zig toolchain comes from", () => {
     });
 
     it("caches where the inventory offers to delete it", () => {
-        const root = zigCacheRoot(path.join("C:", "userData"));
+        const root = zigCacheRoot(path.join("C:", "nl-cache"));
         // The one place that knows what Studio leaves on disk has to be looking at this directory,
         // or a few hundred megabytes sit there with nothing on screen accounting for them.
-        expect(root).toBe(path.join("C:", "userData", UserDataNamespace.Cache, CacheNamespace.Toolchains));
+        expect(root).toBe(path.join("C:", "nl-cache", CacheNamespace.Toolchains));
     });
 
     it("names the executable the way the host does", () => {

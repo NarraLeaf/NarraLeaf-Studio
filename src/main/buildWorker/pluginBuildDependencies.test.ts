@@ -16,7 +16,7 @@ import {
 
 const URL_UNDER_TEST = "https://example.invalid/sdk.zip";
 
-let userDataDir: string;
+let cacheRoot: string;
 let fetchMock: ReturnType<typeof vi.fn>;
 
 async function zipOf(files: Record<string, string>): Promise<Buffer> {
@@ -69,7 +69,7 @@ async function ensure(
     log?: LogLine[],
 ): Promise<string> {
     return ensurePluginBuildDependency({
-        userDataDir,
+        cacheRoot,
         dependencyId: "acme.sdk.binaries",
         platformKey: "windows-x64",
         target,
@@ -78,14 +78,14 @@ async function ensure(
 }
 
 beforeEach(async () => {
-    userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-build-deps-"));
+    cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-build-deps-"));
     fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 });
 
 afterEach(async () => {
     vi.unstubAllGlobals();
-    await fs.rm(userDataDir, { recursive: true, force: true });
+    await fs.rm(cacheRoot, { recursive: true, force: true });
 });
 
 describe("ensurePluginBuildDependency", () => {
@@ -152,8 +152,8 @@ describe("ensurePluginBuildDependency", () => {
             .rejects.toThrow(/sha256/);
 
         // Nothing half-written may survive: the next build would trust it.
-        await expect(fs.stat(buildDependencyCacheDir(userDataDir, declared))).rejects.toThrow();
-        const root = await fs.readdir(buildDependencyCacheRoot(userDataDir)).catch(() => []);
+        await expect(fs.stat(buildDependencyCacheDir(cacheRoot, declared))).rejects.toThrow();
+        const root = await fs.readdir(buildDependencyCacheRoot(cacheRoot)).catch(() => []);
         expect(root).toEqual([]);
     });
 
@@ -178,7 +178,7 @@ describe("ensurePluginBuildDependency", () => {
     it("uses a hand-placed source file without touching the network", async () => {
         const archive = await zipOf({ "bin/a.dll": "A" });
         const sha256 = sha256Of(archive);
-        const sourcePath = buildDependencySourcePath(userDataDir, sha256);
+        const sourcePath = buildDependencySourcePath(cacheRoot, sha256);
         await fs.mkdir(path.dirname(sourcePath), { recursive: true });
         await fs.writeFile(sourcePath, archive);
 
@@ -191,7 +191,7 @@ describe("ensurePluginBuildDependency", () => {
     it("refuses a hand-placed source file that is not what the manifest declared", async () => {
         const archive = await zipOf({ "bin/a.dll": "A" });
         const declared = sha256Of(await zipOf({ "bin/b.dll": "B" }));
-        const sourcePath = buildDependencySourcePath(userDataDir, declared);
+        const sourcePath = buildDependencySourcePath(cacheRoot, declared);
         await fs.mkdir(path.dirname(sourcePath), { recursive: true });
         await fs.writeFile(sourcePath, archive);
 
@@ -285,7 +285,7 @@ describe("ensurePluginBuildDependency", () => {
         // Verification reads the produced files, never the archive - which is
         // the whole reason for recording digests instead of unpacking again on
         // every build. With the source gone there is nothing to unpack from.
-        await fs.rm(buildDependencySourcePath(userDataDir, target.sha256));
+        await fs.rm(buildDependencySourcePath(cacheRoot, target.sha256));
 
         expect(await ensure(target)).toBe(first);
         expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -302,12 +302,12 @@ describe("probePluginBuildDependency", () => {
     it("answers from the cache without reaching the network", async () => {
         const archive = await zipOf({ "bin/a.dll": "A" });
         const sha256 = sha256Of(archive);
-        const sourcePath = buildDependencySourcePath(userDataDir, sha256);
+        const sourcePath = buildDependencySourcePath(cacheRoot, sha256);
         await fs.mkdir(path.dirname(sourcePath), { recursive: true });
         await fs.writeFile(sourcePath, archive);
 
         await expect(probePluginBuildDependency({
-            userDataDir,
+            cacheRoot,
             target: zipTarget(sha256, { "bin/a.dll": "a.dll" }),
         })).resolves.toEqual({ status: "cached" });
         expect(fetchMock).not.toHaveBeenCalled();
@@ -316,7 +316,7 @@ describe("probePluginBuildDependency", () => {
     it("reports an offline host as unavailable", async () => {
         fetchMock.mockRejectedValue(new Error("getaddrinfo ENOTFOUND example.invalid"));
         await expect(probePluginBuildDependency({
-            userDataDir,
+            cacheRoot,
             target: zipTarget("a".repeat(64), { "bin/a.dll": "a.dll" }),
         })).resolves.toEqual({ status: "unavailable", reason: "getaddrinfo ENOTFOUND example.invalid" });
     });
@@ -326,7 +326,7 @@ describe("probePluginBuildDependency", () => {
         // still succeed, so blocking on it would be a false alarm.
         fetchMock.mockResolvedValue({ ok: false, status: 405 });
         await expect(probePluginBuildDependency({
-            userDataDir,
+            cacheRoot,
             target: zipTarget("b".repeat(64), { "bin/a.dll": "a.dll" }),
         })).resolves.toEqual({ status: "reachable" });
     });
@@ -334,7 +334,7 @@ describe("probePluginBuildDependency", () => {
     it("treats a missing URL as unavailable", async () => {
         fetchMock.mockResolvedValue({ ok: false, status: 404 });
         await expect(probePluginBuildDependency({
-            userDataDir,
+            cacheRoot,
             target: zipTarget("c".repeat(64), { "bin/a.dll": "a.dll" }),
         })).resolves.toEqual({ status: "unavailable", reason: "HTTP 404" });
     });
@@ -342,13 +342,13 @@ describe("probePluginBuildDependency", () => {
 
 describe("resolveBuildDependencyFile", () => {
     it("resolves a forward-slash path against the dependency directory", () => {
-        const root = path.join(userDataDir, "dep");
+        const root = path.join(cacheRoot, "dep");
         expect(resolveBuildDependencyFile(root, "lib/steam_api64.dll"))
             .toBe(path.join(root, "lib", "steam_api64.dll"));
     });
 
     it("refuses to escape the dependency directory", () => {
-        const root = path.join(userDataDir, "dep");
+        const root = path.join(cacheRoot, "dep");
         expect(() => resolveBuildDependencyFile(root, "../outside.dll")).toThrow(/escapes/);
         expect(() => resolveBuildDependencyFile(root, "lib/../../outside.dll")).toThrow(/escapes/);
         expect(() => resolveBuildDependencyFile(root, "")).toThrow(/escapes/);

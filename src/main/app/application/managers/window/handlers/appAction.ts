@@ -20,7 +20,7 @@ import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/t
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
-import { clearCacheBuckets, measureCacheInventory } from "../../storage/cacheInventory";
+import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
 
@@ -623,13 +623,18 @@ export class AppProbeDownloadSourceHandler extends IPCHandler<IPCEventType.appPr
     }
 }
 
+/** The two directories the inventory spans; see `cacheRoot.ts` for why they are not one. */
+function cacheLocations(app: AppWindow["app"]): CacheLocations {
+    return { userDataDir: app.getUserDataDir(), cacheRoot: app.getCacheRootDir() };
+}
+
 export class AppCacheInventoryHandler extends IPCHandler<IPCEventType.appCacheInventory> {
     readonly name = IPCEventType.appCacheInventory;
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow) {
         try {
-            return this.success(await measureCacheInventory(window.app.getUserDataDir()));
+            return this.success(await measureCacheInventory(cacheLocations(window.app)));
         } catch (error) {
             return this.failed(error);
         }
@@ -642,7 +647,7 @@ export class AppCacheClearHandler extends IPCHandler<IPCEventType.appCacheClear>
 
     public async handle(window: AppWindow, { ids }: IPCEvents[IPCEventType.appCacheClear]["data"]) {
         try {
-            return this.success(await clearCacheBuckets(window.app.getUserDataDir(), ids));
+            return this.success(await clearCacheBuckets(cacheLocations(window.app), ids));
         } catch (error) {
             return this.failed(error);
         }

@@ -15,6 +15,44 @@
  */
 
 /**
+ * The switch names below are not stored as text.
+ *
+ * A shipped game's `main.js` is the one file a player can read without opening anything first, and a
+ * plain list of switch names sitting in it is a map of this guard: a search for `remote-debugging-port`
+ * lands on the check, and the check is a one-line JavaScript edit away from gone. Stored as
+ * position-masked tokens, the names are reconstructed at load and never appear as a literal a search
+ * can match - so the bundle no longer hands out that map. This is not secrecy: the reconstruction is
+ * right here and anyone who reads it can run it. It removes the cheapest read, which is exactly what
+ * the allowlist itself does for the cheapest launch. The plaintext lives in the comment beside each
+ * token for anyone maintaining this; comments do not survive minification into the shipped bundle.
+ *
+ * The mask is a position-dependent XOR, which is its own inverse, so one function both makes and
+ * reads a token. The same pair masks the guard's one log line, whose plaintext would otherwise be a
+ * beacon pointing a search straight at the refusal. `maskText` is used only by the test that pins
+ * these tables; it is unreferenced at runtime and the bundler drops it from `main.js`.
+ */
+const TEXT_MASK_SEED = 0x5b;
+const TEXT_MASK_STEP = 0x1f;
+
+function maskTextBytes(bytes: Buffer): Buffer {
+    const out = Buffer.alloc(bytes.length);
+    for (let i = 0; i < bytes.length; i++) {
+        out[i] = bytes[i] ^ ((TEXT_MASK_SEED + i * TEXT_MASK_STEP) & 0xff);
+    }
+    return out;
+}
+
+/** Reconstruct masked text (a switch name, or the guard's log line) from its token. */
+export function revealMaskedText(token: string): string {
+    return maskTextBytes(Buffer.from(token, "base64url")).toString("utf8");
+}
+
+/** The inverse, for the test that pins these tables. Unreferenced at runtime, so it is tree-shaken. */
+export function maskText(text: string): string {
+    return maskTextBytes(Buffer.from(text, "utf8")).toString("base64url");
+}
+
+/**
  * The switch that turns the main process's own output back on.
  *
  * A shipped game writes to its log file and says nothing on stdout. What it used to say named the
@@ -25,7 +63,7 @@
  * (`--enable-logging`, `--log-file`, `--log-level`). Support asks for this by name; nothing about
  * the game invites the guess.
  */
-export const RUNTIME_LOGS_SWITCH = "use-logs";
+export const RUNTIME_LOGS_SWITCH = revealMaskedText("Lgn8lbuZckc"); // use-logs
 
 /**
  * The switches a shipped game still accepts, and why each one is here.
@@ -37,26 +75,26 @@ export const RUNTIME_LOGS_SWITCH = "use-logs";
 export const ALLOWED_STARTUP_SWITCHES: readonly string[] = [
     // The standard answer to a driver that cannot composite. A game that draws on the CPU is better
     // than a game that does not draw.
-    "disable-gpu",
-    "disable-gpu-compositing",
-    "disable-software-rasterizer",
+    "PxPq2bWacBk0AuQ",                     // disable-gpu
+    "PxPq2bWacBk0AuSdrIFgXCQZ4NyuiGI",     // disable-gpu-compositing
+    "PxPq2bWacBkgHffEuI9_SWYY6Nuzg3dNOQfz", // disable-software-rasterizer
     // The other half of that answer: which backend to draw through.
-    "use-angle",
-    "use-gl",
+    "Lgn8lbaYclg2",                        // use-angle
+    "Lgn8lbCa",                            // use-gl
     // Which windowing system to draw into, which on Linux is a fact about the session the player
     // logged into rather than a preference.
-    "ozone-platform",
-    "ozone-platform-hint",
+    "NAD21rLbZVgyBvffvYM",                 // ozone-platform
+    "NAD21rLbZVgyBvffvYMgRCIE_Q",          // ozone-platform-hint
     // A display whose reported scale or colour profile is wrong. Both are facts about the monitor.
-    "force-device-scale-factor",
-    "force-color-profile",
+    "PRXr27LbcVElG_LV4p1uTScPpM6mhXFLMQ",  // force-device-scale-factor
+    "PRXr27Lbdls_HeOdv5xiSiIG7A",          // force-color-profile
     // Chromium's own locale, which is what the chrome around the game is drawn in. The game's
     // language is a player setting and is not this.
-    "lang",
+    "Nxv33w",                              // lang
     // Turns the main process's own output back on, which a shipped game otherwise keeps to its log
     // file. See {@link RUNTIME_LOGS_SWITCH}.
-    RUNTIME_LOGS_SWITCH,
-];
+    "Lgn8lbuZckc",                         // use-logs
+].map(revealMaskedText);
 
 /**
  * Chromium's switch prefixes, which are not the same on every platform.
@@ -151,13 +189,13 @@ export function reviewStartupArguments(
  * switches one by one is what that replaced.
  */
 export const DEBUGGING_SWITCHES: readonly string[] = [
-    "remote-debugging-port",
-    "remote-debugging-pipe",
-    "inspect",
-    "inspect-brk",
-    "inspect-port",
-    "inspect-publish-uid",
-];
+    "KR_016OTOFA2EOTXqIdjS2Ya5tqz",        // remote-debugging-port
+    "KR_016OTOFA2EOTXqIdjS2Ya4Nii",        // remote-debugging-pipe
+    "MhTqyLKVYQ",                          // inspect
+    "MhTqyLKVYRkxAPo",                     // inspect-brk
+    "MhTqyLKVYRkjHePE",                    // inspect-port
+    "MhTqyLKVYRkjB_Pcpp1lAT4D7Q",          // inspect-publish-uid
+].map(revealMaskedText);
 
 /** Every switch name on this command line, whatever it is called and however it is spelled. */
 export function startupSwitchNames(args: readonly string[], platform: NodeJS.Platform): string[] {

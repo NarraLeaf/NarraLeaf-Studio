@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import type { Dirent } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { CacheNamespace } from "@shared/types/constants";
 import type { PluginBuildDependencyTargetContribution } from "@shared/types/plugins";
 import { readBodyWithProgress } from "@shared/types/downloadProgress";
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
@@ -20,9 +21,9 @@ import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from
  * download can never be mistaken for a good one on the next build.
  *
  * Deliberately electron-free: the artifact compile (and therefore this) runs
- * off the main process in the build worker, so the caller passes userData in.
+ * off the main process in the build worker, so the caller passes the cache root in.
  *
- * Layout under `<userData>/cache/build-deps/<sha256>/`:
+ * Layout under `<cache root>/build-deps/<sha256>/`:
  *
  *   source                     the verified bytes exactly as downloaded
  *   out/<layout>/              the produced dependency directory
@@ -43,8 +44,8 @@ import { parseZipIndex, readEntryBytes, type ZipIndex, type ZipIndexEntry } from
 export type BuildDependencyLog = (level: "info" | "warning" | "error", message: string) => void;
 
 export type PluginBuildDependencyRequest = {
-    /** Electron's userData directory, passed in so this module stays main-process-free. */
-    userDataDir: string;
+    /** Studio's cache root, passed in so this module stays main-process-free. */
+    cacheRoot: string;
     /** `contributes.buildDependencies[].id`; only used to name the thing in errors and logs. */
     dependencyId: string;
     /** The platform key this target was declared under, likewise for messages. */
@@ -52,7 +53,7 @@ export type PluginBuildDependencyRequest = {
     target: PluginBuildDependencyTargetContribution;
     /**
      * The author's download rewrites, handed over rather than read - this runs in the build
-     * worker, which has no Electron and no global state (same reason `userDataDir` is a
+     * worker, which has no Electron and no global state (same reason `cacheRoot` is a
      * parameter). Absent means no rewriting, which is what every existing caller gets.
      *
      * This is the safest place in Studio for a rewrite: the bytes are pinned to a declared
@@ -63,8 +64,6 @@ export type PluginBuildDependencyRequest = {
     log?: BuildDependencyLog;
 };
 
-const CACHE_DIR_NAME = "cache";
-const CACHE_BUCKET_NAME = "build-deps";
 /** Name the raw download takes in the cache; stable because the URL is not the key. */
 const SOURCE_FILE_NAME = "source";
 const ARTIFACT_DIR_NAME = "out";
@@ -81,13 +80,13 @@ const PROBE_TIMEOUT_MS = 5000;
 let stagingSequence = 0;
 
 
-export function buildDependencyCacheRoot(userDataDir: string): string {
-    return path.join(userDataDir, CACHE_DIR_NAME, CACHE_BUCKET_NAME);
+export function buildDependencyCacheRoot(cacheRoot: string): string {
+    return path.join(cacheRoot, CacheNamespace.BuildDependencies);
 }
 
 /** Everything cached for one set of bytes, whatever plugin or URL asked for them. */
-export function buildDependencyCacheDir(userDataDir: string, sha256: string): string {
-    return path.join(buildDependencyCacheRoot(userDataDir), sha256.trim().toLowerCase());
+export function buildDependencyCacheDir(cacheRoot: string, sha256: string): string {
+    return path.join(buildDependencyCacheRoot(cacheRoot), sha256.trim().toLowerCase());
 }
 
 /**
@@ -95,8 +94,8 @@ export function buildDependencyCacheDir(userDataDir: string, sha256: string): st
  * network. The build verifies whatever it finds there against the declared
  * digest, so a wrong file fails loudly instead of shipping.
  */
-export function buildDependencySourcePath(userDataDir: string, sha256: string): string {
-    return path.join(buildDependencyCacheDir(userDataDir, sha256), SOURCE_FILE_NAME);
+export function buildDependencySourcePath(cacheRoot: string, sha256: string): string {
+    return path.join(buildDependencyCacheDir(cacheRoot, sha256), SOURCE_FILE_NAME);
 }
 
 /**
@@ -121,15 +120,17 @@ export function resolveBuildDependencyFile(dependencyDir: string, relativePath: 
  *
  * A hit is re-verified rather than assumed: these bytes are copied into a game
  * that ships to players, and the directory holding them is an ordinary folder
- * under userData that anything on this host can rewrite between builds. The
+ * that anything on this host can rewrite between builds - the more so now that
+ * the cache root can sit in the application directory, which a per-machine
+ * install shares between everyone who uses the computer. The
  * package-relative half of the same `include` syntax already re-hashes at pack
  * time for exactly that reason (see `resolveSidecarInclude`); pinning the
  * archive says nothing about what is in the directory it was unpacked into.
  */
 export async function ensurePluginBuildDependency(input: PluginBuildDependencyRequest): Promise<string> {
-    const { userDataDir, target, log } = input;
+    const { cacheRoot, target, log } = input;
     const where = describeTarget(input);
-    const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
+    const dependencyDir = buildDependencyCacheDir(cacheRoot, target.sha256);
     const artifactDir = path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target));
     const recordPath = `${artifactDir}${ARTIFACT_RECORD_SUFFIX}`;
 
@@ -191,14 +192,14 @@ export type BuildDependencyAvailability =
  * the bytes exist, and guessing "unavailable" from it would cry wolf.
  */
 export async function probePluginBuildDependency(input: {
-    userDataDir: string;
+    cacheRoot: string;
     target: PluginBuildDependencyTargetContribution;
     /** Same rules the download will use, so the dialog probes the host a build would reach. */
     rewrites?: readonly DownloadRewriteRule[];
     timeoutMs?: number;
 }): Promise<BuildDependencyAvailability> {
-    const { userDataDir, target } = input;
-    const dependencyDir = buildDependencyCacheDir(userDataDir, target.sha256);
+    const { cacheRoot, target } = input;
+    const dependencyDir = buildDependencyCacheDir(cacheRoot, target.sha256);
     if (await exists(path.join(dependencyDir, ARTIFACT_DIR_NAME, layoutKey(target)))) {
         return { status: "cached" };
     }
