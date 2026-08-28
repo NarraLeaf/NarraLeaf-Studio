@@ -25,6 +25,11 @@ const BUCKET_LABELS: Array<{ id: CacheBucketId; labelKey: TranslationKey; descri
         descriptionKey: "settings.data.cache.buckets.buildDependencies.description",
     },
     {
+        id: "puppetRuntimes",
+        labelKey: "settings.data.cache.buckets.puppetRuntimes.label",
+        descriptionKey: "settings.data.cache.buckets.puppetRuntimes.description",
+    },
+    {
         id: "browser",
         labelKey: "settings.data.cache.buckets.browser.label",
         descriptionKey: "settings.data.cache.buckets.browser.description",

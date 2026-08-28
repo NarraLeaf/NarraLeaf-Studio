@@ -30,6 +30,12 @@ import { WindowManager } from "./managers/windowManager";
 import { GlobalStateManager } from "./managers/storage/globalState";
 import { DOWNLOAD_REWRITES_KEY, setDownloadRewriteSource } from "./managers/downloadRewrites";
 import { sweepPsdTempDirectories } from "./managers/storage/cacheInventory";
+import {
+    describeCacheRoot,
+    migrateLegacyCacheRoot,
+    resolveCacheRoot,
+    type CacheRootResolution,
+} from "./managers/storage/cacheRoot";
 import { PluginPermissionManager } from "./managers/pluginPermissionManager";
 import { PluginManager } from "./managers/pluginManager";
 import { PluginIconCache } from "./managers/pluginIconCache";
@@ -113,6 +119,8 @@ export class BaseApp {
      * latch would put the dialog back on screen each time.
      */
     private experimentalNoticePending = true;
+    /** Memoized by {@link resolveCacheRootOnce}; see it for why it must not be recomputed. */
+    private cacheRootResolution: CacheRootResolution | null = null;
 
     constructor(config: BaseAppConfig) {
         this.config = config;
@@ -162,12 +170,15 @@ export class BaseApp {
         // Read through on every download rather than snapshotted: a mirror typed in the Settings
         // window has to apply to the next fetch, not the next launch.
         setDownloadRewriteSource(() => this.globalState.get(DOWNLOAD_REWRITES_KEY));
+        // Before anything that caches, so the log says where this machine decided to put it and
+        // the answer is fixed for the rest of the session.
+        this.logger.info(`[Cache] ${describeCacheRoot(this.resolveCacheRootOnce())}`);
         this.pluginPermissionManager = new PluginPermissionManager(this.getUserDataDir());
         this.pluginManager = new PluginManager(this.getUserDataDir(), this.pluginPermissionManager, {
             builtInPluginsDir: this.getBuiltInPluginsDir(),
         });
         this.pluginIconCache = new PluginIconCache(this.getUserDataDir());
-        this.uiTemplatePosterCache = new UITemplatePosterCache(this.getUserDataDir());
+        this.uiTemplatePosterCache = new UITemplatePosterCache(this.getCacheRootDir());
 
         this.protocolManager = new ProtocolManager(this);
         this.windowManager = new WindowManager(this);
@@ -184,6 +195,22 @@ export class BaseApp {
             .then(removed => {
                 if (removed > 0) {
                     this.logger.info(`[App] Removed ${removed} leftover PSD import folder(s)`);
+                }
+            })
+            .catch(() => undefined);
+
+        // Studio used to cache under `<userData>/cache`, which on Windows and on a default macOS
+        // filesystem is Chromium's own `Cache` directory under a second spelling. Move what is
+        // still there to the root above; see `migrateLegacyCacheRoot` for why some of it is
+        // discarded rather than moved.
+        void migrateLegacyCacheRoot(
+            this.getUserDataDir(),
+            this.getCacheRootDir(),
+            message => this.logger.info(`[Cache] ${message}`),
+        )
+            .then(handled => {
+                if (handled > 0) {
+                    this.logger.info(`[Cache] Migrated ${handled} cache(s) from the previous location`);
                 }
             })
             .catch(() => undefined);
@@ -510,6 +537,25 @@ export class BaseApp {
 
     public getUserDataDir(): string {
         return app.getPath("userData");
+    }
+
+    /**
+     * The one directory holding everything Studio can re-fetch - beside the executable where the
+     * platform allows it, under userData otherwise. See `cacheRoot.ts`.
+     *
+     * Resolved once and remembered: the resolution writes a probe file, and a root that changed
+     * halfway through a session would leave a build reading one cache and writing another.
+     */
+    public getCacheRootDir(): string {
+        return this.resolveCacheRootOnce().root;
+    }
+
+    private resolveCacheRootOnce(): CacheRootResolution {
+        this.cacheRootResolution ??= resolveCacheRoot({
+            packaged: this.isPackaged(),
+            userDataDir: this.getUserDataDir(),
+        });
+        return this.cacheRootResolution;
     }
 
     public getPreloadScript(): string {

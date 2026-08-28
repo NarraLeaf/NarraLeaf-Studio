@@ -498,6 +498,10 @@ export const settings = {
                     label: "Compiler toolchains",
                     description: "Compilers downloaded for a build. Downloaded again the next time a build needs them.",
                 },
+                puppetRuntimes: {
+                    label: "Model runtime sources",
+                    description: "SDK archives unpacked to build a character model runtime. Unpacked again the next time one is built.",
+                },
                 browser: {
                     label: "Interface cache",
                     description: "Interface state kept between runs to speed up startup.",

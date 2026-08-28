@@ -20,11 +20,20 @@ import {
  * named nowhere at all, so "how much disk is Studio using" had no answer and "clear it" had no
  * implementation.
  *
- * Sizes are computed on demand rather than tracked: walking `electron-builder/Cache` is not free
- * and nothing else needs the number, so paying for it when a panel asks is the honest trade.
+ * Sizes are computed on demand rather than tracked: walking the packaging toolchain's downloads
+ * is not free and nothing else needs the number, so paying for it when a panel asks is the honest
+ * trade.
  */
 
-/** Chromium's own caches under userData. Storage that is not a cache is not listed. */
+/**
+ * Chromium's own caches under userData. Storage that is not a cache is not listed.
+ *
+ * `Cache` is the reason the cache root is called `nl-cache` and not `cache`: Windows and the
+ * default macOS filesystem cannot tell the two apart, so a root spelled `cache` would put every
+ * bucket below inside this entry. It did, until they were renamed - the `browser` bucket then
+ * measured the Zig toolchain, the `toolchains` bucket measured it again, and clearing the browser
+ * cache deleted every download Studio had ever made.
+ */
 const BROWSER_CACHE_DIRS = [
     "Cache",
     "Code Cache",
@@ -37,41 +46,34 @@ const BROWSER_CACHE_DIRS = [
 /** Where `PsdBakeHandler` writes baked layers. See `psdImport.ts`. */
 export const PSD_TEMP_DIR_NAME = "narraleaf-psd";
 
-/** The build-dependency cache root; must agree with `buildDependencyCacheRoot`. */
-const BUILD_DEPS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.BuildDependencies);
-
-/** Theme posters from the UI template store. */
-const UI_TEMPLATE_POSTERS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.UITemplatePosters);
-
-/** Downloaded spellchecker word lists; must agree with `DictionaryCache`. */
-const SPELLCHECK_DICTIONARIES_RELATIVE = path.join(
-    UserDataNamespace.Cache,
-    CacheNamespace.SpellcheckDictionaries,
-);
-
-/** Re-encoded build images; must agree with `optimizeProjectImages`. */
-const OPTIMIZED_IMAGES_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.OptimizedImages);
-const COMPRESSED_MEDIA_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.CompressedMedia);
-
-/** Compiler toolchains fetched for a build; must agree with `zigCacheRoot`. */
-const TOOLCHAINS_RELATIVE = path.join(UserDataNamespace.Cache, CacheNamespace.Toolchains);
-
 export function psdTempRoot(tempDir: string = os.tmpdir()): string {
     return path.join(tempDir, PSD_TEMP_DIR_NAME);
 }
 
 /**
- * electron-builder's download cache, which Studio fills during a game build.
+ * electron-builder's download cache: winCodeSign, NSIS, AppImage, and the Electron distribution a
+ * cross-platform target needs.
  *
- * Resolved the way electron-builder itself resolves it - the same logic `winCodeSignCache`
- * already carries for Windows, extended to the other two platforms. Returns null when the host
- * gives us nothing to go on, which is reported as "no path" rather than guessed at.
+ * Inside Studio's own cache root, which is what `GameBuildManager` sets `ELECTRON_BUILDER_CACHE`
+ * to for the build worker. An author who exported that variable for themselves still wins - CI
+ * images set it, and a host that has deliberately pointed every electron-builder on it at one
+ * shared directory should not find Studio quietly opting out.
  */
-export function electronBuilderCacheRoot(): string | null {
-    const override = process.env.ELECTRON_BUILDER_CACHE?.trim();
-    if (override) {
-        return override;
-    }
+export function electronBuilderCacheRoot(cacheRoot: string): string {
+    return process.env.ELECTRON_BUILDER_CACHE?.trim() || path.join(cacheRoot, CacheNamespace.ElectronBuilder);
+}
+
+/**
+ * Where electron-builder puts its downloads when nobody tells it otherwise.
+ *
+ * Studio no longer writes here, but every Studio before this one did, and on this maintainer's
+ * machine that was 377 MB. It stays in the `electronBuilder` bucket - measured and cleared with
+ * the rest - so those bytes remain findable rather than becoming an orphan nothing names.
+ *
+ * Not Studio's directory, which is why it is only ever *listed*: any other electron-builder on
+ * the host shares it, and clearing it costs them a re-download and nothing else.
+ */
+export function hostElectronBuilderCacheRoot(): string | null {
     if (process.platform === "win32") {
         const localAppData = process.env.LOCALAPPDATA?.trim();
         return localAppData ? path.join(localAppData, "electron-builder", "Cache") : null;
@@ -98,8 +100,21 @@ type BucketDefinition = {
     afterClear?: () => Promise<void>;
 };
 
-function bucketDefinitions(userDataDir: string): BucketDefinition[] {
-    const builderRoot = electronBuilderCacheRoot();
+/** Where the caches are. `cacheRoot` is `App.getCacheRootDir()`; see `cacheRoot.ts`. */
+export type CacheLocations = {
+    userDataDir: string;
+    cacheRoot: string;
+};
+
+/** One bucket in the shared cache root, which is all of them bar Chromium's, PSDs and the logs. */
+function inRoot(cacheRoot: string, namespace: CacheNamespace): Pick<BucketDefinition, "dirs" | "displayPath"> {
+    const dir = path.join(cacheRoot, namespace);
+    return { dirs: [dir], displayPath: dir };
+}
+
+function bucketDefinitions({ userDataDir, cacheRoot }: CacheLocations): BucketDefinition[] {
+    const builderRoot = electronBuilderCacheRoot(cacheRoot);
+    const hostBuilderRoot = hostElectronBuilderCacheRoot();
     const browserDirs = BROWSER_CACHE_DIRS.map(name => path.join(userDataDir, name));
     return [
         {
@@ -107,39 +122,21 @@ function bucketDefinitions(userDataDir: string): BucketDefinition[] {
             dirs: [path.join(userDataDir, UserDataNamespace.PluginIcons)],
             displayPath: path.join(userDataDir, UserDataNamespace.PluginIcons),
         },
-        {
-            id: "uiTemplatePosters",
-            dirs: [path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE)],
-            displayPath: path.join(userDataDir, UI_TEMPLATE_POSTERS_RELATIVE),
-        },
-        {
-            id: "spellcheckDictionaries",
-            dirs: [path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE)],
-            displayPath: path.join(userDataDir, SPELLCHECK_DICTIONARIES_RELATIVE),
-        },
-        {
-            id: "optimizedImages",
-            dirs: [path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE)],
-            displayPath: path.join(userDataDir, OPTIMIZED_IMAGES_RELATIVE),
-        },
-        {
-            id: "compressedMedia",
-            dirs: [path.join(userDataDir, COMPRESSED_MEDIA_RELATIVE)],
-            displayPath: path.join(userDataDir, COMPRESSED_MEDIA_RELATIVE),
-        },
-        {
-            id: "buildDependencies",
-            dirs: [path.join(userDataDir, BUILD_DEPS_RELATIVE)],
-            displayPath: path.join(userDataDir, BUILD_DEPS_RELATIVE),
-        },
-        {
-            id: "toolchains",
-            dirs: [path.join(userDataDir, TOOLCHAINS_RELATIVE)],
-            displayPath: path.join(userDataDir, TOOLCHAINS_RELATIVE),
-        },
+        { id: "uiTemplatePosters", ...inRoot(cacheRoot, CacheNamespace.UITemplatePosters) },
+        { id: "spellcheckDictionaries", ...inRoot(cacheRoot, CacheNamespace.SpellcheckDictionaries) },
+        { id: "optimizedImages", ...inRoot(cacheRoot, CacheNamespace.OptimizedImages) },
+        { id: "compressedMedia", ...inRoot(cacheRoot, CacheNamespace.CompressedMedia) },
+        { id: "buildDependencies", ...inRoot(cacheRoot, CacheNamespace.BuildDependencies) },
+        { id: "toolchains", ...inRoot(cacheRoot, CacheNamespace.Toolchains) },
+        { id: "puppetRuntimes", ...inRoot(cacheRoot, CacheNamespace.PuppetRuntimes) },
         {
             id: "electronBuilder",
-            dirs: builderRoot ? [builderRoot] : [],
+            // Studio's own, plus the host default earlier versions filled. The two are the same
+            // directory when the author has exported `ELECTRON_BUILDER_CACHE` to point there, so
+            // the list is deduplicated rather than measured twice.
+            dirs: [...new Set(
+                [builderRoot, ...(hostBuilderRoot ? [hostBuilderRoot] : [])].map(dir => path.resolve(dir)),
+            )],
             displayPath: builderRoot,
         },
         {
@@ -189,10 +186,10 @@ export async function directorySize(dir: string): Promise<{ bytes: number; entri
     return { bytes, entries: entries.length };
 }
 
-export async function measureCacheInventory(userDataDir: string): Promise<CacheInventoryReport> {
+export async function measureCacheInventory(locations: CacheLocations): Promise<CacheInventoryReport> {
     const buckets: CacheBucketReport[] = [];
     let totalBytes = 0;
-    for (const definition of bucketDefinitions(userDataDir)) {
+    for (const definition of bucketDefinitions(locations)) {
         try {
             let sizeBytes = 0;
             let entryCount = 0;
@@ -225,10 +222,10 @@ export async function measureCacheInventory(userDataDir: string): Promise<CacheI
  * this build cannot do and silence would read as success.
  */
 export async function clearCacheBuckets(
-    userDataDir: string,
+    locations: CacheLocations,
     ids: readonly string[],
 ): Promise<CacheClearResult> {
-    const definitions = new Map(bucketDefinitions(userDataDir).map(definition => [definition.id, definition]));
+    const definitions = new Map(bucketDefinitions(locations).map(definition => [definition.id, definition]));
     const cleared: CacheBucketId[] = [];
     const failed: CacheClearResult["failed"] = [];
     let freedBytes = 0;
