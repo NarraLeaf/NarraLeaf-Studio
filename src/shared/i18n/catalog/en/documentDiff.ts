@@ -93,6 +93,7 @@ export const documentDiff = {
         projectLanguages: "Languages",
         projectPlugins: "Plugins",
         saveFields: "Save fields",
+        stories: "Stories",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",
         storyScenes: "Scenes",
@@ -137,6 +138,23 @@ export const documentDiff = {
         blockEnabled: "Row enabled",
         blockField: "{field} changed",
         blockOrder: "Rows reordered",
+    },
+    /**
+     * Tier 2, the story library: which stories exist and what they are called.
+     *
+     * Only merge rows, because the library has no semantic diff of its own yet - a comparison walks
+     * it structurally. `subject` carries the story's own title, so none of these names it again.
+     */
+    storyIndex: {
+        added: "Story added",
+        removed: "Story removed",
+        /** One side added and the other deleted, or the two arrived with no common ancestor. */
+        changed: "Story changed",
+        renamed: "Story renamed",
+        /** `dlcId`, `importSource`, `exportMeta` - none of which has a word the author typed. */
+        entryField: "{field} changed",
+        defaultStory: "Starting story changed",
+        documentField: "{field} changed",
     },
     /**
      * Tier 1, the character store.
