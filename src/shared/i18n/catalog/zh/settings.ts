@@ -289,6 +289,10 @@ export const settings = {
             label: "启动时打开上次的项目",
             description: "打开上次所在的项目，而不是停在启动器",
         },
+        maximizeOnOpen: {
+            label: "工作区以最大化打开",
+            description: "工作区窗口打开时铺满屏幕；在窗口内切换项目时，保留原窗口的位置和大小",
+        },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
             description: "对尚未单独设置过的项目生效，各项目可自行覆盖",
@@ -306,7 +310,6 @@ export const settings = {
         menuBarMode: {
             label: "主菜单",
             description: "标题栏中「文件」「帮助」以及各面板菜单的位置",
-            unsupportedPlatform: "在 macOS 上，这些菜单位于系统菜单栏",
         },
         titleBarSearchVisible: {
             label: "显示标题栏搜索框",
