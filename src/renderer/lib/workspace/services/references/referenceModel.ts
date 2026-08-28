@@ -1033,18 +1033,13 @@ function extractElementAssetReferences(
             /**
              * The literal names `surfaceResourcePreload.ts` keys its preload walk on. Until
              * `nl.video` there was no widget storing a bare asset id under `assetId`, so this walk
-             * only knew `imageFill` / `fontAssetId` plus the `nl.image` legacy branch below - which
-             * means a new widget naming its prop `assetId` was preloaded by the shipped game and
-             * simultaneously invisible to "what uses this asset", the one place an author looks
-             * before deleting it. The two walks now agree on the same names.
-             *
-             * `nl.image`'s bare id is skipped here because the branch below pushes it under this
-             * exact reference id, with a dormancy rule this generic arm cannot express.
+             * only knew `imageFill` and `fontAssetId`, which meant a new widget naming its prop
+             * `assetId` was preloaded by the shipped game and simultaneously invisible to "what uses
+             * this asset", the one place an author looks before deleting it. The two walks now agree
+             * on the same names.
              */
             if (key === "assetId" || key === "posterAssetId") {
-                if (!(key === "assetId" && element.type === "nl.image")) {
-                    push(childPath, childPath, value);
-                }
+                push(childPath, childPath, value);
                 continue;
             }
             if (URL_VALUED_PROP_KEYS.has(key)) {
@@ -1057,25 +1052,6 @@ function extractElementAssetReferences(
         }
     };
     walk(props, "", 0);
-
-    // Legacy `nl.image` stored the id bare on props; `getImageWidgetRectangleProps` upgrades it to
-    // an `imageFill` lazily at read time, so the bare string is still what sits on disk.
-    //
-    // The upgrade fires on `legacyAssetId && !hasAssetInFill && !hasBg`, so the presence of an
-    // `imageFill` object is not what decides it - an `imageFill` with a null `assetId` still lets the
-    // bare id win. Testing for the object alone dropped that reference entirely, and the widget went
-    // on rendering an asset nothing claimed to use.
-    //
-    // Dormancy is the upgrade itself, not the stored `fillType`: when it fires it forces
-    // `fillType: "image"`, so the reference is live however the prop bag was left. When something
-    // else supplies the fill the bare id renders nothing - still reported, because clearing that fill
-    // brings it back (see the dormancy note in the file header).
-    if (element.type === "nl.image") {
-        const fill = readRecord(props.imageFill);
-        const hasAssetInFill = typeof fill?.assetId === "string" && fill.assetId.trim().length > 0;
-        const hasBackgroundImage = typeof props.backgroundImage === "string" && props.backgroundImage.trim().length > 0;
-        push("assetId", "assetId", props.assetId, hasAssetInFill || hasBackgroundImage);
-    }
 
     const appearance = props.appearance;
     if (isAppearanceModel(appearance)) {
