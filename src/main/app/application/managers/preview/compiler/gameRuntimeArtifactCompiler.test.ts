@@ -1857,13 +1857,29 @@ describe("weather clips in the pack", () => {
         expect(staged[0].equals(staged[1])).toBe(false);
 
         /*
-         * That the two are bound to ONE store - that the copy for each machine
-         * opens the store this compile sealed - is proved in the codec package
-         * itself, where it can be checked for every target rather than only for
-         * the machine running the suite. Loading one here would also leave the
-         * temporary tree undeletable on Windows, which is the same lock that
-         * makes the shipped binary a copy rather than the built file.
+         * And they are bound to ONE store: the copy staged for this machine opens
+         * what this compile sealed, which is what lets one compile serve packages
+         * for several machines at once.
+         *
+         * Everywhere but Windows. Loading the copy pins the file, and Windows will
+         * not delete a pinned one - the temporary tree then outlives the test and
+         * the suite fails on the way out rather than on the assertion. It is the
+         * same lock that makes the shipped binary a copy rather than the built
+         * file. The property holds on both, and the codec package's own suite
+         * checks it for every target on whichever machine runs it.
          */
+        if (process.platform !== "win32") {
+            const reader = await openSealedBundle(
+                path.join(result.appDir, "platform", hostKey, RUNTIME_SUPPORT_FILENAME),
+                path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+            );
+            try {
+                const sealedPack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+                expect(sealedPack.entry.surfaceId).toBe("surface-main");
+            } finally {
+                await reader.close();
+            }
+        }
     });
 
     it("carries the library whole for a preview, and reports nothing about it", async () => {
