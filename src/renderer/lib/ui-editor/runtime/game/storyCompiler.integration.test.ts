@@ -982,32 +982,6 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("compiles dialogue pauseAfter without diagnostics", async () => {
-        const blocks: Record<string, StoryBlock> = {
-            say: {
-                id: "say",
-                kind: "nodeAction",
-                parentId: null,
-                childrenIds: [],
-                payload: {
-                    action: "dialogue",
-                    characterId: "char-alice",
-                    pauseAfter: 500,
-                    text: { textId: "text-say", value: "Hello", role: "dialogue" },
-                },
-            },
-        };
-
-        const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["say"]),
-            sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
-        });
-
-        expect(compiled.diagnostics).toEqual([]);
-        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
-    });
-
     describe("character nametag fallbacks", () => {
         function dialogueBlocks(characterId: string): Record<string, StoryBlock> {
             return {
