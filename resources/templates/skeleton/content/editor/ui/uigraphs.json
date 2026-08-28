@@ -10925,7 +10925,7 @@
             "events": {
               "e8485fce-2cf6-4eae-9b46-a97604a0be76": {
                 "id": "e8485fce-2cf6-4eae-9b46-a97604a0be76",
-                "name": "Advance the dialogue",
+                "name": "Advance or restore the dialogue",
                 "graph": {
                   "nodes": {
                     "head": {
@@ -10941,14 +10941,47 @@
                         }
                       }
                     },
+                    "shown": {
+                      "id": "shown",
+                      "type": "blueprint.game.isDialogShown",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 280,
+                          "y": 200
+                        }
+                      }
+                    },
+                    "branch": {
+                      "id": "branch",
+                      "type": "if",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 300,
+                          "y": 0
+                        }
+                      }
+                    },
                     "next": {
                       "id": "next",
                       "type": "blueprint.game.next",
                       "params": {},
                       "meta": {
                         "editorLayout": {
-                          "x": 280,
-                          "y": 0
+                          "x": 600,
+                          "y": -40
+                        }
+                      }
+                    },
+                    "show": {
+                      "id": "show",
+                      "type": "blueprint.game.showDialog",
+                      "params": {},
+                      "meta": {
+                        "editorLayout": {
+                          "x": 600,
+                          "y": 120
                         }
                       }
                     }
@@ -10956,11 +10989,41 @@
                   "edges": [
                     {
                       "from": {
+                        "nodeId": "shown",
+                        "port": "isShown"
+                      },
+                      "to": {
+                        "nodeId": "branch",
+                        "port": "condition"
+                      }
+                    },
+                    {
+                      "from": {
                         "nodeId": "head",
                         "port": "then"
                       },
                       "to": {
+                        "nodeId": "branch",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "branch",
+                        "port": "true"
+                      },
+                      "to": {
                         "nodeId": "next",
+                        "port": "in"
+                      }
+                    },
+                    {
+                      "from": {
+                        "nodeId": "branch",
+                        "port": "false"
+                      },
+                      "to": {
+                        "nodeId": "show",
                         "port": "in"
                       }
                     }
@@ -22930,6 +22993,6 @@
   },
   "meta": {
     "createdAt": "2026-08-07T03:54:29.265Z",
-    "updatedAt": "2026-08-26T02:13:13.549Z"
+    "updatedAt": "2026-08-28T00:47:17.105Z"
   }
 }
