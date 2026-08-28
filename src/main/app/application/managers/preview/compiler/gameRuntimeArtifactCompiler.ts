@@ -47,7 +47,7 @@ import {
     ARCHIVE_READER_FILENAME,
     type AssetArchiveWriter,
 } from "@narraleaf/bindings";
-import { PER_TARGET_DIR_NAME } from "../../../../../buildWorker/perTargetPayload";
+import { PER_TARGET_DIR_NAME, runningPlatformKeysFor } from "../../../../../buildWorker/perTargetPayload";
 import {
     codecPlacementsFor,
     hostCodecTarget,
@@ -794,16 +794,10 @@ export async function compileGameRuntimeArtifact(
             pluginConfig,
             ...(input.platforms ? { platforms: input.platforms } : {}),
             onNotice: message => notices.push(message),
-            /*
-             * Sidecars have not moved with the codec and koffi, and the reason is
-             * in the pack rather than in the copying. A sidecar's manifest entry
-             * names the file to spawn - `bin/tool.exe` on Windows, `bin/tool`
-             * elsewhere - and the pack carries one such name per sidecar, so a
-             * pack serving two platforms could only be right about one of them.
-             * Staging the files per target is the easy half; the pack has to be
-             * able to say a name per platform first.
-             */
-            ...(nativePayloadKeys.length === 1 ? { sidecarPlatformKey: nativePayloadKeys[0] } : {}),
+            /* Staged the same way as the codec and koffi, now that the pack can
+             * name a file per machine. See mergeSidecarEntries. */
+            platformKeys: nativePayloadKeys,
+            destinationDirFor: payloadDirFor,
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
@@ -2083,12 +2077,14 @@ async function copyRuntimePlugins(input: {
     runtimePlugins: GameRuntimePluginSource[];
     target: PackTarget;
     /**
-     * Absent on web compiles only - a static site has no process to spawn. A
-     * preview passes the *host's* key and does ship sidecars, which is the point:
-     * exercising one should not cost a full production build. See the field of
-     * the same name on GameRuntimeArtifactInput.
+     * Every target this pack serves. Empty on web compiles only - a static site
+     * has no process to spawn. A preview passes the host's own key and does ship
+     * sidecars, which is the point: exercising one should not cost a full
+     * production build.
      */
-    sidecarPlatformKey?: string;
+    platformKeys: readonly string[];
+    /** Where one target's files go. See perTargetPayload.ts. */
+    destinationDirFor: (platformKey: string) => string;
     hostUserDataDir?: string;
     /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
@@ -2120,15 +2116,23 @@ async function copyRuntimePlugins(input: {
             manifest: plugin.manifest,
             onWarning: message => console.warn("[gameRuntimeArtifactCompiler]", message),
         });
-        const sidecars = input.sidecarPlatformKey
-            ? await copyPluginSidecars({
-                appDir: input.appDir,
+        /*
+         * Every target this pack serves, each into its own staging directory.
+         * The answers are merged below: one sidecar becomes one pack entry that
+         * names a file per machine, so a Windows package and a Linux package
+         * built together each spawn their own.
+         */
+        const perTarget: GameRuntimePackSidecarEntry[][] = [];
+        for (const platformKey of input.platformKeys) {
+            perTarget.push(await copyPluginSidecars({
+                destinationDir: input.destinationDirFor(platformKey),
                 plugin,
-                platformKey: input.sidecarPlatformKey,
+                platformKey,
                 ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
-            })
-            : [];
+            }));
+        }
+        const sidecars = mergeSidecarEntries(perTarget.flat());
         // Per plugin and nothing wider: the entry a plugin reads at runtime is its own, so a value
         // one plugin's author typed is never in front of another's code.
         const buildConfig = resolveShippedPluginBuildConfig(
@@ -2172,8 +2176,38 @@ async function copyRuntimePlugins(input: {
  * Preflight warns the author before they commit to the build; here it is worth
  * only a log line.
  */
+/**
+ * One entry per sidecar, naming a file per machine.
+ *
+ * The targets are copied one at a time and each answers for itself, so a sidecar
+ * a plugin ships for three platforms arrives here three times. They agree about
+ * everything except which file to spawn, which is the whole reason the pack has
+ * to hold a map at all.
+ *
+ * A pack that serves one machine collapses back to a bare string. Not for
+ * tidiness: it is what every pack said before this, and a game built by an older
+ * Studio reads that shape and only that shape.
+ */
+function mergeSidecarEntries(entries: readonly GameRuntimePackSidecarEntry[]): GameRuntimePackSidecarEntry[] {
+    const merged = new Map<string, GameRuntimePackSidecarEntry>();
+    for (const entry of entries) {
+        const seen = merged.get(entry.id);
+        if (!seen) {
+            merged.set(entry.id, { ...entry, entry: { ...(entry.entry as Record<string, string>) } });
+            continue;
+        }
+        Object.assign(seen.entry as Record<string, string>, entry.entry as Record<string, string>);
+    }
+    return [...merged.values()].map(entry => {
+        const byMachine = entry.entry as Record<string, string>;
+        const keys = Object.keys(byMachine);
+        return keys.length === 1 ? { ...entry, entry: byMachine[keys[0]] } : entry;
+    });
+}
+
 async function copyPluginSidecars(input: {
-    appDir: string;
+    /** Where this target's files go; the app root for a preview, a staged directory for a build. */
+    destinationDir: string;
     plugin: GameRuntimePluginSource;
     platformKey: string;
     hostUserDataDir?: string;
@@ -2194,7 +2228,7 @@ async function copyPluginSidecars(input: {
         }
         const where = `Sidecar "${sidecar.id}" of plugin "${plugin.manifest.id}" (${platformKey})`;
         const sidecarRelativeDir = path.posix.join(SIDECAR_DIR_NAME, plugin.manifest.id, sidecar.id);
-        const sidecarDir = path.join(input.appDir, ...sidecarRelativeDir.split("/"));
+        const sidecarDir = path.join(input.destinationDir, ...sidecarRelativeDir.split("/"));
         for (const include of target.include) {
             const { sourcePath, relativePath } = await resolveSidecarInclude({
                 include,
@@ -2222,7 +2256,13 @@ async function copyPluginSidecars(input: {
         }
         entries.push({
             id: sidecar.id,
-            entry: path.posix.join(sidecarRelativeDir, ...normalizeSidecarPath(target.entry).split("/")),
+            /* One name per machine this target runs on. Merged with the other
+             * targets' answers below; a build serving one machine collapses back
+             * to a bare string, which is what every pack said before. */
+            entry: Object.fromEntries(runningPlatformKeysFor(platformKey).map((key: string) => [
+                key,
+                path.posix.join(sidecarRelativeDir, ...normalizeSidecarPath(target.entry).split("/")),
+            ])),
             kind: sidecar.kind,
             autostart: sidecar.autostart,
             startupTimeoutMs: sidecar.startupTimeoutMs,

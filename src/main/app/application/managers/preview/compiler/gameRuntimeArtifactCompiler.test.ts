@@ -328,6 +328,68 @@ describe("game runtime artifact compiler", () => {
         }]);
     });
 
+    /*
+     * The case this replaced: a build with more than one desktop target shipped
+     * NO sidecars at all, with a warning telling the author to build one platform
+     * at a time. The obstacle was the pack rather than the copying - it named one
+     * file per sidecar, and the name is not the same on both.
+     */
+    it("ships a sidecar for every target, naming the file each machine spawns", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool.exe": "MZ fake executable", "bin/tool": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: {
+                "windows-x64": { entry: "bin/tool.exe", include: ["bin/tool.exe"] },
+                "linux-x64": { entry: "bin/tool", include: ["bin/tool"] },
+            },
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: ["windows-x64", "linux-x64"],
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        });
+
+        // Each target's own file, under its own staging directory - the packaging
+        // step maps one of these onto the app root per package.
+        const staged = (platformKey: string, name: string) => path.join(
+            result.appDir, "platform", platformKey, "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID, "bin", name);
+        await expect(fs.readFile(staged("windows-x64", "tool.exe"), "utf-8")).resolves.toBe("MZ fake executable");
+        await expect(fs.readFile(staged("linux-x64", "tool"), "utf-8")).resolves.toBe("#!/bin/sh");
+        // And neither is at the app root, where it would ship to both.
+        await expect(fs.access(path.join(result.appDir, "sidecars"))).rejects.toThrow();
+
+        // One pack entry, naming a file per machine, keyed the way a running game
+        // describes itself rather than the way the build dialog does.
+        expect(result.pack.plugins[0].sidecars).toEqual([{
+            id: SIDECAR_ID,
+            entry: {
+                "win32-x64": `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/tool.exe`,
+                "linux-x64": `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/tool`,
+            },
+            kind: "executable",
+            autostart: "onGameStart",
+            startupTimeoutMs: 5000,
+            shutdownTimeoutMs: 3000,
+            restart: { maxRetries: 3, backoffMs: 1000 },
+        }]);
+    });
+
     it("refuses to ship a sidecar file that does not match its declared digest", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -1307,6 +1369,8 @@ async function writeSidecarPlugin(input: {
     include: string[];
     sha256?: Record<string, string>;
     platformKey?: string;
+    /** Several targets, when the point of the test is that they differ. */
+    targets?: Record<string, { entry: string; include: string[] }>;
     buildDependencies?: PluginBuildDependencyContribution[];
 }): Promise<NormalizedPluginManifestV2> {
     await fs.mkdir(input.installDir, { recursive: true });
@@ -1340,13 +1404,18 @@ async function writeSidecarPlugin(input: {
                 startupTimeoutMs: 5000,
                 shutdownTimeoutMs: 3000,
                 restart: { maxRetries: 3, backoffMs: 1000 },
-                targets: {
-                    [input.platformKey ?? SIDECAR_PLATFORM_KEY]: {
-                        entry: input.entry,
-                        include: input.include,
-                        sha256: declared,
+                targets: input.targets
+                    ? Object.fromEntries(Object.entries(input.targets).map(([key, target]) => [
+                        key,
+                        { entry: target.entry, include: target.include, sha256: declared },
+                    ]))
+                    : {
+                        [input.platformKey ?? SIDECAR_PLATFORM_KEY]: {
+                            entry: input.entry,
+                            include: input.include,
+                            sha256: declared,
+                        },
                     },
-                },
             }],
             buildDependencies: input.buildDependencies ?? [],
             buildConfig: [],
