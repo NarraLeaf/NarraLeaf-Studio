@@ -98,13 +98,14 @@ import {
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
 import { perTargetUnpackPattern } from "../../../../buildWorker/perTargetPayload";
+import { ensureZigToolchain } from "../../../../buildWorker/zigToolchain";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProtocol";
 
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
-import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
+import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY, type TitleCompileOptions } from "@narraleaf/encryption";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
@@ -1510,6 +1511,33 @@ export class GameBuildManager {
      * installed on one build both take effect. A baseline that predates that reads a whole pack and
      * nothing else, and gets one.
      */
+    /**
+     * The toolchain a per-title codec is compiled with, for the callers that run
+     * outside the compile worker.
+     *
+     * Same rule as the compile: it is fetched once and cached, and not getting it
+     * stops the work rather than quietly producing something weaker. A patch that
+     * was sealed the other way is not a lesser patch - it is a file the game will
+     * not open at all.
+     */
+    private async titleCompileOptions(workDir: string, reason: string): Promise<TitleCompileOptions> {
+        try {
+            const compiler = await ensureZigToolchain({
+                userDataDir: this.app.getUserDataDir(),
+                ...(this.readStringSetting("build.zigMirror")
+                    ? { mirror: this.readStringSetting("build.zigMirror") as string }
+                    : {}),
+                rewrites: currentDownloadRewrites(),
+            });
+            return { compiler, workDir };
+        } catch (error) {
+            throw new Error(
+                `${reason} needs a C toolchain to compile this title's content codec, and one could `
+                + `not be obtained: ${error instanceof Error ? error.message : String(error)}`,
+            );
+        }
+    }
+
     private async sealPatch(
         session: BuildSession,
         appDir: string,
@@ -1568,10 +1596,22 @@ export class GameBuildManager {
 
         try {
             await fs.mkdir(path.dirname(outputFile), { recursive: true });
+            /*
+             * Sealed with a codec compiled for this title, exactly as the build
+             * being patched was.
+             *
+             * A patch is opened by the installed game's OWN binary, and that
+             * binary carries a binding compiled into it. Sealing with the codec
+             * this package ships - which is what happened here until the base
+             * build started compiling its own - produces a file the game refuses
+             * to read, with no sign of trouble at the point it was made. The two
+             * halves have to be built the same way or the patch is dead on
+             * arrival.
+             */
             const writer = await createSealedLayer(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
-            });
+            }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
             // Zero is the default the reader already applies, so it is left unsaid rather than
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
@@ -1963,25 +2003,14 @@ export class GameBuildManager {
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
         }
-        // Which protection this build actually got. A build whose codec is compiled
-        // for it cannot be opened by a published copy of the codec package; one
-        // whose codec was written into can, by anyone who has worked out how once.
-        // The author asked for protection either way, so they are told which.
-        const compiledForTitle = desktopArtifact?.codecCompiledForTitle ?? null;
-        if (compiledForTitle === true) {
+        // Stated rather than assumed: a build that could not compile its codec for
+        // this title does not reach here at all - it stops with a message saying
+        // so - and the line is what tells the author which of the two they have.
+        if (desktopArtifact?.codecCompiledForTitle) {
             this.emit(session, {
                 level: "info",
                 source: "Build",
                 message: "the content codec is compiled for this title; no other build can open its content",
-            });
-        } else if (compiledForTitle === false) {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: "the content codec ships as built rather than compiled for this title, so "
-                    + "protection here rests on the same binary every game carries. The reason is "
-                    + "above; the content is still protected, and a later build with a working "
-                    + "toolchain fixes it.",
             });
         }
         // Same rule, and the same reason: what the library came to is a fact about the project under
