@@ -5,8 +5,10 @@ import path from "path";
 import { runtimeSupportPathFor } from "@narraleaf/encryption";
 import { GAME_BUILD_ARCHS_BY_PLATFORM } from "@shared/types/gameBuild";
 import {
+    codecPlacementsFor,
     codecTargetFor,
     hostCodecTarget,
+    placeCodecBinary,
     UNIVERSAL_CODEC_SLICES,
     UNIVERSAL_CODEC_TARGET,
     writeSupportBinary,
@@ -61,6 +63,58 @@ describe("codecTargetFor", () => {
                 }
             }
         }
+    });
+});
+
+describe("codecPlacementsFor", () => {
+    it("gives each target one copy, made of one image", () => {
+        expect(codecPlacementsFor(["windows-x64", "linux-arm64"], key => `/out/${key}/nlcrypto.node`)).toEqual([
+            { platformKey: "windows-x64", destination: "/out/windows-x64/nlcrypto.node", slices: ["win32-x64"] },
+            { platformKey: "linux-arm64", destination: "/out/linux-arm64/nlcrypto.node", slices: ["linux-arm64"] },
+        ]);
+    });
+
+    // The reason placements exist at all: compiling happens per image, and a
+    // universal package is one copy made of two.
+    it("gives a universal package one copy made of two images", () => {
+        const [placement] = codecPlacementsFor(["macos-universal"], () => "/out/nlcrypto.node");
+        expect(placement.slices).toEqual([...UNIVERSAL_CODEC_SLICES]);
+    });
+
+    it("refuses by name rather than inventing a directory", () => {
+        expect(() => codecPlacementsFor(["android-arm64"], () => "/out")).toThrow(/android-arm64/);
+    });
+});
+
+describe("placeCodecBinary", () => {
+    it("assembles a universal copy from the images produced for it", async () => {
+        const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codec-place-"));
+        try {
+            const images: Record<string, string> = {};
+            for (const slice of UNIVERSAL_CODEC_SLICES) {
+                images[slice] = path.join(dir, slice);
+                await fs.copyFile(runtimeSupportPathFor(slice), images[slice]);
+            }
+            const destination = path.join(dir, "shipped", "nlcrypto.node");
+            await placeCodecBinary(
+                { platformKey: "macos-universal", destination, slices: [...UNIVERSAL_CODEC_SLICES] },
+                images,
+            );
+            const image = await fs.readFile(destination);
+            expect(image.readUInt32BE(0)).toBe(0xcafebabe);
+            expect(image.readUInt32BE(4)).toBe(2);
+        } finally {
+            await fs.rm(dir, { recursive: true, force: true });
+        }
+    });
+
+    // The failure this replaces would have been a package shipping whatever
+    // happened to be at that path, which is how the original defect looked.
+    it("refuses when an image it needs was not produced", async () => {
+        await expect(placeCodecBinary(
+            { platformKey: "windows-x64", destination: "/out/nlcrypto.node", slices: ["win32-x64"] },
+            {},
+        )).rejects.toThrow(/win32-x64/);
     });
 });
 

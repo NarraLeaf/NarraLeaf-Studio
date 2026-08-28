@@ -17,6 +17,7 @@
  */
 
 import fs from "fs/promises";
+import path from "path";
 import { runtimeSupportPathFor } from "@narraleaf/encryption";
 
 /** Studio's platform names against the ones the codec package's directories use. */
@@ -57,7 +58,67 @@ export function hostCodecTarget(): string {
     return `${process.platform}-${process.arch}`;
 }
 
-/** Put the image for `codecTarget` at `destination`, assembling it if it has to. */
+/**
+ * One package's copy of the codec, and the images it is made of.
+ *
+ * Separating the two is what lets a build's binaries be compiled for the title
+ * rather than copied: compiling happens per image, in the codec package, which
+ * knows nothing about a package that runs on two architectures. So the images
+ * are produced first, wherever they come from, and assembled afterwards.
+ */
+export type CodecPlacement = {
+    /** The build target this copy is for. */
+    platformKey: string;
+    /** Where the shipped copy goes. */
+    destination: string;
+    /** The codec targets whose images it is made of; two only for a universal package. */
+    slices: string[];
+};
+
+/** What each target needs, or a throw naming the target nothing is built for. */
+export function codecPlacementsFor(
+    platformKeys: readonly string[],
+    destinationFor: (platformKey: string) => string,
+): CodecPlacement[] {
+    return platformKeys.map(platformKey => {
+        const target = codecTargetFor(platformKey);
+        if (!target) {
+            throw new Error(`no content codec is built for ${platformKey}`);
+        }
+        return {
+            platformKey,
+            destination: destinationFor(platformKey),
+            slices: target === UNIVERSAL_CODEC_TARGET ? [...UNIVERSAL_CODEC_SLICES] : [target],
+        };
+    });
+}
+
+/**
+ * Put the images at `sources` in place as one shipped copy.
+ *
+ * A single image is moved as it is; two are wrapped in a fat container, slice for
+ * slice, so each keeps the signature it was built with.
+ */
+export async function placeCodecBinary(
+    placement: CodecPlacement,
+    sources: Readonly<Record<string, string>>,
+): Promise<void> {
+    await fs.mkdir(path.dirname(placement.destination), { recursive: true });
+    const files = placement.slices.map(slice => {
+        const file = sources[slice];
+        if (!file) {
+            throw new Error(`no ${slice} image was produced for ${placement.platformKey}`);
+        }
+        return file;
+    });
+    if (files.length === 1) {
+        await fs.copyFile(files[0], placement.destination);
+        return;
+    }
+    await fs.writeFile(placement.destination, buildFatMachO(await Promise.all(files.map(file => fs.readFile(file)))));
+}
+
+/** Put the prebuilt image for `codecTarget` at `destination`. */
 export async function writeSupportBinary(codecTarget: string, destination: string): Promise<void> {
     if (codecTarget !== UNIVERSAL_CODEC_TARGET) {
         await fs.copyFile(runtimeSupportPathFor(codecTarget), destination);
