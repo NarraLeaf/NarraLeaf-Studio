@@ -1,6 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
-import type { UIElement } from "@shared/types/ui-editor/document";
 import type { UIComponentId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -12,7 +11,16 @@ type Props = {
     surfaceId: string;
     elementId: string;
     elementType: string;
-    behavior: UIElement["behavior"] | undefined;
+    /**
+     * Every blueprint this element owns the lifecycle of, so its locals can be dropped on unmount.
+     *
+     * Resolved by the caller rather than read off the element here, because the two spellings of
+     * "this widget's blueprint" do not both live on the element: the current one is an owner record
+     * in the blueprint document, which this component has no access to. Deriving it from
+     * `behavior.events` alone is what left every widget the editor wires today holding its locals
+     * for the life of the process - see `widgetPrivateBlueprintHeads`.
+     */
+    ownedBlueprintIds: readonly string[];
     initBinding: UIBehaviorBinding | undefined;
     hostAdapter: UIHostAdapter;
     componentId?: UIComponentId;
@@ -31,21 +39,6 @@ function enqueuePrepaintTask(task: () => void): void {
     void Promise.resolve().then(task);
 }
 
-function blueprintIdsFromWiringKey(key: string): string[] {
-    if (!key) {
-        return [];
-    }
-    const ids = new Set<string>();
-    for (const part of key.split("|")) {
-        const idx = part.indexOf(":");
-        if (idx === -1) {
-            continue;
-        }
-        ids.add(part.slice(idx + 1));
-    }
-    return [...ids];
-}
-
 /**
  * Dispatches the widget `init` blueprint UI event once when the element mounts (Dev Mode when blueprintRuntime is present).
  * Releases per-widget blueprint execution locals when the element unmounts or blueprint wiring changes.
@@ -56,7 +49,7 @@ export function BlueprintWidgetInitLifecycle({
     surfaceId,
     elementId,
     elementType,
-    behavior,
+    ownedBlueprintIds,
     initBinding,
     hostAdapter,
     componentId,
@@ -106,17 +99,9 @@ export function BlueprintWidgetInitLifecycle({
     const dispatchedInitKeyRef = useRef<string | null>(null);
     const hasBlueprintRuntime = Boolean(rt);
 
-    const localsWiringKey = useMemo(() => {
-        const ev = behavior?.events;
-        if (!ev) {
-            return "";
-        }
-        return Object.entries(ev)
-            .filter(([, b]) => b?.kind === "blueprintEvent")
-            .map(([slot, b]) => `${slot}:${(b as { blueprintId: string }).blueprintId}`)
-            .sort()
-            .join("|");
-    }, [behavior?.events]);
+    // The array identity moves on every render of the tree above, so the effect keys off the joined
+    // ids instead: re-subscribing on an unchanged wiring would release the locals it is protecting.
+    const localsWiringKey = ownedBlueprintIds.join("|");
 
     useLayoutEffect(() => {
         latestDispatchRef.current = {
@@ -133,7 +118,7 @@ export function BlueprintWidgetInitLifecycle({
         if (!hasBlueprintRuntime || !localsWiringKey) {
             return;
         }
-        const blueprintIds = blueprintIdsFromWiringKey(localsWiringKey);
+        const blueprintIds = localsWiringKey.split("|");
         return () => {
             for (const blueprintId of blueprintIds) {
                 releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId, { componentId });

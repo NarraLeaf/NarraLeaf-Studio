@@ -50,6 +50,7 @@ import {
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
+import { listElementOwnedBlueprintIds } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -1195,7 +1196,11 @@ function renderElementTree(
                     surfaceId={surface.id}
                     elementId={resolved.id}
                     elementType={resolved.type}
-                    behavior={resolved.behavior}
+                    ownedBlueprintIds={listElementOwnedBlueprintIds(
+                        resolved,
+                        { surfaceId: surface.id, componentId },
+                        blueprintBindingContext?.blueprintDocument,
+                    )}
                     initBinding={resolved.behavior?.events?.init}
                     hostAdapter={hostAdapter}
                     componentId={componentId}

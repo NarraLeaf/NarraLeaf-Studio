@@ -1,7 +1,6 @@
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
-    resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
@@ -18,7 +17,7 @@ import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemCont
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
-import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
+import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
@@ -454,30 +453,13 @@ function hasBehaviorBinding(element: UIElement, eventId: string): boolean {
 /**
  * Whether the widget's own blueprint carries a head node that starts on this slot.
  *
- * The graph's *name* is not consulted, deliberately: the dispatcher looks for a head node of a type
- * the slot allows, in any of the blueprint's event graphs, so a handler an author put on a layer
- * called anything at all still runs. `resolveBlueprintEventHeadTypesForUiSlot` is the same function
- * it asks, so the two cannot disagree about which heads count for which widget.
+ * Answered by the shared reader rather than here, because this rule is not the only place that has
+ * to ask: the surface editor's interaction diagnostics ask the same question of the same two
+ * spellings, and they spent four months answering it with the element-shaped half alone. See
+ * `widgetPrivateBlueprintHeads`.
  */
 function hasPrivateBlueprintHead(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
-    const document = ctx.blueprintDocument;
-    if (!document) {
-        return false;
-    }
-    const heads = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventId, element.type));
-    if (heads.size === 0) {
-        return false;
-    }
-    const blueprintId = document.ownerRecords?.[widgetMainOwnerKey(surfaceId, element.id)]?.activeBlueprintId;
-    const blueprint = blueprintId ? document.blueprints?.[blueprintId] : undefined;
-    if (!blueprint || blueprint.program.kind !== "graph") {
-        // A script-module blueprint exports its handlers as functions this sweep cannot read, so an
-        // owner that has one is credited with listening rather than reported for staying silent.
-        return Boolean(blueprint);
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
-        Object.values(eventGraph?.graph?.nodes ?? {}).some(node => heads.has(node.type)),
-    );
+    return widgetPrivateBlueprintHasSlotHead(ctx.blueprintDocument, { surfaceId }, element, eventId);
 }
 
 /**
@@ -742,22 +724,7 @@ const POINTER_EVENT_SLOT_GESTURES: Readonly<Record<string, readonly UIInputPoint
  * When the graph cannot be read, nothing is claimed.
  */
 function hasPointerHeadNode(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
-    const document = ctx.blueprintDocument;
-    if (!document) {
-        return false;
-    }
-    const heads = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventId, element.type));
-    if (heads.size === 0) {
-        return false;
-    }
-    const blueprintId = document.ownerRecords?.[widgetMainOwnerKey(surfaceId, element.id)]?.activeBlueprintId;
-    const blueprint = blueprintId ? document.blueprints?.[blueprintId] : undefined;
-    if (!blueprint || blueprint.program.kind !== "graph") {
-        return false;
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
-        Object.values(eventGraph?.graph?.nodes ?? {}).some(node => heads.has(node.type)),
-    );
+    return widgetPrivateBlueprintHasSlotHead(ctx.blueprintDocument, { surfaceId }, element, eventId, "silent");
 }
 
 /** Every pointer gesture this widget answers on its own, by graph head or by behavior binding. */
