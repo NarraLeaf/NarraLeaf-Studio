@@ -497,7 +497,7 @@ export class GameTestManager {
                 // pack deliberately does not have.
                 mode: "preview",
                 encryptionKey,
-                sidecarPlatformKey: hostSidecarPlatformKey(),
+                platformKeys: [hostSidecarPlatformKey()],
                 hostUserDataDir: this.app.getUserDataDir(),
                 downloadRewrites: currentDownloadRewrites(),
             }, {

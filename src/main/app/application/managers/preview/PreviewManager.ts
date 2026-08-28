@@ -334,7 +334,7 @@ export class PreviewManager {
                 // silently lacks them, and testing a sidecar would mean a full
                 // production build every time - which is exactly the loop a
                 // preview exists to avoid.
-                sidecarPlatformKey: hostSidecarPlatformKey(),
+                platformKeys: [hostSidecarPlatformKey()],
                 // `dep:` sidecar includes resolve through the build dependency
                 // cache, so the compile needs its root even in preview.
                 hostUserDataDir: this.app.getUserDataDir(),

@@ -43,11 +43,12 @@ import {
     bindRuntimeBinary,
     createSealedBundle,
     projectVerificationKey,
-    runtimeSupportPath,
     RUNTIME_BUNDLE_FILENAME,
     RUNTIME_SUPPORT_FILENAME,
     type SealedBundleWriter,
 } from "@narraleaf/encryption";
+import { PER_TARGET_DIR_NAME } from "../../../../../buildWorker/perTargetPayload";
+import { codecTargetFor, hostCodecTarget, writeSupportBinary } from "../../../../../buildWorker/codecBinary";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
@@ -201,13 +202,18 @@ export type GameRuntimeArtifactCompileInput = {
      */
     locale?: LocaleCode;
     /**
-     * `<platform>-<arch>` this app dir's native payload is built for - the key
-     * plugin sidecar binaries are declared under. A production build passes the
-     * target's key; a preview passes the host's own, so an author can exercise a
-     * sidecar without a full build. Absent for web compiles, which ship no
-     * sidecars at all (a static site has no process to spawn).
+     * Every `<platform>-<arch>` this app dir has to carry machine code for - the
+     * keys plugin sidecar binaries are declared under.
+     *
+     * A production build passes all of its desktop targets and the payload is
+     * staged per target, because one app dir is packaged several times and each
+     * package must end up with its own; see perTargetPayload.ts. A preview passes
+     * the host's own and it is staged at the app root, because a preview is run
+     * here rather than packaged. Empty for web compiles, which ship no native
+     * payload at all - a static site has no process to spawn and no addon to
+     * load.
      */
-    sidecarPlatformKey?: string;
+    platformKeys?: readonly string[];
     /**
      * Every build target this one artifact serves.
      *
@@ -464,19 +470,56 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, input.sidecarPlatformKey);
+    /*
+     * A packaged app dir is packaged once per target and each package must come
+     * out holding its own machine code, so the payload is staged per target and
+     * the packaging step maps one directory over the app root. A preview is run
+     * from this directory rather than packaged, so its payload goes where the
+     * game will look for it: here. See perTargetPayload.ts.
+     */
+    const nativePayloadKeys = shell === "web" ? [] : [...(input.platformKeys ?? [])];
+    const perTargetPayload = Boolean(input.packaging);
+    const payloadDirFor = (platformKey: string): string => (perTargetPayload
+        ? path.join(appDir, PER_TARGET_DIR_NAME, platformKey)
+        : appDir);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor);
     // The support binary ships for protection, and also for a build that carries a
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
     // of protected builds. Two different questions, and they do not share a switch.
     const needsSupportBinary = Boolean(input.encryptionKey)
         || Boolean(input.distribution && shell !== "web");
+    /*
+     * Where each target's copy of the support binary goes, and which prebuilt
+     * image each starts from.
+     *
+     * Both halves used to be answered for the host and the host only, which is
+     * correct exactly when the machine packaging is the machine that will run the
+     * result. A build producing Windows and macOS packages together wrote one
+     * copy, of this machine's image, and every package but one shipped a binary
+     * its loader refuses.
+     */
+    const supportBinaries: Record<string, string> = {};
     if (needsSupportBinary) {
-        // createSealedBundle binds this pack's protection material into the copy
-        // when it opens the store (below), so no key material is handled here or
-        // written into any JS. An unprotected build has no store to open, so it
-        // binds the copy on its own further down.
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+        for (const platformKey of nativePayloadKeys.length > 0 ? nativePayloadKeys : [null]) {
+            const destination = path.join(
+                platformKey === null ? appDir : payloadDirFor(platformKey),
+                RUNTIME_SUPPORT_FILENAME,
+            );
+            await fs.mkdir(path.dirname(destination), { recursive: true });
+            /* Null is a compile with no target named - a preview, which runs on
+             * this machine, so this machine's image is the right one. */
+            const codecTarget = platformKey === null ? hostCodecTarget() : codecTargetFor(platformKey);
+            if (!codecTarget) {
+                throw new Error(`no content codec is built for ${platformKey}`);
+            }
+            // createSealedBundle binds this pack's protection material into the copies
+            // when it opens the store (below), so no key material is handled here or
+            // written into any JS. An unprotected build has no store to open, so it
+            // binds them on its own further down.
+            await writeSupportBinary(codecTarget, destination);
+            supportBinaries[codecTarget] = destination;
+        }
     }
 
     const projectConfig = await readProjectConfig(input.projectPath);
@@ -548,7 +591,7 @@ export async function compileGameRuntimeArtifact(
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
     if (input.distribution && needsSupportBinary && !input.encryptionKey) {
-        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+        await bindRuntimeBinary(supportBinaries, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
         });
@@ -559,9 +602,15 @@ export async function compileGameRuntimeArtifact(
     const target: PackTarget = input.encryptionKey
         ? {
             kind: "sealed",
+            /*
+             * Every target's copy at once. They are bound to one store because
+             * they carry the same material - the store a Windows package ships is
+             * the store the macOS package built beside it opens - which is what
+             * lets one compile serve a build that produces several packages.
+             */
             writer: await createSealedBundle(
                 path.join(appDir, RUNTIME_BUNDLE_FILENAME),
-                path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+                supportBinaries,
                 input.distribution
                     ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
                     : undefined,
@@ -636,7 +685,16 @@ export async function compileGameRuntimeArtifact(
             pluginConfig,
             ...(input.platforms ? { platforms: input.platforms } : {}),
             onNotice: message => notices.push(message),
-            ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
+            /*
+             * Sidecars have not moved with the codec and koffi, and the reason is
+             * in the pack rather than in the copying. A sidecar's manifest entry
+             * names the file to spawn - `bin/tool.exe` on Windows, `bin/tool`
+             * elsewhere - and the pack carries one such name per sidecar, so a
+             * pack serving two platforms could only be right about one of them.
+             * Staging the files per target is the easy half; the pack has to be
+             * able to say a name per platform first.
+             */
+            ...(nativePayloadKeys.length === 1 ? { sidecarPlatformKey: nativePayloadKeys[0] } : {}),
             ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
@@ -897,7 +955,10 @@ async function copyRuntimeFiles(
     appDir: string,
     mode: "preview" | "production",
     shell: "electron" | "web",
-    sidecarPlatformKey?: string,
+    /** Every target this app dir carries machine code for; empty for a web compile. */
+    platformKeys: readonly string[],
+    /** Where one target's machine code goes. See perTargetPayload.ts. */
+    payloadDirFor: (platformKey: string) => string,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
@@ -912,8 +973,20 @@ async function copyRuntimeFiles(
         }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
-    if (shell !== "web") {
-        await copyKoffiPackage(appDir, sidecarPlatformKey);
+    if (shell === "web") {
+        return;
+    }
+    /*
+     * koffi's addon is machine code like the codec's, so it is staged the same
+     * way: one copy per target, and the packaging step brings the right one to
+     * the app root. A compile that names no target is a preview, which runs here.
+     */
+    if (platformKeys.length === 0) {
+        await copyKoffiPackage(appDir, undefined);
+        return;
+    }
+    for (const platformKey of platformKeys) {
+        await copyKoffiPackage(payloadDirFor(platformKey), platformKey);
     }
 }
 
@@ -996,7 +1069,7 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * on the compile log, because the previous version of this said nothing and that is how it shipped
  * broken.
  */
-async function copyKoffiPackage(appDir: string, platformKey: string | undefined): Promise<void> {
+async function copyKoffiPackage(destinationDir: string, platformKey: string | undefined): Promise<void> {
     const directories = koffiPrebuildDirectories(platformKey);
     if (directories.length === 0) {
         console.warn(`[Compile] no koffi prebuild is known for "${platformKey}"; the game cannot move the cursor`);
@@ -1010,7 +1083,7 @@ async function copyKoffiPackage(appDir: string, platformKey: string | undefined)
         console.warn("[Compile] koffi is not resolvable from this installation", error);
         return;
     }
-    const targetRoot = path.join(appDir, SHIPPED_KOFFI_DIR_NAME);
+    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
     const copied: string[] = [];
     for (const directory of directories) {
         const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
