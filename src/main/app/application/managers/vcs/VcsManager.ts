@@ -2712,8 +2712,51 @@ export class VcsManager extends Manager {
                 );
             });
 
+            await this.fetchRevisionHistory(backend, root, remoteOrigin);
             return { root, ...cloned };
         });
+    }
+
+    /**
+     * Pull the revision history's own objects down, while the network is still open.
+     *
+     * **A clone brings the working tree, not the history behind it.** Measured: a copy of a
+     * project with four revisions answers `revisionHistory: Not found` to every LOCAL history
+     * read, for ever - Studio's reads are offline by design, so the version rail tells whoever
+     * joined a project that it has no versions at all, and the comparison, the merge base and
+     * every "what changed" beside them have nothing to walk. One read with a socket open fetches
+     * what is missing and `cache: true` keeps it, so this is a one-off repair rather than a
+     * policy change: no read after it has to go online, and the six places that may open a socket
+     * stay six - this is inside the clone, which is one of them.
+     *
+     * Best effort, and deliberately last. The clone has already landed and its files are on disk;
+     * a prefetch that failed must not turn that into "the clone failed" and leave the author with
+     * a destination folder a wizard will not retry into. What they get instead is exactly today's
+     * behaviour, which the next online read repairs.
+     */
+    private async fetchRevisionHistory(
+        backend: VcsBackend,
+        root: string,
+        remoteOrigin: string | null,
+    ): Promise<void> {
+        const globals = {
+            ...this.globalsFor(root, { online: true }),
+            identity: this.resolveOnlineIdentity(remoteOrigin),
+        };
+        try {
+            const graph = await this.withServerSession(
+                remoteOrigin,
+                () => backend.readRevisionGraph(globals),
+            );
+            this.app.logger.info("[Vcs] Fetched history for", root, `${graph.size} revision(s)`);
+        } catch (error) {
+            this.app.logger.warn(
+                "[Vcs] Cloned", root, "but could not fetch its history:",
+                error instanceof Error ? error.message : String(error),
+            );
+        } finally {
+            await backend.releaseRepository(globals).catch(() => undefined);
+        }
     }
 
     /**
