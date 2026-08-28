@@ -52,6 +52,11 @@ import { migrateStoryDocumentToLatest } from "@shared/story/migrateStoryDocument
  * did not do its job - a version it has no step for and does not stamp - and a half-migrated
  * document is the one outcome `DocumentSpec.parse` says must not happen.
  *
+ * Neither of these is the check for a document that is too OLD. That one belongs to the ladder, not
+ * here, and it has to: by the time this runs the only thing left to say is "not the current
+ * version", which names neither the version the document is at nor the oldest one that opens. See
+ * `STORY_DOCUMENT_MIN_SUPPORTED_VERSION`.
+ *
  * Called *after* {@link migrateStoryDocumentToLatest}, never instead of it. The story spec has a
  * second, earlier guard on the raw record (`rejectNewerSchema`), so a newer document is named as
  * such before anything touches it; this one is the backstop that makes the post-condition true by

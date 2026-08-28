@@ -10,6 +10,13 @@ import type { WeatherSeedRef } from "../../weather/model";
 // content the author had sold separately - silently, in the one direction nobody checks. Refusing
 // the document is the point.
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
+// What follows is the story document's version log. It is kept in full, and deliberately, even for
+// versions this build can no longer open: most entries say what the model IS and why, not only what
+// a converter did, and that is the only written record of several of these decisions. Read it as
+// history, not as a list of shapes the code still handles.
+// The ladder itself stops at STORY_DOCUMENT_MIN_SUPPORTED_VERSION - see
+// `@shared/story/migrateStoryDocument`, which explains why a floor is the honest answer for a
+// product with no releases behind it. A document below that floor is refused by name.
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
 // load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
@@ -447,27 +454,6 @@ export type StorySavedVariableDefinition = {
 };
 
 export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
-
-// --- Legacy shapes, retained only as migration input. ---
-// v5 and earlier persisted variable REGISTRIES: `StoryScene.sceneVariables` and
-// `StoryDocument.savedVariables` (Record<variableId, definition>). v6 replaced both with
-// `declaration` blocks; the migration reads the old fields off the raw object and strips them.
-export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
-
-export type StoryVariableDefinitionLegacy = {
-    id: string;
-    name: string;
-    scope: StoryVariableScopeLegacy;
-    valueType: StoryVariableValueType;
-    defaultValue?: StoryLiteralValue;
-    meta?: StoryMeta;
-};
-
-export type StoryPersistentDefinitionLegacy = {
-    namespace: string;
-    defaultContent: Record<string, StoryLiteralValue>;
-    meta?: StoryMeta;
-};
 
 export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration" | "empty";
 
@@ -1362,13 +1348,6 @@ export type StoryVariableRef =
     // (registry entry id, or declaration block id for a story `/persis` row) - which equals its storage
     // key, so the resolver still hands that value to the host persistence bridge.
     | { scope: "persistent"; variableId: string };
-
-/** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
-export type StoryVariableRefLegacy = {
-    scope: StoryVariableScopeLegacy;
-    namespace?: string;
-    key: string;
-};
 
 /**
  * The stage singletons every scene has without a creator block: the scene background image
