@@ -1522,6 +1522,9 @@ export function DevModeContent(props: DevModeContentProps) {
             log,
             reportIssue,
             resolveStoryAssetUrl,
+            // Dev Mode shows its interface without waiting for the story to compile and warm;
+            // see GameAppHost for what that trades away.
+            surfacesBeforeStoryBoot: true,
             prewarmStoryAssetUrls,
             resolveWeatherClip,
             saveStore,

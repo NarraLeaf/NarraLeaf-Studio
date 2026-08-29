@@ -169,6 +169,7 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
+import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
 import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
 import { createPlayHead, type PlayHead } from "./playHead";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
@@ -564,6 +565,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
+    /**
+     * The boot in flight, for callers that need the story environment before they can do
+     * anything - see {@link GameAppHost.surfacesBeforeStoryBoot}. With the surfaces drawn ahead
+     * of the boot, Start Game can be pressed while the environment is still mounting, and the
+     * press has to wait for it rather than start a second compile of the same story.
+     */
+    const nlrBootPromiseRef = useRef<Promise<void> | null>(null);
     const [gameStageVisible, setGameStageVisibleState] = useState(false);
     /**
      * Ref mirrors of the two pieces of session state a Game UI slot surface has to be able to ask
@@ -616,6 +624,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
+    /** The player's way into a story, held open while a boot is still running. */
+    const storyStartGate = useMemo(
+        () => createStoryStartGate({ pendingBoot: nlrBootPromiseRef, start: startStoryInGameRef }),
+        [],
+    );
     const cleanupBundleIdRef = useRef<string | null>(null);
     /** The runtime core whose language-restart resume has already been attempted. */
     const localeResumeAttemptedRef = useRef<unknown>(null);
@@ -3067,9 +3080,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWindowScale: host.setWindowScale,
             getWindowSize: host.getWindowSize,
             setWindowSize: host.setWindowSize,
-            startStoryInGame: request =>
-                startStoryInGameRef.current?.(request) ??
-                Promise.reject(new Error("Start Game: runtime is not ready")),
+            startStoryInGame: storyStartGate,
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
             loadSaveInGame: loadSaveForGraph,
             deleteSaveInGame: id => deleteSave(id),
@@ -3711,7 +3722,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             finish();
         }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
 
-        void (async () => {
+        nlrBootPromiseRef.current = (async () => {
             try {
                 await runBootRef.current?.();
             } catch (err) {
@@ -3818,8 +3829,16 @@ export function GameApp(props: GameAppProps): ReactNode {
     /**
      * Whether the surface stack may draw. Everything the boot preload gates, plus the moment a
      * language restart is putting a playthrough back: see `localeResumePending`.
+     *
+     * A host may say it does not want to wait for the boot at all (Dev Mode does); the language
+     * restart still holds, because that one is putting a playthrough back on screen and drawing
+     * over it would show the player the wrong one.
      */
-    const surfacesReady = nlrPreloadDone && !localeResumePending;
+    const surfacesReady = surfacesMayDraw({
+        storyBootFinished: nlrPreloadDone,
+        hostDrawsBeforeStoryBoot: host.surfacesBeforeStoryBoot === true,
+        localeResumePending,
+    });
     const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
         .filter(layer => !renderedLayerKeys.has(layer.key))

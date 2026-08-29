@@ -171,6 +171,21 @@ export type GameAppHost = {
      * preview means.
      */
     installedDlcIds?: readonly string[];
+    /**
+     * Draw the surfaces as soon as they can be drawn, instead of holding the loading screen
+     * until the story environment has booted.
+     *
+     * Off by default, and it has to be: a shipped game shows nothing until its opening scene is
+     * warm, which is what makes Start Game instant and keeps a title screen from painting before
+     * `gameReady` has run the graphs behind it.
+     *
+     * Dev Mode turns it on. Half of what Dev Mode is for is looking at the interface, and
+     * compiling the story and warming its first scene is the longest part of its boot - MEASURED
+     * at 2.3s of 3.3s on a full-length project, all of it behind a dark loading page. With this
+     * on the surfaces are up in about a second and the story boots behind them. What it costs is
+     * the guarantee: press Start before the environment is ready and the press waits for it.
+     */
+    surfacesBeforeStoryBoot?: boolean;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
