@@ -122,15 +122,22 @@ Var nlSize      ; human-readable install size, e.g. "1.1 GB"
 ; --- the window ---------------------------------------------------------------------------------
 
 ; Take the system frame off and give the window its own size, position and corners. WS_CAPTION
-; (0x00C00000), WS_THICKFRAME (0x00040000), WS_SYSMENU (0x00080000) and WS_BORDER (0x00800000) all
-; come off: the title bar is the document's to draw, and dropping WS_THICKFRAME is what makes the
-; window un-resizable, which is the intent - the layout is designed at one size.
+; (0x00C00000, itself WS_BORDER | WS_DLGFRAME), WS_THICKFRAME (0x00040000) and WS_SYSMENU
+; (0x00080000) all come off: the title bar is the document's to draw, and dropping WS_THICKFRAME is
+; what makes the window un-resizable, which is the intent - the layout is designed at one size.
+;
+; Both halves of WS_CAPTION have to go. Clearing WS_DLGFRAME alone is enough to stop the title bar
+; being drawn, so the window looks finished either way, but WS_BORDER surviving costs a pixel of
+; client area on each side - measured on Windows 11 at 125%, a 775x465 window had a 773x463 client.
+; The canvas is a child of that client area and anything past it is clipped, so the document's last
+; two rows never reached the screen. Those two rows are the whole of the progress bar, which is why
+; it was absent rather than merely cut short.
 ;
 ; Called only once the WebView is confirmed up. Until then the window is merely hidden, so a machine
 ; where the view cannot be created gets the stock wizard with its frame untouched.
 Function nlFrame
   System::Call "user32::GetWindowLongW(p $HWNDPARENT, i -16) i .r0"
-  IntOp $1 $0 & 0xFEB3FFFF
+  IntOp $1 $0 & 0xFE33FFFF
   System::Call "user32::SetWindowLongW(p $HWNDPARENT, i -16, i r1)"
 
   System::Call "user32::GetSystemMetrics(i 0) i .r6"
@@ -165,7 +172,26 @@ Function nlFrame
   GetDlgItem $R0 $HWNDPARENT 1034
   ShowWindow $R0 ${SW_HIDE}
 
-  System::Call "user32::MoveWindow(p $nlCanvas, i 0, i 0, i $nlWidth, i $nlHeight, i 1)"
+  ; Sized from the client area rather than from $nlWidth/$nlHeight, so the document ends exactly
+  ; where the window does whatever the frame turns out to cost on a given Windows. With the styles
+  ; above off the two agree; this is what makes that a fact rather than an assumption, and the
+  ; failure it guards against is a silent one - an oversized canvas is clipped, not scaled, and the
+  ; edge that goes first is the bottom one the bar sits on.
+  StrCpy $3 0
+  StrCpy $4 0
+  System::Call "*(i, i, i, i) p .r8"
+  System::Call "user32::GetClientRect(p $HWNDPARENT, p r8)"
+  System::Call "*$8(i, i, i .r3, i .r4)"
+  System::Free $8
+  ; Nothing above can be relied on to have answered: a System::Call that fails leaves its
+  ; destinations untouched, and a canvas of zero would be a window with no document in it at all -
+  ; a worse outcome than the clipped edge this replaces. Fall back to the size it used to use.
+  ${If} $3 < 1
+  ${OrIf} $4 < 1
+    StrCpy $3 $nlWidth
+    StrCpy $4 $nlHeight
+  ${EndIf}
+  System::Call "user32::MoveWindow(p $nlCanvas, i 0, i 0, i r3, i r4, i 1)"
   NlWebView::Fit
 FunctionEnd
 
