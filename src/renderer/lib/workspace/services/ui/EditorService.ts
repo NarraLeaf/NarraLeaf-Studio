@@ -105,16 +105,14 @@ export class EditorService {
     }
 
     /**
-     * Update an editor tab
+     * Update an editor tab in place, wherever in the layout it sits.
+     *
+     * Writes into `editorLayout` - the group tree the tab strip renders - rather than replacing the
+     * tab, so a title, an unsaved dot or a payload can change without the tab losing its slot, its
+     * pane or its focus.
      */
     public update<TPayload = any>(tabId: string, updates: Partial<Omit<EditorTab<TPayload>, "id">>): void {
-        const tab = this.get<TPayload>(tabId);
-        if (tab) {
-            this.store.updateEditorTab({
-                ...tab,
-                ...updates,
-            });
-        }
+        this.store.updateEditorTab(tabId, updates);
     }
 
     /**
@@ -141,6 +139,10 @@ export class EditorService {
 
     /**
      * Set tab badge
+     *
+     * Stored on the tab and readable back through {@link get}. The tab strip draws a title, an
+     * unsaved dot and a close button and nothing else, so a badge set here is state, not a mark on
+     * the screen.
      */
     public setBadge(tabId: string, badge: string | number | undefined): void {
         this.update(tabId, { badge });
