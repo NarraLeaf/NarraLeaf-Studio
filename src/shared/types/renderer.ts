@@ -104,6 +104,8 @@ export interface RendererPrivilegedInterface {
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        /** One grant per file in one round trip; see `PrivilegedFileSystemCall`'s `requestReadMany`. */
+        requestReadManyRaw(actor: PrivilegedActor, paths: string[]): Promise<RequestStatus<FsRequestResult<(string | null)[]>>>;
         /** One grant for N files; see `PrivilegedFileSystemCall`'s `requestWriteBatch`. */
         requestWriteBatch(actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;

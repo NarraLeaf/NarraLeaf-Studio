@@ -28,6 +28,16 @@ vi.mock("../actorAuthorization", () => ({
         (writable.has(fsPath) ? { allowed: true } : { allowed: false, reason: `nope: ${fsPath}` }),
 }));
 
+/** Which paths exist as files. The read batch asks `Fs.isFile` and nothing else. */
+const existing = new Set<string>();
+vi.mock("@shared/utils/fs", async (importOriginal) => {
+    const actual = await importOriginal<typeof import("@shared/utils/fs")>();
+    return {
+        ...actual,
+        Fs: { ...actual.Fs, isFile: async (target: string) => ({ ok: true, data: existing.has(target) }) },
+    };
+});
+
 const { PrivilegedFsCallHandler } = await import("./privilegedAction");
 
 /**
@@ -159,5 +169,83 @@ describe("privileged requestWriteBatch", () => {
         expect(answer.ok).toBe(false);
         expect(answer.error!.message).toContain(String(WRITE_BATCH_MAX_ENTRIES));
         expect(overflowing.host.allocated).toHaveLength(0);
+    });
+});
+
+/**
+ * A batched read is many grants, not one, so a path it cannot grant drops out and the rest stand -
+ * the opposite of the write batch above, and for the opposite reason: there is nothing shared
+ * between the answers for a caller to be wrong about.
+ */
+describe("privileged requestReadMany", () => {
+    function readWindow(): { window: AppWindow; allocated: string[]; readied: string[]; cleaned: string[] } {
+        const allocated: string[] = [];
+        const readied: string[] = [];
+        const cleaned: string[] = [];
+        const window = {
+            win: {},
+            getWindowType: () => WindowAppType.Workspace,
+            app: {
+                storageManager: {
+                    allocateHash: (target: string) => {
+                        allocated.push(target);
+                        return `grant:${target}`;
+                    },
+                    updateStatus: (hash: string) => readied.push(hash),
+                    cleanup: (hash: string) => cleaned.push(hash),
+                },
+            },
+        } as unknown as AppWindow;
+        return { window, allocated, readied, cleaned };
+    }
+
+    async function request(paths: string[], host = readWindow()) {
+        const call: IPCEvents[IPCEventType.privilegedFsCall]["data"] = {
+            actor: { kind: "facade", id: "default" },
+            operation: "requestReadMany",
+            paths,
+            raw: true,
+        };
+        const result = await new PrivilegedFsCallHandler().handle(host.window, call);
+        return { host, answer: result.data as { ok: boolean; data: (string | null)[] } };
+    }
+
+    it("answers one grant per path, in the order it was asked", async () => {
+        writable.clear();
+        existing.clear();
+        for (const target of ["a.png", "b.png", "c.png"]) {
+            writable.add(target);
+            existing.add(target);
+        }
+
+        const { answer } = await request(["a.png", "b.png", "c.png"]);
+
+        expect(answer.ok).toBe(true);
+        expect(answer.data).toEqual(["grant:a.png", "grant:b.png", "grant:c.png"]);
+    });
+
+    it("drops a denied path and keeps the rest, without minting anything for it", async () => {
+        writable.clear();
+        existing.clear();
+        writable.add("allowed.png");
+        existing.add("allowed.png");
+        existing.add("../../etc/passwd");
+
+        const { host, answer } = await request(["allowed.png", "../../etc/passwd"]);
+
+        expect(answer.data).toEqual(["grant:allowed.png", null]);
+        expect(host.allocated).toEqual(["allowed.png"]);
+    });
+
+    it("drops a path that is not there, and takes its grant back", async () => {
+        writable.clear();
+        existing.clear();
+        writable.add("gone.png");
+
+        const { host, answer } = await request(["gone.png"]);
+
+        expect(answer.data).toEqual([null]);
+        expect(host.cleaned).toEqual(["grant:gone.png"]);
+        expect(host.readied).toEqual([]);
     });
 });
