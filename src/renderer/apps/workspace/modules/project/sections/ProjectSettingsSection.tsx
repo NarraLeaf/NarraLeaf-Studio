@@ -35,20 +35,34 @@ import {
     MOBILE_VIEWPORT_FITS,
     normalizeCrashConfiguration,
     normalizeMobileConfiguration,
+    normalizePreloadConfiguration,
+    PRELOAD_BEHAVIORS,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
-    readAssetOptimizationConfiguration,
-    ASSET_LOSSY_QUALITY_MAX,
-    ASSET_LOSSY_QUALITY_MIN,
+    readAssetCompressionConfiguration,
+    ASSET_COMPRESSION_MODES,
+    ASSET_QUALITY_MAX,
+    ASSET_QUALITY_MIN,
+    AUDIO_BITRATE_KBPS_MAX,
+    AUDIO_BITRATE_KBPS_MIN,
+    AUDIO_SAMPLE_RATE_MAX,
+    DIMENSION_CAP_MAX,
+    VIDEO_CRF_MAX,
+    VIDEO_CRF_MIN,
+    advancedSeedForTrack,
     type MobileConfiguration,
     type MobileCropAnchorX,
     type MobileCropAnchorY,
     type MobileOrientation,
     type MobileViewportFit,
     type CrashConfiguration,
+    type PreloadBehavior,
+    type PreloadConfiguration,
     type NetworkConfiguration,
     type SecurityConfiguration,
-    type AssetOptimizationConfiguration,
+    type AssetCompressionConfiguration,
+    type AssetCompressionMode,
+    type AssetCompressionTrack,
 } from "@/lib/workspace/project/configuration";
 import { GAME_CRASH_POLICIES } from "@shared/types/gameRuntime";
 import type { ProjectSectionProps } from "./types";
@@ -62,16 +76,18 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
     const [network, setNetwork] = useState<NetworkConfiguration>(() => normalizeNetworkConfiguration(config.app?.network));
     const [security, setSecurity] = useState<SecurityConfiguration>(() => normalizeSecurityConfiguration(config.app?.security));
     const [mobile, setMobile] = useState<MobileConfiguration>(() => normalizeMobileConfiguration(config.app?.mobile));
-    const [assetOptimization, setAssetOptimization] = useState<AssetOptimizationConfiguration>(
-        () => readAssetOptimizationConfiguration(config.app),
+    const [assetCompression, setAssetCompression] = useState<AssetCompressionConfiguration>(
+        () => readAssetCompressionConfiguration(config.app),
     );
     const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
+    const [preload, setPreload] = useState<PreloadConfiguration>(() => normalizePreloadConfiguration(config.app?.preload));
     const [savingCrash, setSavingCrash] = useState(false);
+    const [savingPreload, setSavingPreload] = useState(false);
     const [savingPolicy, setSavingPolicy] = useState(false);
     const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
     const [savingMobile, setSavingMobile] = useState(false);
-    const [savingOptimization, setSavingOptimization] = useState<keyof AssetOptimizationConfiguration | null>(null);
+    const [savingCompression, setSavingCompression] = useState<keyof AssetCompressionConfiguration | null>(null);
 
     /**
      * Move the project between the three positions.
@@ -153,6 +169,25 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         }
     }, [crash, onConfigChange, projectService, savingCrash, uiService]);
 
+    const setPreloadBehavior = useCallback(async (next: string | number) => {
+        if (savingPreload) {
+            return;
+        }
+        const previous = preload;
+        setSavingPreload(true);
+        setPreload(normalizePreloadConfiguration({ behavior: next }));
+        try {
+            const updated = await projectService.updatePreloadConfiguration({ behavior: next as PreloadBehavior });
+            setPreload(normalizePreloadConfiguration(updated.app?.preload));
+            onConfigChange(updated);
+        } catch (error) {
+            setPreload(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingPreload(false);
+        }
+    }, [onConfigChange, preload, projectService, savingPreload, uiService]);
+
     const setEncryptAssets = useCallback(async (next: boolean) => {
         if (savingEncrypt) {
             return;
@@ -193,27 +228,55 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         }
     }, [mobile, onConfigChange, projectService, savingMobile, uiService]);
 
-    const commitAssetOptimization = useCallback(async (
-        field: keyof AssetOptimizationConfiguration,
-        patch: Partial<AssetOptimizationConfiguration>,
+    const commitAssetCompression = useCallback(async (
+        field: keyof AssetCompressionConfiguration,
+        patch: Partial<AssetCompressionConfiguration>,
     ) => {
-        if (savingOptimization) {
+        if (savingCompression) {
             return;
         }
-        const previous = assetOptimization;
-        setSavingOptimization(field);
-        setAssetOptimization(current => ({ ...current, ...patch }));
+        const previous = assetCompression;
+        setSavingCompression(field);
+        setAssetCompression(current => ({ ...current, ...patch }));
         try {
-            const updated = await projectService.updateAssetOptimizationConfiguration(patch);
-            setAssetOptimization(readAssetOptimizationConfiguration(updated.app));
+            const updated = await projectService.updateAssetCompressionConfiguration(patch);
+            setAssetCompression(readAssetCompressionConfiguration(updated.app));
             onConfigChange(updated);
         } catch (error) {
-            setAssetOptimization(previous);
+            setAssetCompression(previous);
             uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
         } finally {
-            setSavingOptimization(null);
+            setSavingCompression(null);
         }
-    }, [assetOptimization, onConfigChange, projectService, savingOptimization, uiService]);
+    }, [assetCompression, onConfigChange, projectService, savingCompression, uiService]);
+
+    /**
+     * Move a track between the two modes.
+     *
+     * The advanced fields are written from what auto was already doing, so the first thing an
+     * author sees after switching is the build they already had rather than whatever the defaults
+     * happened to hold. Going back to auto writes nothing: the numbers are theirs now, and coming
+     * back to advanced a second time must not silently replace them.
+     */
+    const commitCompressionMode = useCallback(async (
+        track: AssetCompressionTrack,
+        field: keyof AssetCompressionConfiguration,
+        mode: AssetCompressionMode,
+    ) => {
+        const patch: Partial<AssetCompressionConfiguration> = mode === "advanced"
+            ? { [field]: mode, ...advancedSeedForTrack(assetCompression, track) }
+            : { [field]: mode };
+        await commitAssetCompression(field, patch);
+    }, [assetCompression, commitAssetCompression]);
+
+
+    const compressionModeOptions: SelectOption[] = useMemo(
+        () => ASSET_COMPRESSION_MODES.map(mode => ({
+            value: mode,
+            label: t(`project.compressionMode.${mode}`),
+        })),
+        [t],
+    );
 
     const orientationOptions: SelectOption[] = useMemo(
         () => MOBILE_ORIENTATIONS.map(orientation => ({
@@ -235,6 +298,19 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         () => MOBILE_CROP_ANCHORS_X.map(value => ({
             value,
             label: t(`project.settings.cropAnchorX.${value}`),
+        })),
+        [t],
+    );
+
+    const preloadBehaviorOptions: SelectOption[] = useMemo(
+        () => PRELOAD_BEHAVIORS.map(value => ({
+            value,
+            label: t(`project.settings.preloadBehavior.${value}` as TranslationKey),
+            // Only the position an author is being steered away from carries one, which is what
+            // makes it read as guidance rather than as a second column of labels.
+            ...(value === "blocking"
+                ? { secondaryLabel: t("project.settings.preloadBehaviorNote.blocking") }
+                : {}),
         })),
         [t],
     );
@@ -318,36 +394,281 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 off (see SettingsGroup). */}
             <ProjectSigningSection {...props} />
 
-            {/* One decision, and the steps that cannot change what a player sees are not on this
-                page at all: a build applies those to every target on its own. What is left is the
-                one thing only the author can answer, and it answers for every package the build
-                produces rather than for a platform. See @shared/types/assetOptimization. */}
+            {/* One kind of decision, asked once per track, and the steps that cannot cost the
+                author anything are not on this page at all: a build applies those to every target
+                on its own. What is left is what only the author can answer, and it answers for
+                every package the build produces rather than for a platform.
+
+                A part per track rather than one part with nine rows in it. The material is what
+                an author is deciding about, so it is what the headings name, and the mode belongs
+                on the heading row because it decides what the rows underneath it are - auto is
+                one scale that means the same thing everywhere, advanced is the parameters it maps
+                to. The two are never shown at once: they are two ways of saying the same thing,
+                and a panel showing both would be asking which one counts. See
+                @shared/types/assetCompression.
+
+                No line under any of the three headings explaining the dropdown. It would be the
+                same sentence three times on one page, and what it would say is already on the two
+                options and on every row they reveal.
+
+                Written out three times rather than looped: the parts differ only in which fields
+                they read, but a loop would have to build its own translation keys, and a key
+                assembled at runtime is one the parity test cannot see. */}
             <SettingsGroup
-                title={t("project.group.optimization")}
-                helpTopic="assetOptimization"
-                trailing={<HelpTrigger topic="assetOptimization" />}
+                title={t("project.group.imageCompression")}
+                helpTopic="assetCompression"
+                trailing={<>
+                    <Select
+                        options={compressionModeOptions}
+                        value={assetCompression.imageMode}
+                        disabled={freeze.writes(
+                            !assetCompression.compressImages || savingCompression === "imageMode",
+                        ).disabled}
+                        onChange={value => void commitCompressionMode(
+                            "images",
+                            "imageMode",
+                            value as AssetCompressionMode,
+                        )}
+                        size="sm"
+                        portalMenu
+                        className="w-28 shrink-0"
+                        ariaLabel={t("project.settings.imageModeTitle")}
+                    />
+                    <HelpTrigger topic="assetCompression" />
+                </>}
             >
                 <SettingRow
-                    title={t("project.settings.lossyImagesTitle")}
-                    description={t("project.settings.lossyImagesDescription")}
-                    checked={assetOptimization.lossyImages}
-                    loading={savingOptimization === "lossyImages"}
-                    onChange={value => void commitAssetOptimization("lossyImages", { lossyImages: value })}
+                    title={t("project.settings.compressImagesTitle")}
+                    description={t("project.settings.compressImagesDescription")}
+                    checked={assetCompression.compressImages}
+                    loading={savingCompression === "compressImages"}
+                    onChange={value => void commitAssetCompression("compressImages", { compressImages: value })}
                 />
+                {assetCompression.imageMode === "auto" ? (
+                    <>
                 <SettingShell
-                    title={t("project.settings.lossyQualityTitle")}
-                    description={t("project.settings.lossyQualityDescription")}
+                    title={t("project.settings.imageQualityTitle")}
+                    description={t("project.settings.imageQualityDescription")}
                     tooltip={freeze.writes()["data-tip"]}
                 >
                     <NumberField
-                        value={assetOptimization.lossyQuality}
-                        min={ASSET_LOSSY_QUALITY_MIN}
-                        max={ASSET_LOSSY_QUALITY_MAX}
+                        value={assetCompression.imageQuality}
+                        min={ASSET_QUALITY_MIN}
+                        max={ASSET_QUALITY_MAX}
+                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageQuality").disabled}
+                        ariaLabel={t("project.settings.imageQualityTitle")}
+                        onCommit={value => void commitAssetCompression("imageQuality", { imageQuality: value })}
+                    />
+                </SettingShell>
+                    </>
+                ) : (
+                    <>
+                <SettingShell
+                    title={t("project.settings.imageWebpQualityTitle")}
+                    description={t("project.settings.imageWebpQualityDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.imageWebpQuality}
+                        min={ASSET_QUALITY_MIN}
+                        max={ASSET_QUALITY_MAX}
+                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageWebpQuality").disabled}
+                        ariaLabel={t("project.settings.imageWebpQualityTitle")}
+                        onCommit={value => void commitAssetCompression("imageWebpQuality", { imageWebpQuality: value })}
+                    />
+                </SettingShell>
+                <SettingShell
+                    title={t("project.settings.imageMaxDimensionTitle")}
+                    description={t("project.settings.imageMaxDimensionDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.imageMaxDimension}
+                        min={0}
+                        max={DIMENSION_CAP_MAX}
+                        disabled={freeze.writes(!assetCompression.compressImages || savingCompression === "imageMaxDimension").disabled}
+                        ariaLabel={t("project.settings.imageMaxDimensionTitle")}
+                        onCommit={value => void commitAssetCompression("imageMaxDimension", { imageMaxDimension: value })}
+                    />
+                </SettingShell>
+                    </>
+                )}
+            </SettingsGroup>
+            <SettingsGroup
+                title={t("project.group.audioCompression")}
+                helpTopic="assetCompression"
+                trailing={<>
+                    <Select
+                        options={compressionModeOptions}
+                        value={assetCompression.audioMode}
                         disabled={freeze.writes(
-                            !assetOptimization.lossyImages || savingOptimization === "lossyQuality",
+                            !assetCompression.compressAudio || savingCompression === "audioMode",
                         ).disabled}
-                        ariaLabel={t("project.settings.lossyQualityTitle")}
-                        onCommit={value => void commitAssetOptimization("lossyQuality", { lossyQuality: value })}
+                        onChange={value => void commitCompressionMode(
+                            "audio",
+                            "audioMode",
+                            value as AssetCompressionMode,
+                        )}
+                        size="sm"
+                        portalMenu
+                        className="w-28 shrink-0"
+                        ariaLabel={t("project.settings.audioModeTitle")}
+                    />
+                    <HelpTrigger topic="assetCompression" />
+                </>}
+            >
+                <SettingRow
+                    title={t("project.settings.compressAudioTitle")}
+                    description={t("project.settings.compressAudioDescription")}
+                    checked={assetCompression.compressAudio}
+                    loading={savingCompression === "compressAudio"}
+                    onChange={value => void commitAssetCompression("compressAudio", { compressAudio: value })}
+                />
+                {assetCompression.audioMode === "auto" ? (
+                    <>
+                <SettingShell
+                    title={t("project.settings.audioQualityTitle")}
+                    description={t("project.settings.audioQualityDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.audioQuality}
+                        min={ASSET_QUALITY_MIN}
+                        max={ASSET_QUALITY_MAX}
+                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioQuality").disabled}
+                        ariaLabel={t("project.settings.audioQualityTitle")}
+                        onCommit={value => void commitAssetCompression("audioQuality", { audioQuality: value })}
+                    />
+                </SettingShell>
+                    </>
+                ) : (
+                    <>
+                <SettingShell
+                    title={t("project.settings.audioBitrateKbpsTitle")}
+                    description={t("project.settings.audioBitrateKbpsDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.audioBitrateKbps}
+                        min={AUDIO_BITRATE_KBPS_MIN}
+                        max={AUDIO_BITRATE_KBPS_MAX}
+                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioBitrateKbps").disabled}
+                        ariaLabel={t("project.settings.audioBitrateKbpsTitle")}
+                        onCommit={value => void commitAssetCompression("audioBitrateKbps", { audioBitrateKbps: value })}
+                    />
+                </SettingShell>
+                <SettingShell
+                    title={t("project.settings.audioSampleRateHzTitle")}
+                    description={t("project.settings.audioSampleRateHzDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.audioSampleRateHz}
+                        min={0}
+                        max={AUDIO_SAMPLE_RATE_MAX}
+                        disabled={freeze.writes(!assetCompression.compressAudio || savingCompression === "audioSampleRateHz").disabled}
+                        ariaLabel={t("project.settings.audioSampleRateHzTitle")}
+                        onCommit={value => void commitAssetCompression("audioSampleRateHz", { audioSampleRateHz: value })}
+                    />
+                </SettingShell>
+                    </>
+                )}
+            </SettingsGroup>
+            <SettingsGroup
+                title={t("project.group.videoCompression")}
+                helpTopic="assetCompression"
+                trailing={<>
+                    <Select
+                        options={compressionModeOptions}
+                        value={assetCompression.videoMode}
+                        disabled={freeze.writes(
+                            !assetCompression.compressVideo || savingCompression === "videoMode",
+                        ).disabled}
+                        onChange={value => void commitCompressionMode(
+                            "video",
+                            "videoMode",
+                            value as AssetCompressionMode,
+                        )}
+                        size="sm"
+                        portalMenu
+                        className="w-28 shrink-0"
+                        ariaLabel={t("project.settings.videoModeTitle")}
+                    />
+                    <HelpTrigger topic="assetCompression" />
+                </>}
+            >
+                <SettingRow
+                    title={t("project.settings.compressVideoTitle")}
+                    description={t("project.settings.compressVideoDescription")}
+                    checked={assetCompression.compressVideo}
+                    loading={savingCompression === "compressVideo"}
+                    onChange={value => void commitAssetCompression("compressVideo", { compressVideo: value })}
+                />
+                {assetCompression.videoMode === "auto" ? (
+                    <>
+                <SettingShell
+                    title={t("project.settings.videoQualityTitle")}
+                    description={t("project.settings.videoQualityDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.videoQuality}
+                        min={ASSET_QUALITY_MIN}
+                        max={ASSET_QUALITY_MAX}
+                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoQuality").disabled}
+                        ariaLabel={t("project.settings.videoQualityTitle")}
+                        onCommit={value => void commitAssetCompression("videoQuality", { videoQuality: value })}
+                    />
+                </SettingShell>
+                    </>
+                ) : (
+                    <>
+                <SettingShell
+                    title={t("project.settings.videoCrfTitle")}
+                    description={t("project.settings.videoCrfDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.videoCrf}
+                        min={VIDEO_CRF_MIN}
+                        max={VIDEO_CRF_MAX}
+                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoCrf").disabled}
+                        ariaLabel={t("project.settings.videoCrfTitle")}
+                        onCommit={value => void commitAssetCompression("videoCrf", { videoCrf: value })}
+                    />
+                </SettingShell>
+                <SettingShell
+                    title={t("project.settings.videoMaxHeightTitle")}
+                    description={t("project.settings.videoMaxHeightDescription")}
+                    tooltip={freeze.writes()["data-tip"]}
+                >
+                    <NumberField
+                        value={assetCompression.videoMaxHeight}
+                        min={0}
+                        max={DIMENSION_CAP_MAX}
+                        disabled={freeze.writes(!assetCompression.compressVideo || savingCompression === "videoMaxHeight").disabled}
+                        ariaLabel={t("project.settings.videoMaxHeightTitle")}
+                        onCommit={value => void commitAssetCompression("videoMaxHeight", { videoMaxHeight: value })}
+                    />
+                </SettingShell>
+                    </>
+                )}
+            </SettingsGroup>
+
+            {/* Beside Crashes rather than with the compression groups above: both are about what a
+                player meets while the game is running, and neither changes what the package holds. */}
+            <SettingsGroup title={t("project.group.loading")}>
+                <SettingShell
+                    title={t("project.settings.preloadBehaviorTitle")}
+                    description={t(`project.settings.preloadBehaviorDetail.${preload.behavior}` as TranslationKey)}
+                    tooltip={freeze.writes(savingPreload)["data-tip"]}
+                >
+                    <Select
+                        options={preloadBehaviorOptions}
+                        value={preload.behavior}
+                        disabled={freeze.writes(savingPreload).disabled}
+                        onChange={value => void setPreloadBehavior(value)}
+                        ariaLabel={t("project.settings.preloadBehaviorTitle")}
                     />
                 </SettingShell>
             </SettingsGroup>

@@ -941,7 +941,7 @@ describe("bundleAssembler story schema", () => {
         await Promise.all(tempDirs.splice(0).map(dir => rm(dir, { recursive: true, force: true })));
     });
 
-    /** A project as an older Studio left it: one camera grade, spelled the way v17 spelled one. */
+    /** A project as an older Studio left it: one transition hold, spelled the way v21 spelled one. */
     async function createLegacyStoryProject(localization?: unknown): Promise<string> {
         const projectPath = await mkdtemp(path.join(os.tmpdir(), "nls-story-schema-"));
         tempDirs.push(projectPath);
@@ -978,7 +978,7 @@ describe("bundleAssembler story schema", () => {
         await writeFile(
             path.join(storyDir, "storydoc.json"),
             JSON.stringify({
-                schemaVersion: 17,
+                schemaVersion: 21,
                 id: STORY_ID,
                 name: "Story",
                 chapters: [{ id: "chapter-1", name: "Chapter", sceneIds: ["scene-1"] }],
@@ -995,12 +995,12 @@ describe("bundleAssembler story schema", () => {
                                 parentId: null,
                                 childrenIds: [],
                                 payload: {
-                                    action: "camera",
-                                    operation: "look",
-                                    lookPreset: "moonlight",
-                                    lookIntensity: 1,
-                                    durationMs: 1200,
-                                    easing: "easeInOut",
+                                    action: "setBackground",
+                                    transition: {
+                                        kind: "throughColor",
+                                        durationMs: 800,
+                                        props: { color: "#000000", hold: 25 },
+                                    },
                                 },
                             },
                         },
@@ -1020,16 +1020,16 @@ describe("bundleAssembler story schema", () => {
         });
         const document = bundle.storyLibrary?.documents[STORY_ID];
         expect(document?.schemaVersion).toBe(STORY_DOCUMENT_SCHEMA_VERSION);
-        // The shape `compileCameraAction` reads. `operation: "look"` arriving here is the defect: the
-        // compiler takes the `transform` branch, finds no ref, and the grade never reaches the stage.
+        // The shape the compiler reads. A `props.hold` percentage arriving here is the defect: the
+        // current transition builder has no reading for it, so the colour would be held for the
+        // engine's own default instead of the share the author set.
         expect(document?.scenes["scene-1"].blocks.grade.payload).toEqual({
-            action: "camera",
-            operation: "transform",
-            transform: {
-                mode: "props",
-                to: { look: { preset: "moonlight", intensity: 1 } },
-                durationMs: 1200,
-                easing: "easeInOut",
+            action: "setBackground",
+            transition: {
+                kind: "throughColor",
+                durationMs: 800,
+                holdMs: 200,
+                props: { color: "#000000" },
             },
         });
     });

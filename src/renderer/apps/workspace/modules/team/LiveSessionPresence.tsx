@@ -53,6 +53,13 @@ export function LiveSessionPresence() {
 
     const refusal = livePresenceRefusal(team.state, team.canLive);
     const inRoom = live.view.phase !== "idle";
+    /*
+     * Whether anybody is waiting to be let in.
+     *
+     * Host only by construction - a guest's session never carries requests - so this is the one
+     * state where the control has something for its author to do rather than something to report.
+     */
+    const waiting = live.view.requests.length > 0;
     const standing = liveStandingKey(live.view);
     /*
      * The faces, and only where this is the surface carrying them.
@@ -74,11 +81,15 @@ export function LiveSessionPresence() {
      */
     const tip = refusal !== null
         ? t(refusal)
-        : inRoom && standing !== null
-            ? `${live.view.session?.title ?? t("workspace.shell.team.liveUntitled")} - ${t(standing)}`
-            : room !== null
-                ? t("workspace.shell.team.liveRoomOpen", { name: room.openedBy })
-                : t("workspace.shell.team.liveNobody");
+        : waiting
+            // What is waiting wins over what is running: it is the only one of the two with
+            // something for the author to do.
+            ? t("workspace.shell.team.liveWaitingToJoin", { count: live.view.requests.length })
+            : inRoom && standing !== null
+                ? `${live.view.session?.title ?? t("workspace.shell.team.liveUntitled")} - ${t(standing)}`
+                : room !== null
+                    ? t("workspace.shell.team.liveRoomOpen", { name: room.openedBy })
+                    : t("workspace.shell.team.liveNobody");
 
     return (
         <>
@@ -106,7 +117,23 @@ export function LiveSessionPresence() {
                 {offered !== null && offered.members.length > 0 && (
                     <LiveMemberAvatars members={offered.members} host={offered.openedBy} />
                 )}
-                <Share2 className="h-4 w-4 shrink-0" />
+                <span className="relative flex shrink-0">
+                    <Share2 className="h-4 w-4 shrink-0" />
+                    {/* Somebody is waiting to be let in. A dot rather than a count: what it has to
+                        carry is "there is something here for you", and the panel behind it is one
+                        press away with the names and the two answers. Drawn on the glyph rather
+                        than beside it so the control keeps its width whatever happens. */}
+                    {waiting && (
+                        <span
+                            data-live-requests="waiting"
+                            aria-hidden
+                            className={cn(
+                                "absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full",
+                                "bg-primary ring-2 ring-bg",
+                            )}
+                        />
+                    )}
+                </span>
             </button>
             <LiveSessionDialog team={team} isOpen={open} onClose={() => setOpen(false)} />
         </>

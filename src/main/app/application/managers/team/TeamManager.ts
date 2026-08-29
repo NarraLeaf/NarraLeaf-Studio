@@ -14,9 +14,11 @@
  *    than at startup. Studio may know about a dozen servers and be looking at one.
  *  - **The token**, read out of the sealed store and never handed across IPC. A window
  *    asks this to make a call; it does not get a token to make one with.
- *  - **Who asked for what.** A topic is subscribed once on the socket however many
- *    windows want it, and dropped when the last one stops - including when the last one
- *    was closed rather than tidy about it.
+ *  - **Who asked for what.** A topic is subscribed once on the socket however many things
+ *    want it, and dropped when the last of them stops - including when the last window
+ *    holding it was closed rather than tidy about it. Askers are counted, not windows:
+ *    two parts of one window can want the same topic, and one of them letting go must not
+ *    take it away from the other. See {@link TopicHolders}.
  *  - **The fan-out.** An event arrives once and reaches every window that asked for that
  *    topic, and none of the others.
  *
@@ -32,10 +34,12 @@ import type {
     TeamConnection,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
 
 import { recallServerToken } from "../vcs/serverTokens";
 import { installationId, machineLabel, studioAgent } from "./clientInstance";
 import { TeamClient, type TeamClientOptions } from "./TeamClient";
+import { TeamTransfers } from "./TeamTransfers";
 
 /**
  * What this needs of a client, which is what a test stands in for.
@@ -56,6 +60,20 @@ export interface TeamStandIns {
     newClient?: (options: TeamClientOptions) => TeamClientLike;
 }
 
+/**
+ * How many separate things inside one window are holding one topic.
+ *
+ * **A count rather than a mark, because a window is not one asker.** Two independent parts of the
+ * workspace routinely want the same topic - the Team provider draws a project's rooms from
+ * `project:<id>/live` while a running live session watches the very same topic for the roster of
+ * the room it is in - and either of them letting go used to drop the socket subscription for both.
+ * What that cost was specific and silent: the session's watch stopped being delivered, so the host
+ * never learnt who had joined, and a claim from a member its roster could not name was discarded
+ * without a word (see `LiveHost.claim`). Intents went on working, because membership is not
+ * consulted for those - which is what made it look like the claim message itself was being lost.
+ */
+type TopicHolders = Map<number, number>;
+
 /** What one window has asked to be told about, keyed by the server it is on. */
 interface Subscription {
     remoteOrigin: string;
@@ -72,14 +90,25 @@ function keyOf(subscription: Subscription): string {
 export class TeamManager {
     private readonly clients = new Map<string, TeamClientLike>();
 
-    /** For each server and topic, the windows that asked. Keyed by `webContents` id. */
-    private readonly wanted = new Map<string, Set<number>>();
+    /**
+     * For each server and topic, the windows that asked and how many askers each of them holds.
+     * Keyed by `webContents` id. See {@link TopicHolders}.
+     */
+    private readonly wanted = new Map<string, TopicHolders>();
 
     private readonly app: BaseApp;
     /** Where the addresses come from: the sessions Studio already keeps per machine. */
     private readonly servers: () => VcsServerSession[];
     private readonly tokenFor: (remoteOrigin: string) => string | null;
     private readonly newClient: (options: TeamClientOptions) => TeamClientLike;
+    /**
+     * Files on the move.
+     *
+     * One for the whole application rather than one per window, for the same reason the clients
+     * are: a transfer belongs to a project on this disk, it outlives the window that started it,
+     * and two windows on one project must not carry the same file twice.
+     */
+    private readonly files: TeamTransfers;
 
     constructor(app: BaseApp, servers: () => VcsServerSession[], stands: TeamStandIns = {}) {
         this.app = app;
@@ -87,9 +116,28 @@ export class TeamManager {
         this.tokenFor = stands.tokenFor
             ?? ((remoteOrigin) => recallServerToken(app.getGlobalState(), remoteOrigin));
         this.newClient = stands.newClient ?? ((options) => new TeamClient(options));
+        this.files = new TeamTransfers({
+            authUrlFor: (remoteOrigin) =>
+                this.servers().find((each) => each.remoteOrigin === remoteOrigin)?.authUrl ?? null,
+            tokenFor: (remoteOrigin) => this.tokenFor(remoteOrigin),
+            installation: () => installationId(this.app.getGlobalState()),
+            userDataDir: () => this.app.getUserDataDir(),
+            log: (line) => this.app.logger.info(line),
+            slow: () => this.app.hasExperimentalCondition("slow-live-transfer"),
+        });
         this.app.windowManager.events.on("window-closed", (window) => {
             this.forgetWindow(window);
         });
+    }
+
+    /**
+     * Move a file, or say how far one has got.
+     *
+     * Separate from {@link call} because it is separate in kind: a call is a named method with JSON
+     * on either side, and this is a stream that runs for minutes. See `@shared/types/teamTransfer`.
+     */
+    transfer(request: TeamTransferRequest): Promise<TeamTransferOutcome> {
+        return this.files.handle(request);
     }
 
     /* ------------------------------------------------------------ what a screen sees */
@@ -155,8 +203,9 @@ export class TeamManager {
         if (client === null) return { ok: false, problem: this.whyNot(remoteOrigin) };
 
         const key = keyOf({ remoteOrigin, topic });
-        const holders = this.wanted.get(key) ?? new Set<number>();
-        holders.add(window.getWebContents().id);
+        const holders: TopicHolders = this.wanted.get(key) ?? new Map<number, number>();
+        const windowId = window.getWebContents().id;
+        holders.set(windowId, (holders.get(windowId) ?? 0) + 1);
         this.wanted.set(key, holders);
 
         const outcome = await client.subscribe(topic);
@@ -195,6 +244,9 @@ export class TeamManager {
         for (const client of this.clients.values()) client.dispose();
         this.clients.clear();
         this.wanted.clear();
+        // The transfers stop, and their journal stays: what was interrupted is picked up when a
+        // window next opens the project it belongs to.
+        this.files.dispose();
     }
 
     /* ----------------------------------------------------------------- internals */
@@ -242,9 +294,22 @@ export class TeamManager {
         return known ? { kind: "no-token" } : { kind: "no-server" };
     }
 
+    /**
+     * One asker inside one window has let a topic go.
+     *
+     * ⚠ **One asker, not the window.** The window stays a holder while anything else in it is
+     * still holding the same topic - see {@link TopicHolders}. Only {@link forgetWindow} takes a
+     * window out whatever it was holding, because then there is nothing left in it to ask.
+     */
     private drop(key: string, windowId: number): void {
         const holders = this.wanted.get(key);
         if (holders === undefined) return;
+        const held = holders.get(windowId);
+        if (held === undefined) return;
+        if (held > 1) {
+            holders.set(windowId, held - 1);
+            return;
+        }
         holders.delete(windowId);
         if (holders.size === 0) this.wanted.delete(key);
     }
@@ -256,6 +321,10 @@ export class TeamManager {
      * as long as Studio runs, and its events would be sent to a `webContents` that is not
      * there. Neither is expensive; both are the kind of thing that is never noticed and
      * never stops.
+     *
+     * ⚠ **Whatever it was holding, in one go** - unlike {@link drop}, which lets one asker go and
+     * leaves the rest. A window that has closed has nothing left in it to ask, so a count would be
+     * a count of things that no longer exist.
      */
     private forgetWindow(window: AppWindow): void {
         let windowId: number;

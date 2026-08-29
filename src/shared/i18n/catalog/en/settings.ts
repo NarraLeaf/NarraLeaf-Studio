@@ -261,6 +261,10 @@ export const settings = {
             description:
                 "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         },
+        zigMirror: {
+            label: "Compiler toolchain mirror",
+            description: "Mirror for the compiler toolchain a build downloads.",
+        },
         downloadRewrites: {
             label: "Download address rewrites",
         },
@@ -305,6 +309,10 @@ export const settings = {
         reopenLastProject: {
             label: "Reopen the last project on startup",
             description: "Open the project the last session was in, instead of starting on the launcher.",
+        },
+        maximizeOnOpen: {
+            label: "Open workspaces maximized",
+            description: "Fill the screen when a workspace window opens. Switching project keeps the frame of the window it replaces.",
         },
         dashboardOnOpen: {
             label: "Show the project dashboard by default",
@@ -490,6 +498,14 @@ export const settings = {
                     label: "Plugin build files",
                     description: "Archives that plugins download to include in a built game.",
                 },
+                toolchains: {
+                    label: "Compiler toolchains",
+                    description: "Compilers downloaded for a build. Downloaded again the next time a build needs them.",
+                },
+                puppetRuntimes: {
+                    label: "Model runtime sources",
+                    description: "SDK archives unpacked to build a character model runtime. Unpacked again the next time one is built.",
+                },
                 browser: {
                     label: "Interface cache",
                     description: "Interface state kept between runs to speed up startup.",
@@ -504,19 +520,23 @@ export const settings = {
                 },
                 spellcheckDictionaries: {
                     label: "Spelling dictionaries",
-                    description: "Word lists downloaded for spellchecking. The project's own terms are not here.",
+                    description: "Word lists downloaded for spellchecking. The project's own terms are not included.",
                 },
                 optimizedImages: {
-                    label: "Optimized build images",
+                    label: "Re-encoded build images",
                     description: "Images re-encoded for a build. Produced again the next time one runs.",
                 },
+                compressedMedia: {
+                    label: "Re-encoded build media",
+                    description: "Audio and video re-encoded for a build. Produced again the next time one runs.",
+                },
                 psdImports: {
-                    label: "PSD import leftovers",
+                    label: "PSD import working files",
                     description: "Layer images written while importing a PSD.",
                 },
                 logs: {
                     label: "Logs",
-                    description: "What an exported diagnostics file is built from.",
+                    description: "The logs an exported diagnostics file is built from.",
                 },
             },
         },

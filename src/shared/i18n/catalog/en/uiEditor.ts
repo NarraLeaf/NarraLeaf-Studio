@@ -57,6 +57,15 @@ export const uiEditor = {
         title: "Input Actions",
         create: "Create action",
         createTitle: "Create Input Action",
+        preset: "Preset",
+        presets: {
+            advance: "Advance",
+            back: "Back",
+            backlog: "Backlog",
+            hideInterface: "Hide interface",
+            menu: "Menu",
+            blank: "Blank",
+        },
         rename: "Rename…",
         delete: "Delete action",
         deleteConfirm: "Delete {name}?",
@@ -65,7 +74,7 @@ export const uiEditor = {
             other: "{count} interfaces answer this action and will stop answering it.",
         },
         actionOptions: "Action options",
-        empty: "Name a gesture here, then let each interface answer it.",
+        empty: "No input actions in this project.",
         noMatches: "No matches.",
         answered: {
             one: "{count} interface",
@@ -73,16 +82,39 @@ export const uiEditor = {
         },
         noBindings: "No bindings",
         addBinding: "Add binding",
-        addKey: "Key…",
         removeBinding: "Remove {binding}",
+        device: {
+            mouse: "Mouse",
+            trackpad: "Trackpad",
+            touch: "Touch screen",
+            key: "Keyboard",
+        },
         gesture: {
             click: "Click",
             doubleClick: "Double click",
             rightClick: "Right click",
-            wheelUp: "Wheel up",
-            wheelDown: "Wheel down",
-            wheelLeft: "Wheel left",
-            wheelRight: "Wheel right",
+            middleClick: "Middle click",
+            wheelUp: "Scroll up",
+            wheelDown: "Scroll down",
+            wheelLeft: "Scroll left",
+            wheelRight: "Scroll right",
+            longPress: "Long press",
+        },
+        menu: {
+            mouseClick: "Click",
+            mouseDoubleClick: "Double click",
+            mouseRightClick: "Right click",
+            mouseMiddleClick: "Middle click",
+            mouseWheelUp: "Wheel up",
+            mouseWheelDown: "Wheel down",
+            trackpadSlideLeft: "Slide left",
+            trackpadSlideRight: "Slide right",
+            touchTap: "Tap",
+            touchLongPress: "Long press",
+            touchSlideUp: "Slide up",
+            touchSlideDown: "Slide down",
+            touchSlideLeft: "Slide left",
+            touchSlideRight: "Slide right",
         },
     },
     createDialog: {
@@ -276,5 +308,12 @@ export const uiEditor = {
             offline: "Template store unavailable",
             apply: "Could not apply the template.",
         },
+    },
+    // A live session leaves both interface documents writable, so the editor is not switched
+    // off. What it gains is a mark saying who else is inside an element.
+    live: {
+        // On the mark an element wears while somebody else has it selected. A person is named:
+        // there is no width for a name beside the monogram, and a truncated one names nobody.
+        elementClaimed: "{name} is editing this element",
     },
 } as const;

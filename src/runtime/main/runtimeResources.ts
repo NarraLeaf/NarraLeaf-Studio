@@ -1,15 +1,16 @@
+import fsSync from "fs";
 import fs from "fs/promises";
 import path from "path";
 import {
-    LAYER_DESCRIPTOR_ENTRY,
-    LAYER_FILE_EXTENSION,
-    openSealedBundle,
-    openSealedLayer,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-    type SealedBundleReader,
-    type SealedLayerReader,
-} from "@narraleaf/encryption/runtime";
+    OVERLAY_DESCRIPTOR_ENTRY,
+    OVERLAY_FILE_EXTENSION,
+    openAssetArchive,
+    openAssetOverlay,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+    type AssetArchiveReader,
+    type AssetOverlayReader,
+} from "@narraleaf/bindings/read";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import {
     GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY,
@@ -17,6 +18,7 @@ import {
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
+    isSealedShellFile,
 } from "@shared/utils/gameRuntimeBundle";
 import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
 import { dlcAttachesToBuild } from "@shared/types/dlc";
@@ -105,16 +107,28 @@ export async function createRuntimeResources(
     appDir: string,
     options: RuntimeResourcesOptions = {},
 ): Promise<RuntimeResources> {
-    const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+    const bundlePath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
     const base: RuntimeResources = await fileExists(bundlePath)
-        ? new SealedRuntimeResources(await openSealedBundle(
-            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        ? new SealedRuntimeResources(await openAssetArchive(
+            path.join(appDir, ARCHIVE_READER_FILENAME),
             bundlePath,
         ))
         : new LooseRuntimeResources(appDir);
 
     const layers = await openLayers(appDir, await readPackAddOns(base), options);
     return layers.length > 0 ? new PatchedRuntimeResources(base, layers, options.log) : base;
+}
+
+/**
+ * Whether this app's content is sealed: the protected store sits beside the runtime.
+ *
+ * Synchronous and presence-only, because the caller that matters most asks before app-ready, where
+ * nothing can be awaited and the store cannot be opened. It answers the same question
+ * {@link createRuntimeResources} answers for itself a moment later, from the same file, so the two
+ * cannot disagree about what kind of build this is.
+ */
+export function isSealedBuildSync(appDir: string): boolean {
+    return fsSync.existsSync(path.join(appDir, ASSET_ARCHIVE_FILENAME));
 }
 
 /**
@@ -209,7 +223,7 @@ class SealedRuntimeResources implements RuntimeResources {
     /** De-duplicates concurrent reads of the same entry while one is in flight. */
     private readonly pendingReads = new Map<string, Promise<Buffer>>();
 
-    constructor(private readonly reader: SealedBundleReader) {}
+    constructor(private readonly reader: AssetArchiveReader) {}
 
     readPack(): Promise<Buffer> {
         return this.reader.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY);
@@ -265,7 +279,12 @@ class SealedRuntimeResources implements RuntimeResources {
 
     async readRuntimeFile(pathname: string): Promise<Buffer | null> {
         const name = gameRuntimeBundleRuntimeEntry(pathname);
-        if (!RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix)) || !this.reader.has(name)) {
+        /* The prefixes bound what the runtime host can reach by path; the shell
+         * files are three exact names rather than a prefix, so widening this does
+         * not widen anything else. */
+        const reachable = isSealedShellFile(name)
+            || RUNTIME_STORE_FILE_PREFIXES.some(prefix => name.startsWith(prefix));
+        if (!reachable || !this.reader.has(name)) {
             return null;
         }
         return this.readEntry(name);
@@ -338,7 +357,7 @@ export interface RuntimeResourcesOptions {
 type OpenPatch = {
     /** Filename, which is what a reader of the log has in front of them. */
     label: string;
-    reader: SealedLayerReader;
+    reader: AssetOverlayReader;
     /**
      * Whether the file proved it came from the project that built this game.
      *
@@ -617,12 +636,12 @@ type LayerDescriptor = {
     };
 };
 
-async function readLayerDescriptor(reader: SealedLayerReader): Promise<LayerDescriptor> {
-    if (!reader.has(LAYER_DESCRIPTOR_ENTRY)) {
+async function readLayerDescriptor(reader: AssetOverlayReader): Promise<LayerDescriptor> {
+    if (!reader.has(OVERLAY_DESCRIPTOR_ENTRY)) {
         return {};
     }
     try {
-        const parsed = JSON.parse((await reader.read(LAYER_DESCRIPTOR_ENTRY)).toString("utf-8")) as unknown;
+        const parsed = JSON.parse((await reader.read(OVERLAY_DESCRIPTOR_ENTRY)).toString("utf-8")) as unknown;
         if (!parsed || typeof parsed !== "object") {
             return {};
         }
@@ -685,7 +704,7 @@ function layerKinds(): LayerKind[] {
         {
             rank: 1,
             directories: [PATCH_DIRECTORY_NAME],
-            matches: name => name.endsWith(LAYER_FILE_EXTENSION),
+            matches: name => name.endsWith(OVERLAY_FILE_EXTENSION),
             noun: "patch",
         },
     ];
@@ -759,7 +778,7 @@ async function openLayers(
         return [];
     }
 
-    const binaryPath = path.join(appDir, RUNTIME_SUPPORT_FILENAME);
+    const binaryPath = path.join(appDir, ARCHIVE_READER_FILENAME);
     if (!await fileExists(binaryPath)) {
         // The build was made without a distribution key, so it has nothing to read a
         // layer through. Worth one line: the files are sitting there and the player
@@ -772,7 +791,7 @@ async function openLayers(
     for (const [at, entry] of found.entries()) {
         const label = path.basename(entry.file);
         try {
-            const reader = await openSealedLayer(binaryPath, entry.file, {
+            const reader = await openAssetOverlay(binaryPath, entry.file, {
                 ...(build.verificationKey ? { verificationKey: build.verificationKey } : {}),
             });
             const descriptor = await readLayerDescriptor(reader);

@@ -3,20 +3,20 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-    bindRuntimeBinary,
-    createProjectMaterial,
-    createSealedBundle,
-    createSealedLayer,
-    projectVerificationKey,
-    runtimeSupportPath,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-} from "@narraleaf/encryption";
+    prepareArchiveReader,
+    createProjectToken,
+    createAssetArchive,
+    createAssetOverlay,
+    projectStamp,
+    archiveReaderPath,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+} from "@narraleaf/bindings";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { dlcArtifactFileName, dlcDirectoryName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
 import { diffPack } from "@shared/utils/packDelta";
-import { openSealedBundle } from "@narraleaf/encryption/runtime";
+import { openAssetArchive } from "@narraleaf/bindings/read";
 import { BoundedBufferCache, createRuntimeResources } from "./runtimeResources";
 
 describe("BoundedBufferCache", () => {
@@ -76,10 +76,10 @@ describe("protected runtime resources", () => {
     async function makeSealedApp(assetId: string, assetBytes: string): Promise<string> {
         const appDir = path.join(root, "game", "app");
         await fs.mkdir(appDir, { recursive: true });
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
-        const writer = await createSealedBundle(
-            path.join(appDir, RUNTIME_BUNDLE_FILENAME),
-            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        await fs.copyFile(archiveReaderPath(), path.join(appDir, ARCHIVE_READER_FILENAME));
+        const writer = await createAssetArchive(
+            path.join(appDir, ASSET_ARCHIVE_FILENAME),
+            path.join(appDir, ARCHIVE_READER_FILENAME),
         );
         await writer.add("pack", Buffer.from(JSON.stringify({ assets: { items: {} } })));
         await writer.add(`assets/${assetId}`, Buffer.from(assetBytes));
@@ -111,7 +111,7 @@ describe("protected runtime resources", () => {
      * A guard on the installed package, not on this repo's code.
      *
      * The store files asset entries under a one-way fold of their name, so a shipped game cannot be
-     * asked what it contains. That property lives in `@narraleaf/encryption`, which Studio consumes
+     * asked what it contains. That property lives in `@narraleaf/bindings`, which Studio consumes
      * as a published dependency - meaning an install that resolves an older version puts the plain
      * names back and nothing here would otherwise notice. The failure would be silent, invisible in
      * every feature test, and a straight regression of the thing the design exists for. So it is
@@ -120,9 +120,9 @@ describe("protected runtime resources", () => {
     it("gets a store whose table does not disclose the asset ids it holds", async () => {
         const assetId = "b3f1c0de-0000-4000-8000-000000000001";
         const appDir = await makeSealedApp(assetId, "sealed image bytes");
-        const reader = await openSealedBundle(
-            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(appDir, ARCHIVE_READER_FILENAME),
+            path.join(appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const listed = reader.names();
@@ -183,8 +183,8 @@ describe("patched runtime resources", () => {
     }> {
         const appDir = path.join(root, "game", "app");
         await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
-        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+        await fs.copyFile(archiveReaderPath(), path.join(appDir, ARCHIVE_READER_FILENAME));
+        await prepareArchiveReader(path.join(appDir, ARCHIVE_READER_FILENAME), {
             projectMaterial: material,
             titleId: TITLE,
         });
@@ -192,7 +192,7 @@ describe("patched runtime resources", () => {
             schemaVersion: 2,
             assets: { items: { "asset-1": { id: "asset-1", relativePath: "assets/one", type: "image", name: "one", source: "local" } } },
             addOns: {
-                verificationKey: projectVerificationKey(material, TITLE),
+                verificationKey: projectStamp(material, TITLE),
                 ...(appTagId ? { appTagId } : {}),
             },
             marker: "base",
@@ -216,7 +216,7 @@ describe("patched runtime resources", () => {
         entries: Record<string, string>,
     ): Promise<void> {
         await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const writer = await createSealedLayer(filePath, {
+        const writer = await createAssetOverlay(filePath, {
             projectMaterial: options.projectMaterial,
             titleId: options.titleId ?? TITLE,
             ...(options.proven === false ? { proven: false } : {}),
@@ -231,7 +231,7 @@ describe("patched runtime resources", () => {
         JSON.parse((await resources.readPack()).toString("utf-8")) as Record<string, unknown>;
 
     it("leaves a build with no patches exactly as it was", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         const resources = await createRuntimeResources(appDir, { gameRootDir });
         try {
@@ -245,9 +245,9 @@ describe("patched runtime resources", () => {
     });
 
     it("takes the pack and the assets from a proven patch", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "ep2.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "ep2.assetpatch"), { projectMaterial: material }, {
             pack: JSON.stringify({ ...pack, marker: "patched" }),
             "assets/one": "replaced",
         });
@@ -264,10 +264,10 @@ describe("patched runtime resources", () => {
     });
 
     it("lets an unproven patch replace an asset but not the pack or runtime code", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
-            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "mod.patch.dat"),
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "mod.assetpatch"),
             { projectMaterial: material, proven: false },
             {
                 pack: JSON.stringify({ ...pack, marker: "hostile" }),
@@ -287,18 +287,18 @@ describe("patched runtime resources", () => {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("reskinned");
             expect(await resources.readRuntimeFile("/plugins/evil/runtime.js")).toBeNull();
             // What it did, not what it failed to prove.
-            expect(applied.join("\n")).toContain("mod.patch.dat (files only)");
+            expect(applied.join("\n")).toContain("mod.assetpatch (files only)");
         } finally {
             await resources.dispose();
         }
     });
 
     it("ignores a patch made for another project, and names the file without saying why", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         await writePatch(
-            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
-            { projectMaterial: createProjectMaterial() },
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.assetpatch"),
+            { projectMaterial: createProjectToken() },
             { "assets/one": "stranger" },
         );
 
@@ -309,7 +309,7 @@ describe("patched runtime resources", () => {
         });
         try {
             expect((await resources.readAsset(pack, "asset-1")).toString()).toBe("original");
-            const line = warnings.find(entry => entry.includes("foreign.patch.dat"));
+            const line = warnings.find(entry => entry.includes("foreign.assetpatch"));
             /*
              * The reason a layer gives is its own account of how a patch is bound to a build, and a
              * shipped game writes its log into a file the player can open. So the file is named and
@@ -317,7 +317,7 @@ describe("patched runtime resources", () => {
              * the wording that would leak comes from a dependency and can change without anything
              * here noticing.
              */
-            expect(line).toBe("patch not applied: foreign.patch.dat");
+            expect(line).toBe("patch not applied: foreign.assetpatch");
         } finally {
             await resources.dispose();
         }
@@ -325,11 +325,11 @@ describe("patched runtime resources", () => {
 
     /* A build made to be inspected is read by its author, and there the reason is the whole point. */
     it("says why a patch was refused when it was built to be inspected", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir } = await makeApp(material, "original");
         await writePatch(
-            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.patch.dat"),
-            { projectMaterial: createProjectMaterial() },
+            path.join(gameRootDir, PATCH_DIRECTORY_NAME, "foreign.assetpatch"),
+            { projectMaterial: createProjectToken() },
             { "assets/one": "stranger" },
         );
 
@@ -340,21 +340,21 @@ describe("patched runtime resources", () => {
             log: (level, message) => { if (level === "warning") { warnings.push(message); } },
         });
         try {
-            const line = warnings.find(entry => entry.includes("foreign.patch.dat")) ?? "";
-            expect(line.length).toBeGreaterThan("patch not applied: foreign.patch.dat".length);
+            const line = warnings.find(entry => entry.includes("foreign.assetpatch")) ?? "";
+            expect(line.length).toBeGreaterThan("patch not applied: foreign.assetpatch".length);
         } finally {
             await resources.dispose();
         }
     });
 
     it("lets a patch kept across reinstalls win over one beside the game", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         const userDataDir = path.join(root, "userData");
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "beside.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "beside.assetpatch"), { projectMaterial: material }, {
             "assets/one": "beside",
         });
-        await writePatch(path.join(userDataDir, PATCH_DIRECTORY_NAME, "player.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(userDataDir, PATCH_DIRECTORY_NAME, "player.assetpatch"), { projectMaterial: material }, {
             "assets/one": "player",
         });
 
@@ -367,15 +367,15 @@ describe("patched runtime resources", () => {
     });
 
     it("orders patches by what they declare before where they were found", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
         // Alphabetically "a" is found first, so only the declared order can put
         // "b" underneath it.
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "later", order: 20 }),
             "assets/one": "later",
         });
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "earlier", order: 10 }),
             "assets/one": "earlier",
         });
@@ -400,7 +400,7 @@ describe("patched runtime resources", () => {
      * installed. A patch that carried the whole pack made the second one quietly undo the first.
      */
     it("composes what each proven patch changes rather than taking the last pack whole", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir } = await makeApp(material, "original");
         const scenesOf = (value: unknown) =>
             (value as { bundle: { storyLibrary: { documents: Record<string, { scenes: Record<string, { id: string; text: string }> }> } } })
@@ -412,11 +412,11 @@ describe("patched runtime resources", () => {
         const second = JSON.parse(JSON.stringify(base)) as unknown;
         scenesOf(second)["sc-3"] = { id: "sc-3", text: "new scene" };
 
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "fix", order: 10 }),
             "pack.delta": JSON.stringify(diffPack(base, first)),
         });
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "episode.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "episode.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ name: "episode", order: 20 }),
             "pack.delta": JSON.stringify(diffPack(base, second)),
         });
@@ -440,17 +440,17 @@ describe("patched runtime resources", () => {
      * The one below it carries both, which is the shape an export produced while the two overlapped.
      */
     it("lets a patch that carries only a whole pack replace what a delta below it composed", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir } = await makeApp(material, "original");
         const base = JSON.parse(await fs.readFile(path.join(appDir, "pack.json"), "utf-8")) as Record<string, unknown>;
         const delta = { ...base, marker: "composed" };
 
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "a.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ order: 10 }),
             "pack.delta": JSON.stringify(diffPack(base, delta)),
             pack: JSON.stringify(delta),
         });
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "b.assetpatch"), { projectMaterial: material }, {
             layer: JSON.stringify({ order: 20 }),
             pack: JSON.stringify({ ...base, marker: "whole" }),
         });
@@ -464,13 +464,13 @@ describe("patched runtime resources", () => {
     });
 
     it("says so when patch files are present but the build cannot read them", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "original");
-        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "orphan.patch.dat"), { projectMaterial: material }, {
+        await writePatch(path.join(gameRootDir, PATCH_DIRECTORY_NAME, "orphan.assetpatch"), { projectMaterial: material }, {
             "assets/one": "unreadable",
         });
         // A build made before the project had a key carries no support binary.
-        await fs.rm(path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+        await fs.rm(path.join(appDir, ARCHIVE_READER_FILENAME));
 
         const warnings: string[] = [];
         const resources = await createRuntimeResources(appDir, {
@@ -512,8 +512,8 @@ describe("DLC layers", () => {
     }> {
         const appDir = path.join(root, "game", "app");
         await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
-        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+        await fs.copyFile(archiveReaderPath(), path.join(appDir, ARCHIVE_READER_FILENAME));
+        await prepareArchiveReader(path.join(appDir, ARCHIVE_READER_FILENAME), {
             projectMaterial: material,
             titleId: TITLE,
         });
@@ -521,7 +521,7 @@ describe("DLC layers", () => {
             schemaVersion: 2,
             assets: { items: {} },
             addOns: {
-                verificationKey: projectVerificationKey(material, TITLE),
+                verificationKey: projectStamp(material, TITLE),
                 ...(appTagId ? { appTagId } : {}),
             },
             marker: "base",
@@ -543,7 +543,7 @@ describe("DLC layers", () => {
             dlcArtifactFileName(dlc.id),
         );
         await fs.mkdir(path.dirname(filePath), { recursive: true });
-        const writer = await createSealedLayer(filePath, { projectMaterial: material, titleId: TITLE });
+        const writer = await createAssetOverlay(filePath, { projectMaterial: material, titleId: TITLE });
         await writer.add("layer", Buffer.from(JSON.stringify({
             ...(dlc.name ? { name: dlc.name } : {}),
             dlc: { id: dlc.id, attachTo: dlc.attachTo ?? "main" },
@@ -558,7 +558,7 @@ describe("DLC layers", () => {
         JSON.parse((await resources.readPack()).toString("utf-8")) as Record<string, unknown>;
 
     it("reads a DLC out of the DLC folder and reports which one is installed", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material);
         await writeDlc(gameRootDir, material, { id: "summer", name: "Summer Route" }, {
             pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
@@ -584,7 +584,7 @@ describe("DLC layers", () => {
      * what it says about itself can stop it.
      */
     it("refuses a DLC that belongs to another edition, and starts anyway", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material, "demo-tag");
         await writeDlc(gameRootDir, material, { id: "summer", attachTo: "main" }, {
             pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
@@ -606,7 +606,7 @@ describe("DLC layers", () => {
 
     /** A build made before packs recorded their variant is the release one, so a release DLC fits. */
     it("takes a release DLC on a build that records no edition", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material);
         await writeDlc(gameRootDir, material, { id: "summer" }, {
             pack: JSON.stringify({ ...pack, marker: "with-dlc" }),
@@ -630,7 +630,7 @@ describe("DLC layers", () => {
      * the entrance to what the player just bought.
      */
     it("says a DLC is installed even when it changed nothing about the content", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material);
         await fs.mkdir(path.join(appDir, "assets"), { recursive: true });
         await fs.writeFile(path.join(appDir, "assets", "one"), "original");
@@ -648,7 +648,7 @@ describe("DLC layers", () => {
     });
 
     it("states nothing about DLC on a build that has none beside it", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir } = await makeApp(material);
         const resources = await createRuntimeResources(appDir, { gameRootDir });
         try {
@@ -660,18 +660,18 @@ describe("DLC layers", () => {
     });
 
     it("applies a patch over a DLC even when the DLC asks to sort later", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const { appDir, gameRootDir, pack } = await makeApp(material);
         const dlcFile = path.join(gameRootDir, dlcDirectoryName(process.platform), dlcArtifactFileName("summer"));
         await fs.mkdir(path.dirname(dlcFile), { recursive: true });
-        const dlcWriter = await createSealedLayer(dlcFile, { projectMaterial: material, titleId: TITLE });
+        const dlcWriter = await createAssetOverlay(dlcFile, { projectMaterial: material, titleId: TITLE });
         await dlcWriter.add("layer", Buffer.from(JSON.stringify({ order: 99, dlc: { id: "summer", attachTo: "main" } })));
         await dlcWriter.add("pack", Buffer.from(JSON.stringify({ ...pack, marker: "with-dlc" })));
         await dlcWriter.finalize();
 
-        const patchFile = path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.patch.dat");
+        const patchFile = path.join(gameRootDir, PATCH_DIRECTORY_NAME, "fix.assetpatch");
         await fs.mkdir(path.dirname(patchFile), { recursive: true });
-        const patchWriter = await createSealedLayer(patchFile, { projectMaterial: material, titleId: TITLE });
+        const patchWriter = await createAssetOverlay(patchFile, { projectMaterial: material, titleId: TITLE });
         await patchWriter.add("layer", Buffer.from(JSON.stringify({ order: -5 })));
         await patchWriter.add("pack", Buffer.from(JSON.stringify({ ...pack, marker: "fixed" })));
         await patchWriter.finalize();

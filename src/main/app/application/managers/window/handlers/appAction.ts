@@ -1,10 +1,11 @@
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
+import { showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 import { Platform } from "@shared/types/os";
 import { WindowAppType, WindowControlAbility } from "@shared/types/window";
-import { app as electronApp, dialog, shell } from "electron";
+import { app as electronApp, shell } from "electron";
 import type { Dirent } from "fs";
 import { promises as fs } from "fs";
 import os from "os";
@@ -15,11 +16,12 @@ import {
     sanitizeBundleFileName,
     type DiagnosticsEnvironment,
 } from "../../../logging/diagnosticsBundle";
-import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
-import { clearCacheBuckets, measureCacheInventory } from "../../storage/cacheInventory";
+import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isProtectedStateKey } from "@shared/constants/settingsScopes";
 import { getMainLocale } from "../../../i18n";
 
@@ -314,7 +316,6 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
         const next = window.app.globalState.recentlyOpened.withProject({
             name: data.name,
             path: data.path,
-            icon: undefined,
             openedAt: Date.now(),
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
@@ -382,6 +383,32 @@ export class AppCheckRecentProjectsHandler extends IPCHandler<IPCEventType.appCh
     }
 }
 
+/**
+ * Every remembered project's own app icon, for the ones that have one.
+ *
+ * Read from the projects rather than from the history: what a project uses as its logo is the
+ * project's own content and changes without the history being touched, so a copy kept in the list
+ * would go stale and cost a broadcast to every window each time it was refreshed. One failure
+ * costs its own row - `readProjectLogo` answers null for anything it cannot read, and a row with
+ * no icon draws the name monogram it always did.
+ */
+export class AppRecentProjectIconsHandler extends IPCHandler<IPCEventType.appRecentProjectIcons> {
+    readonly name = IPCEventType.appRecentProjectIcons;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ icons: RecentProjectIcon[] }>> {
+        const projects = window.app.globalState.recentlyOpened.list();
+        const resolved = await Promise.all(projects.map(async project => ({
+            path: project.path,
+            icon: await readProjectLogo(project.path),
+        })));
+
+        return this.success({
+            icons: resolved.filter((entry): entry is RecentProjectIcon => entry.icon !== null),
+        });
+    }
+}
+
 /** Remove one project from the history. Atomic for the same reason as its Add counterpart. */
 export class AppRemoveRecentProjectHandler extends IPCHandler<IPCEventType.appRemoveRecentProject> {
     readonly name = IPCEventType.appRemoveRecentProject;
@@ -440,7 +467,7 @@ export class AppPickBackgroundImageHandler extends IPCHandler<IPCEventType.appPi
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ file: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Choose Background Image",
             properties: ["openFile"],
             filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
@@ -550,7 +577,7 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
             };
             const content = composeDiagnosticsBundle(environment, report, await readMainLogTail(logsDir));
 
-            const selection = await dialog.showSaveDialog(window.win, {
+            const selection = await showSaveDialog(window, {
                 title: "Export Studio Logs",
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-diagnostics.log"),
                 filters: [
@@ -622,13 +649,18 @@ export class AppProbeDownloadSourceHandler extends IPCHandler<IPCEventType.appPr
     }
 }
 
+/** The two directories the inventory spans; see `cacheRoot.ts` for why they are not one. */
+function cacheLocations(app: AppWindow["app"]): CacheLocations {
+    return { userDataDir: app.getUserDataDir(), cacheRoot: app.getCacheRootDir() };
+}
+
 export class AppCacheInventoryHandler extends IPCHandler<IPCEventType.appCacheInventory> {
     readonly name = IPCEventType.appCacheInventory;
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow) {
         try {
-            return this.success(await measureCacheInventory(window.app.getUserDataDir()));
+            return this.success(await measureCacheInventory(cacheLocations(window.app)));
         } catch (error) {
             return this.failed(error);
         }
@@ -641,7 +673,7 @@ export class AppCacheClearHandler extends IPCHandler<IPCEventType.appCacheClear>
 
     public async handle(window: AppWindow, { ids }: IPCEvents[IPCEventType.appCacheClear]["data"]) {
         try {
-            return this.success(await clearCacheBuckets(window.app.getUserDataDir(), ids));
+            return this.success(await clearCacheBuckets(cacheLocations(window.app), ids));
         } catch (error) {
             return this.failed(error);
         }
@@ -695,7 +727,7 @@ export class AppExportSettingsHandler extends IPCHandler<IPCEventType.appExportS
         { defaultFileName, content }: IPCEvents[IPCEventType.appExportSettings]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appExportSettings]["response"]>> {
         try {
-            const selection = await dialog.showSaveDialog(window.win, {
+            const selection = await showSaveDialog(window, {
                 title: "Export Studio Settings",
                 defaultPath: sanitizeBundleFileName(defaultFileName, "narraleaf-studio-settings.json", [".json"]),
                 filters: [{ name: "JSON", extensions: ["json"] }],
@@ -730,7 +762,7 @@ export class AppImportSettingsHandler extends IPCHandler<IPCEventType.appImportS
         window: AppWindow,
     ): Promise<RequestStatus<IPCEvents[IPCEventType.appImportSettings]["response"]>> {
         try {
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Import Studio Settings",
                 properties: ["openFile"],
                 filters: [{ name: "JSON", extensions: ["json"] }],

@@ -74,7 +74,7 @@ export const settings = {
         },
         network: {
             label: "ネットワーク",
-            description: "プラグイン、テンプレート、ビルド用の道具をどこから取ってくるか",
+            description: "プラグイン、テンプレート、ビルド用ツールの取得元",
         },
         data: {
             label: "データ",
@@ -248,12 +248,16 @@ export const settings = {
         },
         electronMirror: {
             label: "Electron のダウンロードミラー",
-            description: "Electron を取ってくるミラー",
+            description: "Electron の取得元となるミラー",
         },
         electronBuilderBinariesMirror: {
-            label: "ビルド用の道具のミラー",
+            label: "ビルドツールのミラー",
             description:
-                "ビルドがダウンロードするインストーラ関連の道具（NSIS、AppImage、コード署名の補助）のミラー",
+                "ビルドがダウンロードするインストーラー関連ツール（NSIS、AppImage、コード署名の補助）のミラー",
+        },
+        zigMirror: {
+            label: "コンパイラーツールチェーンのミラー",
+            description: "ビルドがダウンロードするコンパイラーツールチェーンのミラー",
         },
         downloadRewrites: {
             label: "ダウンロード先の書き換え",
@@ -299,6 +303,10 @@ export const settings = {
         reopenLastProject: {
             label: "起動時に前回のプロジェクトを開く",
             description: "ランチャーではなく、前回作業していたプロジェクトを開く",
+        },
+        maximizeOnOpen: {
+            label: "ワークスペースを最大化して開く",
+            description: "ワークスペースのウィンドウを画面いっぱいに開く。ウィンドウ内でプロジェクトを切り替えたときは、元のウィンドウの位置とサイズを引き継ぐ",
         },
         dashboardOnOpen: {
             label: "既定でプロジェクトのダッシュボードを表示",
@@ -433,48 +441,60 @@ export const settings = {
     },
     data: {
         cache: {
-            measuring: "測っている…",
-            unavailable: "取得できない",
+            measuring: "計測中…",
+            unavailable: "取得不可",
             clear: "消去",
             clearAll: "すべて消去",
-            refresh: "測り直す",
-            freed: "{size} を空けた",
+            refresh: "再計測",
+            freed: "{size} を解放した",
             buckets: {
                 electronBuilder: {
-                    label: "ゲームビルド用の道具",
-                    description: "ビルドのために取ってきた Electron とインストーラ関連の道具",
+                    label: "ゲームビルド用ツール",
+                    description: "ビルドのために取得した Electron とインストーラー関連のツール",
                 },
                 buildDependencies: {
                     label: "プラグインのビルド用ファイル",
-                    description: "ビルドしたゲームに含めるためプラグインが取ってくるアーカイブ",
+                    description: "ビルドしたゲームに含めるためプラグインが取得するアーカイブ",
+                },
+                toolchains: {
+                    label: "コンパイラーツールチェーン",
+                    description: "ビルドのために取得したコンパイラー。次のビルドで必要になったとき再取得される",
+                },
+                puppetRuntimes: {
+                    label: "モデルランタイムのソースファイル",
+                    description: "キャラクターモデルのランタイムを構築するために展開した SDK。次に構築するとき再展開される",
                 },
                 browser: {
                     label: "画面のキャッシュ",
-                    description: "起動を速くするため、実行のあいだ保たれる画面の状態",
+                    description: "起動を速くするために保持する画面の状態",
                 },
                 pluginIcons: {
                     label: "プラグインストアのサムネイル",
-                    description: "次にストアを開いたときに取り直される",
+                    description: "次にストアを開いたときに再取得される",
                 },
                 uiTemplatePosters: {
                     label: "テンプレートストアのポスター",
-                    description: "次にストアを開いたときに取り直される",
+                    description: "次にストアを開いたときに再取得される",
                 },
                 spellcheckDictionaries: {
                     label: "スペル辞書",
-                    description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語はここにはない",
+                    description: "スペルチェック用にダウンロードした単語リスト。プロジェクト自身の用語は含まれない",
                 },
                 optimizedImages: {
-                    label: "ビルド用最適化画像",
+                    label: "ビルドで再エンコードした画像",
                     description: "ビルド時に再エンコードした画像。次のビルドで再生成される",
                 },
+                compressedMedia: {
+                    label: "ビルドで再エンコードした音声と映像",
+                    description: "ビルド時に再エンコードした音声と映像。次のビルドで再生成される",
+                },
                 psdImports: {
-                    label: "PSD 読み込みの残り物",
+                    label: "PSD 読み込みの作業ファイル",
                     description: "PSD を読み込むときに書き出したレイヤーの画像",
                 },
                 logs: {
                     label: "ログ",
-                    description: "診断ファイルを書き出すときの元になるもの",
+                    description: "診断ファイルの書き出し元となるログ",
                 },
             },
         },

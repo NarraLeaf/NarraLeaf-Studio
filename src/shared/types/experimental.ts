@@ -20,6 +20,9 @@ export const EXPERIMENTAL_CONDITION_FLAG_PREFIX = "--x-";
 export const EXPERIMENTAL_CONDITION_IDS = [
     "debuggable-build",
     "live-session-freeze",
+    "scripted-file-dialog",
+    "slow-live-transfer",
+    "unscoped-file-access",
 ] as const;
 
 export type ExperimentalConditionId = typeof EXPERIMENTAL_CONDITION_IDS[number];
@@ -48,6 +51,26 @@ export const EXPERIMENTAL_CONDITIONS: readonly ExperimentalConditionDescriptor[]
         flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}live-session-freeze`,
         summary: "The command palette can freeze the workspace the way a live session does, leaving "
             + "the open story and the cast writable and everything else read-only.",
+    },
+    {
+        id: "scripted-file-dialog",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}scripted-file-dialog`,
+        summary: "No native file or folder picker opens. Each one waits as a request on "
+            + "window.__NLS_STUDIO_DIALOG__ in the page that raised it, to be answered with a path "
+            + "from the page instead of from a system dialog.",
+    },
+    {
+        id: "slow-live-transfer",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}slow-live-transfer`,
+        summary: "A file carried into a live session goes out slowly enough to watch, so the state "
+            + "between a transfer starting and finishing can be looked at rather than inferred.",
+    },
+    {
+        id: "unscoped-file-access",
+        flag: `${EXPERIMENTAL_CONDITION_FLAG_PREFIX}unscoped-file-access`,
+        summary: "The window file system policy stops refusing paths nothing granted, so a window "
+            + "reaches any path on disk. Studio's own storage stays protected, plugin permissions "
+            + "are unchanged, and every path this allows is named in the log.",
     },
 ];
 

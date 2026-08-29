@@ -13,20 +13,19 @@
  * failure modes are silent — a wrong result draws nothing rather than raising — so neither step is
  * optional.
  *
- * Deliberately electron-free — `userDataDir` and `glueDir` are passed in — so the whole build can be
+ * Deliberately electron-free — `cacheRoot` and `glueDir` are passed in — so the whole build can be
  * exercised from a test.
  */
 
 import { createHash } from "crypto";
 import fs from "fs/promises";
 import path from "path";
+import { CacheNamespace } from "@shared/types/constants";
 import { PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
 import { inspectLive2DSdkArchive, readArchiveEntry, type Live2DSdkArchive } from "./live2dSdkArchive";
 
 export type PuppetRuntimeBuildLog = (level: "info" | "warning" | "error", message: string) => void;
 
-const CACHE_DIR_NAME = "cache";
-const CACHE_BUCKET_NAME = "puppet-runtimes";
 const LICENSE_DIR_NAME = "licenses";
 
 export type Live2DRuntimeBuildRequest = {
@@ -34,8 +33,8 @@ export type Live2DRuntimeBuildRequest = {
     archivePath: string;
     /** `<project>/runtimes/puppet/live2d`. Created if absent; `index.js` inside it is replaced. */
     targetDir: string;
-    /** Electron's userData directory. Only used to place the staging cache. */
-    userDataDir: string;
+    /** Studio's cache root, `App.getCacheRootDir()`. Only used to place the staging cache. */
+    cacheRoot: string;
     /** Studio's shipped glue directory — `resources/puppet-glue/live2d`. */
     glueDir: string;
     log?: PuppetRuntimeBuildLog;
@@ -59,8 +58,8 @@ export type Live2DRuntimeBuildResult = {
  * download twice does the unpacking once, and an author who re-downloads a *different* build gets a
  * different directory rather than a half-updated one.
  */
-export function live2dStagingDir(userDataDir: string, archiveSha256: string): string {
-    return path.join(userDataDir, CACHE_DIR_NAME, CACHE_BUCKET_NAME, "live2d", archiveSha256);
+export function live2dStagingDir(cacheRoot: string, archiveSha256: string): string {
+    return path.join(cacheRoot, CacheNamespace.PuppetRuntimes, "live2d", archiveSha256);
 }
 
 async function writeFileEnsuringDir(target: string, data: string | Buffer): Promise<void> {
@@ -224,7 +223,7 @@ export async function buildLive2DRuntime(
     const found: Live2DSdkArchive = inspectLive2DSdkArchive(archive);
     log("info", `Cubism SDK ${found.version ?? "(version not stated)"}: ${found.framework.size} framework sources, ${found.shaders.size} shaders`);
 
-    const staging = live2dStagingDir(request.userDataDir, digest);
+    const staging = live2dStagingDir(request.cacheRoot, digest);
     // Rebuilt rather than reused: the produced module also depends on Studio's own glue, which changes
     // with Studio and not with the archive, so a cached tree keyed only by the archive would go stale.
     // Unpacking 20 MB takes well under a second and this runs once per install, by hand.

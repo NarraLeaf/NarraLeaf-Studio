@@ -1,7 +1,7 @@
 import type { LocaleNamespace } from "../types";
 
 /**
- * `dictionary` 中文。工程自己的词汇表，在词典面板里编辑。
+ * `dictionary` 中文。项目自己的词汇表，在词典面板里编辑。
  *
  * 标题是名词短语；字段做什么由字段名和故事编辑器的行为说明，不在旁边写解释。
  * 「注音」沿用富文本工具条的既有译法（见 `story.richText.ruby`），读音本身叫「读音」。
@@ -24,8 +24,8 @@ export const dictionary = {
         suggestReadings: "建议读音",
         checkVariants: "检查异体写法",
     },
-    /** 拿工程里每一个故事对异体写法过一遍。 */
-    check: "检查工程",
+    /** 拿项目里每一个故事对异体写法过一遍。 */
+    check: "检查项目",
     checking: "{done}/{total}",
     checkClean: "未发现异体写法",
     found: {

@@ -1,18 +1,22 @@
 /**
- * Studio's half of the Team protocol, pinned to the names both halves agree on.
+ * Studio's half of the Team protocol, pinned to the names the wire uses.
  *
- * `types/team.ts` is a twin of `src/team/protocol.ts` in the Team repository: two copies,
- * because the two release separately and neither depends on the other. Two copies of
- * anything drift, so the names live in `teamContract.json`, of which the server holds a
- * byte-identical copy, and each side pins its own constants to it.
+ * The vocabulary is authored once, and not here: it lives in the Team repository's
+ * zero-dependency `@narraleaf/team-protocol` package, which generates
+ * `protocol/contract.json` out of itself. `teamContract.json` beside this file is a copy of
+ * that generated artifact, and `types/team.ts` is pinned to it below. So these are not two
+ * lists somebody keeps in step - one is produced from the other, and Studio's job is to
+ * take the copy across and follow it.
  *
- * What this catches: a method renamed here without the contract moving, a capability
- * Studio started checking for that is not in it, a topic built to a different shape.
+ * What this catches: a method renamed in `team.ts` without the contract moving, a
+ * capability Studio started checking for that is not in it, a topic built to a different
+ * shape, a limit that drifted.
  *
- * What it does not catch, and it is worth being plain about: the two JSON files are kept
- * identical by whoever edits them, so a change made in one repository and not the other
- * passes both suites. What it buys is that such a change is a diff on a file whose whole
- * purpose is to be compared, rather than a rename buried in a module.
+ * What it does not catch, and it is worth being plain about: whether Studio's copy is the
+ * current one. Nothing here reaches the Team repository, so a server that has grown a
+ * method Studio has not been handed yet passes this suite in silence. What it buys is that
+ * bringing the copy across is a diff on a file whose whole purpose is to be compared, and
+ * that every constant which has to follow from it fails here until it does.
  */
 import fs from "fs";
 import path from "path";
@@ -21,6 +25,7 @@ import { describe, expect, it } from "vitest";
 
 import {
     TEAM_ANCHOR_FIELD_LIMIT,
+    TEAM_ANSWER_BYTES_LIMIT,
     TEAM_COMMENT_BODY_LIMIT,
     TEAM_INSTANCE_FIELD_LIMIT,
     TEAM_LIVE_PAYLOAD_LIMIT,
@@ -28,7 +33,10 @@ import {
     TEAM_PROTOCOL_VERSION,
     TEAM_SOCKET_PATH,
     TEAM_SUGGESTION_LIMIT,
-    TEAM_TOPIC_MEMBERS,
+    TEAM_TOPIC_ADMIN_KEYS,
+    TEAM_TOPIC_ADMIN_REFUSALS,
+    TEAM_TOPIC_ADMIN_SETTINGS,
+    TEAM_TOPIC_ADMIN_USERS,
     TEAM_TOPIC_PROJECTS,
     TeamMethod,
     teamLiveTopic,
@@ -61,7 +69,17 @@ const contract = JSON.parse(
  * Kept beside the assertion rather than exported: their only reader is this file, and a
  * list of capability names exported from a test is a list somebody would use.
  */
-const CAPABILITIES: TeamCapability[] = ["session", "comments", "clients", "live", "overlay"];
+const CAPABILITIES: TeamCapability[] = [
+    "session",
+    "comments",
+    "clients",
+    "live",
+    "overlay",
+    "admin",
+    "password-sign-in",
+    "project-history",
+    "blobs",
+];
 const ERROR_CODES: TeamErrorCode[] = [
     "unknown-method",
     "bad-params",
@@ -88,9 +106,25 @@ describe("the protocol contract", () => {
         expect(ERROR_CODES.slice().sort()).toEqual([...contract.errorCodes].sort());
     });
 
-    it("builds the topics the contract spells out", () => {
+    it("builds or names the topics the contract spells out", () => {
+        // Every topic the contract carries is one of the assertions below. Without this the
+        // four that arrived with the management family would have been four names Studio
+        // never learned, and nothing here would have said so.
+        expect(Object.keys(contract.topics).slice().sort()).toEqual([
+            "adminKeys",
+            "adminRefusals",
+            "adminSettings",
+            "adminUsers",
+            "live",
+            "project",
+            "projectClients",
+            "projectLive",
+            "projectOverlay",
+            "projectThreads",
+            "projects",
+        ]);
+
         expect(TEAM_TOPIC_PROJECTS).toBe(contract.topics["projects"]);
-        expect(TEAM_TOPIC_MEMBERS).toBe(contract.topics["members"]);
         expect(teamProjectTopic("abc")).toBe(contract.topics["project"]?.replace("{project}", "abc"));
         expect(teamProjectThreadsTopic("abc")).toBe(
             contract.topics["projectThreads"]?.replace("{project}", "abc"),
@@ -105,14 +139,41 @@ describe("the protocol contract", () => {
             contract.topics["projectLive"]?.replace("{project}", "abc"),
         );
         expect(teamLiveTopic("xyz")).toBe(contract.topics["live"]?.replace("{session}", "xyz"));
+
+        // Compared rather than built: these name the server, not a project or a session,
+        // so there is no id to substitute and `team.ts` states them as constants.
+        expect(TEAM_TOPIC_ADMIN_USERS).toBe(contract.topics["adminUsers"]);
+        expect(TEAM_TOPIC_ADMIN_SETTINGS).toBe(contract.topics["adminSettings"]);
+        expect(TEAM_TOPIC_ADMIN_KEYS).toBe(contract.topics["adminKeys"]);
+        expect(TEAM_TOPIC_ADMIN_REFUSALS).toBe(contract.topics["adminRefusals"]);
     });
 
-    it("bounds what it sends at the sizes the contract states", () => {
+    it("states every ceiling the contract does, at the contract's figure", () => {
+        // Every limit the contract carries is one of the lines below, the same way every
+        // topic is. Without this a figure that arrived on the server would be a ceiling
+        // Studio went on applying at whatever number it had - which is how the reader on
+        // the session's socket came to refuse answers the server was entitled to send.
+        expect(Object.keys(contract.limits).slice().sort()).toEqual([
+            "anchorField",
+            "answerBytes",
+            "commentBody",
+            "instanceField",
+            "livePayload",
+            "overlayBody",
+            "pageBytes",
+            "suggestion",
+        ]);
+
         expect(TEAM_ANCHOR_FIELD_LIMIT).toBe(contract.limits["anchorField"]);
         expect(TEAM_COMMENT_BODY_LIMIT).toBe(contract.limits["commentBody"]);
         expect(TEAM_SUGGESTION_LIMIT).toBe(contract.limits["suggestion"]);
         expect(TEAM_OVERLAY_BODY_LIMIT).toBe(contract.limits["overlayBody"]);
         expect(TEAM_LIVE_PAYLOAD_LIMIT).toBe(contract.limits["livePayload"]);
         expect(TEAM_INSTANCE_FIELD_LIMIT).toBe(contract.limits["instanceField"]);
+        expect(TEAM_ANSWER_BYTES_LIMIT).toBe(contract.limits["answerBytes"]);
+
+        // `pageBytes` is where a server ends a page, and nothing on this side composes
+        // one: it is named above so that it cannot arrive unnoticed, and pinned to no
+        // constant because there is nothing here for it to bound.
     });
 });

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { TeamLiveSession } from "@shared/types/team";
-import { decideLiveRole, planLiveJoin } from "./liveEntry";
+import {
+    decideLiveRole,
+    planLiveGhostRoom,
+    planLiveJoin,
+} from "./liveEntry";
 
 function room(patch: Partial<TeamLiveSession> = {}): TeamLiveSession {
     return {
@@ -63,5 +67,31 @@ describe("what joining a room costs", () => {
             openProject: null,
             uncommittedChanges: false,
         })).toEqual({ kind: "clone", project: "repo-2" });
+    });
+});
+
+describe("a room this window opened and then vanished from", () => {
+    it("is re-founded while somebody is still in it", () => {
+        expect(planLiveGhostRoom(
+            room({
+                openedByInstance: "instance-ada",
+                members: [
+                    { instance: "instance-ada", account: "ada", label: "a", joinedAt: 0 },
+                    { instance: "instance-bo", account: "bo", label: "b", joinedAt: 1 },
+                ],
+            }),
+            "instance-ada",
+        )).toEqual({ kind: "refound" });
+    });
+
+    it("is closed when nobody is", () => {
+        // What is left otherwise is a room the author's own panel offers them as somebody else's.
+        expect(planLiveGhostRoom(
+            room({
+                openedByInstance: "instance-ada",
+                members: [{ instance: "instance-ada", account: "ada", label: "a", joinedAt: 0 }],
+            }),
+            "instance-ada",
+        )).toEqual({ kind: "close" });
     });
 });

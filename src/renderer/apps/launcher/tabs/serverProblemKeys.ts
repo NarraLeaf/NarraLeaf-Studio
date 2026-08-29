@@ -25,5 +25,9 @@ export const SERVER_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Trans
     // Mapped rather than left out because the table is exhaustive by type, which is what
     // makes a new refusal a compile error instead of a blank line on screen.
     "wrong-repository": "launcher.servers.problem.unknown",
+    // Reachable from here: this tab publishes when a project is made for a server, and the
+    // name it publishes under is the project's app id.
+    "name-taken": "launcher.servers.problem.nameTaken",
+    "already-published": "launcher.servers.problem.alreadyPublished",
     unknown: "launcher.servers.problem.unknown",
 };

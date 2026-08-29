@@ -178,6 +178,7 @@ const makeManager = () => new GameTestManager({
     },
     getDistDir: () => path.join(os.tmpdir(), "dist"),
     getUserDataDir: () => path.join(os.tmpdir(), "userdata"),
+    getCacheRootDir: () => path.join(os.tmpdir(), "userdata", "nl-cache"),
     // Every host resolves which edition it is running as; this profile picked none.
     getGlobalState: () => ({ get: () => undefined }),
     getAppInfo: () => ({ version: "0.0.0-test" }),

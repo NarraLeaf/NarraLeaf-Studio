@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+    assetCompressionDidSomething,
+    assetCompressionSavedBytes,
     GAME_BUILD_ARCHS_BY_PLATFORM,
     GAME_BUILD_FORMATS_BY_PLATFORM,
     defaultGameBuildArch,
@@ -377,7 +379,7 @@ describe("GAME_BUILD_ARCHS_BY_PLATFORM", () => {
     // strip a large installed base of *players* from every game built with Studio.
     //
     // Host and target are different questions. Nothing in the pipeline needs an Intel Mac to
-    // produce an Intel-Mac game: @narraleaf/encryption vendors a prebuilt darwin-x64
+    // produce an Intel-Mac game: @narraleaf/bindings vendors a prebuilt darwin-x64
     // bindings.node, and electron-builder downloads Electron's x64 runtime. If this assertion is
     // in your way, the answer is not to delete it.
     it("still offers x64 and universal for macOS, because a game's host is not Studio's host", () => {
@@ -400,5 +402,51 @@ describe("normalizeGameBuildArch", () => {
     it("falls back to the first offered arch for junk", () => {
         expect(normalizeGameBuildArch("linux", undefined)).toBe("x64");
         expect(normalizeGameBuildArch("macos", 42)).toBe("arm64");
+    });
+});
+
+describe("assetCompressionSavedBytes", () => {
+    it("adds the re-encoding saving to the metadata saving", () => {
+        expect(assetCompressionSavedBytes({
+            stripped: 4,
+            metadataBytes: 1_000,
+            compressed: 2,
+            beforeBytes: 10_000,
+            afterBytes: 6_000,
+        })).toBe(5_000);
+    });
+
+    it("never reports a negative saving for a pass that kept larger files", () => {
+        // Both passes refuse a re-encode that came out bigger, so this should not arise - and a
+        // report that showed "-3 KB saved" would be read as a build that made the package worse.
+        expect(assetCompressionSavedBytes({
+            stripped: 0,
+            metadataBytes: 0,
+            compressed: 1,
+            beforeBytes: 100,
+            afterBytes: 400,
+        })).toBe(0);
+    });
+});
+
+describe("assetCompressionDidSomething", () => {
+    const nothing = { stripped: 0, metadataBytes: 0, compressed: 0, beforeBytes: 0, afterBytes: 0 };
+
+    it("is false for a run whose passes touched no file", () => {
+        expect(assetCompressionDidSomething({ images: nothing, media: nothing })).toBe(false);
+    });
+
+    it("is true when a pass only removed metadata", () => {
+        expect(assetCompressionDidSomething({
+            images: { ...nothing, stripped: 1, metadataBytes: 20 },
+            media: nothing,
+        })).toBe(true);
+    });
+
+    it("is true when only the other pass did anything", () => {
+        expect(assetCompressionDidSomething({
+            images: nothing,
+            media: { ...nothing, compressed: 1, beforeBytes: 90, afterBytes: 40 },
+        })).toBe(true);
     });
 });

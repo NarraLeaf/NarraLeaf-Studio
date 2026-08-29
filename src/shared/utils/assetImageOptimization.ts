@@ -20,7 +20,7 @@
  * is really a JPEG is treated as what it is.
  */
 
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+import { resolveImageCompression, type AssetCompressionConfiguration } from "@shared/types/assetCompression";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
 
 export type AssetImageSkipReason =
@@ -39,7 +39,19 @@ export type AssetImageTranscodePlan =
     /** Re-encode as lossless WebP, keep the result only if it is smaller and decodes identically. */
     | { action: "lossless" }
     /** Re-encode as lossy WebP at the authored quality, keep the result only if it is smaller. */
-    | { action: "lossy" }
+    | {
+        action: "lossy";
+        quality: number;
+        /**
+         * Decode straight to this size instead of the source's, or `null` to keep it.
+         *
+         * Set only when the author asked for a cap *and* the image is over it. Enlarging artwork
+         * would spend bytes on pixels no artist drew, so the cap only ever shrinks - and it never
+         * appears on the lossless plan at all, because a resized image is not the image it came
+         * from and there would be nothing left to verify.
+         */
+        resizeTo: { width: number; height: number } | null;
+    }
     | { action: "skip"; reason: AssetImageSkipReason };
 
 export type AssetImageCandidate = {
@@ -70,7 +82,7 @@ const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 
 export function planAssetImageTranscode(
     candidate: AssetImageCandidate,
-    config: AssetOptimizationConfiguration,
+    config: AssetCompressionConfiguration,
 ): AssetImageTranscodePlan {
     if (!candidate.assetType
         || BUNDLE_ASSET_TYPES.has(candidate.assetType)
@@ -92,8 +104,13 @@ export function planAssetImageTranscode(
     // Order matters: lossy wins where both apply. An author who turned it on
     // asked for the smaller file, and running the lossless pass first would
     // leave the lossy pass re-encoding an image it had already rewritten.
-    if (config.lossyImages) {
-        return { action: "lossy" };
+    const policy = resolveImageCompression(config);
+    if (policy.enabled) {
+        return {
+            action: "lossy",
+            quality: policy.quality,
+            resizeTo: fitWithin(readImageDimensions(candidate.bytes), policy.maxDimension),
+        };
     }
     // The lossless pass answers to nothing in the configuration: it cannot alter
     // the image, so there is nobody to ask. What it does answer to is the format.
@@ -106,6 +123,32 @@ export function planAssetImageTranscode(
         return { action: "lossless" };
     }
     return { action: "skip", reason: "not-enabled" };
+}
+
+/**
+ * The size an image should be decoded to so that its longest edge meets the cap.
+ *
+ * Null whenever nothing should change: no cap asked for, no dimensions to measure against, or an
+ * image already inside it. The aspect ratio is kept, and both edges are floored at one pixel -
+ * a very wide banner scaled by its width can otherwise round its height to zero, which is not a
+ * size any decoder accepts.
+ */
+function fitWithin(
+    dimensions: { width: number; height: number } | null | undefined,
+    maxDimension: number | null,
+): { width: number; height: number } | null {
+    if (!dimensions || maxDimension === null) {
+        return null;
+    }
+    const longest = Math.max(dimensions.width, dimensions.height);
+    if (longest <= 0 || longest <= maxDimension) {
+        return null;
+    }
+    const scale = maxDimension / longest;
+    return {
+        width: Math.max(1, Math.round(dimensions.width * scale)),
+        height: Math.max(1, Math.round(dimensions.height * scale)),
+    };
 }
 
 /**

@@ -25,11 +25,11 @@ describe("normalizePatchConfiguration", () => {
             targetAppTagId: "  demo  ",
             contentAppTagId: "   ",
             baselineAppDir: 42,
-            outputFile: "D:/out/game.patch.dat",
+            outputFile: "D:/out/game.assetpatch",
         })).toEqual({
             baselineMode: "variant",
             targetAppTagId: "demo",
-            outputFile: "D:/out/game.patch.dat",
+            outputFile: "D:/out/game.assetpatch",
         });
     });
 });

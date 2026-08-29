@@ -12,11 +12,14 @@
  * subscribes to topics, the server answers calls and pushes events. Everything a product
  * feature needs - reading, writing, and being told - is one shape rather than three.
  *
- * **This file is a twin.** Its other half is `src/team/protocol.ts` in the Team
- * repository. Two copies rather than a shared package, because the two release separately
- * and neither depends on the other; `team/conformance.test.ts` pins what both sides have
- * to agree about, so a change to one of them is a failing test rather than a bad
- * afternoon. Nothing in here may be changed without changing the other.
+ * **The names in here are not authored in here.** The frame catalogue, the method names,
+ * the capability vocabulary, the error codes, the topic patterns and the limits live once,
+ * in the Team repository's zero-dependency `@narraleaf/team-protocol` package, which
+ * generates `protocol/contract.json` out of itself. `teamContract.json` beside this file is
+ * a copy of that generated artifact, and `teamContract.test.ts` pins every constant below
+ * to it - so a name that moved on the server and not here is a failing test rather than a
+ * call refused on somebody's machine. What this file adds is the shape Studio reads the
+ * answers into, which is Studio's own and nobody else's business.
  *
  * Three rules that the rest of Studio's Team code follows from:
  *
@@ -37,10 +40,16 @@
 export const TEAM_SOCKET_PATH = "/api/team/v1/socket";
 
 /** What the shapes in this file are, as a whole. Compared with the server's opening frame. */
-export const TEAM_PROTOCOL_VERSION = 1;
+export const TEAM_PROTOCOL_VERSION = 2;
 
 /**
  * The names a server announces, and Studio matches literally.
+ *
+ * **One vocabulary, said in two places.** A server advertises these same names in its
+ * discovery document and again in the session's opening frame, so this is also the set the
+ * version-control side gates on - {@link VcsServerCapability} is this type. There is not a
+ * second list for the REST surface: a deployment offers a thing or it does not, and it says
+ * so once.
  *
  * **Two different things are called a session in this file and it is worth being clear
  * once.** A *link session* is the socket: one per server, opened by Studio on its own the
@@ -58,7 +67,30 @@ export type TeamCapability =
     /** Live sessions: rooms on a project, for finding installations and broadcasting to them. */
     | "live"
     /** Data attached to a project at a revision, which never enters the repository. */
-    | "overlay";
+    | "overlay"
+    /**
+     * This server's own state may be read and changed over the socket: its accounts, its
+     * settings, its signing keys, the decisions it has made and how it is faring.
+     *
+     * **A statement about the build, not about the caller**, which is easier to misread
+     * here than anywhere else on this list. Every server that has it announces it to
+     * everybody and refuses the methods behind it to all but an operator, so whether the
+     * account on this end may use it is {@link TeamAccount.operator} - a management screen
+     * needs both, and Studio draws none yet.
+     */
+    | "admin"
+    /** Mints a token from a username and password, rather than only accepting a pasted one. */
+    | "password-sign-in"
+    /** Answers a project's recent revisions. */
+    | "project-history"
+    /**
+     * Carries the bytes of a file between the machines in a live session.
+     *
+     * ⚠ **Not every deployment has it**, and the difference is not cosmetic: a server
+     * without it answers 404 to the transfer endpoints, so importing an asset during a
+     * session against one is a file that never arrives.
+     */
+    | "blobs";
 
 /* ------------------------------------------------------------------ frames */
 
@@ -118,7 +150,6 @@ export type TeamErrorCode =
 /* ------------------------------------------------------------------ topics */
 
 export const TEAM_TOPIC_PROJECTS = "projects";
-export const TEAM_TOPIC_MEMBERS = "members";
 
 /** One project's row, or what the server has read out of its repository. */
 export function teamProjectTopic(projectId: string): string {
@@ -157,6 +188,44 @@ export function teamLiveTopic(sessionId: string): string {
     return `live:${sessionId}`;
 }
 
+/**
+ * The four topics a management surface listens on.
+ *
+ * **Named outright rather than built, and that is the shape of the thing rather than a
+ * shortcut.** Every topic above is a function because it addresses one project or one live
+ * session, and the id has to go into the string. These address the server, of which a
+ * session has exactly one, so a builder for them would take no argument - a constant
+ * wearing brackets, and one more thing for a caller to get wrong.
+ *
+ * All four are refused to anybody who is not an operator, which no other topic on this
+ * server is: the rest are about projects, and every account reaches every project. Studio
+ * subscribes to none of them yet.
+ */
+
+/** An account was made, disabled, enabled, given or denied administration, or had its tokens refused. */
+export const TEAM_TOPIC_ADMIN_USERS = "admin/users";
+
+/** A setting of this server changed. */
+export const TEAM_TOPIC_ADMIN_SETTINGS = "admin/settings";
+
+/** This server rotated its signing keys. */
+export const TEAM_TOPIC_ADMIN_KEYS = "admin/keys";
+
+/**
+ * A decision this server was asked to make was **refused**.
+ *
+ * Named for what it publishes rather than for a collection, which is the design rather
+ * than a shortening: a decision is recorded on the path that answers every repository
+ * access, so a topic firing per decision would push more frames than the rest of this
+ * protocol together, to tell a panel something it could only act on by re-reading a page
+ * it already holds.
+ *
+ * Said plainly so that nobody reads this as a list-changed topic with events missing: **an
+ * allowed decision is published nowhere**, and the sequence here counts refusals rather
+ * than rows. Anything wanting the whole log pages `admin.audit.list` instead.
+ */
+export const TEAM_TOPIC_ADMIN_REFUSALS = "admin/refusals";
+
 /* ------------------------------------------------------------------ limits */
 
 /** The most one anchor field the server stores may be. */
@@ -176,6 +245,26 @@ export const TEAM_LIVE_PAYLOAD_LIMIT = 16 * 1024;
 
 /** The most any single field describing an installation may be. */
 export const TEAM_INSTANCE_FIELD_LIMIT = 256;
+
+/**
+ * The most a server sends in one answer, and so the least this build's reader may hold.
+ *
+ * **The only limit here that bounds what arrives rather than what is sent**, and the
+ * distinction is worth stating because getting it the wrong way round ends sessions.
+ * Everything above bounds one field Studio writes; this bounds the whole of what comes
+ * back, which is a page of rows rather than one of them - so it is far larger than the
+ * largest thing this side ever sends, and a transport ceiling set from one of the others
+ * refuses ordinary answers.
+ *
+ * Taken from the contract rather than reasoned out here, so that a deployment which
+ * raises what it composes cannot leave this client refusing what that deployment sends.
+ *
+ * The contract states one more figure beside it - what the rows on a single page may
+ * weigh - which is how a server decides where to end a page. Nothing on this side
+ * composes one, so it has no constant here; what a reader needs is the cursor or the
+ * count that comes back with a page that was cut.
+ */
+export const TEAM_ANSWER_BYTES_LIMIT = 2 * 1024 * 1024;
 
 /* ----------------------------------------------------------------- anchors */
 
@@ -336,7 +425,40 @@ export interface TeamLiveSession {
     openedAt: number;
     /** Who is in it now. Never empty: the last one out closes it. */
     members: TeamLiveMember[];
+    /**
+     * How somebody gets into it.
+     *
+     * Absent from a room opened against a deployment older than the rule, which
+     * behaves as `open` and always did - so a reader that treats "nothing said" as
+     * `open` is reading it correctly rather than guessing.
+     */
+    rule?: TeamLiveJoinRule;
 }
+
+/**
+ * How a room may be joined.
+ *
+ * ⚠ **The four digits are not here and must never be put here.** A room record is
+ * broadcast on the project's topic, which everybody on the project is watching, and a
+ * passcode broadcast to everybody has said nothing. The server answers it to the window
+ * that opened the room and to nobody else.
+ *
+ * **Two questions, not one**: whether the room can be found, and whether a person decides
+ * who comes in. The three rules are three of the four corners.
+ *
+ *  - `open` - on the project's list, joinable by anybody who can see it.
+ *  - `code` - not on that list for anybody who is not already in it, and joined by the
+ *    digits minted when it opened. **The server enforces both halves**: a list that
+ *    carried the room would be a rule one client build keeps, and an id that was enough
+ *    to join by would be a rule about listings rather than about joining.
+ *  - `request` - on the list like `open`, and joined only once whoever opened it has said
+ *    yes. Walking in with the id is refused, for the same reason.
+ *
+ * The fourth corner - a code and an answer - is deliberately not offered: a code is
+ * already a door, and a second one asks the host to decide something they know nothing
+ * more about than the code did.
+ */
+export type TeamLiveJoinRule = "open" | "code" | "request";
 
 export interface TeamLiveMember {
     instance: string;
@@ -349,7 +471,24 @@ export interface TeamLiveMember {
 export type TeamLiveEvent =
     | { kind: "live-opened"; session: TeamLiveSession }
     | { kind: "live-changed"; session: TeamLiveSession }
-    | { kind: "live-closed"; session: string };
+    | { kind: "live-closed"; session: string }
+    /**
+     * Somebody wants into a `request` room. For whoever opened it, and for nobody else.
+     *
+     * ⚠ **On the project's topic rather than the room's**, because the person who asked is
+     * not in the room and has nothing else to listen to. So every window on the project
+     * sees it and all but one must ignore it - which is consistent with a deployment where
+     * every account already reaches every project.
+     */
+    | { kind: "live-requested"; session: string; member: TeamLiveMember }
+    /**
+     * A request that was answered no.
+     *
+     * Being let in has no event of its own: it is a change to the roster, and `live-changed`
+     * already says that - so a window that asked learns it is in by finding itself in the
+     * members.
+     */
+    | { kind: "live-refused"; session: string; instance: string };
 
 /**
  * One thing said inside a live session, as it arrives on that session's topic.
@@ -415,6 +554,9 @@ export type TeamOverlayEvent =
 export const TeamMethod = {
     projectsList: "projects.list",
     projectsGet: "projects.get",
+    projectsHistory: "projects.history",
+    projectsCreate: "projects.create",
+    projectsForget: "projects.forget",
     membersList: "members.list",
     threadsList: "threads.list",
     threadsGet: "threads.get",
@@ -431,10 +573,43 @@ export const TeamMethod = {
     liveJoin: "live.join",
     liveLeave: "live.leave",
     liveClose: "live.close",
+    liveRule: "live.rule",
+    /**
+     * Which room a passcode names, without joining it.
+     *
+     * **The one live method that does not need this window to have the project open.**
+     * Somebody was read four digits and may never have had the project; what they need
+     * first is which project it is, so they can go and get it. Answering that is what
+     * stops the one way in that needs no list from needing a list after all.
+     */
+    liveByCode: "live.byCode",
+    /** Ask to be let into a room that is joined by asking. */
+    liveRequestJoin: "live.requestJoin",
+    /** Answer somebody who asked, which only the room's opener may do. */
+    liveAnswerJoin: "live.answerJoin",
     liveSay: "live.say",
     overlayList: "overlay.list",
     overlayPut: "overlay.put",
     overlayDrop: "overlay.drop",
+    // Managing the server itself: its accounts, its settings, its signing keys, its
+    // decisions and its health. Announced by the `admin` capability and refused to anybody
+    // who is not an operator. Named here because the contract names them and this list is
+    // the whole of it; Studio calls none of them.
+    adminUsersList: "admin.users.list",
+    adminUsersCreate: "admin.users.create",
+    adminUsersDisable: "admin.users.disable",
+    adminUsersEnable: "admin.users.enable",
+    adminUsersGrantAdmin: "admin.users.grantAdmin",
+    adminUsersRevokeAdmin: "admin.users.revokeAdmin",
+    adminUsersRevokeTokens: "admin.users.revokeTokens",
+    adminTokensMint: "admin.tokens.mint",
+    adminSettingsList: "admin.settings.list",
+    adminSettingsSet: "admin.settings.set",
+    adminKeysList: "admin.keys.list",
+    adminKeysRotate: "admin.keys.rotate",
+    adminKeysRetire: "admin.keys.retire",
+    adminAuditList: "admin.audit.list",
+    adminServerStatus: "admin.server.status",
 } as const;
 
 /**

@@ -23,6 +23,14 @@ export const storyVars = {
         defaultPlaceholder: "default",
         defaultAria: "Default value",
         delete: "Delete variable",
+        // Off in the sessions that cannot carry a removal - the ordinary one can. States what is
+        // the case and what to do about it, and nothing about which documents are involved.
+        deleteInSession: "Unavailable in this live session. Leave the session to remove this variable.",
+    },
+    live: {
+        // On the mark an entry wears while somebody else has it open. A person is named: there is
+        // no width for a name beside the monogram, and a truncated one names nobody.
+        entryClaimed: "{name} is editing this variable",
     },
     scene: {
         title: "Scene variables",

@@ -7,7 +7,7 @@ export const settings = {
     noResults: "没有匹配的设置",
     empty: "暂无可用设置",
     noneExposed: "该分区没有可配置的设置",
-    invalidValue: "请输入有效的值",
+    invalidValue: "输入有效的值",
     persistFailed: "保存设置失败",
     resetToDefault: "恢复默认值",
     customColor: "自定义颜色…",
@@ -24,8 +24,8 @@ export const settings = {
         sample: "AaBb 字体",
         noMatches: "没有匹配的字体",
         loading: "正在读取本机已安装的字体…",
-        unavailable: "当前版本无法列出本机字体，上面的预设仍然可用",
-        denied: "Studio 无法读取本机已安装的字体；请将此窗口切换到前台，然后重新展开列表",
+        unavailable: "当前版本不支持枚举系统字体，可使用预设字体",
+        denied: "无法读取系统字体。将窗口置于前台后重试",
         failed: "读取本机字体失败：{message}",
         notInstalled: "未安装",
     },
@@ -48,7 +48,7 @@ export const settings = {
         },
         performance: {
             label: "性能",
-            description: "Studio 占用本机多少资源，以及你要等多久",
+            description: "Studio 的本机资源占用与等待策略",
         },
         shortcuts: {
             label: "快捷键",
@@ -56,7 +56,7 @@ export const settings = {
         },
         versionControl: {
             label: "版本控制",
-            description: "提交版本的记录频率，以及记在上面的身份",
+            description: "提交版本的记录频率，以及版本记录所用的署名",
         },
         servers: {
             // 产品名，且写全：单写 Team 会被读成没翻译的英文单词。
@@ -67,11 +67,11 @@ export const settings = {
         },
         network: {
             label: "网络",
-            description: "Studio 从哪里下载插件、模板与构建工具",
+            description: "Studio 下载插件、模板与构建工具的来源",
         },
         data: {
             label: "数据",
-            description: "缓存文件、还原偏好设置，以及在设备之间搬运它们",
+            description: "缓存文件、还原偏好设置，以及在设备之间迁移",
         },
     },
     items: {
@@ -85,14 +85,14 @@ export const settings = {
         },
         screenEffectThreads: {
             label: "屏幕效果的线程数",
-            description: "编码器运行时用多少个线程画帧。自动会读取本机情况",
+            description: "编码器运行时用多少个线程画帧。自动模式根据本机配置选择",
             options: {
                 auto: "自动",
             },
         },
         screenEffectQuality: {
             label: "开发模式中的屏幕效果",
-            description: "预览与构建只认最终画质，所以选草稿的工程每条特效会烘两次：现在一次，第一次运行时再一次",
+            description: "预览与构建仅使用最终画质。选择草稿时，每条特效烘焙两次：立即一次，首次运行时再一次",
             options: {
                 draft: "草稿",
                 final: "最终画质",
@@ -100,7 +100,7 @@ export const settings = {
         },
         confirmQuit: {
             label: "在使用 ⌘Q 退出时二次确认",
-            description: "连按两次 ⌘Q 才会退出，按一次不退出",
+            description: "需连按两次 ⌘Q 退出",
         },
         themeMode: {
             label: "主题",
@@ -137,7 +137,7 @@ export const settings = {
         },
         tooltipDelay: {
             label: "提示延迟",
-            description: "指针停在控件上多久后出现提示。在同一个工具栏内，只有第一条提示需要等待",
+            description: "指针悬停后显示提示的延迟。同一工具栏内仅首条提示需要等待",
         },
         reduceMotion: {
             label: "减少动效",
@@ -208,9 +208,9 @@ export const settings = {
         spellcheckLanguage: {
             label: "拼写检查语言",
             description: "在故事正文中标出拼写错误。译文一律不检查",
-            noDictionary: "尚未安装本工程所用语言的拼写词典。",
+            noDictionary: "尚未安装本项目所用语言的拼写词典。",
             options: {
-                followProject: "跟随工程语言",
+                followProject: "跟随项目语言",
                 off: "不检查拼写",
             },
         },
@@ -228,11 +228,11 @@ export const settings = {
         },
         editorSoftWrap: {
             label: "长行自动换行",
-            description: "内建文本编辑器不再横向滚动，而是把长行折下来",
+            description: "内建文本编辑器将长行自动换行，而非横向滚动",
         },
         recentProjectsLimit: {
             label: "保留的最近项目数",
-            description: "主页和「打开最近的项目」菜单各保留多少个",
+            description: "主页与「打开最近的项目」菜单各自保留的条数",
         },
         electronMirror: {
             label: "Electron 下载镜像",
@@ -242,40 +242,44 @@ export const settings = {
             label: "构建工具下载镜像",
             description: "构建时下载安装器工具（NSIS、AppImage、代码签名辅助程序）所用的镜像地址",
         },
+        zigMirror: {
+            label: "编译工具链下载镜像",
+            description: "构建时下载编译工具链所用的镜像地址",
+        },
         downloadRewrites: {
             label: "下载地址替换",
         },
         pluginRegistryUrl: {
             label: "插件注册表地址",
-            description: "插件商店从哪里取索引",
+            description: "插件商店索引的来源地址",
         },
         uiTemplateRegistryUrl: {
             label: "界面模板注册表地址",
-            description: "模板商店从哪里取索引",
+            description: "模板商店索引的来源地址",
         },
         checkpointInterval: {
             label: "自动检查点间隔",
-            description: "间隔多久记录一个检查点，只在确实有改动时记录；填 0 则关闭",
+            description: "相邻检查点的时间间隔，仅在确有改动时记录；设为 0 表示关闭",
         },
         checkpointOnClose: {
             label: "关闭工作区时记录检查点",
-            description: "关窗时记录一次，与上面的间隔各自独立",
+            description: "关闭窗口时记录一次，与上述间隔相互独立",
         },
         quitCheckpointTimeout: {
             label: "退出时记录检查点的时限",
-            description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；填 0 则退出时不记录",
+            description: "退出时为所有打开的项目记录检查点，超出该时限的项目不记录；设为 0 则退出时不记录",
         },
         projectDefaultAuthor: {
-            label: "新建工程的默认作者",
-            description: "创建工程时预填作者一栏，已有工程保持原样",
+            label: "新建项目的默认作者",
+            description: "创建项目时预填作者，已有项目保持不变",
         },
         versionControlAuthor: {
             label: "作者名",
-            description: "在未连接服务器的项目上记录，留空则记为 NarraLeaf Studio",
+            description: "在未连接服务器的项目上记录，为空时记为 NarraLeaf Studio",
         },
         versionControlAuthorEmail: {
             label: "作者邮箱",
-            description: "在未连接服务器的项目上与作者名一起记录，形如「作者名 <邮箱>」，留空则不记录地址",
+            description: "在未连接服务器的项目上与作者名一起记录，形如「作者名 <邮箱>」，为空时不记录邮箱地址",
         },
         confirmBeforeClose: {
             label: "关闭工作区时弹出提示",
@@ -284,6 +288,10 @@ export const settings = {
         reopenLastProject: {
             label: "启动时打开上次的项目",
             description: "打开上次所在的项目，而不是停在启动器",
+        },
+        maximizeOnOpen: {
+            label: "工作区以最大化打开",
+            description: "工作区窗口打开时铺满屏幕；在窗口内切换项目时，保留原窗口的位置和大小",
         },
         dashboardOnOpen: {
             label: "默认显示项目仪表盘",
@@ -322,7 +330,7 @@ export const settings = {
         },
         teamMachineLabel: {
             label: "本机名称",
-            description: "会与你的账号一同显示给协作者。留空则使用主机名",
+            description: "会与账号一同显示给协作者。为空时使用主机名",
         },
         cacheInventory: {
             label: "缓存文件",
@@ -332,13 +340,13 @@ export const settings = {
         },
         resetWorkspaceLayout: {
             label: "还原工作区布局",
-            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态；工程内容不受影响",
+            description: "把面板、侧栏和已打开的编辑器标签恢复为初始状态；项目内容不受影响",
             action: "还原",
             confirm: "还原布局",
         },
         resetAllPreferences: {
             label: "还原所有设置",
-            description: "把所有设置恢复为默认值；工程、工程历史和统计数据不受影响",
+            description: "把所有设置恢复为默认值；项目、项目历史和统计数据不受影响",
             action: "还原",
             confirm: "全部还原",
         },
@@ -352,7 +360,7 @@ export const settings = {
         download: "下载",
         update: "更新",
         downloading: "正在下载…",
-        failed: "无法获取词典列表。请检查设置中的网络策略。",
+        failed: "无法获取词典列表。检查设置中的网络策略。",
         installed: {
             title: "已安装",
             emptyTitle: "尚未安装词典",
@@ -397,7 +405,7 @@ export const settings = {
         },
         probe: {
             unreachable: "该地址没有响应",
-            notAServer: "该地址有响应，但它不是 NarraLeaf Team 服务器",
+            notAServer: "该地址有响应，但不是 NarraLeaf Team 服务器",
             untrusted: "该地址的服务器未被信任",
             failed: "无法检查该地址",
         },
@@ -429,6 +437,14 @@ export const settings = {
                     label: "插件构建文件",
                     description: "插件为打包进游戏而下载的压缩包",
                 },
+                toolchains: {
+                    label: "编译工具链",
+                    description: "构建时下载的编译器，下次需要时会重新下载",
+                },
+                puppetRuntimes: {
+                    label: "模型运行时源文件",
+                    description: "构建角色模型运行时解压的 SDK 包，下次构建时会重新解压",
+                },
                 browser: {
                     label: "界面缓存",
                     description: "界面为加快下次启动而保留的数据",
@@ -443,11 +459,15 @@ export const settings = {
                 },
                 spellcheckDictionaries: {
                     label: "拼写词典",
-                    description: "为拼写检查下载的词表。工程自己的词条不在这里",
+                    description: "为拼写检查下载的词表。项目自身的词条不在此处",
                 },
                 optimizedImages: {
                     label: "构建优化图像",
                     description: "构建时重新编码的图像。下次构建会重新生成",
+                },
+                compressedMedia: {
+                    label: "构建重编码音视频",
+                    description: "构建时重新编码的音频与视频。下次构建会重新生成",
                 },
                 psdImports: {
                     label: "PSD 导入残留",
@@ -464,13 +484,13 @@ export const settings = {
         export: "导出…",
         import: "导入…",
         apply: "应用",
-        exportHint: "把设置写入一份纯 JSON 文件；工作区背景图、提交版本上的署名、最近项目、统计数据和窗口布局仅保留在本机",
+        exportHint: "将设置写入一个纯 JSON 文件；工作区背景图、提交版本的署名、最近项目、统计数据与窗口布局仅保留在本机",
         exported: "已保存到 {path}",
         imported: "已应用 {count} 项设置",
         exportFailed: "设置保存失败",
         importFailed: "无法读取该文件",
         planSummary: "{change} 项将变更，{same} 项已相同，{skipped} 项跳过",
-        skippedUnknown: "{key}：当前版本的 Studio 没有这项设置",
+        skippedUnknown: "{key}：当前版本的 Studio 不支持此设置",
         skippedInvalid: "{key}：{reason}",
     },
     network: {
@@ -480,7 +500,7 @@ export const settings = {
         probeNoAnswer: "没有响应：{error}",
         probeFailed: "检查未能执行",
         rewrites: {
-            hint: "部分下载地址来自目录文件而不是上述设置，例如插件的安装包；此处的规则替换这类地址的开头部分",
+            hint: "部分下载地址来自目录文件而非上述设置，例如插件的安装包；此处的规则替换这类地址的开头部分",
             empty: "没有替换规则，下载使用地址原文",
             add: "添加规则",
             remove: "删除该规则",

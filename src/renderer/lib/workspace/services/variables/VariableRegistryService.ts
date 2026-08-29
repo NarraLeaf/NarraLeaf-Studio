@@ -2,6 +2,7 @@ import { encodeCanonicalJson } from "@shared/documents/canonicalJson";
 import { loadDocument, saveDocument, type DocumentStorage } from "@shared/documents/documentIo";
 import { variableRegistrySpec } from "@shared/documents/specs";
 import type { DocumentCorruptError } from "@shared/documents/types";
+import type { LiveVariableOp } from "@shared/live/ops";
 import { RendererError } from "@shared/utils/error";
 import type { StoryLiteralValue, StoryVariableValueType } from "@shared/types/story/document";
 import {
@@ -13,7 +14,6 @@ import {
     createEmptyVariableRegistry,
     listRegistryEntries,
     normalizePersistentValueType,
-    seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
@@ -26,11 +26,46 @@ import { UuidService } from "../core/UuidService";
 import { StoryService } from "../story/StoryService";
 import { UIGraphService } from "../ui-editor/UIGraphService";
 import { EventEmitter } from "../ui/EventEmitter";
-import { migrateProjectScopedDeclarations } from "./storyDeclarationMigration";
 
 type VariableRegistryServiceEvents = {
     registryChanged: VariableRegistry;
     dirtyChanged: boolean;
+};
+
+/**
+ * Somewhere a registry edit can go instead of into the registry.
+ *
+ * **The seam a live session hangs the variable registry off, and the reason the variables panel needs
+ * no live-session code.** The shape is `StoryOpSink`'s and `LocalizationOpSink`'s, and the bargain is
+ * the same: with a sink installed an edit becomes an operation and the document is not touched; the
+ * row moves when the operation comes back as somebody's effect and {@link
+ * VariableRegistryService.applyLiveOp} applies it. Nothing is applied optimistically, so nothing ever
+ * has to be taken back.
+ *
+ * ⚠ **What it is handed is the entry as it WOULD have been written, never the field that changed.**
+ * A patch states an intention and every receiving machine would have to resolve it against its own
+ * copy - and the panel's own retype gesture rewrites the value type and the default together, so a
+ * field-level statement would carry half of one act.
+ */
+export type VariableOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the registry must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveVariableOp): boolean;
+    /**
+     * Whether a deletion can travel in this session.
+     *
+     * **Not the same question as `handle`, and it has to be asked before anything is written.**
+     * Removing a variable also clears the params of every `Get`/`Set` node that named it, which is a
+     * write to `editor/ui/uigraphs.json`. A session that carries the blueprint document derives that
+     * sweep on every machine from the one effect; a session that does not carry it would leave the
+     * entry gone here and the nodes gone here and neither anywhere else. So the sink answers, and
+     * the panel's control follows the answer.
+     */
+    canDelete(): boolean;
 };
 
 /**
@@ -82,6 +117,8 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      * live object in place: a kept reference would compare equal to every later state of it.
      */
     private savedContentKey: string | null = null;
+    /** Where registry edits go instead of into the registry, when something else owns them. */
+    private opSink: VariableOpSink | null = null;
     private dirty = false;
     private revision = 0;
     private lastSavedRevision = 0;
@@ -103,35 +140,6 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         await this.load();
     }
 
-    /**
-     * Convert the `/save` and `/global` declaration rows of a pre-retirement project into registry
-     * entries. See {@link migrateProjectScopedDeclarations} for what the pass does and why it has no
-     * "already ran" flag.
-     *
-     * **Why here and not in a service of its own.** The pass has exactly one owner: it writes this
-     * registry, its whole correctness argument is about this registry's write path (a refused save
-     * must leave the rows standing), and it holds no state between runs. A dedicated service would
-     * add a lifecycle for something that runs once and would then have to be ordered against both
-     * this service and `StoryService` - the ordering problem `activate` exists to remove.
-     *
-     * **Why `activate` and not `init`.** Every service's `init` has completed by the time any
-     * `activate` runs (`WorkspaceContext`), and the UI has not rendered yet. So `StoryService` is
-     * guaranteed up without this service declaring a dependency on it, and no panel can read a
-     * half-converted project.
-     *
-     * Failures are warned and swallowed: `activate` is awaited before the workspace renders, so a
-     * throw here would turn "a variable did not move" into "the project will not open". Nothing was
-     * recorded as done, so the next open tries again.
-     */
-    public async activate(ctx: WorkspaceContext): Promise<void> {
-        try {
-            const storyService = ctx.services.get<StoryService>(Services.Story);
-            await migrateProjectScopedDeclarations(storyService, this);
-        } catch (error) {
-            console.warn("[VariableRegistryService] declaration migration failed", error);
-        }
-    }
-
     public async load(): Promise<VariableRegistry> {
         const result = await loadDocument(variableRegistrySpec, this.storage(), variableRegistrySpec.pathFor());
         // Cleared before the branch, not inside it. These services are singletons that re-init on a
@@ -145,9 +153,9 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
         this.savedContentKey = null;
 
         if (result.status === "missing") {
-            // The registry is created on first open rather than lazily, so a project that predates
-            // M-VAR gets its blueprint persistent variables seeded once and visibly.
-            await this.save(this.createSeededRegistry());
+            // Created on first open rather than lazily, so `editor/variables.json` exists from the
+            // start and a project's first variable is an edit to a file rather than a new one.
+            await this.save(createEmptyVariableRegistry(new Date().toISOString()));
             return this.getRegistry();
         }
 
@@ -308,6 +316,13 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
             ...(input?.defaultValue !== undefined ? { defaultValue: input.defaultValue } : {}),
             ...(input?.description?.trim() ? { description: input.description.trim() } : {}),
         };
+        if (this.opSink?.handle({ op: "create-variable", entry })) {
+            // ⚠ The entry is returned but is NOT in the registry: it arrives when the effect does.
+            // A caller that goes on to edit what it was handed - `createEntry(...)` then a setter -
+            // would be writing to an object nobody holds, exactly as creating a character inside a
+            // session is. Every caller here states the whole entry up front for that reason.
+            return entry;
+        }
         this.applyRegistryMutation(registry => {
             registry.entries[entry.id] = entry;
         });
@@ -315,71 +330,257 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
     }
 
     public renameEntry(id: string, name: string): void {
+        const entry = this.getEntry(id);
+        const next = name.trim();
+        // Nothing is stated for a name the registry is about to refuse: an emptied box leaves the
+        // entry exactly as it was, and an operation saying so would be an effect for a change nobody
+        // made. The fall-through still emits, which is what re-renders the controlled input.
+        if (entry && next.length > 0 && this.stated({ ...entry, name: next })) {
+            return;
+        }
         this.applyRegistryMutation(registry => {
-            const entry = registry.entries[id];
-            if (!entry) {
+            const target = registry.entries[id];
+            if (!target) {
                 return;
             }
-            const next = name.trim();
-            entry.name = next.length > 0 ? next : entry.name;
+            target.name = next.length > 0 ? next : target.name;
         });
     }
 
-    public setEntryValueType(id: string, valueType: StoryVariableValueType): void {
-        this.applyRegistryMutation(registry => {
-            const entry = registry.entries[id];
-            if (!entry) {
+    /**
+     * Retype a variable, and give it the starting value that type calls for.
+     *
+     * ⚠ **Both fields in ONE call, and that is not a convenience.** Retyping is one gesture in the
+     * panel and the two fields hold each other up - a boolean's default is `false`, a number's is 0 -
+     * so stating them apart is stating half an act twice. Inside a live session the two halves would
+     * be two operations, and the second is built from a document the first has not been allowed to
+     * change: it would carry the OLD value type and undo the retype on every machine in the room.
+     * Outside one it merely cost the author two presses of undo for one decision.
+     *
+     * `defaultValue` omitted leaves the default alone, which is what a caller that is only changing
+     * the type means.
+     */
+    public setEntryValueType(
+        id: string,
+        valueType: StoryVariableValueType,
+        defaultValue?: StoryLiteralValue,
+    ): void {
+        const entry = this.getEntry(id);
+        if (entry) {
+            const next: VariableRegistryEntry = defaultValue === undefined
+                ? { ...entry, valueType }
+                : { ...entry, valueType, defaultValue };
+            if (this.stated(next)) {
                 return;
             }
-            entry.valueType = valueType;
+        }
+        this.applyRegistryMutation(registry => {
+            const target = registry.entries[id];
+            if (!target) {
+                return;
+            }
+            target.valueType = valueType;
+            if (defaultValue !== undefined) {
+                target.defaultValue = defaultValue;
+            }
         });
     }
 
     public setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void {
+        const entry = this.getEntry(id);
+        if (entry) {
+            // Built the way the mutation below writes it: clearing removes the key rather than
+            // assigning `undefined`, which the canonical encoder refuses by name - and an operation
+            // carrying such a property would be an entry no receiving machine could save.
+            const { defaultValue: _cleared, ...rest } = entry;
+            const next: VariableRegistryEntry = defaultValue === undefined
+                ? rest
+                : { ...entry, defaultValue };
+            if (this.stated(next)) {
+                return;
+            }
+        }
         this.applyRegistryMutation(registry => {
-            const entry = registry.entries[id];
-            if (!entry) {
+            const target = registry.entries[id];
+            if (!target) {
                 return;
             }
             // Clearing a default has to remove the key, the way `setEntryDescription` removes a
             // description. Assigning `undefined` leaves a property the canonical encoder rejects,
             // so the variable the author just cleared would be the one that stops the file saving.
             if (defaultValue === undefined) {
-                delete entry.defaultValue;
+                delete target.defaultValue;
                 return;
             }
-            entry.defaultValue = defaultValue;
+            target.defaultValue = defaultValue;
         });
     }
 
     public setEntryDescription(id: string, description: string | undefined): void {
+        const entry = this.getEntry(id);
+        if (entry) {
+            const trimmed = description?.trim();
+            const { description: _cleared, ...rest } = entry;
+            const next: VariableRegistryEntry = trimmed ? { ...entry, description: trimmed } : rest;
+            if (this.stated(next)) {
+                return;
+            }
+        }
         this.applyRegistryMutation(registry => {
-            const entry = registry.entries[id];
-            if (!entry) {
+            const target = registry.entries[id];
+            if (!target) {
                 return;
             }
             const next = description?.trim();
             if (next) {
-                entry.description = next;
+                target.description = next;
             } else {
-                delete entry.description;
+                delete target.description;
             }
         });
     }
 
-    public deleteEntry(id: string): void {
+    /**
+     * Whether a variable can be removed right now.
+     *
+     * **True in a session that carries the blueprint document, and that is the whole of the change
+     * from when it was false throughout one.** Removing a variable does not only take the entry:
+     * every `Get`/`Set` node that named it has its `savedVariableId` / `persistentVariableId` param
+     * cleared, and that is a write to `editor/ui/uigraphs.json`. While a session did not carry that
+     * document the gesture had nowhere to go and was refused here - for the reason `AssetsService`
+     * refuses an import, since `editor/variables.json` IS writable during a session and a deletion
+     * reaching the write boundary would have been allowed and landed on one machine only.
+     *
+     * The session carries it now, so the sweep is DERIVED: the effect says "this variable is gone",
+     * and every machine works out the same nodes from the same registry and the same blueprints.
+     * What is still asked is whether THIS session carries them - a window that could not read the
+     * two interface documents carries neither, and there the old answer is still the right one.
+     */
+    public canDeleteEntry(): boolean {
+        return this.opSink === null || this.opSink.canDelete();
+    }
+
+    /**
+     * Whether a live session owns this registry's edits.
+     *
+     * What a caller has to ask before doing anything ALONGSIDE a deletion. The node sweep is derived
+     * from the effect, so performing it here as well would be a second write for work the effect
+     * already implies - and, on a host, a second message.
+     */
+    public isShared(): boolean {
+        return this.opSink !== null;
+    }
+
+    /** Remove one entry. False when nothing can carry the sweep - see {@link canDeleteEntry}. */
+    public deleteEntry(id: string): boolean {
+        if (!this.canDeleteEntry()) {
+            return false;
+        }
+        if (this.opSink?.handle({ op: "delete-variable", variableId: id }) === true) {
+            // Stated rather than written, with every other mutator here: the row leaves the panel
+            // when the effect comes back, and the blueprint nodes are swept by the applier that
+            // takes it - on this machine and on every other, from the same statement.
+            return true;
+        }
         this.applyRegistryMutation(registry => {
             delete registry.entries[id];
         });
+        return true;
     }
 
-    /** Replace the whole registry (blueprint history restore). Sets + emits without touching history. */
-    public replaceRegistry(registry: VariableRegistry): void {
+    /**
+     * Replace the whole registry (blueprint history restore). Sets + emits without touching history.
+     *
+     * ⚠ **Refused while a live session owns the registry**, and for the reason undo inside a session
+     * is an inverse operation rather than a snapshot: putting a whole registry back would overwrite
+     * every entry everybody else has edited since, on this machine alone, with nothing anywhere
+     * reporting it. False says the restore did not happen.
+     */
+    public replaceRegistry(registry: VariableRegistry): boolean {
+        if (this.opSink !== null) {
+            return false;
+        }
         this.registry = registry;
         this.revision += 1;
         this.setDirty(true);
         this.scheduleAutoSave();
         this.events.emit("registryChanged", registry);
+        return true;
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send registry edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: VariableOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * Whether this window holds a readable registry.
+     *
+     * What decides whether a session carries this document at all. False after an unreadable read:
+     * the in-memory registry is then an empty stand-in for a file nobody could parse, and applying
+     * operations to it would build a registry that has nothing to do with what is on disk - which
+     * {@link save} would then refuse to write, leaving this machine's copy of a shared document
+     * permanently apart from everybody else's.
+     */
+    public isReadable(): boolean {
+        return this.unreadable === null && this.registry !== null;
+    }
+
+    /**
+     * Apply one operation to the registry, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the panel is
+     * finally allowed to move.
+     *
+     * ⚠ An update naming an entry that is not here is a no-op rather than a throw, for the reason
+     * the localization applier tolerates a language it does not hold: an applier runs inside reading
+     * a message, and one that threw would take the session down over one row. The divergence guard is
+     * what catches it instead, on this very effect - a missing entry has a digest of its own.
+     */
+    public applyLiveOp(op: LiveVariableOp): void {
+        switch (op.op) {
+            case "create-variable":
+                this.applyRegistryMutation(registry => {
+                    registry.entries[op.entry.id] = { ...op.entry };
+                });
+                return;
+            case "update-variable":
+                this.applyRegistryMutation(registry => {
+                    if (!registry.entries[op.variableId]) {
+                        return;
+                    }
+                    registry.entries[op.variableId] = { ...op.entry };
+                });
+                return;
+            case "delete-variable":
+                // ⚠ **The node-ref sweep is not here, and its absence is deliberate.** It is a write
+                // to the blueprint document, which this service does not own; the caller performs it
+                // around this call and reports which blueprints it touched, so that derived work
+                // reaches the effect's digests. See `LiveSessionService.applyVariableOp`.
+                this.applyRegistryMutation(registry => {
+                    delete registry.entries[op.variableId];
+                });
+                return;
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on every
+                // other machine in the room and not on this one, and nothing says so until a digest
+                // disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live variable operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /**
+     * Hand one entry to the sink, as it would have been written. True means a session took it.
+     *
+     * The one place an `update-variable` is stated, so that every mutator states the same thing about
+     * the same document and none of them can come to send a patch instead.
+     */
+    private stated(next: VariableRegistryEntry): boolean {
+        return this.opSink?.handle({ op: "update-variable", variableId: next.id, entry: next }) === true;
     }
 
     private scheduleAutoSave(): void {
@@ -399,16 +600,6 @@ export class VariableRegistryService extends Service<VariableRegistryService> im
      * persistent variables (the field being relocated). Once the field is stripped, this seed reads
      * the stripped-and-stashed legacy entries the UIGraphService migration hands over.
      */
-    private createSeededRegistry(): VariableRegistry {
-        const now = new Date().toISOString();
-        const uiGraphService = this.getContext().services.get<UIGraphService>(Services.UIGraph);
-        const legacy = uiGraphService.consumeLegacyPersistentVariables();
-        const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy ?? undefined);
-        const registry = createEmptyVariableRegistry(now);
-        registry.entries = entries;
-        return registry;
-    }
-
     private storage(): DocumentStorage {
         return createProjectDocumentStorage(this.getContext());
     }

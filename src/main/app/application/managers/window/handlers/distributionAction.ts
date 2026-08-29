@@ -1,4 +1,4 @@
-import { createProjectMaterial } from "@narraleaf/encryption";
+import { createProjectToken } from "@narraleaf/bindings";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
 import { AppWindow } from "../appWindow";
@@ -22,6 +22,6 @@ export class DistributionCreateKeyHandler extends IPCHandler<IPCEventType.distri
     public async handle(
         _window: AppWindow,
     ): Promise<RequestStatus<IPCEvents[IPCEventType.distributionCreateKey]["response"]>> {
-        return this.tryUse(async () => ({ key: createProjectMaterial() }));
+        return this.tryUse(async () => ({ key: createProjectToken() }));
     }
 }

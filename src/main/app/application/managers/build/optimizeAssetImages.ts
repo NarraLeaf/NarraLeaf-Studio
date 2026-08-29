@@ -1,9 +1,14 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
-import { planAssetImageTranscode, assetImageWorthKeeping } from "@shared/utils/assetImageOptimization";
+import { resolveImageCompression, type AssetCompressionConfiguration } from "@shared/types/assetCompression";
+import {
+    planAssetImageTranscode,
+    assetImageWorthKeeping,
+    type AssetImageTranscodePlan,
+} from "@shared/utils/assetImageOptimization";
 import { readImageDimensions } from "@shared/utils/imageDimensions";
+import { stripImageMetadata } from "@shared/utils/assetImageMetadata";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { characterAvatarAssetId } from "@shared/utils/characterAvatar";
 import type { WebImageCodec, WebImageSourceType } from "./webImageCodec";
@@ -31,10 +36,18 @@ import type { WebImageCodec, WebImageSourceType } from "./webImageCodec";
 
 /** What a compile should copy for one asset, in place of the file in the project. */
 export type OptimizedAssetImage = {
-    /** Absolute path to the re-encoded bytes, in the cache. */
+    /** Absolute path to the replacement bytes, in the cache. */
     path: string;
-    ext: "webp";
-    mimeType: "image/webp";
+    /**
+     * Absent when the replacement is the same format as the source.
+     *
+     * An image that was only stripped of its metadata is still the file it was -
+     * a PNG with its EXIF gone is a PNG - so it ships under the extension and
+     * media type the manifest already states, and saying nothing here is how the
+     * compiler is told to keep them.
+     */
+    ext?: "webp";
+    mimeType?: "image/webp";
 };
 
 export type AssetImageOptimizationResult = {
@@ -49,6 +62,13 @@ export type AssetImageOptimizationResult = {
     /** Total size of the converted images before, and after. */
     beforeBytes: number;
     afterBytes: number;
+    /** Images that were not re-encoded but did carry metadata worth removing. */
+    stripped: number;
+    /**
+     * Bytes {@link stripped} saved. A converted image's saving is already in
+     * {@link afterBytes}, so counting it here too would report it twice.
+     */
+    metadataBytes: number;
 };
 
 export type AssetImageOptimizationLog = (level: "info" | "warning", message: string) => void;
@@ -57,7 +77,7 @@ export type AssetImageOptimizationInput = {
     projectPath: string;
     /** Where re-encoded images are kept between builds. Studio's, never the project's. */
     cacheDir: string;
-    config: AssetOptimizationConfiguration;
+    config: AssetCompressionConfiguration;
     /**
      * Opened on the first image that actually needs encoding, so a build whose
      * images are all in the cache never starts a codec window at all - and a
@@ -66,6 +86,15 @@ export type AssetImageOptimizationInput = {
     openCodec: () => Promise<WebImageCodec>;
     log: AssetImageOptimizationLog;
     cancelled?: () => boolean;
+    /**
+     * How far through the library this pass is, once per image.
+     *
+     * A callback rather than a channel of its own: this runs on the main process, where the caller
+     * is the build that wants the number and is one frame away from the window that shows it. The
+     * total is settled before the first image is read - the library's own listing plus the baked
+     * avatars - which is what makes a count here a measurement rather than an extrapolation.
+     */
+    onProgress?: (done: number, total: number) => void;
 };
 
 /**
@@ -77,8 +106,13 @@ export type AssetImageOptimizationInput = {
  * for pixel before it was written, so it stays correct however the encoder
  * changes; keying on the engine would re-encode an author's whole library after
  * every Electron bump to arrive at the same guarantee.
+ *
+ * 2: every result now passes through the metadata strip. An entry written before
+ * that could still be carrying an author's name or a camera's serial number, and
+ * "no metadata ships" is not a promise that can hold while a stale cache entry
+ * is allowed to answer for an image.
  */
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 
 /** How many "verification failed" warnings are worth printing before they stop being news. */
 const MAX_VERIFICATION_WARNINGS = 3;
@@ -112,12 +146,55 @@ export async function optimizeProjectImages(
         reused: 0,
         beforeBytes: 0,
         afterBytes: 0,
+        stripped: 0,
+        metadataBytes: 0,
     };
     // A holder rather than a plain local: it is assigned inside the closure below,
     // which the compiler cannot follow, and a bare `let` would still read as null here.
     const codec: { open: WebImageCodec | null } = { open: null };
     let verificationWarnings = 0;
 
+    /**
+     * For an image no transcode will touch: take out what it says about who made
+     * it, and leave the picture exactly as it was.
+     *
+     * This is the path that matters most, because of which images reach it. Every
+     * reason the transcode plan gives for skipping an image - a colour-managed one,
+     * an APNG, a JPEG with lossy re-encoding off - describes artwork that ships
+     * byte for byte as the artist saved it, EXIF and all. A pass that only cleaned
+     * up the images it was already rewriting would clean up exactly the ones whose
+     * metadata a re-encode had removed anyway.
+     */
+    const stripOnly = async (id: string, bytes: Buffer): Promise<void> => {
+        const key = cacheKey(bytes, "strip", "");
+        const cached = await readCached(input.cacheDir, key, "strip");
+        if (cached === "rejected") {
+            return;
+        }
+        if (cached) {
+            result.images[id] = strippedImage(cached.path);
+            result.stripped += 1;
+            result.metadataBytes += bytes.length - cached.size;
+            return;
+        }
+        const cleaned = stripImageMetadata(bytes);
+        if (cleaned.removed.length === 0) {
+            // Recorded rather than simply returned: most of an author's library
+            // carries nothing, and without a note of that every build reads and
+            // walks every one of those images again to reach the same answer.
+            await writeRejected(input.cacheDir, key);
+            return;
+        }
+        const kept = await writeCached(input.cacheDir, key, "strip", cleaned.bytes);
+        if (!kept) {
+            // A cache that cannot be written costs this image its strip and
+            // nothing else; the original ships, as it did before.
+            return;
+        }
+        result.images[id] = strippedImage(kept);
+        result.stripped += 1;
+        result.metadataBytes += cleaned.bytesRemoved;
+    };
     /**
      * One image, from reading its bytes to recording what a compile should copy.
      *
@@ -140,21 +217,23 @@ export async function optimizeProjectImages(
         }
         const plan = planAssetImageTranscode({ manifestKey: id, assetType: "image", bytes }, input.config);
         if (plan.action === "skip") {
+            await stripOnly(id, bytes);
             return;
         }
         const sourceType = sourceTypeOf(bytes);
         if (!sourceType) {
+            await stripOnly(id, bytes);
             return;
         }
 
-        const key = cacheKey(bytes, plan.action, input.config.lossyQuality);
-        const cached = await readCached(input.cacheDir, key);
+        const key = cacheKey(bytes, plan.action, plan.action === "lossy" ? lossyMode(plan) : "");
+        const cached = await readCached(input.cacheDir, key, plan.action);
         if (cached === "rejected") {
             result.keptOriginal += 1;
             return;
         }
         if (cached) {
-            result.images[id] = optimizedImage(cached.path);
+            result.images[id] = transcodedImage(cached.path);
             result.converted += 1;
             result.reused += 1;
             result.beforeBytes += bytes.length;
@@ -167,7 +246,8 @@ export async function optimizeProjectImages(
             bytes,
             sourceType,
             lossless: plan.action === "lossless",
-            ...(plan.action === "lossy" ? { quality: input.config.lossyQuality } : {}),
+            ...(plan.action === "lossy" ? { quality: plan.quality } : {}),
+            ...(plan.action === "lossy" && plan.resizeTo ? { resizeTo: plan.resizeTo } : {}),
         });
         if (!encoded) {
             await writeRejected(input.cacheDir, key);
@@ -187,26 +267,56 @@ export async function optimizeProjectImages(
             }
             return;
         }
-        if (!assetImageWorthKeeping(bytes.length, encoded.bytes.length)) {
+        // Belt and braces: an encoder that decoded the source to a bitmap has no
+        // metadata left to carry, so this is expected to find nothing. It runs
+        // anyway because "nothing ships metadata" should not rest on an
+        // assumption about a dependency we do not control, and finding nothing
+        // costs one pass over bytes that were just produced.
+        const cleaned = stripImageMetadata(encoded.bytes);
+        if (!assetImageWorthKeeping(bytes.length, cleaned.bytes.length)) {
             await writeRejected(input.cacheDir, key);
             result.keptOriginal += 1;
             return;
         }
-        const kept = await writeCached(input.cacheDir, key, encoded.bytes);
+        const kept = await writeCached(input.cacheDir, key, plan.action, cleaned.bytes);
         if (!kept) {
             result.keptOriginal += 1;
             return;
         }
-        result.images[id] = optimizedImage(kept);
+        result.images[id] = transcodedImage(kept);
         result.converted += 1;
         result.beforeBytes += bytes.length;
-        result.afterBytes += encoded.bytes.length;
+        result.afterBytes += cleaned.bytes.length;
     };
 
     const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(
         path.join(input.projectPath, "assets", IMAGE_METADATA_FILENAME),
     );
-    for (const [assetKey, record] of Object.entries(metadata ?? {})) {
+    const listed = Object.entries(metadata ?? {});
+    // The baked avatars, which the library does not list: they are derived
+    // project files under a synthetic id, and the compiler copies them in a walk
+    // of its own. They are also PNG by construction and shown on almost every
+    // line of dialogue, so leaving them out would exempt the images a player
+    // looks at most.
+    //
+    // Found before either walk begins rather than between them, so how much work this pass has is
+    // known before it starts any. A total discovered halfway through would make the readout slide
+    // backwards at the moment the avatars were added to it.
+    const avatars = await bakedAvatars(input.projectPath);
+    const total = listed.length + avatars.length;
+    let considered = 0;
+    const advance = (): void => {
+        considered += 1;
+        input.onProgress?.(considered, total);
+    };
+    if (total > 0) {
+        // Announced before the first image so the readout is determinate for the whole pass. A
+        // project with no images says nothing rather than opening a count of zero, which is not a
+        // fraction anything can draw.
+        input.onProgress?.(0, total);
+    }
+
+    for (const [assetKey, record] of listed) {
         if (input.cancelled?.()) {
             break;
         }
@@ -215,18 +325,15 @@ export async function optimizeProjectImages(
         if (sourcePath) {
             await consider(id, sourcePath, assetName(record, id));
         }
+        advance();
     }
 
-    // The baked avatars, which the library does not list: they are derived
-    // project files under a synthetic id, and the compiler copies them in a walk
-    // of its own. They are also PNG by construction and shown on almost every
-    // line of dialogue, so leaving them out would exempt the images a player
-    // looks at most.
-    for (const avatar of await bakedAvatars(input.projectPath)) {
+    for (const avatar of avatars) {
         if (input.cancelled?.()) {
             break;
         }
         await consider(avatar.id, avatar.path, avatar.name);
+        advance();
     }
 
     await codec.open?.close().catch(() => undefined);
@@ -317,8 +424,13 @@ async function pruneCache(cacheDir: string): Promise<void> {
     }
 }
 
-function optimizedImage(filePath: string): OptimizedAssetImage {
+/** A transcoded image ships as WebP; a stripped one keeps whatever it already was. */
+function transcodedImage(filePath: string): OptimizedAssetImage {
     return { path: filePath, ext: "webp", mimeType: "image/webp" };
+}
+
+function strippedImage(filePath: string): OptimizedAssetImage {
+    return { path: filePath };
 }
 
 function assetName(record: AssetMetadataRecord, id: string): string {
@@ -348,10 +460,33 @@ function assetSourcePath(projectPath: string, id: string): string | null {
  * the key because two qualities are two different images, and an author lowering
  * it and building again must not be shown the previous one.
  */
-function cacheKey(bytes: Buffer, action: "lossless" | "lossy", quality: number): string {
+type CacheAction = "lossless" | "lossy" | "strip";
+
+function cacheKey(bytes: Buffer, action: CacheAction, mode: string): string {
     const digest = crypto.createHash("sha256").update(bytes).digest("hex");
-    const mode = action === "lossless" ? "l" : `q${quality}`;
-    return `${digest}-${mode}-v${CACHE_VERSION}`;
+    const prefix = action === "lossless" ? "l" : action === "strip" ? "s" : "";
+    return `${digest}-${prefix}${mode}-v${CACHE_VERSION}`;
+}
+
+/**
+ * Everything about a lossy encode that changes its bytes, as a key fragment.
+ *
+ * The size belongs in it as much as the quality does: an author who lowers the cap and builds again
+ * must not be handed the larger image the previous build made, and the two settings are independent,
+ * so neither can stand for the other.
+ */
+function lossyMode(plan: Extract<AssetImageTranscodePlan, { action: "lossy" }>): string {
+    const size = plan.resizeTo ? `-${plan.resizeTo.width}x${plan.resizeTo.height}` : "";
+    return `q${plan.quality}${size}`;
+}
+
+/**
+ * The cache file's own name. It is for whoever opens the cache directory and
+ * nothing else: a compile copies these bytes to a destination it names from the
+ * manifest, so what the entry is called here never reaches a build.
+ */
+function cachedExtension(action: CacheAction): string {
+    return action === "strip" ? ".stripped" : ".webp";
 }
 
 function cachePath(cacheDir: string, key: string, extension: string): string {
@@ -370,8 +505,9 @@ function cachePath(cacheDir: string, key: string, extension: string): string {
 async function readCached(
     cacheDir: string,
     key: string,
+    action: CacheAction,
 ): Promise<{ path: string; size: number } | "rejected" | null> {
-    const keptPath = cachePath(cacheDir, key, ".webp");
+    const keptPath = cachePath(cacheDir, key, cachedExtension(action));
     try {
         const stats = await fs.stat(keptPath);
         if (stats.isFile() && stats.size > 0) {
@@ -406,8 +542,13 @@ async function touch(filePath: string): Promise<void> {
  * not leave behind a truncated file that every later build reads as a finished
  * one and ships.
  */
-async function writeCached(cacheDir: string, key: string, bytes: Buffer): Promise<string | null> {
-    const target = cachePath(cacheDir, key, ".webp");
+async function writeCached(
+    cacheDir: string,
+    key: string,
+    action: CacheAction,
+    bytes: Uint8Array,
+): Promise<string | null> {
+    const target = cachePath(cacheDir, key, cachedExtension(action));
     const temporary = `${target}.${process.pid}.part`;
     try {
         await fs.mkdir(path.dirname(target), { recursive: true });

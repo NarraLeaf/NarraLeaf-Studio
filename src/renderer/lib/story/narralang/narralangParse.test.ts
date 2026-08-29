@@ -95,15 +95,14 @@ describe("the prose rule", () => {
         expect(rows(result)[0].payload).toMatchObject({ action: "dialogue", speakerName: "？？？" });
     });
 
-    it("reads the per-line dialogue modifiers that sit before the separator", () => {
-        const result = parse("爱丽丝 voice evening_theme pause click: 你也留到这么晚啊。");
+    it("reads the per-line dialogue modifier that sits before the separator", () => {
+        const result = parse("爱丽丝 voice evening_theme: 你也留到这么晚啊。");
 
         expect(result.diagnostics).toEqual([]);
         expect(rows(result)[0].payload).toMatchObject({
             action: "dialogue",
             characterId: "char-alice",
             voiceAssetId: "asset-bgm",
-            pauseAfter: true,
         });
     });
 

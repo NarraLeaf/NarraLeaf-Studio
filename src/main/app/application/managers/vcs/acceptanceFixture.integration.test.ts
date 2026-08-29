@@ -24,8 +24,8 @@ import {
  * conflicted document.
  *
  * ```bash
- * NLS_ACCEPTANCE_PROJECT=D:/Temp/nls-d6acc LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
- *   node <vitest> run src/main/app/application/managers/vcs/acceptanceFixture.integration.test.ts
+ * NLS_ACCEPTANCE_PROJECT=D:/Temp/nls-d6acc \
+ *   npx vitest run src/main/app/application/managers/vcs/acceptanceFixture.integration.test.ts
  * ```
  */
 
@@ -37,10 +37,6 @@ const TARGET = process.env.NLS_ACCEPTANCE_TARGET?.trim() || "editor/story/index.
 
 function offline(root: string): LoreGlobals {
     return { repositoryPath: root, offline: true, identity: "author@narraleaf", cache: true };
-}
-
-function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
 }
 
 describe.skipIf(!enabled)("acceptance fixture", () => {

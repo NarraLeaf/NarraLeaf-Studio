@@ -29,7 +29,7 @@ export const project = {
         },
         settings: {
             title: "設定",
-            description: "セキュリティ、署名、最適化、モバイル",
+            description: "セキュリティ、署名、圧縮、読み込み、モバイル",
         },
     },
     // ページの中で部分どうしを分ける見出し。見出しは名詞で、文にはしない。何をするかは
@@ -58,9 +58,16 @@ export const project = {
         linting: "プロジェクトチェック",
         security: "セキュリティ",
         signing: "署名",
-        optimization: "最適化",
+        imageCompression: "画像の圧縮",
+        audioCompression: "音声の圧縮",
+        videoCompression: "映像の圧縮",
+        loading: "読み込み",
         crash: "クラッシュ",
         mobile: "モバイル",
+    },
+    compressionMode: {
+        auto: "自動",
+        advanced: "詳細",
     },
     distribution: {
         description: "プロジェクトと共に保存され、ビルドする全員が同じキーを使う。ビルドは、それ自身のキーで作られたパッチだけを受け入れる。",
@@ -76,6 +83,20 @@ export const project = {
     },
     subPage: {
         backAria: "プロジェクトの一覧に戻る",
+    },
+    /**
+     * プロジェクトのページの設定が読み取り専用のとき、上部に出す一文。
+     *
+     * プロジェクトの設定は一つのファイルで、どの凍結もそれを通さない。だからこれらの項目は
+     * まとめて灰色になる。そして、すでに無効になっている項目のツールチップは触れにくい。
+     *
+     * ⚠ ライブの文は、まだ編集できるものを**列挙しない**。これらのページから行ける三つの表は
+     * それぞれ自分のドキュメントを持ち、セッションが運んでいる。ここで名前を挙げれば語彙表に
+     * 遅れる一覧になるが、「セッションが運んでいるもの」なら遅れない。
+     */
+    frozen: {
+        live: "ライブセッション中は、プロジェクト自身の設定は読み取り専用。ここでまだ編集できるものが、セッションの運んでいるもの。",
+        frozen: "プロジェクトが凍結されている間は、プロジェクト自身の設定は読み取り専用。",
     },
     details: {
         nameLabel: "アプリケーション名",
@@ -375,6 +396,18 @@ export const project = {
         },
     },
     settings: {
+        preloadBehaviorTitle: "プリロードの動作",
+        preloadBehavior: {
+            auto: "自動",
+            blocking: "ブロッキング",
+        },
+        preloadBehaviorNote: {
+            blocking: "プリロードに問題がある場合のみ",
+        },
+        preloadBehaviorDetail: {
+            auto: "開幕シーンの最初のフレームが揃った時点でゲームを表示し、残りの画像は裏で読み込む",
+            blocking: "開幕シーンで使うすべての画像を読み込んでからゲームを表示する",
+        },
         crashPolicyTitle: "ゲームが停止したとき",
         crashPolicyDescription: "いずれの場合もエラーはゲームのログに記録される",
         crashPolicy: {
@@ -412,10 +445,33 @@ export const project = {
         // 関わらず行が並ぶ。証明書はそれを使うビルドの何日も前に用意するもので、その準備こそが
         // これがビルドのダイアログではなくパネルにある理由。
         signingDescription: "どの資格情報でどのプラットフォームに署名するか。証明書とパスワードはこの端末に留まり、プロジェクトはどれを使うかだけを持つ",
-        lossyImagesTitle: "画像を再圧縮",
-        lossyImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
-        lossyQualityTitle: "画像の品質",
-        lossyQualityDescription: "再圧縮に使う WebP の品質。1 から 100 まで",
+        imageModeTitle: "画像の圧縮方法",
+        imageWebpQualityTitle: "WebP の品質",
+        imageWebpQualityDescription: "WebP エンコーダーに渡す品質。1 から 100 まで",
+        imageMaxDimensionTitle: "画像の最大の辺",
+        imageMaxDimensionDescription: "長辺がこのピクセル数を超える画像は縮小される。0 なら保存されたときの大きさのまま",
+        audioModeTitle: "音声の圧縮方法",
+        audioBitrateKbpsTitle: "音声のビットレート",
+        audioBitrateKbpsDescription: "AAC のビットレート（kbit/s）",
+        audioSampleRateHzTitle: "最大サンプルレート",
+        audioSampleRateHzDescription: "これより高いサンプルレートの音声はここまで下げられる。0 なら元のサンプルレートのまま",
+        videoModeTitle: "映像の圧縮方法",
+        videoCrfTitle: "映像の CRF",
+        videoCrfDescription: "VP9 の CRF。小さいほど高画質になり、ファイルは大きくなる",
+        videoMaxHeightTitle: "映像の最大の高さ",
+        videoMaxHeightDescription: "この高さを超える映像は縮小される。0 なら元の大きさのまま",
+        compressImagesTitle: "画像の圧縮を有効にする",
+        compressImagesDescription: "画像を非可逆 WebP へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        imageQualityTitle: "画像の品質",
+        imageQualityDescription: "画像を圧縮するときの品質。1 から 100 まで",
+        compressAudioTitle: "音声の圧縮を有効にする",
+        compressAudioDescription: "音声を非可逆 AAC へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        audioQualityTitle: "音声の品質",
+        audioQualityDescription: "音声を圧縮するときの品質。1 から 100 まで",
+        compressVideoTitle: "映像の圧縮を有効にする",
+        compressVideoDescription: "映像を非可逆 VP9 へ再エンコードする。このプロジェクトが書き出すすべてのパッケージに適用される。ファイルは大幅に小さくなり、失われた情報は戻らない",
+        videoQualityTitle: "映像の品質",
+        videoQualityDescription: "映像を圧縮するときの品質。1 から 100 まで",
         // 「モバイルの向き」とはしない。モバイルの見出しの下にあり、語を重ねると 318px のパネルで
         // ラベルが 2 行になる。
         orientationTitle: "画面の向き",
@@ -500,5 +556,8 @@ export const project = {
                 other: "アクション {count} 個",
             },
         },
+    },
+    live: {
+        entryClaimed: "{name} がこの項目を編集している",
     },
 } satisfies LocaleNamespace<"project">;

@@ -108,6 +108,19 @@ export function authorityDirectory(userDataDir: string): string {
 }
 
 /**
+ * Where the authorities somebody has actually accepted are kept.
+ *
+ * Separate from the directory above, and the separation is the point rather than tidiness.
+ * That one holds every authority a probe has ever met, because the prompt has to name a
+ * file on disk before anybody has answered anything. This one holds the ones an author
+ * said yes to, which is a smaller set and the only one anything here may build a chain
+ * against: an authority that was offered and refused must be trusted by nothing.
+ */
+export function acceptedDirectory(userDataDir: string): string {
+    return path.join(authorityDirectory(userDataDir), "accepted");
+}
+
+/**
  * Write a certificate where a command can name it, and answer with that path.
  *
  * Named by fingerprint, so writing the same authority twice is one file rather than a
@@ -137,7 +150,9 @@ export async function writeAuthorityCertificate(
  * These are written on a failed sign-in, and most failed sign-ins are followed either by
  * an install or by giving up. Neither leaves anything worth keeping for a month, and
  * failures never stop arriving, so something has to sweep. Deleting a file whose
- * authority IS trusted costs nothing: the trust lives in the store, not here.
+ * authority IS trusted costs nothing: an accepted one has a copy of its own under
+ * `accepted/`, which this does not reach - it lists one directory and skips what is not
+ * a certificate in it.
  */
 async function sweep(directory: string): Promise<void> {
     const entries = await fs.readdir(directory).catch(() => [] as string[]);
@@ -150,6 +165,28 @@ async function sweep(directory: string): Promise<void> {
             if (stat && stat.mtimeMs < cutoff) await fs.rm(target, { force: true });
         }),
     );
+}
+
+/**
+ * Keep a copy of an authority the author has just accepted.
+ *
+ * Called once the install command has succeeded, which is the only moment the answer is
+ * known: the file written before the prompt says which authority was offered, and says
+ * nothing about what was decided about it.
+ *
+ * The copy is what makes the decision take effect now rather than at the next start.
+ * Node reads the platform's trust store once per process and memoises it, so the
+ * authority the operating system has just been told about is invisible to this process
+ * until Studio is restarted - and the probe that runs a moment later would go on
+ * answering `untrusted` to somebody who had just pressed the button.
+ */
+export async function rememberAcceptedAuthority(
+    userDataDir: string,
+    certificatePath: string,
+): Promise<void> {
+    const directory = acceptedDirectory(userDataDir);
+    await fs.mkdir(directory, { recursive: true });
+    await fs.copyFile(certificatePath, path.join(directory, path.basename(certificatePath)));
 }
 
 /** What an install command came to. */
@@ -218,29 +255,122 @@ export function describeAuthority(options: {
 }
 
 /**
- * Every authority this machine believes, plus the ones the author accepted here.
+ * The authorities this machine came with: node's own roots and the platform's store.
  *
- * The stored copies are the half that matters on the day somebody trusts a server: node's
- * view of the system store is fixed when this process first asks for it, so a certificate
- * installed a moment ago is not in it. The file `authorityTrust` wrote is.
+ * Node builds chains against its bundled roots alone unless it is told otherwise, and the
+ * authorities a person installs go into the platform's store, so a connection that is to
+ * agree with the rest of the machine has to be offered both.
  */
-export function trustedCertificates(userDataDir: string): string[] | undefined {
-    const collected: string[] = [];
-    if (typeof tls.getCACertificates === "function") {
-        try {
-            collected.push(...tls.getCACertificates("default"), ...tls.getCACertificates("system"));
-        } catch {
-            // Left out rather than fatal: what is below may be enough on its own.
-        }
-    }
+function platformCertificates(): string[] | undefined {
+    // Present from node 22.15. Guarded rather than assumed because the answer this feeds
+    // is "does this machine trust it", and an exception here would answer it wrongly.
+    if (typeof tls.getCACertificates !== "function") return undefined;
     try {
-        const directory = authorityDirectory(userDataDir);
-        for (const entry of readdirSync(directory)) {
-            if (!entry.endsWith(".crt")) continue;
-            collected.push(readFileSync(join(directory, entry), "utf-8"));
-        }
+        return [...tls.getCACertificates("default"), ...tls.getCACertificates("system")];
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * The authorities an author has accepted here, each as its own PEM.
+ *
+ * Only the accepted ones. Every authority a probe meets is written to disk, because the
+ * prompt has to name a file before there is an answer to it, and reading those back would
+ * mean an authority somebody looked at and refused was trusted from then on.
+ */
+function acceptedCertificates(userDataDir: string): string[] {
+    try {
+        const directory = acceptedDirectory(userDataDir);
+        return readdirSync(directory)
+            .filter((entry) => entry.endsWith(".crt"))
+            .map((entry) => readFileSync(join(directory, entry), "utf-8"));
     } catch {
         // No directory means nothing was ever accepted here, which is ordinary.
+        return [];
     }
+}
+
+/**
+ * The trust stores one connection is put to, in order, until one of them answers.
+ *
+ * **Why they are separate stores rather than one list.** OpenSSL looks an issuer up by
+ * subject and takes the last certificate added under that name; it does not go on to try
+ * the others. Two authorities with the same subject therefore hide one another, and this
+ * product makes that likely rather than exotic: a Team server's authority is named after
+ * the machine it runs on, so two servers on two machines called the same thing are two
+ * different keys under one name. Merged into a single list, accepting the second would
+ * silently stop the first from verifying - measured, and it reports itself as
+ * `DEPTH_ZERO_SELF_SIGNED_CERT`, which reads as a server that was never trusted.
+ *
+ * So the platform's store is asked first, exactly as it was before anybody accepted
+ * anything here, and each accepted authority is asked on its own afterwards. Nothing can
+ * shadow anything, and the common case - a server whose certificate the machine already
+ * agrees with - is still one connection.
+ */
+function trustStores(userDataDir: string): Array<string[] | undefined> {
+    return [platformCertificates(), ...acceptedCertificates(userDataDir).map((pem) => [pem])];
+}
+
+/**
+ * Every authority at once: the platform's, and the ones an author accepted here.
+ *
+ * This is what a connection that cannot be made twice has to be given, and there are two
+ * of those - the Team session's socket and the transfers beside it. Both are opened to a
+ * server that was added, which is to say one whose authority somebody already compared
+ * and accepted, and both are built around a single connection rather than around a
+ * question that can be put again.
+ *
+ * The cost is the shadowing {@link trustStores} exists to avoid: where two of these
+ * authorities carry the same subject, the last one wins and the other stops verifying.
+ * Narrower than it was - this list held every authority a probe had ever met until the
+ * accepted ones were kept apart - and narrow enough to leave: what is in it is one
+ * certificate per server the author added. Giving each of those two connections the one
+ * authority for the server it is opening is the way out, and it wants the fingerprint the
+ * session already records.
+ */
+export function trustedCertificates(userDataDir: string): string[] | undefined {
+    const platform = platformCertificates() ?? [];
+    const collected = [...platform, ...acceptedCertificates(userDataDir)];
     return collected.length === 0 ? undefined : collected;
+}
+
+/**
+ * Whether a rejected connection was rejected over the certificate rather than the machine.
+ *
+ * The codes are node's. An `ERR_SSL_` code is not a trust question: it is what plain HTTP
+ * on the port, or anything else that is not TLS, looks like from here.
+ */
+export function isTrustFailure(error: unknown): boolean {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code ?? "";
+    if (code.startsWith("ERR_SSL_")) return false;
+    return code.startsWith("ERR_TLS_") || /CERT|SELF_SIGNED|ISSUER|UNABLE_TO_/.test(code);
+}
+
+/**
+ * Make the same attempt against each trust store until one is not refused over trust.
+ *
+ * Anything that is not a trust failure - a refused connection, a timeout, an answer -
+ * ends it: those say something about the server rather than about which authorities were
+ * offered, and asking again with a different list would only take longer to say the same
+ * thing. The last trust failure is what is thrown when every store has refused, so the
+ * caller sees the same error it would have seen with no accepted authorities at all.
+ *
+ * Every attempt is a fresh connection, and that is safe for what goes through here: a
+ * handshake that was refused delivered nothing, so there is nothing to have happened twice.
+ */
+export async function reachThroughTrustStores<T>(
+    userDataDir: string,
+    attempt: (ca: string[] | undefined) => Promise<T>,
+): Promise<T> {
+    let refusal: unknown;
+    for (const ca of trustStores(userDataDir)) {
+        try {
+            return await attempt(ca);
+        } catch (error) {
+            if (!isTrustFailure(error)) throw error;
+            refusal = error;
+        }
+    }
+    throw refusal;
 }

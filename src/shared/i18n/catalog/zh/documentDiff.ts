@@ -55,6 +55,7 @@ export const documentDiff = {
 
         assetSets: "资产集",
         assets: "资产",
+        folders: "资产分组",
         audioTracks: "音轨",
         brandColors: "配色",
         brandFonts: "默认字体",
@@ -65,6 +66,7 @@ export const documentDiff = {
         projectLanguages: "语言",
         projectPlugins: "插件",
         saveFields: "存档字段",
+        stories: "故事",
         storyBlocks: "故事行",
         storyChapters: "章节",
         storyScenes: "场景",
@@ -76,6 +78,23 @@ export const documentDiff = {
         uiSurfaces: "界面",
         variables: "变量",
         voiceUnits: "语音",
+    },
+    /**
+     * 第二层，故事列表：项目里有哪些故事、它们叫什么。
+     *
+     * 只有合并行，因为列表本身还没有语义 diff——比较时按结构走。
+     * `subject` 带的是故事自己的标题，所以下面这些不再重复它。
+     */
+    storyIndex: {
+        added: "新增故事",
+        removed: "删除故事",
+        /** 一边新增另一边删除，或者两边本就没有共同祖先。 */
+        changed: "故事改动",
+        renamed: "故事改名",
+        /** `dlcId`、`importSource`、`exportMeta`，都没有作者写过的名字。 */
+        entryField: "{field} 改动",
+        defaultStory: "开场故事改动",
+        documentField: "{field} 改动",
     },
     story: {
         renamed: "故事改名",
@@ -128,6 +147,24 @@ export const documentDiff = {
         avatarChanged: "对白头像 {key}",
         groupAdded: "新增分组",
         groupRemoved: "删除分组",
+        /**
+         * 角色编辑器画得出、却从未给过标签的六个字段。其余字段一律沿用作者编辑它的那块面板的词
+         * （见 `CHARACTER_FIELD_NAME_KEY`），这六个没有可沿用的键：角色列表把别名印在名字下面
+         * 却不加说明，分组是靠移动一行来设定的，画布、头像差分轴、立绘来源的 PSD、以及傀儡静置
+         * 时的状态各自藏在一个按钮或一个没有标签的控件后面。取词来源是那些控件自己的说法
+         * （设定画布、头像随此轴变化、导入 PSD），不在这里另造。
+         *
+         * attributes 与 options 不在其中：Studio 没有编辑它们的界面，两者都是插件或导入写进去的
+         * 数据袋，所以它们的行保留文档里的存储名。
+         */
+        fields: {
+            nicknames: "别名",
+            group: "分组",
+            canvas: "画布",
+            avatarAxes: "头像差分轴",
+            psd: "PSD",
+            puppetDefaultState: "默认状态",
+        },
         groupRenamed: "分组改名",
     },
     /**
@@ -152,6 +189,17 @@ export const documentDiff = {
         statusMachine: "改为机翻",
         statusTranslated: "改为已翻译",
         statusReviewed: "改为已校对",
+    },
+    /**
+     * 只有第二层用得到：开发者自己命名的那些字符串。
+     *
+     * 只有三个词而不是对比那一套，因为这些是「选边」的行：合并问的是保留哪一侧的定义，
+     * 而键本身——项目里唯一一张键是人打出来的表——就是这一行的标识。
+     */
+    localizationKeys: {
+        added: "新增命名字符串",
+        removed: "删除命名字符串",
+        changed: "命名字符串改动",
     },
     /**
      * 界面文档：界面与界面上的元素。
@@ -187,7 +235,6 @@ export const documentDiff = {
         elementLayout: "位置或尺寸改动",
         elementStyle: "样式改动",
         elementProps: "内容改动",
-        elementBehavior: "行为改动",
         elementBinding: "绑定改动",
         elementAnimation: "动画改动",
         elementField: "{field} 改动",
@@ -226,8 +273,8 @@ export const documentDiff = {
         nodeMoved: "在画布上移动",
         nodeType: "节点类型改变",
         nodeField: "{field} 改动",
-        edgeAdded: "新增连线",
-        edgeRemoved: "删除连线",
+        edgeAdded: "新增连接",
+        edgeRemoved: "删除连接",
     },
     assets: {
         added: "新增资产",
@@ -240,7 +287,7 @@ export const documentDiff = {
         orphanContent: "没有对应资产记录的文件",
     },
     /**
-     * 工程配色。
+     * 项目配色。
      *
      * subject 是作者给这个颜色起的名字；内置的那十七条没有名字——它们的名字是面板给的翻译串，
      * 所以这类行只带两个颜色值，底下由 `BrandChangeDetail` 画出整份配色。
@@ -255,11 +302,11 @@ export const documentDiff = {
         fonts: "默认字体改动",
     },
     /**
-     * 构建变体：同一个工程出货的几个版本。
+     * 构建变体：同一个项目出货的几个版本。
      *
      * 除开头三条，下面每一条都只报字段名，不说「改动」——这是八条能共用的唯一一种写法。
      * 其中四条是变体面板本来就用的长名字（「剧本结束后显示的页面」），另外四条各用两遍：
-     * 挂在某个变体下面时由 subject 点名，单独出现时说的是每个变体都继承的那份工程取值。
+     * 挂在某个变体下面时由 subject 点名，单独出现时说的是每个变体都继承的那份项目取值。
      * 发生了什么，行上已经有了：标记，以及旁边那一对值。
      *
      * `version` 说明这是谁的版本。这个界面本身满是版本号（#3、#7），
@@ -269,7 +316,7 @@ export const documentDiff = {
         added: "新增变体",
         removed: "删除变体",
         renamed: "改名",
-        /** 三个身份字段。某一侧没有值，就是这个变体在继承工程的取值。 */
+        /** 三个身份字段。某一侧没有值，就是这个变体在继承项目的取值。 */
         displayName: "应用名称",
         identifier: "标识符",
         version: "项目版本",
@@ -280,7 +327,7 @@ export const documentDiff = {
         order: "变体顺序",
     },
     /**
-     * 工程的调音台。
+     * 项目的调音台。
      *
      * `rerouted` 是这一层存在的理由。一条总线汇入哪里，决定它的音量跟谁相乘、玩家的哪一根滑杆
      * 管得到它，而这件事不改变任何计数——所以在概要那一层，改过路由的文件只能说「变了，但概要
@@ -299,9 +346,11 @@ export const documentDiff = {
         loopOn: "默认循环播放",
         loopOff: "默认只播放一次",
         order: "音轨顺序调整",
+        /** 只有第二层用：合并一次决定一整条音轨，不决定其中某个字段。 */
+        changed: "音轨改动",
     },
     /**
-     * 工程的存档变量与全局变量。
+     * 项目的存档变量与全局变量。
      *
      * `defaultValue` 是这一层存在的理由：它是每一周目的起点，也是变量出现之前写下的存档读出来的值，
      * 改动它就改动了出货的游戏，而计数一动不动。作用域那两条说的是这个变量现在是什么，
@@ -318,13 +367,15 @@ export const documentDiff = {
         /** 值存在哪个键下。改名本来就设计成永远不动它。 */
         storageKey: "已经存下的值从此读不回来",
         description: "备注改动",
+        /** 只有第二层用：合并一次决定一整个变量，不决定其中某个字段。 */
+        changed: "变量改动",
     },
     /**
      * 一个存档槽位除引擎自身记录之外还带的字段。
      *
      * `removed` 是这里唯一一条把代价说出口的，也是唯一一条需要说的。加字段天生是安全的——
      * 槽位里没有这个值就读默认值；删字段则把读它的针脚一并拿掉，玩家硬盘上已有的每一个存档
-     * 从此攥着一个工程里再也没人问得出来的值。
+     * 从此攥着一个项目里再也没人问得出来的值。
      */
     saveSchema: {
         added: "新增存档字段",
@@ -339,10 +390,10 @@ export const documentDiff = {
         reordered: "在字段中的位置改变",
     },
     /**
-     * 工程自己的词汇表。
+     * 项目自己的词汇表。
      *
      * 这里没有「改名」，也不可能有：词条没有 id，写法本身就是身份，所以改写法读作一条没了、
-     * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在工程里每一份剧本上标出的东西。
+     * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在项目里每一份剧本上标出的东西。
      */
     dictionary: {
         added: "新增词条",
@@ -397,7 +448,7 @@ export const documentDiff = {
         voiceNaming: "语音文件命名",
         voiceCast: "语音分配",
         voiceChoices: "选项语音",
-        dialogue: "对话",
+        dialogue: "对白",
         dialogueAutoForwardPause: "自动前进时的停顿时长",
         preferences: "玩家默认设置",
         prefTextSpeed: "文字速度",
@@ -431,9 +482,24 @@ export const documentDiff = {
         encryptAssets: "加密资产",
         crash: "崩溃",
         crashPolicy: "游戏停止工作时",
-        assetOptimization: "优化",
-        lossyImages: "重压缩图像",
-        lossyQuality: "图片质量",
+        preload: "载入",
+        preloadBehavior: "预加载行为",
+        assetCompression: "压缩",
+        compressImages: "压缩图像",
+        imageMode: "图像设置",
+        imageQuality: "图像质量",
+        imageWebpQuality: "WebP 质量",
+        imageMaxDimension: "图像最大边长",
+        compressAudio: "压缩音频",
+        audioMode: "音频设置",
+        audioQuality: "音频质量",
+        audioBitrateKbps: "音频码率",
+        audioSampleRateHz: "最高采样率",
+        compressVideo: "压缩视频",
+        videoMode: "视频设置",
+        videoQuality: "视频质量",
+        videoCrf: "视频 CRF",
+        videoMaxHeight: "视频最大高度",
         vfx: "画面特效",
         vfxFrameRate: "天气帧率",
         mobile: "移动端",
@@ -445,7 +511,7 @@ export const documentDiff = {
         signing: "签名",
         build: "构建设置",
         patch: "补丁导出设置",
-        linting: "工程检查",
+        linting: "项目检查",
         dependencies: "依赖",
         dependencyPlugins: "插件列表",
     },
@@ -534,7 +600,7 @@ export const documentDiff = {
      * make a file, they made a project, a story, a set of pages.
      */
     name: {
-        project: "工程设置",
+        project: "项目设置",
         storyIndex: "故事列表",
         story: "故事",
         animationIndex: "动效列表",
@@ -596,8 +662,8 @@ export const documentDiff = {
     tab: {
         workingTree: "改动",
         between: "{from} → {to}",
-        comparingWorkingTree: "当前工程与 {version} 对比",
-        comparingWorkingTreeUnknown: "当前工程与上一个版本对比",
+        comparingWorkingTree: "当前项目与 {version} 对比",
+        comparingWorkingTreeUnknown: "当前项目与上一个版本对比",
         comparingRevisions: "{from} 与 {to} 对比",
         refresh: "重新读取",
         empty: "两个版本之间没有差异",
@@ -605,12 +671,12 @@ export const documentDiff = {
         readFailure: "无法读取本次对比：{error}",
         incomplete: "{total} 份变更文档中比较了 {shown} 份",
         documentsOmitted: "另有 {count} 份文档没有列出",
-        unavailable: "该工程没有可用的版本控制",
+        unavailable: "该项目没有可用的版本控制",
     },
     /** 把一份文件的两个版本放进各自的标签页并排看。这里只放并排排布本身用到的词。 */
     split: {
         open: "并排打开",
-        thisProject: "本工程",
+        thisProject: "本项目",
         notInVersion: "该版本没有这一处",
         resize: "调整两侧宽度",
         previous: "上一处改动",
@@ -640,20 +706,20 @@ export const documentDiff = {
      * 是在跟同伴的改动对齐，不是在做三路合并。
      *
      * `notSaved` 是这整个界面之所以诚实的那一句——哪些冲突已经决定过，没有任何地方读得出来，
-     * 所以这份记录属于 Studio 而不属于仓库；说出来，好过暗示工程自己知道这份进度。
+     * 所以这份记录属于 Studio 而不属于仓库；说出来，好过暗示项目自己知道这份进度。
      *
-     * 它原本还写着「仅在本窗口打开期间有效」，那句当时是真的，现在不是了：选择存在工程旁边的
+     * 它原本还写着「仅在本窗口打开期间有效」，那句当时是真的，现在不是了：选择存在项目旁边的
      * 一份草稿里（`mergeDecisionDraft`）。没变的是要紧的那一半——按下完成之前一个文件都不动，
      * 所以现在只说这一句。草稿存在哪里不该由这行文案解释。
      */
     resolve: {
         tab: "合并",
-        merging: "该工程的两个版本正在合并",
-        none: "该工程没有正在进行的合并",
+        merging: "该项目的两个版本正在合并",
+        none: "该项目没有正在进行的合并",
         automerged: "全部内容已自动合并，完成后记录为一个版本",
         count: {
-            one: "有 {count} 个文件两边都改过，请选择保留哪一边",
-            other: "有 {count} 个文件两边都改过，请选择保留哪一边",
+            one: "有 {count} 个文件在两边均被修改，选择保留其中一边",
+            other: "有 {count} 个文件在两边均被修改，选择保留其中一边",
         },
         takeMine: "保留我的",
         takeTheirs: "保留对方的",
@@ -673,9 +739,9 @@ export const documentDiff = {
         },
         notSaved: "完成合并之前不会写入任何文件",
         abandon: "放弃合并",
-        abandonConfirm: "放弃这次合并？",
+        abandonConfirm: "放弃合并",
         abandonConfirmDetail:
-            "所有文件都会回到从服务器获取之前的状态，包括已经自动合并的文件；本地内容不会丢失，需要时可以再次获取",
+            "所有文件将恢复到从服务器获取前的状态，包括已自动合并的文件。本地内容不会丢失，需要时可再次获取。",
         /**
          * 第二档：在一个文件内部逐条变更选边。
          *
@@ -730,8 +796,8 @@ export const documentDiff = {
         showAll: "显示全部改动",
         /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
         notMarked: {
-            one: "另有 {count} 条改动没有标在这里：",
-            other: "另有 {count} 条改动没有标在这里：",
+            one: "另有 {count} 条改动未标在此处：",
+            other: "另有 {count} 条改动未标在此处：",
         },
         onOtherPages: "{count} 条在其他页面",
         onOtherGraphs: "{count} 条在其他蓝图",
@@ -746,7 +812,7 @@ export const documentDiff = {
         assetsAbsent: "{count} 项不在该版本中",
         assetsFailed: "{count} 项无法读取",
         notDrawn: "该版本的页面无法绘制",
-        emptyGraph: "这张图里没有节点",
+        emptyGraph: "该图中没有节点",
         tooLarge: "该文件过大，无法在此绘制",
         unreadable: "该文件无法按界面文档读取：{error}",
         readFailed: "该版本无法读取：{error}",

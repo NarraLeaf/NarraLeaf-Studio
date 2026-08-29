@@ -5,11 +5,16 @@
  * Kept apart from {@link ../input/surfaceInputActions} so the rules stay testable without a
  * document: everything here needs a real node under a real pointer, and everything there does not.
  *
+ * Two kinds of event arrive: the browser's own mouse and wheel events, and the private CustomEvent a
+ * recognised touch gesture travels under (see {@link ../input/touchGesture}). Everything below takes
+ * both, because a lane's answer must not depend on which of them carried the gesture.
+ *
  * Comments in English per project convention.
  */
 
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
 import type { UIInputPointerGesture } from "@shared/types/ui-editor/inputAction";
+import type { UIInputHitNode, UIPointerInputDevice } from "./surfaceInputActions";
 
 const UI_ELEMENT_ID_ATTR = "data-ui-element-id";
 
@@ -61,6 +66,38 @@ export function readWheelGesture(delta: { deltaX: number; deltaY: number }): UII
     return x > 0 ? "wheelRight" : "wheelLeft";
 }
 
+/**
+ * Which pointing device raised this event.
+ *
+ * `click`, `dblclick` and `contextmenu` are `PointerEvent`s in every browser this runs on, so the
+ * device a tap-synthesised click came from is on the event itself and does not have to be inferred.
+ * A host that still delivers plain `MouseEvent`s - and `WheelEvent`, which is not a pointer event at
+ * all - reads `pointer`, which is what everything did before touch was answered here.
+ */
+export function readPointerEventDevice(event: Event | null | undefined): UIPointerInputDevice {
+    const pointerType = (event as PointerEvent | null | undefined)?.pointerType;
+    return pointerType === "touch" ? "touch" : "pointer";
+}
+
+/**
+ * Where an input happened, in client coordinates, whatever kind of event carried it.
+ *
+ * A mouse event says so itself. A recognised touch gesture travels as a `CustomEvent`, which has no
+ * coordinates of its own, and carries the press point in its detail instead. Returns null for
+ * anything that names no point, which is what stops a hand-off from being aimed at the origin.
+ */
+export function readInputEventPoint(event: Event): { clientX: number; clientY: number } | null {
+    const mouse = event as Partial<MouseEvent>;
+    if (Number.isFinite(mouse.clientX) && Number.isFinite(mouse.clientY)) {
+        return { clientX: mouse.clientX as number, clientY: mouse.clientY as number };
+    }
+    const detail = (event as CustomEvent<unknown>).detail as Partial<MouseEvent> | null | undefined;
+    if (detail && Number.isFinite(detail.clientX) && Number.isFinite(detail.clientY)) {
+        return { clientX: detail.clientX as number, clientY: detail.clientY as number };
+    }
+    return null;
+}
+
 /** Look one element id up wherever it lives - the surface's own table, or a component's. */
 function readDocumentElement(document: UIDocument, elementId: string): UIElement | undefined {
     const own = document.elements[elementId];
@@ -110,7 +147,99 @@ export function readSurfaceHitChain(input: {
     return chain;
 }
 
-function cloneInputEvent(event: MouseEvent | WheelEvent): MouseEvent | WheelEvent | null {
+/**
+ * How far one node's own scroller can still travel the way a scroll gesture asks.
+ *
+ * The gesture names where the viewport goes, so `wheelUp` is answered by content above the fold -
+ * `scrollTop` above nothing. A node that does not scroll answers no to every direction, which is
+ * the same answer as a scroller already at that end and means the same thing here: it has nothing
+ * left to do with this input.
+ *
+ * A single pixel of slack, because a scroller sitting exactly at its end reports fractional values
+ * on a scaled stage and would otherwise read as "one pixel left to go" forever.
+ */
+function scrollerCanTravel(node: Element, gesture: UIInputPointerGesture): boolean {
+    const slack = 1;
+    switch (gesture) {
+        case "wheelUp":
+            return node.scrollTop > slack;
+        case "wheelDown":
+            return node.scrollTop + node.clientHeight < node.scrollHeight - slack;
+        case "wheelLeft":
+            return node.scrollLeft > slack;
+        case "wheelRight":
+            return node.scrollLeft + node.clientWidth < node.scrollWidth - slack;
+        default:
+            return false;
+    }
+}
+
+/**
+ * The elements under the pointer, each with what its own scroller can still do.
+ *
+ * The same walk {@link readSurfaceHitChain} makes, carrying the one thing the document cannot say.
+ * Whether a list has more to scroll is a fact about this frame, not about the project, so it is
+ * read here and handed to the routing rule as a plain answer - which is what lets that rule stay a
+ * pure function with no DOM behind it.
+ *
+ * An element is one node in the document and several on screen: a widget's own wrapper plus
+ * whatever it renders inside, and the node that actually scrolls is usually one of the inner ones.
+ * The walk therefore carries a scroller it has passed up to the next element id it reaches, and
+ * drops it there - so a list is credited with the viewport inside it, and the container around the
+ * list is not credited with the same one.
+ */
+export function readSurfaceHitNodes(input: {
+    document: UIDocument;
+    target: EventTarget | null;
+    surfaceRoot: Element | null;
+    gesture: UIInputPointerGesture;
+}): UIInputHitNode[] {
+    const { document, surfaceRoot, gesture } = input;
+    const start =
+        input.target instanceof Element
+            ? input.target
+            : input.target instanceof Node
+              ? input.target.parentElement
+              : null;
+    const nodes: UIInputHitNode[] = [];
+    let carriedScroller = false;
+    let node: Element | null = start;
+    while (node && (!surfaceRoot || surfaceRoot.contains(node))) {
+        if (!carriedScroller && scrollerCanTravel(node, gesture)) {
+            carriedScroller = true;
+        }
+        const elementId = node.getAttribute(UI_ELEMENT_ID_ATTR);
+        if (elementId) {
+            const element = readDocumentElement(document, elementId);
+            if (element) {
+                nodes.push({ element, scrollerCanTravel: carriedScroller });
+            }
+            carriedScroller = false;
+        }
+        node = node.parentElement;
+    }
+    return nodes;
+}
+
+function cloneInputEvent(event: Event): Event | null {
+    // A recognised touch gesture is a private CustomEvent, and cloning one is the whole reason it is
+    // a CustomEvent: its constructor works on every target browser, where `TouchEvent`'s has
+    // historically not on Safari, so the lane behind can be handed the gesture rather than losing it.
+    if (typeof CustomEvent !== "undefined" && event instanceof CustomEvent) {
+        try {
+            return new CustomEvent(event.type, {
+                bubbles: true,
+                cancelable: event.cancelable,
+                composed: true,
+                detail: event.detail,
+            });
+        } catch {
+            return null;
+        }
+    }
+    if (!(typeof MouseEvent !== "undefined" && event instanceof MouseEvent)) {
+        return null;
+    }
     const init: MouseEventInit = {
         bubbles: true,
         cancelable: event.cancelable,
@@ -159,7 +288,7 @@ function cloneInputEvent(event: MouseEvent | WheelEvent): MouseEvent | WheelEven
  * Returns whether anything was found to hand it to.
  */
 export function handOffInputToLaneBehind(input: {
-    event: MouseEvent | WheelEvent;
+    event: Event;
     /** The shell of the lane that passed. Everything inside it is discounted. */
     surfaceRoot: Element;
 }): boolean {
@@ -168,7 +297,11 @@ export function handOffInputToLaneBehind(input: {
     if (!ownerDocument || typeof ownerDocument.elementsFromPoint !== "function") {
         return false;
     }
-    const stack = ownerDocument.elementsFromPoint(event.clientX, event.clientY);
+    const point = readInputEventPoint(event);
+    if (!point) {
+        return false;
+    }
+    const stack = ownerDocument.elementsFromPoint(point.clientX, point.clientY);
     const behind = stack.find(candidate => !surfaceRoot.contains(candidate) && candidate !== surfaceRoot);
     if (!behind) {
         return false;

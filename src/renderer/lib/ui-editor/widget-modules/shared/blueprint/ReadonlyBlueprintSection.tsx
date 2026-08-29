@@ -29,7 +29,7 @@ const widgetOwnerLabel = getOwnerLabel("widgetMain");
 export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintSection({
     data,
 }: CustomFieldProps<UIInspectorData>) {
-    const { t, tn } = useTranslation();
+    const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const surfaceId = data.surfaceId;
     const componentId = parseComponentEditorSurfaceId(surfaceId);
@@ -75,16 +75,6 @@ export const ReadonlyBlueprintSection = selfReadOnly(function ReadonlyBlueprintS
             >
                 <BlueprintLayerPreview model={previewModel} />
             </button>
-            {summary.legacyHookCount > 0 ? (
-                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
-                    {tn("widgetChrome.blueprint.legacyHookCount", summary.legacyHookCount)}
-                </p>
-            ) : null}
-            {summary.eventSchemaIssueCount > 0 ? (
-                <p className="text-2xs text-warning rounded-md border border-warning/25 bg-warning/10 px-2 py-1.5">
-                    {t("widgetChrome.blueprint.eventSchemaMismatch")}
-                </p>
-            ) : null}
         </div>
     );
 });

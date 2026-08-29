@@ -22,7 +22,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
-import type { MissingRecentProject } from "./state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -88,7 +88,8 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "./vcs";
 
 export interface RendererPrivilegedInterface {
     fs: {
@@ -103,6 +104,8 @@ export interface RendererPrivilegedInterface {
         requestReadRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWrite(actor: PrivilegedActor, path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>>;
         requestWriteRaw(actor: PrivilegedActor, path: string): Promise<RequestStatus<FsRequestResult<string>>>;
+        /** One grant per file in one round trip; see `PrivilegedFileSystemCall`'s `requestReadMany`. */
+        requestReadManyRaw(actor: PrivilegedActor, paths: string[]): Promise<RequestStatus<FsRequestResult<(string | null)[]>>>;
         /** One grant for N files; see `PrivilegedFileSystemCall`'s `requestWriteBatch`. */
         requestWriteBatch(actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]): Promise<RequestStatus<FsRequestResult<string>>>;
         ensureRegularFile(actor: PrivilegedActor, path: string, data: string, encoding?: BufferEncoding): Promise<RequestStatus<FsRequestResult<void>>>;
@@ -324,6 +327,17 @@ export interface RendererPreloadedInterface {
          * when the workspace actually came up.
          */
         setRecoveryMode(enabled: boolean, reason?: string): Promise<RequestStatus<void>>;
+        /** Forget the room this window was told to join. See the prop's note in `window.ts`. */
+        liveIntentTaken(): Promise<RequestStatus<void>>;
+        /**
+         * A room the launcher wants this window to join, for a project it already had open.
+         *
+         * The prop's other half: one project is one window, so the launcher's request reaches a
+         * window that exists and has already read its props. See `workspace.joinLive`.
+         */
+        onJoinLive(
+            handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void,
+        ): AppEventToken;
         /** Reveal this window's project folder in the OS file manager. */
         openProjectFolder(): Promise<RequestStatus<void>>;
         onConfirmClose(handler: () => Promise<RequestStatus<{ confirmed: boolean }>>): AppEventToken;
@@ -341,6 +355,7 @@ export interface RendererPreloadedInterface {
         onCloseProgress(handler: (stage: WorkspaceCloseStage | null) => void): AppEventToken;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
+        onResolveAllAssetUrls(handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
         onMenuAction(handler: (action: MenuActionId) => void): AppEventToken;
         syncNativeMenu(model: NativeMenuModel): void;
@@ -467,6 +482,8 @@ export interface RendererPreloadedInterface {
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
+        /** Each remembered project's own app icon as a `data:` URL. Projects without one are absent. */
+        recentProjectIcons(): Promise<RequestStatus<{ icons: RecentProjectIcon[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
         /**
          * Write a support bundle - `report` plus the environment header and the main-process log
@@ -557,6 +574,8 @@ export interface RendererPreloadedInterface {
          */
         resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
+        /** Every asset the workspace can resolve, in one round trip, keyed by asset id. */
+        resolveAllAssetUrls(): Promise<RequestStatus<{ urls: Record<string, string> }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
@@ -893,70 +912,6 @@ export interface RendererPreloadedInterface {
         /** Take a server off this machine, token and record together. Local. */
         forgetServer(remoteOrigin: string): Promise<RequestStatus<{ servers: VcsServerSession[] }>>;
         /**
-         * What one server holds. **Goes to the network.**
-         *
-         * Answered afresh every time rather than from anything kept here: a list that was
-         * right when it was stored is wrong the moment somebody else pushes.
-         */
-        listServerProjects(remoteOrigin: string): Promise<RequestStatus<VcsServerProjectsOutcome>>;
-        /**
-         * What one server knows about one of its projects. **Goes to the network.**
-         *
-         * **Ask only a server whose session advertises `project-detail`.** A deployment
-         * that offers none has no such surface in front of it - the absence of a
-         * capability is a fact about the server, not something to put a sentence to.
-         *
-         * A `file` that is not readable is a complete answer: the server records a project
-         * when it is created and opens the file afterwards. The server's own explanation
-         * for that does not cross this boundary, so there is nothing here to print.
-         */
-        getServerProject(
-            remoteOrigin: string,
-            projectId: string,
-        ): Promise<RequestStatus<VcsServerProjectDetailOutcome>>;
-        /**
-         * Take one project off a server. **Goes to the network**, and it is the one call
-         * in this group that changes what a server holds rather than reading it.
-         *
-         * **What it removes is the project, not the work.** The server stops listing it
-         * and stops answering for it; the repository keeps its store and every revision
-         * in it, and a project removed by mistake is published again under the same
-         * repository id and comes back with its history. Nothing here destroys anything
-         * an author wrote, so a surface offering this must not say that it does.
-         *
-         * Nothing on this machine changes either: a local copy goes on opening, and its
-         * remote goes on pointing where it pointed.
-         */
-        deleteServerProject(
-            remoteOrigin: string,
-            projectId: string,
-        ): Promise<RequestStatus<VcsServerProjectDeleteOutcome>>;
-        /**
-         * The latest revisions on one of a server's projects, newest first.
-         * **Goes to the network**, and only where `project-history` is advertised.
-         *
-         * **An answer with no `revisions` is not an empty history.** The field is left out
-         * for a project the server has not read, which is the ordinary answer for one made
-         * a moment ago, and a surface that reads it as zero says so about work that has
-         * plenty.
-         */
-        listServerProjectHistory(
-            remoteOrigin: string,
-            projectId: string,
-            limit?: number,
-            before?: string,
-        ): Promise<RequestStatus<VcsServerProjectHistoryOutcome>>;
-        /**
-         * Who has an account on one server. **Goes to the network**, and only where
-         * `members` is advertised.
-         *
-         * Every account carries the address recorded on its revisions. Within a server
-         * that is not a secret, but a list that prints all of them at once is a different
-         * thing from an address on one revision - so a surface showing this shows the
-         * address for the one member a reader opens, and not for the list.
-         */
-        listServerMembers(remoteOrigin: string): Promise<RequestStatus<VcsServerMembersOutcome>>;
-        /**
          * Exchange a username and password for a token, where a server offers it.
          *
          * **Goes to the network, and carries no token** - this is where one comes from,
@@ -1061,6 +1016,13 @@ export interface RendererPreloadedInterface {
         onEvent(handler: (message: TeamEventMessage) => void): AppEventToken;
         /** A session opened, dropped, or was refused. Sent to every window. */
         onConnectionChanged(handler: (payload: { connection: TeamConnection }) => void): AppEventToken;
+        /**
+         * Move a file between this project and a server, or ask how far one has got.
+         *
+         * ⚠ Names a path; never carries a byte. The reading, the writing and the connection all
+         * happen in the main process - see `@shared/types/teamTransfer`.
+         */
+        transfer(request: TeamTransferRequest): Promise<RequestStatus<TeamTransferOutcome>>;
     };
 
     gameBuild: {

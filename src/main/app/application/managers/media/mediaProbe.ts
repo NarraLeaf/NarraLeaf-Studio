@@ -1,12 +1,13 @@
 import { execFile } from "child_process";
 import type { ExecFileException } from "child_process";
-import type { MediaProbeOutcome } from "@shared/types/mediaProbe";
+import type { MediaProbeFailureReason, MediaProbeOutcome } from "@shared/types/mediaProbe";
 import {
     classifyMediaSupport,
     isRefusedMediaFileName,
     parseProbeOutput,
     probeCarriesAlpha,
     probeDurationUs,
+    type ProbeReport,
 } from "@shared/utils/mediaSupport";
 import { resolveFfmpegBinary, type FfmpegResolverApp, type FfmpegResolveOptions } from "./ffmpegTool";
 
@@ -105,28 +106,38 @@ export type MediaProbeOptions = FfmpegResolveOptions & {
 };
 
 /**
- * Probe one file and classify it.
+ * What ffprobe said, before anyone decides what it means.
  *
- * Never throws. Every way this can go wrong is a value in {@link MediaProbeOutcome}, because the
- * caller is an import flow with a dialog open: it needs an answer for every file it was handed,
- * including the ones that are nonsense.
+ * Separate from {@link MediaProbeOutcome} because two callers want different things from the same
+ * process. Import asks whether a file plays, which is the verdict; the build's compression pass
+ * asks what streams are in it and whether they are lossless, which the verdict deliberately does
+ * not carry - a playability answer must not grow fields about size.
  */
-export async function probeMediaFile(
+export type MediaProbeReportOutcome =
+    | { status: "probed"; report: ProbeReport }
+    | { status: "unavailable"; detail: string; searched: string[] }
+    | { status: "failed"; reason: MediaProbeFailureReason; detail: string };
+
+/**
+ * Run ffprobe on one file and hand back its report.
+ *
+ * Never throws. Every way this can go wrong is a value in {@link MediaProbeReportOutcome}, because
+ * both callers are loops over files they did not choose and need an answer for each one, including
+ * the ones that are nonsense.
+ */
+export async function probeMediaReport(
     app: FfmpegResolverApp,
     filePath: string,
     options: MediaProbeOptions = {},
-): Promise<MediaProbeOutcome> {
+): Promise<MediaProbeReportOutcome> {
     // Refuse playlists, DRM wrappers and MIDI before spawning anything. Not an optimisation: FFmpeg
     // resolves the entries inside a playlist, and an entry can be an http:// URL, so probing an
     // author-supplied .m3u8 would let a file the author did not write make the main process fetch
-    // something. Deciding by name means that path never exists.
+    // something. Deciding by name means that path never exists. The empty report is the honest
+    // answer for a file nothing here will read: no streams, so nothing to play and nothing to
+    // re-encode.
     if (isRefusedMediaFileName(filePath)) {
-        return {
-            status: "probed",
-            verdict: classifyMediaSupport({}, filePath),
-            durationUs: null,
-            carriesAlpha: false,
-        };
+        return { status: "probed", report: {} };
     }
 
     const tool = await resolveFfmpegBinary(app, "ffprobe", options);
@@ -179,10 +190,30 @@ export async function probeMediaFile(
     // Parsed JSON, whatever the exit code. ffprobe's failure output is the empty object `{}`, which
     // classifies as `refuse`/`no-streams` — the honest verdict for a file nothing can read, and a
     // better thing to show an author than an exit code.
+    return { status: "probed", report };
+}
+
+/**
+ * Probe one file and classify whether it plays.
+ *
+ * Never throws, for the same reason {@link probeMediaReport} does not: the caller is an import flow
+ * with a dialog open, and it needs an answer for every file it was handed.
+ */
+export async function probeMediaFile(
+    app: FfmpegResolverApp,
+    filePath: string,
+    options: MediaProbeOptions = {},
+): Promise<MediaProbeOutcome> {
+    const outcome = await probeMediaReport(app, filePath, options);
+    if (outcome.status !== "probed") {
+        return outcome;
+    }
+    // The file name is passed on as well as the report: the refusal tables are keyed by name, and a
+    // playlist reaches here with an empty report that says nothing about why it is empty.
     return {
         status: "probed",
-        verdict: classifyMediaSupport(report, filePath),
-        durationUs: probeDurationUs(report),
-        carriesAlpha: probeCarriesAlpha(report),
+        verdict: classifyMediaSupport(outcome.report, filePath),
+        durationUs: probeDurationUs(outcome.report),
+        carriesAlpha: probeCarriesAlpha(outcome.report),
     };
 }

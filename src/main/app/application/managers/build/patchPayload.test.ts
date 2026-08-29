@@ -3,15 +3,16 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-    bindRuntimeBinary,
-    createProjectMaterial,
-    createSealedBundle,
-    createSealedLayer,
-    projectVerificationKey,
-    runtimeSupportPath,
-    RUNTIME_SUPPORT_FILENAME,
-} from "@narraleaf/encryption";
-import { openSealedLayer } from "@narraleaf/encryption/runtime";
+    prepareArchiveReader,
+    createProjectToken,
+    createAssetArchive,
+    createAssetOverlay,
+    projectStamp,
+    archiveReaderPath,
+    ARCHIVE_READER_FILENAME,
+    ASSET_ARCHIVE_FILENAME,
+} from "@narraleaf/bindings";
+import { openAssetOverlay } from "@narraleaf/bindings/read";
 import { resolvePatchDeliveryPath } from "@shared/utils/patchDelivery";
 import { digestPayload, openPayload, patchCarriesEntry, resolvePayloadLocation } from "./patchPayload";
 
@@ -81,13 +82,13 @@ describe("patch payload", () => {
     });
 
     it("reads a sealed payload through its own item table", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const appDir = path.join(root, "sealed");
         await fs.mkdir(appDir, { recursive: true });
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
-        const writer = await createSealedBundle(
-            path.join(appDir, "content.dat"),
-            path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+        await fs.copyFile(archiveReaderPath(), path.join(appDir, ARCHIVE_READER_FILENAME));
+        const writer = await createAssetArchive(
+            path.join(appDir, ASSET_ARCHIVE_FILENAME),
+            path.join(appDir, ARCHIVE_READER_FILENAME),
             { projectMaterial: material, titleId: TITLE },
         );
         // Sealed assets are keyed without an extension, which is exactly why the
@@ -164,21 +165,21 @@ describe("patch payload", () => {
      * cleanly and change nothing, which is the failure this pins.
      */
     it("round-trips a payload through a patch the game can read", async () => {
-        const material = createProjectMaterial();
+        const material = createProjectToken();
         const appDir = await writeLooseApp("source", { "asset-1": "one" });
         // The installed build the patch is for: its binary is what opens the patch.
         const installed = path.join(root, "installed");
         await fs.mkdir(installed, { recursive: true });
-        await fs.copyFile(runtimeSupportPath(), path.join(installed, RUNTIME_SUPPORT_FILENAME));
-        await bindRuntimeBinary(path.join(installed, RUNTIME_SUPPORT_FILENAME), {
+        await fs.copyFile(archiveReaderPath(), path.join(installed, ARCHIVE_READER_FILENAME));
+        await prepareArchiveReader(path.join(installed, ARCHIVE_READER_FILENAME), {
             projectMaterial: material,
             titleId: TITLE,
         });
 
-        const patchPath = path.join(root, "episode.patch.dat");
+        const patchPath = path.join(root, "episode.assetpatch");
         const payload = await openPayload(appDir);
         try {
-            const writer = await createSealedLayer(patchPath, { projectMaterial: material, titleId: TITLE });
+            const writer = await createAssetOverlay(patchPath, { projectMaterial: material, titleId: TITLE });
             for (const name of payload.names) {
                 await writer.add(name, await payload.read(name));
             }
@@ -187,8 +188,8 @@ describe("patch payload", () => {
             await payload.close();
         }
 
-        const reader = await openSealedLayer(path.join(installed, RUNTIME_SUPPORT_FILENAME), patchPath, {
-            verificationKey: projectVerificationKey(material, TITLE),
+        const reader = await openAssetOverlay(path.join(installed, ARCHIVE_READER_FILENAME), patchPath, {
+            verificationKey: projectStamp(material, TITLE),
         });
         try {
             expect(reader.proven).toBe(true);
@@ -270,12 +271,12 @@ describe("where a patch is written", () => {
     const basename = (p: string) => p.split("/").slice(-1)[0];
 
     it("puts the file inside the folder that gets delivered", () => {
-        expect(resolvePatchDeliveryPath("/out/ep2.patch.dat", j, dirname, basename))
-            .toBe("/out/patch/ep2.patch.dat");
+        expect(resolvePatchDeliveryPath("/out/ep2.assetpatch", j, dirname, basename))
+            .toBe("/out/patch/ep2.assetpatch");
     });
 
     it("does not nest one inside another", () => {
-        expect(resolvePatchDeliveryPath("/out/patch/ep2.patch.dat", j, dirname, basename))
-            .toBe("/out/patch/ep2.patch.dat");
+        expect(resolvePatchDeliveryPath("/out/patch/ep2.assetpatch", j, dirname, basename))
+            .toBe("/out/patch/ep2.assetpatch");
     });
 });

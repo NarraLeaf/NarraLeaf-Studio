@@ -92,6 +92,103 @@ describe("button appearance cursor", () => {
     });
 });
 
+/**
+ * The label's own type, which a button could not change per state until now.
+ *
+ * A button draws its own label rather than holding a text child, so `color` and `fontWeight` are
+ * the button's properties and there was nowhere else to put them - a menu entry could light up its
+ * background on hover but never the word on it, and the template faked the missing half with a text
+ * shadow and a nudge. The five keys match what `nl.text` has always offered.
+ */
+describe("button appearance label type", () => {
+    function labelGroup(model: AppearanceModel, key: string): AppearancePropertyGroup | undefined {
+        return model.variants[0]?.propertyGroups.find(group => group.key === key);
+    }
+
+    const LABEL_KEYS = ["fontAssetId", "fontSize", "fontWeight", "color", "lineHeight"] as const;
+
+    it("seeds a new model with the label's type, from the flat props", () => {
+        const appearance = createInitialButtonAppearance(defaultButtonWidgetProps);
+
+        expect(labelGroup(appearance, "color")?.rows[0]?.value).toBe(defaultButtonWidgetProps.color);
+        expect(labelGroup(appearance, "fontWeight")?.rows[0]?.value).toBe(defaultButtonWidgetProps.fontWeight);
+        expect(labelGroup(appearance, "fontSize")?.rows[0]?.value).toBe(defaultButtonWidgetProps.fontSize);
+    });
+
+    it("adds them to a model authored before they existed", () => {
+        // Every button in every project already has an appearance model without these five, so the
+        // backfill is what decides whether they show up at all rather than only on new buttons.
+        const oldModel = createInitialButtonAppearance(defaultButtonWidgetProps);
+        const withoutType: AppearanceModel = {
+            ...oldModel,
+            variants: oldModel.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.filter(
+                    group => !(LABEL_KEYS as readonly string[]).includes(group.key),
+                ),
+            })),
+        };
+
+        const next = ensureButtonAppearanceHasAllKeys(withoutType, defaultButtonWidgetProps);
+
+        for (const key of LABEL_KEYS) {
+            expect(labelGroup(next, key), `${key} was not backfilled`).toBeDefined();
+        }
+    });
+
+    it("resolves them from the active variant, and leaves the rest of the label alone", () => {
+        const base = createInitialButtonAppearance(defaultButtonWidgetProps);
+        const appearance: AppearanceModel = {
+            ...base,
+            variants: base.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.map(group => {
+                    if (group.key === "color") {
+                        return { ...group, rows: [{ conditions: null, value: "nlbrand:text.primary" }] };
+                    }
+                    if (group.key === "fontWeight") {
+                        return { ...group, rows: [{ conditions: null, value: "600" }] };
+                    }
+                    return group;
+                }),
+            })),
+        };
+
+        const resolved = resolveButtonVisualProps(buttonElement(appearance), appearance, {
+            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        });
+
+        expect(resolved.color).toBe("nlbrand:text.primary");
+        expect(resolved.fontWeight).toBe("600");
+        // Untouched keys still answer with the element's own value rather than a default.
+        expect(resolved.fontSize).toBe(defaultButtonWidgetProps.fontSize);
+        expect(resolved.lineHeight).toBe(defaultButtonWidgetProps.lineHeight);
+    });
+
+    it("refuses a weight that is not one, rather than rendering it", () => {
+        // A variant row is authored data and may hold anything; the coercion is the same one
+        // `applyTextKey` uses, and without it a button would silently render unstyled.
+        const base = createInitialButtonAppearance(defaultButtonWidgetProps);
+        const appearance: AppearanceModel = {
+            ...base,
+            variants: base.variants.map(variant => ({
+                ...variant,
+                propertyGroups: variant.propertyGroups.map(group =>
+                    group.key === "fontWeight"
+                        ? { ...group, rows: [{ conditions: null, value: "yes" }] }
+                        : group
+                ),
+            })),
+        };
+
+        const resolved = resolveButtonVisualProps(buttonElement(appearance), appearance, {
+            signals: DEFAULT_SYSTEM_INTERACTION_SIGNALS,
+        });
+
+        expect(resolved.fontWeight).toBe(defaultButtonWidgetProps.fontWeight);
+    });
+});
+
 describe("button appearance text shadow", () => {
     it("seeds new button appearance models with text shadow", () => {
         const appearance = createInitialButtonAppearance(defaultButtonWidgetProps);

@@ -112,8 +112,12 @@ module.exports = {
                 normal: '300',
             },
             keyframes: {
-                'slide-in-right': {
-                    '0%': { transform: 'translateX(100%)', opacity: '0' },
+                // A toast arriving in the corner stack. The travel is short on purpose: the stack
+                // stops one gap short of the right selector rail, and a card that flew in from off
+                // the window edge would sweep across those controls on its way. It also has to be
+                // over quickly - cards behind it are waiting their turn.
+                'toast-in': {
+                    '0%': { transform: 'translateX(12px)', opacity: '0' },
                     '100%': { transform: 'translateX(0)', opacity: '1' },
                 },
                 'fade-in': {
@@ -139,7 +143,7 @@ module.exports = {
                 },
             },
             animation: {
-                'slide-in-right': 'slide-in-right 0.3s ease-out',
+                'toast-in': 'toast-in 0.18s ease-out',
                 'fade-in': 'fade-in 0.2s ease-out',
                 'scale-in': 'scale-in 0.2s ease-out',
                 'progress-indeterminate-1': 'progress-indeterminate-1 2.1s cubic-bezier(0.65,0.815,0.735,0.395) infinite',

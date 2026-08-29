@@ -80,6 +80,7 @@ export const documentDiff = {
         dlc: "DLC",
         assetSets: "Asset sets",
         assets: "Assets",
+        folders: "Asset folders",
         audioTracks: "Audio tracks",
         /** The author's own colors. The seeded palette is always there and is not counted. */
         brandColors: "Brand colors",
@@ -92,6 +93,7 @@ export const documentDiff = {
         projectLanguages: "Languages",
         projectPlugins: "Plugins",
         saveFields: "Save fields",
+        stories: "Stories",
         storyBlocks: "Story rows",
         storyChapters: "Chapters",
         storyScenes: "Scenes",
@@ -138,6 +140,23 @@ export const documentDiff = {
         blockOrder: "Rows reordered",
     },
     /**
+     * Tier 2, the story library: which stories exist and what they are called.
+     *
+     * Only merge rows, because the library has no semantic diff of its own yet - a comparison walks
+     * it structurally. `subject` carries the story's own title, so none of these names it again.
+     */
+    storyIndex: {
+        added: "Story added",
+        removed: "Story removed",
+        /** One side added and the other deleted, or the two arrived with no common ancestor. */
+        changed: "Story changed",
+        renamed: "Story renamed",
+        /** `dlcId`, `importSource`, `exportMeta` - none of which has a word the author typed. */
+        entryField: "{field} changed",
+        defaultStory: "Starting story changed",
+        documentField: "{field} changed",
+    },
+    /**
      * Tier 1, the character store.
      *
      * The row this whole tier exists for is `poseAsset` / `layerOptionAsset`: "Alice's angry
@@ -179,6 +198,34 @@ export const documentDiff = {
         avatarChanged: "Dialog avatar {key}",
         groupAdded: "Group added",
         groupRemoved: "Group removed",
+        /**
+         * Words for the fields the character editor shows but never labels.
+         *
+         * Every other field the comparison reports is answered with the key the panel the author
+         * edits it in already uses - see `CHARACTER_FIELD_NAME_KEY`. These six have no such key to
+         * borrow: the cast list prints a character's nicknames under their name with no caption,
+         * group membership is set by moving a row rather than by filling a field, and the canvas,
+         * the avatar axes, the PSD a stack was imported from and the state a puppet rests in are
+         * each reached through a button or a bare control. So each is named from the vocabulary
+         * those controls already use ("Set canvas", "Avatar varies with this axis", "Import PSD")
+         * rather than coined here.
+         *
+         * They sit here rather than in `characters.*` because this is the surface that draws them:
+         * a label under the panel's own namespace that no panel renders would be taken for the
+         * panel's word the next time someone looks for one, and there would then be two of them.
+         *
+         * `attributes` and `options` are deliberately absent. Studio has no surface for either -
+         * both are bags a plugin or an import writes through - so their rows keep the stored name,
+         * which is the only name anyone able to reach them has.
+         */
+        fields: {
+            nicknames: "Nicknames",
+            group: "Group",
+            canvas: "Canvas",
+            avatarAxes: "Avatar axes",
+            psd: "PSD",
+            puppetDefaultState: "Default state",
+        },
         groupRenamed: "Group renamed",
     },
     /**
@@ -204,6 +251,18 @@ export const documentDiff = {
         statusMachine: "Now a machine translation",
         statusTranslated: "Now translated",
         statusReviewed: "Now reviewed",
+    },
+    /**
+     * Tier 2 only, the developer-authored named strings.
+     *
+     * Three words rather than the comparison's fuller list, because these are decision rows: what a
+     * merge asks about one key is which side's definition to keep, and the key itself - the one map
+     * in the project whose keys somebody typed - is what identifies the row.
+     */
+    localizationKeys: {
+        added: "Named string added",
+        removed: "Named string removed",
+        changed: "Named string changed",
     },
     /**
      * Tier 1, the interface document: Surfaces and the elements on them.
@@ -241,7 +300,6 @@ export const documentDiff = {
         elementLayout: "Position or size changed",
         elementStyle: "Style changed",
         elementProps: "Contents changed",
-        elementBehavior: "Behavior changed",
         elementBinding: "Binding changed",
         elementAnimation: "Animation changed",
         elementField: "{field} changed",
@@ -367,6 +425,8 @@ export const documentDiff = {
         loopOn: "Loops by default",
         loopOff: "Plays once by default",
         order: "Tracks reordered",
+        /** Tier 2 only: a merge decides a whole track at a time, never a field of one. */
+        changed: "Track changed",
     },
     /**
      * Tier 1, the project's saved and global variables.
@@ -387,6 +447,8 @@ export const documentDiff = {
         /** The key the value is kept under, which a rename is designed never to touch. */
         storageKey: "Values already saved are no longer found",
         description: "Note changed",
+        /** Tier 2 only: a merge decides a whole variable at a time, never a field of one. */
+        changed: "Variable changed",
     },
     /**
      * Tier 1, the fields one save slot carries.
@@ -507,9 +569,24 @@ export const documentDiff = {
         encryptAssets: "Encrypt assets",
         crash: "Crashes",
         crashPolicy: "When the game stops working",
-        assetOptimization: "Optimization",
-        lossyImages: "Recompress images",
-        lossyQuality: "Image quality",
+        preload: "Loading",
+        preloadBehavior: "Preload behavior",
+        assetCompression: "Compression",
+        compressImages: "Compress images",
+        imageMode: "Image settings",
+        imageQuality: "Image quality",
+        imageWebpQuality: "WebP quality",
+        imageMaxDimension: "Maximum image size",
+        compressAudio: "Compress audio",
+        audioMode: "Audio settings",
+        audioQuality: "Audio quality",
+        audioBitrateKbps: "Audio bitrate",
+        audioSampleRateHz: "Maximum sample rate",
+        compressVideo: "Compress video",
+        videoMode: "Video settings",
+        videoQuality: "Video quality",
+        videoCrf: "Video CRF",
+        videoMaxHeight: "Maximum video height",
         vfx: "Screen effects",
         vfxFrameRate: "Weather frame rate",
         mobile: "Mobile",

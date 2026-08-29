@@ -3,12 +3,14 @@ import { existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { safeStorage, shell, utilityProcess, type UtilityProcess } from "electron";
-import { RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption";
+import { ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings";
 import { App } from "@/app/app";
 import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { electronBuilderCacheRoot } from "../storage/cacheInventory";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
+    assetCompressionDidSomething,
     currentGameBuildPlatform,
     deriveAndroidVersionCode,
     deriveGameAppId,
@@ -24,6 +26,8 @@ import {
     normalizeIosBundleId,
     webExportDirName,
     webExportZipName,
+    type AssetCompressionReport,
+    type AssetCompressionTrackReport,
     type BuildPreflightFinding,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
@@ -37,10 +41,14 @@ import {
     type LastGameBuildRun,
     type ShippedAssetReport,
 } from "@shared/types/gameBuild";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import {
-    readAssetOptimizationConfiguration,
-    type AssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
+    readAssetCompressionConfiguration,
+    resolveAudioCompression,
+    resolveImageCompression,
+    resolveVideoCompression,
+    type AssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
 import {
     SIGNING_CREDENTIAL_MATERIAL_FIELDS,
     SIGNING_CREDENTIAL_PLATFORM,
@@ -78,7 +86,8 @@ import {
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
-import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
+import { optimizeProjectImages } from "./optimizeAssetImages";
+import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
 import { findSigntool } from "./signtoolDiscovery";
@@ -92,12 +101,16 @@ import {
     profileCoversBundleId,
     type ProvisioningProfile,
 } from "../../../../buildWorker/mobile/provisioningProfile";
+import { codecArchiveDir } from "../../../../buildWorker/codecBinary";
+import { perTargetUnpackPattern } from "../../../../buildWorker/perTargetPayload";
+import { ensureZigToolchain } from "../../../../buildWorker/zigToolchain";
 import type { MobileShellConfigV1 } from "@/buildWorker/mobile/mobileShellManifest";
 import type { ShippedContentAuditReport } from "@/buildWorker/compileWorkerProtocol";
+
 // Relative, not `@/`: the alias is resolved by esbuild and tsc but not by
 // vitest, so a value import through it fails only under test.
 import { asarUnpackedPath } from "../../../../buildWorker/asarUnpackedPath";
-import { createSealedLayer, LAYER_DESCRIPTOR_ENTRY } from "@narraleaf/encryption";
+import { createAssetOverlay, OVERLAY_DESCRIPTOR_ENTRY, type ReaderBuildOptions } from "@narraleaf/bindings";
 import { formatBytes } from "@shared/utils/formatBytes";
 import { GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY, GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
@@ -134,6 +147,7 @@ import { SigningVault, type SecretSealer } from "../security/signingVault";
 import {
     type GameRuntimeArtifactCompileResult,
     type GameRuntimePluginSource,
+    type OptimizedAssetFile,
 } from "../preview/compiler/gameRuntimeArtifactCompiler";
 import { compileGameRuntimeArtifactInWorker } from "../preview/compiler/compileGameRuntimeArtifactInWorker";
 import { buildWebIndexHtml, WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME } from "../preview/compiler/webShell";
@@ -151,6 +165,8 @@ import type {
     GameBuildWorkerWindowsSigning,
 } from "@/buildWorker/protocol";
 import { currentDownloadRewrites } from "../downloadRewrites";
+import { DownloadTaskBridge } from "../tasks/downloadTasks";
+import { BuilderDownloadWatcher } from "./builderDownloadLog";
 import { collectVariantContentFindings } from "./variantContentPreflight";
 import { collectProgressCarryFindings } from "./progressCarryPreflight";
 
@@ -184,6 +200,29 @@ type BuildSession = {
      * answer replaces the first rather than being merged with it.
      */
     assetReport: ShippedAssetReport | null;
+    /**
+     * What the two asset passes came to, held until the run finishes so the published snapshot can
+     * carry it. Null until they have run, which is every run that failed before them.
+     */
+    assetCompression: AssetCompressionReport | null;
+};
+
+/**
+ * One asset pass's product: the files a compile copies in place of the author's, and the figures
+ * the report states about them.
+ */
+type AssetPassOutcome = {
+    files: Record<string, OptimizedAssetFile>;
+    track: AssetCompressionTrackReport;
+};
+
+/** A pass that did nothing and a pass that could not run have the same figures to state. */
+const NO_ASSET_COMPRESSION: AssetCompressionTrackReport = {
+    stripped: 0,
+    metadataBytes: 0,
+    compressed: 0,
+    beforeBytes: 0,
+    afterBytes: 0,
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
@@ -242,11 +281,17 @@ export { deriveGameAppId };
  * moment a debugger rewrites anything in the archive. It reaches here only from an unpackaged
  * Studio launched with the mode's flags (BaseApp.getExperimentalState), so no build an author makes
  * can be one.
+ *
+ * `sealed` takes that back. A protected game refuses a debugging switch however it is marked, so
+ * there is nothing to attach to the packaged artifact and no reason to give up its tamper-evidence
+ * - and integrity is exactly what makes editing the marker into the archive expensive, which is the
+ * edit this whole area exists to price out.
  */
 export function gameFusesForPlatform(
     platform: GameBuildDesktopPlatform,
     hasSigningIdentity: boolean,
     debuggable = false,
+    sealed = false,
 ): GameBuildWorkerFuses {
     return {
         /*
@@ -271,7 +316,7 @@ export function gameFusesForPlatform(
         enableCookieEncryption: false,
         enableNodeOptionsEnvironmentVariable: false,
         enableNodeCliInspectArguments: false,
-        enableEmbeddedAsarIntegrityValidation: !debuggable && hasSigningIdentity && platform !== "linux",
+        enableEmbeddedAsarIntegrityValidation: (!debuggable || sealed) && hasSigningIdentity && platform !== "linux",
         onlyLoadAppFromAsar: true,
         grantFileProtocolExtraPrivileges: false,
         resetAdHocDarwinSignature: platform === "macos",
@@ -487,7 +532,7 @@ export class GameBuildManager {
     constructor(private readonly app: App) {}
 
     public getStatus(projectPath: string): GameBuildStateSnapshot {
-        return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle" };
+        return this.sessions.get(this.projectKey(projectPath))?.snapshot ?? { status: "idle", progress: null };
     }
 
     /**
@@ -698,7 +743,7 @@ export class GameBuildManager {
             normalizeGameBuildArch(target.platform, target.arch),
         )))];
         const dependencyGaps = await checkBuildDependencies(
-            this.app.getUserDataDir(),
+            this.app.getCacheRootDir(),
             collectBuildDependencyRequirements(
                 pluginSelection.selected.map(source => source.manifest),
                 binaryPlatformKeys,
@@ -781,19 +826,44 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             platforms: targets.map(target => target.platform),
         }));
-        // The one step in the optimization pipeline that changes what the player
-        // sees. It is opt-in, but a setting turned on months ago is a setting
-        // nobody remembers, and this is the last moment before it is applied.
-        // Every target, because the policy is about the artwork rather than about
-        // where it lands. The lossless half is deliberately silent: it cannot
-        // alter the game.
-        const assetOptimization = this.assetOptimizationConfig(projectConfig);
-        if (assetOptimization.lossyImages) {
+        // The steps that change what the player sees and hears. Each is opt-in,
+        // but a switch turned on months ago is a switch nobody remembers, and this
+        // is the last moment before it is applied. One finding per track, because
+        // an author who allowed it for their voice recordings has said nothing
+        // about their artwork. Every target, because the policy is about the
+        // material rather than about where it lands; the silent half of the
+        // pipeline stays silent, since it cannot alter the game.
+        //
+        // The number each one carries is what the encoder is actually given, not
+        // the position of a slider: an author in advanced mode set that figure
+        // themselves, and showing them a scale they are not using would be worse
+        // than showing them nothing.
+        const compression = this.assetCompressionConfig(projectConfig);
+        const images = resolveImageCompression(compression);
+        if (images.enabled) {
             findings.push({
                 code: "lossy-images",
                 severity: "warning",
                 section: "content",
-                detail: { quality: String(assetOptimization.lossyQuality) },
+                detail: { setting: String(images.quality) },
+            });
+        }
+        const audio = resolveAudioCompression(compression);
+        if (audio.enabled) {
+            findings.push({
+                code: "lossy-audio",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(audio.bitrateKbps) },
+            });
+        }
+        const video = resolveVideoCompression(compression);
+        if (video.enabled) {
+            findings.push({
+                code: "lossy-video",
+                severity: "warning",
+                section: "content",
+                detail: { setting: String(video.crf) },
             });
         }
         if (mobileTargets.length > 0) {
@@ -845,6 +915,11 @@ export class GameBuildManager {
             projectPath: normalizedProjectPath,
             snapshot: {
                 status: "preparing",
+                // Nothing to count. Preparing is a handful of single answers - the project's
+                // configuration, the variant, the credentials this build needs - rather than a
+                // pass over a list, so there is no denominator to report. The first count of a
+                // run arrives with the asset passes, once compiling has begun.
+                progress: null,
                 startedAt: Date.now(),
                 // Deduplicated: one platform can appear as several targets (a zip and an installer
                 // are two entries), and the snapshot names what is being built, not how many ways.
@@ -856,6 +931,7 @@ export class GameBuildManager {
             kind: "build",
             appTagName: "",
             assetReport: null,
+            assetCompression: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -868,6 +944,7 @@ export class GameBuildManager {
             // toolchain instead of at the revision they are reading.
             session.snapshot = {
                 status: "error",
+                progress: null,
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: session.snapshot.platforms,
@@ -885,7 +962,7 @@ export class GameBuildManager {
     public cancel(projectPath: string): GameBuildStateSnapshot {
         const session = this.sessions.get(this.projectKey(projectPath));
         if (!session || !isActiveStatus(session.snapshot.status)) {
-            return session?.snapshot ?? { status: "idle" };
+            return session?.snapshot ?? { status: "idle", progress: null };
         }
         session.cancelled = true;
         // Before the worker, because for the length of a bake there IS no worker: the clips a pack
@@ -926,13 +1003,14 @@ export class GameBuildManager {
         const session: BuildSession = {
             id: crypto.randomUUID(),
             projectPath: normalizedProjectPath,
-            snapshot: { status: "preparing", startedAt: Date.now(), platforms: [] },
+            snapshot: { status: "preparing", progress: null, startedAt: Date.now(), platforms: [] },
             worker: null,
             abandonWeatherBake: null,
             cancelled: false,
             kind: "patch",
             appTagName: "",
             assetReport: null,
+            assetCompression: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -940,6 +1018,7 @@ export class GameBuildManager {
             const message = workspaceFrozenMessage(frozen, "patch export");
             session.snapshot = {
                 status: "error",
+                progress: null,
                 startedAt: session.snapshot.startedAt,
                 finishedAt: Date.now(),
                 platforms: [],
@@ -961,9 +1040,9 @@ export class GameBuildManager {
     ): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "patch export started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         // Read before the variant, because a DLC decides which variant this is: the record is the
         // one place that says where the DLC belongs, and letting the dialog say it too would make
         // "sealed for the demo, declared for the release" a state an author could reach.
@@ -1034,7 +1113,7 @@ export class GameBuildManager {
         // would read as changed against the build being patched, and the patch
         // would carry the author's whole art library back to a player who already
         // has it - under the extension the pack no longer names.
-        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
 
         /**
@@ -1060,7 +1139,7 @@ export class GameBuildManager {
                 identity,
                 distribution,
                 projectConfig,
-                assetImages,
+                assetReplacements,
                 ...(encryptionKey ? { encryptionKey } : {}),
             })
             : null;
@@ -1099,11 +1178,12 @@ export class GameBuildManager {
             // configuration resolves to the same answer it did in the build. A
             // patch has no targets of its own to read it from.
             ...(patchPlatforms(projectConfig).length > 0 ? { platforms: patchPlatforms(projectConfig) } : {}),
-            hostUserDataDir: this.app.getUserDataDir(),
+            hostCacheRoot: this.app.getCacheRootDir(),
             downloadRewrites: currentDownloadRewrites(),
-            assetImages,
+            assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
+            onProgress: progress => this.reportProgress(session, progress),
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
             onAudit: report => { contentAudit = report; },
@@ -1151,6 +1231,7 @@ export class GameBuildManager {
         const artifactSizes = await measureBuildArtifacts([outputFile]);
         await this.finishSession(session, {
             status: "done",
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: [],
@@ -1158,6 +1239,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+            ...(session.assetCompression ? { assetCompression: session.assetCompression } : {}),
         });
         const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
@@ -1214,7 +1296,7 @@ export class GameBuildManager {
             debuggable: boolean;
             identity: { appId: string; productName: string; identifier?: string };
             projectConfig: ProjectConfigData | null;
-            assetImages: AssetImageOptimizationResult["images"];
+            assetReplacements: Record<string, OptimizedAssetFile>;
             encryptionKey?: string;
             /** The payload this build produced - what a player has before installing any of these. */
             baselineAppDir: string;
@@ -1272,11 +1354,12 @@ export class GameBuildManager {
                 ...(patchPlatforms(options.projectConfig).length > 0
                     ? { platforms: patchPlatforms(options.projectConfig) }
                     : {}),
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
-                assetImages: options.assetImages,
+                assetReplacements: options.assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
             });
@@ -1327,7 +1410,7 @@ export class GameBuildManager {
             identity: { appId: string; productName: string; identifier?: string };
             distribution: { key: string; titleId: string };
             projectConfig: ProjectConfigData | null;
-            assetImages: AssetImageOptimizationResult["images"];
+            assetReplacements: Record<string, OptimizedAssetFile>;
             encryptionKey?: string;
         },
     ): Promise<string> {
@@ -1365,11 +1448,12 @@ export class GameBuildManager {
             ...(patchPlatforms(options.projectConfig).length > 0
                 ? { platforms: patchPlatforms(options.projectConfig) }
                 : {}),
-            hostUserDataDir: this.app.getUserDataDir(),
+            hostCacheRoot: this.app.getCacheRootDir(),
             downloadRewrites: currentDownloadRewrites(),
-            assetImages: options.assetImages,
+            assetReplacements: options.assetReplacements,
         }, {
             onStart: worker => { session.worker = worker; },
+            onProgress: progress => this.reportProgress(session, progress),
             onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
             cancelled: () => session.cancelled,
         });
@@ -1458,6 +1542,37 @@ export class GameBuildManager {
      * installed on one build both take effect. A baseline that predates that reads a whole pack and
      * nothing else, and gets one.
      */
+    /**
+     * The toolchain a codec is compiled with, for the callers that run
+     * outside the compile worker.
+     *
+     * Same rule as the compile: it is fetched once and cached, and not getting it
+     * stops the work rather than quietly producing something weaker. A patch that
+     * was sealed the other way is not a lesser patch - it is a file the game will
+     * not open at all.
+     */
+    private async titleCompileOptions(workDir: string, reason: string): Promise<ReaderBuildOptions> {
+        try {
+            const compiler = await ensureZigToolchain({
+                cacheRoot: this.app.getCacheRootDir(),
+                ...(this.readStringSetting("build.zigMirror")
+                    ? { mirror: this.readStringSetting("build.zigMirror") as string }
+                    : {}),
+                rewrites: currentDownloadRewrites(),
+            });
+            // The archive is named rather than left to the package: see
+            // codecArchiveDir, which is what makes this work inside a packaged
+            // Studio at all.
+            return { compiler, workDir, archiveDir: codecArchiveDir() };
+        } catch (error) {
+            throw new Error(
+                `${reason} could not compile this title's content codec: `
+                + `${error instanceof Error ? error.message : String(error)}. `
+                + "Install a C toolchain and build again, or turn it off.",
+            );
+        }
+    }
+
     private async sealPatch(
         session: BuildSession,
         appDir: string,
@@ -1516,10 +1631,22 @@ export class GameBuildManager {
 
         try {
             await fs.mkdir(path.dirname(outputFile), { recursive: true });
-            const writer = await createSealedLayer(outputFile, {
+            /*
+             * Sealed with a codec compiled for this title, exactly as the build
+             * being patched was.
+             *
+             * A patch is opened by the installed game's OWN binary, and that
+             * binary carries a binding compiled into it. Sealing with the codec
+             * this package ships - which is what happened here until the base
+             * build started compiling its own - produces a file the game refuses
+             * to read, with no sign of trouble at the point it was made. The two
+             * halves have to be built the same way or the patch is dead on
+             * arrival.
+             */
+            const writer = await createAssetOverlay(outputFile, {
                 projectMaterial: distribution.key,
                 titleId: distribution.titleId,
-            });
+            }, await this.titleCompileOptions(path.dirname(outputFile), "Exporting a patch"));
             // Zero is the default the reader already applies, so it is left unsaid rather than
             // written out; a negative layer is a patch the author means to sit under the others.
             const order = Number.isInteger(request.order) ? Math.trunc(request.order as number) : 0;
@@ -1533,7 +1660,7 @@ export class GameBuildManager {
                 // stating the resolved one is what makes that checkable from the file alone.
                 ...(dlc ? { dlc: { id: dlc.id, attachTo: appTagId } } : {}),
             };
-            await writer.add(LAYER_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
+            await writer.add(OVERLAY_DESCRIPTOR_ENTRY, Buffer.from(JSON.stringify(descriptor), "utf-8"));
 
             /*
              * What this patch changes about the game's content, rather than a pack of its own.
@@ -1570,7 +1697,7 @@ export class GameBuildManager {
             let skipped = 0;
             let bytes = 0;
             for (const name of payload.names) {
-                if (name === LAYER_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
+                if (name === OVERLAY_DESCRIPTOR_ENTRY || name === GAME_RUNTIME_BUNDLE_PACK_DELTA_ENTRY) {
                     // A payload cannot carry either name, but a future one that did
                     // would collide with what was written above rather than being
                     // noticed, so both are dropped here instead.
@@ -1650,11 +1777,11 @@ export class GameBuildManager {
     private async run(session: BuildSession, entry: GameRuntimeLaunchEntry, request: GameBuildRequest): Promise<void> {
         const projectPath = session.projectPath;
         this.emit(session, { level: "info", source: "Build", message: "production build started" });
-        const debuggable = this.reportDebuggableBuild(session);
 
         await this.checkpointBeforeBuild(session);
 
         const projectConfig = await readProjectConfigFromDir(projectPath).catch(() => null);
+        const debuggable = this.reportDebuggableBuild(session, this.encryptAssetsEnabled(projectConfig));
         const hostPlatform = currentGameBuildPlatform();
         const targets = normalizeTargets(request.targets);
         if (targets.length === 0) {
@@ -1754,33 +1881,21 @@ export class GameBuildManager {
 
         session.snapshot = { ...session.snapshot, status: "compiling" };
         // Before either compile, so both carry the same bytes for an asset and a
-        // protected pack is optimized like an unprotected one. See optimizeImages.
-        const assetImages = await this.optimizeImages(session, projectPath, projectConfig);
+        // protected pack is optimized like an unprotected one. See optimizeAssets.
+        const assetReplacements = await this.optimizeAssets(session, projectPath, projectConfig);
         this.ensureNotCancelled(session);
         const runtimeDistDir = path.join(this.app.getDistDir(), "runtime");
         const runtimeVersion = this.readRuntimeVersion();
         let desktopArtifact: GameRuntimeArtifactCompileResult | null = null;
-        // Plugin sidecars are per <platform>-<arch>, but one compiled app dir
-        // serves every desktop target in the request (the packaging worker takes
-        // a single appDir). So they can only ship when the request resolves to
-        // one key: with several, one platform's package would carry the other's
-        // binaries, and the game would try to spawn an executable its OS cannot
-        // run. Ship none and say why, rather than ship the wrong one.
-        const sidecarPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
+        // One compiled app dir serves every desktop target in the request, and
+        // the parts of it that are machine code cannot be the same in each -
+        // so the compile stages them per target and the packaging step brings
+        // the right ones to the app root. See buildWorker/perTargetPayload.ts.
+        const desktopPlatformKeys = [...new Set(desktopTargets.map(target => buildDependencyPlatformKey(
             target.platform,
             normalizeGameBuildArch(target.platform, target.arch),
         )))];
-        const sidecarPlatformKey = sidecarPlatformKeys.length === 1 ? sidecarPlatformKeys[0] : undefined;
-        if (!sidecarPlatformKey
-            && pluginSelection.selected.some(source => source.manifest.contributes.sidecars.length > 0)) {
-            this.emit(session, {
-                level: "warning",
-                source: "Build",
-                message: `plugin sidecars ship for one platform per build, but this build targets `
-                    + `${sidecarPlatformKeys.join(", ")}; no sidecar is packaged. `
-                    + "Build one desktop target at a time to include them.",
-            });
-        }
+
         let contentAudit: ShippedContentAuditReport | null = null;
         if (desktopTargets.length > 0) {
             // Off the main thread: sealing a protected pack is many seconds of
@@ -1816,7 +1931,7 @@ export class GameBuildManager {
                 productName: identity.productName,
                 ...(identity.identifier ? { identifier: identity.identifier } : {}),
                 ...(distribution ? { distribution } : {}),
-                ...(sidecarPlatformKey ? { sidecarPlatformKey } : {}),
+                platformKeys: desktopPlatformKeys,
                 // Every desktop target this one pack serves. A plugin's platform-scoped build config
                 // resolves against it: one platform selected is one answer, several are an answer
                 // only when the author gave them all the same value.
@@ -1824,11 +1939,19 @@ export class GameBuildManager {
                 // The compile runs in a utility process, so the build dependency
                 // cache root travels with the input rather than being read from
                 // Electron on the far side.
-                hostUserDataDir: this.app.getUserDataDir(),
+                hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
-                assetImages,
+                // Where the compiler for a codec build is fetched from. Same
+                // shape as the Electron mirror above and read the same way: a
+                // setting, because an environment variable would be a second place
+                // to configure one thing that only this product reads.
+                ...(this.readStringSetting("build.zigMirror")
+                    ? { zigMirror: this.readStringSetting("build.zigMirror") as string }
+                    : {}),
+                assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { contentAudit = report; },
@@ -1879,9 +2002,10 @@ export class GameBuildManager {
                     ]),
                 ],
                 shell: "web",
-                assetImages,
+                assetReplacements,
             }, {
                 onStart: worker => { session.worker = worker; },
+                onProgress: progress => this.reportProgress(session, progress),
                 onWeatherBake: abandon => { session.abandonWeatherBake = abandon; },
                 cancelled: () => session.cancelled,
                 onAudit: report => { webContentAudit = report; },
@@ -1899,6 +2023,16 @@ export class GameBuildManager {
         // has nothing to say that the first did not.
         for (const notice of (desktopArtifact ?? webArtifact)?.notices ?? []) {
             this.emit(session, { level: "info", source: "Build", message: notice });
+        }
+        // Stated rather than assumed: a build that could not compile its codec for
+        // this title does not reach here at all - it stops with a message saying
+        // so - and the line is what tells the author which of the two they have.
+        if (desktopArtifact?.codecCompiledForTitle) {
+            this.emit(session, {
+                level: "info",
+                source: "Build",
+                message: "the content codec is compiled for this title; no other build can open its content",
+            });
         }
         // Same rule, and the same reason: what the library came to is a fact about the project under
         // this variant, not about which package was written from it.
@@ -1962,12 +2096,17 @@ export class GameBuildManager {
             ...(gpgSigning ? { gpg: gpgSigning } : {}),
             targets: await Promise.all(desktopTargets.map(async target => ({
                 platform: target.platform,
+                platformKey: buildDependencyPlatformKey(
+                    target.platform,
+                    normalizeGameBuildArch(target.platform, target.arch),
+                ),
                 formats: target.formats,
                 arch: normalizeGameBuildArch(target.platform, target.arch),
                 fuses: gameFusesForPlatform(
                     target.platform,
                     hasSigningIdentityForPlatform(target.platform, signing),
                     debuggable,
+                    Boolean(encryptionKey),
                 ),
                 ...(target.platform === hostPlatform
                     ? { electronDist: resolveElectronDistDirForApp(this.app) }
@@ -2017,7 +2156,7 @@ export class GameBuildManager {
                 debuggable,
                 identity,
                 projectConfig,
-                assetImages,
+                assetReplacements,
                 ...(encryptionKey ? { encryptionKey } : {}),
                 baselineAppDir: desktopArtifact.appDir,
                 outputDir,
@@ -2030,6 +2169,7 @@ export class GameBuildManager {
         const artifactSizes = await measureBuildArtifacts(artifacts);
         await this.finishSession(session, {
             status: "done",
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
@@ -2037,6 +2177,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+            ...(session.assetCompression ? { assetCompression: session.assetCompression } : {}),
         });
         this.emit(session, {
             level: "success",
@@ -2883,9 +3024,29 @@ export class GameBuildManager {
             const worker = utilityProcess.fork(workerPath, [], {
                 serviceName: "narraleaf-game-build",
                 stdio: "pipe",
-                env: process.env,
+                // ELECTRON_BUILDER_CACHE is the only way to move the toolchain downloads:
+                // winCodeSign, NSIS, AppImage and a cross-platform target's Electron are fetched
+                // inside app-builder.exe, which reads that variable and nothing Studio can pass
+                // it. Left unset they land in `%LOCALAPPDATA%/electron-builder/Cache` and the
+                // platform equivalents - several hundred megabytes Studio downloaded, in a
+                // directory that names neither Studio nor the project it was for.
+                //
+                // `electronBuilderCacheRoot` returns the author's own value when they have
+                // exported one, so this assignment cannot override a host that has deliberately
+                // pointed every electron-builder on it somewhere shared.
+                env: {
+                    ...process.env,
+                    ELECTRON_BUILDER_CACHE: electronBuilderCacheRoot(this.app.getCacheRootDir()),
+                },
             });
             session.worker = worker;
+            // Everything this build pulls off a network, on the status bar for as long as it takes.
+            // Two sources feed it: the worker says so directly for the files it fetches itself, and
+            // the watcher reads electron-builder's own log for the ones it starts without asking -
+            // an Electron distribution, the installer tooling - which nothing in that process can
+            // observe from the inside. See builderDownloadLog.ts.
+            const downloads = new DownloadTaskBridge(this.app.getTaskScheduler(), session.id);
+            const watcher = new BuilderDownloadWatcher(event => downloads.accept(event));
             let settled = false;
             const settle = (fn: () => void) => {
                 if (settled) {
@@ -2893,13 +3054,27 @@ export class GameBuildManager {
                 }
                 settled = true;
                 session.worker = null;
+                // A killed worker sends no closing line for whatever it was in the middle of
+                // fetching, so the end of the packaging step is what closes those - otherwise a
+                // cancelled build would leave the strip claiming a download forever. A step count
+                // it was in the middle of ends the same way.
+                downloads.endAll();
+                this.reportProgress(session, null);
                 fn();
             };
-            worker.stdout?.on("data", chunk => this.emitProcessOutput(session, "info", chunk));
-            worker.stderr?.on("data", chunk => this.emitProcessOutput(session, "warning", chunk));
+            worker.stdout?.on("data", chunk => this.emitProcessOutput(session, "info", chunk, watcher));
+            worker.stderr?.on("data", chunk => this.emitProcessOutput(session, "warning", chunk, watcher));
             worker.on("message", (message: GameBuildWorkerOutboundMessage) => {
                 if (message.type === "log") {
                     this.emit(session, { level: message.level, source: "Build", message: message.message });
+                    return;
+                }
+                if (message.type === "download") {
+                    downloads.accept(message.event);
+                    return;
+                }
+                if (message.type === "progress") {
+                    this.reportProgress(session, message.progress);
                     return;
                 }
                 if (message.type === "done") {
@@ -3060,8 +3235,8 @@ export class GameBuildManager {
         return (projectConfig?.app as { security?: { encryptAssets?: unknown } } | undefined)?.security?.encryptAssets === true;
     }
 
-    private assetOptimizationConfig(projectConfig: ProjectConfigData | null): AssetOptimizationConfiguration {
-        return readAssetOptimizationConfiguration(projectConfig?.app);
+    private assetCompressionConfig(projectConfig: ProjectConfigData | null): AssetCompressionConfiguration {
+        return readAssetCompressionConfiguration(projectConfig?.app);
     }
 
     /**
@@ -3093,7 +3268,7 @@ export class GameBuildManager {
     }
 
     /**
-     * Re-encode the project's images once, before anything is compiled, and
+     * Re-encode what the project ships once, before anything is compiled, and
      * answer with the file each compile should copy in place of the author's.
      *
      * Ahead of the compiles rather than over their output, because a protected
@@ -3103,6 +3278,95 @@ export class GameBuildManager {
      * site the browser and both mobile shells are built from, and a patch made
      * later - all carrying identical bytes for an asset.
      *
+     * Two passes behind one table. They fail independently and neither is fatal:
+     * a host whose codec window will not open still compresses its audio, a host
+     * with no FFmpeg still re-encodes its images, and a host missing both builds
+     * exactly what it built before.
+     */
+    private async optimizeAssets(
+        session: BuildSession,
+        projectPath: string,
+        projectConfig: ProjectConfigData | null,
+    ): Promise<Record<string, OptimizedAssetFile>> {
+        const config = this.assetCompressionConfig(projectConfig);
+        const images = await this.optimizeImages(session, projectPath, config);
+        const media = await this.compressMedia(session, projectPath, config);
+        // Two passes, two counts, one after the other: each reads its own half of the library and
+        // neither knows the other's length before it runs, so the readout fills twice rather than
+        // once. Summing them would mean walking both libraries up front to produce a number that
+        // is only the same number, later.
+        //
+        // Cleared here rather than by either pass, because what follows them is the compile.
+        this.reportProgress(session, null);
+        const compression: AssetCompressionReport = { images: images.track, media: media.track };
+        // Recorded only when there is something to state. A project of PNGs an encoder cannot
+        // improve on gets a report page with no compression section, rather than one stating four
+        // zeroes and inviting an author to work out what went wrong.
+        session.assetCompression = assetCompressionDidSomething(compression) ? compression : null;
+        return { ...images.files, ...media.files };
+    }
+
+    /**
+     * Sound and video, through the vendored FFmpeg.
+     *
+     * Never fatal. With both switches off it still runs, because taking the
+     * studio's name out of a recording is not a decision an author makes - but it
+     * then needs no encoder at all, so a host without one is never asked for one
+     * and says nothing about a step it was never asked to take.
+     */
+    private async compressMedia(
+        session: BuildSession,
+        projectPath: string,
+        config: AssetCompressionConfiguration,
+    ): Promise<AssetPassOutcome> {
+        try {
+            const result = await compressProjectMedia({
+                projectPath,
+                cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.CompressedMedia),
+                config,
+                app: this.app,
+                log: (level, message) => this.emit(session, { level, source: "Build", message }),
+                cancelled: () => session.cancelled,
+                onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
+            });
+            if (result.stripped > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `processing metadata for ${result.stripped} media file(s)...`,
+                });
+            }
+            if (result.converted > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `running media compression on ${result.converted} file(s)...`,
+                });
+            }
+            return {
+                files: result.media,
+                track: {
+                    stripped: result.stripped,
+                    metadataBytes: result.metadataBytes,
+                    compressed: result.converted,
+                    beforeBytes: result.beforeBytes,
+                    afterBytes: result.afterBytes,
+                },
+            };
+        } catch (error) {
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "could not compress the audio and video, so they ship as they are: "
+                    + (error instanceof Error ? error.message : String(error)),
+            });
+            return { files: {}, track: NO_ASSET_COMPRESSION };
+        }
+    }
+
+    /**
+     * Images, through a hidden Chromium window.
+     *
      * Never fatal. This is an improvement on a build that already works, so a
      * codec window that will not open - a headless host, a broken GPU sandbox -
      * costs the author some bytes and a warning, not their build.
@@ -3110,42 +3374,50 @@ export class GameBuildManager {
     private async optimizeImages(
         session: BuildSession,
         projectPath: string,
-        projectConfig: ProjectConfigData | null,
-    ): Promise<AssetImageOptimizationResult["images"]> {
-        const config = this.assetOptimizationConfig(projectConfig);
+        config: AssetCompressionConfiguration,
+    ): Promise<AssetPassOutcome> {
         try {
             const result = await optimizeProjectImages({
                 projectPath,
-                cacheDir: path.join(
-                    this.app.getUserDataDir(),
-                    UserDataNamespace.Cache,
-                    CacheNamespace.OptimizedImages,
-                ),
+                cacheDir: path.join(this.app.getCacheRootDir(), CacheNamespace.OptimizedImages),
                 config,
                 openCodec: () => openWebImageCodec(path.join(this.app.getUserDataDir(), "build-codec")),
                 log: (level, message) => this.emit(session, { level, source: "Build", message }),
                 cancelled: () => session.cancelled,
+                onProgress: (done, total) => this.reportProgress(session, { done, total, unit: "file" }),
             });
-            if (result.converted === 0) {
-                return result.images;
+            if (result.stripped > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `processing metadata for ${result.stripped} image(s)...`,
+                });
             }
-            const saved = result.beforeBytes - result.afterBytes;
-            const percent = Math.round((saved / result.beforeBytes) * 100);
-            this.emit(session, {
-                level: "info",
-                source: "Build",
-                message: `${config.lossyImages ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
-                    + `saving ${formatByteSize(saved)} (${percent}%)`,
-            });
-            return result.images;
+            if (result.converted > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `running image compression on ${result.converted} image(s)...`,
+                });
+            }
+            return {
+                files: result.images,
+                track: {
+                    stripped: result.stripped,
+                    metadataBytes: result.metadataBytes,
+                    compressed: result.converted,
+                    beforeBytes: result.beforeBytes,
+                    afterBytes: result.afterBytes,
+                },
+            };
         } catch (error) {
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: "could not optimize the images, so they ship as they are: "
+                message: "could not compress the images, so they ship as they are: "
                     + (error instanceof Error ? error.message : String(error)),
             });
-            return {};
+            return { files: {}, track: NO_ASSET_COMPRESSION };
         }
     }
 
@@ -3180,9 +3452,24 @@ export class GameBuildManager {
      * difference this makes to the output - no asar integrity, a runtime that will attach - is not
      * one anybody can see by looking at the file.
      */
-    private reportDebuggableBuild(session: BuildSession): boolean {
+    private reportDebuggableBuild(session: BuildSession, sealed: boolean): boolean {
         if (!this.app.hasExperimentalCondition("debuggable-build")) {
             return false;
+        }
+        if (sealed) {
+            // Half the condition, and the half that is kept is the useful one. A protected game
+            // refuses a debugging switch (see `honoursDebuggableMarker`), so the packaged artifact
+            // is no more inspectable than a production one - which is also why it keeps asar
+            // integrity here rather than giving up the fuse for a capability it will not have.
+            this.emit(session, {
+                level: "warning",
+                source: "Build",
+                message: "experimental condition debuggable-build: this project protects its assets, "
+                    + "so the packaged game still refuses a debugging switch and keeps asar "
+                    + "integrity. Run the built app directory directly to attach to it. Do not "
+                    + "distribute it.",
+            });
+            return true;
         }
         this.emit(session, {
             level: "warning",
@@ -3306,6 +3593,19 @@ export class GameBuildManager {
         };
     }
 
+    /**
+     * Publish how far through a countable step this run is, onto the snapshot the window polls.
+     *
+     * Every producer goes through here - the asset passes on this process, and both workers over
+     * their protocols - so there is one place that decides what a build's readout says, and one
+     * place to look when it says something wrong. `null` is the ordinary state: it means the build
+     * is somewhere that has no denominator, which is most of a build, and it must be published
+     * rather than left behind by whatever counted last.
+     */
+    private reportProgress(session: BuildSession, progress: StudioTaskProgress | null): void {
+        session.snapshot = { ...session.snapshot, progress };
+    }
+
     /** The variant this run resolved to, kept for the record it will leave behind. */
     private noteRunVariant(session: BuildSession, variant: ProjectAppTag): void {
         session.appTagName = variant.name;
@@ -3326,6 +3626,9 @@ export class GameBuildManager {
         }
         session.snapshot = {
             status: "error",
+            // A run that stopped counts nothing. A fraction left over from the step it stopped in
+            // would go on describing a pass that ended when the build did.
+            progress: null,
             startedAt: session.snapshot.startedAt,
             finishedAt: Date.now(),
             platforms: session.snapshot.platforms,
@@ -3341,7 +3644,20 @@ export class GameBuildManager {
         void writeLastGameBuildRun(session.projectPath, this.runRecord(session, session.snapshot));
     }
 
-    private emitProcessOutput(session: BuildSession, level: DevModeConsoleLogPayload["level"], chunk: Buffer): void {
+    /**
+     * One chunk of a worker's standard output: printed to the build console, and - when a watcher is
+     * given - read for the downloads electron-builder starts on its own account.
+     *
+     * The raw chunk goes to the watcher rather than the formatted message, because the formatting
+     * trims the blank lines that mark where one line ends and the next begins.
+     */
+    private emitProcessOutput(
+        session: BuildSession,
+        level: DevModeConsoleLogPayload["level"],
+        chunk: Buffer,
+        watcher?: BuilderDownloadWatcher,
+    ): void {
+        watcher?.read(chunk.toString("utf-8"));
         const message = formatPreviewProcessOutput(chunk);
         if (!message) {
             return;
@@ -3406,14 +3722,6 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
-}
-
-/** A saving, at the precision an author reading a build log cares about. */
-function formatByteSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) {
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };
@@ -3491,7 +3799,7 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  * Only payload that must exist as a real file on disk leaves the asar. The
  * sealed pair does: the codec addon is dlopen'ed by the OS loader, and it then
  * reads the bundle through its own native file I/O - neither goes through
- * Electron's asar-aware fs. native.js (the addon's loader sidecar) and icons
+ * Electron's asar-aware fs. bindings.js (the addon's loader sidecar) and icons
  * (consumed by native image/shell APIs) stay loose for the same reason.
  * Unencrypted assets have no such constraint: the runtime reads them with
  * readFile/stat/ranged createReadStream, which Electron serves from inside
@@ -3507,13 +3815,21 @@ function normalizeTargets(targets: GameBuildTarget[] | undefined): GameBuildTarg
  */
 function buildAsarUnpackPatterns(sealed: boolean): string[] {
     // koffi's addon has to be a real file on disk to be loaded, so it cannot stay inside the
-    // archive - the same reason native.js is here. It ships as a plain `koffi/` directory rather
+    // archive - the same reason bindings.js is here. It ships as a plain `koffi/` directory rather
     // than under `node_modules`, which electron-builder reserves for the dependency tree it builds
     // itself and drops everything else from.
-    const patterns = ["native.js", "icons/**", "sidecars/**", "koffi/**"];
+    const patterns = ["bindings.js", "icons/**", "sidecars/**", "koffi/**"];
     if (sealed) {
-        patterns.push(RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME);
+        patterns.push(ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME);
     }
+    /*
+     * And the staging area, which holds nothing but machine code the OS loader
+     * opens - that is what it is for. It needs saying separately because these
+     * patterns are matched against the path a file is read FROM, while the
+     * spellings above describe where a file is written TO, and a staged file is
+     * read from one place and written to the other.
+     */
+    patterns.push(perTargetUnpackPattern());
     return patterns;
 }
 

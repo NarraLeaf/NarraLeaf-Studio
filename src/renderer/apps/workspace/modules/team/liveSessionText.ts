@@ -6,7 +6,7 @@ import type {
     LiveUndoRefusalReason,
 } from "@/lib/workspace/services/live/liveSessionView";
 import type { TranslationKey } from "@shared/i18n";
-import type { LiveRefusalReason } from "@shared/live/ops";
+import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { TeamProjectState } from "../../hooks/useTeamProject";
 
 /**
@@ -44,6 +44,11 @@ const ENTRY_FAILURES: Record<LiveEntryFailure["kind"], TranslationKey> = {
     // A merge is open now, and a merge is one of the freezes that refuses a session anyway.
     "merge-conflicts": "workspace.shell.team.liveBlockedMerge",
     "room-gone": "workspace.shell.team.liveRoomGone",
+    // Wrong digits and digits nobody is using are one sentence, because the server answers them
+    // with one - see the failure's own note.
+    "no-such-code": "workspace.shell.team.liveNoSuchCode",
+    "join-refused": "workspace.shell.team.liveJoinRefused",
+    "join-unanswered": "workspace.shell.team.liveJoinUnanswered",
     // The room is there and this window still cannot follow it. Both name the reason rather than
     // falling back to a guess, because the only story this window could guess is one it already
     // holds - see `LiveSession.join`.
@@ -67,16 +72,48 @@ export function liveEntryFailureSentence(failure: LiveEntryFailure): LiveSentenc
 }
 
 /**
- * What to do about a refusal that pressing the control again cannot get past, or null.
+ * The next thing to do about a refusal, or null where the refusal already says it.
  *
- * One of the fourteen has one. A session cannot be re-based on a newer version, so a tree that has
- * moved past the room's revision can never join it however many times the control is pressed - the
- * two copies have to meet on the server first, and nothing on screen said so.
+ * **A `Record` over the whole union, like the sentences above it, and for a stronger reason.** A
+ * refusal that names a state without naming a way out is a control the author presses again, gets
+ * the same red line from, and stops trusting - and the states this feature can be in are precisely
+ * the ones an author has no way of guessing at. So a new one does not compile until somebody has
+ * decided whether there is anything to do about it.
+ *
+ * Null is a real answer and is used deliberately: where the sentence is already an instruction
+ * ("Record a version to start a live session"), a second line repeating it in other words is noise.
  */
+const ENTRY_REMEDIES: Record<LiveEntryFailure["kind"], TranslationKey | null> = {
+    // Already in one, and the control the author pressed is the one that leaves it.
+    busy: null,
+    // The freeze's sentence names the state that has to be left, which is the whole remedy.
+    frozen: null,
+    // Both sentences are instructions already.
+    "no-server": null,
+    "no-revision": null,
+    "no-instance": "workspace.shell.team.liveNoInstanceNext",
+    "no-repository": "workspace.shell.team.liveNoRepositoryNext",
+    // "That session is on {project}. Open that project to join it." - the instruction is the whole
+    // sentence, and this window cannot open another project anyway.
+    "clone-required": null,
+    "revision-mismatch": "workspace.shell.team.liveVersionMismatchNext",
+    "merge-conflicts": "workspace.shell.team.liveMergeConflictsNext",
+    "room-gone": "workspace.shell.team.liveRoomGoneNext",
+    // Both sentences say what to do next in themselves: type them again, and ask the person.
+    "no-such-code": null,
+    "join-refused": null,
+    // The one of the three with somewhere to go: the request is still standing on the server, so
+    // being let in later needs nothing more than joining again.
+    "join-unanswered": "workspace.shell.team.liveJoinUnansweredNext",
+    // The remedy is on the other machine and the sentence already names it.
+    "room-story-unknown": null,
+    "story-not-here": "workspace.shell.team.liveStoryNotHereNext",
+    refused: "workspace.shell.team.liveRefusedNext",
+    failed: "workspace.shell.team.liveFailedNext",
+};
+
 export function liveEntryFailureRemedy(failure: LiveEntryFailure): TranslationKey | null {
-    return failure.kind === "revision-mismatch"
-        ? "workspace.shell.team.liveVersionMismatchNext"
-        : null;
+    return ENTRY_REMEDIES[failure.kind];
 }
 
 /**
@@ -93,6 +130,14 @@ const SESSION_ENDS: Record<LiveSessionEnd["cause"], TranslationKey | null> = {
     diverged: "workspace.shell.team.liveEndedDiverged",
 };
 
+/**
+ * What the author is told about a session that ended, or null when nothing is.
+ *
+ * ⚠ **A host leaving means the session is over, with nothing to wait for.** There was once a second
+ * sentence here for a room that was about to reappear under somebody else; a room no longer outlives
+ * its host, so the ending is the whole of what happened and saying anything softer would promise
+ * something nothing is going to deliver.
+ */
 export function liveEndSentence(end: LiveSessionEnd): TranslationKey | null {
     return SESSION_ENDS[end.cause];
 }
@@ -103,11 +148,36 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
     "row-gone": "story.live.refusedRowGone",
     "anchor-gone": "story.live.refusedAnchorGone",
     "scene-gone": "story.live.refusedSceneGone",
+    "chapter-gone": "story.live.refusedChapterGone",
     "character-gone": "story.live.refusedCharacterGone",
+    "asset-gone": "story.live.refusedAssetGone",
+    "variable-gone": "story.live.refusedVariableGone",
+    "asset-id-taken": "story.live.refusedAssetIdTaken",
+    "folder-not-empty": "story.live.refusedFolderNotEmpty",
+    "config-entry-gone": "story.live.refusedConfigEntryGone",
+    "ui-element-gone": "story.live.refusedUIElementGone",
+    "ui-blueprint-gone": "story.live.refusedUIBlueprintGone",
+    "track-gone": "story.live.refusedTrackGone",
+    "set-gone": "story.live.refusedSetGone",
     "too-large": "story.live.refusedTooLarge",
     "not-in-session": "story.live.refusedNotInSession",
     "document-not-shared": "story.live.refusedDocumentNotShared",
     "unknown-op": "story.live.refusedUnknownOp",
+};
+
+/**
+ * What a held subject is called, for the one refusal that names a person.
+ *
+ * `row-claimed` is one reason across every document a session carries, and the sentence has to say
+ * what was taken rather than what the reason is spelled: an author told "somebody is writing that
+ * line" after moving a button has been told about a document they are not in.
+ *
+ * Only where the subject is not a line, and only for that one reason - the operations here have
+ * refusals of their own, and those say what they mean already.
+ */
+const CLAIMED_SUBJECTS: Partial<Record<LiveOpKind, TranslationKey>> = {
+    "write-ui": "story.live.refusedElementClaimed",
+    "write-ui-graphs": "story.live.refusedNodeClaimed",
 };
 
 /**
@@ -118,7 +188,9 @@ const REFUSALS: Record<LiveRefusalReason, TranslationKey> = {
  * refusal exists at all is that losing one silently is worse than any interruption.
  */
 export function liveRefusalSentence(refusal: LiveRefusalNotice): LiveSentence {
-    const key = REFUSALS[refusal.reason];
+    const key = refusal.reason === "row-claimed"
+        ? CLAIMED_SUBJECTS[refusal.op] ?? REFUSALS[refusal.reason]
+        : REFUSALS[refusal.reason];
     // A person is being named, and the row-claimed sentence is the only one that names anybody.
     return refusal.heldBy === undefined ? { key } : { key, params: { name: refusal.heldBy } };
 }
@@ -137,6 +209,9 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "scene-gone": "story.live.undoSceneGone",
     "row-gone": "story.live.undoRowGone",
     "row-restored": "story.live.undoRowRestored",
+    "scene-restored": "story.live.undoSceneRestored",
+    "chapter-gone": "story.live.undoChapterGone",
+    "chapter-restored": "story.live.undoChapterRestored",
     "container-gone": "story.live.undoContainerGone",
     "anchor-gone": "story.live.undoAnchorGone",
     "container-filled": "story.live.undoContainerFilled",
@@ -144,6 +219,17 @@ const UNDO_REFUSALS: Record<LiveUndoRefusalReason, TranslationKey | null> = {
     "chapters-changed": "story.live.undoChaptersChanged",
     "character-gone": "story.live.undoCharacterGone",
     "character-restored": "story.live.undoCharacterRestored",
+    "variable-gone": "story.live.undoVariableGone",
+    "variable-restored": "story.live.undoVariableRestored",
+    "key-restored": "story.live.undoKeyRestored",
+    "asset-gone": "story.live.undoAssetGone",
+    "content-replaced": "story.live.undoContentReplaced",
+    "config-entry-gone": "story.live.undoConfigEntryGone",
+    "config-entry-restored": "story.live.undoConfigEntryRestored",
+    "track-gone": "story.live.undoTrackGone",
+    "track-restored": "story.live.undoTrackRestored",
+    "set-gone": "story.live.undoSetGone",
+    "set-restored": "story.live.undoSetRestored",
 };
 
 export function liveUndoRefusalSentence(reason: LiveUndoRefusalReason): TranslationKey | null {
@@ -160,6 +246,8 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
     switch (view.phase) {
         case "idle":
             return null;
+        case "asking":
+            return "workspace.shell.team.liveAsking";
         case "entering":
             return "workspace.shell.team.liveEntering";
         case "leaving":
@@ -170,6 +258,28 @@ export function liveStandingKey(view: LiveSessionView): TranslationKey | null {
                 ? "workspace.shell.team.liveHost"
                 : "workspace.shell.team.liveGuest";
     }
+}
+
+/**
+ * What the control that takes this window out of a room does, and how much it costs.
+ *
+ * **A host leaving always ends the room, and the control has to say so.** There was once a
+ * handover, and the label survived it by a wave; what is true now is that the host holds the only
+ * copy that counts, so a host walking out leaves nobody for an intent to reach and everybody else
+ * goes back to their own work. Two host labels rather than one because the consequence is not the
+ * same size: a room of one ends quietly, and a room of three sends two people home.
+ *
+ * Named after what happens rather than after which half of the session this window is - and marked
+ * destructive for both host cases, because a control that reads as the gentle option over the most
+ * final act in the feature is the one thing this table exists to prevent.
+ */
+export function liveLeaveAct(view: LiveSessionView): { key: TranslationKey; destructive: boolean } {
+    if (view.role !== "host") {
+        return { key: "workspace.shell.team.liveLeaveSession", destructive: false };
+    }
+    return liveOtherMembers(view).length > 0
+        ? { key: "workspace.shell.team.liveEndSessionForEveryone", destructive: true }
+        : { key: "workspace.shell.team.liveEndSession", destructive: true };
 }
 
 /**

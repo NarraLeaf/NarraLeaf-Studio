@@ -1,6 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
-import type { UIBehaviorBinding } from "@shared/types/ui-editor/document";
-import type { UIElement } from "@shared/types/ui-editor/document";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import type { UIComponentId } from "@shared/types/ui-editor/document";
 import type { UIListItemScope } from "@shared/types/ui-editor/list";
 import type { UIHostAdapter } from "@/lib/ui-editor/runtime/types";
@@ -12,8 +10,15 @@ type Props = {
     surfaceId: string;
     elementId: string;
     elementType: string;
-    behavior: UIElement["behavior"] | undefined;
-    initBinding: UIBehaviorBinding | undefined;
+    /**
+     * The blueprint this element owns the lifecycle of, so its locals can be dropped on unmount.
+     *
+     * Resolved by the caller rather than here, because it is an owner record in the blueprint
+     * document and this component has no access to that. Reading it off the element instead - which
+     * is where handlers used to live - is what left every widget the editor wires holding its locals
+     * for the life of the process; see `widgetPrivateBlueprintHeads`.
+     */
+    ownedBlueprintId: string | undefined;
     hostAdapter: UIHostAdapter;
     componentId?: UIComponentId;
     /** Resolved params of the component instance this element belongs to; null outside one. */
@@ -31,33 +36,15 @@ function enqueuePrepaintTask(task: () => void): void {
     void Promise.resolve().then(task);
 }
 
-function blueprintIdsFromWiringKey(key: string): string[] {
-    if (!key) {
-        return [];
-    }
-    const ids = new Set<string>();
-    for (const part of key.split("|")) {
-        const idx = part.indexOf(":");
-        if (idx === -1) {
-            continue;
-        }
-        ids.add(part.slice(idx + 1));
-    }
-    return [...ids];
-}
-
 /**
  * Dispatches the widget `init` blueprint UI event once when the element mounts (Dev Mode when blueprintRuntime is present).
  * Releases per-widget blueprint execution locals when the element unmounts or blueprint wiring changes.
- *
- * Supports both legacy behavior.events.init binding and the new WidgetLogicApi owner-local blueprint.
  */
 export function BlueprintWidgetInitLifecycle({
     surfaceId,
     elementId,
     elementType,
-    behavior,
-    initBinding,
+    ownedBlueprintId,
     hostAdapter,
     componentId,
     componentParams,
@@ -86,12 +73,7 @@ export function BlueprintWidgetInitLifecycle({
     const logicApi = getWidgetLogicApi(elementType);
     const hasLogicApiInit = Boolean(logicApi?.supportsPrivateBlueprint && logicApi.events.some(e => e.id === "init"));
 
-    const initSig =
-        initBinding?.kind === "blueprintEvent"
-            ? `${initBinding.blueprintId}:${initBinding.eventId}`
-            : hasLogicApiInit
-              ? `logicApi:${elementType}:init`
-              : "";
+    const initSig = hasLogicApiInit ? `logicApi:${elementType}:init` : "";
     const listItemScopeSig = listItemScope
         ? `${listItemScope.index}:${listItemScope.count}:${listItemScope.key}`
         : "";
@@ -106,18 +88,6 @@ export function BlueprintWidgetInitLifecycle({
     const dispatchedInitKeyRef = useRef<string | null>(null);
     const hasBlueprintRuntime = Boolean(rt);
 
-    const localsWiringKey = useMemo(() => {
-        const ev = behavior?.events;
-        if (!ev) {
-            return "";
-        }
-        return Object.entries(ev)
-            .filter(([, b]) => b?.kind === "blueprintEvent")
-            .map(([slot, b]) => `${slot}:${(b as { blueprintId: string }).blueprintId}`)
-            .sort()
-            .join("|");
-    }, [behavior?.events]);
-
     useLayoutEffect(() => {
         latestDispatchRef.current = {
             rt,
@@ -130,16 +100,13 @@ export function BlueprintWidgetInitLifecycle({
     });
 
     useEffect(() => {
-        if (!hasBlueprintRuntime || !localsWiringKey) {
+        if (!hasBlueprintRuntime || !ownedBlueprintId) {
             return;
         }
-        const blueprintIds = blueprintIdsFromWiringKey(localsWiringKey);
         return () => {
-            for (const blueprintId of blueprintIds) {
-                releaseBlueprintWidgetLocals(surfaceId, elementId, blueprintId, runtimeScopeId, { componentId });
-            }
+            releaseBlueprintWidgetLocals(surfaceId, elementId, ownedBlueprintId, runtimeScopeId, { componentId });
         };
-    }, [surfaceId, runtimeScopeId, elementId, componentId, hasBlueprintRuntime, localsWiringKey]);
+    }, [surfaceId, runtimeScopeId, elementId, componentId, hasBlueprintRuntime, ownedBlueprintId]);
 
     useLayoutEffect(() => {
         if (!rt || !initSig) {

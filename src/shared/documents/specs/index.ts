@@ -1,6 +1,7 @@
 import {registerDocumentSpec} from "../registry";
 import {AnyDocumentSpec} from "../types";
 import {appTagsSpec} from "./appTags";
+import {assetGroupsSpec} from "./assetGroups";
 import {assetSetsSpec} from "./assetSets";
 import {assetsMetadataSpec} from "./assetsMetadata";
 import {audioTracksSpec} from "./audioTracks";
@@ -13,6 +14,7 @@ import {localizationKeysSpec} from "./localizationKeys";
 import {projectConfigSpec} from "./project";
 import {saveSchemaSpec} from "./saveSchema";
 import {storyDocumentSpec} from "./story";
+import {storyIndexSpec} from "./storyIndex";
 import {uiDocumentSpec} from "./uiDocument";
 import {uiGraphsSpec} from "./uiGraphs";
 import {variableRegistrySpec} from "./variables";
@@ -20,6 +22,12 @@ import {voiceDocumentSpec} from "./voice";
 
 export {APP_TAGS_DOCUMENT_PATH, appTagsSpec} from "./appTags";
 export {ASSET_SETS_DOCUMENT_PATH, assetSetsSpec} from "./assetSets";
+export {
+    ASSET_GROUPS_DOCUMENT_PATH,
+    assetGroupsSpec,
+    type AssetGroupEntry,
+    type AssetGroupsShard,
+} from "./assetGroups";
 export {AUDIO_TRACKS_DOCUMENT_PATH, audioTracksSpec} from "./audioTracks";
 export {BRAND_DOCUMENT_PATH, brandSpec} from "./brand";
 export {SAVE_SCHEMA_DOCUMENT_PATH, saveSchemaSpec} from "./saveSchema";
@@ -31,11 +39,11 @@ export {CHARACTER_STORE_DOCUMENT_PATH, charactersSpec} from "./characters";
 export {DICTIONARY_DOCUMENT_PATH, dictionarySpec} from "./dictionary";
 export {DLC_DOCUMENT_PATH, dlcSpec} from "./dlc";
 export {
-    LEGACY_PROJECT_CONFIG_DOCUMENT_PATH,
     PROJECT_CONFIG_DOCUMENT_PATH,
     projectConfigSpec,
 } from "./project";
 export {STORY_DOCUMENT_PATH, storyDocumentSpec} from "./story";
+export {STORY_INDEX_DOCUMENT_PATH, storyIndexSpec} from "./storyIndex";
 export {UI_DOCUMENT_PATH, uiDocumentSpec} from "./uiDocument";
 export {UI_GRAPHS_DOCUMENT_PATH, uiGraphsSpec} from "./uiGraphs";
 export {
@@ -73,8 +81,10 @@ export const PROJECT_DOCUMENT_SPECS: readonly AnyDocumentSpec[] = [
     localizationDocumentSpec,
     localizationKeysSpec,
     charactersSpec,
+    storyIndexSpec,
     storyDocumentSpec,
     assetsMetadataSpec,
+    assetGroupsSpec,
     uiDocumentSpec,
     uiGraphsSpec,
 ];

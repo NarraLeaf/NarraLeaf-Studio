@@ -2,36 +2,12 @@ import { useCallback, useMemo } from "react";
 import { useWorkspace } from "@/apps/workspace/context";
 import { Services } from "@/lib/workspace/services/services";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
-import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIInspectorData } from "@/lib/ui-editor/widget-modules/types";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
 import { useOpenBlueprintTarget } from "@/apps/workspace/modules/blueprint-lite/hooks/useOpenBlueprintTarget";
 import { useBlueprintDocumentRevision } from "@/apps/workspace/modules/blueprint-lite/hooks/useBlueprintDocumentRevision";
-import { useDocumentVersion } from "@/lib/ui-editor/hooks/useDocumentVersion";
-import type { UIElement } from "@shared/types/ui-editor/document";
 import type { Blueprint } from "@shared/types/blueprint/document";
 import { parseComponentEditorSurfaceId } from "@/apps/workspace/modules/ui-editor/editors/componentEditorAdapter";
-
-/**
- * Read current legacy blueprintEvent wiring for a widget UI event slot.
- */
-export function getWiredBlueprintEventRef(
-    element: UIElement | undefined,
-    eventName: string,
-    expectedWidgetBlueprintId: string | undefined,
-): { blueprintId: string; eventId: string } | null {
-    if (!element) {
-        return null;
-    }
-    const b = element.behavior?.events?.[eventName];
-    if (!b || b.kind !== "blueprintEvent") {
-        return null;
-    }
-    if (expectedWidgetBlueprintId && b.blueprintId !== expectedWidgetBlueprintId) {
-        return null;
-    }
-    return { blueprintId: b.blueprintId, eventId: b.eventId };
-}
 
 export type BlueprintEventBindingRow = {
     eventId: string;
@@ -39,7 +15,6 @@ export type BlueprintEventBindingRow = {
     description?: string;
     hasPrivateEventMember: boolean;
     isScriptRevision: boolean;
-    legacyGraphEventId: string | null;
     openEventGraph: () => void;
 };
 
@@ -50,19 +25,15 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
     const { context, isInitialized } = useWorkspace();
     const openBlueprint = useOpenBlueprintTarget();
     const graphRev = useBlueprintDocumentRevision();
-    const documentService =
-        isInitialized && context ? context.services.get<UIDocumentService>(Services.UIDocument) : null;
-    const docVersion = useDocumentVersion(documentService);
 
     const surfaceId = data.surfaceId;
     const element = data.element;
     const componentId = parseComponentEditorSurfaceId(surfaceId);
 
     const snapshot = useMemo(() => {
-        if (!isInitialized || !context || !surfaceId || !documentService) {
+        if (!isInitialized || !context || !surfaceId) {
             return {
                 blueprintId: undefined as string | undefined,
-                element: undefined as UIElement | undefined,
                 blueprint: undefined as Blueprint | undefined,
                 existingIds: [] as string[],
             };
@@ -71,11 +42,10 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
         const blueprintId = componentId
             ? localBp.getComponentWidgetMainBlueprintId(componentId, element.id)
             : localBp.getWidgetMainBlueprintId(surfaceId, element.id);
-        const docEl = documentService.getDocument().elements[element.id];
         const blueprint = blueprintId ? localBp.getBlueprintDocument().blueprints[blueprintId] : undefined;
         const existingIds = blueprintId ? localBp.listEventGraphIds(blueprintId) : [];
-        return { blueprintId, element: docEl, blueprint, existingIds };
-    }, [componentId, context, documentService, element.id, graphRev, isInitialized, surfaceId, docVersion]);
+        return { blueprintId, blueprint, existingIds };
+    }, [componentId, context, element.id, graphRev, isInitialized, surfaceId]);
 
     const mod = widgetModuleRegistry.get(element.type);
     const defs = mod?.logicApi?.events ?? [];
@@ -97,6 +67,10 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
                 elementId: element.id,
                 focusEventId: snapshot.blueprint?.program.kind === "graph" ? uiEventName : undefined,
                 title: `Blueprint · ${element.name ?? element.type}`,
+            }, {
+                // Wiring an event makes the graph if it is not there yet, so this click is the
+                // author settling in rather than looking around: it earns a tab of its own.
+                preview: false,
             });
         },
         [
@@ -120,10 +94,9 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
             description: def.description,
             hasPrivateEventMember: snapshot.existingIds.includes(def.id),
             isScriptRevision: snapshot.blueprint?.program.kind === "scriptModule",
-            legacyGraphEventId: getWiredBlueprintEventRef(snapshot.element, def.id, snapshot.blueprintId)?.eventId ?? null,
             openEventGraph: () => openWiredEventGraphTab(def.id),
         }));
-    }, [defs, openWiredEventGraphTab, snapshot.blueprint?.program.kind, snapshot.blueprintId, snapshot.element, snapshot.existingIds]);
+    }, [defs, openWiredEventGraphTab, snapshot.blueprint?.program.kind, snapshot.existingIds]);
 
     return { rows, hasEvents: defs.length > 0 };
 }

@@ -1011,7 +1011,43 @@ export function DevModeContent(props: DevModeContentProps) {
         setAcknowledgedSessionError(sessionError);
     }, [runtimeIssues, sessionError]);
 
+    /**
+     * The whole library, resolved once per bundle so a compile does not have to ask asset by asset.
+     *
+     * Keyed by asset id alone, which is what the resolver keys on: the type is a hint that picks a
+     * bucket to look in first, and an id belongs to exactly one asset whichever way it is reached.
+     * Refilled rather than kept, because a grant token is derived from the file's size and
+     * modification time - an asset the author replaced mints a different one, and the old URL 404s.
+     */
+    const assetUrlsRef = useRef<Map<string, string>>(new Map());
+    const assetUrlPrewarmRef = useRef<{ revision: string; done: Promise<void> } | null>(null);
+
+    const prewarmStoryAssetUrls = useCallback<NonNullable<GameAppHost["prewarmStoryAssetUrls"]>>(() => {
+        const current = bundleRef.current;
+        const revision = current ? `${current.bundleId}:${current.revision}` : "";
+        const existing = assetUrlPrewarmRef.current;
+        if (existing && existing.revision === revision) {
+            return existing.done;
+        }
+        const done = (async () => {
+            const result = await getInterface().devMode.resolveAllAssetUrls().catch(() => null);
+            if (!result?.success) {
+                // Not an error the author can act on, and not one the run has to stop for: every
+                // asset is still reachable one at a time, which is how this worked before.
+                assetUrlsRef.current = new Map();
+                return;
+            }
+            assetUrlsRef.current = new Map(Object.entries(result.data.urls));
+        })();
+        assetUrlPrewarmRef.current = { revision, done };
+        return done;
+    }, []);
+
     const resolveStoryAssetUrl = useCallback<GameAppHost["resolveStoryAssetUrl"]>(async (assetId, assetType) => {
+        const prewarmed = assetUrlsRef.current.get(assetId);
+        if (prewarmed) {
+            return prewarmed;
+        }
         const result = await getInterface().devMode.resolveAssetUrl(assetId, assetType);
         if (!result.success || !result.data?.url) {
             throw new Error(result.error ?? `Failed to resolve asset: ${assetId}`);
@@ -1486,6 +1522,10 @@ export function DevModeContent(props: DevModeContentProps) {
             log,
             reportIssue,
             resolveStoryAssetUrl,
+            // Dev Mode shows its interface without waiting for the story to compile and warm;
+            // see GameAppHost for what that trades away.
+            surfacesBeforeStoryBoot: true,
+            prewarmStoryAssetUrls,
             resolveWeatherClip,
             saveStore,
             listPuppetBackendModules,
@@ -1520,6 +1560,7 @@ export function DevModeContent(props: DevModeContentProps) {
         listPuppetBackendModules,
         reportIssue,
         resolveStoryAssetUrl,
+        prewarmStoryAssetUrls,
         resolveWeatherClip,
         runtimePlugins.ready,
         saveStore,

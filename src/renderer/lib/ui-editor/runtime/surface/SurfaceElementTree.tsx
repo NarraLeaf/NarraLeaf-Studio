@@ -10,7 +10,8 @@ import {
     isUIElementFlowLayoutChild,
     resolveUIComponentParams,
 } from "@shared/types/ui-editor/document";
-import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIComponentInstanceKey, buildUIComponentSurfaceId } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import { isListLikeWidgetType, type UIListItemScope } from "@shared/types/ui-editor/list";
 import { UI_SWITCH_ELEMENT_TYPE } from "@shared/types/ui-editor/switch";
 import type { ElementRendererRegistry } from "@/lib/ui-editor/runtime/ElementRendererRegistry";
@@ -30,6 +31,7 @@ import { renderUnknownWidgetTypeContent } from "@/lib/ui-editor/runtime/unknownW
 import { BlueprintWidgetInitLifecycle } from "@/lib/ui-editor/runtime/surface/BlueprintWidgetInitLifecycle";
 import {
     useWidgetRuntimeStateStore,
+    WidgetRuntimeInstanceProvider,
     WidgetRuntimeScopeProvider,
 } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
 import { getUIFrameWidgetProps } from "@shared/types/ui-editor/frame";
@@ -48,6 +50,7 @@ import {
 import { SurfaceAnimationLayer } from "@/lib/ui-editor/runtime/surface/SurfaceAnimationLayer";
 import { SurfaceBackgroundImageLayer } from "@/lib/ui-editor/runtime/surface/SurfaceBackgroundImageLayer";
 import { shouldHoldCurrentSurfaceUntilEnterComplete } from "@/lib/ui-editor/runtime/surface/surfaceTransitionPlan";
+import { resolveWidgetPrivateBlueprintId } from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 
 export type SurfaceBlueprintBindingContext = {
     blueprintDocument: BlueprintDocument;
@@ -759,15 +762,26 @@ function NestedSurfaceInstance(props: {
     );
 }
 
-function applyWidgetRuntimePatches(element: UIElement, patches: Record<string, DevModeWidgetRuntimePatch>): UIElement {
-    const patch = patches[element.id];
+/**
+ * The element as this drawing of it currently is.
+ *
+ * Looked up by address rather than by element id: one element is drawn once per list row and once
+ * per component placement, and a patch found by id alone would be every drawing's patch. That is
+ * what made six placements of one component all show the sixth one's text.
+ */
+function applyWidgetRuntimePatches(
+    element: UIElement,
+    patches: Record<string, DevModeWidgetRuntimePatch>,
+    instanceKey?: string,
+): UIElement {
+    const patch = patches[buildUIWidgetAddress(element.id, instanceKey)];
     if (!patch) {
         return element;
     }
     const next: UIElement = {
         ...element,
         layout: { ...element.layout },
-        props: { ...(element.props ?? {}) },
+        props: { ...(element.props ?? {}), ...(patch.props ?? {}) },
     };
     if (patch.visible !== undefined) {
         next.layout.visible = patch.visible;
@@ -800,7 +814,6 @@ function cloneElementRenderSnapshot(element: UIElement): UIElement {
         layout: { ...element.layout },
         props: element.props ? { ...element.props } : undefined,
         style: element.style ? { ...element.style } : undefined,
-        behavior: element.behavior ? { ...element.behavior } : undefined,
         valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
         extra: element.extra ? { ...element.extra } : undefined,
     };
@@ -852,7 +865,7 @@ function renderLinkedComponentInstanceContent(input: {
     const instanceWidth = Math.max(1, Math.abs(input.instanceElement.layout.width));
     const instanceHeight = Math.max(1, Math.abs(input.instanceElement.layout.height));
     const virtualSurface: UISurface = {
-        id: `component:${component.id}`,
+        id: buildUIComponentSurfaceId(component.id),
         name: component.name,
         host: "app",
         kind: "appSurface",
@@ -905,6 +918,11 @@ function renderLinkedComponentInstanceContent(input: {
         height: "100%",
         overflow: "hidden",
     };
+    // A host that runs blueprints is a host where the definition's widgets are the player's to
+    // press; anywhere else the instance is one object an author selects, and its insides are not
+    // separately clickable. Both halves of that - who carries an element id, and what the pointer
+    // can reach - answer to the same question, so they are decided once, here.
+    const liveContent = Boolean(input.hostAdapter.blueprintRuntime);
     const contentStyle: CSSProperties = {
         position: "absolute",
         left: 0,
@@ -913,9 +931,18 @@ function renderLinkedComponentInstanceContent(input: {
         height: rootHeight,
         transform: `scale(${instanceWidth / rootWidth}, ${instanceHeight / rootHeight})`,
         transformOrigin: "top left",
-        pointerEvents: "none",
+        // Inherited by the whole definition, so leaving this "none" at runtime made every widget
+        // inside every placement unreachable: the press landed on the placement's own wrapper, and
+        // the card that drew perfectly answered nothing.
+        pointerEvents: liveContent ? "auto" : "none",
     };
     return (
+        // The placement is announced to everything below it, the way a list announces a row. Without
+        // it the *read* side of widget runtime state keys by the template - so pointing at one
+        // placement lights up all of them, and a value one placement wrote is read back by its
+        // siblings. The write side has been addressing the placement since widget addresses existed;
+        // this is the other half of the same pairing.
+        <WidgetRuntimeInstanceProvider instance={{ key: componentInstanceKey, selected: false }}>
         <div style={viewportStyle}>
             <div style={contentStyle}>
                 {renderElementTree(
@@ -931,7 +958,22 @@ function renderLinkedComponentInstanceContent(input: {
                     componentInstanceKey,
                     input.nestedSurfaceRuntime,
                     [virtualSurface.id],
-                    false,
+                    // A definition's insides answer the player, but never the author's pointer.
+                    //
+                    // This was a flat `false` from when a component was a picture: nothing inside
+                    // one ran, so "not the editor's to select" and "not the player's to press" were
+                    // the same sentence. They stopped being the same the moment a definition could
+                    // carry a blueprint - a card placed twelve times still had to answer a click,
+                    // and `false` here meant no widget inside any placement ever heard one. The
+                    // press landed on the DOM and was dropped at `EditorNodeWrapper`, which is why
+                    // the card drew perfectly and did nothing.
+                    //
+                    // The predicate is the one the nested-surface renderer above already uses: a
+                    // host that runs blueprints is a host where widgets are live. The editing
+                    // canvas has no blueprint runtime, so a component's insides stay unselectable
+                    // there, which is the half of the original `false` worth keeping - an author
+                    // edits the definition, not one drawing of it.
+                    liveContent,
                     input.interactive ?? true,
                     input.keyboardInteractive ?? input.interactive ?? true,
                     input.valueRuntime,
@@ -943,6 +985,7 @@ function renderLinkedComponentInstanceContent(input: {
                 )}
             </div>
         </div>
+        </WidgetRuntimeInstanceProvider>
     );
 }
 
@@ -972,8 +1015,8 @@ function renderElementTree(
     animationPlan: SurfaceAnimationPlan | null = null,
 ): ReactNode {
     const componentId = componentPath[componentPath.length - 1];
-    const runtimePatch = widgetRuntimePatches?.[element.id];
-    const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {});
+    const runtimePatch = widgetRuntimePatches?.[buildUIWidgetAddress(element.id, instanceKey)];
+    const patched = applyWidgetRuntimePatches(element, widgetRuntimePatches ?? {}, instanceKey);
     const bound =
         blueprintBindingContext != null
             ? mergeElementWithBlueprintBindings(
@@ -1132,6 +1175,7 @@ function renderElementTree(
             element={resolved}
             layout={resolved.layout}
             isRoot={resolved.parentId === null}
+            isComponentRoot={resolved.parentId === null && Boolean(componentId)}
             layoutMode={layoutMode}
             styleOverrides={styleOverrides}
             hasRuntimeOpacityOverride={Boolean(
@@ -1143,6 +1187,7 @@ function renderElementTree(
             useAppearanceInspectorPreview={useAppearanceInspectorPreview}
             listItemScope={listItemScope ?? null}
             instanceKey={instanceKey}
+            componentId={componentId}
             componentParams={componentParams}
         >
             {blueprintLifecycleReady && hostAdapter.blueprintRuntime ? (
@@ -1150,8 +1195,11 @@ function renderElementTree(
                     surfaceId={surface.id}
                     elementId={resolved.id}
                     elementType={resolved.type}
-                    behavior={resolved.behavior}
-                    initBinding={resolved.behavior?.events?.init}
+                    ownedBlueprintId={resolveWidgetPrivateBlueprintId(
+                        blueprintBindingContext?.blueprintDocument,
+                        { surfaceId: surface.id, componentId },
+                        resolved.id,
+                    )}
                     hostAdapter={hostAdapter}
                     componentId={componentId}
                     componentParams={componentParams}

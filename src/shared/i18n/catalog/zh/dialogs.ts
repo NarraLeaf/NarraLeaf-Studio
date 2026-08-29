@@ -13,7 +13,7 @@ export const dialogs = {
         alertTitle: "提示",
     },
     select: {
-        placeholder: "请选择…",
+        placeholder: "选择…",
         searchPlaceholder: "搜索或选择…",
     },
     input: {
@@ -23,15 +23,15 @@ export const dialogs = {
     },
     createGroup: {
         title: "创建分组",
-        prompt: "请输入{type}分组的名称",
+        prompt: "输入 {type} 分组的名称",
         placeholder: "输入分组名称…",
         empty: "分组名称不能为空",
     },
     rename: {
-        title: "重命名{type}",
-        prompt: "请输入新的{type}名称",
+        title: "重命名 {type}",
+        prompt: "输入新的 {type} 名称",
         placeholder: "输入新名称…",
-        empty: "{type}名称不能为空",
+        empty: "{type} 名称不能为空",
         sameName: "新名称不能与当前名称相同",
     },
     password: {
@@ -39,7 +39,7 @@ export const dialogs = {
     },
     email: {
         placeholder: "输入邮箱地址…",
-        invalid: "请输入有效的邮箱地址",
+        invalid: "输入有效的邮箱地址",
     },
     service: {
         alertTitle: "提示",
@@ -58,7 +58,7 @@ export const dialogs = {
         scene: "场景",
         chapter: "章节",
         component: "组件",
-        inputAction: "输入操作",
+        inputAction: "输入意图",
         asset: "资产",
         page: "页面",
         gameUi: "游戏 UI",

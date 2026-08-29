@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import fs from "fs/promises";
 import path from "path";
-import { openSealedBundle, RUNTIME_BUNDLE_FILENAME, RUNTIME_SUPPORT_FILENAME } from "@narraleaf/encryption/runtime";
+import { openAssetArchive, ASSET_ARCHIVE_FILENAME, ARCHIVE_READER_FILENAME } from "@narraleaf/bindings/read";
 import type { GameRuntimePackV1 } from "@shared/types/gameRuntime";
 import { GAME_RUNTIME_BUNDLE_PACK_ENTRY } from "@shared/utils/gameRuntimeBundle";
 
@@ -42,7 +42,7 @@ export interface PayloadReader {
  * question anyway: it separates this game's payload from any other package.
  */
 async function looksLikePayload(location: string): Promise<boolean> {
-    for (const marker of ["pack.json", RUNTIME_BUNDLE_FILENAME]) {
+    for (const marker of ["pack.json", ASSET_ARCHIVE_FILENAME]) {
         if (await fileHasContent(path.join(location, marker))) {
             return true;
         }
@@ -142,9 +142,9 @@ export async function resolvePayloadLocation(target: string): Promise<string> {
 
 export async function openPayload(target: string): Promise<PayloadReader> {
     const appDir = await resolvePayloadLocation(target);
-    const bundlePath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+    const bundlePath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
     if (await fileHasContent(bundlePath)) {
-        const sealed = await openSealedBundle(path.join(appDir, RUNTIME_SUPPORT_FILENAME), bundlePath);
+        const sealed = await openAssetArchive(path.join(appDir, ARCHIVE_READER_FILENAME), bundlePath);
         try {
             const pack = JSON.parse(
                 (await sealed.read(GAME_RUNTIME_BUNDLE_PACK_ENTRY)).toString("utf-8"),

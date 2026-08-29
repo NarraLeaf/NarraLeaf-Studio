@@ -177,7 +177,7 @@ function DefaultStar(props: {
  * and which are locked. Hiding a layer to see the one under it must not change what ships, so it
  * cannot be persisted - `toLayeredDefinition` never learns about it.
  */
-export function CharacterEditor({ payload }: EditorComponentProps<CharacterEditorPayload>) {
+export function CharacterEditor({ tabId, payload }: EditorComponentProps<CharacterEditorPayload>) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     /**
@@ -209,7 +209,18 @@ export function CharacterEditor({ payload }: EditorComponentProps<CharacterEdito
 
     // The appearance mutates in place, so a version counter is what re-renders this tree.
     const [version, setVersion] = useState(0);
-    useEffect(() => character?.subscribe(() => setVersion(current => current + 1)), [character]);
+    useEffect(
+        () =>
+            character?.subscribe(() => {
+                setVersion(current => current + 1);
+                // Nothing a character editor writes goes on an undo stack, so the workspace-wide
+                // rule that promotes a preview tab on an edit cannot see this one. Saying so here
+                // is what keeps a character the author has started changing from being taken over
+                // by the next name they click in the list.
+                uiService?.editor.promote(tabId);
+            }),
+        [character, tabId, uiService],
+    );
 
     const [slot, setSlot] = useState<SlotRef | null>(null);
     const [view, setView] = useState<CharacterEditorViewState>(EMPTY_CHARACTER_EDITOR_VIEW_STATE);

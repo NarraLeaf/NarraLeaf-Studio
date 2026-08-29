@@ -13,7 +13,7 @@ export const defaultDoc = {
         avatar: "说话人头像",
         nametag: "名牌",
         sentence: "句子",
-        sentenceText: "当前台词将显示在这里",
+        sentenceText: "当前对白将显示在此处",
         nextEvent: "对白下一步",
         updateNametagEvent: "更新名牌",
         updateAvatarEvent: "更新说话人头像",
@@ -41,7 +41,7 @@ export const defaultDoc = {
         list: "NVL 列表",
         nametag: "NVL 名牌",
         texts: "NVL 文本",
-        entryText: "对白条目文本将显示在这里",
+        entryText: "对白条目文本将显示在此处",
         nextEvent: "NVL 下一步",
     },
 } satisfies LocaleNamespace<"defaultDoc">;

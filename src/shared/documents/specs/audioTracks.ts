@@ -1,12 +1,20 @@
 import {
     AUDIO_TRACK_SCHEMA_VERSION,
     migrateProjectAudioTrackDocument,
+    normalizeProjectAudioTracks,
     type ProjectAudioTrack,
     type ProjectAudioTrackDocument,
 } from "../../types/audioTrack";
-import {buildDocumentDiff, DocumentChange, DocumentDiff} from "../diff";
+import {
+    buildDocumentDiff,
+    DocumentChange,
+    DocumentDiff,
+    DocumentMerge3,
+    DocumentMergeDecision,
+} from "../diff";
 import {defineDocumentSpec} from "../registry";
 import {authoredName, byId, change, diffKeyed, fromToParams, sameJsonValue} from "./diffHelpers";
+import {countConflicts, decision, keyedRowLabel, mergeKeyed} from "./mergeHelpers";
 import {rejectNewerSchema, requireDocumentObject} from "./parseHelpers";
 
 /**
@@ -46,11 +54,13 @@ export const audioTracksSpec = defineDocumentSpec<ProjectAudioTrackDocument>({
         counts: [{key: "audioTracks", value: document.tracks.length}],
     }),
     diff: diffAudioTracks,
+    merge3: merge3AudioTracks,
 });
 
 const LABEL = {
     added: "documentDiff.audioTracks.added",
     removed: "documentDiff.audioTracks.removed",
+    changed: "documentDiff.audioTracks.changed",
     renamed: "documentDiff.audioTracks.renamed",
     rerouted: "documentDiff.audioTracks.rerouted",
     reroutedToMaster: "documentDiff.audioTracks.reroutedToMaster",
@@ -59,6 +69,62 @@ const LABEL = {
     loopOff: "documentDiff.audioTracks.loopOff",
     order: "documentDiff.audioTracks.order",
 } as const;
+
+/**
+ * Three-way merge of the mixer - one decision per track, addressed by the track's id.
+ *
+ * ⚠ **The tracks are a list on disk and a keyed collection to a merge**, and that is the whole
+ * shape of this. Sibling order is the author's arrangement, so it is stored as an array; identity
+ * is the id every story row, blueprint pin and widget points at, so nothing here lines two tracks
+ * up by where they sit. The decisions are therefore `tracks/<id>`, which `applyMergeDecisions`
+ * addresses by id rather than by position - see the note on `removeAt` for why removing by id is
+ * sound where removing by index is not.
+ *
+ * **The merged list is put back through the normalizer, and it has to be.** A merge can produce a
+ * tree no single side had: my re-parenting of a track under a bus they deleted leaves a track
+ * pointing at nothing, and two people re-parenting into each other's subtrees leaves a ring. The
+ * normalizer's answers are already the format's own (unknown parent to the root, a ring cut at the
+ * track that closes it) and every reader applies them, so doing it here means the merged document
+ * is one nothing has to repair rather than one that repairs differently depending on who opens it.
+ * It also re-seeds the three built-in tracks, which a merge cannot lose but a corrupt side can.
+ *
+ * **Order is mine's, then the tracks only theirs has.** Appended, never interleaved: two people who
+ * both added a track have not disagreed about the order of anything, and a merge that guessed at an
+ * interleaving would be inventing an arrangement neither author made. A pure reorder by them alone
+ * is the one thing this drops silently, which is the price of not having an order to conflict over.
+ *
+ * `meta` and `schemaVersion` come from mine with no row, as they do in the comparison: two
+ * timestamps and a constant are not something an author decided between.
+ */
+export function merge3AudioTracks(
+    base: ProjectAudioTrackDocument | undefined,
+    mine: ProjectAudioTrackDocument,
+    theirs: ProjectAudioTrackDocument,
+): DocumentMerge3<ProjectAudioTrackDocument> {
+    const tracks = mergeKeyed(
+        base === undefined ? undefined : byId(base.tracks),
+        byId(mine.tracks),
+        byId(theirs.tracks),
+    );
+    const decisions: DocumentMergeDecision[] = tracks.rows.map(row => {
+        const present = (row.mine.value ?? row.theirs.value ?? row.base.value) as
+            ProjectAudioTrack | undefined;
+        return decision(["tracks", row.key], row, {
+            label: keyedRowLabel(row, LABEL),
+            subject: authoredName(present?.name),
+        });
+    });
+
+    return {
+        document: {
+            schemaVersion: mine.schemaVersion,
+            tracks: normalizeProjectAudioTracks(Object.values(tracks.merged)),
+            ...(mine.meta === undefined ? {} : {meta: mine.meta}),
+        },
+        decisions,
+        conflicts: countConflicts(decisions),
+    };
+}
 
 /**
  * One row per track, and the routing is the row this is for.

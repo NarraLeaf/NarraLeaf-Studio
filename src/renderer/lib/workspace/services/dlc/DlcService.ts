@@ -15,6 +15,8 @@ import {
     type ProjectDlcDocument,
 } from "@shared/types/dlc";
 import type { TranslationKey } from "@shared/i18n";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import type { LiveDlcOp } from "@shared/live/ops";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
 import { ProjectService } from "../core/ProjectService";
@@ -30,6 +32,29 @@ import { EventEmitter } from "../ui/EventEmitter";
 type DlcServiceEvents = {
     dlcChanged: ProjectDlc[];
     dirtyChanged: boolean;
+};
+
+/**
+ * Somewhere a DLC edit can go instead of into the document.
+ *
+ * The seam a live session hangs this table off, and the same bargain `CharacterOpSink` describes:
+ * with a sink installed an edit becomes an operation and the document is not touched; the panel
+ * changes when the operation comes back as somebody's effect and {@link DlcService.applyLiveOp}
+ * applies it. Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * ⚠ **Offered by each mutator rather than by the one write path they share.** `applyMutation` takes a
+ * whole-list closure and can state nothing finer than "the list is now this", which is the
+ * last-writer-wins this design refuses. The mutators know which row they are about, so that is where
+ * the interception belongs - and it is why `applyMutation` is private.
+ */
+export type DlcOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False is the ordinary answer
+     * outside a session, and the mutator then does exactly what it does with no sink at all.
+     */
+    handle(op: LiveDlcOp): boolean;
 };
 
 const DLC_EDIT_LABEL: HistoryLabel = { key: "project.dlc.history.edit" as TranslationKey };
@@ -72,6 +97,8 @@ export class DlcService extends Service<DlcService> implements IDlcService {
     private readonly events = new EventEmitter<DlcServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Where DLC edits go instead of into the document, when something else owns them. */
+    private opSink: DlcOpSink | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -205,6 +232,13 @@ export class DlcService extends Service<DlcService> implements IDlcService {
             name,
             attachTo: input?.attachTo?.trim() || APP_TAG_ID_RELEASE,
         };
+        if (this.offer({ op: "create-dlc", dlc })) {
+            // ⚠ Inside a session the record handed back is NOT in the list yet - it is what this
+            // window has asked for, and it lands when the effect comes back. Callers that only read
+            // its id (the panel opens the row it just asked for) are unaffected; a caller that went
+            // on to edit the record would be writing to something nobody has.
+            return dlc;
+        }
         this.applyMutation(dlcs => [...dlcs, dlc], dlcLabel("add", dlc.name));
         return this.resolve(dlc.id) ?? dlc;
     }
@@ -225,6 +259,10 @@ export class DlcService extends Service<DlcService> implements IDlcService {
             this.list().filter(entry => entry.id !== id).map(entry => entry.name),
             next,
         );
+        const updated: ProjectDlc = { ...this.resolve(id)!, name: unique };
+        if (this.offer({ op: "update-dlc", dlcId: id, dlc: updated })) {
+            return true;
+        }
         this.applyMutation(
             dlcs => dlcs.map(dlc => (dlc.id === id ? { ...dlc, name: unique } : dlc)),
             dlcLabel("rename", unique),
@@ -252,6 +290,12 @@ export class DlcService extends Service<DlcService> implements IDlcService {
             return id;
         }
         const unique = uniqueDlcId(this.list().filter(entry => entry.id !== id).map(entry => entry.id), folded);
+        if (this.offer({ op: "update-dlc", dlcId: id, dlc: { ...current, id: unique } })) {
+            // The id in force, exactly as outside a session: the field puts back what it is told, and
+            // what it is told is what this window asked for. The operation may still be refused, and
+            // the field is corrected when the effect that answers it does or does not arrive.
+            return unique;
+        }
         this.applyMutation(
             dlcs => dlcs.map(dlc => (dlc.id === id ? { ...dlc, id: unique } : dlc)),
             dlcLabel("rename", current.name),
@@ -266,6 +310,9 @@ export class DlcService extends Service<DlcService> implements IDlcService {
         if (!next || !current) {
             return false;
         }
+        if (this.offer({ op: "update-dlc", dlcId: id, dlc: { ...current, attachTo: next } })) {
+            return true;
+        }
         this.applyMutation(
             dlcs => dlcs.map(dlc => (dlc.id === id ? { ...dlc, attachTo: next } : dlc)),
             DLC_EDIT_LABEL,
@@ -278,8 +325,90 @@ export class DlcService extends Service<DlcService> implements IDlcService {
         if (!current) {
             return false;
         }
+        if (this.offer({ op: "delete-dlc", dlcId: id })) {
+            return true;
+        }
         this.applyMutation(dlcs => dlcs.filter(dlc => dlc.id !== id), dlcLabel("delete", current.name));
         return true;
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send DLC edits somewhere else, or take them back. Null restores the ordinary behaviour exactly. */
+    public setOperationSink(sink: DlcOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * The document as it stands, or null before it has been read.
+     *
+     * What a digest is taken over. Null rather than the throw {@link getDocument} makes, because the
+     * caller is a fingerprint: "this window does not hold the table" is a value that has to be
+     * hashable - see `@shared/live/config`.
+     */
+    public liveDocument(): ProjectDlcDocument | null {
+        return this.document;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam. Everything it does goes through the same normalization, dirty
+     * marking and change event an ordinary edit does - a document that changed without them is a
+     * panel that never redraws and a file that never receives it.
+     *
+     * **Nothing here enters this author's undo stack.** An effect is somebody's edit landing on this
+     * machine, and an undo that offered to take it back would be offering to delete a stranger's
+     * work. Inside a session, undo is sending the inverse of one's own last operation instead.
+     */
+    public applyLiveOp(op: LiveDlcOp): void {
+        const document = this.getDocument();
+        switch (op.op) {
+            case "create-dlc": {
+                const dlc = structuredClone(op.dlc) as ProjectDlc;
+                document.dlcs = hasDlc(document.dlcs, dlc.id)
+                    // A creation for a record already here is a retry that escaped the receipts.
+                    // Replacing rather than appending cannot produce two rows under one id.
+                    ? document.dlcs.map(entry => (entry.id === dlc.id ? dlc : entry))
+                    : insertLiveRecordBefore(document.dlcs, dlc, op.beforeId);
+                break;
+            }
+            case "update-dlc": {
+                if (!hasDlc(document.dlcs, op.dlcId)) {
+                    // The host refuses an update naming a record it cannot find, so reaching this is
+                    // this machine having missed the creation. Creating it here would hide that; the
+                    // digest on this very effect is what reports it.
+                    break;
+                }
+                const dlc = structuredClone(op.dlc) as ProjectDlc;
+                // In place, so a change of id keeps the row where the author is looking at it.
+                document.dlcs = document.dlcs.map(entry => (entry.id === op.dlcId ? dlc : entry));
+                break;
+            }
+            case "delete-dlc":
+                document.dlcs = document.dlcs.filter(entry => entry.id !== op.dlcId);
+                break;
+            default: {
+                // ⚠ The switch is exhaustive by construction, and this is what says so. Without it a
+                // verb added to `LiveDlcOp` with no case here would be a silent no-op: the effect
+                // would land on every other machine in the room and not on this one, and the digest
+                // would only find out one message later.
+                const unapplied: never = op;
+                return unapplied;
+            }
+        }
+        document.dlcs = normalizeProjectDlcs(document.dlcs);
+        this.commitMutation();
+    }
+
+    /**
+     * Hand one operation to the sink, or say that there is none.
+     *
+     * The one door, so a mutator cannot take the session's half without taking its answer: true means
+     * the document must not be touched at all.
+     */
+    private offer(op: LiveDlcOp): boolean {
+        return this.opSink?.handle(op) ?? false;
     }
 
     /**
@@ -288,8 +417,13 @@ export class DlcService extends Service<DlcService> implements IDlcService {
      * The undo unit is the whole document for the reason `AppTagService` gives: it is a small table,
      * and the alternative is an inverse per mutator that each has to stay correct as the record
      * grows a key.
+     *
+     * ⚠ **Private, and it has to stay that way.** It states nothing finer than "the list is now
+     * this", so a caller reaching it during a live session would make a change no operation could
+     * describe - an edit that lands on one machine and nowhere else, with no digest over it. The
+     * mutators above are where a session intercepts; see {@link DlcOpSink}.
      */
-    public applyMutation(
+    private applyMutation(
         mutator: (dlcs: ProjectDlc[]) => ProjectDlc[],
         label: HistoryLabel = DLC_EDIT_LABEL,
     ): void {

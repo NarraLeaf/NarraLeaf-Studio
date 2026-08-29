@@ -1,8 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+    appTagsSpec,
+    assetGroupsSpec,
+    assetSetsSpec,
+    assetsMetadataSpec,
+    audioTracksSpec,
+    brandSpec,
     charactersSpec,
+    dictionarySpec,
+    dlcSpec,
     localizationDocumentSpec,
+    localizationKeysSpec,
     storyDocumentSpec,
+    variableRegistrySpec,
     voiceDocumentSpec,
 } from "@shared/documents/specs";
 import { isVersioned } from "@shared/vcs/workingSet";
@@ -12,11 +22,31 @@ import {
     liveSessionCarries,
     liveSessionDocuments,
     liveSessionWritablePaths,
+    NO_LIVE_INTERFACE,
     type LiveSessionLocales,
+    type LiveSessionRegistries,
 } from "./sharedDocuments";
 
 const STORY = "story-1";
 const LOCALES: LiveSessionLocales = { translations: ["ja", "fr"], voice: ["ja"] };
+const ASSET_TYPES = ["image", "audio"];
+const ASSET_CATEGORIES = ["image", "media"];
+const REGISTRIES: LiveSessionRegistries = { variables: true, localizationKeys: true };
+
+/**
+ * The three tables a session always carries.
+ *
+ * Unparameterised with the cast, so they need nothing from the caller and appear in every answer -
+ * which is what the expectations below spell out rather than filter away.
+ */
+const TABLES = [
+    { doc: "app-tags" },
+    { doc: "dlc" },
+    { doc: "brand" },
+    { doc: "dictionary" },
+    { doc: "audio-tracks" },
+    { doc: "asset-sets" },
+];
 
 /**
  * The one table two things read: the write boundary, which asks which paths a session leaves
@@ -28,7 +58,8 @@ const LOCALES: LiveSessionLocales = { translations: ["ja", "fr"], voice: ["ja"] 
  */
 describe("the documents a session carries", () => {
     it("is every story in the project, the cast, and each language's two libraries", () => {
-        expect(liveSessionDocuments([STORY])).toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }]);
+        expect(liveSessionDocuments([STORY]))
+            .toEqual([{ doc: "story", storyId: STORY }, { doc: "characters" }, ...TABLES]);
         expect(liveSessionDocuments([STORY, "story-2"], LOCALES)).toEqual([
             { doc: "story", storyId: STORY },
             { doc: "story", storyId: "story-2" },
@@ -36,6 +67,7 @@ describe("the documents a session carries", () => {
             { doc: "localization", locale: "ja" },
             { doc: "localization", locale: "fr" },
             { doc: "voice", locale: "ja" },
+            ...TABLES,
         ]);
     });
 
@@ -45,6 +77,20 @@ describe("the documents a session carries", () => {
         expect(liveSessionDocuments([], { translations: ["fr"], voice: [] })).toEqual([
             { doc: "characters" },
             { doc: "localization", locale: "fr" },
+            ...TABLES,
+        ]);
+    });
+
+    it("adds the asset library's metadata shards per type, and its folder shards per section", () => {
+        // Two axes, not one: a folder under Media holds audio and video alike, so it cannot belong
+        // to either type's shard.
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, ASSET_TYPES, ASSET_CATEGORIES)).toEqual([
+            { doc: "characters" },
+            { doc: "assets", assetType: "image" },
+            { doc: "assets", assetType: "audio" },
+            { doc: "asset-groups", category: "image" },
+            { doc: "asset-groups", category: "media" },
+            ...TABLES,
         ]);
     });
 
@@ -54,10 +100,20 @@ describe("the documents a session carries", () => {
         expect(liveDocumentPath({ doc: "localization", locale: "ja" }))
             .toBe(localizationDocumentSpec.pathFor({ locale: "ja" }));
         expect(liveDocumentPath({ doc: "voice", locale: "ja" })).toBe(voiceDocumentSpec.pathFor({ locale: "ja" }));
+        expect(liveDocumentPath({ doc: "assets", assetType: "image" }))
+            .toBe(assetsMetadataSpec.pathFor({ type: "image" }));
+        expect(liveDocumentPath({ doc: "asset-groups", category: "media" }))
+            .toBe(assetGroupsSpec.pathFor({ category: "media" }));
+        expect(liveDocumentPath({ doc: "app-tags" })).toBe(appTagsSpec.pathFor());
+        expect(liveDocumentPath({ doc: "dlc" })).toBe(dlcSpec.pathFor());
+        expect(liveDocumentPath({ doc: "brand" })).toBe(brandSpec.pathFor());
+        expect(liveDocumentPath({ doc: "dictionary" })).toBe(dictionarySpec.pathFor());
+        expect(liveDocumentPath({ doc: "audio-tracks" })).toBe(audioTracksSpec.pathFor());
+        expect(liveDocumentPath({ doc: "asset-sets" })).toBe(assetSetsSpec.pathFor());
     });
 
     it("names paths the repository actually stores, or the freeze would be exempting nothing", () => {
-        for (const path of liveSessionWritablePaths([STORY], LOCALES)) {
+        for (const path of liveSessionWritablePaths([STORY], LOCALES, ASSET_TYPES, ASSET_CATEGORIES)) {
             expect(isVersioned(path)).toBe(true);
         }
     });
@@ -84,6 +140,36 @@ describe("the documents a session carries", () => {
         expect(liveSessionCarries([STORY], { doc: "voice", locale: "fr" }, LOCALES)).toBe(false);
     });
 
+    it("carries an asset type by name, so a shard nothing read is not writable", () => {
+        // The locale rule one document along, and it matters for the same reason: a shard this
+        // machine never loaded is one no effect can be applied to, because appliers are synchronous.
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "image" }, LOCALES, ASSET_TYPES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "font" }, LOCALES, ASSET_TYPES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "assets", assetType: "image" }, LOCALES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "asset-groups", category: "media" }, LOCALES, ASSET_TYPES, ASSET_CATEGORIES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "asset-groups", category: "font" }, LOCALES, ASSET_TYPES, ASSET_CATEGORIES)).toBe(false);
+    });
+
+    it("leaves the payloads and the row order writable without making them addressable", () => {
+        // ⚠ The one place "writable" and "addressable" deliberately differ. An asset's bytes are
+        // not a document anybody states an operation about - an applier puts them down - and the row
+        // order is recomputed by every machine from what it just applied. Both have to be writable
+        // and neither may be addressed, which is why neither is a `LiveDocument`.
+        const paths = liveSessionWritablePaths([STORY], LOCALES, ASSET_TYPES, ASSET_CATEGORIES);
+        expect(paths).toContain("assets/content");
+        expect(paths.filter(path => path.includes("assets.order."))).toHaveLength(2);
+        expect(paths.filter(path => path.includes("assets.groups."))).toHaveLength(2);
+        expect(paths.filter(path => path.includes("assets.metadata."))).toHaveLength(2);
+
+        const addressable = liveSessionDocuments([STORY], LOCALES, ASSET_TYPES, ASSET_CATEGORIES);
+        expect(addressable.some(document => liveDocumentPath(document).startsWith("assets/content"))).toBe(false);
+        expect(addressable.some(document => liveDocumentPath(document).includes("assets.order."))).toBe(false);
+    });
+
+    it("carries no payload path at all for a session with no asset library", () => {
+        expect(liveSessionWritablePaths([STORY], LOCALES, ASSET_TYPES)).not.toContain("assets/content");
+    });
+
     it("has a writable path for every document kind the vocabulary can carry, and no others", () => {
         // The invariant, stated as a test: a document is writable during a session exactly when the
         // session can carry its changes. A verb whose document is not here would be an operation the
@@ -94,19 +180,97 @@ describe("the documents a session carries", () => {
             { op: "create-character", character: { profile: { id: "c" } } as never },
             { op: "set-translation", locale: "ja", unitId: "t", unit: null },
             { op: "set-take", locale: "ja", unitId: "t", unit: null },
+            { op: "update-asset", assetType: "image", assetId: "a", record: {} },
+            { op: "set-asset-folder", category: "image", folderId: "g", folder: {} },
+            { op: "create-app-tag", tag: { id: "t", name: "Demo", overrides: {} } },
+            { op: "create-dlc", dlc: { id: "d", name: "Side Story", attachTo: "release" } },
+            { op: "create-brand-color", color: { id: "c", value: "#FFFFFF" } },
+            { op: "set-dictionary-entry", term: "x", entry: null },
+            { op: "create-audio-track", track: { id: "t" } as never, beforeId: null },
+            { op: "delete-asset-sets", setIds: ["s"] },
         ];
         for (const op of verbs) {
             carried.add(opDocumentKind(op));
         }
-        expect([...carried].sort()).toEqual(["characters", "localization", "story", "voice"]);
-        // Two stories, the cast, two translation libraries and one voice library: every document the
-        // vocabulary can carry, and no path for a kind it cannot.
-        expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES)).toHaveLength(6);
+        expect([...carried].sort()).toEqual([
+            "app-tags",
+            "asset-groups",
+            "asset-sets",
+            "assets",
+            "audio-tracks",
+            "brand",
+            "characters",
+            "dictionary",
+            "dlc",
+            "localization",
+            "story",
+            "voice",
+        ]);
+        // Two stories, the cast, two translation libraries, one voice library, two asset shards,
+        // two folder shards and the six unparameterised project documents - every document the
+        // vocabulary can carry - plus the three paths no operation is about: the payload root and
+        // the two row orders.
+        expect(liveSessionWritablePaths([STORY, "story-2"], LOCALES, ASSET_TYPES, ASSET_CATEGORIES))
+            .toHaveLength(16 + 3);
     });
 
-    it("leaves the named-key registry out, which is the invariant working rather than an omission", () => {
-        // `editor/localization/keys.json` has no verbs, so declaring a UI string stays frozen for the
-        // length of a session and says so - the harmless half of the trade this table enforces.
+    it("adds the two project-level registries, and only the ones this machine could read", () => {
+        // Booleans rather than a list, because neither is parameterised - and read rather than
+        // assumed, for the libraries' reason: a registry that would not parse is one no effect can be
+        // applied to, and carrying it would leave the boundary allowing writes the host refuses.
+        // Beside the six unparameterised project documents, which are always carried.
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toEqual([
+            { doc: "characters" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
+            { doc: "dictionary" },
+            { doc: "audio-tracks" },
+            { doc: "asset-sets" },
+            { doc: "variables" },
+            { doc: "localization-keys" },
+        ]);
+        expect(liveSessionDocuments([], { translations: [], voice: [] }, [], [], NO_LIVE_INTERFACE, {
+            variables: true,
+            localizationKeys: false,
+        })).toEqual([
+            { doc: "characters" },
+            { doc: "app-tags" },
+            { doc: "dlc" },
+            { doc: "brand" },
+            { doc: "dictionary" },
+            { doc: "audio-tracks" },
+            { doc: "asset-sets" },
+            { doc: "variables" },
+        ]);
+        // Neither, which is what a caller that read neither passes - and the default.
+        expect(liveSessionDocuments([STORY]).some(one => one.doc === "variables")).toBe(false);
+        expect(liveSessionDocuments([STORY]).some(one => one.doc === "localization-keys")).toBe(false);
+    });
+
+    it("puts each registry at the path its own spec owns", () => {
+        expect(liveDocumentPath({ doc: "variables" })).toBe(variableRegistrySpec.pathFor());
+        expect(liveDocumentPath({ doc: "localization-keys" })).toBe(localizationKeysSpec.pathFor());
+        // ⚠ Both are versioned project data, so both really are inside the freeze this widens.
+        expect(isVersioned(variableRegistrySpec.pathFor())).toBe(true);
+        expect(isVersioned(localizationKeysSpec.pathFor())).toBe(true);
+    });
+
+    it("keeps the named-key registry frozen for a session that could not read it", () => {
+        // The half of the invariant that stays: a document is writable during a session exactly when
+        // the session can carry its changes, and a registry nothing parsed carries nothing.
         expect(liveSessionWritablePaths([STORY], LOCALES).some(path => path.endsWith("keys.json"))).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES)).toBe(false);
+        expect(liveSessionCarries([STORY], { doc: "localization-keys" }, LOCALES, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toBe(true);
+        expect(liveSessionCarries([STORY], { doc: "variables" }, LOCALES, [], [], NO_LIVE_INTERFACE, REGISTRIES)).toBe(true);
+    });
+
+    it("carries the three project tables whatever else it was given", () => {
+        // They are one document each per project, so there is nothing to expand and no way for a
+        // caller to leave one out - which is the whole reason they take no parameter.
+        for (const document of TABLES) {
+            expect(liveSessionCarries([], document as never)).toBe(true);
+        }
     });
 });

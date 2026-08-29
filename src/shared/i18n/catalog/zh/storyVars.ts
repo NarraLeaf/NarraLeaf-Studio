@@ -12,18 +12,22 @@ export const storyVars = {
         defaultPlaceholder: "默认值",
         defaultAria: "默认值",
         delete: "删除变量",
+        deleteInSession: "本次实时会话中不可用，离开会话后可以删除该变量",
+    },
+    live: {
+        entryClaimed: "{name} 正在编辑该变量",
     },
     scene: {
         title: "场景变量",
-        hint: "在故事里用 /local 声明，点击行可跳到声明处",
+        hint: "在故事中使用 /local 声明，点击行可跳到声明处",
     },
     saved: {
         title: "存档变量",
-        hint: "在工程里定义，值保存在存档文件中",
+        hint: "在项目里定义，值保存在存档文件中",
     },
     // 说明词跟随故事行上的写法：`/global` 声明的就叫「全局变量」，键名保持 persistent 不动
     persistent: {
         title: "全局变量",
-        hint: "在工程里定义，应用级，与蓝图共享",
+        hint: "在项目中定义，应用级，与蓝图共享",
     },
 } satisfies LocaleNamespace<"storyVars">;

@@ -31,8 +31,13 @@ export type StoryPlaybackStep = {
 /** Why the tail ends. Surfaced to the author so a preview that stops early never looks like a bug. */
 export type StoryPlaybackStop =
     | { reason: "sceneEnd" }
-    /** A scene jump: the preview compiles one scene only, so playback holds at the pre-jump state. */
-    | { reason: "jump"; blockId: StoryBlockId; targetSceneId: StorySceneId }
+    /**
+     * A scene jump. `followed` says which of the two things that means: the single-scene preview
+     * compiles one scene, so playback holds at the pre-jump state and the author is told why, while
+     * a launch emits the jump and control really does leave for the target scene - nothing has
+     * stopped, and saying so would put a warning on a row that behaved.
+     */
+    | { reason: "jump"; blockId: StoryBlockId; targetSceneId: StorySceneId; followed: boolean }
     /** Structural cycle or a scene past the step ceiling — a defensive stop, not a normal one. */
     | { reason: "limit" };
 
@@ -133,12 +138,25 @@ class PlanBuilder {
             return true;
         }
         if (block.kind === "jump") {
+            // A returnable jump is not where this scene stops - control comes back to the row after
+            // it - so in launch mode it is an ordinary step and the walk carries on past it. The
+            // single-scene preview still holds: it compiles one scene, so the scene being called is
+            // not in the story it built and there is nothing to come back from.
+            if (block.payload.returnable && this.followJumps) {
+                if (this.steps.length >= MAX_STEPS) {
+                    this.stopAtLimit();
+                    return false;
+                }
+                this.steps.push({ blockId: block.id, bodyOnly: false, insideNvl: this.isInsideNvl(block) });
+                return true;
+            }
             // Launch mode follows the jump into the target scene, so emit it as the tail's last step.
             // The single-scene preview instead holds before it. Either way this scene runs no further.
-            if (this.followJumps && this.steps.length < MAX_STEPS) {
+            const followed = this.followJumps && this.steps.length < MAX_STEPS;
+            if (followed) {
                 this.steps.push({ blockId: block.id, bodyOnly: false, insideNvl: this.isInsideNvl(block) });
             }
-            this.stop = { reason: "jump", blockId: block.id, targetSceneId: block.payload.targetSceneId };
+            this.stop = { reason: "jump", blockId: block.id, targetSceneId: block.payload.targetSceneId, followed };
             this.stopped = true;
             return false;
         }

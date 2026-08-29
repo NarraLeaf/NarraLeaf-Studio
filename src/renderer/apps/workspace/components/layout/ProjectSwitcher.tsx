@@ -9,7 +9,7 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
-import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
+import { useOpenRecentProject, useRecentProjectIcons, useRecentProjects } from "../../hooks/useRecentProjects";
 import { useTitleBarMenu } from "../ui/titleBarMenus";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
@@ -44,6 +44,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const recentProjects = useRecentProjects();
+    // The app icon each remembered project ships, for the ones that ship one.
+    const iconsByPath = useRecentProjectIcons();
     const openRecentProject = useOpenRecentProject();
 
     // Held in the title bar's bar of menus, so opening this one puts away whatever was open, and
@@ -149,16 +151,25 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 type="button"
                 onClick={toggle}
                 className={cn(
-                    "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
+                    "h-8 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                data-tip={t("workspace.shell.projectSwitcher.openAnother")}
+                /* The full name, above the hint - the face cuts it, and this is the only place left
+                   in the window that can still say it. It is there even when the name fits: whether
+                   the span was cut cannot be known without measuring it, and a name said twice for a
+                   moment is cheaper than one that cannot be read at all. */
+                data-tip={`${displayName}\n${t("workspace.shell.projectSwitcher.openAnother")}`}
 
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
                 <FolderOpen className="w-4 h-4 shrink-0" />
-                <span className="truncate">{displayName}</span>
+                {/* Capped in em rather than pixels, so the budget is a number of CHARACTERS: seven,
+                    which is six CJK glyphs and the ellipsis after them, and rather more Latin ones
+                    because those are narrower - the same width carries about as much meaning either
+                    way. Uncapped, this button is as wide as the project is named, and a long name
+                    pushed the File menu and the run control across the title bar. */}
+                <span className="truncate max-w-[7em]">{displayName}</span>
                 <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", open && "rotate-180")} />
             </button>
 
@@ -182,6 +193,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                                 <RecentProjectRow
                                     key={project.path}
                                     project={project}
+                                    icon={iconsByPath.get(normalizeProjectPath(project.path))}
                                     onSelect={() => handleOpen(project)}
                                 />
                             ))}
@@ -397,7 +409,11 @@ function MenuSeparator() {
     return <div className="h-px bg-fill-strong my-1 mx-2" />;
 }
 
-function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProject; onSelect: () => void }) {
+/** One remembered project. `icon` is its own app icon; without one the row shows a folder. */
+function RecentProjectRow(
+    { project, icon, onSelect }:
+    { project: RecentlyOpenedProject; icon?: string; onSelect: () => void },
+) {
     return (
         <button
             type="button"
@@ -407,8 +423,8 @@ function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProjec
             data-tip={`${project.name}\n${project.path}`}
         >
             <span className="shrink-0 w-7 h-7 rounded-md bg-fill grid place-items-center overflow-hidden">
-                {project.icon ? (
-                    <img src={project.icon} alt="" className="w-5 h-5 object-contain" />
+                {icon ? (
+                    <img src={icon} alt="" className="w-5 h-5 object-contain" />
                 ) : (
                     <FolderOpen className="w-4 h-4 text-fg-subtle" />
                 )}

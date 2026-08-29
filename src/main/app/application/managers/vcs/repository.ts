@@ -342,22 +342,35 @@ function isNothingStaged(error: unknown): boolean {
 }
 
 /**
- * Whether a commit would record anything, without scanning.
+ * What is staged, as the two questions a commit has to ask about it.
  *
  * `scan: false` is what makes this safe to ask: a scanning status is NOT a pure read -
  * it records newly discovered directories into staged state - while this form reports
- * only what is already staged (§4.17).
+ * only what is already staged (§4.17). Asked unconditionally rather than only when the
+ * stage result came back empty, because the second question below has no other source
+ * and its answer decides whether a write happens at all.
  *
- * Two sources because neither is enough alone. The stage result covers what this call
- * just staged; the staged revision covers work staged earlier and never committed,
- * which a stage of an unchanged tree reports as zero. Measured: a real change gives
- * `totalCount: 1` and a staged revision hash, a clean tree gives `totalCount: 0` and
- * no staged revision at all.
+ * **anything** has two sources because neither is enough alone. The stage result covers
+ * what this call just staged; the staged revision covers work staged earlier and never
+ * committed, which a stage of an unchanged tree reports as zero. Measured: a real change
+ * gives `totalCount: 1` and a staged revision hash, a clean tree gives `totalCount: 0`
+ * and no staged revision at all.
+ *
+ * **closesMerge** is `revisionMerged` AND `revisionStaged`, which is the same pair
+ * `readMergeState` reads and for the same reason: `revisionMerged` alone stays set after
+ * a merge has been committed, and only the staged half says the merge is still open.
+ * Read here rather than through `readMergeState` because that also walks the working set
+ * for sidecars, and this needs no paths - only whether the staged revision is a merge.
  */
-async function hasSomethingToCommit(globals: LoreGlobals, staged: StageResult): Promise<boolean> {
-    if ((staged.counts?.totalCount ?? 0) > 0) return true;
+async function describeStaged(
+    globals: LoreGlobals,
+    staged: StageResult,
+): Promise<{ anything: boolean; closesMerge: boolean }> {
     const status = await repositoryStatus(globals, { scan: false, revisionOnly: true });
-    return Boolean(status.revision?.revisionStaged);
+    return {
+        anything: (staged.counts?.totalCount ?? 0) > 0 || Boolean(status.revision?.revisionStaged),
+        closesMerge: Boolean(status.revision?.revisionMerged) && Boolean(status.revision?.revisionStaged),
+    };
 }
 
 /**
@@ -400,13 +413,31 @@ export async function commitWorkingTree(
     options: { message: string; kind: VcsRevisionKind },
 ): Promise<VcsCommitResult> {
     const staged = await stage(globals, [globals.repositoryPath]);
-    if (!(await hasSomethingToCommit(globals, staged))) {
+    const state = await describeStaged(globals, staged);
+    if (!state.anything) {
         throw new NothingToCommitError(globals.repositoryPath);
     }
 
     // Namespaced because these keys share one map with Lore's own - a revision already
     // carries `branch`, `timestamp`, `message`, `created-by` and `committed-by`.
-    await setRevisionMetadata(globals, { [VCS_REVISION_KIND_KEY]: options.kind });
+    //
+    // ⚠ **Not while the staged revision is a merge** (§4.34). Step 3 writes to the staged
+    // revision, and when that revision is the one the merge recorded, writing to it
+    // REPLACES it: the commit that follows records the local tip as both of its parents
+    // instead of joining the two lines, so the branch stays diverged and the author's
+    // push is refused after they have resolved everything. Measured against a server, and
+    // measured down to this call - the same merge closed with a plain stage and commit
+    // pushes, and closed with this one line between them does not.
+    //
+    // Setting it after the commit instead is not the alternative it looks like: measured,
+    // it attaches to the NEXT revision (which is what step 3 is about), so the merge would
+    // be unlabelled anyway and the next ordinary commit would be labelled twice. An
+    // unlabelled merge is a real state the history already draws - `row.merge` gives it the
+    // merge icon before `kind` is consulted, and only `checkpoint` is ever collapsed - so
+    // this loses nothing on screen and the alternative loses the merge.
+    if (!state.closesMerge) {
+        await setRevisionMetadata(globals, { [VCS_REVISION_KIND_KEY]: options.kind });
+    }
 
     let revision;
     try {
@@ -421,7 +452,8 @@ export async function commitWorkingTree(
     return {
         revision: revision.revision,
         number: revision.revisionNumber,
-        kind: options.kind,
+        // What was recorded, not what was asked for: a merge is committed unlabelled, above.
+        kind: state.closesMerge ? undefined : options.kind,
         // Directories are excluded: they are counted separately by Lore and an author
         // reading "12 files" does not mean the folders those files are in.
         fileCount: (staged.counts?.fileAddCount ?? 0)

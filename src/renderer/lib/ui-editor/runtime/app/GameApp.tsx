@@ -9,6 +9,7 @@ import {
 import { AnimatePresence, MotionConfig, useReducedMotion } from "motion/react";
 import { Sound, type LiveGame, type SavedGame, type Scene } from "narraleaf-react";
 import { createChoiceVoicePlayer, type ChoiceVoicePlayer } from "./choiceVoicePlayback";
+import { createDialogClickTargets } from "./dialogClickTargets";
 import {
     readWrappedStorableNamespace,
     readWrappedStorableValue,
@@ -29,6 +30,7 @@ import {
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
+import { preloadGateFor } from "@shared/types/preload";
 import {
     isAutoSaveId,
     isReservedSaveId,
@@ -53,6 +55,9 @@ import {
 } from "@/lib/ui-editor/runtime/characterAvatarAssets";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
@@ -125,6 +130,7 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { listStoryEndings, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import type { StoryLiteralValue } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -138,7 +144,7 @@ import {
     AppSurfaceLayerWithAdapter,
     type AppSurfaceLayerNavEntry,
 } from "./AppSurfaceLayer";
-import type { ChoiceSlotRuntime } from "./ChoiceSlotSurface";
+import { createChoiceMenus } from "./choiceMenus";
 import type { GameUiSlotHostOptions } from "./StageSlotSurfaceShell";
 import {
     createGameUiSlotComponents,
@@ -163,6 +169,9 @@ import {
 import { createDisplayAwakeController, DISPLAY_AWAKE_RECHECK_MS } from "./displayAwake";
 import { createSkipRunController } from "./skipRunController";
 import { createSessionGate } from "./sessionGate";
+import { createStoryStartGate, surfacesMayDraw } from "./storyBootGate";
+import { normalizeError, reportRuntimeFailure, watchUncaughtFailures } from "./failureReporting";
+import { createPlayHead, type PlayHead } from "./playHead";
 import { applyWidgetRuntimePatch } from "./widgetRuntimePatches";
 import { clonePageProps } from "./pageProps";
 import { keyboardBlueprintPayload } from "./keyboardBlueprintPayload";
@@ -192,7 +201,7 @@ import { useLayerStack } from "./layers/useLayerStack";
 import { resolveCompositeInput } from "./layers/compositeInput";
 import { buildCompositeView } from "./layers/compositeView";
 import { isPageEntryDrawn, isStageCovered } from "./layers/stageOcclusion";
-import { holdStageAdvance } from "./stageAdvanceHold";
+import { createStageAdvanceHolder, holdStageAdvance, type StageAdvanceHolder } from "./stageAdvanceHold";
 import type { AppNavEntry, HostAdapterBundle, OpenSurfaceOptions, PageProps, SurfaceStateAccessors } from "./types";
 import type {
     GameAppFrameContext,
@@ -265,28 +274,6 @@ class NlrSessionSupersededError extends Error {
 }
 
 export type GameAppNavEntry = AppNavEntry;
-
-function normalizeError(error: unknown): string {
-    if (error instanceof Error) {
-        return error.stack ?? error.message;
-    }
-    return String(error);
-}
-
-/**
- * The sentence a failure states, without the stack.
- *
- * `normalizeError` prefers the stack, which is right for a console line and wrong for anything shown
- * to an author: the first thing they should read is what went wrong, not which of our frames noticed.
- * The stack still travels, next to it rather than instead of it (see {@link GameAppRuntimeIssue}).
- */
-function errorMessage(error: unknown): string {
-    return error instanceof Error ? error.message || String(error) : String(error);
-}
-
-function errorStack(error: unknown): string | undefined {
-    return error instanceof Error ? error.stack ?? undefined : undefined;
-}
 
 function findSurface(bundle: GameAppHost["bundle"], surfaceId: string | null | undefined): UISurface | null {
     if (surfaceId) {
@@ -578,6 +565,13 @@ export function GameApp(props: GameAppProps): ReactNode {
     const [interactionReadyKeys, setInteractionReadyKeys] = useState<Set<string>>(() => new Set());
     const [nlrSession, setNlrSessionState] = useState<NlrStageSession | null>(null);
     const [nlrPreloadDone, setNlrPreloadDone] = useState(false);
+    /**
+     * The boot in flight, for callers that need the story environment before they can do
+     * anything - see {@link GameAppHost.surfacesBeforeStoryBoot}. With the surfaces drawn ahead
+     * of the boot, Start Game can be pressed while the environment is still mounting, and the
+     * press has to wait for it rather than start a second compile of the same story.
+     */
+    const nlrBootPromiseRef = useRef<Promise<void> | null>(null);
     const [gameStageVisible, setGameStageVisibleState] = useState(false);
     /**
      * Ref mirrors of the two pieces of session state a Game UI slot surface has to be able to ask
@@ -630,6 +624,11 @@ export function GameApp(props: GameAppProps): ReactNode {
     const startStoryInGameRef = useRef<
         ((request: DevModeStartStoryRequest, options?: { forceReinit?: boolean }) => Promise<void>) | null
     >(null);
+    /** The player's way into a story, held open while a boot is still running. */
+    const storyStartGate = useMemo(
+        () => createStoryStartGate({ pendingBoot: nlrBootPromiseRef, start: startStoryInGameRef }),
+        [],
+    );
     const cleanupBundleIdRef = useRef<string | null>(null);
     /** The runtime core whose language-restart resume has already been attempted. */
     const localeResumeAttemptedRef = useRef<unknown>(null);
@@ -669,6 +668,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameEntered: gameEnteredRef,
     }), []);
     /**
+     * The pages this bundle can put on the screen.
+     *
+     * The same question the surface stack asks before it draws an entry or a layer, so an overlay
+     * naming a page the bundle does not contain is absent from the screen and absent from the
+     * occlusion answer at once. Without it such a layer holds the story against a stage nothing is
+     * covering - see `stageOcclusion`.
+     */
+    const drawableSurfaceIds = useMemo(
+        () => new Set(bundle.ui.uidoc.surfaces.map(surface => surface.id)),
+        [bundle.ui.uidoc.surfaces],
+    );
+    /**
      * Whether the story is the thing the player is looking at, rather than merely the thing behind
      * what they are looking at.
      *
@@ -692,8 +703,9 @@ export function GameApp(props: GameAppProps): ReactNode {
             pagesHiddenForGame: studioPageHiddenForGameRef.current,
             gameHiddenKeys: gameHiddenNavKeysRef.current,
             layers: layerStack.getSnapshot().layers,
+            drawableSurfaceIds,
         });
-    }, [isInGame, layerStack, navigation]);
+    }, [drawableSurfaceIds, isInGame, layerStack, navigation]);
     /**
      * The same question as `isStoryOnScreen`, asked of this render rather than of this instant.
      *
@@ -707,6 +719,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         pagesHiddenForGame: studioPageHiddenForGame,
         gameHiddenKeys: gameHiddenNavKeys,
         layers,
+        drawableSurfaceIds,
     });
     /**
      * The stopwatch behind `Get Playtime`, the reading written onto every save, and the title's
@@ -727,7 +740,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             void core?.scopeBridge.persistenceSet(key, value);
         },
     });
-    const nlrDialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const nlrDialogClickTargets = useMemo(() => createDialogClickTargets(), []);
     const nlrCharacterPromptTokenRef = useRef<{ cancel(): void } | null>(null);
     const nlrPreferenceTokenRef = useRef<{ cancel(): void } | null>(null);
     // Play head + call-stack introspection (Dev Mode story-runtime panel). The current-action token
@@ -735,9 +748,20 @@ export function GameApp(props: GameAppProps): ReactNode {
     // panel subscriptions survive relaunches. `nlrCompiledRef` mirrors the mounted session's compiled
     // story (action bindings + variable namespace names) for the bridge to read at call time.
     const nlrCurrentActionTokenRef = useRef<{ cancel(): void } | null>(null);
-    const currentActionIdRef = useRef<string | null>(null);
     const currentActionListenersRef = useRef<Set<(actionId: string | null) => void>>(new Set());
     const nlrCompiledRef = useRef<CompiledNlrStory | null>(null);
+    /**
+     * The play head, holding both the engine's raw action id and the last row it could name.
+     *
+     * Built once and never rebuilt: it reads the binding table through a callback, so a hot reload
+     * that recompiles the story is picked up without the play head being replaced under the
+     * subscriptions that feed it. See `playHead` for why the last NAMED row is the answer rather
+     * than the current action.
+     */
+    const playHead = useMemo<PlayHead>(
+        () => createPlayHead(() => nlrCompiledRef.current?.actionIdBindings ?? []),
+        [],
+    );
     /**
      * The Studio scene the player is in right now, as opposed to the one the story was launched at.
      *
@@ -783,33 +807,51 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Reads the same action↔block table the Dev Mode timeline reads, so a failure lands on exactly
      * the row the play head is showing rather than on a second, differently-derived answer.
      */
-    const playHeadBlockId = useCallback((): string | undefined => {
-        const actionId = currentActionIdRef.current;
-        if (!actionId) {
-            return undefined;
-        }
-        return nlrCompiledRef.current?.actionIdBindings.find(binding => binding.staticId === actionId)?.blockId;
-    }, []);
+    const playHeadBlockId = useCallback((): string | undefined => playHead.blockId(), [playHead]);
     /**
      * Log a failure AND, for hosts that can point into the story, say where it came from.
      *
      * Both, always: the console line is what a packaged build has, and dropping it here would trade
-     * one blind spot for another.
+     * one blind spot for another. The shape of the report lives in `failureReporting`; what this
+     * adds is the one thing only `GameApp` knows, which is where the play head was standing.
      */
     const reportFailure = useCallback((error: unknown, options?: { prefix?: string }) => {
-        const prefix = options?.prefix ?? "";
-        host.log("error", `${prefix}${normalizeError(error)}`);
         // Compile diagnostics report their own block and do not come through here; everything that
         // does is a thrown failure, so the play head is the only attribution available.
         const blockId = playHeadBlockId();
-        host.reportIssue?.({
-            level: "error",
-            message: `${prefix}${errorMessage(error)}`,
-            origin: blockId ? "playHead" : "session",
+        reportRuntimeFailure(host, error, {
+            ...(options?.prefix ? { prefix: options.prefix } : {}),
             ...(blockId ? { blockId } : {}),
-            ...(errorStack(error) ? { stack: errorStack(error) } : {}),
         });
     }, [host, playHeadBlockId]);
+    /**
+     * The failures that never reach a call site this file wraps.
+     *
+     * Every `reportFailure` above sits at the bottom of something Studio called and can therefore
+     * catch. A story row is not one of those: the engine advances it from inside its own `Player`,
+     * driven by a plain DOM click listener, and a throw out of a DOM listener is not a React render
+     * error — so the `Player`'s own error boundary never sees it, `NlrStageLayer`'s `onError` never
+     * fires, and the failure lands in the console as `Uncaught` with nothing else to show for it.
+     * That is a stage frozen mid-line while the Problems panel says nothing went wrong. A session's
+     * first advance escapes the same way with a different label, as an unhandled rejection: the
+     * engine schedules it on a bare microtask.
+     *
+     * Watching the window catches both, and watching is all it does. Nothing is consumed (see
+     * `watchUncaughtFailures`), so the console keeps the throw and its stack exactly as before, and
+     * nothing here touches the stage: it stays frozen on the row that failed, which is both honest
+     * and where the author needs to look. The row itself comes from the play head, as it does for
+     * every other thrown failure.
+     *
+     * Only for a host that can show issues. That is Dev Mode's authoring surface and nothing else:
+     * a packaged game installs its own hooks at the renderer entry (`runtimeErrorHooks`) and shows
+     * its own crash screen, and must not grow a second reporter behind them.
+     */
+    useEffect(() => {
+        if (!host.reportIssue) {
+            return;
+        }
+        return watchUncaughtFailures(window, reportFailure);
+    }, [host.reportIssue, reportFailure]);
     const textReadTrackerRef = useRef<TextReadTracker | null>(null);
     const preferenceSnapshotRef = useRef<Record<string, unknown>>({});
     const dispatchPreferenceChangeRef = useRef<
@@ -839,7 +881,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         };
     }, []);
     const currentDialogNametagRef = useRef<string | null>(null);
-    const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
+    const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const prefersReducedMotion = useReducedMotion();
 
     // The choice voice player is built once and outlives any one render, so the host it logs through
@@ -933,13 +975,13 @@ export function GameApp(props: GameAppProps): ReactNode {
         stageWarmupRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         gameEnteredRef.current = false;
         setNlrPreloadDone(false);
         setNlrSession(null);
-    }, [bundle.bundleId, host.entrySurfaceId]);
+    }, [bundle.bundleId, host.entrySurfaceId, playHead]);
 
     const activeEntry = navStack[navStack.length - 1] ?? null;
     const activeSurface = activeEntry ? findSurface(bundle, activeEntry.surfaceId) : null;
@@ -1248,28 +1290,31 @@ export function GameApp(props: GameAppProps): ReactNode {
         pendingAssetsReadyRef.current.clear();
     }, []);
 
-    const clearCurrentDialogNametag = useCallback(() => {
+    const clearCurrentDialogState = useCallback(() => {
         currentDialogNametagRef.current = null;
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
         // Who was speaking and what colour that made the nametag are part of the same fact; leaving
         // either behind would tint a screen after the game they belonged to is gone.
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
         core?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+        // The line the dialog was on, for the same reason. `DialogStateBridge` blanks these when it
+        // unmounts, but a session can end without the dialog ever having been mounted, and a title
+        // screen must not read the last playthrough's line back as one still waiting to be advanced.
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
+        core?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
     }, [core]);
 
-    const setChoiceRuntime = useCallback((runtime: ChoiceSlotRuntime | null): void => {
-        choiceRuntimeRef.current = runtime;
-        // The one moment a choice's options and the index each of them answers to are both in hand.
-        // Announced from here rather than from the slot surface so a host that mounts no Game UI
-        // choice slot simply never reports one, instead of reporting an empty menu.
-        if (runtime) {
-            pluginHost?.emitChoiceShown(runtime.items.map(item => ({
-                index: item.index,
-                text: item.text,
-                disabled: item.disabled,
-            })));
-        }
-    }, [pluginHost]);
+    // A menu has registered what it is showing: the one moment its options and the index each of
+    // them answers to are both in hand. Every menu on the stage reports, so a concurrent pair is two
+    // choices shown rather than one.
+    useEffect(() => choiceMenus.onShown(runtime => {
+        pluginHost?.emitChoiceShown(runtime.items.map(item => ({
+            index: item.index,
+            text: item.text,
+            disabled: item.disabled,
+        })));
+    }), [choiceMenus, pluginHost]);
 
     const detachTextReadTracker = useCallback(() => {
         textReadTrackerRef.current?.detach();
@@ -1681,8 +1726,8 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [core, host.log]);
 
     const setNlrDialogVirtualClickTarget = useCallback((target: HTMLElement | null): void => {
-        nlrDialogVirtualClickTargetRef.current = target;
-    }, []);
+        nlrDialogClickTargets.set(target);
+    }, [nlrDialogClickTargets]);
 
     // Read through the *mounted* session's compile, never a captured one: a recompile mints new
     // avatar URLs, and an inverse from the previous compile would answer with a stale asset id.
@@ -1752,9 +1797,9 @@ export function GameApp(props: GameAppProps): ReactNode {
     } = useMemo(() => createLiveGameUiCallbacks({
         requireLiveGame: requireActiveLiveGame,
         getLiveGame: () => nlrLiveGameRef.current,
-        choiceRuntimeRef,
+        choiceMenus,
         currentDialogNametagRef,
-        dialogVirtualClickTargetRef: nlrDialogVirtualClickTargetRef,
+        dialogClickTargets: nlrDialogClickTargets,
     }), [requireActiveLiveGame]);
 
     /**
@@ -1859,7 +1904,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const fastForwardToNextChoiceInGame = useCallback(async (): Promise<void> => {
         const liveGame = requireActiveLiveGame("Skip To Next Choice");
-        await fastForwardToNextChoice(liveGame, choiceRuntimeRef);
+        await fastForwardToNextChoice(liveGame, choiceMenus);
     }, [requireActiveLiveGame]);
 
     // Read/write bridge over the running story runtime for the Dev Mode story-runtime panel. Fully
@@ -1883,7 +1928,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             visited: nlrCompiledRef.current?.visitedNamespaceName || null,
             sceneLocal: nlrCompiledRef.current?.sceneLocalNamespaceNames ?? {},
         }),
-        getCurrentActionId: () => currentActionIdRef.current,
+        getCurrentActionId: () => playHead.actionId(),
         subscribeCurrentAction: listener => {
             currentActionListenersRef.current.add(listener);
             return () => {
@@ -1992,7 +2037,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 { forceReinit: true },
             );
         },
-    }), []);
+    }), [playHead]);
 
     const quitGame = useCallback(async (surfaceId: string): Promise<void> => {
         const targetSurfaceId = String(surfaceId ?? "").trim();
@@ -2009,19 +2054,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrPreferenceTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
-        choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        choiceMenus.clear();
+        clearCurrentDialogState();
         setGameStageVisible(false);
         await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
         // Everything under the page just opened belonged to the run that has ended: the screens the
@@ -2037,12 +2082,14 @@ export function GameApp(props: GameAppProps): ReactNode {
         setNlrSession(null);
         clearGameHiddenStudioPages();
     }, [
-        clearCurrentDialogNametag,
+        clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
         layerStack,
         navigation,
+        nlrDialogClickTargets,
         openSurface,
+        playHead,
         rejectPendingGameStarts,
     ]);
 
@@ -2848,6 +2895,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Row-precise launch ("play from here"): compute the settled stage at the target row and hand
         // the compiler a launch spec, so the entry scene pre-poses there and plays the real story on.
         const startBlockId = request.startBlockId?.trim() || undefined;
+        const snapshotId = request.snapshotId?.trim() || undefined;
+        const scene = storyDocument.scenes[sceneId];
+        // The selected Scene Snapshot's persistent overrides go in FIRST, because the stage walk
+        // below reads the same store to decide which arm of a persistent condition the scene took.
+        // Written after it, they would settle the story the author is about to play while the stage
+        // in front of them was posed down the branch they did not choose.
+        const overrides = snapshotId
+            ? scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values
+            : undefined;
+        if (startBlockId && overrides) {
+            for (const [refKey, value] of Object.entries(overrides)) {
+                if (refKey.startsWith("persistent:")) {
+                    core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
+                }
+            }
+        }
         const launch = startBlockId
             ? {
                 targetBlockId: startBlockId,
@@ -2860,33 +2923,34 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // "play from here" launch would enter with every registry-backed saved variable at
                     // nothing and every `/set` on one silently dropped.
                     savedVariables: bundle.ui.savedVariables,
+                    // The persistent half of the same argument, plus the store to read it from. A
+                    // persistent variable is the one scope the walk cannot reconstruct - it outlives
+                    // the run - and Dev Mode has the profile that holds it, so the pre-pose and the
+                    // tail decide every persistent condition from one value instead of two.
+                    persistentVariables: bundle.ui.persistentVariables,
+                    ...(core
+                        ? { readPersistent: (key: string) => core.scopeBridge.persistenceGet(key) as StoryLiteralValue | null | undefined }
+                        : {}),
                 }),
             }
             : undefined;
-        // Overlay the selected Scene Snapshot's variable overrides: scene/saved values feed the
-        // pre-pose seeds; persistent values seed the host bridge (the compiled story reads them live).
-        const snapshotId = request.snapshotId?.trim() || undefined;
-        if (launch && snapshotId) {
-            const scene = storyDocument.scenes[sceneId];
-            const overrides = scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values;
-            if (overrides) {
-                const sceneDefs = scene ? sceneVariableDefs(scene) : {};
-                // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
-                // since `saved` became a registry scope that id may belong to a registry entry rather
-                // than to a `/save` row - reading only the document would drop those overrides.
-                const savedDefs = savedVariableDefsFromView(
-                    collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
-                );
-                for (const [refKey, value] of Object.entries(overrides)) {
-                    if (refKey.startsWith("scene:")) {
-                        const def = sceneDefs[refKey.slice("scene:".length)];
-                        if (def) launch.snapshot.sceneVariables[def.storageKey] = value;
-                    } else if (refKey.startsWith("saved:")) {
-                        const def = savedDefs[refKey.slice("saved:".length)];
-                        if (def) launch.snapshot.savedVariables[def.storageKey] = value;
-                    } else if (refKey.startsWith("persistent:")) {
-                        core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
-                    }
+        // The rest of the overlay: scene/saved values feed the pre-pose seeds (the persistent ones
+        // are already in the store above, and the compiled story reads them live).
+        if (launch && overrides) {
+            const sceneDefs = scene ? sceneVariableDefs(scene) : {};
+            // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
+            // since `saved` became a registry scope that id may belong to a registry entry rather
+            // than to a `/save` row - reading only the document would drop those overrides.
+            const savedDefs = savedVariableDefsFromView(
+                collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
+            );
+            for (const [refKey, value] of Object.entries(overrides)) {
+                if (refKey.startsWith("scene:")) {
+                    const def = sceneDefs[refKey.slice("scene:".length)];
+                    if (def) launch.snapshot.sceneVariables[def.storageKey] = value;
+                } else if (refKey.startsWith("saved:")) {
+                    const def = savedDefs[refKey.slice("saved:".length)];
+                    if (def) launch.snapshot.savedVariables[def.storageKey] = value;
                 }
             }
         }
@@ -2946,6 +3010,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             audioClips: bundle.audio?.clips,
             audioTracks: bundle.audio?.tracks,
         };
+        // Before the walk, not during it: the compiler resolves an asset the moment it reaches one,
+        // and a host that has to ask another window for each answer spends the whole compile waiting
+        // one round trip at a time. Failures inside it are the host's to swallow - it answers by
+        // asset again, which is what every compile did before this existed.
+        await host.prewarmStoryAssetUrls?.();
         const compiled = await compileStudioStoryToNlr(compileInput);
         // Only the compile that is still the current one gets to complain. A hot reload can land
         // while this one is waiting on something slow, and what it found then is about a document
@@ -3011,9 +3080,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             setWindowScale: host.setWindowScale,
             getWindowSize: host.getWindowSize,
             setWindowSize: host.setWindowSize,
-            startStoryInGame: request =>
-                startStoryInGameRef.current?.(request) ??
-                Promise.reject(new Error("Start Game: runtime is not ready")),
+            startStoryInGame: storyStartGate,
             writeSaveInGame: (id, metadata, screenshot) => writeSave(id, metadata, screenshot),
             loadSaveInGame: loadSaveForGraph,
             deleteSaveInGame: id => deleteSave(id),
@@ -3072,7 +3139,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             logLabel: host.id,
             slotHostOptions,
             setDialogVirtualClickTarget: setNlrDialogVirtualClickTarget,
-            setChoiceRuntime,
+            choiceMenus,
         });
         const onStageNode = slots.onStageNode;
         const game = createNlrGameWithGameUi({
@@ -3095,6 +3162,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The author's pause length, from the bundle. A bundle written before the setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
             ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
+            ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are
@@ -3165,11 +3233,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = compiled;
         registerCharacterAvatarAssets(compiled.avatarAssetIdByUrl);
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         setNlrSession({
             id: sessionId,
             game,
@@ -3234,6 +3302,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         makeStateAccessors,
         nextInGame,
         openSurface,
+        playHead,
         quitGame,
         rejectPendingGameStarts,
         rendererRegistry,
@@ -3242,7 +3311,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         redoHistoryInGame,
         restoreHistoryInGame,
         selectChoiceInGame,
-        setChoiceRuntime,
+        choiceMenus,
         setNlrDialogVirtualClickTarget,
         setSentenceSpeedInGame,
         setGamePreferenceInGame,
@@ -3653,7 +3722,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             finish();
         }, NLR_BOOT_PRELOAD_TIMEOUT_MS);
 
-        void (async () => {
+        nlrBootPromiseRef.current = (async () => {
             try {
                 await runBootRef.current?.();
             } catch (err) {
@@ -3760,8 +3829,16 @@ export function GameApp(props: GameAppProps): ReactNode {
     /**
      * Whether the surface stack may draw. Everything the boot preload gates, plus the moment a
      * language restart is putting a playthrough back: see `localeResumePending`.
+     *
+     * A host may say it does not want to wait for the boot at all (Dev Mode does); the language
+     * restart still holds, because that one is putting a playthrough back on screen and drawing
+     * over it would show the player the wrong one.
      */
-    const surfacesReady = nlrPreloadDone && !localeResumePending;
+    const surfacesReady = surfacesMayDraw({
+        storyBootFinished: nlrPreloadDone,
+        hostDrawsBeforeStoryBoot: host.surfacesBeforeStoryBoot === true,
+        localeResumePending,
+    });
     const renderedLayerKeys = new Set(surfacesReady ? visibleLayers.map(item => item.layer.key) : []);
     const unrenderedLayerKeys = layers
         .filter(layer => !renderedLayerKeys.has(layer.key))
@@ -4102,18 +4179,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrPreferenceTokenRef.current = null;
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
         clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
-        choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        choiceMenus.clear();
+        clearCurrentDialogState();
         clearDevModeSavePreviewImages();
         nlrBootStartedRef.current = null;
         gameEnteredRef.current = false;
@@ -4123,9 +4200,11 @@ export function GameApp(props: GameAppProps): ReactNode {
         clearGameHiddenStudioPages();
     }, [
         bundle.bundleId,
-        clearCurrentDialogNametag,
+        clearCurrentDialogState,
         clearGameHiddenStudioPages,
         detachTextReadTracker,
+        nlrDialogClickTargets,
+        playHead,
         rejectPendingGameStarts,
     ]);
 
@@ -4137,20 +4216,20 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Not nlrCompiledRef: mountNlrSession sets it for the new session before this fires.
         nlrCurrentActionTokenRef.current?.cancel();
         nlrCurrentActionTokenRef.current = null;
-        currentActionIdRef.current = null;
+        playHead.reset();
         cancelSceneTracking();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
-        nlrDialogVirtualClickTargetRef.current = null;
+        nlrDialogClickTargets.clear();
         gameReadyFiredRef.current = null;
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
-        choiceRuntimeRef.current = null;
-        clearCurrentDialogNametag();
+        choiceMenus.clear();
+        clearCurrentDialogState();
         // The previous environment is gone; drop its engine subscriptions. The
         // next onLiveGameReady re-attaches, and plugin listeners never move.
         pluginHost?.detachSession();
-    }, [clearCurrentDialogNametag, detachTextReadTracker, nlrSession?.id, pluginHost]);
+    }, [clearCurrentDialogState, detachTextReadTracker, nlrDialogClickTargets, nlrSession?.id, playHead, pluginHost]);
 
     useEffect(() => {
         if (!host.ready || !core || !hostAdapterBundle) {
@@ -4402,39 +4481,56 @@ export function GameApp(props: GameAppProps): ReactNode {
      * Studio takes one. It covers the stage click and the advance key with it, which is the same
      * answer for the same reason: the player is looking at the screen on top.
      *
-     * Mount and cleanup are the two edges of "covered", so a suspension cannot survive the render
-     * that decided the stage was clear. See `stageAdvanceHold` for what releasing has to do besides
-     * releasing.
+     * One holder per playthrough, and it is asked the question on every commit rather than only when
+     * the answer changes. A suspension lives on a `Set` inside the engine's `GameState` and nothing
+     * else ever looks at it, so tying the release to one effect cleanup made an event that fails to
+     * arrive permanent - the stage click, the advance key and auto-forward all dead for the rest of
+     * the run. See `stageAdvanceHold` for why re-asking cannot let go early, and for what releasing
+     * has to do besides releasing.
      */
+    const stageAdvanceHolderRef = useRef<StageAdvanceHolder | null>(null);
     useEffect(() => {
-        if (!stageCovered) {
-            return;
-        }
-        const heldLiveGame = nlrLiveGameRef.current;
         const preference = (nlrSession?.game as {
             preference?: {
                 getPreference?: (key: string) => unknown;
                 setPreference?: (key: string, value: unknown) => void;
             };
         } | undefined)?.preference;
-        const hold = holdStageAdvance({
-            suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
-            isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
-            isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
-            rearmAutoForward: () => {
-                engineNudgeDepthRef.current += 1;
-                try {
-                    preference?.setPreference?.("autoForward", true);
-                } catch {
-                    // A session torn down between the check and the write; the line it would have
-                    // woken is gone with it.
-                } finally {
-                    engineNudgeDepthRef.current -= 1;
-                }
-            },
+        const holder = createStageAdvanceHolder(() => {
+            // Read at the moment the hold is taken, not when the holder was built: a cover that
+            // went up while the session was still mounting is held on the game that arrives, and a
+            // hold on a game that has been replaced knows it has nothing left to wake.
+            const heldLiveGame = nlrLiveGameRef.current;
+            return holdStageAdvance({
+                suspendAdvance: () => heldLiveGame?.getGameState()?.suspendAdvance() ?? null,
+                isSessionCurrent: () => nlrLiveGameRef.current === heldLiveGame,
+                isAutoForwardOn: () => preference?.getPreference?.("autoForward") === true,
+                rearmAutoForward: () => {
+                    engineNudgeDepthRef.current += 1;
+                    try {
+                        preference?.setPreference?.("autoForward", true);
+                    } catch {
+                        // A session torn down between the check and the write; the line it would
+                        // have woken is gone with it.
+                    } finally {
+                        engineNudgeDepthRef.current -= 1;
+                    }
+                },
+            });
         });
-        return hold.release;
-    }, [nlrSession, stageCovered]);
+        stageAdvanceHolderRef.current = holder;
+        return () => {
+            stageAdvanceHolderRef.current = null;
+            holder.dispose();
+        };
+    }, [nlrSession]);
+
+    // Deliberately no dependency list: this is the reconciliation, and it has to run on the commit
+    // that changed the answer whether or not the answer is one of this effect's inputs. Declared
+    // after the holder so the holder of this commit is the one it syncs.
+    useEffect(() => {
+        stageAdvanceHolderRef.current?.sync(stageCovered);
+    });
 
     // Route game preference changes through a ref-held closure so the subscription
     // created in onLiveGameReady always dispatches with the current surface context.
@@ -4736,9 +4832,9 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // Play-head stream for the Dev Mode story-runtime panel: mirror the current action id
                 // and fan it out to panel subscribers. Re-bound per session; the fan-out set is stable.
                 nlrCurrentActionTokenRef.current?.cancel();
-                currentActionIdRef.current = liveGame.getCurrentActionId();
+                playHead.observe(liveGame.getCurrentActionId());
                 nlrCurrentActionTokenRef.current = liveGame.onCurrentActionChange(({ actionId }) => {
-                    currentActionIdRef.current = actionId;
+                    playHead.observe(actionId);
                     currentActionListenersRef.current.forEach(listener => {
                         try {
                             listener(actionId);

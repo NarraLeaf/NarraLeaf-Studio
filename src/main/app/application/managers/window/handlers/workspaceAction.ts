@@ -2,8 +2,9 @@ import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import { dialog, shell } from "electron";
+import { shell } from "electron";
 import { WindowAppType } from "@shared/types/window";
+import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -51,8 +52,13 @@ export class WorkspaceLaunchHandler extends IPCHandler<IPCEventType.workspaceLau
         window: AppWindow,
         { props, closeCurrentWindow }: IPCEvents[IPCEventType.workspaceLaunch]["data"]
     ): Promise<RequestStatus<void>> {
+        // ⚠ Everything the window is opened FOR has to be named here, one field at a time.
+        // `openProject` builds the window's props itself - it has to, because it may find the
+        // project already open and hand the request to that window instead - so a prop the caller
+        // set and this did not forward is a prop that silently never arrives.
         await window.getApp().openProject(window, props.projectPath, {
             replaceOpener: closeCurrentWindow,
+            ...(props.joinLive ? { joinLive: props.joinLive } : {}),
         });
 
         return this.success(void 0);
@@ -142,7 +148,7 @@ export class WorkspaceSelectFolderHandler extends IPCHandler<IPCEventType.worksp
     readonly type = IPCMessageType.request;
 
     public async handle(window: AppWindow): Promise<RequestStatus<{ path: string | null }>> {
-        const result = await dialog.showOpenDialog(window.win, {
+        const result = await showOpenDialog(window, {
             title: "Select Project Folder",
             properties: ["openDirectory", "createDirectory"],
             buttonLabel: "Open Folder",
@@ -195,6 +201,29 @@ export class WorkspaceSetRecoveryModeHandler extends IPCHandler<IPCEventType.wor
             recoveryReason: enabled ? reason : undefined,
         });
         workspace.reload();
+
+        return this.success(void 0);
+    }
+}
+
+/**
+ * Forget the room this window was told to join, now that it has been acted on.
+ *
+ * Not a reload, unlike its neighbour above: this exists so that the *next* load reads no intent,
+ * and the window doing the clearing is the one carrying it out. See the prop's own note.
+ */
+export class WorkspaceLiveIntentTakenHandler extends IPCHandler<IPCEventType.workspaceLiveIntentTaken> {
+    readonly name = IPCEventType.workspaceLiveIntentTaken;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<void>> {
+        if (window.getWindowType() !== WindowAppType.Workspace) {
+            return this.failed("Only a workspace window carries a live session intent.");
+        }
+
+        const workspace = window as AppWindow<WindowAppType.Workspace>;
+        const { joinLive: _dropped, ...rest } = workspace.getProps();
+        workspace.setProps(rest);
 
         return this.success(void 0);
     }
@@ -297,7 +326,7 @@ export class WorkspaceExportConsoleLogsHandler extends IPCHandler<IPCEventType.w
         { defaultFileName, content }: IPCEvents[IPCEventType.workspaceExportConsoleLogs]["data"],
     ): Promise<RequestStatus<IPCEvents[IPCEventType.workspaceExportConsoleLogs]["response"]>> {
         try {
-            const selection = await dialog.showOpenDialog(window.win, {
+            const selection = await showOpenDialog(window, {
                 title: "Select Export Folder",
                 buttonLabel: "Export Here",
                 properties: ["openDirectory", "createDirectory"],

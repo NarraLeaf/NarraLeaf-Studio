@@ -1,11 +1,35 @@
+import type { AssetGroupEntry } from "@shared/documents/specs/assetGroups";
+import type { AssetMetadataEntry } from "@shared/documents/specs/assetsMetadata";
+import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
+import type {
+    AppTagAssetAxes,
+    AppTagEndingSurfaceId,
+    AppTagPluginConfig,
+    AppTagReachableScenes,
+    ProjectAppTag,
+} from "@shared/types/appTag";
+import type { BrandColor } from "@shared/types/brand";
+import { uiGraphPartsNodes, type LiveUIGraphParts } from "./uiGraphParts";
+import { uiPartsElements, type LiveUIElementRef, type LiveUIParts } from "./uiParts";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { ProjectDictionaryEntry, ProjectDictionaryOptions } from "@shared/types/dictionary";
+import type { ProjectDlc } from "@shared/types/dlc";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { ProjectFontEntry } from "@shared/types/typography";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import type {
     StoryBlock,
     StoryBlockId,
+    StoryChapter,
+    StoryChapterId,
     StoryId,
+    StoryScene,
+    StorySceneBgm,
     StorySceneId,
+    StorySceneSnapshot,
 } from "@shared/types/story";
 
 /**
@@ -38,9 +62,16 @@ import type {
  * `StoryService`'s mutators take one; for the cast it is a whole character record, because
  * `CharacterService` learns of an edit from a change notification that names the record and nothing
  * else. For a language's translations it is one entry, because `LocalizationService` takes one; same
- * for its voice takes. What is forbidden is the verb that would fit any document - "here is the new
- * file" - which is whole-document last-writer-wins, and the reason a line of prose has a claim on it
- * instead.
+ * for its voice takes. For an asset type's metadata it is one record, because that is what
+ * `AssetsService.recordChanged` is handed. What is forbidden is the verb that would fit any
+ * document - "here is the new file" - which is whole-document last-writer-wins, and the reason a
+ * line of prose has a claim on it instead.
+ *
+ * ⚠ **A document whose changes are BYTES is not shareable at all**, and the asset library is where
+ * that first bites. A session carries what the author says about a file - its name, its folder, its
+ * tags - and never the file: importing, replacing and deleting are refused for the length of a
+ * session, because the bulk of a project travels through version control and this channel carries
+ * only what fits in one message. See {@link LiveAssetOp}.
  *
  * ⚠ **Size.** One `live.say` payload is capped, and a whole document is far larger than the cap.
  * That is not a limitation to work around here - the bulk of a project travels through version
@@ -145,7 +176,149 @@ export type LiveStoryOp =
     | { op: "set-entry-scene"; sceneId: StorySceneId | null }
     | { op: "rename-story"; name: string }
     /** Chapters in their new order, named by id. */
-    | { op: "reorder-chapters"; chapterIds: readonly string[] };
+    | { op: "reorder-chapters"; chapterIds: readonly string[] }
+    /**
+     * Add a scene, whole, filed in one chapter.
+     *
+     * **The scene travels entire, the way `insert-block` carries its block**, and for a sharper
+     * reason than a block has. Three things about a new scene are minted rather than derived: its id,
+     * its runtime name - which falls back to `scene_<uuid>` for a title with no latin letters in it -
+     * and, in a story with no chapters at all, the chapter it is filed under. A verb that named only
+     * what the author typed would have every machine mint different ids for one scene, which is two
+     * scenes with one name and no way back to one.
+     *
+     * It is also the inverse of `delete-scene`, which is the other reason it carries a whole scene
+     * rather than an empty one: putting a scene back has to put its rows back with it, in one
+     * operation. A verb that restored the shell would leave an empty scene on every screen and look
+     * as though the undo had worked.
+     *
+     * ⚠ **A scene with enough rows in it will not fit in one message.** That is refused by name
+     * (`too-large`) and never split, with {@link LiveCharacterOp}'s record: half a scene arriving is
+     * a scene nobody wrote, agreed upon by everybody.
+     */
+    | {
+          op: "create-scene";
+          scene: StoryScene;
+          /** The chapter it is filed under, or null for a scene no chapter claims. */
+          chapterId: StoryChapterId | null;
+          /** The sibling it sits in front of inside that chapter, or null for the end of it. */
+          beforeSceneId: StorySceneId | null;
+          /**
+           * The chapter to make first, when the one named is not there.
+           *
+           * Carried because its id is minted too: creating a scene in a story with no chapters makes
+           * one, and a machine that minted its own would file the scene in a chapter nobody else has.
+           */
+          chapter?: StoryChapter;
+          /**
+           * Make this scene the story's entry.
+           *
+           * Absent is the ordinary case, and the applier still derives the rule the panel has always
+           * had - a story with no entry takes the first scene made in it. Present is an inverse
+           * putting back an entry that a deletion moved, which is not derivable from the document
+           * afterwards: by then the pointer is somewhere else and nothing says where it was.
+           */
+          entry?: boolean;
+      }
+    /**
+     * Remove a scene, and everything in it.
+     *
+     * One operation because it is one gesture, with `delete-blocks`. What it destroys is not
+     * derivable afterwards, so the record of what it displaced holds the scene entire - its rows, its
+     * chapter, its position in that chapter and whether it was the entry - and the inverse is a
+     * `create-scene` of all of it.
+     */
+    | { op: "delete-scene"; sceneId: StorySceneId }
+    /**
+     * Replace what a scene says about itself, apart from its rows.
+     *
+     * **The scene's fields rather than the scene**, which is the difference between this and
+     * `update-character`: a scene's rows are the largest thing in the project and every one of them
+     * has verbs already, so a whole-record verb here would send a hundred rows of prose to change a
+     * background. The fields it does carry are stated whole for `update-block`'s reason - the
+     * inspector commits them together, and clearing one has to be expressible.
+     *
+     * ⚠ **`rename-scene` is still its own verb and is not folded into this one.** They are two
+     * gestures - the outline's rename box and the scene overview's inspector - and the outline's is
+     * the one an author uses while the overview is not open at all.
+     */
+    | { op: "update-scene"; sceneId: StorySceneId; fields: LiveSceneFields }
+    /**
+     * File a scene in a chapter, in front of the sibling named or last when that is null.
+     *
+     * Its own inverse, with `move-block`: the operation states a destination, and where the scene
+     * came from is what the record of the displaced state keeps.
+     */
+    | {
+          op: "move-scene";
+          sceneId: StorySceneId;
+          chapterId: StoryChapterId | null;
+          beforeSceneId: StorySceneId | null;
+      }
+    /**
+     * The scene's snapshots, as they now stand.
+     *
+     * One verb for five gestures - add one, rename one, delete one, set a value, clear a value -
+     * because `StoryService` reaches them through one mutator over the whole list, which is the point
+     * every snapshot edit passes through. `set-dictionary-options` is the same shape one document
+     * along and is stated the same way for the same reason.
+     *
+     * Not claimed: a snapshot is a name and a table of numbers picked from closed sets, so the loser
+     * of a race loses a click. See {@link CLAIMED_OPS}.
+     */
+    | { op: "set-scene-snapshots"; sceneId: StorySceneId; snapshots: readonly StorySceneSnapshot[] }
+    /**
+     * Add a chapter, in front of the sibling named or last when that is null.
+     *
+     * The chapter travels whole for `create-scene`'s reason: its id is minted. `scenes` is what makes
+     * this the inverse of `delete-chapter` - that deletion takes every scene of the chapter with it,
+     * so putting the chapter back has to put them back too, in one operation.
+     */
+    | {
+          op: "create-chapter";
+          chapter: StoryChapter;
+          beforeChapterId: StoryChapterId | null;
+          /** The scenes to put back with it. Absent for an ordinary creation, which has none. */
+          scenes?: readonly StoryScene[];
+          /** The entry scene to restore, for the inverse of a deletion that moved it. */
+          entry?: StorySceneId;
+      }
+    /** Rename one chapter. Last-writer-wins with a scene's name - see {@link CLAIMED_OPS}. */
+    | { op: "rename-chapter"; chapterId: StoryChapterId; name: string }
+    /**
+     * Remove a chapter **and every scene in it**.
+     *
+     * The widest structural deletion the story has, and one operation for `delete-blocks`' reason:
+     * the cascade is what the author asked for, and a run of deletions would draw every intermediate
+     * document on every other screen in the room.
+     *
+     * ⚠ Its inverse carries every scene the cascade destroyed, so a large chapter can be one that
+     * will not fit in a message - answered as `too-large` when the undo is sent, never as half a
+     * chapter coming back.
+     */
+    | { op: "delete-chapter"; chapterId: StoryChapterId };
+
+/**
+ * What a scene says about itself, apart from its rows.
+ *
+ * Named rather than spelled inline because two things state it - the operation and the record of what
+ * that operation displaced - and two spellings of one shape are two chances for them to disagree.
+ *
+ * `runtimeName` travels beside `name` because it is derived from it only when it is empty, and only
+ * on the machine that did the editing: a receiver that derived its own would compile a different
+ * scene name into the game from the one every other machine compiled.
+ *
+ * ⚠ **An absent field is an absent key, never `undefined`.** The canonical encoder refuses a property
+ * whose value is `undefined`, so a scene cleared that way would be one no receiving machine could
+ * save - see `VariableRegistryService.setEntryDefault`, which learned it one document along.
+ */
+export type LiveSceneFields = {
+    name: string;
+    runtimeName: string;
+    description?: string;
+    defaultBackgroundAssetId?: string;
+    bgm?: StorySceneBgm;
+};
 
 /** One dialogue row, addressed across the whole project. What a rebind names. */
 export type LiveDialogueRowRef = {
@@ -304,13 +477,751 @@ export type LiveVoiceOp =
     | { op: "set-takes"; locale: string; units: readonly { unitId: string; unit: VoiceUnit | null }[] };
 
 /**
+ * One asset's authored metadata, as it travels.
+ *
+ * The shape the document registry already reads off disk (`AssetMetadataEntry`), rather than the
+ * renderer's own `Asset` interface, and for the reason that module gives for being structural: the
+ * asset model lives under `renderer/lib` and cannot be imported here, and moving it into shared is
+ * the assets service's own migration rather than this one. An index signature keeps a field this
+ * build has not heard of from being dropped on the way through a machine that is a version behind.
+ */
+export type LiveAssetRecord = AssetMetadataEntry;
+
+/**
+ * One folder of one section of the asset browser, as it travels.
+ *
+ * The shape the document registry reads off disk, for {@link LiveAssetRecord}'s reason: the renderer's
+ * `AssetGroup` lives under `renderer/lib` and cannot be imported here.
+ */
+export type LiveAssetFolder = AssetGroupEntry;
+
+/* ---------------------------------------------------------------- an asset's bytes */
+
+/**
+ * Where the bytes behind a record come from when that record arrives.
+ *
+ * **The whole of how a session can add a file at all**, and the three answers are not three
+ * conveniences - they are the three ways bytes can already be somewhere. Only the first of them
+ * moves anything over the wire, and getting that split right is what keeps a duplicate and an undo
+ * free no matter how large the file is.
+ *
+ *  - **`transfer`** - the bytes exist on ONE machine and nowhere else: a file the author dragged in
+ *    from the desktop, or a replacement picked from a file dialog. They travel over their own
+ *    request to the server, beside the operation rather than through it - see
+ *    {@link LiveAssetBytePart} - because there is no revision anybody else could fetch them from.
+ *  - **`asset`** - the bytes are a copy of a file every machine already holds. What duplicating is.
+ *    Sending them would be sending a room something it can produce for itself, which is the same
+ *    test a deleted character's sweep passes: *can everybody else reach the same answer from the
+ *    same effect?*
+ *  - **`trash`** - the bytes are in each machine's own trash, where its own applier put them when it
+ *    applied the deletion this is undoing. Per-machine on purpose: the trash is under `.nlstudio/`,
+ *    which no repository stores and no session shares, and every machine trashed its own copy of the
+ *    same file. Undoing a deletion of a 200 MB video therefore costs one small message.
+ */
+export type LiveAssetBytes =
+    /** Put on the server and collected from it. See {@link LiveAssetBytePart}. */
+    | { from: "transfer"; parts: readonly LiveAssetBytePart[] }
+    /** Copied from a file every machine already holds. What a duplicate is. */
+    | { from: "asset"; assetId: string }
+    /** Taken back out of each machine's own trash. What undoing a deletion is. */
+    | { from: "trash" };
+
+/**
+ * One file on its way to the room.
+ *
+ * **A list rather than a single blob, because a model bundle is a directory.** A bundle's manifest
+ * names its siblings by relative path, so it cannot be flattened into one file and cannot be
+ * rewritten without Studio learning every model format there is - the same reason the asset type
+ * exists at all. So the unit that travels is a file, and an asset is one or more of them.
+ */
+export type LiveAssetBytePart = {
+    /**
+     * Null for the asset's own file; a bundle-relative path for one file inside a directory asset.
+     *
+     * ⚠ Receivers must refuse a path that climbs out of the bundle. It arrives from another Studio,
+     * and a path is the one field here that decides where bytes land.
+     */
+    path: string | null;
+    /**
+     * What the file is called on the server until everybody has it. Minted by the sender.
+     *
+     * The whole of the address: a machine that is short of this file asks its own server for
+     * `(project, transferId)` and reads whatever has arrived, going on as more does. Nothing about
+     * the room is in it, and that is deliberate - a transfer outlives the session it began in, so
+     * an interrupted one is resumed rather than restarted.
+     */
+    transferId: string;
+    /** How many bytes there are, so a receiver knows when it has them all. */
+    size: number;
+    /**
+     * What those bytes must hash to, as SHA-256 hex.
+     *
+     * Not the record's own `hash`, which is whatever the filesystem computed on the sending machine:
+     * this one is computed from the bytes actually put on the wire and checked against the bytes
+     * actually taken off it. A transfer can be interrupted at any point, and a file left one block
+     * short is a file that looks fine until somebody opens it.
+     */
+    digest: string;
+};
+
+/** One asset a creation makes: the record as it will be filed, and where its bytes come from. */
+export type LiveAssetCreate = {
+    record: LiveAssetRecord;
+    bytes: LiveAssetBytes;
+};
+
+/**
+ * Everything that can be done to one asset type's metadata shard.
+ *
+ * **Two verbs, and the pair is the story's `update-block` / `move-block` one document along** - the
+ * same split, made by the same test. `AssetsService` learns of a record edit at one point
+ * (`recordChanged`), and the finest thing that can be stated truthfully there is **one record,
+ * whole**: the fields of a record hold each other up, exactly as a character's do - a rename rewrites
+ * `name` and `ext` together, and a replaced file rewrites `hash` and `ext` and `name` together - so a
+ * field-level verb would be a precision the service never produces.
+ *
+ * ⚠ **Nothing here adds an asset, removes one, or replaces its bytes**, and that is a ruling
+ * rather than an omission. Those three move *bytes*, and bytes do not travel on a 16 KB channel: the
+ * library itself reaches a session through version control, and this carries only what the author
+ * says about it. So one sentence covers the whole document: **during a session the asset library can
+ * be organised and described, and nothing can be added, replaced or removed.** `AssetsService`
+ * refuses those gestures for as long as a sink is installed, rather than leaving the write boundary
+ * to catch a record that would have landed on one machine and nowhere else.
+ *
+ * ⚠ **Folders are not here either.** `assets/assets.groups.<category>.json` is a document of
+ * its own with no verbs, so creating and renaming a folder stays frozen for the length of a session
+ * and says so - the same half of the invariant `editor/localization/keys.json` is on. Filing an asset
+ * in a folder that already exists is not affected: that writes the record's `groupId` and nothing
+ * else.
+ */
+export type LiveAssetOp =
+    /**
+     * Replace one asset's record.
+     *
+     * The whole record rather than a patch of it, for `update-block`'s reason: the editing atom is
+     * already a committed field - the inspector's boxes keep a draft in their own state and reach the
+     * document on blur - so a field-level patch would buy precision the interface never produces, and
+     * every receiving machine would have to resolve it against its own copy.
+     *
+     * **Claimed** - see {@link CLAIMED_OPS}. The description box is a draft layer of exactly the kind
+     * the rule is about.
+     */
+    | { op: "update-asset"; assetType: string; assetId: string; record: LiveAssetRecord }
+    /**
+     * File any number of assets, each in its own folder, as ONE operation.
+     *
+     * What a drag of a multi-selection into a folder is, and a batch for `move-blocks`' reason: the
+     * host applies one operation at a time and broadcasts each, so a drag of forty rows sent as forty
+     * operations would draw thirty-nine half-filed libraries on every other screen and cost a press
+     * per row to take back. Each entry carries its own destination so the operation can also be its
+     * own inverse - the assets a drag collects came from different folders.
+     *
+     * **Unclaimed**, again with `move-block`: filing an asset rearranges the library without touching
+     * a word anybody wrote, and the loser of that race loses a drag.
+     *
+     * ⚠ **One asset type, because a message names one document.** A selection under Media may
+     * hold audio and video, which live in two shards; `AssetsService.moveAssetsToGroup` groups the
+     * selection by type and states one operation per shard. Each of those is a complete arrangement
+     * applied whole, and the cost is that a mixed drag takes two presses to undo rather than one.
+     */
+    | {
+          op: "move-assets";
+          assetType: string;
+          moves: readonly { assetId: string; groupId: string | null }[];
+      }
+    /**
+     * Add assets to the library, as ONE operation.
+     *
+     * **One verb for importing, duplicating and putting a deletion back**, which reads like three
+     * gestures and is one statement: a record appears, and its bytes come from somewhere. Where they
+     * come from is {@link LiveAssetBytes}, and it is the only thing that differs between the three.
+     * Splitting them into three verbs would put the same "file this record, write these bytes,
+     * announce the row" sequence in three places, and the day one of them learnt something the other
+     * two would not have.
+     *
+     * The record travels whole and is written verbatim, ⚠ **including its name**. The library
+     * resolves a colliding display name by appending a number, and a machine that re-resolved would
+     * pick a different one - two libraries holding the same asset under two names, from one message.
+     * The machine that minted the record is the one that decided.
+     *
+     * **Unclaimed**: the ids were minted by whoever built the records, so two of them colliding is a
+     * uuid collision rather than a race, and a retry is answered by the receipts.
+     *
+     * ⚠ One asset type, for `move-assets`' reason: a message names one document. A directory import
+     * is already bucketed per type before it reaches the library.
+     */
+    | { op: "create-assets"; assetType: string; creates: readonly LiveAssetCreate[] }
+    /**
+     * Point one record at different bytes.
+     *
+     * Separate from `create-assets` because the id survives: every reference in every story,
+     * blueprint and interface document goes on resolving, which is the whole reason an author reaches
+     * for replace rather than delete-and-import. The record travels too, because replacing rewrites
+     * `hash`, and `ext` and the display name with it.
+     *
+     * **Claimed**, with `update-asset`: it writes the record, and the loser of that race is somebody
+     * with a half-typed description in the inspector.
+     */
+    | { op: "replace-asset-content"; assetType: string; assetId: string; record: LiveAssetRecord; bytes: LiveAssetBytes }
+    /**
+     * Remove assets and their files, as ONE operation.
+     *
+     * ⚠ **The bytes are not carried anywhere and no machine is told where to put them.** Every
+     * machine holds its own copy of the same file and moves it to its own trash, which is derived
+     * work of exactly the kind the criterion allows: everybody reaches the same answer from the same
+     * effect. It is also what makes undoing a deletion cost one message rather than a re-upload.
+     *
+     * **Claimed**, with `delete-block` and `delete-character`: deleting a record somebody has open
+     * takes the paragraph they were writing about it.
+     */
+    | { op: "delete-assets"; assetType: string; assetIds: readonly string[] };
+
+/**
+ * Everything that can be done to one section's folders.
+ *
+ * A document of its own - `assets/assets.groups.<category>.json` - and therefore its own verbs,
+ * because a message names one document and a folder is not filed in any type's shard. The pairing
+ * with the records beside it is the story's: **which folder an asset is in lives on the asset**
+ * (`move-assets` writes it), and **what folders exist lives here**.
+ *
+ * None of these is claimed, for `set-character-group`'s reason: a folder is four fields and none of
+ * them is drafted anywhere, so there is no half-typed paragraph for a race to overwrite.
+ */
+export type LiveAssetFolderOp =
+    /**
+     * Add or replace one folder.
+     *
+     * One verb for creating, renaming and re-parenting, again with `set-character-group`: the three
+     * write the same record and the split that exists for assets - create versus update - is there to
+     * stop a resurrection overwriting a draft, which a folder does not have.
+     */
+    | { op: "set-asset-folder"; category: string; folderId: string; folder: LiveAssetFolder }
+    /**
+     * Remove one folder, and everything filed under it.
+     *
+     * **One operation for something that empties two documents**, and the second document's share is
+     * DERIVED rather than carried - the same shape as deleting a character and letting every machine
+     * rewrite the rows that spoke it. Which folders are below this one, and which assets are in them,
+     * is a question about documents the room already agrees on; sending them would be a second
+     * statement of something every receiver can compute.
+     *
+     * ⚠ What the cascade touched is fingerprinted rather than taken on trust: the applier reports
+     * every shard it emptied and each is digested into {@link LiveEffect.digests}, so a machine that
+     * swept differently is caught on this message rather than on some later one.
+     *
+     * `recursive` is the author's answer to "this folder has folders in it", asked before anything is
+     * removed. False against a folder with children is refused rather than partly applied.
+     */
+    | { op: "delete-asset-folder"; category: string; folderId: string; recursive: boolean }
+    /**
+     * Put a deleted folder back, with everything that was in it.
+     *
+     * ⚠ **Reachable only as the inverse of `delete-asset-folder`**, the way `create-character`'s
+     * `rebind` is only reachable as the inverse of a deletion. It carries what the deletion's own
+     * cascade destroyed and no machine can work out afterwards: the folder records, and the asset
+     * records that were filed under them. The bytes are not here - each machine takes its own back
+     * out of its own trash, which is the same asymmetry `LiveAssetBytes` is built on.
+     */
+    | {
+          op: "restore-asset-folder";
+          category: string;
+          folders: readonly LiveAssetFolder[];
+          /** The records, by the shard each belongs to. Their bytes come from each machine's trash. */
+          assets: readonly { assetType: string; record: LiveAssetRecord }[];
+      };
+
+/* ------------------------------------------------- the project's configuration tables */
+
+/**
+ * Everything that can be done to the build variants - `editor/app-tags.json`.
+ *
+ * **One row of a project table, and the addressing is the cast's rather than the story's.**
+ * `AppTagService` funnels every gesture through one write path that takes a whole-document mutator
+ * and can therefore state nothing finer than "the document is now this"; the rows themselves are
+ * what the panel edits, one accordion at a time, so a record is the finest thing that can be stated
+ * truthfully and still be about something an author points at. A whole-document verb would be the
+ * last-writer-wins this design refuses: the variant name and the three identity overrides are
+ * blur-committed text fields that re-sync from their props, so the loser of that race loses a name
+ * they had half typed, silently.
+ *
+ * Three verbs plus one, and the plus one is what the release variant is. A project's own plugin
+ * values, asset-axis positions, scene declarations and ending page live at the document root rather
+ * than on a record, because the release variant is synthesized and stores nothing - see
+ * `ProjectAppTagDocument`. They are edited through the same panel rows as a variant's, so they need a
+ * verb of their own; {@link LiveAppTagDefaults} is what it carries.
+ *
+ * ⚠ **Deleting a variant rewrites nothing.** References to it resolve to the release variant from
+ * then on, which is `AppTagService.deleteTag`'s stated behaviour and the reason the panel counts them
+ * before the author presses the button. So there is no sweep to derive and no second document to
+ * fingerprint - unlike deleting a character, which reaches every story that holds a line it spoke.
+ */
+export type LiveAppTagOp =
+    /**
+     * Add a variant. The record arrives whole, with the id its author minted.
+     *
+     * Separate from `update-app-tag` for the reason `create-character` is separate from
+     * `update-character`: an update naming a record that is gone has to be refused so the author
+     * keeps what they just typed, and a single verb that created whatever it could not find would
+     * silently put back a variant somebody else deleted - along with the overrides that decide what
+     * that edition builds as.
+     *
+     * Appended unless `beforeId` says otherwise: `AppTagService.createTag` appends, and every machine
+     * applies the same operations in the same order, so an ordinary creation needs no position at all.
+     *
+     * ⚠ **`beforeId` is reachable only as the inverse of a deletion**, the way `create-character`'s
+     * `rebind` is. Undoing "delete the middle variant" has to put it back where it was; appending it
+     * would be a rearrangement wearing the word "undo", and the author would have to notice. A row
+     * that has gone since is treated as absent and the record lands at the end.
+     */
+    | { op: "create-app-tag"; tag: ProjectAppTag; beforeId?: string }
+    /** Replace a variant's record. The whole record, for {@link LiveCharacterOp}'s reason. */
+    | { op: "update-app-tag"; tagId: string; tag: ProjectAppTag }
+    /** Remove a variant. What pointed at it reads as the release variant from now on. */
+    | { op: "delete-app-tag"; tagId: string }
+    /**
+     * What every variant inherits: the project's own plugin values, axis positions, scene
+     * declarations and ending page.
+     *
+     * Whole rather than one key at a time, because that is what the document holds - four optional
+     * records at its root, normalized as a unit on every write, with an absent key meaning "nothing
+     * declared" rather than "unchanged". A per-key verb would have to invent a spelling for the
+     * difference and every machine would have to agree on it.
+     *
+     * ⚠ `tagPluginConfig` is the one gesture here that reaches the variant records too. Writing a
+     * plugin field that is not per-variant also takes that field off every variant, because such an
+     * entry is inert - resolution never reads it - and leaving it would give one field two stored
+     * answers.
+     */
+    | {
+          op: "set-app-tag-defaults";
+          defaults: LiveAppTagDefaults;
+          /**
+           * The variants whose plugin records this write also rewrites, whole.
+           *
+           * **Carried rather than derived, and the direction is why.** Going down, which entries a
+           * field that is not per-variant makes inert is a question every machine could answer. Going
+           * back up it is not: the entries are gone, and nothing left in the document says what they
+           * were. One field that works in both directions is one statement of one fact; a derived
+           * sweep plus a carried restore would be two, and the inverse of an ordinary build-config
+           * edit would quietly not restore what the edit removed.
+           *
+           * Absent for every other write to the project's own record, which is almost all of them.
+           */
+          tagPluginConfig?: readonly { tagId: string; pluginConfig: AppTagPluginConfig }[];
+      };
+
+/**
+ * The project's own half of `editor/app-tags.json` - what an unstated key on a variant resolves to.
+ *
+ * Spelled as the four optional records rather than as the document, so the operation cannot carry
+ * the variant list: two statements of who the variants are, arriving in one message, is a second
+ * chance for the two to disagree.
+ */
+export type LiveAppTagDefaults = {
+    pluginConfig?: AppTagPluginConfig;
+    assetAxes?: AppTagAssetAxes;
+    reachableScenes?: AppTagReachableScenes;
+    endingSurfaceId?: AppTagEndingSurfaceId;
+};
+
+/**
+ * Everything that can be done to the DLC list - `editor/dlc.json`.
+ *
+ * The variants' mirror, one document along, and deliberately the same three verbs: `DlcService` is
+ * `AppTagService` down to the bookkeeping, its panel is the same accordion of blur-committed text
+ * fields, and its deletion rewrites nothing either - a story marked for a deleted DLC ships with the
+ * base build, which is what the delete confirmation already says.
+ *
+ * ⚠ **`update-dlc` also changes the id**, which is the filename the DLC ships as. It is addressed by
+ * the id it had, and the record it carries may state a different one: `DlcService.changeId` is one
+ * gesture, and splitting it into a delete and a create would make it two operations, two undo steps
+ * and - for the moment between them - a project where the DLC does not exist.
+ */
+export type LiveDlcOp =
+    /** Add a DLC. Appended, and `beforeId` is the inverse of a deletion - see `create-app-tag`. */
+    | { op: "create-dlc"; dlc: ProjectDlc; beforeId?: string }
+    /** Replace a DLC's record, id included. See {@link LiveDlcOp}. */
+    | { op: "update-dlc"; dlcId: string; dlc: ProjectDlc }
+    /** Remove a DLC. The stories marked for it ship with the base build from now on. */
+    | { op: "delete-dlc"; dlcId: string };
+
+/**
+ * Everything that can be done to the project's palette - `editor/brand.json`.
+ *
+ * The document holds two lists that are edited apart, and the verbs follow that split because
+ * `BrandService` does: colours go through `applyColorMutation`, the font stack through
+ * `applyFontMutation`, and neither is ever a step of the other.
+ *
+ * **A colour is a record; the font stack is one value.** A colour has a name somebody typed into a
+ * blur-committed field and a value they picked, and there may be dozens of them - so it is addressed
+ * and it is claimed. The stack is at most a handful of rungs, has nothing typed into it at all (a
+ * picker, two arrows and a set of language checkboxes), and every one of its gestures rewrites the
+ * whole order anyway.
+ *
+ * ⚠ **The seeded entries are records like any other.** Re-pointing `button.primary` is the whole
+ * feature, so `update-brand-color` addresses them exactly as it addresses an author's own; what it
+ * cannot do is delete one, and `BrandService.deleteColor` is where that is refused.
+ */
+export type LiveBrandOp =
+    /**
+     * Add a colour of the author's own. Appended after the seeds, and `beforeId` is the inverse of a
+     * deletion - see `create-app-tag`.
+     */
+    | { op: "create-brand-color"; color: BrandColor; beforeId?: string }
+    /** Replace one colour - its name, its value, or both. */
+    | { op: "update-brand-color"; colorId: string; color: BrandColor }
+    /** Remove one of the author's colours. Links that pointed at it resolve to nothing and are linted. */
+    | { op: "delete-brand-color"; colorId: string }
+    /**
+     * Move a colour to sit before another, or to the end when `beforeId` is null.
+     *
+     * Relative rather than an index, for `LiveBlockTarget`'s reason. Unclaimed, with `move-block` and
+     * `move-assets`: a drag rearranges the palette without touching a word anybody wrote.
+     */
+    | { op: "move-brand-color"; colorId: string; beforeId: string | null }
+    /**
+     * The whole font stack, in priority order.
+     *
+     * The one verb here that is not about a record, and the exception is argued in {@link LiveBrandOp}:
+     * appending a rung, restricting one to some languages, removing one and moving one up or down are
+     * four gestures that all state a new order of at most `PROJECT_FONT_STACK_MAX` entries, and none
+     * of them has a draft layer to lose.
+     */
+    | { op: "set-brand-fonts"; fonts: readonly ProjectFontEntry[] };
+
+/**
+ * Everything that can be done to the interface document.
+ *
+ * **One verb, and it is the only vocabulary in this file that is not a list of gestures** - which is
+ * the answer to "what is one operation" for a document whose forty editing methods all funnel
+ * through one opaque mutator. `@shared/live/uiParts` carries the reasoning; the short of it is that
+ * the finest thing `UIDocumentService` can state truthfully at the point every edit passes through is
+ * *which records the document now holds differently*, and a statement of that form is exhaustive over
+ * gestures by construction rather than by anybody remembering to add a verb.
+ *
+ * One gesture is still one operation: a delta is produced per mutation, so dragging a button into a
+ * different container is one message naming the button and the two containers, and one press of undo
+ * takes it back.
+ *
+ * **Claimed**, over the elements it names - see {@link CLAIMED_OPS}.
+ */
+export type LiveUIOp =
+    /**
+     * The interface document's records, as they now are.
+     *
+     * ⚠ **A delta that will not fit in one message is refused by name rather than split.** Importing
+     * a template or turning a selection into a component restates hundreds of elements, and a room
+     * that watched that arrive in pieces would draw a screen nobody authored - the same rule an
+     * exchange import follows.
+     */
+    | {
+          op: "write-ui";
+          parts: LiveUIParts;
+          /**
+           * The elements this delta changes rather than creates, as the sender's copy held them.
+           *
+           * **The interface document's answer to `row-gone`.** A delta states what the document now
+           * holds, so nothing in its shape tells a new button from one somebody deleted while it was
+           * being dragged - and applied blind, the second of those puts a deleted element back with
+           * every machine agreeing about it, which is the one failure a digest cannot see. The
+           * sender knows which of the two it meant, so it says. See `uiPartsUpdates`.
+           */
+          updates?: readonly LiveUIElementRef[];
+      };
+
+/**
+ * Everything that can be done to the blueprint document.
+ *
+ * The interface document's mirror, one file along, and for the same reason: every canvas gesture
+ * reaches `uigraphs.json` through an opaque updater, so what the owning service can state is which
+ * records changed. See `@shared/live/uiGraphParts` for how fine those records are and why.
+ *
+ * **Claimed**, over the nodes it names.
+ */
+export type LiveUIGraphOp =
+    /** The blueprint document's records, as they now are. */
+    | {
+          op: "write-ui-graphs";
+          parts: LiveUIGraphParts;
+          /** The blueprints this delta changes rather than creates. See `uiGraphPartsUpdates`. */
+          updates?: readonly string[];
+      };
+
+/**
+ * Everything that can be done to the project dictionary.
+ *
+ * **Two verbs for a document with no ids at all**, and that is what shapes both of them. A
+ * dictionary entry is keyed by its own spelling: the term IS the identity, every other field
+ * describes it, and nothing on either side of an edit says that the term on the left and the term
+ * on the right are the same entry. So the address of an entry is a word the author typed, and
+ * renaming one is not a field edit - it is the entry moving house.
+ *
+ * `DictionaryService` reaches its document through one private mutator that takes a function over
+ * the whole list, exactly as the audio mixer and the asset sets do, so the operations here are
+ * stated where the service knows what it MEANS - at `addTerm`, `updateEntry` and `removeTerm` -
+ * rather than at the point the list is rewritten. That is `AssetsService.recordChanged`'s answer to
+ * the same shape of service, one document along.
+ */
+export type LiveDictionaryOp =
+    /**
+     * What the entry at one spelling now is, or that there is none.
+     *
+     * **One verb where the cast has three**, and the reason is the libraries': in this document
+     * "no entry" and "the project does not write that word" are the same state, so a delete verb to
+     * pair with a set verb would invent a distinction the file does not have. `term` is the address
+     * the entry has now; `entry` is what it becomes, and its own `term` may differ - which is what a
+     * rename is, in one operation, because renaming is one gesture in the panel.
+     *
+     * ⚠ **A rename onto a spelling the project already writes is not reachable from Studio** -
+     * `updateEntry` refuses it rather than merging two entries whose readings, variants and notes
+     * would have to be chosen between. A machine that receives one applies it as written, and the
+     * author who sent it keeps the undo entry; see `LiveBefore` for why that undo answers "nothing
+     * was kept".
+     */
+    | { op: "set-dictionary-entry"; term: string; entry: ProjectDictionaryEntry | null }
+    /**
+     * Both of the checks the dictionary drives, as they now stand.
+     *
+     * Whole rather than one switch at a time because they are one record on the document and the
+     * panel writes them through one patch; last-writer-wins, with the story's scene name, since the
+     * loser of that race loses a click.
+     */
+    | { op: "set-dictionary-options"; options: ProjectDictionaryOptions };
+
+/**
+ * Everything that can be done to the project's mixer.
+ *
+ * `AudioTrackService`'s own mutators, one per gesture, for `LiveStoryOp`'s reason: they already
+ * address by id, they already take a relative position, and they are already what every control in
+ * the audio section ends up calling. What they do NOT share is a single point that could state
+ * them - `applyTrackMutation` takes a function over the whole list and can only say "the tracks
+ * changed" - so the operations are stated at the mutators, where the service knows what it meant.
+ *
+ * None of these is claimed. A bus is a name, a fader, a routing choice and a loop switch: nothing
+ * on it accumulates prose, so the loser of a race loses a word or a drag rather than a paragraph
+ * nobody else can see. See {@link CLAIMED_OPS}.
+ */
+export type LiveAudioTrackOp =
+    /**
+     * Add a bus, in front of the sibling named, or last when that is null.
+     *
+     * Separate from `update-audio-track` with `insert-block` and `create-character`, and for their
+     * reason: an update naming a bus that is gone has to be refused so that the author keeps what
+     * they were editing, and one verb that created whatever it could not find would silently bring
+     * back a track somebody else deleted - with every reference that had fallen back to a seeded bus
+     * quietly re-pointing at it.
+     */
+    | {
+          op: "create-audio-track";
+          track: ProjectAudioTrack;
+          /** The bus this one sits in front of in the stored order, or null for last. */
+          beforeId: string | null;
+          /**
+           * Buses to route back into this one, for the creation that undoes a deletion.
+           *
+           * **Carried, where the deletion's own promotion is derived, and the asymmetry is
+           * `create-character.rebind`'s.** Going down, "which buses feed this one" is a question
+           * about the document. Coming back up it is not: those buses now name the deleted track's
+           * own parent, and so do the ones that always did - the two are indistinguishable
+           * afterwards. So the only correct answer is the one recorded when the deletion happened.
+           * Absent for an ordinary creation, which has nothing to reclaim.
+           */
+          reparent?: readonly string[];
+      }
+    /**
+     * Replace one bus's record.
+     *
+     * The whole record rather than a patch, for `update-block`'s reason and one of the mixer's own:
+     * a track's fields hold each other up - a volume is read against the routing it is multiplied
+     * through - and the panel commits a field at a time into a record it then re-normalizes, so a
+     * field-level verb would state something the service never produces.
+     */
+    | { op: "update-audio-track"; trackId: string; track: ProjectAudioTrack }
+    /**
+     * Remove one bus, and let every machine promote what fed into it.
+     *
+     * **One operation for something that rewrites other records, because their share of it is
+     * DERIVED** - the same shape as deleting a character and letting every machine rewrite the rows
+     * that spoke it. The children move to the deleted bus's own parent, which is a fact every
+     * machine can work out from a mixer the room already agrees on, so sending them would be a
+     * second statement of it.
+     *
+     * ⚠ The seeded buses cannot be deleted; a message naming one is refused rather than applied,
+     * because they are where every unresolvable reference lands and what the player's own volume
+     * sliders alias onto.
+     */
+    | { op: "delete-audio-track"; trackId: string }
+    /**
+     * Move one bus in the drawn order, in front of the sibling named or last when that is null.
+     *
+     * Order is not routing - the tree is rebuilt from `parentId`, and re-routing is an
+     * `update-audio-track` - so this changes what the author sees and nothing about what the game
+     * hears.
+     */
+    | { op: "move-audio-track"; trackId: string; beforeId: string | null };
+
+/**
+ * Everything that can be done to the project's asset sets.
+ *
+ * `AssetSetService`'s gestures, and two of them name every set they touch rather than one.
+ * Deleting a set takes the sets drawn inside it, and filing one in a folder takes them along - both
+ * cascades are computable from a document the room already agrees on, so the criterion that decides
+ * a paste's translations would make them derived.
+ *
+ * ⚠ **They are carried anyway, and that is a ruling rather than an oversight.** Neither cascade can
+ * be derived coming BACK: a deletion's records are gone, and a move's old folders are gone with it.
+ * Deriving the forward half while carrying the backward half would be two different answers to
+ * "which sets is this gesture about", and the cascade is a handful of ids in a document whose
+ * digest covers all of it either way. Naming them in both directions is what lets a move be its own
+ * inverse - which is `move-assets`' ruling, one document along.
+ *
+ * None of these is claimed: a set is a name, a filter and an axis, and the loser of a race loses a
+ * word or a drag. See {@link CLAIMED_OPS}.
+ */
+export type LiveAssetSetOp =
+    /**
+     * Declare sets, each in front of the sibling named or last when that is null, as ONE operation.
+     *
+     * The wizard states one. Undoing a deletion states every set the cascade destroyed, which is
+     * why this is plural: a run of single creations would draw a half-restored panel on every other
+     * screen and cost a press per row to take back.
+     */
+    | { op: "create-asset-sets"; creates: readonly { set: AssetSet; beforeId: string | null }[] }
+    /**
+     * Replace one set's record. Renaming, re-filtering and re-axing all write it whole, which is
+     * what `updateSet` is handed - see {@link LiveAudioTrackOp}'s update for the reason.
+     */
+    | { op: "update-asset-set"; setId: string; set: AssetSet }
+    /**
+     * Remove sets, as ONE operation.
+     *
+     * Dissolving a set and deleting a set with its sub-sets are the same edit to this document and
+     * two different things to the author; both arrive here, and the second names every set it
+     * removes. A set that is already gone is not an error - the second of two deletions changes
+     * nothing.
+     */
+    | { op: "delete-asset-sets"; setIds: readonly string[] }
+    /**
+     * File sets, each in its own folder, as ONE operation.
+     *
+     * Each entry carries its own destination so that the operation can also be its own inverse,
+     * which is `move-assets`' shape and its reason: the sets a drag collects were not all in the
+     * same place, and one destination for all of them would make an undo into a rearrangement
+     * nobody asked for.
+     */
+    | { op: "move-asset-sets"; moves: readonly { setId: string; groupId: string | null }[] };
+
+/**
+ * Everything that can be done to the project's variable registry.
+ *
+ * **Two verbs, and the addressing is the cast's: one entry, whole.** `VariableRegistryService` has a
+ * mutator per field - a rename, a retype, a default, a description - and each of them is a point
+ * every editing gesture passes through, so the vocabulary could have been per-field. It is not, for
+ * `update-character`'s reason: an entry's fields hold each other up. `valueType` decides what
+ * `defaultValue` means, and retyping a variable in the panel rewrites both in one gesture; a
+ * field-level verb would state half of that and leave every receiving machine to resolve the other
+ * half against its own copy.
+ *
+ * ⚠ **A rename carries nothing else, and that is worth stating because it looks as though it
+ * should.** Every reference to a project variable addresses it by `variableId` - a story expression's
+ * `StoryVariableRef`, a blueprint node's param, a save file's `storageKey`, which a rename
+ * deliberately never touches - so the name is a label and changing it rewrites no other document.
+ * There is nothing here for a receiver to derive.
+ *
+ * ⚠ **Removing one reaches a second document, and that reach is DERIVED rather than carried.** It
+ * clears the `savedVariableId` / `persistentVariableId` params of every `Get`/`Set` node that named
+ * it, which is a write to `editor/ui/uigraphs.json`. That is not something the operation states:
+ * every machine works out the same nodes from the same registry and the same blueprints, which is the
+ * criterion that decides every piece of derived work here. What it does mean is that the sweep has to
+ * be fingerprinted - `LiveSessionService.applyVariableOp` reports the blueprints it rewrote, and they
+ * reach the effect's digests beside the entry's own.
+ *
+ * ⚠ **A session that does not carry the blueprint document refuses the gesture instead**, at
+ * `VariableRegistryService` and exactly as `AssetsService` refuses an import: `editor/variables.json`
+ * IS writable during a session, so a deletion reaching the write boundary would be allowed and would
+ * land on one machine only. The act that cannot travel whole is stopped at the service that owns it.
+ */
+export type LiveVariableOp =
+    /**
+     * Add a variable. The entry arrives whole, with the id its author minted.
+     *
+     * Separate from `update-variable` for the reason `create-character` is separate from
+     * `update-character`: an update naming an entry that is gone has to be refused, and a single verb
+     * that created whatever it could not find would silently put back a variable somebody removed
+     * before the session started.
+     */
+    | { op: "create-variable"; entry: VariableRegistryEntry }
+    /** Replace one entry. The whole entry - see {@link LiveVariableOp}. */
+    | { op: "update-variable"; variableId: string; entry: VariableRegistryEntry }
+    /**
+     * Take one entry back out, and let every machine clear the nodes that named it.
+     *
+     * An author's own removal and the inverse of a `create-variable` are one verb, because they are
+     * one act on this document: the entry leaves, and the sweep that follows it is derived - see
+     * {@link LiveVariableOp}. Undoing a creation made inside the session sweeps nothing, which is
+     * not a special case but the ordinary answer for a variable no node has had time to name.
+     *
+     * Claimed with `delete-character`: somebody may have opened the row and started typing a name
+     * into it between the creation and the undo.
+     */
+    | { op: "delete-variable"; variableId: string };
+
+/**
+ * Everything that can be done to the named-string registry - `editor/localization/keys.json`.
+ *
+ * **Two verbs, and they are `LocalizationService`'s own**: `setKey(name, definition)` and
+ * `removeKey(name)` are the only two ways this document ever changes, and every gesture that reaches
+ * it - the add row at the foot of the named-key group, the inline source-text box, the remove button,
+ * the widget inspector's "create a key" dialog - ends at one of them. So the finest thing that can be
+ * stated truthfully at the one point every edit passes through is one key, whole.
+ *
+ * **One verb for creating and for replacing**, unlike the variable pair above and with
+ * `set-character-group`, because the service itself does not distinguish them: a key is addressed by
+ * its NAME, and `setKey` writes whatever name it is given. Splitting it would invent a distinction
+ * the document does not have, and a machine would then have to decide which of two operations an
+ * author typing into a source-text box had produced.
+ *
+ * ⚠ **Removing a key does not touch any translation, and that is the document's own rule rather than
+ * an omission here.** A named key's entries live in each language's library under `key:<name>`, and
+ * `removeKey` leaves them exactly where they are - orphans the library already tolerates, and the
+ * reason an author can take a removal back by declaring the key again and finding every translation
+ * still under it. So this operation reaches one document, and there is nothing for a receiver to
+ * derive.
+ *
+ * ⚠ **There is no rename verb because there is no rename gesture.** The registry is addressed by
+ * name, and Studio offers no way to change one; an author who wants a different name declares it and
+ * removes the old one, which is two operations because it is two acts.
+ */
+export type LiveLocalizationKeyOp =
+    /** What one named key now is. Creating and replacing alike - see {@link LiveLocalizationKeyOp}. */
+    | { op: "set-key"; name: string; definition: LocalizationKeyDefinition }
+    /** Remove one named key. Its translations stay where they are. */
+    | { op: "remove-key"; name: string };
+
+/**
  * Everything a session can be asked to do, whichever document it is about.
  *
  * Flat rather than nested by document, because every consumer of this type switches over `op` and a
  * nesting would make each of them switch twice. Which document a verb belongs to is
  * {@link opDocumentKind}'s answer, and it is a property of the verb rather than of the message.
  */
-export type LiveOp = LiveStoryOp | LiveCharacterOp | LiveLocalizationOp | LiveVoiceOp;
+export type LiveOp =
+    | LiveStoryOp
+    | LiveCharacterOp
+    | LiveLocalizationOp
+    | LiveVoiceOp
+    | LiveAssetOp
+    | LiveAssetFolderOp
+    | LiveAppTagOp
+    | LiveDlcOp
+    | LiveBrandOp
+    | LiveUIOp
+    | LiveUIGraphOp
+    | LiveDictionaryOp
+    | LiveAudioTrackOp
+    | LiveAssetSetOp
+    | LiveVariableOp
+    | LiveLocalizationKeyOp;
 
 /** Every operation kind, for a caller that has to enumerate them. */
 export type LiveOpKind = LiveOp["op"];
@@ -340,7 +1251,82 @@ export type LiveDocument =
      */
     | { doc: "localization"; locale: string }
     /** One language's voice takes - `editor/voice/<locale>.json`. The translations' mirror. */
-    | { doc: "voice"; locale: string };
+    | { doc: "voice"; locale: string }
+    /**
+     * One asset type's metadata shard - `assets/assets.metadata.<type>.json`.
+     *
+     * Parameterised by TYPE rather than by the category the browser draws, because the address is a
+     * file and a category is one or two of them: Media holds audio and video, and a message that
+     * named the category would be a message about two documents at once. The panel's own gestures
+     * are grouped by type before they are stated - see `move-assets`.
+     */
+    | { doc: "assets"; assetType: string }
+    /**
+     * One section's folders - `assets/assets.groups.<category>.json`.
+     *
+     * Parameterised by CATEGORY where the records beside it are parameterised by type, and the two
+     * are not the same axis: a folder under Media holds audio and video alike, so it cannot belong to
+     * either type's shard. That asymmetry is the asset browser's own, and following it here keeps one
+     * spelling of "which document" rather than two.
+     */
+    | { doc: "asset-groups"; category: string }
+    /**
+     * The build variants - `editor/app-tags.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, so the kind is the whole
+     * address. The same is true of the two below it.
+     */
+    | { doc: "app-tags" }
+    /** The DLC list - `editor/dlc.json`. */
+    | { doc: "dlc" }
+    /** The palette and the default font stack - `editor/brand.json`. */
+    | { doc: "brand" }
+    /**
+     * The interface - `editor/ui/uidoc.json`.
+     *
+     * Unparameterised, with the cast: there is one of these per project, holding every Surface, the
+     * component library and the one flat element map they are built out of. The largest document a
+     * project has, and the reason its operations are a delta of records rather than the document.
+     */
+    | { doc: "ui" }
+    /**
+     * The blueprints - `editor/ui/uigraphs.json`.
+     *
+     * A document of its own beside the interface rather than a second kind of "UI", because the two
+     * are two files and a message names one document. They are edited together constantly - adding a
+     * widget to a Surface reconciles a blueprint for it - and the seam between them is the reason
+     * this one has to be shared at all: a session that left it frozen would announce work-not-saved
+     * on every element anybody added.
+     */
+    | { doc: "ui-graphs" }
+    /**
+     * The project dictionary - `editor/dictionary.json`.
+     *
+     * Unparameterised with the cast, and for its reason: there is one of these per project, so the
+     * kind is the whole address and a session cannot be opened on "some of" it.
+     */
+    | { doc: "dictionary" }
+    /** The project's mixer - `editor/audio-tracks.json`. One per project, with the dictionary. */
+    | { doc: "audio-tracks" }
+    /** The project's asset sets - `editor/asset-sets.json`. One per project. */
+    | { doc: "asset-sets" }
+    /**
+     * The project's variable registry - `editor/variables.json`.
+     *
+     * Not parameterised, with the cast: there is one per project, so `{ doc: "variables" }` is the
+     * whole address.
+     */
+    | { doc: "variables" }
+    /**
+     * The named-string registry - `editor/localization/keys.json`.
+     *
+     * Not parameterised either, and deliberately a kind of its own rather than a `localization`
+     * address with a reserved locale. The two are different formats owned by the same service - one
+     * holds source texts, the other translations of them - and the document registry already keeps
+     * them apart for the same reason (`editor/localization/keys.json` would otherwise match the
+     * per-locale pattern with a locale of `keys`).
+     */
+    | { doc: "localization-keys" };
 
 /**
  * The kind of document a verb can only ever be about.
@@ -365,6 +1351,14 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return "story";
         case "create-character":
         case "update-character":
@@ -378,6 +1372,55 @@ export function opDocumentKind(op: LiveOp): LiveDocument["doc"] {
         case "set-take":
         case "set-takes":
             return "voice";
+        case "update-asset":
+        case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
+            return "assets";
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return "asset-groups";
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return "app-tags";
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return "dlc";
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return "brand";
+        case "write-ui":
+            return "ui";
+        case "write-ui-graphs":
+            return "ui-graphs";
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return "dictionary";
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return "audio-tracks";
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return "asset-sets";
+        case "create-variable":
+        case "update-variable":
+        case "delete-variable":
+            return "variables";
+        case "set-key":
+        case "remove-key":
+            return "localization-keys";
     }
 }
 
@@ -412,6 +1455,22 @@ export function opAddresses(op: LiveOp, document: LiveDocument): boolean {
         case "set-take":
         case "set-takes":
             return document.doc === "voice" && document.locale === op.locale;
+        // The asset operations name their type for the library operations' reason: the service they
+        // came from is addressed by it, and a record written into a sibling type's shard is a file
+        // the browser no longer draws anywhere, in a shard whose digest agrees with itself.
+        case "update-asset":
+        case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
+            return document.doc === "assets" && document.assetType === op.assetType;
+        // A folder operation names its section for the same reason, and it matters more here: a
+        // folder record written into a sibling section's shard is a folder the browser draws under
+        // a heading whose files can never be filed in it.
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return document.doc === "asset-groups" && document.category === op.category;
         default:
             return true;
     }
@@ -428,6 +1487,30 @@ export function sameLiveDocument(left: LiveDocument, right: LiveDocument): boole
             return right.doc === "localization" && right.locale === left.locale;
         case "voice":
             return right.doc === "voice" && right.locale === left.locale;
+        case "assets":
+            return right.doc === "assets" && right.assetType === left.assetType;
+        case "asset-groups":
+            return right.doc === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.doc === "app-tags";
+        case "dlc":
+            return right.doc === "dlc";
+        case "brand":
+            return right.doc === "brand";
+        case "ui":
+            return right.doc === "ui";
+        case "ui-graphs":
+            return right.doc === "ui-graphs";
+        case "dictionary":
+            return right.doc === "dictionary";
+        case "audio-tracks":
+            return right.doc === "audio-tracks";
+        case "asset-sets":
+            return right.doc === "asset-sets";
+        case "variables":
+            return right.doc === "variables";
+        case "localization-keys":
+            return right.doc === "localization-keys";
     }
 }
 
@@ -442,6 +1525,30 @@ export function describeLiveDocument(document: LiveDocument): string {
             return `translations ${document.locale}`;
         case "voice":
             return `voice ${document.locale}`;
+        case "assets":
+            return `assets ${document.assetType}`;
+        case "asset-groups":
+            return `asset folders ${document.category}`;
+        case "app-tags":
+            return "build variants";
+        case "dlc":
+            return "DLC";
+        case "brand":
+            return "brand palette";
+        case "ui":
+            return "interface";
+        case "ui-graphs":
+            return "blueprints";
+        case "dictionary":
+            return "dictionary";
+        case "audio-tracks":
+            return "audio tracks";
+        case "asset-sets":
+            return "asset sets";
+        case "variables":
+            return "variables";
+        case "localization-keys":
+            return "localization keys";
     }
 }
 
@@ -485,6 +1592,37 @@ export function describeLiveDocument(document: LiveDocument): string {
  * document two people are almost never inside at once.
  *
  * ⚠ That ruling turns over the day a take grows a field somebody writes paragraphs into.
+ *
+ * **An asset record is claimed; filing assets in a folder is not**, and the pair repeats the story's
+ * `update-block` / `move-block` split for the same reason. The inspector's name and description are
+ * `TextField`s, which commit on blur and re-sync from their props: somebody else's edit to the same
+ * record arriving mid-sentence takes the sentence with it, silently, which is the injury this rule
+ * exists to name. A drag into a folder writes `groupId` and touches nothing anybody typed.
+ *
+ * **Nothing in the dictionary, the mixer or the asset sets is claimed, and the three answers come
+ * from one reading of the same test.** Every field on them is a word: a term and its reading, a
+ * bus's name and its fader, a set's name and the tag it filters on. A draft layer is there - the
+ * dictionary panel's four boxes commit on blur and re-read themselves from the entry - but what it
+ * drafts is a spelling rather than a paragraph, and the loser reads the winner's answer in the box
+ * the moment it arrives. The take's ruling is the one this follows: a claim is worth its ceremony
+ * where the losing author has typing nobody else can see and nothing else would report, and none of
+ * these three has that. The gesture a session actually produces most is adding a term from the
+ * story editor's spelling popover, which has no draft at all.
+ *
+ * ⚠ That ruling turns over the day one of them grows a field somebody writes paragraphs into.
+ * **A variable entry and a named key are both claimed, and they reach the answer by the injury
+ * rather than by the diagnostic.** Neither box keeps a draft the way a `TextField` does - the
+ * variables panel's name and default and the named key's source text are controlled inputs that
+ * write on every keystroke - so the usual question, "does the interface hold a draft of it", says no.
+ * The question behind it says yes: with a session installed the box's value IS the document, so an
+ * edit to the same entry arriving while somebody is composing lands directly under their cursor and
+ * takes what they had typed, with nothing said. That is the same injury a drafted box suffers,
+ * arriving by a different route, and it is what separates these from a scene name or a chapter order -
+ * those are settled in a dialog or a drag, and neither is a box that stays open in front of an author
+ * for as long as a panel is.
+ *
+ * A key's removal is claimed with `delete-character`: taking away the row somebody is inside takes
+ * the sentence they were writing about it.
  */
 export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "update-block",
@@ -496,6 +1634,35 @@ export const CLAIMED_OPS: ReadonlySet<LiveOpKind> = new Set<LiveOpKind>([
     "set-block-disabled",
     "set-translation",
     "set-translations",
+    "update-asset",
+    "replace-asset-content",
+    "delete-assets",
+    // The three configuration tables, and the same test answers for all of them: every one of their
+    // rows is edited through a field that keeps a draft in its own state until it is blurred and
+    // re-syncs from its props when somebody else's edit arrives. A variant's name and its three
+    // identity overrides, a DLC's name and the filename it ships as, a colour's name - the loser of
+    // any of those races loses what they had half typed, with nothing on screen to say so.
+    //
+    // ⚠ **Creating and rearranging are not here**, with `insert-block` and `move-block`: a creation
+    // names an id nobody else has, and a drag rewrites an order without touching a word anybody
+    // wrote. `set-brand-fonts` is out for the second reason - the stack has no typing on it at all.
+    "update-app-tag",
+    "delete-app-tag",
+    "set-app-tag-defaults",
+    "update-dlc",
+    "delete-dlc",
+    "update-brand-color",
+    "delete-brand-color",
+    // The interface and the blueprints, over the elements and the nodes their deltas name. The test
+    // is the one every other entry answers: the properties panel and a node's parameter editors keep
+    // a half-typed value in their own state and reach the document on a throttle or on blur, so the
+    // loser of a race loses a sentence nobody else can see. See `@shared/live/uiParts`.
+    "write-ui",
+    "write-ui-graphs",
+    "update-variable",
+    "delete-variable",
+    "set-key",
+    "remove-key",
 ]);
 
 /**
@@ -523,6 +1690,17 @@ export function opBlockId(op: LiveStoryOp): StoryBlockId | null {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // The structural verbs are about a scene, a chapter or the outline - never about one row,
+        // even where they destroy hundreds of them. A claim is over a row somebody is writing, and
+        // deleting a scene is answered by the scene's own check rather than by the rows inside it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -559,6 +1737,17 @@ export function opBlockIds(op: LiveStoryOp): readonly StoryBlockId[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Empty with the rest of the structural verbs - see {@link opBlockId}. A scene deletion does
+        // remove rows, and none of them is named here: the rows are not what the gesture is about,
+        // and a claim check over them would refuse a scene because somebody left a caret in it.
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return [];
     }
 }
@@ -589,8 +1778,22 @@ export function opSceneId(op: LiveStoryOp): StorySceneId | null {
             return onlySceneOf(op.edits);
         case "set-entry-scene":
             return op.sceneId;
+        // The scene a structural verb is about, when it is about one. `create-scene` names it
+        // through the record it carries, which is the only place the id exists at all.
+        case "create-scene":
+            return op.scene.id;
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+            return op.sceneId;
         case "rename-story":
         case "reorder-chapters":
+        // The chapter verbs are about the outline. `delete-chapter` reaches every scene in the
+        // chapter and still names none of them: there is no single scene for a digest to be of.
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
     }
 }
@@ -644,6 +1847,107 @@ export function translationClaimKey(locale: string, unitId: string): LiveClaimKe
 }
 
 /**
+ * The claim over one asset record.
+ *
+ * No asset type in the key, unlike the translation's locale, and the difference is what the two
+ * parameters are for. A line has an entry in every language, so a translation key that named only the
+ * unit would put two translators in each other's way; an asset id is minted once and is unique across
+ * the whole library, so the type would be a second way to say something the id already says - and a
+ * second way for two spellings of one claim to fail to cancel out.
+ */
+export function assetClaimKey(assetId: string): LiveClaimKey {
+    return `asset:${assetId}`;
+}
+
+/** The claim over one variable registry entry. */
+export function variableClaimKey(variableId: string): LiveClaimKey {
+    return `variable:${variableId}`;
+}
+
+/**
+ * The claim over one named string.
+ *
+ * ⚠ **`named-key:` rather than `key:`**, which is not a stylistic choice: `key:<name>` is already the
+ * translation-unit id a named string has inside every locale library
+ * (`localizationKeyUnitId`), so a claim spelled that way would read as a translation claim to
+ * anybody scanning the set - and the two really do coexist in it, one per language for the same
+ * string.
+ *
+ * The name is the key because the registry is addressed by name; a key name cannot contain a colon
+ * (`isValidLocalizationKeyName`), so the segment after the prefix is unambiguous.
+ */
+export function localizationKeyClaimKey(name: string): LiveClaimKey {
+    return `named-key:${name}`;
+}
+
+/**
+ * The claim over one interface element.
+ *
+ * The component id is in the key because a component definition owns its own element map: an element
+ * of a component is not in `document.elements` at all, and the two maps are two address spaces even
+ * though both are keyed by uuid. Spelling the component in is what keeps a claim over an element of
+ * the library from being read as one over an element of a Surface.
+ */
+export function uiElementClaimKey(componentId: string | null, elementId: string): LiveClaimKey {
+    return `${UI_ELEMENT_CLAIM_PREFIX}${componentId ?? ""}:${elementId}`;
+}
+
+/**
+ * What every interface element's claim key starts with.
+ *
+ * Exported because a panel reading the set has to filter by it, and a prefix spelled a second time
+ * at the reader is exactly how the story editor's marks went missing for a fortnight while every
+ * assertion in its tests agreed with the mistake.
+ */
+export const UI_ELEMENT_CLAIM_PREFIX = "ui-element:";
+
+/**
+ * The claim over one blueprint node.
+ *
+ * ⚠ **Both the blueprint and the graph are in the key.** Node ids are not unique across the
+ * document: the seeded entry nodes use fixed ids - `global.appBoot` is in every project - so a key
+ * naming the node alone would have one Surface's boot node holding every other Surface's.
+ */
+export function uiNodeClaimKey(blueprintId: string, graphId: string, nodeId: string): LiveClaimKey {
+    return `${UI_NODE_CLAIM_PREFIX}${blueprintId}:${graphId}:${nodeId}`;
+}
+
+/** What every blueprint node's claim key starts with. See {@link UI_ELEMENT_CLAIM_PREFIX}. */
+export const UI_NODE_CLAIM_PREFIX = "ui-node:";
+
+/**
+ * The claim over one build variant's row.
+ *
+ * ⚠ **The project's own defaults are held under {@link APP_TAG_DEFAULTS_CLAIM_ID}**, which is the
+ * release variant's reserved id. That is not a trick: the release variant is what the root records
+ * belong to - it is synthesized and stores nothing of its own - and the panel draws it as a row
+ * beside the others. An id that could collide with a stored one would be, but the release id is
+ * exactly the id the normalizer refuses to store.
+ */
+export function appTagClaimKey(tagId: string): LiveClaimKey {
+    return `app-tag:${tagId}`;
+}
+
+/**
+ * Whose row the project's own defaults are, for a claim.
+ *
+ * The release variant's own id, taken from the model rather than spelled again here: it is the id
+ * the normalizer refuses to store, so nothing this key space holds can ever collide with it - and a
+ * second spelling would be a collision waiting for the day that id changed.
+ */
+export const APP_TAG_DEFAULTS_CLAIM_ID = APP_TAG_ID_RELEASE;
+
+/** The claim over one DLC's row. */
+export function dlcClaimKey(dlcId: string): LiveClaimKey {
+    return `dlc:${dlcId}`;
+}
+
+/** The claim over one colour of the project's palette. */
+export function brandColorClaimKey(colorId: string): LiveClaimKey {
+    return `brand-color:${colorId}`;
+}
+
+/**
  * Every claim an operation has to hold to be allowed, in the order the operation names them.
  *
  * What a claim check asks, and the reason it is a set: **a batch is permitted only if every part of
@@ -669,6 +1973,14 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        case "create-scene":
+        case "delete-scene":
+        case "update-scene":
+        case "move-scene":
+        case "set-scene-snapshots":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return opBlockIds(op).map(storyRowClaimKey);
         case "update-character":
         case "delete-character":
@@ -689,6 +2001,76 @@ export function opClaimKeys(op: LiveOp): readonly LiveClaimKey[] {
         case "set-takes":
             // Not claimed - see {@link CLAIMED_OPS}.
             return [];
+        case "update-asset":
+        case "replace-asset-content":
+            return [assetClaimKey(op.assetId)];
+        case "delete-assets":
+            // Every record, and one held record refuses the whole gesture - the rule every batch
+            // follows. Half a delete is a library nobody produced.
+            return op.assetIds.map(assetClaimKey);
+        case "move-assets":
+            // Not claimed either, with `move-blocks`: filing rearranges the library without touching
+            // a word anybody wrote. See {@link CLAIMED_OPS}.
+            return [];
+        case "create-assets":
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            // Nothing to hold: a creation names ids nobody else has, and a folder has no draft
+            // layer behind it. See {@link CLAIMED_OPS}.
+            return [];
+        case "update-app-tag":
+        case "delete-app-tag":
+            return [appTagClaimKey(op.tagId)];
+        case "set-app-tag-defaults":
+            // The release variant's row - see {@link appTagClaimKey}. The panel draws the project's
+            // own values there, so that is the row somebody is inside while they are edited.
+            return [appTagClaimKey(APP_TAG_DEFAULTS_CLAIM_ID)];
+        case "update-dlc":
+        case "delete-dlc":
+            return [dlcClaimKey(op.dlcId)];
+        case "update-brand-color":
+        case "delete-brand-color":
+            return [brandColorClaimKey(op.colorId)];
+        case "write-ui":
+            // Every element the delta names, and one held element refuses the whole gesture - the
+            // rule every batch follows. Half a layout change is a screen nobody arranged.
+            return uiPartsElements(op.parts).map(ref => uiElementClaimKey(ref.componentId, ref.elementId));
+        case "write-ui-graphs":
+            // Every node the delta names, on the same terms. The blueprint's own record, its graph
+            // slots and the owner records are not claimed: none of them has a draft layer behind it,
+            // and losing one costs a name.
+            return uiGraphPartsNodes(op.parts).map(ref => uiNodeClaimKey(ref.blueprintId, ref.graphId, ref.nodeId));
+        case "create-app-tag":
+        case "create-dlc":
+        case "create-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            // Nothing to hold either: every field on these three documents is a word, so the loser
+            // of a race loses a word and reads the winner's. See {@link CLAIMED_OPS}.
+            return [];
+        case "update-variable":
+        case "delete-variable":
+            return [variableClaimKey(op.variableId)];
+        case "create-variable":
+            // Named for the same reason `create-character` names its record: the key is what the
+            // panel holds once the row exists. Whether it is CHECKED is `CLAIMED_OPS`' answer, and
+            // there it is not - the id was minted by whoever built the entry.
+            return [variableClaimKey(op.entry.id)];
+        case "set-key":
+            return [localizationKeyClaimKey(op.name)];
+        case "remove-key":
+            return [localizationKeyClaimKey(op.name)];
     }
 }
 
@@ -730,7 +2112,101 @@ export type LiveDigestScope =
      */
     | { of: "translations"; locale: string }
     /** One language's voice takes, whole. The translations' mirror, for the same two reasons. */
-    | { of: "takes"; locale: string };
+    | { of: "takes"; locale: string }
+    /**
+     * One asset type's metadata shard, whole.
+     *
+     * The third document to be fingerprinted entire, and `@shared/live/assets` gives the same two
+     * reasons the libraries give: filing a multi-selection reaches across records freely, so a
+     * per-record digest would not fit in the message, and a shard of short records about files is a
+     * small document beside a story.
+     */
+    | { of: "assets"; assetType: string }
+    /**
+     * One section's folders, whole.
+     *
+     * The asset shard's counterpart, and whole for the same two reasons - a folder deletion reaches
+     * across every folder below it, and a section's folder list is a handful of four-field records.
+     */
+    | { of: "asset-groups"; category: string }
+    /**
+     * The build variants, whole - and the same for the two below it.
+     *
+     * The fourth, fifth and sixth documents to be fingerprinted entire, and `@shared/live/config`
+     * gives the reason the libraries give second: these are the smallest documents in the project.
+     * A palette is a couple of dozen short entries, a variant list and a DLC list are a handful of
+     * records each, and they are edited a few times in a session rather than on every keystroke -
+     * so the encode a whole-document digest pays for is cheaper here than the bookkeeping a
+     * per-record one would need, and it catches a rearrangement no per-record digest would.
+     */
+    | { of: "app-tags" }
+    /** The DLC list, whole. */
+    | { of: "dlc" }
+    /** The palette and the font stack, whole. */
+    | { of: "brand" }
+    /**
+     * One Surface of the interface, with its whole element tree.
+     *
+     * The interface document's answer to a story's scene, and chosen for the same reason: it is the
+     * unit an author works inside, so a fingerprint of it is paid on the edits that reach it and
+     * never on the rest of the project. A whole-document digest would spend milliseconds of every
+     * machine's own thread on every nudge of every element - this repository has already measured
+     * what a per-document digest costs and refused it once.
+     */
+    | { of: "ui-surface"; surfaceId: string }
+    /** One component definition of the library, with its own element map. The Surface's counterpart. */
+    | { of: "ui-component"; componentId: string }
+    /**
+     * Everything about the interface document that no Surface and no component covers.
+     *
+     * The two ordered lists, the struct table, the input actions, the document's name, and any
+     * element that belongs to no Surface. Deliberately cheap - it carries no element bodies except
+     * those orphans - because it is computed on every effect about the interface.
+     */
+    | { of: "ui-shell" }
+    /**
+     * One blueprint, whole - its record and every graph in it.
+     *
+     * The unit the blueprint document is authored in, and small enough to hash on every edit: the
+     * largest blueprint in the shipped skeleton is 25 KB.
+     */
+    | { of: "ui-blueprint"; blueprintId: string }
+    /**
+     * Everything about the blueprint document that no blueprint covers: the owner records, the older
+     * root-level graphs, and which blueprints exist at all.
+     */
+    | { of: "ui-graph-shell" }
+    /**
+     * The project dictionary, whole.
+     *
+     * One of three whole-document scopes added together, and `@shared/live/projectTables` gives the
+     * reasons they share. The dictionary has one of its own: its entries are keyed by the author's
+     * own spelling, so a rename is one unit leaving and another arriving, and a per-entry digest
+     * would have to fingerprint two units for one operation to say anything at all.
+     */
+    | { of: "dictionary" }
+    /**
+     * The project's mixer, whole.
+     *
+     * Its own reason beside the shared two: deleting a bus promotes the buses that fed it, which is
+     * derived work reaching records the operation never names - and a whole-document digest covers
+     * it without the applier having to report what it touched.
+     */
+    | { of: "audio-tracks" }
+    /** The project's asset sets, whole. Its cascades reach across the list for the mixer's reason. */
+    | { of: "asset-sets" }
+    /**
+     * One variable registry entry.
+     *
+     * Per entry rather than per document, which is the ordinary rule and needs no exception here:
+     * every operation about this registry names exactly one entry, so nothing reaches across them the
+     * way an import reaches across a locale library's entries. The registry is also a map keyed by
+     * id with no order of its own - the panel sorts by name as it draws - so there is no shape left
+     * over for a document-wide scope to cover.
+     */
+    | { of: "variable"; variableId: string }
+    /** One named string. Per key, for the variable entry's reasons - the registry is a keyed map. */
+    | { of: "localization-key"; name: string };
 
 /** A fingerprint and what it is of. See {@link LiveDigestScope}. */
 export type LiveDigest = {
@@ -760,11 +2236,30 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
             const sceneId = opSceneId(op);
             return sceneId === null ? null : { of: "scene", storyId, sceneId };
         }
+        // The scene a structural verb changes the content of. A creation's scene arrives whole, so
+        // the fingerprint proves the rows came with it; the three edits below change fields the
+        // digest covers.
+        case "create-scene":
+            return { of: "scene", storyId, sceneId: op.scene.id };
+        case "update-scene":
+        case "set-scene-snapshots":
+            return { of: "scene", storyId, sceneId: op.sceneId };
         // Names a scene it does not change: the pointer moved, the scene did not, and a digest of it
         // would be a fingerprint of something this operation cannot have altered.
         case "set-entry-scene":
         case "rename-story":
         case "reorder-chapters":
+        // Filing a scene changes the chapter that holds it, not a word inside it - `move-block`'s
+        // answer one level up.
+        case "move-scene":
+        // ⚠ Null because there is nothing left to fingerprint. A scene this machine no longer holds
+        // hashes to nothing rather than to a value (see `LiveSession.digestOf`), so a scope here
+        // would be a digest that is always absent - and the outline the two verbs below change is
+        // not a unit any scope covers, exactly as `reorder-chapters` has never been.
+        case "delete-scene":
+        case "create-chapter":
+        case "rename-chapter":
+        case "delete-chapter":
             return null;
         case "create-character":
             return { of: "character", characterId: op.character.profile.id };
@@ -780,6 +2275,68 @@ export function opDigestScope(op: LiveOp, storyId: StoryId): LiveDigestScope | n
         case "set-take":
         case "set-takes":
             return { of: "takes", locale: op.locale };
+        case "update-asset":
+        case "move-assets":
+        case "create-assets":
+        case "replace-asset-content":
+        case "delete-assets":
+            return { of: "assets", assetType: op.assetType };
+        // ⚠ A folder deletion empties asset shards too, and none of them is named here. The applier
+        // reports those and they reach {@link LiveEffect.digests} beside this one - derived work is
+        // exactly the work that has to be fingerprinted rather than assumed.
+        case "set-asset-folder":
+        case "delete-asset-folder":
+        case "restore-asset-folder":
+            return { of: "asset-groups", category: op.category };
+        case "create-app-tag":
+        case "update-app-tag":
+        case "delete-app-tag":
+        case "set-app-tag-defaults":
+            return { of: "app-tags" };
+        case "create-dlc":
+        case "update-dlc":
+        case "delete-dlc":
+            return { of: "dlc" };
+        case "create-brand-color":
+        case "update-brand-color":
+        case "delete-brand-color":
+        case "move-brand-color":
+        case "set-brand-fonts":
+            return { of: "brand" };
+        // ⚠ Null, and every unit these two change is reported by the applier instead. Which Surface
+        // an element belongs to is a question about the tree, not about the message - and for an
+        // element that has just been deleted the only place left to ask is the state before the
+        // operation, which this function does not have. A scope derived from the message alone would
+        // fingerprint everything except the Surface the author just changed. See `uiPartsTouched`.
+        case "write-ui":
+        case "write-ui-graphs":
+            return null;
+        case "set-dictionary-entry":
+        case "set-dictionary-options":
+            return { of: "dictionary" };
+        // ⚠ A deletion promotes the buses that fed the one it removes, and none of them is named
+        // here - which is exactly why the unit is the whole document rather than one record.
+        case "create-audio-track":
+        case "update-audio-track":
+        case "delete-audio-track":
+        case "move-audio-track":
+            return { of: "audio-tracks" };
+        case "create-asset-sets":
+        case "update-asset-set":
+        case "delete-asset-sets":
+        case "move-asset-sets":
+            return { of: "asset-sets" };
+        case "create-variable":
+            return { of: "variable", variableId: op.entry.id };
+        case "update-variable":
+        case "delete-variable":
+            return { of: "variable", variableId: op.variableId };
+        // A removal names a key that will not be there afterwards, and that is exactly what the
+        // digest states: absence is a value here, as it is for a character record, so a machine that
+        // failed to apply the removal disagrees rather than being excused.
+        case "set-key":
+        case "remove-key":
+            return { of: "localization-key", name: op.name };
     }
 }
 
@@ -796,6 +2353,36 @@ export function sameDigestScope(left: LiveDigestScope, right: LiveDigestScope): 
             return right.of === "translations" && right.locale === left.locale;
         case "takes":
             return right.of === "takes" && right.locale === left.locale;
+        case "assets":
+            return right.of === "assets" && right.assetType === left.assetType;
+        case "asset-groups":
+            return right.of === "asset-groups" && right.category === left.category;
+        case "app-tags":
+            return right.of === "app-tags";
+        case "dlc":
+            return right.of === "dlc";
+        case "brand":
+            return right.of === "brand";
+        case "ui-surface":
+            return right.of === "ui-surface" && right.surfaceId === left.surfaceId;
+        case "ui-component":
+            return right.of === "ui-component" && right.componentId === left.componentId;
+        case "ui-shell":
+            return right.of === "ui-shell";
+        case "ui-blueprint":
+            return right.of === "ui-blueprint" && right.blueprintId === left.blueprintId;
+        case "ui-graph-shell":
+            return right.of === "ui-graph-shell";
+        case "dictionary":
+            return right.of === "dictionary";
+        case "audio-tracks":
+            return right.of === "audio-tracks";
+        case "asset-sets":
+            return right.of === "asset-sets";
+        case "variable":
+            return right.of === "variable" && right.variableId === left.variableId;
+        case "localization-key":
+            return right.of === "localization-key" && right.name === left.name;
     }
 }
 
@@ -920,6 +2507,16 @@ export type LiveRefusalReason =
     /** The scene is gone. */
     | "scene-gone"
     /**
+     * The chapter is gone.
+     *
+     * The outline's answer to `scene-gone`, and needed as soon as a scene can be filed at all: a
+     * creation names the chapter it goes in, and a chapter somebody deleted while the author was
+     * typing a scene name is a place the scene cannot land. Applying anyway would put the scene in a
+     * document that draws it nowhere - `scenes` holds it and no chapter claims it - which reads on
+     * every screen as a scene that was never created.
+     */
+    | "chapter-gone"
+    /**
      * The character record is gone.
      *
      * The cast's answer to `row-gone`, and it carries the same instruction: the author has a panel
@@ -931,6 +2528,94 @@ export type LiveRefusalReason =
      * or because a machine's applier failed on the creation that would have made it.
      */
     | "character-gone"
+    /**
+     * The asset record is gone.
+     *
+     * The library's answer to `row-gone` and to `character-gone`, and it carries the same
+     * instruction: the author's inspector is full of their own typing and it is theirs to keep. An
+     * update that created what it could not find would put back a file's record after somebody
+     * deleted the file, leaving a row in the browser with no bytes under it.
+     *
+     * ⚠ Reachable even though a session carries no deletion verb, for `character-gone`'s reason: the
+     * room opens on a committed revision, and a record can be missing from this shard because the
+     * author who joined never had it.
+     */
+    | "asset-gone"
+    /**
+     * An id a creation names is already in this library.
+     *
+     * Not a race - the ids are uuids minted by whoever built the record - so this is a retry that
+     * escaped the receipts, or a message from a build that mints them differently. Refused rather
+     * than applied, because writing over an existing record's bytes under its own id is the one way
+     * an import can destroy a file that was already there.
+     */
+    | "asset-id-taken"
+    /**
+     * The variable registry entry is gone.
+     *
+     * The registry's answer to `character-gone`, carrying the same instruction: the author's row is
+     * full of their own typing and it is theirs to keep. An update that created what it could not
+     * find would put back a variable somebody removed, and every blueprint node that used to name it
+     * would still be empty.
+     *
+     * ⚠ Reachable even though a session carries no verb that removes one: the room opens on a
+     * committed revision, and an entry can be missing from this registry because the author who
+     * joined never had it.
+     */
+    | "variable-gone"
+    /**
+     * A folder with folders inside it, and the author did not ask for those to go too.
+     *
+     * ⚠ There is deliberately no refusal for "the bytes have not arrived". The host decides about
+     * records, and whether a particular machine has a file yet is that machine's own business: the
+     * slices are still in flight when the operation is stated, so a host that waited for them would
+     * refuse almost every import. A machine short of a file collects it from the server on its own
+     * account, and the library reports an unresolved reference until it lands - which is a state it
+     * already has, for assets that arrived by every other route.
+     */
+    | "folder-not-empty"
+    /**
+     * The row of a configuration table is gone - a build variant, a DLC, a colour of the palette.
+     *
+     * The three tables' answer to `row-gone` and to `character-gone`, and it carries the same
+     * instruction: the field the author is typing into is theirs to keep. An update that created what
+     * it could not find would put back a variant, a DLC or a colour somebody else deleted - and for
+     * the first two that is an edition of the game, or a file already in players' hands.
+     *
+     * **One reason for the three**, where the cast and the library have one each. What differs
+     * between them is which panel the author is looking at, and the panel is already in front of
+     * them; three sentences saying the same thing about three tables would be three ways to write
+     * "that entry is no longer in this project".
+     */
+    | "config-entry-gone"
+    /**
+     * An interface element the delta was changing is gone.
+     *
+     * The interface's answer to `row-gone`, and it carries the same instruction: what the author has
+     * been dragging or typing is theirs, and nothing in this refusal may be read as licence to
+     * discard it. Applying instead would put a deleted element back on every screen in the room, with
+     * every machine agreeing about it - a divergence-free way of losing somebody's deletion, which
+     * is precisely the failure no digest can see. See `LiveUIOp.updates`.
+     */
+    | "ui-element-gone"
+    /** A blueprint the delta was changing is gone. The interface element's counterpart. */
+    | "ui-blueprint-gone"
+    /**
+     * The bus is gone. Somebody deleted it after the author reached for it.
+     *
+     * The mixer's answer to `row-gone`, carrying the same instruction: the panel the author is
+     * looking at is full of their own typing and it is theirs to keep. An update that created what
+     * it could not find would bring back a bus somebody deleted, and every reference that had fallen
+     * back to a seeded one would quietly re-point at it.
+     */
+    | "track-gone"
+    /**
+     * The asset set is gone. The mixer's `track-gone`, one document along.
+     *
+     * ⚠ Reachable even against a document nobody deleted from: a session opens on a committed
+     * revision, and a set can be missing from this list because the author who joined never had it.
+     */
+    | "set-gone"
     /**
      * The operation will not fit in one payload.
      *
@@ -1033,7 +2718,41 @@ export type LiveCatchUp = {
     effects: readonly LiveEffect[];
 };
 
-/** Everything a machine in a session can say. */
+/* ------------------------------------------------------------------ bytes in flight */
+
+/**
+ * **Nothing here carries a byte, and that is the design.**
+ *
+ * A file a session is carrying does not appear in this vocabulary at all. It goes over its own
+ * request to the server - reserved, written, read back and dropped - while the messages below go
+ * over the room. Two channels rather than one, and the split is what the whole of the transfer
+ * work is for:
+ *
+ *  - **A transfer cannot delay a sentence.** They are separate connections, so an author typing is
+ *    never behind somebody else's video. Sharing one channel meant pacing the sender by hand
+ *    against a figure somebody had guessed, and the guess was wrong in both directions at once.
+ *  - **Neither machine holds the file.** The sender streams it off its own disk and the receiver
+ *    streams it onto its own, so the largest file a session can carry is a question about disks
+ *    rather than about heaps. That is why {@link LiveAssetBytePart} has no size limit beside it any
+ *    more: the limit that used to be here was a limit on memory, and it stopped at 32 MiB, which is
+ *    under one piece of video.
+ *  - **An interruption is resumed, not restarted.** A message channel had no way to express "go on
+ *    from byte 41,000,000"; a request does, and the server keeps what it already holds.
+ *
+ * What is left in this file is what it was always for: what people say to each other.
+ * {@link LiveAssetBytePart} is the whole of the seam - an address, a length and a fingerprint - and
+ * the operation carrying it is refused, exactly as before, if the bytes never turn up.
+ */
+
+/**
+ * Everything a machine in a session can say.
+ *
+ * ⚠ **There is deliberately nothing here about the room outliving its host.** A `handover` message
+ * used to name the member expected to open the next room; it is gone, along with the idea. A room's
+ * authority is the window that opened it - everyone else is sending intents at that window - so a
+ * host walking out ends the session rather than passing it on, and each guest puts its own tree back
+ * to what it was holding before it joined. See `liveEntry.ts`.
+ */
 export type LiveMessage =
     | LiveIntent
     | LiveEffect

@@ -23,12 +23,6 @@ export const ProjectNameConvention = {
      * system, and two spellings of it would be two answers to what a project is.
      */
     ProjectConfigExtension: NLPROJ_EXT,
-    /**
-     * The config filename projects used before `.nlproj`, still read wherever one is found. A
-     * constant, unlike {@link ProjectConfig}: it never carried the project's name.
-     */
-    ProjectConfigLegacy: ["project.json"],
-
     // Assets metadata and groups (stored in assets/)
     AssetsMetadataShard: (type: AssetType) => ["assets", `assets.metadata.${type}.json` as const],
     /**

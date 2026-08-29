@@ -4,22 +4,26 @@ import {
     UI_INPUT_POINTER_GESTURES,
     collectReferencedUIInputActionIds,
     findUISurfaceActionEnablement,
+    inputBindingDevices,
+    inputBindingReachesDevice,
     isOperableWidgetType,
     isUIInputPointerGesture,
     normalizeUIInputActionLibrary,
+    normalizeUIInputBinding,
     normalizeUISurfaceActionEnablements,
-    normalizeUISurfaceInputMode,
     pruneUISurfaceActionEnablements,
     readUISurfaceActionConsume,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
     type UIInputActionDef,
     type UIInputBinding,
+    type UIInputPointerGesture,
 } from "./inputAction";
+import type { UIInputActionSource } from "./inputActionEvent";
 import { BUILTIN_WIDGET_LOGIC_APIS } from "./widgetLogic";
 
 const click: UIInputBinding = { kind: "pointer", gesture: "click" };
 const rightClick: UIInputBinding = { kind: "pointer", gesture: "rightClick" };
+const longPress: UIInputBinding = { kind: "pointer", gesture: "longPress" };
 const escape: UIInputBinding = { kind: "key", key: "Escape" };
 const space: UIInputBinding = { kind: "key", key: "Space" };
 
@@ -28,58 +32,38 @@ function action(bindings: UIInputBinding[]): UIInputActionDef {
 }
 
 describe("resolveSurfaceActionBindings", () => {
-    it("hands back the project defaults when the surface says nothing", () => {
+    it("hands back the action's own bindings", () => {
         expect(resolveSurfaceActionBindings(action([click, escape]))).toEqual([click, escape]);
-        expect(resolveSurfaceActionBindings(action([click]), { actionId: "advance" })).toEqual([click]);
-    });
-
-    it("appends the surface's own bindings after the defaults", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click]), { actionId: "advance", addBindings: [space] }),
-        ).toEqual([click, space]);
-    });
-
-    it("replaces the defaults entirely when an override is present", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click, escape]), {
-                actionId: "advance",
-                overrideBindings: [space],
-            }),
-        ).toEqual([space]);
-    });
-
-    it("treats an override present but empty as 'no gesture here', not as 'use the defaults'", () => {
-        // The distinction the record exists to carry: a surface that lists an action and binds it to
-        // nothing has said something different from a surface that never overrode it.
-        expect(
-            resolveSurfaceActionBindings(action([click]), { actionId: "advance", overrideBindings: [] }),
-        ).toEqual([]);
-    });
-
-    it("ignores additions while an override stands", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click]), {
-                actionId: "advance",
-                addBindings: [rightClick],
-                overrideBindings: [space],
-            }),
-        ).toEqual([space]);
     });
 
     it("names each binding once, first occurrence winning", () => {
-        expect(
-            resolveSurfaceActionBindings(action([click, escape]), {
-                actionId: "advance",
-                addBindings: [click, space, escape],
-            }),
-        ).toEqual([click, escape, space]);
-        expect(
-            resolveSurfaceActionBindings(null, { actionId: "advance", overrideBindings: [space, space] }),
-        ).toEqual([space]);
+        expect(resolveSurfaceActionBindings(action([click, escape, click]))).toEqual([click, escape]);
     });
 
     it("survives a missing definition", () => {
-        expect(resolveSurfaceActionBindings(undefined, null)).toEqual([]);
+        expect(resolveSurfaceActionBindings(undefined)).toEqual([]);
+        expect(resolveSurfaceActionBindings(null)).toEqual([]);
+    });
+});
+
+describe("UISurfaceActionEnablement", () => {
+    it("carries nothing about bindings", () => {
+        // The record used to let a surface add to an action's bindings or replace them, which put
+        // the same question in two places. Pinned as a shape rather than as prose so a field going
+        // back in has to be a decision rather than an accident.
+        const enablement = normalizeUISurfaceActionEnablements([
+            { actionId: "advance", addBindings: [space], overrideBindings: [rightClick], overControls: "fire" },
+        ])[0];
+        expect(Object.keys(enablement)).toEqual(["actionId"]);
+    });
+
+    it("keeps the one thing a surface does decide", () => {
+        expect(normalizeUISurfaceActionEnablements([{ actionId: "advance", consume: false }])[0]).toEqual({
+            actionId: "advance",
+            consume: false,
+        });
+        expect(readUISurfaceActionConsume({ actionId: "advance" })).toBe(true);
+        expect(readUISurfaceActionConsume({ actionId: "advance", consume: false })).toBe(false);
     });
 });
 
@@ -137,6 +121,75 @@ describe("pointer gestures", () => {
         expect(isUIInputPointerGesture("hover")).toBe(false);
         expect(isUIInputPointerGesture(undefined)).toBe(false);
     });
+
+    it("stores and reads back a long press with no branch of its own", () => {
+        // It is a pointer gesture like the rest, so being in the tuple is the whole of what makes it
+        // storable - there is no second place a new gesture has to be admitted.
+        expect(normalizeUIInputBinding({ kind: "pointer", gesture: "longPress" })).toEqual(longPress);
+    });
+});
+
+function devicesOf(binding: UIInputBinding): UIInputActionSource[] {
+    return [...inputBindingDevices(binding)].sort();
+}
+
+function pointer(gesture: UIInputPointerGesture): UIInputBinding {
+    return { kind: "pointer", gesture };
+}
+
+describe("inputBindingDevices", () => {
+    // Written out one gesture at a time rather than generated from the same table the answer comes
+    // from: a loop over the source of truth would agree with any answer it gave, and pinning each
+    // ruling separately is the only reason this test exists.
+    it("reads a click as mouse and finger alike", () => {
+        expect(devicesOf(pointer("click"))).toEqual(["pointer", "touch"]);
+    });
+
+    it("reads a double click as pointer only", () => {
+        expect(devicesOf(pointer("doubleClick"))).toEqual(["pointer"]);
+    });
+
+    it("reads a right click as pointer only", () => {
+        expect(devicesOf(pointer("rightClick"))).toEqual(["pointer"]);
+    });
+
+    it("reads each scroll direction as mouse and finger alike", () => {
+        expect(devicesOf(pointer("wheelUp"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelDown"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelLeft"))).toEqual(["pointer", "touch"]);
+        expect(devicesOf(pointer("wheelRight"))).toEqual(["pointer", "touch"]);
+    });
+
+    it("reads a long press as touch only", () => {
+        expect(devicesOf(pointer("longPress"))).toEqual(["touch"]);
+    });
+
+    it("reads a key binding as the keyboard", () => {
+        expect(devicesOf(escape)).toEqual(["key"]);
+        expect(devicesOf(space)).toEqual(["key"]);
+    });
+
+    it("leaves no gesture reachable from nowhere", () => {
+        for (const gesture of UI_INPUT_POINTER_GESTURES) {
+            expect(inputBindingDevices(pointer(gesture)).size).toBeGreaterThan(0);
+        }
+    });
+
+    it("gives no binding to the gamepad yet", () => {
+        // The pad is declared in the source union and produced by nothing. Whoever wires one up
+        // turns this red, which is the reminder to say in the table above which gestures it reaches.
+        const bindings: UIInputBinding[] = [...UI_INPUT_POINTER_GESTURES.map(pointer), escape, space];
+        for (const binding of bindings) {
+            expect(inputBindingReachesDevice(binding, "gamepad")).toBe(false);
+        }
+    });
+
+    it("answers the same question the set does", () => {
+        expect(inputBindingReachesDevice(click, "touch")).toBe(true);
+        expect(inputBindingReachesDevice(click, "key")).toBe(false);
+        expect(inputBindingReachesDevice(longPress, "pointer")).toBe(false);
+        expect(inputBindingReachesDevice(escape, "key")).toBe(true);
+    });
 });
 
 describe("normalize", () => {
@@ -188,10 +241,7 @@ describe("normalize", () => {
     });
 
     it("round-trips a surface's enablements unchanged", () => {
-        const stored = [
-            { actionId: "advance", addBindings: [space], consume: false, overControls: "fire" as const },
-            { actionId: "skip", overrideBindings: [] },
-        ];
+        const stored = [{ actionId: "advance", consume: false }, { actionId: "skip" }];
         expect(normalizeUISurfaceActionEnablements(stored)).toEqual(stored);
     });
 
@@ -206,18 +256,9 @@ describe("normalize", () => {
         ).toEqual([{ actionId: "advance", consume: false }]);
     });
 
-    it("reads a surface with no mode as capturing", () => {
-        expect(normalizeUISurfaceInputMode(undefined)).toBe("capture");
-        expect(normalizeUISurfaceInputMode("nonsense")).toBe("capture");
-        expect(normalizeUISurfaceInputMode("pass")).toBe("pass");
-        expect(normalizeUISurfaceInputMode("none")).toBe("none");
-    });
-
-    it("reads the defaults an absent field stands for", () => {
+    it("reads the default an absent field stands for", () => {
         expect(readUISurfaceActionConsume(undefined)).toBe(true);
         expect(readUISurfaceActionConsume({ actionId: "advance", consume: false })).toBe(false);
-        expect(readUISurfaceActionOverControls(undefined)).toBe("skip");
-        expect(readUISurfaceActionOverControls({ actionId: "advance", overControls: "fire" })).toBe("fire");
     });
 });
 

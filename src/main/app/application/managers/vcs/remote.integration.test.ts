@@ -8,6 +8,7 @@ import {
     isVcsPlatformSupported,
     isVcsRemoteConfigured,
 } from "@shared/types/vcs";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import type { LoreGlobals } from "./lore";
 import {
     commit,
@@ -46,7 +47,7 @@ import {
  * Every expectation below was measured against a running server before it was written.
  */
 
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const enabled = SERVER !== "" && (isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH));
 
 /** A host nothing listens on, for the unreachable-server expectations. */
@@ -69,12 +70,15 @@ function tmp(prefix: string): string {
     return root;
 }
 
+/** The author these projects commit as, and the identity a run with no token goes online as. */
+const AUTHOR = "test@narraleaf";
+
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "test@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 async function commitAll(globals: LoreGlobals, root: string, message: string): Promise<void> {
@@ -129,6 +133,11 @@ afterAll(async () => {
 });
 
 describe.skipIf(!enabled)("remote", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount(tmp("nl-remote-signin-"));
+    }, 60_000);
+
     /**
      * The headline claim of the whole card: a project created offline, with no server, can
      * be connected to one later without being re-created or re-cloned.

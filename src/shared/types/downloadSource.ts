@@ -47,16 +47,17 @@ export type DownloadRewriteOutcome = {
 };
 
 /**
- * The four named download sources, in the order the settings panel lists them.
+ * The named download sources, in the order the settings panel lists them.
  *
  * Kept as one table so the panel, the i18n keys and the reachability probe all walk the
- * same list; adding a fifth source is one entry here rather than four edits apart.
+ * same list; adding a source is one entry here rather than four edits apart.
  */
 export const DOWNLOAD_SOURCE_KEYS = [
     "plugins.registryUrl",
     "uiTemplates.registryUrl",
     "build.electronMirror",
     "build.electronBuilderBinariesMirror",
+    "build.zigMirror",
 ] as const;
 
 export type DownloadSourceKey = (typeof DOWNLOAD_SOURCE_KEYS)[number];

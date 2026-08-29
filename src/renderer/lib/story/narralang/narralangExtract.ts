@@ -47,6 +47,7 @@ import {
     displayableSubjectWord,
     resolveDisplayableTargetRef,
     resolveStoryLayerRef,
+    storyTransitionKindOf,
 } from "@shared/types/story";
 import { formatStoryExpressionName } from "@shared/utils/storyExpressionParser";
 
@@ -295,7 +296,9 @@ function transitionSlots(
     ref: StoryTransitionRef | undefined,
     context: "scene" | "character",
 ): NarralangSlots {
-    if (!ref || ref.kind === "none") {
+    // A ref that names no kind is a row that names no transition - see `storyTransitionKindOf` - so
+    // it exports as a plain line rather than as a transition the script cannot spell.
+    if (!ref || storyTransitionKindOf(ref) === "none") {
         return {};
     }
     if (ref.kind === "custom" || (ref.props && Object.keys(ref.props).length > 0)) {
@@ -385,6 +388,14 @@ function conditionSource(
             return `${name} == ${expressionLiteral(ref.value ?? null)}`;
         case "notEquals":
             return `${name} != ${expressionLiteral(ref.value ?? null)}`;
+        case "greaterThan":
+            return `${name} > ${expressionLiteral(ref.value ?? null)}`;
+        case "greaterOrEqual":
+            return `${name} >= ${expressionLiteral(ref.value ?? null)}`;
+        case "lessThan":
+            return `${name} < ${expressionLiteral(ref.value ?? null)}`;
+        case "lessOrEqual":
+            return `${name} <= ${expressionLiteral(ref.value ?? null)}`;
         case "exists":
             return `exists ${name}`;
         default:
@@ -496,18 +507,12 @@ function nodeActionShape(ctx: NarralangExtractContext, block: StoryBlock, payloa
                 ? characterName(ctx, block.id, payload.characterId)
                 : asName(payload.speakerName ?? "");
             const voice = payload.voiceAssetId ? assetName(ctx, block.id, payload.voiceAssetId) : undefined;
-            const pause = payload.pauseAfter === true
-                ? asWord("click")
-                : typeof payload.pauseAfter === "number"
-                    ? asSeconds(payload.pauseAfter)
-                    : undefined;
             return {
                 form: "statement",
                 verb: "dialogue",
                 slots: {
                     speaker,
                     voice,
-                    pause,
                     text: { kind: "text", text: textOf(ctx, block.id, payload.text, "dialogueText") },
                 },
             };
@@ -1261,6 +1266,9 @@ function jumpShape(ctx: NarralangExtractContext, block: StoryBlock, payload: Sto
         verb: "jump",
         slots: {
             scene: asName(name ?? ""),
+            // Printed only when it is on: a row that never carried the flag prints the line it always
+            // printed, so an existing script round-trips byte for byte.
+            returns: payload.returnable ? asWord("return") : undefined,
             ...transitionSlots(ctx, block.id, payload.transition, "scene"),
         },
     };

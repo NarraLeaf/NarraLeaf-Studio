@@ -7,7 +7,8 @@ import { Modal } from "@/lib/components/elements/Modal";
 import { Select } from "@/lib/components/elements/Select";
 import { refuseLiveSessionEntry } from "@/lib/team/liveSessionEntry";
 import type { StoryId } from "@shared/types/story";
-import type { TeamLiveMember, TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveMember, TeamLiveSession } from "@shared/types/team";
+import type { TranslationKey } from "@shared/i18n";
 import { useWorkspaceFreeze } from "../../hooks/useWorkspaceFrozen";
 import type { TeamProjectSurface } from "../../hooks/useTeamProject";
 import { LiveMemberAvatars } from "./LiveMemberAvatars";
@@ -15,6 +16,7 @@ import {
     liveEndSentence,
     liveEntryFailureRemedy,
     liveEntryFailureSentence,
+    liveLeaveAct,
     liveMemberRoleKey,
     liveStandingKey,
 } from "./liveSessionText";
@@ -28,11 +30,15 @@ import { useJoinableRoom, useLiveSession, useLiveSessionStories } from "./useLiv
  * message arrives, a phase turns over, the room ends - and a dialog drawing from several readers
  * would put several moments of the same session on screen at once.
  *
- * **The two ways in are dialogs because both are irreversible and neither is instant.** Starting
- * records a checkpoint, pushes it, opens the room on it and freezes the project; joining records a
- * checkpoint, brings the tree to the room's version and freezes the project. Neither can be
- * cancelled once pressed, so what they are about to do is stated where they are pressed rather than
- * discovered afterwards.
+ * **Starting is a dialog because it is irreversible and not instant.** It records a checkpoint,
+ * pushes it, opens the room on it and freezes the project, and none of that can be cancelled once
+ * pressed - so what it is about to do is stated where it is pressed rather than discovered
+ * afterwards.
+ *
+ * ⚠ **Joining is not here, and its absence is the design.** Every way into somebody else's room is
+ * in the launcher's Team screen: joining one usually means getting the project first, and that is
+ * the launcher's flow. A room open on this project is still reported here - a fact worth knowing is
+ * still worth saying - with the one line that names where the way in is.
  *
  * **A `Modal`, and it has to be**: the story picker portals into the window's overlay layer, and a
  * body-level popover would paint over a dialog it opened and take both down on the first click
@@ -55,6 +61,7 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
     // singleton: a session entered while the workspace is frozen for something else would replace
     // that freeze instead of adding to it. The acts behind these controls ask again for the reason.
     const freeze = useWorkspaceFreeze();
+    /** Somebody else's room on this project, reported rather than offered. See the note above. */
     const room = useJoinableRoom(team, live.view);
     const { view } = live;
     const inRoom = view.phase !== "idle";
@@ -81,6 +88,7 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
     // Survives into `idle` so it can still be read, so it is drawn only where this window is not in
     // a session - and never for an author who left of their own accord, who pressed the control and
     // watched the dialog change.
+    const leaving = liveLeaveAct(view);
     const ended = inRoom ? null : view.ended;
     const endedSentence = ended === null ? null : liveEndSentence(ended);
 
@@ -93,25 +101,14 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
             footer={inRoom ? (
                 <Button
                     data-live-act="leave"
-                    // A host holds the only copy that counts, so its window walking away ends the
-                    // room for everybody. The control is named after what it does, and it is the
-                    // destructive one of the two.
-                    variant={view.role === "host" ? "danger" : "secondary"}
+                    // Named after what it does rather than after which half of the session this
+                    // window is: a host leaving ends the room for everybody in it, which is why
+                    // both host labels are the destructive one.
+                    variant={leaving.destructive ? "danger" : "secondary"}
                     disabled={live.busy || view.phase === "leaving"}
                     onClick={live.leave}
                 >
-                    {t(view.role === "host"
-                        ? "workspace.shell.team.liveEndSession"
-                        : "workspace.shell.team.liveLeaveSession")}
-                </Button>
-            ) : room !== null ? (
-                <Button
-                    data-live-act="join"
-                    variant="primary"
-                    disabled={live.busy || blocked !== null}
-                    onClick={() => live.join({ session: room })}
-                >
-                    {t("workspace.shell.team.liveJoin")}
+                    {t(leaving.key)}
                 </Button>
             ) : (
                 <Button
@@ -133,11 +130,15 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
             )}
         >
             <div data-live-dialog={view.phase} className="flex flex-col gap-4">
-                {inRoom
-                    ? <InSession team={team} live={live} />
-                    : room !== null
-                        ? <JoinOffer room={room} />
-                        : <StartOffer stories={stories} chosen={chosen} onChoose={setChosen} />}
+                {inRoom ? <InSession team={team} live={live} /> : (
+                    <>
+                        {/* Above the offer rather than instead of it: a room somebody else has open
+                            does not stop this author starting one, and the two facts are read in
+                            that order - what is already happening, then what this control does. */}
+                        {room !== null && <RoomElsewhere room={room} />}
+                        <StartOffer stories={stories} chosen={chosen} onChoose={setChosen} />
+                    </>
+                )}
 
                 {/* One line, and the current one. The session keeps the last refusal and the last
                     ending until something replaces them, so a column of every answer it has given
@@ -164,6 +165,149 @@ export function LiveSessionDialog({ team, isOpen, onClose }: {
                 )}
             </div>
         </Modal>
+    );
+}
+
+/**
+ * Who is waiting to be let in, and the two answers. Host only.
+ *
+ * **The same two answers the notice carries, in the place the title bar's mark points at.** The
+ * notice is the fast path - it arrives where the author is looking and costs no navigation - but it
+ * belongs to one moment, and a host who was in another window when it came would otherwise be left
+ * with a dot that says somebody is waiting and nothing behind it.
+ *
+ * Rows rather than a count, because answering is per person: two people waiting is two decisions,
+ * and the only thing that tells them apart is whose name is on the row.
+ */
+function WaitingToJoin({ live }: { live: ReturnType<typeof useLiveSession> }) {
+    const { t } = useTranslation();
+    const [busy, setBusy] = useState<string | null>(null);
+
+    const answer = (instance: string, admit: boolean) => {
+        setBusy(instance);
+        void live.answerRequest(instance, admit).finally(() => setBusy(null));
+    };
+
+    return (
+        <div data-live-block="waiting" className="mt-3">
+            <FieldLabel as="div">{t("workspace.shell.team.liveWaitingLabel")}</FieldLabel>
+            <div className="mt-1 flex flex-col gap-1">
+                {live.view.requests.map(member => (
+                    <div
+                        key={member.instance}
+                        data-live-waiting={member.account}
+                        className="flex min-h-7 items-center gap-2"
+                    >
+                        <span className="min-w-0 flex-1 truncate text-sm text-fg-muted">
+                            {member.account}
+                        </span>
+                        <Button
+                            size="sm"
+                            variant="primary"
+                            disabled={busy !== null}
+                            data-live-answer="admit"
+                            onClick={() => answer(member.instance, true)}
+                        >
+                            {t("workspace.shell.team.liveAdmit")}
+                        </Button>
+                        <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={busy !== null}
+                            data-live-answer="turn-away"
+                            onClick={() => answer(member.instance, false)}
+                        >
+                            {t("workspace.shell.team.liveTurnAway")}
+                        </Button>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+/**
+ * How people get into this room, and the digits they get in with. Host only.
+ *
+ * **Three controls that each say both halves**, because the two questions behind them are
+ * different ones: whether the room can be found at all, and whether a person decides who comes in.
+ * A list that said only "passcode" would leave an author to discover by trying it that the room
+ * had also left the server's list.
+ *
+ * The digits are shown for every rule rather than only for the one that needs them. They belong to
+ * the room and not to the setting: a host who switches to `code` has not been given a new passcode
+ * and must not be led to think so, which is what the line under them says.
+ */
+function HowPeopleJoin({ live }: { live: ReturnType<typeof useLiveSession> }) {
+    const { t } = useTranslation();
+    const { view } = live;
+    const [busy, setBusy] = useState(false);
+    const rule = view.rule ?? "open";
+
+    const choices: { value: TeamLiveJoinRule; label: TranslationKey; detail: TranslationKey }[] = [
+        {
+            value: "open",
+            label: "workspace.shell.team.liveRuleOpen",
+            detail: "workspace.shell.team.liveRuleOpenDetail",
+        },
+        {
+            value: "request",
+            label: "workspace.shell.team.liveRuleRequest",
+            detail: "workspace.shell.team.liveRuleRequestDetail",
+        },
+        {
+            value: "code",
+            label: "workspace.shell.team.liveRuleCode",
+            detail: "workspace.shell.team.liveRuleCodeDetail",
+        },
+    ];
+
+    return (
+        <div data-live-block="join-rule" className="mt-3 flex flex-col gap-2">
+            <div className="flex flex-col gap-1" role="radiogroup">
+                {choices.map(choice => (
+                    <button
+                        key={choice.value}
+                        type="button"
+                        role="radio"
+                        aria-checked={rule === choice.value}
+                        data-live-rule={choice.value}
+                        disabled={busy}
+                        onClick={() => {
+                            if (rule === choice.value) {
+                                return;
+                            }
+                            setBusy(true);
+                            void live.setRule(choice.value).finally(() => setBusy(false));
+                        }}
+                        className={cn(
+                            "flex flex-col items-start gap-0.5 rounded-md border px-2.5 py-1.5 text-left",
+                            "transition-colors disabled:opacity-50",
+                            rule === choice.value
+                                ? "border-primary bg-primary/10"
+                                : "border-line hover:bg-fill",
+                        )}
+                    >
+                        <span className="text-xs text-fg">{t(choice.label)}</span>
+                        <span className="text-2xs text-fg-subtle">{t(choice.detail)}</span>
+                    </button>
+                ))}
+            </div>
+            {view.code !== null && (
+                <div data-live-block="join-code" className="flex flex-col gap-0.5">
+                    <div className="flex items-baseline gap-2">
+                        <span className="text-2xs text-fg-subtle">
+                            {t("workspace.shell.team.liveCodeLabel")}
+                        </span>
+                        {/* Spaced out because it is read aloud as often as it is copied. */}
+                        <span data-live-code className="font-mono text-sm tracking-[0.3em] text-fg">
+                            {view.code}
+                        </span>
+                    </div>
+                    <Note seam="code-fixed">{t("workspace.shell.team.liveCodeFixed")}</Note>
+                </div>
+            )}
+        </div>
     );
 }
 
@@ -198,11 +342,18 @@ function StartOffer({ stories, chosen, onChoose }: {
     );
 }
 
-/** The room somebody else has open: whose it is, what it is about, and what joining does. */
-function JoinOffer({ room }: { room: TeamLiveSession }) {
+/**
+ * The room somebody else has open on this project: whose it is, and where the way in is.
+ *
+ * **Reported, not offered.** There is no control here on purpose - see the note at the top of this
+ * file - but the fact is still worth having, and an author who can see that a session is running
+ * and cannot see where to join it would reasonably conclude the feature is broken. So the last
+ * line names the screen that has the way in.
+ */
+function RoomElsewhere({ room }: { room: TeamLiveSession }) {
     const { t } = useTranslation();
     return (
-        <div data-live-block="join" className="flex flex-col gap-2">
+        <div data-live-block="elsewhere" className="flex flex-col gap-2">
             <div>
                 <p className="truncate text-sm text-fg">
                     {room.title ?? t("workspace.shell.team.liveUntitled")}
@@ -212,7 +363,7 @@ function JoinOffer({ room }: { room: TeamLiveSession }) {
                 </p>
             </div>
             <MemberList members={room.members} host={room.openedBy} self={null} />
-            <p className="text-2xs text-fg-muted">{t("workspace.shell.team.liveJoinWhat")}</p>
+            <Note seam="elsewhere">{t("workspace.shell.team.liveJoinFromLauncher")}</Note>
         </div>
     );
 }
@@ -248,6 +399,13 @@ function InSession({ team, live }: {
                 {view.phase === "catching-up" && (
                     <Note seam="catching-up">{t("workspace.shell.team.liveCatchingUp")}</Note>
                 )}
+                {/* Whose room this is decides whether there is anything here to change. */}
+                {view.role === "host" && <HowPeopleJoin live={live} />}
+                {/* ⚠ The dot in the title bar points HERE, so the answer has to be here. The
+                    notice that carries it is the fast path and is gone once it is answered or
+                    once the author was somewhere else; without this, a host who missed it would
+                    be left with a mark saying somebody is waiting and no way to say yes. */}
+                {view.role === "host" && view.requests.length > 0 && <WaitingToJoin live={live} />}
                 {/* The guest's own traffic. A document does not move under a guest's hands until the
                     host answers, so without this a round trip in flight and an editor that has
                     stopped working look the same. Always zero for a host, and drawn at zero for

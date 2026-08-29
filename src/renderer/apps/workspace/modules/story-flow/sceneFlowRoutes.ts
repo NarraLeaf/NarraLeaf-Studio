@@ -168,11 +168,23 @@ export type SceneFlowRouteMap = {
  */
 export type SceneFlowContinuation =
     | { kind: "edge"; branchId: string | null; edgeId: string; target: StorySceneId }
+    /**
+     * A returnable jump: the run goes to `target` and comes back to carry on here.
+     *
+     * Kept apart from `edge` because it answers a different question. `target` is entered, so it is
+     * reachable and the endings in it can be reached - but the scene this leaves is not left, so a
+     * path that has only these has not gone anywhere. A consumer that folded the two together would
+     * report a scene whose last row is a call as having somewhere to go.
+     */
+    | { kind: "call"; branchId: string | null; edgeId: string; target: StorySceneId }
     | { kind: "stop"; branchId: string }
     | { kind: "ending"; branchId: string | null; endingId: StoryBlockId };
 
 /** A scene exit no fork guards, as the scene-pair edge draws it. */
 type SceneFlowPlainExit = { edgeId: string; target: StorySceneId };
+
+/** The same, for a returnable jump: entered, and returned from. */
+type SceneFlowPlainCall = SceneFlowPlainExit;
 
 /** Append to a list held in a map, creating the list on first use. */
 function pushInto<K, V>(into: Map<K, V[]>, key: K, value: V): void {
@@ -317,6 +329,9 @@ export function collectSceneFlowContinuations(
     // "this option just continues" as a route.
     const plainExitsBySceneId = new Map<StorySceneId, SceneFlowPlainExit[]>();
     const standaloneExitsBySceneId = new Map<StorySceneId, SceneFlowPlainExit[]>();
+    // Calls are collected once per scene rather than split the two ways exits are: a call is not a
+    // way out, so whether a menu stands in front of it changes nothing about where a path can end.
+    const callsBySceneId = new Map<StorySceneId, SceneFlowPlainCall[]>();
     const gatedBlockIdsBySceneId = new Map<StorySceneId, Set<StoryBlockId>>();
     const gatedBlockIds = (sceneId: StorySceneId): Set<StoryBlockId> => {
         const cached = gatedBlockIdsBySceneId.get(sceneId);
@@ -329,14 +344,27 @@ export function collectSceneFlowContinuations(
         return gated;
     };
     for (const edge of graph.edges) {
+        const exit = { edgeId: edge.id, target: edge.target };
+        // One pair of scenes, two kinds of row: an edge carrying both a plain jump and a returnable
+        // one is both a way out and a call, and each half has to be said separately.
+        //
+        // Every jump on the edge, owned or not, unlike the exits below. Ownership decides which arm
+        // a way OUT belongs to, and a call is not one: the run goes to the target and comes back to
+        // the scene whichever arm the row sits under. Reading only the unowned rows here would leave
+        // a call written inside a menu option contributing nothing at all - the arm falls through, so
+        // it never reports the edge either - and every ending in the scene it names would then be
+        // one no walk can reach.
+        if (edge.jumps.some(jump => jump.returnable)) {
+            pushInto(callsBySceneId, edge.source, exit);
+        }
         const unowned = edge.jumps.filter(jump => !ownedJumpIds.has(jump.blockId));
-        if (unowned.length === 0) {
+        const leaving = unowned.filter(jump => !jump.returnable);
+        if (leaving.length === 0) {
             continue;
         }
-        const exit = { edgeId: edge.id, target: edge.target };
         pushInto(plainExitsBySceneId, edge.source, exit);
         const gated = gatedBlockIds(edge.source);
-        if (unowned.some(jump => !gated.has(jump.blockId))) {
+        if (leaving.some(jump => !gated.has(jump.blockId))) {
             pushInto(standaloneExitsBySceneId, edge.source, exit);
         }
     }
@@ -427,7 +455,8 @@ export function collectSceneFlowContinuations(
         // because a broken jump is a compile error, not an ending, and a route that stops on it
         // would present the defect as a place the story can finish.
         for (const edge of branchEdgesByBranchId.get(branch.id) ?? []) {
-            list.push({ kind: "edge", branchId: branch.id, edgeId: edge.id, target: edge.target });
+            const kind = edge.jumps.every(jump => jump.returnable) ? "call" as const : "edge" as const;
+            list.push({ kind, branchId: branch.id, edgeId: edge.id, target: edge.target });
         }
     }
 
@@ -442,6 +471,14 @@ export function collectSceneFlowContinuations(
         const list = listFor(sceneId);
         for (const endingId of endingIds) {
             list.push({ kind: "ending", branchId: null, endingId });
+        }
+    }
+
+    // Last, so a scene's real ways out come first and a reader can stop at the first one that leaves.
+    for (const [sceneId, calls] of callsBySceneId) {
+        const list = listFor(sceneId);
+        for (const call of calls) {
+            list.push({ kind: "call", branchId: null, edgeId: call.edgeId, target: call.target });
         }
     }
 
@@ -539,7 +576,11 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
     };
 
     const walk = (sceneId: StorySceneId): void => {
-        const exits = continuations.get(sceneId) ?? [];
+        // A call is not a step of a route. A route is the sequence of decisions that gets a player
+        // somewhere, and going into a called scene is not one of them - the run comes back either
+        // way. A scene whose only continuations are calls therefore ends the route here, which is
+        // where the run really does stop once the calls have returned.
+        const exits = (continuations.get(sceneId) ?? []).filter(exit => exit.kind !== "call");
         if (exits.length === 0) {
             emit(null, null, false, derivedEndingAt(sceneId));
             return;
@@ -601,11 +642,42 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
         }
     }
 
+    // Endings inside a called scene are not claimed unreachable. The route walk does not step into
+    // a call, so no route can reach one - which is a limit of the enumeration, not a fact about the
+    // story. `reachable-endings` walks calls properly and is the check that answers this question.
+    //
+    // And not only the called scene: everything it goes on to reach is behind the same blind spot.
+    // A plain jump taken out of a called scene gives the call up and carries the run on, so those
+    // scenes are entered for real - the walk simply stopped before it could see them. Closed over
+    // the graph's own edges, so a chain of any length is covered by the one rule.
+    const calledSceneIds = new Set<StorySceneId>();
+    const beyondCalls: StorySceneId[] = [];
+    const holdEndingsOf = (sceneId: StorySceneId): void => {
+        if (!calledSceneIds.has(sceneId)) {
+            calledSceneIds.add(sceneId);
+            beyondCalls.push(sceneId);
+        }
+    };
+    for (const edge of graph.edges) {
+        if (edge.jumps.some(jump => jump.returnable)) {
+            holdEndingsOf(edge.target);
+        }
+    }
+    for (let cursor = 0; cursor < beyondCalls.length; cursor += 1) {
+        for (const edge of graph.edges) {
+            if (edge.source === beyondCalls[cursor]) {
+                holdEndingsOf(edge.target);
+            }
+        }
+    }
+
     return {
         endings,
         routes,
         truncated,
-        unreachableEndings: endings.filter(ending => !reachedEndingIds.has(ending.id)).map(ending => ending.id),
+        unreachableEndings: endings
+            .filter(ending => !reachedEndingIds.has(ending.id) && !calledSceneIds.has(ending.sceneId))
+            .map(ending => ending.id),
         deadBranchIds: graph.branches.filter(branch => !usedBranchIds.has(branch.id)).map(branch => branch.id),
     };
 }

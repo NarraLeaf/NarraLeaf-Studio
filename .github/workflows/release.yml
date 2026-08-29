@@ -36,8 +36,11 @@ on:
   workflow_dispatch:
 
 # The publish job creates the Release and uploads assets; the token needs write.
+# `packages: read` is for the install step instead: the @narraleaf scope comes
+# from GitHub Packages, which asks for a credential on every package it holds.
 permissions:
   contents: write
+  packages: read
 
 # One tag, one release run. Do not cancel a publish midway.
 concurrency:
@@ -85,6 +88,13 @@ jobs:
       # now defence against a runner image moving or a row being added — keep it.
       # --no-immutable because this repo deliberately does not commit yarn.lock,
       # so every CI run legitimately writes one.
+      # See the same step in ci.yml for why this is the run's own
+      # GITHUB_TOKEN and not a stored personal token.
+      - name: Authenticate to GitHub Packages
+        run: node .github/scripts/write-packages-credential.mjs
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Install dependencies
         run: yarn install --no-immutable
         env:

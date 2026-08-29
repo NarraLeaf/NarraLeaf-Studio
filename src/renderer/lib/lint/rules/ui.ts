@@ -1,13 +1,11 @@
 import { DEFAULT_APP_SURFACE_NAME, MAIN_APP_SURFACE_ID } from "@shared/constants/ui-editor";
 import {
     BLUEPRINT_NODE_TYPE_EVENT_HEAD_ELEMENT_CLICK,
-    resolveBlueprintEventHeadTypesForUiSlot,
 } from "@shared/types/blueprint/graph";
 import type { UIDocument, UIElement, UISurface } from "@shared/types/ui-editor/document";
 import { getUIComponentLink } from "@shared/types/ui-editor/document";
 import {
     isOperableWidgetType,
-    readUISurfaceActionOverControls,
     resolveSurfaceActionBindings,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
@@ -18,7 +16,7 @@ import { findOwningListItemTemplate } from "@shared/types/ui-editor/listItemCont
 import { resolveUIStruct } from "@shared/types/ui-editor/builtinStructs";
 import { findUIStructField } from "@shared/types/ui-editor/struct";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
-import { widgetMainOwnerKey } from "../../workspace/services/ui-editor/blueprint/ownerKeys";
+import { widgetPrivateBlueprintHasSlotHead } from "../../ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import { blueprintNodeRegistry } from "../../ui-editor/blueprint-nodes/BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../../ui-editor/blueprint-nodes/registerCoreBlueprintNodes";
 import { readBlueprintElementRefParams } from "../../ui-editor/blueprint-nodes/built-in/elementRefUtils";
@@ -48,8 +46,8 @@ import { REFERENCE_KIND_BY_OPTIONS_SOURCE } from "./blueprint";
  *  - **Runtime semantics decide what counts as wired, not the inspector.** A click travels: an
  *    element with no listener hands the event to its parent (`isPointerPositionElementEvent`), a
  *    list row's clicks belong to the list, and an `On Element Click` head anywhere in the project
- *    listens without the widget carrying any binding at all. A rule that read only the widget's own
- *    `behavior` would report a working button on every one of those shapes.
+ *    listens without the widget carrying any wiring of its own at all. A rule that read only the
+ *    widget's own blueprint would report a working button on every one of those shapes.
  */
 
 // ---------------------------------------------------------------------------
@@ -371,6 +369,32 @@ function resolveEntrySurfaceId(document: UIDocument): string | undefined {
 }
 
 /**
+ * Pages named by a component instance rather than by the graph that opens them.
+ *
+ * One nav entry placed once per destination reads which page it opens from its own params, so the
+ * `Go Page` inside the definition names nothing and the graph sweep above sees no way in to any of
+ * them. The values are here instead - authored, in the document, one per placement.
+ *
+ * Read the same way the sweep reads a node it does not know: any value that spells a page id counts.
+ * A param's meaning is the definition's business, and the trade this rule already made applies
+ * unchanged - over-counting costs a page it stays quiet about, under-counting costs a warning on a
+ * page that works, which is the failure that gets a rule switched off.
+ */
+function collectComponentParamSurfaceTargets(document: UIDocument, surfaceIds: ReadonlySet<string>): Set<string> {
+    const opened = new Set<string>();
+    for (const element of Object.values(document.elements ?? {})) {
+        const link = getUIComponentLink(element);
+        for (const value of Object.values(link?.params ?? {})) {
+            const trimmed = value.trim();
+            if (surfaceIds.has(trimmed)) {
+                opened.add(trimmed);
+            }
+        }
+    }
+    return opened;
+}
+
+/**
  * A page a player can never get to.
  *
  * **"Nothing does `Go Page` to it" is not the test.** The start page is entered by name and nothing
@@ -416,42 +440,16 @@ function runPageUnreachable(ctx: LintContext): LintFinding[] {
 const CLICK_EVENT_ID = "mouseClick";
 const LIST_ITEM_CLICK_EVENT_ID = "itemClick";
 
-/** Whether the widget's own `behavior` record runs anything for this slot. */
-function hasBehaviorBinding(element: UIElement, eventId: string): boolean {
-    const binding = element.behavior?.events?.[eventId];
-    if (!binding) {
-        return false;
-    }
-    return binding.kind === "blueprintEvent" || (binding.kind === "actions" && binding.actions.length > 0);
-}
-
 /**
  * Whether the widget's own blueprint carries a head node that starts on this slot.
  *
- * The graph's *name* is not consulted, deliberately: the dispatcher looks for a head node of a type
- * the slot allows, in any of the blueprint's event graphs, so a handler an author put on a layer
- * called anything at all still runs. `resolveBlueprintEventHeadTypesForUiSlot` is the same function
- * it asks, so the two cannot disagree about which heads count for which widget.
+ * Answered by the shared reader rather than here, because this rule is not the only place that has
+ * to ask: the surface editor's interaction diagnostics ask the same question, and they spent four
+ * months answering it by reading a field on the element that widgets stopped carrying. See
+ * `widgetPrivateBlueprintHeads`.
  */
 function hasPrivateBlueprintHead(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
-    const document = ctx.blueprintDocument;
-    if (!document) {
-        return false;
-    }
-    const heads = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventId, element.type));
-    if (heads.size === 0) {
-        return false;
-    }
-    const blueprintId = document.ownerRecords?.[widgetMainOwnerKey(surfaceId, element.id)]?.activeBlueprintId;
-    const blueprint = blueprintId ? document.blueprints?.[blueprintId] : undefined;
-    if (!blueprint || blueprint.program.kind !== "graph") {
-        // A script-module blueprint exports its handlers as functions this sweep cannot read, so an
-        // owner that has one is credited with listening rather than reported for staying silent.
-        return Boolean(blueprint);
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
-        Object.values(eventGraph?.graph?.nodes ?? {}).some(node => heads.has(node.type)),
-    );
+    return widgetPrivateBlueprintHasSlotHead(ctx.blueprintDocument, { surfaceId }, element, eventId);
 }
 
 /**
@@ -500,13 +498,12 @@ function isClickHandledSomewhere(
         if (elementClickTargets.has(`${site.surface.id}\u0000${element.id}`)) {
             return true;
         }
-        if (hasBehaviorBinding(element, CLICK_EVENT_ID) || hasPrivateBlueprintHead(ctx, site.surface.id, element, CLICK_EVENT_ID)) {
+        if (hasPrivateBlueprintHead(ctx, site.surface.id, element, CLICK_EVENT_ID)) {
             return true;
         }
         if (
             isListLikeWidgetType(element.type)
-            && (hasBehaviorBinding(element, LIST_ITEM_CLICK_EVENT_ID)
-                || hasPrivateBlueprintHead(ctx, site.surface.id, element, LIST_ITEM_CLICK_EVENT_ID))
+            && hasPrivateBlueprintHead(ctx, site.surface.id, element, LIST_ITEM_CLICK_EVENT_ID)
         ) {
             return true;
         }
@@ -518,19 +515,14 @@ function isClickHandledSomewhere(
  * Widgets whose silence is a defect.
  *
  * A button, because a button exists to be pressed - one that does nothing is the defect this rule
- * was written for, and it is invisible on the canvas. Plus any widget carrying an explicit `noop`
- * on its click slot, whatever its type: `noop` is not a state an author picks, it is what a binding
- * degrades to when the graph it pointed at is deleted, so an image or a container wearing one used
- * to do something and now does not.
+ * was written for, and it is invisible on the canvas. No other type: an image or a container that
+ * runs nothing when pressed is scenery, which is the overwhelmingly common case and not a defect.
  *
- * A button with interaction switched off is not a candidate: it is drawn as unavailable and takes no
- * clicks, so having no handler is the correct state and reporting it would be a warning whose only
- * fix is to make the widget lie.
+ * A button with interaction switched off is not a candidate either: it is drawn as unavailable and
+ * takes no clicks, so having no handler is the correct state and reporting it would be a warning
+ * whose only fix is to make the widget lie.
  */
 function isClickableCandidate(element: UIElement): boolean {
-    if (element.behavior?.events?.[CLICK_EVENT_ID]?.kind === "noop") {
-        return true;
-    }
     return element.type === "nl.button" && elementProps(element).interactionDisabled !== true;
 }
 
@@ -716,29 +708,14 @@ const POINTER_EVENT_SLOT_GESTURES: Readonly<Record<string, readonly UIInputPoint
  * When the graph cannot be read, nothing is claimed.
  */
 function hasPointerHeadNode(ctx: LintContext, surfaceId: string, element: UIElement, eventId: string): boolean {
-    const document = ctx.blueprintDocument;
-    if (!document) {
-        return false;
-    }
-    const heads = new Set(resolveBlueprintEventHeadTypesForUiSlot(eventId, element.type));
-    if (heads.size === 0) {
-        return false;
-    }
-    const blueprintId = document.ownerRecords?.[widgetMainOwnerKey(surfaceId, element.id)]?.activeBlueprintId;
-    const blueprint = blueprintId ? document.blueprints?.[blueprintId] : undefined;
-    if (!blueprint || blueprint.program.kind !== "graph") {
-        return false;
-    }
-    return Object.values(blueprint.program.graphs.events ?? {}).some(eventGraph =>
-        Object.values(eventGraph?.graph?.nodes ?? {}).some(node => heads.has(node.type)),
-    );
+    return widgetPrivateBlueprintHasSlotHead(ctx.blueprintDocument, { surfaceId }, element, eventId, "silent");
 }
 
-/** Every pointer gesture this widget answers on its own, by graph head or by behavior binding. */
+/** Every pointer gesture this widget answers on its own, by a head node in its own blueprint. */
 function widgetAnsweredGestures(ctx: LintContext, surfaceId: string, element: UIElement): Set<UIInputPointerGesture> {
     const answered = new Set<UIInputPointerGesture>();
     for (const [eventId, gestures] of Object.entries(POINTER_EVENT_SLOT_GESTURES)) {
-        if (hasBehaviorBinding(element, eventId) || hasPointerHeadNode(ctx, surfaceId, element, eventId)) {
+        if (hasPointerHeadNode(ctx, surfaceId, element, eventId)) {
             for (const gesture of gestures) {
                 answered.add(gesture);
             }
@@ -759,10 +736,8 @@ function widgetAnsweredGestures(ctx: LintContext, surfaceId: string, element: UI
  *
  * Three things are deliberately *not* reported:
  *
- *  - **`overControls: "fire"`.** That is the author saying "fire anyway, over controls included";
- *    the pair running is then the thing they asked for rather than the thing they missed.
  *  - **A widget the runtime already stands down over**, itself or anywhere up its ancestry. The
- *    same walk `hitChainHasOperableElement` does, because a rule that judged only the widget would
+ *    same walk `pointerInputClaimedByControl` does, because a rule that judged only the widget would
  *    report every container inside a list.
  *  - **A head somewhere else pointed at this widget** (`On Element Click`). Those run from a graph
  *    the locator here does not name, so the row would send an author to a widget whose own blueprint
@@ -787,16 +762,13 @@ function runGestureAnsweredTwice(ctx: LintContext): LintFinding[] {
             continue;
         }
         for (const enablement of enablements) {
-            if (readUISurfaceActionOverControls(enablement) !== "skip") {
-                continue;
-            }
             const action = document.actions?.[enablement.actionId];
             if (!action) {
                 // An enablement naming an action the project does not define. Inert at run time and
                 // reported where the vocabulary is; nothing here can collide with it.
                 continue;
             }
-            const collides = resolveSurfaceActionBindings(action, enablement).some(
+            const collides = resolveSurfaceActionBindings(action).some(
                 binding => binding.kind === "pointer" && answered.has(binding.gesture),
             );
             if (!collides) {

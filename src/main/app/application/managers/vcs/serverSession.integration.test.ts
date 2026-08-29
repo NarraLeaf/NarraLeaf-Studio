@@ -9,24 +9,31 @@ import { VcsSignInError, diagnoseEndpoint, readServerSessions, signInToServer } 
 /**
  * Signing in, against a REAL server that verifies who is calling.
  *
- * Skipped unless `LORE_TEST_AUTH_URL` names one, on the same argument
+ * Skipped unless `LORE_TEST_AUTH` names one, on the same argument
  * `remote.integration.test.ts` makes about `LORE_TEST_REMOTE`: every behaviour worth
  * asserting here is a property of the backend and of a TLS stack, and a mock would assert
  * Studio's idea of both. This file exists because that idea was wrong twice.
  *
  * ```bash
  * # A server that issues tokens, e.g. one supervised by NarraLeaf Team:
- * LORE_TEST_AUTH_URL="https://127.0.0.1:41402" \
+ * LORE_TEST_AUTH="https://127.0.0.1:41402" \
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   yarn vitest run src/main/app/application/managers/vcs/serverSession.integration.test.ts
  * ```
  *
- * **The certificate expectations assume the authority is NOT trusted on this machine**,
- * which is the state every machine starts in and the one this file is most useful in. A
- * machine that has trusted it makes the third test's diagnosis wrong and it says so.
+ * **The third test reads differently once this machine trusts the authority.** Before
+ * that, a sign-in cannot get past the handshake and the remedy is to trust the
+ * certificate; after it, the endpoint answers and refuses the token, which has to read as
+ * a refusal. It takes either, and refuses the third answer - see the test.
  */
 
-const AUTH_URL = (process.env.LORE_TEST_AUTH_URL ?? "").trim();
+/**
+ * Where to sign in.
+ *
+ * `LORE_TEST_AUTH` is the name the rest of this directory uses, and `LORE_TEST_AUTH_URL` is
+ * the one this file was born with - both are taken, so one command runs the whole directory.
+ */
+const AUTH_URL = (process.env.LORE_TEST_AUTH ?? process.env.LORE_TEST_AUTH_URL ?? "").trim();
 const REMOTE = (process.env.LORE_TEST_REMOTE ?? "lore://127.0.0.1:41337").trim();
 const TOKEN = (process.env.LORE_TEST_TOKEN ?? "").trim();
 const enabled = AUTH_URL !== "" && (isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH));
@@ -124,9 +131,13 @@ describe.skipIf(!enabled)("signing in to a real server", () => {
         });
         await expect(attempt).rejects.toBeInstanceOf(VcsSignInError);
         await attempt.catch((error: VcsSignInError) => {
-            // Not "unknown", and not the backend's sentence passed through: this is the
-            // one failure in the whole flow whose remedy changes the machine.
-            expect(error.problem.kind).toBe("certificate");
+            // Two legitimate answers, and which one this machine gives is not something
+            // the test can ask: `diagnoseEndpoint` reads Node's bundled authority list,
+            // while the backend's client reads the operating system's own store, so a
+            // private authority this account has trusted looks untrusted to the probe and
+            // works for the sign-in. What is NOT legitimate is a third answer - `unknown`
+            // is what a refusal used to give, and it left the panel with nothing to say.
+            expect(["certificate", "refused"]).toContain(error.problem.kind);
             if (error.problem.kind !== "certificate") return;
             const { authority } = error.problem;
             // The certificate is on this machine by the time the author is asked about

@@ -182,6 +182,7 @@ Game 节点组默认具有：
 - `blueprint.game.next` - 触发当前 NarraLeaf live game 的 virtual click 路径；默认 Dialog 模板在 Dialog Content 蓝图中用 Content 点击、绑定 Interaction Layer / Panel / 子控件的 Element Click 和 Space `keyUp` 调用
 - `blueprint.game.skip` - 调用 NarraLeaf `LiveGame.skipDialog()` 跳过当前 dialog
 - `blueprint.game.showDialog` / `blueprint.game.hideDialog` / `blueprint.game.toggleDialogDisplay` - 通过 NarraLeaf React `showDialog` preference 显示、隐藏或切换 Dialog 显示状态
+- `blueprint.game.isDialogShown` - `Is Dialog Shown`，读取 `showDialog` preference key；pure 节点，可用于 Blueprint Value；写入继续使用上面三个节点
 - `blueprint.game.setSentenceSpeed` - 通过 NarraLeaf Preference API 写入 `cps` preference key
 - `blueprint.game.getCps` - `Get Sentence Speed`，读取 `cps` preference key；`Set Sentence Speed` 仍是唯一 CPS setter
 - Preference Getter/Setter - `Get/Set Auto Forward`、`Get/Set Skip`、`Get/Set Game Speed`、`Get/Set Voice Volume`、`Get/Set Voice Fade Duration`、`Get/Set Voice End Mode`、`Get/Set BGM Volume`、`Get/Set Sound Volume`、`Get/Set Global Volume`、`Get/Set Skip Delay`、`Get/Set Skip Interval`
@@ -233,6 +234,7 @@ Input 节点组读取工程声明的输入操作词表。绑定写在词表和�
 
 Input 节点组默认具有：
 - `blueprint.input.isActionHeld` - 指定输入操作当前是否按住，纯节点
+- `blueprint.input.getDevice` - 玩家当前使用的输入设备，纯节点
 
 ## List
 

@@ -8,17 +8,13 @@ import {countGraphNodes, diffUIGraphs} from "./uiGraphsDiff";
  * widgets and the story's own actions. The second-largest document a project holds, and the one
  * whose contents are least legible as JSON.
  *
- * Two records live here and both are diffed. `blueprintDocument` is the canonical one - blueprints
- * keyed by id, each holding event and function graphs of nodes and edges. `graphs` at the root is
- * the older behaviour-graph IR, which nothing writes any more and some projects still carry; it is
- * read on the same terms rather than ignored, because a document nobody can compare is a document
- * whose changes are invisible.
+ * One record lives here: `blueprintDocument`, blueprints keyed by id, each holding event and
+ * function graphs of nodes and edges. There used to be a second - a root-level `graphs` map holding
+ * the behaviour-graph IR that predates blueprints - and it is gone: nothing wrote it, nothing
+ * executed it, and every project in this repository carried it empty.
  *
- * **Read-side only, like the interface document beside it.** `parse` is a shape gate:
- * `migrateBlueprintDocument` needs a service to seed the variable registry as it runs, so shared
- * code cannot complete the migration, and an unmigrated document written back under the current
- * schema version would be the migration silently not having run. `UIGraphService` keeps owning
- * writing and `serialize` refuses.
+ * **Read-side only, like the interface document beside it.** `parse` is a shape gate, and
+ * `UIGraphService` keeps owning writing: `serialize` refuses.
  */
 export const UI_GRAPHS_DOCUMENT_PATH = "editor/ui/uigraphs.json";
 
@@ -29,7 +25,6 @@ export const uiGraphsSpec = defineDocumentSpec<UIGraphDocument>({
     parse: (raw, context) => {
         const record = requireDocumentObject(raw, context, "a blueprint document");
         rejectNewerSchema(record, context, UI_GRAPH_DOCUMENT_SCHEMA_VERSION);
-        requireOptionalMap(record, "graphs", context);
         if (record.blueprintDocument !== undefined && !isJsonObject(record.blueprintDocument)) {
             return context.corrupt(`"blueprintDocument" must be an object, got ${describe(record.blueprintDocument)}`);
         }

@@ -192,7 +192,11 @@ describe("characters spec: reading and writing", () => {
      * every project that has not been opened since the appearance rework, and it surfaces as "the
      * spec is broken" rather than as "this file is corrupt".
      */
-    it("migrates a pre-rework store into something that can actually be saved", async () => {
+    it("refuses a pre-rework store rather than rewriting the cast it cannot read", async () => {
+        // The form/group/variant model, which nothing has written since the appearance rework. It
+        // used to be flattened into poses here; the pass that did it read ANY unrecognised kind as
+        // this model, so it was also the path that replaced a character from a newer Studio with an
+        // empty preset. Refusing names the character instead, and leaves the bytes alone.
         const result = await loadText(JSON.stringify({
             characters: [{
                 profile: {
@@ -208,17 +212,9 @@ describe("characters spec: reading and writing", () => {
             }],
         }));
 
-        expect(result.status).toBe("loaded");
-        if (result.status !== "loaded") return;
-        const appearance = result.document.characters[0].profile.appearance as PresetAppearance;
-        expect(appearance.kind).toBe("preset");
-        expect(appearance.poses[0].name).toBe("angry");
-        expect(appearance.poses[0].assetId).toBe("asset-1");
-        // A single-form legacy character gets no folder, and "no folder" has to mean the key is gone.
-        expect("folder" in appearance.poses[0]).toBe(false);
-        expect("portrait" in appearance.poses[0]).toBe(false);
-        expect(findCanonicalJsonDefect(result.document)).toBeNull();
-        await expect(saveDocument(charactersSpec, storage, PATH, result.document)).resolves.toBeUndefined();
+        expect(result.status).toBe("corrupt");
+        if (result.status !== "corrupt") return;
+        expect(result.error.message).toMatch(/character "Alice" has an appearance this build cannot read/);
     });
 
     it("summarizes the two counts a revision is checked against", () => {

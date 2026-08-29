@@ -2,6 +2,7 @@ import { createHash } from "crypto";
 import { createReadStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
+import { countBuildStep } from "./stepProgress";
 
 /**
  * `SHA256SUMS` over everything a build produced.
@@ -78,29 +79,40 @@ export async function writeArtifactDigests(
     const seen = new Set<string>();
     const entries: ArtifactDigest[] = [];
     const files: string[] = [];
+    // The last minutes of a build that has otherwise nothing left to say: a full read of every
+    // installer just written, which for a multi-platform release is gigabytes. The list is the
+    // artifacts, and it is complete before the first hash begins.
+    const counted = countBuildStep(artifacts.length, "file");
     for (const artifact of artifacts) {
-        const resolved = path.resolve(artifact);
-        if (seen.has(resolved)) {
-            continue;
-        }
-        seen.add(resolved);
-        const name = artifactDigestName(resolved, outputDir);
-        if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
-            continue;
-        }
-        let stats;
+        // Advanced however this iteration leaves: an artifact skipped for being a directory, a
+        // duplicate or a previous run's sums file is one this pass is finished with.
         try {
-            stats = await fs.stat(resolved);
-        } catch {
-            log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
-            continue;
+            const resolved = path.resolve(artifact);
+            if (seen.has(resolved)) {
+                continue;
+            }
+            seen.add(resolved);
+            const name = artifactDigestName(resolved, outputDir);
+            if (name === ARTIFACT_DIGEST_FILE_NAME || name.endsWith(".asc")) {
+                continue;
+            }
+            let stats;
+            try {
+                stats = await fs.stat(resolved);
+            } catch {
+                log("warning", `skipping ${name} in ${ARTIFACT_DIGEST_FILE_NAME}: it is no longer on disk`);
+                continue;
+            }
+            if (!stats.isFile()) {
+                continue;
+            }
+            entries.push({ name, sha256: await sha256OfFile(resolved) });
+            files.push(resolved);
+        } finally {
+            counted.advance();
         }
-        if (!stats.isFile()) {
-            continue;
-        }
-        entries.push({ name, sha256: await sha256OfFile(resolved) });
-        files.push(resolved);
     }
+    counted.end();
     if (entries.length === 0) {
         return { path: null, files };
     }

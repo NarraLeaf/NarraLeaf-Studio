@@ -1,7 +1,13 @@
 import https from "https";
 import tls from "tls";
-import type { VcsServerDiscovery, VcsServerProbe } from "@shared/types/vcs";
-import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
+import { TEAM_PROTOCOL_VERSION } from "@shared/types/team";
+import type { VcsServerDiscovery, VcsServerPolicy, VcsServerProbe } from "@shared/types/vcs";
+import {
+    describeAuthority,
+    isTrustFailure,
+    reachThroughTrustStores,
+    writeAuthorityCertificate,
+} from "./authorityTrust";
 
 /**
  * Asking one address what is behind it.
@@ -24,12 +30,16 @@ import { describeAuthority, writeAuthorityCertificate } from "./authorityTrust";
  *    listener and the same certificate; the document is the one thing served over
  *    HTTP/1.1. Negotiating h2 by default would reach the gRPC side and get nothing a
  *    fetch understands.
- *  - **The platform's trust store, added to node's.** Node builds chains against its own
- *    bundled roots and says so in the error text ("try running Node.js with
- *    --use-system-ca"). The authority an author installs through the trust prompt goes
- *    into the operating system's store, which is what the Lore client checks - so a probe
- *    reading only node's roots would answer `untrusted` forever, including immediately
- *    after the author trusted it.
+ *  - **The platform's trust store, and what the author accepted here.** Node builds chains
+ *    against its own bundled roots and says so in the error text ("try running Node.js
+ *    with --use-system-ca"). The authority an author installs through the trust prompt
+ *    goes into the operating system's store, which is what the Lore client checks - so a
+ *    probe reading only node's roots would answer `untrusted` forever. Reading the
+ *    platform's store is not enough on its own either: node memoises it on first use, so
+ *    an authority installed a minute ago is not in this process's copy of it. The list
+ *    comes from `authorityTrust`, which adds the certificates an author has accepted here
+ *    - and only those, so an authority somebody was shown and refused is trusted by
+ *    nothing.
  */
 
 /** The scheme an author is given. Anything else is refused before a socket is opened. */
@@ -125,13 +135,20 @@ interface Answer {
 }
 
 /**
- * Fetch the document, and let the failure through as it is.
+ * Fetch the document once, and let the failure through as it is.
  *
  * Failure is the interesting half here and must not be flattened: the code on the error is
  * the whole of what separates a machine that is not there from one whose certificate is not
  * trusted, and both arrive as a rejected request.
+ *
+ * `trust` names the authorities to build a chain against, or is null to build none and
+ * accept whatever is presented - which is what the untrusted answer needs in order to
+ * describe the server whose certificate is the question.
  */
-function fetchDiscovery(endpoint: ServerEndpoint, verify: boolean): Promise<Answer> {
+function fetchDiscovery(
+    endpoint: ServerEndpoint,
+    trust: { ca: string[] | undefined } | null,
+): Promise<Answer> {
     // Typed as both halves because it is both: `ALPNProtocols` belongs to the connection
     // underneath and is handed down to it, and `https.RequestOptions` describes only the
     // request on top.
@@ -141,8 +158,8 @@ function fetchDiscovery(endpoint: ServerEndpoint, verify: boolean): Promise<Answ
         path: DISCOVERY_PATH,
         method: "GET",
         headers: { accept: "application/json" },
-        rejectUnauthorized: verify,
-        ca: verify ? trustedCertificates() : undefined,
+        rejectUnauthorized: trust !== null,
+        ca: trust?.ca,
         ALPNProtocols: ["http/1.1"],
         // An IP address is not a valid SNI name, and passing one makes node warn. It is
         // also what the certificate is then checked against, and an address without a
@@ -192,25 +209,6 @@ function fetchDiscovery(endpoint: ServerEndpoint, verify: boolean): Promise<Answ
 }
 
 /**
- * Every authority this machine believes, node's own and the platform's.
- *
- * The platform's store is where {@link authorityTrust} puts an authority the author has
- * agreed to, and where the Lore client looks; node's bundled roots are what a server with a
- * publicly issued certificate chains to. A probe has to accept both, or it disagrees with
- * the sign-in that follows it.
- */
-function trustedCertificates(): string[] | undefined {
-    // Present from node 22.15. Guarded rather than assumed because the answer this feeds is
-    // "does this machine trust it", and an exception here would answer it wrongly.
-    if (typeof tls.getCACertificates !== "function") return undefined;
-    try {
-        return [...tls.getCACertificates("default"), ...tls.getCACertificates("system")];
-    } catch {
-        return undefined;
-    }
-}
-
-/**
  * Read the answer as the document, or say what it was instead.
  *
  * Strict about the shape and deliberately so: everything downstream of a probe treats these
@@ -236,12 +234,15 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
     if (typeof document.protocol !== "number") {
         return "something answered there, and it was not a NarraLeaf Team server";
     }
-    if (document.protocol !== 1) {
+    if (document.protocol !== TEAM_PROTOCOL_VERSION) {
         // One comparison, which is the reason the field is a number: this server speaks a
         // version of the protocol this Studio was not written against, and that is a
-        // different remedy from every other answer here.
+        // different remedy from every other answer here. The version this build speaks is
+        // the one constant both the discovery check and the socket's opening frame read,
+        // so the next bump is a single edit.
         return `that server speaks version ${document.protocol} of the protocol, and this`
-            + " version of Studio speaks 1. Updating Studio is what closes the gap.";
+            + ` version of Studio speaks ${TEAM_PROTOCOL_VERSION}. Updating Studio is what`
+            + " closes the gap.";
     }
 
     const auth = document.auth;
@@ -271,13 +272,29 @@ export function readDiscoveryDocument(answer: Answer): VcsServerDiscovery | stri
 
     return {
         name: document.name.trim() || auth.url.trim(),
-        protocol: 1,
+        protocol: TEAM_PROTOCOL_VERSION,
         auth: { required: auth.required, url: auth.url.trim() },
         data: { url: data.url.trim() },
         authority: { sha256: authority.sha256.trim() },
         version: document.version.trim(),
+        policy: readPolicy(document.policy),
         capabilities: readCapabilities(document.capabilities),
     };
+}
+
+/**
+ * What a deployment asks of its clients, or nothing.
+ *
+ * Read the way capabilities are and for the same reason: a server that says nothing here
+ * is one from before the field, and refusing it would take away the deployments this is
+ * meant to describe. A rule that is not one of the words this Studio knows is dropped
+ * rather than kept - what is left then is "nothing said", which every caller already
+ * has an answer for, where a word nobody can act on would be a third state.
+ */
+function readPolicy(offered: unknown): VcsServerPolicy {
+    if (typeof offered !== "object" || offered === null) return {};
+    const rule = (offered as { publishLineage?: unknown }).publishLineage;
+    return rule === "merge" || rule === "refuse" ? { publishLineage: rule } : {};
 }
 
 /**
@@ -314,13 +331,10 @@ function classifyFailure(error: NodeJS.ErrnoException): Failure {
     if (/^(ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|EAI_AGAIN|EPIPE|ECONNABORTED|ERR_SOCKET_CONNECTION_TIMEOUT)$/.test(code)) {
         return "unreachable";
     }
-    // An SSL-level error is not a trust question: it is what plain HTTP on the port, or
-    // anything else that is not TLS, looks like from here.
-    if (code.startsWith("ERR_SSL_")) return "other";
-    if (code.startsWith("ERR_TLS_") || /CERT|SELF_SIGNED|ISSUER|UNABLE_TO_/.test(code)) {
-        return "certificate";
-    }
-    return "other";
+    // The same reading `reachThroughTrustStores` makes, from the same function: what it
+    // retried against another store and what it gave up on have to be one judgement, or a
+    // failure it stopped at could be reported here as one it had not finished trying.
+    return isTrustFailure(error) ? "certificate" : "other";
 }
 
 /**
@@ -345,7 +359,9 @@ export async function probeVcsServer(
     }
 
     try {
-        const document = readDiscoveryDocument(await fetchDiscovery(endpoint, true));
+        const document = readDiscoveryDocument(
+            await reachThroughTrustStores(options.userDataDir, (ca) => fetchDiscovery(endpoint, { ca })),
+        );
         return typeof document === "string"
             ? { kind: "not-a-server", detail: document }
             : { kind: "ready", address: endpoint.address, discovery: document };
@@ -393,7 +409,7 @@ async function describeUntrusted(endpoint: ServerEndpoint, userDataDir: string):
         verdict.fingerprint,
         verdict.pem,
     ).catch(() => "");
-    const document = await fetchDiscovery(endpoint, false)
+    const document = await fetchDiscovery(endpoint, null)
         .then(readDiscoveryDocument)
         .catch(() => "unreadable");
 

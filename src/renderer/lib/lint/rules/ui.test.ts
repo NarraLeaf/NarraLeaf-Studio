@@ -324,14 +324,6 @@ describe("ui/empty-behavior", () => {
         });
     });
 
-    it("says nothing about a button whose own record binds the click", async () => {
-        const wired = button({ behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp", eventId: "onClick" } } } });
-
-        expect(
-            await run("ui/empty-behavior", createTestLintContext({ uiDocument: onePage(wired), blueprintDocument: NO_GRAPHS })),
-        ).toEqual([]);
-    });
-
     it("says nothing about a button whose own blueprint starts on a click", async () => {
         // The graph's name is not consulted - the dispatcher looks for a head node of a type the
         // slot allows, in any of the blueprint's event graphs.
@@ -346,8 +338,8 @@ describe("ui/empty-behavior", () => {
     });
 
     it("says nothing about a button an On Element Click head names", async () => {
-        // The widget carries no binding at all in this shape, which is exactly the case a rule that
-        // read only `behavior` would report as unwired.
+        // The widget's own blueprint is empty in this shape: the head that listens for it lives in
+        // the page's blueprint, so a rule that looked only at the widget would report it as unwired.
         const ctx = createTestLintContext({
             uiDocument: onePage(button()),
             blueprintDocument: blueprintDocument({
@@ -369,19 +361,18 @@ describe("ui/empty-behavior", () => {
             surfaces: [{ id: MAIN_APP_SURFACE_ID, name: "Main Page", rootElementId: "root" }],
             elements: [
                 element({ id: "root", type: "nl.root", childrenIds: ["panel"] }),
-                element({
-                    id: "panel",
-                    type: "nl.container",
-                    childrenIds: ["start"],
-                    behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp", eventId: "onClick" } } },
-                }),
+                element({ id: "panel", type: "nl.container", childrenIds: ["start"] }),
                 button(),
             ],
         });
+        const ctx = createTestLintContext({
+            uiDocument: document,
+            blueprintDocument: blueprintDocument({
+                [`widgetMain:${MAIN_APP_SURFACE_ID}:panel`]: headGraph(BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK),
+            }),
+        });
 
-        expect(
-            await run("ui/empty-behavior", createTestLintContext({ uiDocument: document, blueprintDocument: NO_GRAPHS })),
-        ).toEqual([]);
+        expect(await run("ui/empty-behavior", ctx)).toEqual([]);
     });
 
     it("says nothing about a control in a list whose rows are handled", async () => {
@@ -411,19 +402,18 @@ describe("ui/empty-behavior", () => {
         ).toEqual([]);
     });
 
-    it("reports any widget left holding a stripped binding, and only those", async () => {
-        // `noop` is not a state an author picks: it is what a binding degrades to when the graph it
-        // pointed at is deleted, so an image wearing one used to do something. An image with no
-        // binding at all never did, and is not this rule's business.
-        const stripped = element({ id: "art", type: "nl.image", name: "Cover", behavior: { events: { mouseClick: { kind: "noop" } } } });
-        const plain = element({ id: "bg", type: "nl.image", name: "Backdrop" });
+    it("says nothing about scenery, which is most of a page", async () => {
+        // Only a button is a candidate. An image or a container that runs nothing when pressed is
+        // what almost every element on a page is, and reporting those would bury the one that matters.
+        const art = element({ id: "art", type: "nl.image", name: "Cover" });
+        const panel = element({ id: "panel", type: "nl.container", name: "Frame" });
 
-        const findings = await run(
-            "ui/empty-behavior",
-            createTestLintContext({ uiDocument: onePage(stripped, plain), blueprintDocument: NO_GRAPHS }),
-        );
-
-        expect(findings.map(finding => (finding.location.kind === "surface" ? finding.location.elementId : null))).toEqual(["art"]);
+        expect(
+            await run(
+                "ui/empty-behavior",
+                createTestLintContext({ uiDocument: onePage(art, panel), blueprintDocument: NO_GRAPHS }),
+            ),
+        ).toEqual([]);
     });
 });
 
@@ -669,21 +659,6 @@ describe("ui/gesture-answered-twice", () => {
         });
     });
 
-    it("reports a widget wired through its behavior record, not only through a graph", async () => {
-        const hit = element({
-            id: "hit",
-            type: "nl.container",
-            behavior: { events: { mouseClick: { kind: "blueprintEvent", eventId: "main" } } },
-        } as unknown as Partial<UIElement> & { id: string; type: string });
-
-        const findings = await run(
-            "ui/gesture-answered-twice",
-            createTestLintContext({ uiDocument: actionPage({ leaf: hit }), blueprintDocument: NO_GRAPHS }),
-        );
-
-        expect(findings).toHaveLength(1);
-    });
-
     it("matches a wheel head against whichever direction the page is bound to", async () => {
         const wheel = widgetWithHead({
             id: "hit",
@@ -731,21 +706,6 @@ describe("ui/gesture-answered-twice", () => {
             await run(
                 "ui/gesture-answered-twice",
                 createTestLintContext({ uiDocument: document, blueprintDocument: inner.blueprints }),
-            ),
-        ).toEqual([]);
-    });
-
-    it("says nothing when the page was told to fire over controls anyway", async () => {
-        const hit = widgetWithHead({ id: "hit", type: "nl.container", head: BLUEPRINT_NODE_TYPE_EVENT_HEAD_MOUSE_CLICK });
-        const document = actionPage({
-            leaf: hit.element,
-            enablements: [{ actionId: "advance", overControls: "fire" }],
-        });
-
-        expect(
-            await run(
-                "ui/gesture-answered-twice",
-                createTestLintContext({ uiDocument: document, blueprintDocument: hit.blueprints }),
             ),
         ).toEqual([]);
     });

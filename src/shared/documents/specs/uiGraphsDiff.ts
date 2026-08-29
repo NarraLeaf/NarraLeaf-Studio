@@ -21,8 +21,6 @@ import {isJsonObject} from "./parseHelpers";
  * ["blueprints", <blueprintId>, <slot>, <graphId>, <field>]
  * ["blueprints", <blueprintId>, <slot>, <graphId>, "nodes", <nodeId>[, <property>]]
  * ["blueprints", <blueprintId>, <slot>, <graphId>, "edges", <edgeKey>]
- * ["graphs", <graphId>[, "nodes", <nodeId>[, <property>]]]   the older root-level IR, same shape
- * ["graphs", <graphId>, "edges", <edgeKey>]
  * ```
  *
  * The segments alternate key, id, key, id, so a consumer reads a fixed index rather than parsing.
@@ -118,9 +116,6 @@ export function diffUIGraphs(
     for (const entry of sortedByName(diffKeyed(blueprintsOf(base), blueprintsOf(head)))) {
         blueprintRows(entry.key, entry.base, entry.head, rows);
     }
-    for (const entry of diffKeyed(rootGraphsOf(base), rootGraphsOf(head))) {
-        rootGraphRows(entry.key, entry.base, entry.head, rows);
-    }
     for (const entry of diffKeyed(ownerRecordsOf(base), ownerRecordsOf(head))) {
         rows.push(change(["ownerRecords", entry.key], entry.kind, LABEL.ownerRecord));
     }
@@ -128,7 +123,7 @@ export function diffUIGraphs(
     return buildDocumentDiff(rows, {tier: "semantic", limit: options.limit});
 }
 
-/** Nodes across every graph, blueprint and legacy alike - the number that tracks how much logic there is. */
+/** Nodes across every graph of every blueprint - the number that tracks how much logic there is. */
 export function countGraphNodes(document: UIGraphDocument | undefined): number {
     let total = 0;
     for (const blueprint of Object.values(blueprintsOf(document))) {
@@ -137,9 +132,6 @@ export function countGraphNodes(document: UIGraphDocument | undefined): number {
                 total += Object.keys(nodesOf(irOf(graph))).length;
             }
         }
-    }
-    for (const graph of Object.values(rootGraphsOf(document))) {
-        total += Object.keys(nodesOf(graph)).length;
     }
     return total;
 }
@@ -215,15 +207,6 @@ function blueprintRows(
             rows.push(change([...path, orderKey], "moved", LABEL.graphOrder, {subject}));
         }
     }
-}
-
-function rootGraphRows(
-    graphId: string,
-    base: Record<string, unknown> | undefined,
-    head: Record<string, unknown> | undefined,
-    rows: DocumentChange[],
-): void {
-    graphRows(["graphs", graphId], base, head, rows);
 }
 
 // ---------------------------------------------------------------------------
@@ -362,10 +345,6 @@ function blueprintsOf(document: UIGraphDocument | undefined): Record<string, Rec
 
 function ownerRecordsOf(document: UIGraphDocument | undefined): Record<string, Record<string, unknown>> {
     return mapOf((document as {blueprintDocument?: {ownerRecords?: unknown}} | undefined)?.blueprintDocument?.ownerRecords);
-}
-
-function rootGraphsOf(document: UIGraphDocument | undefined): Record<string, Record<string, unknown>> {
-    return mapOf((document as {graphs?: unknown} | undefined)?.graphs);
 }
 
 /** `program.graphs`, which holds the three slots and the two arrays that order them. */

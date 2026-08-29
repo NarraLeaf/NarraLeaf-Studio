@@ -14,7 +14,7 @@ export const SYSTEM_STATE_KEYS = ["hovered", "active", "disabled", "focused"] as
 export type SystemStateKey = (typeof SYSTEM_STATE_KEYS)[number];
 
 export type ContainerAppearanceModuleId = "background" | "stroke" | "corners" | "transform" | "effects";
-export type ButtonAppearanceModuleId = "background" | "border" | "spacing" | "transform" | "effects";
+export type ButtonAppearanceModuleId = "typography" | "background" | "border" | "spacing" | "transform" | "effects";
 export type TextAppearanceModuleId = "typography" | "transform" | "effects";
 
 export type ModuleEditMode = "default" | SystemStateKey;
@@ -68,6 +68,8 @@ export const CONTAINER_MODULE_KEYS: Record<ContainerAppearanceModuleId, readonly
 };
 
 export const BUTTON_MODULE_KEYS: Record<ButtonAppearanceModuleId, readonly ButtonAppearancePropertyKey[]> = {
+    // The same module `nl.text` offers, minus the italic toggle a button label has no prop for.
+    typography: ["fontAssetId", "fontSize", "fontWeight", "color", "lineHeight"],
     background: [
         "fillType",
         "backgroundColor",

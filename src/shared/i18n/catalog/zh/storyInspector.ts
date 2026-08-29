@@ -7,7 +7,6 @@ export const storyInspector = {
     noVariablesDeclared: "尚未声明变量",
     unassigned: "未指定",
     section: {
-        timing: "时机",
         conditions: "条件",
         appearance: "外观",
         blueprint: "蓝图",
@@ -380,10 +379,6 @@ export const storyInspector = {
     narration: {
         editHint: "双击该行以编辑旁白文本",
     },
-    dialogue: {
-        pauseAfter: "本行后暂停",
-        pauseSeconds: "暂停秒数（可选）",
-    },
     choice: {
         prompt: "提示语",
     },
@@ -395,6 +390,7 @@ export const storyInspector = {
     },
     jump: {
         targetScene: "目标场景",
+        returnable: "目标场景结束后返回",
     },
     note: {
         label: "备注",
@@ -413,6 +409,7 @@ export const storyInspector = {
         volume: "音量",
         rate: "倍速",
         loop: "循环",
+        waitForEnd: "等待播放结束",
     },
     image: {
         imageName: "图片名称",
@@ -453,7 +450,7 @@ export const storyInspector = {
         puppetParamValue: "数值",
         puppetParamAdd: "添加参数",
         puppetParamRemove: "移除参数",
-        puppetNoParams: "这一行还没有设置任何参数",
+        puppetNoParams: "该行尚未设置任何参数",
         notPuppetHint: "该角色由 Studio 绘制，没有可设置的运行时状态",
     },
     asset: {
@@ -461,6 +458,7 @@ export const storyInspector = {
         none: "无资产",
         clear: "清除资产",
         selectTitle: "选择{label}",
+        change: "更换",
     },
     displayableEffect: {
         maskImage: "遮罩图片",
@@ -516,13 +514,13 @@ export const storyInspector = {
         breakHint: "跳出本行所在的重复组；不在重复组里时它什么也不做",
         cutVariant: "变体",
         cutHint: "该变体的剧情在此行结束，其后的内容不进入该变体；其余变体不受影响，也没有这一行",
-        // 这一行指向的变体工程里已经没有了。它和其他失效引用一样按正式变体读取，而截断正式变体等于不截断。
+        // 这一行指向的变体项目里已经没有了。它和其他失效引用一样按正式变体读取，而截断正式变体等于不截断。
         cutMissingVariant: "已删除的变体，现按{name}读取",
         cutNoVariants: "没有变体",
         endingName: "结局名称",
         endingPage: "结束后显示的页面",
         // 两个不是页面的答案。它们都是决定，所以都按决定来措辞。
-        endingPageInherit: "与工程设置相同",
+        endingPageInherit: "与项目设置相同",
         endingPageNone: "不显示任何页面",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",

@@ -3,6 +3,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Services } from "@/lib/workspace/services/services";
 import { IDLE_LIVE_SESSION, type LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
+import { storyRowClaimKey } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
 import type { TeamLiveSession } from "@shared/types/team";
 import {
@@ -81,7 +82,19 @@ function room(): TeamLiveSession {
     };
 }
 
+/**
+ * A room whose claim set is keyed the way the wire keys it.
+ *
+ * ⚠ **Through `storyRowClaimKey`, not by block id.** The set carries every kind of claim a session
+ * records - rows, character records, translations, asset records - under one prefixed key space, and
+ * a test that seeded bare block ids agreed with a reader that never matched anything on a real
+ * machine: every row went unmarked while every assertion here passed.
+ */
 function session(claims: Record<string, string>, overrides: Partial<LiveSessionView> = {}): LiveSessionView {
+    const keyed: Record<string, string> = {};
+    for (const [blockId, account] of Object.entries(claims)) {
+        keyed[storyRowClaimKey(blockId as StoryBlockId)] = account;
+    }
     return {
         ...IDLE_LIVE_SESSION,
         phase: "active",
@@ -89,7 +102,7 @@ function session(claims: Record<string, string>, overrides: Partial<LiveSessionV
         session: room(),
         storyId: STORY,
         self: "mine",
-        claims: claims as Record<StoryBlockId, string>,
+        claims: keyed as Record<StoryBlockId, string>,
         ...overrides,
     };
 }
@@ -144,6 +157,28 @@ describe("which rows are marked", () => {
         );
 
         expect(claimOn("block-2")).toBe("");
+    });
+
+    it("ignores the claims of every other kind of document in the same set", () => {
+        // The set holds rows, characters, translations and assets at once. A reader that took every
+        // key would put a translator's name on a picture - or, as it did, match nothing at all.
+        world.view = {
+            ...session({ "block-2": "bob" }),
+            claims: {
+                "row:block-2": "bob",
+                "character:block-1": "bob",
+                "asset:block-1": "bob",
+            } as Record<StoryBlockId, string>,
+        };
+        render(
+            <StoryRowClaimsProvider storyId={STORY}>
+                <Row blockId="block-1" />
+                <Row blockId="block-2" />
+            </StoryRowClaimsProvider>,
+        );
+
+        expect(claimOn("block-1")).toBe("");
+        expect(claimOn("block-2")).toBe("bob");
     });
 
     it("marks nothing outside a session", () => {

@@ -35,19 +35,32 @@ export enum UserDataNamespace {
      * project is version controlled and would carry the keys with it.
      */
     Signing = "signing",
-    /**
-     * Everything Studio can throw away without losing work, one directory per
-     * {@link CacheNamespace}.
-     *
-     * A parent for caches rather than a sibling of the product's own data, so
-     * "is this safe to delete" is answerable from the path. `plugin-icons` is
-     * the exception and stays where it is: see {@link CacheNamespace.PluginIcons}.
-     */
-    Cache = "cache",
 }
 
 /**
- * Directories under {@link UserDataNamespace.Cache}.
+ * The directory holding everything Studio can throw away without losing work, one subdirectory
+ * per {@link CacheNamespace}.
+ *
+ * A parent for caches rather than a sibling of the product's own data, so "is this safe to
+ * delete" is answerable from the path. `plugin-icons` is the exception and stays in userData:
+ * see {@link CacheNamespace.PluginIcons}.
+ *
+ * **The name is not `cache`, and must never become it.** Chromium keeps its own HTTP cache at
+ * `<userData>/Cache`, and Windows and the default macOS filesystem do not distinguish the two
+ * spellings - so a cache root called `cache` under userData *is* Chromium's directory. That was
+ * the state of things until this constant existed: a Zig toolchain sat beside `Cache_Data`, the
+ * inventory counted those bytes under both the `toolchains` bucket and the `browser` bucket, and
+ * clearing the browser cache deleted every download Studio had made. `cacheDirNameCollides` in
+ * `cacheInventory.test.ts` is the guard that keeps it that way.
+ *
+ * This is a *name*, not a location. Where the root sits is decided at runtime by
+ * `resolveCacheRootForApp` - beside the executable where that is writable, under userData
+ * otherwise.
+ */
+export const CACHE_ROOT_DIR_NAME = "nl-cache";
+
+/**
+ * Directories under the cache root, {@link CACHE_ROOT_DIR_NAME}.
  *
  * The rule for putting something here: **deleting it must cost time, never
  * work.** Anything that fails that test is the product's own data and belongs in
@@ -88,4 +101,43 @@ export enum CacheNamespace {
      * the encoding time it already paid once.
      */
     OptimizedImages = "optimized-images",
+    /**
+     * Sound and video a game build re-encoded, keyed the same way and kept apart
+     * from the images for one reason: size.
+     *
+     * A project's artwork cache is measured in tens of megabytes and its voice
+     * cache in whole gigabytes, so an author looking at what Studio is holding
+     * has to be able to see and clear the expensive one without losing the cheap
+     * one they would rather keep.
+     */
+    CompressedMedia = "compressed-media",
+    /**
+     * Compiler toolchains a build downloads because the host has none, one
+     * directory per toolchain and version.
+     *
+     * Listed on its own rather than folded into the build dependencies beside it,
+     * for the reason the media cache is kept apart from the images: a Zig
+     * toolchain is a few hundred megabytes even pruned, and an author deciding
+     * what to reclaim needs to see that number by itself.
+     */
+    Toolchains = "toolchains",
+    /**
+     * Live2D SDK archives unpacked for a puppet runtime build, keyed by the archive's digest.
+     *
+     * Written by `live2dRuntimeBuild`, which named the directory with a string constant of its
+     * own and so stayed out of the inventory entirely - an author could accumulate one unpacked
+     * SDK per archive they ever picked with nothing on the interface able to say so.
+     */
+    PuppetRuntimes = "puppet-runtimes",
+    /**
+     * electron-builder's own download cache: winCodeSign, NSIS, AppImage, and the Electron
+     * distribution a cross-platform target needs.
+     *
+     * Studio's rather than the host's. electron-builder defaults this to `%LOCALAPPDATA%` (and
+     * the platform equivalents), which put several hundred megabytes Studio had fetched somewhere
+     * no part of Studio was named in; `ELECTRON_BUILDER_CACHE`, which the build worker is started
+     * with, brings it here. An author who exported that variable themselves still wins - see
+     * `electronBuilderCacheRoot`.
+     */
+    ElectronBuilder = "electron-builder",
 }

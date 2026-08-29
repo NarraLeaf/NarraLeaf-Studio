@@ -339,7 +339,9 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} carries progress between editions, and a {platform} build refuses it. Both nodes take "
             + "their failure branch.",
-        "lossy-images": "Images are re-encoded at quality {quality} and lose detail permanently.",
+        "lossy-images": "Images are re-encoded at quality {setting} and lose detail permanently.",
+        "lossy-audio": "Audio is re-encoded at {setting} kbit/s and loses detail permanently.",
+        "lossy-video": "Video is re-encoded at CRF {setting} and loses detail permanently.",
         "mobile-template-missing": "The mobile shell templates are unavailable: {reason}",
         "mobile-payload-too-large": "This project's assets ({size}) exceed what a mobile package can hold.",
         "version-uncodable": "Version {version} cannot be encoded as an Android version code (major up to 2099, minor and patch up to 999).",
@@ -409,6 +411,19 @@ export const build = {
         outputDir: "Output folder",
         durationSeconds: "{seconds}s",
         durationMinutes: "{minutes}m {seconds}s",
+        /**
+         * What the two asset passes took off the package, stated here rather than in the console.
+         * The console reports the steps a build takes; these are the figures those steps came to.
+         *
+         * Every count is a file in the package. Both passes read the library and write into
+         * Studio's cache, so nothing here describes a change to the project's own files - and the
+         * labels say "compressed" and "removed" about the package for that reason.
+         */
+        compressionTitle: "Compression",
+        compressionSaved: "{size} saved",
+        compressionImages: "Images compressed",
+        compressionMedia: "Audio and video compressed",
+        compressionMetadata: "Metadata removed",
         includedTitle: "Assets carried",
         includedEmpty: "This run carried no assets.",
         excludedTitle: "Assets left out",

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_UI_PAGE_ANIMATION_SETTINGS } from "@shared/types/ui-editor/pageAnimation";
 import {
+    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
     UI_DOCUMENT_SCHEMA_VERSION,
     getUIComponentLink,
     type UIElement,
@@ -292,9 +293,6 @@ describe("UIDocumentService surface creation", () => {
         const nametag = doc.elements[stack.childrenIds[0]!]!;
         const sentence = doc.elements[stack.childrenIds[1]!]!;
 
-        expect(interactionLayer.behavior?.events?.mouseClick).toBeUndefined();
-        expect(interactionLayer.behavior?.events?.keyUp).toBeUndefined();
-
         expect(blueprintDocument.blueprints[`widget-main-${panel.id}`]).toBeUndefined();
         const contentBlueprint = blueprintDocument.blueprints[`widget-main-${stack.id}`];
         expect(contentBlueprint.owner).toMatchObject({ kind: "widgetMain", elementId: stack.id });
@@ -551,12 +549,15 @@ describe("UIDocumentService surface creation", () => {
         expect(migrated.elements[sentence.id]!.props?.appearance).toBeTruthy();
     });
 
-    it("migrates legacy stage mounts and slot aliases", () => {
+    it("normalizes stage mounts and slot aliases", () => {
+        // Not a version step and never was: `normalizeSpecialChildSlots` runs on every read, so a
+        // surface whose mount names a slot this build has no reading for lands `onStage` whatever
+        // version the document claims. The floor is used here only to prove it is not gated on one.
         const { service } = createHarness();
         const base = service.getDocument();
         const migrated = (service as any).migrateIfNeeded({
             ...base,
-            schemaVersion: 9,
+            schemaVersion: UI_DOCUMENT_MIN_SUPPORTED_VERSION,
             surfaces: [
                 base.surfaces[0]!,
                 {
@@ -606,6 +607,15 @@ describe("UIDocumentService surface creation", () => {
             expect(surface.settings?.backgroundColor).toBe("transparent");
         }
     });
+
+    it.each([[1], [5], [UI_DOCUMENT_MIN_SUPPORTED_VERSION - 1]])(
+        "refuses a v%i document rather than reading it as one whose fields are merely absent",
+        version => {
+            const { service } = createHarness();
+            expect(() => (service as any).migrateIfNeeded({ ...service.getDocument(), schemaVersion: version }))
+                .toThrow(/older than this Studio version can read/);
+        },
+    );
 
     it("renames the main Page display name while preserving the main surface id", () => {
         const { service } = createHarness();
@@ -709,11 +719,6 @@ describe("UIDocumentService surface creation", () => {
             elementId: button.id,
             propPath: "label",
         });
-        button.behavior = {
-            events: {
-                mouseClick: { kind: "blueprintEvent", blueprintId: widgetBlueprintId, eventId: "click" },
-            },
-        };
         button.valueBindings = {
             label: { kind: "blueprintValue", blueprintId: valueBlueprintId, valueType: "string" },
         };
@@ -820,12 +825,12 @@ describe("UIDocumentService surface creation", () => {
         expect(getUIComponentLink(duplicatedLinkedInstance)).toEqual({ componentId: component.id, linked: true });
         expect(duplicatedDoc.components).toHaveLength(1);
 
-        const duplicatedEvent = duplicatedButton.behavior?.events?.mouseClick;
-        expect(duplicatedEvent?.kind).toBe("blueprintEvent");
-        if (duplicatedEvent?.kind !== "blueprintEvent") {
-            throw new Error("Expected duplicated button event blueprint binding");
+        const duplicatedWidgetBlueprintId =
+            blueprintDocument.ownerRecords[`widgetMain:${duplicated.id}:${duplicatedButton.id}`]?.activeBlueprintId;
+        expect(duplicatedWidgetBlueprintId).toBeTruthy();
+        if (!duplicatedWidgetBlueprintId) {
+            throw new Error("Expected the duplicated button to own a blueprint");
         }
-        const duplicatedWidgetBlueprintId = duplicatedEvent.blueprintId;
         const duplicatedLabelBinding = duplicatedButton.valueBindings?.label;
         const duplicatedValueBlueprintId =
             duplicatedLabelBinding?.kind === "blueprintValue" ? duplicatedLabelBinding.blueprintId : undefined;
@@ -1040,7 +1045,6 @@ describe("UIDocumentService component library", () => {
             parentId: rootId,
             childrenIds: [],
             layout: { x: 0, y: 0, width: 200, height: 60 },
-            behavior: { events: { mouseClick: { kind: "blueprintEvent", blueprintId: "bp-hit", eventId: "click" } } },
         } as unknown as UIElement;
         doc.elements[rootId]!.childrenIds.push(hit.id);
         doc.elements[hit.id] = hit;
@@ -1084,14 +1088,15 @@ describe("UIDocumentService component library", () => {
         const component = service.createComponentFromElements(surface.id, [hit.id], "Save slot")!;
         const copy = component.elements[component.rootElementId]!;
 
-        // The binding survives, and names the clone rather than the surface's blueprint.
-        const boundId = (copy.behavior?.events?.mouseClick as { blueprintId?: string } | undefined)?.blueprintId;
+        // The blueprint follows the element into the component, as a clone rather than the original:
+        // an owner record still naming `bp-hit` would run the surface's blueprint from inside the
+        // component and drive the element still out there.
+        const boundId = blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId;
         expect(boundId).toBeTruthy();
         expect(boundId).not.toBe("bp-hit");
 
         const cloned = blueprintDocument.blueprints[boundId!]!;
         expect(cloned.owner).toMatchObject({ kind: "componentWidgetMain", componentId: component.id, elementId: copy.id });
-        expect(blueprintDocument.ownerRecords[`componentWidgetMain:${component.id}:${copy.id}`]?.activeBlueprintId).toBe(boundId);
 
         // The whole point of the remap: an element ref inside the clone points at the component's
         // copy. Left alone it would reach back out and drive the element still on the surface.
@@ -1564,18 +1569,9 @@ describe("UIDocumentService input actions", () => {
         const surfaceId = service.getDocument().surfaces[0]!.id;
 
         service.setSurfaceActionEnabled(surfaceId, action.id, true);
-        service.updateSurfaceActionEnablement(surfaceId, action.id, {
-            consume: false,
-            overControls: "fire",
-            addBindings: [{ kind: "pointer", gesture: "click" }],
-        });
+        service.updateSurfaceActionEnablement(surfaceId, action.id, { consume: false });
         expect(service.getDocument().surfaces[0]!.actions).toEqual([
-            {
-                actionId: action.id,
-                consume: false,
-                overControls: "fire",
-                addBindings: [{ kind: "pointer", gesture: "click" }],
-            },
+            { actionId: action.id, consume: false },
         ]);
 
         service.setSurfaceActionEnabled(surfaceId, action.id, false);
@@ -1583,30 +1579,29 @@ describe("UIDocumentService input actions", () => {
         expect(service.getDocument().surfaces[0]!.actions).toBeUndefined();
     });
 
-    it("clears an override by patching the key to undefined, and keeps an empty one", () => {
+    it("clears a field by patching the key to undefined", () => {
         const { service } = createHarness();
         const action = service.createInputAction("Advance")!;
         const surfaceId = service.getDocument().surfaces[0]!.id;
         service.setSurfaceActionEnabled(surfaceId, action.id, true);
 
-        service.updateSurfaceActionEnablement(surfaceId, action.id, { overrideBindings: [] });
+        service.updateSurfaceActionEnablement(surfaceId, action.id, { consume: false });
         expect(service.getDocument().surfaces[0]!.actions?.[0]).toEqual({
             actionId: action.id,
-            overrideBindings: [],
+            consume: false,
         });
 
-        service.updateSurfaceActionEnablement(surfaceId, action.id, { overrideBindings: undefined });
+        service.updateSurfaceActionEnablement(surfaceId, action.id, { consume: undefined });
         expect(service.getDocument().surfaces[0]!.actions?.[0]).toEqual({ actionId: action.id });
     });
 
-    it("stores the surface mode and records it in that surface's undo stack", () => {
-        const { service, historyCalls } = createHarness({ withHistory: true });
-        const surfaceId = service.getDocument().surfaces[0]!.id;
+    it("starts a new action from the bindings a preset laid down", () => {
+        const { service } = createHarness();
+        const action = service.createInputAction("Back", [{ kind: "key", key: "esc" }])!;
 
-        service.setSurfaceInputMode(surfaceId, "pass");
-
-        expect(service.getDocument().surfaces[0]!.input).toBe("pass");
-        expect(historyCalls).toContainEqual({ surfaceId, mergeKey: `surface:${surfaceId}:input` });
+        // Canonicalised on the way in like any other stored binding, and nothing records that a
+        // preset was involved.
+        expect(action.bindings).toEqual([{ kind: "key", key: "Escape" }]);
     });
 });
 
@@ -1632,7 +1627,6 @@ describe("UIDocumentService input model normalization", () => {
 
         expect(loaded.actions).toBeUndefined();
         for (const surface of loaded.surfaces) {
-            expect(surface.input).toBeUndefined();
             expect(surface.actions).toBeUndefined();
         }
     });
@@ -1645,15 +1639,7 @@ describe("UIDocumentService input model normalization", () => {
                 advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }] },
             },
         };
-        stored.surfaces[0]!.input = "pass";
-        stored.surfaces[0]!.actions = [
-            {
-                actionId: "advance",
-                addBindings: [{ kind: "key", key: "Space" }],
-                consume: false,
-                overControls: "fire",
-            },
-        ];
+        stored.surfaces[0]!.actions = [{ actionId: "advance", consume: false }];
         const before = JSON.stringify(stored);
 
         const loaded = migrate(service, JSON.parse(before) as UIDocument);
@@ -1671,7 +1657,6 @@ describe("UIDocumentService input model normalization", () => {
                 broken: { name: "No id", bindings: [] },
             } as any,
         };
-        stored.surfaces[0]!.input = "nonsense" as any;
         stored.surfaces[0]!.actions = [{ actionId: "advance" }, { actionId: "" }] as any;
 
         const loaded = migrate(service, stored);
@@ -1679,7 +1664,102 @@ describe("UIDocumentService input model normalization", () => {
         expect(loaded.actions).toEqual({
             advance: { id: "advance", name: "Advance", bindings: [{ kind: "key", key: "Escape" }] },
         });
-        expect(loaded.surfaces[0]!.input).toBe("capture");
+        expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: "advance" }]);
+    });
+
+    it("v12 gives a surface that changed an action bindings an action of its own", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = {
+            ...JSON.parse(JSON.stringify(initialDocument)),
+            schemaVersion: 11 as UIDocument["schemaVersion"],
+            actions: {
+                dismiss: { id: "dismiss", name: "Dismiss", bindings: [{ kind: "key", key: "Escape" }] },
+            },
+        };
+        stored.surfaces[0]!.actions = [
+            {
+                actionId: "dismiss",
+                addBindings: [{ kind: "pointer", gesture: "wheelDown" }],
+                overControls: "fire",
+            },
+        ] as any;
+
+        const loaded = migrate(service, stored);
+        const minted = Object.values(loaded.actions ?? {}).find(entry => entry.id !== "dismiss");
+
+        // The gestures the surface actually used survive, under a name that says where they came
+        // from. Dropping the record without this would leave a page closing on nothing.
+        expect(minted?.bindings).toEqual([
+            { kind: "key", key: "Escape" },
+            { kind: "pointer", gesture: "wheelDown" },
+        ]);
+        expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: minted!.id }]);
+        expect(loaded.actions?.dismiss?.bindings).toEqual([{ kind: "key", key: "Escape" }]);
+    });
+
+    /**
+     * The walk, not the fold - `legacyImageProps.test.ts` covers what one element becomes. What is
+     * asserted here is that a component definition is reached: its elements are the same elements
+     * with a different owner, and one authored before the current shape would otherwise keep the old
+     * keys wherever it was placed.
+     */
+    it("folds the pre-imageFill shape on surfaces and inside component definitions alike", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = JSON.parse(JSON.stringify(initialDocument));
+        stored.elements["on-page"] = {
+            id: "on-page",
+            type: "nl.image",
+            parentId: stored.surfaces[0]!.rootElementId,
+            childrenIds: [],
+            layout: { x: 0, y: 0, width: 10, height: 10 },
+            props: { assetId: "art-1" },
+        };
+        stored.components = [{
+            id: "component-1",
+            name: "Card",
+            rootElementId: "in-component",
+            elements: {
+                "in-component": {
+                    id: "in-component",
+                    type: "nl.image",
+                    parentId: null,
+                    childrenIds: [],
+                    layout: { x: 0, y: 0, width: 10, height: 10 },
+                    props: { assetId: "art-2" },
+                },
+            },
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+        }] as UIDocument["components"];
+
+        const loaded = migrate(service, stored);
+
+        expect(loaded.elements["on-page"]!.props).toEqual({
+            fillType: "image",
+            imageFill: { mode: "cover", assetId: "art-1" },
+        });
+        expect(loaded.components![0]!.elements["in-component"]!.props).toEqual({
+            fillType: "image",
+            imageFill: { mode: "cover", assetId: "art-2" },
+        });
+    });
+
+    it("v12 leaves an override that worked out to the project own bindings alone", () => {
+        const { service, initialDocument } = createHarness();
+        const stored: UIDocument = {
+            ...JSON.parse(JSON.stringify(initialDocument)),
+            schemaVersion: 11 as UIDocument["schemaVersion"],
+            actions: {
+                advance: { id: "advance", name: "Advance", bindings: [{ kind: "pointer", gesture: "click" }] },
+            },
+        };
+        stored.surfaces[0]!.actions = [
+            { actionId: "advance", overrideBindings: [{ kind: "pointer", gesture: "click" }] },
+        ] as any;
+
+        const loaded = migrate(service, stored);
+
+        expect(Object.keys(loaded.actions ?? {})).toEqual(["advance"]);
         expect(loaded.surfaces[0]!.actions).toEqual([{ actionId: "advance" }]);
     });
 });

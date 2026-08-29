@@ -70,6 +70,7 @@ export const documentDiff = {
 
         assetSets: "アセットセット",
         assets: "アセット",
+        folders: "アセットフォルダー",
         audioTracks: "オーディオトラック",
         brandColors: "ブランドの色",
         brandFonts: "既定のフォント",
@@ -80,6 +81,7 @@ export const documentDiff = {
         projectLanguages: "言語",
         projectPlugins: "プラグイン",
         saveFields: "セーブ項目",
+        stories: "ストーリー",
         storyBlocks: "ストーリーの行",
         storyChapters: "チャプター",
         storyScenes: "シーン",
@@ -99,6 +101,23 @@ export const documentDiff = {
      * ここではその対象を名乗り直さない。`{field}` を含むものが生のフィールド識別子を引くのは、
      * 生成側が持っているのがそれだけだから。`entrySceneId` に作者の言葉は無い。
      */
+    /**
+     * 第 2 層、ストーリーの一覧。どのストーリーがあり、何と呼ばれているか。
+     *
+     * マージの行だけ。一覧自体にはまだ意味単位の差分がなく、比較は構造をたどる。
+     * `subject` にはストーリー自身の題名が入るので、以下はそれを繰り返さない。
+     */
+    storyIndex: {
+        added: "ストーリーを追加",
+        removed: "ストーリーを削除",
+        /** 片方が追加しもう片方が削除した、または共通の祖先がない。 */
+        changed: "ストーリーを変更",
+        renamed: "ストーリー名を変更",
+        /** `dlcId`、`importSource`、`exportMeta`。どれも作者が書いた名前ではない。 */
+        entryField: "{field} を変更",
+        defaultStory: "開始ストーリーを変更",
+        documentField: "{field} を変更",
+    },
     story: {
         renamed: "ストーリー名を変更",
         /** チャプターの `meta` でも使う。その場合チャプター名は `subject` として届く。 */
@@ -167,6 +186,26 @@ export const documentDiff = {
         avatarChanged: "ダイアログのアバター {key}",
         groupAdded: "グループを追加",
         groupRemoved: "グループを削除",
+        /**
+         * キャラクターエディタが描いてはいるが、ラベルを持たない 6 つのフィールド。ほかの
+         * フィールドは作者が編集する画面の言葉をそのまま使う（`CHARACTER_FIELD_NAME_KEY` を
+         * 参照）が、この 6 つには借りられるキーが無い。キャストの一覧は別名を名前の下に
+         * 説明なしで並べ、グループは行を移して決め、キャンバス・アバターの軸・取り込み元の
+         * PSD・パペットの静止状態はそれぞれボタンかラベルの無い操作子の先にある。言葉は
+         * その操作子自身の言い方（キャンバスを決める、この軸でアバターが変わる、
+         * PSD を読み込む）から取り、ここで作らない。
+         *
+         * attributes と options はここに無い。Studio に編集画面が無く、どちらもプラグインや
+         * 取り込みが書き込む入れ物なので、行は保存名のままにしてある。
+         */
+        fields: {
+            nicknames: "別名",
+            group: "グループ",
+            canvas: "キャンバス",
+            avatarAxes: "アバターの軸",
+            psd: "PSD",
+            puppetDefaultState: "既定の状態",
+        },
         groupRenamed: "グループ名を変更",
     },
     /**
@@ -191,6 +230,18 @@ export const documentDiff = {
         statusMachine: "機械翻訳になった",
         statusTranslated: "翻訳済みになった",
         statusReviewed: "確認済みになった",
+    },
+    /**
+     * 第 2 層でしか使わない、開発者が名前を付けた文字列。
+     *
+     * 比較のときの一式ではなく三語だけ。これは「どちらを採るか」の行で、マージが尋ねるのは
+     * どちら側の定義を残すかであり、キーそのもの——プロジェクトで唯一、キーを人が打った表——が
+     * その行の目印になるから。
+     */
+    localizationKeys: {
+        added: "名前付き文字列を追加",
+        removed: "名前付き文字列を削除",
+        changed: "名前付き文字列を変更",
     },
     /**
      * インターフェースのドキュメント。サーフェスと、その上の要素。
@@ -227,7 +278,6 @@ export const documentDiff = {
         elementLayout: "位置か大きさを変更",
         elementStyle: "スタイルを変更",
         elementProps: "中身を変更",
-        elementBehavior: "ふるまいを変更",
         elementBinding: "結びつけを変更",
         elementAnimation: "アニメーションを変更",
         elementField: "{field} を変更",
@@ -345,6 +395,8 @@ export const documentDiff = {
         loopOn: "既定でループする",
         loopOff: "既定で 1 回だけ鳴る",
         order: "トラックを並べ替え",
+        /** 第 2 層でのみ使う。マージはトラックを丸ごと決めるので、その一つの項目は決めない。 */
+        changed: "トラックを変更",
     },
     /**
      * 第 1 段階のプロジェクトのセーブ変数とグローバル変数。
@@ -365,6 +417,8 @@ export const documentDiff = {
         /** 値を入れておくキー。名前の変更では決して動かさないように作ってある。 */
         storageKey: "すでに保存された値はもう読み出せない",
         description: "備考を変更",
+        /** 第 2 層でのみ使う。マージは変数を丸ごと決めるので、その一つの項目は決めない。 */
+        changed: "変数を変更",
     },
     /**
      * 第 1 段階の、セーブ 1 枠が持つ項目。
@@ -482,9 +536,24 @@ export const documentDiff = {
         encryptAssets: "アセットを暗号化",
         crash: "クラッシュ",
         crashPolicy: "ゲームが停止したとき",
-        assetOptimization: "最適化",
-        lossyImages: "画像を再圧縮",
-        lossyQuality: "画像の品質",
+        preload: "読み込み",
+        preloadBehavior: "プリロードの動作",
+        assetCompression: "圧縮",
+        compressImages: "画像を圧縮",
+        imageMode: "画像の設定",
+        imageQuality: "画像の品質",
+        imageWebpQuality: "WebP の品質",
+        imageMaxDimension: "画像の最大の辺",
+        compressAudio: "音声を圧縮",
+        audioMode: "音声の設定",
+        audioQuality: "音声の品質",
+        audioBitrateKbps: "音声のビットレート",
+        audioSampleRateHz: "最大サンプルレート",
+        compressVideo: "映像を圧縮",
+        videoMode: "映像の設定",
+        videoQuality: "映像の品質",
+        videoCrf: "映像の CRF",
+        videoMaxHeight: "映像の最大の高さ",
         vfx: "画面エフェクト",
         vfxFrameRate: "天候のフレームレート",
         mobile: "モバイル",

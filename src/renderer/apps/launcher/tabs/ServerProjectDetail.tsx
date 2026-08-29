@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ChevronLeft, MoreVertical } from "lucide-react";
 
-import { getInterface } from "@/lib/app/bridge";
 import {
     Button,
     ContextMenu,
@@ -12,7 +11,9 @@ import {
 } from "@/lib/components/elements";
 import type { ContextMenuDef } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { getProject, listProjectHistory } from "@/lib/team";
 import type { TranslationKey } from "@shared/i18n";
+import { serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsServerProject,
     VcsServerProjectDetail as ServerProjectDetail,
@@ -20,6 +21,7 @@ import type {
     VcsServerRevision,
 } from "@shared/types/vcs";
 import { ProjectDiscussion } from "./ProjectDiscussion";
+import { ProjectLiveSessions } from "./ServerLiveSessions";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
 
 /**
@@ -53,6 +55,14 @@ export interface ServerProjectDetailProps {
     project: VcsServerProject;
     /** The server's name, for the one sentence that has to say which list is being changed. */
     server: string;
+    /**
+     * Where this machine keeps this project, or null when it has never had it.
+     *
+     * Read by the live sessions below, which is the one thing here that acts on it: joining a
+     * room means opening the project, and a machine without it has to fetch one first. The list
+     * is what knows this, for the reason it knows it for the Open control beside the title.
+     */
+    localPath: string | null;
     /** Whether this server answers what it knows about one project. */
     canDetail: boolean;
     /** Whether this server answers a project's revisions. */
@@ -75,8 +85,6 @@ export interface ServerProjectDetailProps {
     onForget?: () => Promise<boolean>;
 }
 
-type Bridge = ReturnType<typeof getInterface>["vcs"];
-
 /**
  * What the two reads came back with, either of them null.
  *
@@ -84,14 +92,15 @@ type Bridge = ReturnType<typeof getInterface>["vcs"];
  * out; the panel tells them apart by what it asked for rather than by what came back.
  */
 type Answers = [
-    Awaited<ReturnType<Bridge["getServerProject"]>> | null,
-    Awaited<ReturnType<Bridge["listServerProjectHistory"]>> | null,
+    Awaited<ReturnType<typeof getProject>> | null,
+    Awaited<ReturnType<typeof listProjectHistory>> | null,
 ];
 
 export function ServerProjectDetailView({
     remoteOrigin,
     project,
     server,
+    localPath,
     canDetail,
     canHistory,
     action,
@@ -131,18 +140,13 @@ export function ServerProjectDetailView({
         setReading(canDetail || canHistory);
         if (!canDetail && !canHistory) return;
 
-        const bridge = getInterface();
         const answers = outstanding.current?.key === key
             ? outstanding.current.answers
             // Both at once: they are two reads of one project on one connection, and asking
             // in sequence would draw the versions a round trip after the facts.
             : Promise.all([
-                canDetail
-                    ? bridge.vcs.getServerProject(remoteOrigin, project.id).catch(() => null)
-                    : null,
-                canHistory
-                    ? bridge.vcs.listServerProjectHistory(remoteOrigin, project.id).catch(() => null)
-                    : null,
+                canDetail ? getProject(remoteOrigin, project.id) : null,
+                canHistory ? listProjectHistory(remoteOrigin, project.id) : null,
             ]);
         outstanding.current = { key, answers };
 
@@ -153,14 +157,13 @@ export function ServerProjectDetailView({
             setReading(false);
 
             if (read !== null) {
-                if (!read.success) setProblem("launcher.servers.problem.unknown");
-                else if (!read.data.ok) setProblem(SERVER_PROBLEM_KEYS[read.data.problem.kind]);
-                else setDetail(read.data.detail);
+                if (!read.ok) setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind]);
+                else setDetail(read.value);
             }
             // A history that failed is left silent rather than given a second sentence: the
             // reason is the same one the facts already carry, and a panel that says a server
             // is unreachable twice is a panel that says it badly.
-            if (history?.success && history.data.ok) setPage(history.data.page);
+            if (history?.ok) setPage(history.value);
         });
 
         return () => { live = false; };
@@ -317,6 +320,15 @@ export function ServerProjectDetailView({
                     holds a session and offers conversations, which is what the component
                     itself checks: a deployment that does not is a page with no such
                     section rather than one with an empty one. */}
+                {/* Above the conversation, because it is happening now and a note is not.
+                    Drawn only where the server offers rooms and there is one open - see
+                    `ServerLiveSessions` for why joining is here rather than in the editor. */}
+                <ProjectLiveSessions
+                    remoteOrigin={remoteOrigin}
+                    project={known}
+                    localPath={localPath}
+                />
+
                 <ProjectDiscussion remoteOrigin={remoteOrigin} projectId={known.id} />
 
                 {versionsUnavailable && !fileUnread && !empty && (

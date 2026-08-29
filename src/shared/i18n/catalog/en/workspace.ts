@@ -114,6 +114,9 @@ export const workspace = {
             // On the mark a line wears while somebody else is translating it. A person is named:
             // there is no width for a name beside the monogram, and a truncated one names nobody.
             entryClaimed: "{name} is translating this line",
+            // The source column of a named-key row is a different document from the translation
+            // beside it, so it names a different act. Both can be held at once, by two people.
+            keyClaimed: "{name} is editing this string",
         },
     },
     voice: {
@@ -363,7 +366,6 @@ export const workspace = {
         liveOpen: "Start a live session",
         liveUntitled: "Live session",
         liveMembers: "{count} in",
-        liveJoin: "Join",
         liveLeave: "Leave",
         liveEnd: "End",
         // Why one may not be started or joined. A workspace holds one freeze at a time, so
@@ -378,6 +380,10 @@ export const workspace = {
         liveHost: "Host",
         liveGuest: "Guest",
         liveEntering: "Entering",
+        // Standing in front of a host who has not answered yet. Its own word rather than
+        // "Entering", because nothing on this machine has happened and nothing will until
+        // somebody else looks at a notification.
+        liveAsking: "Waiting to be let in",
         liveLeaving: "Leaving",
         // Joined, and still applying everything the room did before this window arrived.
         liveCatchingUp: "Catching up with the session.",
@@ -389,22 +395,64 @@ export const workspace = {
         liveNoRepository: "This project has no version history.",
         liveNoRevision: "Record a version to start a live session.",
         liveCloneRequired: "That session is on {project}. Open that project to join it.",
-        liveVersionMismatch: "That session opened on an older version than this project holds.",
-        // The remedy, because there is no way round it from here: a session cannot be re-based on
-        // a newer version, so the two copies have to meet on the server first. Said as a second
-        // line, like the divergence has, rather than as a longer first one.
-        liveVersionMismatchNext: "Send this copy to the server, then ask the host to start the session again.",
+        // Reached only by starting a session now: joining adopts the version the room opened on, so
+        // there is no longer such a thing as a copy that cannot reach it.
+        liveVersionMismatch: "This project and the server have both changed since they last met.",
+        liveVersionMismatchNext: "Get the server's versions, settle any differences, then try again.",
         liveRoomGone: "That session is no longer open.",
+        liveRoomGoneNext: "Start one, or wait for the host to open it again.",
+        // Wrong digits and digits nobody is using, in one sentence, because the server answers
+        // both with one: telling them apart would turn guessing into a map of which rooms exist.
+        liveNoSuchCode: "No live session has that passcode.",
+        liveJoinRefused: "The host did not let you in.",
+        // Not a refusal. The request is still standing on the server; this window stopped waiting.
+        liveJoinUnanswered: "Nobody answered.",
+        liveJoinUnansweredNext: "Ask again from the Team screen in the launcher when they are back.",
         // The room is there and this window still cannot follow it: the first because the
         // host is old enough not to say which story it opened on, the second because the
         // story it named is not in this copy even after syncing.
         liveRoomStoryUnknown: "That session does not say which story it is about. Ask the host to update Studio.",
         liveStoryNotHere: "That session is about a story this project does not have.",
+        liveStoryNotHereNext: "Ask the host to send that story to the server, then try again.",
         liveRefused: "That server refused the session.",
+        liveRefusedNext: "Try again once that server answers.",
         liveFailed: "The live session could not be started.",
+        liveFailedNext: "Try again.",
+        liveNoInstanceNext: "Check the connection to that server, then try again.",
+        liveNoRepositoryNext: "Enable version control for this project, then try again.",
+        liveMergeConflictsNext: "Settle the merge, then try again.",
         // How a session ended, for the two endings the author did not ask for. Leaving is
         // silent: they pressed the control and watched the row change.
-        liveEndedHostLeft: "The host left. The session is over.",
+        // Both halves, because the second one is what the author is about to see on screen: the
+        // room's document was written over this tree on the way in, and it has just been written
+        // back. Without it the editor changing under them is an unexplained third event.
+        liveEndedHostLeft: "The host left. The session is over, and your own work is back.",
+        // Said once per person per room, and never about the people who were already in it when
+        // this window arrived: those are the room rather than something that happened in it.
+        liveJoined: "{name} joined the session.",
+        // The host's, and the two answers are on the notice itself - sending them to find a panel
+        // while somebody waits is the interruption this is meant to avoid.
+        liveAsked: "{name} is asking to join the session.",
+        // On the title-bar control, where the dot is. A count rather than a name: the names are
+        // one press away, and a tooltip that named one of three would be describing a queue by
+        // whoever happened to be at the front of it.
+        liveWaitingToJoin: "{count} waiting to join",
+        // The heading over the same two answers inside the dialog, which is where the title
+        // bar's mark points. A count would be a second copy of what the mark already said.
+        liveWaitingLabel: "Waiting to be let in",
+        liveAdmit: "Let in",
+        liveTurnAway: "Not now",
+        // How people get into a room, as the three controls that set it. Each says both halves:
+        // whether the room can be found, and whether a person decides who comes in.
+        liveRuleOpen: "Anyone on the server",
+        liveRuleOpenDetail: "Listed for everybody, and they join without asking.",
+        liveRuleRequest: "Anyone, once you say yes",
+        liveRuleRequestDetail: "Listed for everybody, and you answer each person who asks.",
+        liveRuleCode: "Only with the passcode",
+        liveRuleCodeDetail: "Not listed. Anybody with the four digits joins without asking.",
+        // Beside the digits. The one thing an author would otherwise find out by trying it.
+        liveCodeFixed: "One passcode per session. To change it, end this one and start another.",
+        liveCodeLabel: "Passcode",
         // Said as what happened to this copy rather than as a goodbye: the session is gone
         // AND what is on this disk is not what the others are looking at.
         liveEndedDiverged: "This copy stopped matching the session and left it.",
@@ -420,8 +468,10 @@ export const workspace = {
         liveRoomOpen: "{name} has a live session open.",
         // What the two irreversible acts do, said before they are taken rather than discovered
         // afterwards. Both take seconds, neither can be cancelled, and both freeze the project.
-        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the story it is about and the cast.",
-        liveJoinWhat: "Joining records a checkpoint, brings this copy to the session's version, and freezes everything in this project except the story it is about and the cast.",
+        liveStartWhat: "Starting records a checkpoint, sends it to the server, and freezes everything in this project except the documents a session carries.",
+        // Where the way into somebody else's room is, said wherever one is reported. Every way in
+        // is in the launcher, because joining usually means getting the project first.
+        liveJoinFromLauncher: "Join it from the Team screen in the launcher.",
         // Which document a session is about. The picker on the way in, and the value afterwards.
         liveStory: "Story",
         liveHostedBy: "Hosted by {name}",
@@ -440,8 +490,11 @@ export const workspace = {
         // an editor that has stopped working.
         livePendingOne: "1 change is waiting for the host.",
         livePendingMany: "{count} changes are waiting for the host.",
-        // What the session takes, said once rather than discovered one control at a time.
-        liveFrozenWhat: "Only the session's story and the cast are saved. Everything else in this project is current and read-only until the session ends.",
+        // What the session takes, said once rather than discovered one control at a time. Named by
+        // what an author would go looking for rather than by document kind, and kept in step with
+        // `shared/live/sharedDocuments`: a sentence that lists less than the session carries sends
+        // somebody hunting for a control that was working all along.
+        liveFrozenWhat: "The stories, the cast, the translations, the whole asset library - files included - and the project's own tables (the dictionary, the audio tracks, the asset sets, the variables, the named strings, the build variants, the DLC and the palette) are saved. Everything else here is current and read-only until the session ends.",
         liveUnavailableHere: "Unavailable in a live session.",
         // Rows somebody else is writing, gathered where they can be read without hunting for the
         // mark on each one.
@@ -453,6 +506,9 @@ export const workspace = {
         liveFrozenTitle: "A live session is open.",
         liveLeaveSession: "Leave the live session",
         liveEndSession: "End the live session",
+        // What a host leaving a room with somebody else in it does. There is no successor: the host
+        // holds the only copy that counts, so everybody else goes back to their own work.
+        liveEndSessionForEveryone: "End the session for everyone",
         // What is attached to the project without being in it, and how much of it was
         // written against a version that is no longer the current one.
         attached: "{count} attached",
@@ -484,6 +540,8 @@ export const workspace = {
             title: "New Tab",
         },
         tabMenu: {
+            // Turns a preview tab - the italic one a group holds at most one of - into an ordinary tab.
+            keepOpen: "Keep open",
             close: "Close",
             closeOthers: "Close others",
             closeToRight: "Close tabs to the right",
@@ -557,6 +615,12 @@ export const workspace = {
             title: "Notifications",
             clearAll: "Clear",
             empty: "No messages yet",
+            // Under the toast stack when the corner cannot hold every card at once. Read with
+            // translator.tn("workspace.shell.notifications.queued", count).
+            queued: {
+                one: "{count} more waiting",
+                other: "{count} more waiting",
+            },
         },
         // The custom background dialog (opened from Settings or the command palette).
         background: {
@@ -621,6 +685,8 @@ export const workspace = {
              */
             task: {
                 weatherBake: "Baking screen effect",
+                toolchainDownload: "Downloading build tools",
+                pluginDownload: "Downloading plugin files",
             },
             openConsole: "Open the console",
             unsavedChanges: "Unsaved changes",
@@ -681,10 +747,12 @@ export const workspace = {
             frozenTitle: "Changes are not being saved",
             frozenDetailRevision: "Version {version} is open. Nothing is saved while a version is open.",
             frozenDetailManual: "The workspace is frozen. Unfreeze it to resume saving.",
-            // A live session saves its own story and refuses the rest, so the title above
-            // would be false about the file the author is most likely typing into.
+            // A live session saves the documents it carries and refuses the rest, so the title
+            // above would be false about the file the author is most likely typing into.
             frozenTitleSession: "That file is not being saved",
-            frozenDetailSession: "A live session is open. Only its story and the cast are saved; leave the session to change anything else.",
+            // The documents themselves are named where the author asks what a session takes -
+            // `liveFrozenWhat` - rather than here, which is a line under a title in a status bar.
+            frozenDetailSession: "A live session is open, and only the documents it carries are saved. Leave the session to change anything else.",
             // A merge has no "unfreeze": the working tree holds two sides at once until the
             // merge is finished, so naming that is the only useful thing this can say.
             frozenDetailMerge: "A merge is unfinished. Finish it from the version panel to resume saving.",
@@ -733,6 +801,11 @@ export const workspace = {
             // once, not read a different excuse on each button. The controls are disabled rather
             // than hidden precisely so there is something to hover.
             unavailable: "Unavailable while the project is frozen. Unfreeze the project to use it.",
+            // The same sentence for the one freeze that has no unfreeze. A live session ends by
+            // being left or closed, so telling the author to unfreeze the project would name a
+            // control that is itself unavailable. Which settings a session does leave writable is
+            // said where the session is started or joined, not on every greyed control.
+            unavailableLive: "Unavailable during a live session. Leave the session to use it.",
         },
         // Browsing history in the real editors, until the version rail exists. "Previous" rather than
         // a picker on purpose: choosing a revision needs a list, the list is the rail, and a milestone
@@ -874,6 +947,11 @@ export const workspace = {
             // Refused because the app is closing. Rare, and worth its own sentence: the alternative
             // wording an author would otherwise see names koffi and a worker thread.
             closingWithApp: "Studio is closing. Try again after it restarts.",
+            commitBeforeSync: "Submit a version before getting the server's.",
+            // A push the server would not take because both sides have moved on. The remedy is the
+            // one the backend names; what it does not do is name it in the reader's language, or
+            // without the internal operation that failed in front of it.
+            branchDiverged: "This project and the server have both changed. Get the server's versions first, then send yours.",
             // "Nobody has looked yet", which is not the same as "clean" - and the difference matters,
             // because looking is a scan and this surface never does it on its own.
             changesUnknown: "Not checked",
@@ -958,6 +1036,8 @@ export const workspace = {
                 checkpointClose: "Checkpoint before closing the project",
                 checkpointBuild: "Checkpoint before build",
                 checkpointRestore: "Checkpoint before restore",
+                checkpointLiveSession: "Checkpoint before a live session",
+                liveSessionMatched: "Matched the live session's version",
                 // `{version}` is a revision number or a hash. Not language, so it is not translated.
                 restored: "Restored version {version}",
             },
@@ -1091,7 +1171,19 @@ export const workspace = {
                     // The server answered and made a project, and it is not this one. A server
                     // too old to be asked for this does exactly that.
                     wrongRepository: "That server recorded a different project, so nothing was sent to it.",
+                    // A different project already answering to the name asked for. Names the
+                    // remedy, because the only one is to pick another name.
+                    nameTaken: "Another project on that server is already called that. Choose a different name.",
+                    // The same repository under a name it was published as before, on a
+                    // server whose operator has said a repository gets one name. Names it,
+                    // because what the author does next is connect to that project.
+                    alreadyPublished: "This project is already on that server as {name}, and that server gives a project one name.",
                     unknown: "That server did not record the project.",
+                    // Not a refusal: this project has been on that server before - a copied
+                    // project folder carries the same repository - and it is registered under the
+                    // name it was published as. Said rather than done quietly, because the author
+                    // typed a name and it is not the one in the address.
+                    connectedAs: "This project is already on that server as {name}, so it is connected under that name. Use Send to put this machine's versions on top of what is there.",
                 },
                 /**
                  * Signing this installation in to the server, and saying who is signed in.

@@ -3,7 +3,7 @@ import { CircleDashed } from "lucide-react";
 import type { VcsMergeSideChoice } from "@shared/types/vcs";
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
-import { splitDocumentPath } from "./changeIndex";
+import { renderDocumentName } from "./documentName";
 import type { ConflictRowView } from "./mergeDecisionView";
 
 /**
@@ -104,7 +104,6 @@ function ConflictIndexRow({
     onChooseMerged: () => void;
 }) {
     const { t, tn } = useTranslation();
-    const { directory, name } = splitDocumentPath(row.path);
     const merging = row.decision === "per-change";
 
     return (
@@ -139,10 +138,11 @@ function ConflictIndexRow({
                             className="h-3 w-3 shrink-0 text-warning"
                         />
                     )}
-                <span className="min-w-0 truncate text-xs text-fg">{name}</span>
-                {directory !== null && (
-                    <span className="min-w-0 shrink truncate text-2xs text-fg-subtle">{directory}</span>
-                )}
+                {/* The thing's own name, and only it. The directory used to sit beside it for the
+                    reason the comparison index gives: when the title was a file name, a column of
+                    rows all reading `storydoc.json` needed something to tell them apart. The name
+                    tells them apart now, and the path is one hover away. */}
+                <span className="min-w-0 truncate text-xs text-fg">{renderDocumentName(row.name, t)}</span>
             </button>
 
             <div

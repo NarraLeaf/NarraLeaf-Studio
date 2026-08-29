@@ -13,7 +13,7 @@ import type {
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
-import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
@@ -55,7 +55,8 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "@shared/types/team";
-import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome, VcsServerProjectHistoryOutcome, VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
+import type { TeamTransferOutcome, TeamTransferRequest } from "@shared/types/teamTransfer";
+import type { RevisionId, VcsAddServerOutcome, VcsLocalRepository, VcsServerDescription, VcsAvailability, VcsCheckpointReason, VcsCommitOptions, VcsCommitResult, VcsConflictChoice, VcsHistoryEntry, VcsInitOptions, VcsMergeCompletion, VcsMergeDecision, VcsMergeDocument, VcsMergeResolveResult, VcsMergeState, VcsPasswordSignInOutcome, VcsPublishOutcome, VcsRepositoryInfo, VcsPushResult, VcsRestoreOptions, VcsRestoreResult, VcsRevisionDiffResult, VcsServerSession, VcsSignInOutcome, VcsStatus, VcsSyncResult, VcsSyncState, VcsThreeWayResult, VcsWorkingFileRead, VcsWorkingTreeDiffResult } from "@shared/types/vcs";
 import type { RendererPrivilegedBootstrapInterface, RendererPrivilegedInterface } from "@shared/types/renderer";
 import { IPCClient } from "./ipcClient";
 import { webUtils } from "electron";
@@ -105,6 +106,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
+            requestReadManyRaw: (actor: PrivilegedActor, paths: string[]) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestReadMany", paths, raw: true }),
             requestWriteBatch: (actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWriteBatch", entries }),
             ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
@@ -272,6 +275,9 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.workspaceImportProjectPackage, { packagePath, targetDir }),
         exportConsoleLogs: (defaultFileName: string, content: string) =>
             ipcClient.invoke(IPCEventType.workspaceExportConsoleLogs, { defaultFileName, content }),
+        liveIntentTaken: () => ipcClient.invoke(IPCEventType.workspaceLiveIntentTaken, {}),
+        onJoinLive: (handler: (joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]>) => void) =>
+            ipcClient.onMessage(IPCEventType.workspaceJoinLive, data => handler(data.joinLive)),
         setRecoveryMode: (enabled: boolean, reason?: string) =>
             ipcClient.invoke(IPCEventType.workspaceSetRecoveryMode, { enabled, reason }),
         openProjectFolder: () =>
@@ -286,6 +292,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
+        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceResolveAllAssetUrls, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
         onMenuAction: (handler: (action: MenuActionId) => void) =>
@@ -349,6 +357,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
+        recentProjectIcons: () =>
+            ipcClient.invoke(IPCEventType.appRecentProjectIcons, {}) as Promise<RequestStatus<{ icons: RecentProjectIcon[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>
@@ -416,6 +426,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
+        resolveAllAssetUrls: () =>
+            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<{ urls: Record<string, string> }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
@@ -607,21 +619,6 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.vcsRefreshServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
         forgetServer: (remoteOrigin: string) =>
             ipcClient.invoke(IPCEventType.vcsForgetServer, { remoteOrigin }) as Promise<RequestStatus<{ servers: VcsServerSession[] }>>,
-        /** Goes to the network. The list is asked for every time; nothing here caches it. */
-        listServerProjects: (remoteOrigin: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerProjects, { remoteOrigin }) as Promise<RequestStatus<VcsServerProjectsOutcome>>,
-        /** Goes to the network. Only for a server that advertised `project-detail`. */
-        getServerProject: (remoteOrigin: string, projectId: string) =>
-            ipcClient.invoke(IPCEventType.vcsGetServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDetailOutcome>>,
-        /** Goes to the network. Takes the project off the server's list; the repository keeps everything in it. */
-        deleteServerProject: (remoteOrigin: string, projectId: string) =>
-            ipcClient.invoke(IPCEventType.vcsDeleteServerProject, { remoteOrigin, projectId }) as Promise<RequestStatus<VcsServerProjectDeleteOutcome>>,
-        /** Goes to the network. Only for a server that advertised `project-history`. */
-        listServerProjectHistory: (remoteOrigin: string, projectId: string, limit?: number, before?: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerProjectHistory, { remoteOrigin, projectId, limit, before }) as Promise<RequestStatus<VcsServerProjectHistoryOutcome>>,
-        /** Goes to the network. Only for a server that advertised `members`. */
-        listServerMembers: (remoteOrigin: string) =>
-            ipcClient.invoke(IPCEventType.vcsListServerMembers, { remoteOrigin }) as Promise<RequestStatus<VcsServerMembersOutcome>>,
         /**
          * Goes to the network, carrying no token because this is where one comes from.
          * The password reaches the main process and is kept by neither side.
@@ -686,6 +683,14 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
         /** A session opened, dropped, or was refused. Sent to every window. */
         onConnectionChanged: (handler: (payload: { connection: TeamConnection }) => void) =>
             ipcClient.onMessage(IPCEventType.teamConnectionChanged, handler),
+        /**
+         * Move a file between this project and a server, or ask how far one has got.
+         *
+         * ⚠ Names a path; never carries a byte. The reading, the writing and the connection all
+         * happen in the main process - see `@shared/types/teamTransfer`.
+         */
+        transfer: (request: TeamTransferRequest) =>
+            ipcClient.invoke(IPCEventType.teamTransfer, request) as Promise<RequestStatus<TeamTransferOutcome>>,
     },
 
     gameBuild: {

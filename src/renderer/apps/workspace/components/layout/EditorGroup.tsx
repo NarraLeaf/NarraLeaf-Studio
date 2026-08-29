@@ -241,6 +241,16 @@ export function EditorGroup({ group }: EditorGroupProps) {
         if (!context) return;
         context.services.get<UIService>(Services.UI).getStore().closeOtherEditorGroups(group.id);
     }, [context, group.id]);
+    // "I am staying here": the gesture that keeps a preview tab from being taken over by the next
+    // thing the author clicks. The other half of the rule lives in the editors themselves, which
+    // promote their own tab as soon as an edit lands in it.
+    const keepTabOpen = useCallback(
+        (tabId: string) => {
+            if (!context) return;
+            context.services.get<UIService>(Services.UI).getStore().promoteEditorTab(tabId, group.id);
+        },
+        [context, group.id],
+    );
     const hasSplit = !("tabs" in editorLayout);
 
     const tabMenuItems = useMemo<ContextMenuDef>(() => {
@@ -256,6 +266,16 @@ export function EditorGroup({ group }: EditorGroupProps) {
         const all = closableIds(tabs);
 
         return [
+            ...(target.preview
+                ? [
+                      {
+                          id: "keep-open",
+                          label: t("workspace.shell.tabMenu.keepOpen"),
+                          onClick: () => keepTabOpen(target.id),
+                      },
+                      { separator: true as const, id: "sep-keep-open" },
+                  ]
+                : []),
             {
                 id: "close",
                 label: t("workspace.shell.tabMenu.close"),
@@ -320,6 +340,7 @@ export function EditorGroup({ group }: EditorGroupProps) {
         context,
         group.id,
         group.tabs,
+        keepTabOpen,
         menuTabId,
         t,
         splitGroup,
@@ -523,6 +544,10 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             }
                                         `}
                                         onClick={(e) => handleTabClick(tab.id, e)}
+                                        onDoubleClick={(e) => {
+                                            e.stopPropagation();
+                                            keepTabOpen(tab.id);
+                                        }}
                                         onContextMenu={(e) => handleTabContextMenu(tab.id, e)}
                                         onAuxClick={(e) => {
                                             // Middle click closes, the muscle memory every browser/IDE trains.
@@ -539,28 +564,49 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                         )}
                                         {tab.icon && <span className="w-4 h-4 flex-shrink-0">{tab.icon}</span>}
 
-                                        <span className="text-sm whitespace-nowrap">{String(tab.title)}</span>
+                                        {/* A preview tab wears its title in italics - the same one
+                                            mark every editor uses for "this is not settled yet",
+                                            and the only thing separating a tab that will be taken
+                                            over from one that will not. */}
+                                        <span className={`text-sm whitespace-nowrap ${tab.preview ? "italic" : ""}`}>
+                                            {String(tab.title)}
+                                        </span>
 
-                                        {tab.modified && (
-                                            <Circle className="w-2 h-2 fill-current text-primary" />
-                                        )}
-
-                                        {closable && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => handleCloseTab(tab.id, e)}
-                                                className={`
-                                                    w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
-                                                    ${
-                                                        isActive
-                                                            ? "hover:bg-fill-strong"
-                                                            : "opacity-0 group-hover:opacity-100 hover:bg-fill"
-                                                    }
-                                                `}
-                                                aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
+                                        {/* One slot for the unsaved dot and the close button, the
+                                            two things a tab says about itself after its name. They
+                                            share it rather than sit side by side: a dirty tab is
+                                            then no wider than a clean one, and the strip fits the
+                                            same number of tabs either way. At rest the dot is what
+                                            shows; hovering swaps in the close button, which is the
+                                            only moment it is wanted. */}
+                                        {(closable || tab.modified) && (
+                                            <span className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                                                {tab.modified && (
+                                                    <Circle
+                                                        // Inherits the tab's own foreground rather
+                                                        // than wearing the accent: the dot marks one
+                                                        // fact about a tab the author is already
+                                                        // looking at, and an accent-coloured one
+                                                        // outshouts the title beside it.
+                                                        className={`h-2 w-2 fill-current transition-opacity ${closable ? "group-hover:opacity-0" : ""}`}
+                                                        aria-hidden
+                                                    />
+                                                )}
+                                                {closable && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleCloseTab(tab.id, e)}
+                                                        className={`
+                                                            absolute inset-0 cursor-default rounded-md flex items-center justify-center transition
+                                                            ${isActive ? "hover:bg-fill-strong" : "hover:bg-fill"}
+                                                            ${isActive && !tab.modified ? "" : "opacity-0 group-hover:opacity-100"}
+                                                        `}
+                                                        aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </span>
                                         )}
                                     </div>
                                 );

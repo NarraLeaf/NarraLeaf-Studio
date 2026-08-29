@@ -5,6 +5,9 @@ import type { DevModeBundle } from "@shared/types/devMode";
 import type { BlueprintDebugEvent } from "@shared/types/blueprint/debug";
 import {
     BLUEPRINT_GAME_CHARACTERS_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY,
+    BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY,
     BLUEPRINT_GAME_NAMETAG_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY,
     BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY,
@@ -21,13 +24,14 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { useBlueprintRuntimeCore, type BlueprintRuntimeCore } from "@/lib/ui-editor/runtime/game/useBlueprintRuntimeCore";
 import { SurfaceLifecycleOrchestrator } from "@/lib/ui-editor/runtime/app/lifecycle/surfaceLifecycleOrchestrator";
 import type { GameUiSlotHostOptions } from "@/lib/ui-editor/runtime/app/StageSlotSurfaceShell";
-import type { ChoiceSlotRuntime } from "@/lib/ui-editor/runtime/app/ChoiceSlotSurface";
+import { createChoiceMenus } from "@/lib/ui-editor/runtime/app/choiceMenus";
 import {
     createGameUiSlotComponents,
     createLiveGameUiCallbacks,
     createNlrGameWithGameUi,
 } from "@/lib/ui-editor/runtime/app/gameUiSlots";
 import { audioTracksToBusDeclarations } from "@/lib/ui-editor/runtime/app/audioBusRuntime";
+import { createDialogClickTargets } from "@/lib/ui-editor/runtime/app/dialogClickTargets";
 import { readNlrCharacterName } from "@/lib/ui-editor/runtime/app/nlrDialogReaders";
 import type { AudioTrackService } from "@/lib/workspace/services/audio/AudioTrackService";
 import type { StoryPersistenceBridge } from "@/lib/ui-editor/runtime/game/storyCompiler";
@@ -103,9 +107,9 @@ export function useStoryPreviewGameUi(input: {
     }, [widgetPatchesByScope]);
 
     // Refs shared by the Game UI slots and the LiveGame callbacks across a session.
-    const choiceRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
+    const choiceMenus = useMemo(() => createChoiceMenus(), []);
     const currentDialogNametagRef = useRef<string | null>(null);
-    const dialogVirtualClickTargetRef = useRef<HTMLElement | null>(null);
+    const dialogClickTargets = useMemo(() => createDialogClickTargets(), []);
 
     const designSize = useMemo(() => {
         if (!context) {
@@ -215,16 +219,16 @@ export function useStoryPreviewGameUi(input: {
             throw new Error("Story preview: bundle is not ready");
         }
         const activeCore: BlueprintRuntimeCore | null = core;
-        choiceRuntimeRef.current = null;
+        choiceMenus.clear();
         currentDialogNametagRef.current = null;
-        dialogVirtualClickTargetRef.current = null;
+        dialogClickTargets.clear();
 
         const liveGameCallbacks = createLiveGameUiCallbacks({
             requireLiveGame: gameInput.requireLiveGame,
             getLiveGame: gameInput.getLiveGame,
-            choiceRuntimeRef,
+            choiceMenus,
             currentDialogNametagRef,
-            dialogVirtualClickTargetRef,
+            dialogClickTargets,
         });
         const notAvailable = (operation: string) => async (): Promise<never> => {
             throw new Error(`${operation} is not available in the story preview`);
@@ -283,11 +287,9 @@ export function useStoryPreviewGameUi(input: {
             logLabel: "story-preview",
             slotHostOptions,
             setDialogVirtualClickTarget: target => {
-                dialogVirtualClickTargetRef.current = target;
+                dialogClickTargets.set(target);
             },
-            setChoiceRuntime: runtime => {
-                choiceRuntimeRef.current = runtime;
-            },
+            choiceMenus,
         });
         const game = createNlrGameWithGameUi({
             width: designSize.width,
@@ -334,6 +336,12 @@ export function useStoryPreviewGameUi(input: {
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_NAMETAG_STATE_KEY, null);
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_CHARACTER_ID_STATE_KEY, null);
                 activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_SPEAKER_COLOR_STATE_KEY, null);
+                // Parity with the Dev Mode host's own teardown: the dialog slot's bridge publishes
+                // the line, and a preview that ended between runs must not leave the last line
+                // reading as one still waiting for the player.
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_WAITING_STATE_KEY, false);
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_TEXT_STATE_KEY, "");
+                activeCore?.scopeBridge.globalSet(BLUEPRINT_GAME_DIALOG_NARRATOR_STATE_KEY, false);
             };
         };
 

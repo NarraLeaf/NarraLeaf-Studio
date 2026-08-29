@@ -81,6 +81,12 @@ const goto = (id: string, targetLabel: string): BlockSpec => ({
     payload: { control: "goto", targetLabel },
 });
 const jump = (id: string, targetSceneId: string): BlockSpec => ({ id, kind: "jump", payload: { targetSceneId } });
+/** A returnable jump: the scene it is in is suspended, and the run comes back to the row after it. */
+const call = (id: string, targetSceneId: string): BlockSpec => ({
+    id,
+    kind: "jump",
+    payload: { targetSceneId, returnable: true },
+});
 const ending = (id: string, name: string): BlockSpec => ({ id, kind: "control", payload: { control: "ending", name } });
 const invalid = (id: string, source: string): BlockSpec => ({ id, kind: "invalid", payload: { source } });
 const choice = (id: string, children: BlockSpec[]): BlockSpec => ({
@@ -699,6 +705,345 @@ describe("story/ending-name-duplicate", () => {
     });
 });
 
+// --- story/call-cycle -------------------------------------------------------
+
+describe("story/call-cycle", () => {
+    it("reports the call that closes a loop back into the scene it started in", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2"), narration("b2")]),
+                    scene("sc2", "Interlude", [call("b3", "sc1")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCallCycle.message");
+        // The row the author has to change is the one that closes the loop, not the whole chain.
+        expect(findings[0].location).toMatchObject({ blockId: "b3" });
+    });
+
+    it("reports a scene that calls itself", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [call("b1", "sc1")])])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "b1" });
+    });
+
+    it("says nothing about a loop of plain jumps", () => {
+        // A plain jump unloads what it leaves, so nothing is on a call stack and coming back round is
+        // ordinary looping.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b1", "sc2")]),
+                    scene("sc2", "Interlude", [jump("b2", "sc1")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about two scenes calling the same one", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc3"), jump("b2", "sc2")]),
+                    scene("sc2", "Interlude", [call("b3", "sc3")]),
+                    scene("sc3", "Title card", [narration("b4")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a cycle that exists only through a switched-off row", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Interlude", [{ ...call("b2", "sc1"), disabled: true }]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reports the closing call of a three-scene ring, and only that one", () => {
+        // Every row on the ring is a legitimate call on its own; what the author has to change is the
+        // one that arrives back at a scene already suspended, which is the third.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Interlude", [call("b2", "sc3")]),
+                    scene("sc3", "Coda", [call("b3", "sc1")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyCallCycle.message");
+        expect(findings[0].location).toMatchObject({ sceneId: "sc3", blockId: "b3" });
+        // The row is what an author opens, so the finding has to navigate to it rather than to the
+        // scene: a ring of three scenes reported against a scene would leave them counting rows.
+        expect(findings[0].target).toEqual({
+            kind: "storyBlock",
+            storyId: "s1",
+            sceneId: "sc3",
+            blockId: "b3",
+            storyName: "Main",
+            sceneName: "Coda",
+        });
+    });
+
+    it("says nothing about a diamond, where two calls meet again without closing", () => {
+        // A calls B and C, and both call D. D is on the stack twice over the run's life but never
+        // twice at once, which is the only thing the engine refuses.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2"), call("b2", "sc3")]),
+                    scene("sc2", "Left", [call("b3", "sc4")]),
+                    scene("sc3", "Right", [call("b4", "sc4")]),
+                    scene("sc4", "Title card", [narration("b5")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a ring of three plain jumps", () => {
+        // Nothing is suspended, so nothing is entered twice at once. This is ordinary looping, and a
+        // rule that reported it would be reporting the shape half the branching stories in the world
+        // are written in.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b1", "sc2")]),
+                    scene("sc2", "Interlude", [jump("b2", "sc3")]),
+                    scene("sc3", "Coda", [jump("b3", "sc1")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("says nothing when the way back out of a called scene is a plain jump", () => {
+        // A calls B, and B jumps plainly back to A. A plain jump taken while a call is open gives the
+        // whole call stack up and unloads everything parked behind it, so A is entered fresh rather
+        // than entered a second time - which is why the engine does not refuse it and this does not
+        // report it. The loop is real, but it is a loop of the kind the flow map draws.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Interlude", [jump("b2", "sc1")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("reads calls written inside a menu option, not only the ones at the top level", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [choice("ch1", [option("o1", "Look", [call("b1", "sc2")])])]),
+                    scene("sc2", "Interlude", [choice("ch2", [option("o2", "Go back", [call("b2", "sc1")])])]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc2", blockId: "b2" });
+    });
+
+    it("reads calls written inside a condition branch too", () => {
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [condition("c1", [branch("br1", "if", [call("b1", "sc2")])])]),
+                    scene("sc2", "Interlude", [condition("c2", [branch("br2", "if", [call("b2", "sc1")])])]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc2", blockId: "b2" });
+    });
+
+    it("reports each ring once when a story holds two of them", () => {
+        // One finding per ring, not one per row and not one for the pair: two unrelated defects are
+        // two things to fix.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "A", [call("b1", "sc2")]),
+                    scene("sc2", "B", [call("b2", "sc1")]),
+                    scene("sc3", "C", [call("b3", "sc4")]),
+                    scene("sc4", "D", [call("b4", "sc3")]),
+                ]),
+            ),
+        );
+
+        expect(findings.map(finding => finding.location)).toMatchObject([
+            { sceneId: "sc2", blockId: "b2" },
+            { sceneId: "sc4", blockId: "b4" },
+        ]);
+    });
+
+    it("says nothing about a call naming a scene the story does not have", () => {
+        // `story/jump-missing` owns that row. Two rules reporting one broken jump would have the
+        // author fixing it twice.
+        const findings = run(
+            "story/call-cycle",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [call("b1", "gone")])])),
+        );
+        expect(findings).toEqual([]);
+    });
+});
+
+// --- story/dead-end and returnable jumps ------------------------------------
+
+describe("story/dead-end reads a returnable jump as staying put", () => {
+    it("reports a scene whose last row is a call and has nothing after it", () => {
+        // The call returns and there is nowhere left to go, so play runs off the end here.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b0", "sc3"), call("b1", "sc2")]),
+                    scene("sc2", "Title card", [narration("b2")]),
+                    scene("sc3", "Chapter 2", [narration("b3")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1", blockId: "b1" });
+    });
+
+    it("says nothing about the called scene running off its own end", () => {
+        // That is the return, and it is the only way a called scene ever finishes.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2"), jump("b2", "sc3")]),
+                    scene("sc2", "Title card", [narration("b3")]),
+                    scene("sc3", "Chapter 2", [narration("b4")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("still reports a scene that leaves on one arm and falls through on the other", () => {
+        // The call in the else arm changes nothing: that arm still runs off the end.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [
+                        jump("b0", "sc2"),
+                        condition("c1", [
+                            branch("br1", "if", [jump("j1", "sc2")]),
+                            branch("br2", "else", [call("j2", "sc2")]),
+                        ]),
+                    ]),
+                    scene("sc2", "Chapter 2", [narration("b2")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1", blockId: "c1" });
+    });
+
+    it("reports a scene whose only row is a call, once the story names an ending anywhere", () => {
+        // Nothing else in the scene, so there is no other transfer to fall back on: what makes this
+        // reportable is the `/ending` elsewhere in the story, which is the author saying they have a
+        // way to mark where the story stops. Without one the rule keeps its old bargain - see the
+        // pair below.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Title card", [narration("b2")]),
+                    scene("sc3", "Chapter 2", [ending("b3", "The end")]),
+                ]),
+            ),
+        );
+
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ sceneId: "sc1", blockId: "b1" });
+    });
+
+    it("stays silent about that same scene in a story that names no endings at all", () => {
+        // The fallback the rule has always had: with no `/ending` anywhere, a scene that hands
+        // control nowhere reads as a deliberate last scene, and a call is not a hand-off.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [call("b1", "sc2")]),
+                    scene("sc2", "Title card", [narration("b2")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("exempts a called scene even when a plain jump also reaches it", () => {
+        // The exemption is for the whole scene, not for the paths that arrive through a call. It is a
+        // deliberate trade and it costs a finding here: the run that arrives at `sc2` through `b1`
+        // really does stop at its last row. Which of a scene's rows a caller reaches is not a
+        // property of the scene, so the alternative - reporting per path - would need the callers'
+        // paths, and reporting on the strength of one arrival would fire on every called scene.
+        const findings = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b1", "sc2")]),
+                    scene("sc2", "Shared", [narration("b2")]),
+                    scene("sc3", "Aside", [call("b3", "sc2"), ending("b4", "The end")]),
+                ]),
+            ),
+        );
+        expect(findings).toEqual([]);
+
+        // The same story with a plain jump in place of the call, to show the exemption is what went
+        // quiet above and not some other clause of the rule.
+        const withoutTheCall = run(
+            "story/dead-end",
+            ctxWith(
+                story("s1", "Main", [
+                    scene("sc1", "Prologue", [jump("b1", "sc2")]),
+                    scene("sc2", "Shared", [narration("b2")]),
+                    scene("sc3", "Aside", [jump("b3", "sc2"), ending("b4", "The end")]),
+                ]),
+            ),
+        );
+        expect(withoutTheCall.map(finding => finding.location)).toMatchObject([{ sceneId: "sc2", blockId: "b2" }]);
+    });
+});
+
 // --- story/unreachable-scene ------------------------------------------------
 
 describe("story/unreachable-scene", () => {
@@ -732,6 +1077,37 @@ describe("story/unreachable-scene", () => {
             ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [jump("b1", "sc2")]), scene("sc2", "Chapter 1", [])], "sc1")),
         );
         expect(findings).toEqual([]);
+    });
+
+    it("says nothing about a scene only a returnable jump reaches", () => {
+        // A call enters the scene it names exactly as a plain jump does - the difference is where
+        // control goes afterwards, which reachability does not ask about. A rule that read the flag
+        // would report every called scene in the project as orphaned.
+        const findings = run(
+            "story/unreachable-scene",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [call("b1", "sc2")]), scene("sc2", "Title card", [])], "sc1")),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("still reports a scene only a switched-off call reaches", () => {
+        // The row cannot run, so the scene really is orphaned. The flag changes nothing about that:
+        // what makes a call an edge is that it is compiled at all.
+        const findings = run(
+            "story/unreachable-scene",
+            ctxWith(
+                story(
+                    "s1",
+                    "Main",
+                    [
+                        scene("sc1", "Prologue", [{ ...call("b1", "sc2"), disabled: true }]),
+                        scene("sc2", "Title card", []),
+                    ],
+                    "sc1",
+                ),
+            ),
+        );
+        expect(findings.map(finding => finding.location)).toMatchObject([{ sceneId: "sc2" }]);
     });
 
     it("returns nothing at all when no entry point can be established", () => {
@@ -1067,6 +1443,20 @@ describe("story/transition-unavailable", () => {
                 narration("n1"),
                 { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg" } },
                 { id: "b2", kind: "action", payload: { action: "nvl", transition: { mode: "props", to: {} } } },
+            ])])),
+        )).toEqual([]);
+    });
+
+    it("says nothing about a row whose transition lost its kind", () => {
+        // What a document migrated by a build with the v17→v18 defect carries: a transition ref that
+        // kept its field and lost its word. The compiler reads that as `none` and plays a cut, so
+        // this rule cannot call it an unavailable transition - the two halves have to agree, and
+        // refusing the build over a word that is simply gone gives the author nothing to fix.
+        expect(run(
+            "story/transition-unavailable",
+            ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [
+                { id: "b1", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { mode: "props", to: {} } } },
+                { id: "b2", kind: "action", payload: { action: "setBackground", assetId: "asset-bg", transition: { kind: "", durationMs: 400 } } },
             ])])),
         )).toEqual([]);
     });

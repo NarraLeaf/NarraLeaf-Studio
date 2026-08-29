@@ -1,32 +1,37 @@
+import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { UIElement } from "@shared/types/ui-editor/document";
 import { isUIElementFlowLayoutChild } from "@shared/types/ui-editor/document";
 import type { UIDocument } from "@shared/types/ui-editor/document";
 import { translate } from "@/lib/i18n";
+import {
+    elementListensForPlayerInput,
+    type WidgetBlueprintOwnerScope,
+} from "@/lib/ui-editor/blueprint-runtime/widgetPrivateBlueprintHeads";
 import type { UISurfaceDiagnostic } from "../types";
 
 const MIN_HIT_AREA = 20 * 20;
 
-function hasInteractiveBinding(el: UIElement): boolean {
-    const events = el.behavior?.events;
-    if (!events) {
-        return false;
-    }
-    for (const b of Object.values(events)) {
-        if (b.kind === "blueprintEvent") {
-            return true;
-        }
-        if (b.kind === "actions" && b.actions?.length) {
-            return true;
-        }
-    }
-    return false;
-}
+/**
+ * Where this surface's widgets keep their blueprints.
+ *
+ * Optional because a caller may have no blueprint document to hand - a preview built from a
+ * document alone. Every rule below is about an element the player is meant to reach, and whether
+ * anything answers a player is written only in the blueprint document, so without it these rules
+ * claim nothing rather than guessing. See `widgetPrivateBlueprintHeads`.
+ */
+export type InteractionDiagnosticsScope = WidgetBlueprintOwnerScope & {
+    blueprintDocument?: BlueprintDocument;
+};
 
-export function collectInteractionDiagnostics(document: UIDocument, elements: UIElement[]): UISurfaceDiagnostic[] {
+export function collectInteractionDiagnostics(
+    document: UIDocument,
+    elements: UIElement[],
+    scope: InteractionDiagnosticsScope,
+): UISurfaceDiagnostic[] {
     const out: UISurfaceDiagnostic[] = [];
 
     for (const el of elements) {
-        if (!hasInteractiveBinding(el)) {
+        if (!elementListensForPlayerInput(el, scope, scope.blueprintDocument)) {
             continue;
         }
 

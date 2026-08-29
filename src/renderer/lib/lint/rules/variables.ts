@@ -20,9 +20,25 @@ import {
     type StoryTextSegment,
     type StoryVariableRef,
 } from "@shared/types/story";
+import {
+    applyVariableEffects,
+    collectBlueprintVariableWrites,
+    computeVariableRanges,
+    sceneWritesBefore,
+    widenRangeAcrossScene,
+    type SceneFlowRange,
+} from "@/apps/workspace/modules/story-flow/sceneFlowVariables";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
 import type { LintContext, LintStoryEntry } from "../context";
 import type { LintFinding, LintLocation, LintRule } from "../types";
+import {
+    collectStoryGuards,
+    collectWrittenVariableKeys,
+    collectWrittenVariableKeysByStory,
+    guardVariableRefs,
+    hasUnreadableWriter,
+} from "./storyGuards";
+import { guardTruth } from "@/lib/story/guardTruth";
 
 /**
  * `variables` - the story's state: declared, used, and unambiguous.
@@ -766,6 +782,217 @@ export const VARIABLES_LINT_RULES: readonly LintRule[] = [
                 }
             }
 
+            return findings;
+        },
+    },
+    {
+        id: "variables/read-never-written",
+        category: "variables",
+        // A warning rather than an error, and the reason is about this rule's own certainty rather
+        // than about the size of the mistake: an entry flag nothing sets IS a route the shipped game
+        // cannot open, which by the ordinary criterion is an error. But the answer rests on an
+        // enumeration of every way a variable can be assigned, and until this shipped, three whole
+        // classes of writer - a blueprint's `Set` nodes among them - were invisible to every scan in
+        // the project. A check whose soundness is that young should report before it refuses builds.
+        defaultSeverity: "warning",
+        slug: "variablesReadNeverWritten",
+        /**
+         * A variable a condition tests that nothing in the project ever assigns.
+         *
+         * The GalGame shape this exists for is one line long: an author writes the route's entrance
+         * as `if 好感ルート` and never writes the row that turns it on, so the whole branch is dead in
+         * every build and nothing says so. Structurally it is the mirror of `variables/undeclared` -
+         * that rule catches a read with no declaration, this one a read with no writer - and neither
+         * is `variables/unused`, which counts a read as use and so calls this variable healthy.
+         *
+         * **One finding per variable, not per condition.** Twenty guards on one dead flag are one
+         * mistake, and the count is what says how much of the script is behind it.
+         *
+         * Silent in three states, each of them a project this cannot answer about rather than a
+         * project with nothing wrong:
+         *
+         *  - The library did not fully load (`storiesComplete`), so a writer may be in the story that
+         *    failed to open.
+         *  - Something in the project writes variables in a way nothing can read - see
+         *    {@link hasUnreadableWriter}.
+         *  - The guard is `blueprint`-backed, which reads its variables inside a graph. Those guards
+         *    contribute no keys at all, so they cannot be the reason a variable is reported.
+         */
+        run(ctx) {
+            if (!ctx.storiesComplete || hasUnreadableWriter(ctx)) {
+                return [];
+            }
+            const written = collectWrittenVariableKeys(ctx);
+
+            // Keyed by ref key, holding the first site so the finding lands on a row the author can
+            // open, and the tally so the message can say how much rides on it.
+            type DeadGuard = {
+                entry: LintStoryEntry;
+                scene: StoryScene;
+                blockId: StoryBlockId;
+                name: string;
+                count: number;
+            };
+            const dead = new Map<string, DeadGuard>();
+
+            for (const entry of ctx.stories) {
+                const names = buildVariableNameIndex(ctx, entry);
+                for (const scene of listScenesInDocumentOrder(entry.document)) {
+                    if (!scene) {
+                        continue;
+                    }
+                    for (const guard of collectStoryGuards(scene)) {
+                        for (const ref of guardVariableRefs(guard.condition)) {
+                            const key = storyVariableRefKey(ref);
+                            if (written.has(key)) {
+                                continue;
+                            }
+                            const seen = dead.get(key);
+                            if (seen) {
+                                seen.count += 1;
+                                continue;
+                            }
+                            dead.set(key, {
+                                entry,
+                                scene,
+                                blockId: guard.blockId,
+                                name: names.get(ref.variableId) ?? ref.variableId,
+                                count: 1,
+                            });
+                        }
+                    }
+                }
+            }
+
+            return Array.from(dead.values(), site => ({
+                ruleId: "variables/read-never-written" as const,
+                messageKey: "lint.rule.variablesReadNeverWritten.message" as const,
+                messageParams: { variable: site.name, count: site.count },
+                location: storyLocation(site.entry, site.scene, site.blockId),
+                target: blockTarget(site.entry, site.scene, site.blockId),
+            }));
+        },
+    },
+    {
+        id: "variables/condition-never-holds",
+        category: "variables",
+        // Same reasoning as the rule above, and one more: this answer comes out of an interval
+        // analysis whose whole guarantee is that it widens. A widening bug narrows, and a narrowed
+        // range is a false report - so it reports rather than refuses until the analysis has miles on
+        // it. Raising both to `error` is one edit and the right one once it has.
+        defaultSeverity: "warning",
+        slug: "variablesConditionNeverHolds",
+        /**
+         * A condition no path through the story can satisfy.
+         *
+         * The accident this exists for: an ending gated on `affection >= 50` in a script where the
+         * most any route can accumulate is 30. The branch is written, it compiles, every structural
+         * check passes it - and no player will ever see it. Today an author finds that by playing.
+         *
+         * **The analysis this reads is the map's own** ({@link computeVariableRanges}), so a finding
+         * here and the range chips on the scene map cannot disagree. Those ranges over-approximate by
+         * construction, which is exactly the direction a negative claim needs: a bound of 0..30 holds
+         * every value a player can arrive with and then some, so "50 is not in it" is a fact about the
+         * game rather than about the analysis.
+         *
+         * Four things make it stay quiet, and each is a project it cannot answer about:
+         *
+         *  - Anything opaque writes variables ({@link hasUnreadableWriter}), or the library did not
+         *    fully load.
+         *  - **Another story writes the same variable.** The range walk covers one story's scene
+         *    graph; a `saved` counter chapter two also moves has an arrival range describing a
+         *    playthrough nobody has. Per key, so a story with its own counters is still checked.
+         *  - Nothing writes the variable at all - `variables/read-never-written` owns that case and
+         *    says something more useful about it than a bound would.
+         *  - The bound is `unknown`, which is most of the time and by design.
+         */
+        async run(ctx) {
+            if (!ctx.storiesComplete || hasUnreadableWriter(ctx)) {
+                return [];
+            }
+            // Imported here rather than at the top of the file, and it is not a taste: a value
+            // import of `sceneFlowModel` pulls the scene editor's command registry - and the i18n
+            // store it subscribes to on load - into the import graph of every consumer of the lint
+            // rules, `BuildService` among them. The type-only imports beside it cost nothing; this
+            // one costs a module graph, so it is paid for only by a run that reaches this line.
+            const { buildSceneFlowGraph } = await import("@/apps/workspace/modules/story-flow/sceneFlowModel");
+            const writtenAnywhere = collectWrittenVariableKeys(ctx);
+            const writtenByStory = collectWrittenVariableKeysByStory(ctx);
+            const blueprintWrites = collectBlueprintVariableWrites(ctx.blueprintDocument, ctx.variableRegistry);
+            const findings: LintFinding[] = [];
+
+            for (const entry of ctx.stories) {
+                const mine = writtenByStory.get(entry.id) ?? new Set<string>();
+                const writtenElsewhere = (key: string): boolean => {
+                    for (const [storyId, keys] of writtenByStory) {
+                        if (storyId !== entry.id && keys.has(key)) {
+                            return true;
+                        }
+                    }
+                    return blueprintWrites.ambient.has(key);
+                };
+
+                const graph = buildSceneFlowGraph(entry.document);
+                const names = buildVariableNameIndex(ctx, entry);
+                // One range walk per variable, reused by every guard in the story that reads it.
+                const arrivals = new Map<string, Map<StorySceneId, SceneFlowRange>>();
+                const arrivalRanges = (key: string): Map<StorySceneId, SceneFlowRange> => {
+                    let ranges = arrivals.get(key);
+                    if (!ranges) {
+                        ranges = computeVariableRanges(graph, entry.document, key, ctx.variableRegistry, blueprintWrites);
+                        arrivals.set(key, ranges);
+                    }
+                    return ranges;
+                };
+
+                for (const scene of listScenesInDocumentOrder(entry.document)) {
+                    if (!scene) {
+                        continue;
+                    }
+                    for (const guard of collectStoryGuards(scene)) {
+                        const condition = guard.condition;
+                        if (condition.kind !== "expression") {
+                            continue;
+                        }
+                        // Which variable the report names, and the bound that settled it - recorded on
+                        // the way through, so the message quotes the number rather than the ref key.
+                        let culpritName: string | null = null;
+                        let culpritBound: string | null = null;
+                        const truth = guardTruth(condition.expression.ast, key => {
+                            if (!writtenAnywhere.has(key) || !mine.has(key) || writtenElsewhere(key)) {
+                                return null;
+                            }
+                            const arrival = arrivalRanges(key).get(scene.id) ?? { kind: "unknown" as const };
+                            // The rows above this guard have run and the rows below it have not, so
+                            // the writes that can have moved the counter are the ones before it -
+                            // which is what stops `if x >= 50 { x += 100 }` being judged against its
+                            // own arm's work. Where row order cannot be read, the whole scene stands.
+                            const before = sceneWritesBefore(entry.document, scene.id, guard.blockId, blueprintWrites);
+                            const bound = before
+                                ? applyVariableEffects(arrival, before, key)
+                                : widenRangeAcrossScene(arrival, entry.document, scene.id, key, blueprintWrites);
+                            if (bound.kind === "known" && culpritName === null) {
+                                const ref = guardVariableRefs(condition).find(
+                                    candidate => storyVariableRefKey(candidate) === key,
+                                );
+                                culpritName = (ref && names.get(ref.variableId)) ?? key;
+                                culpritBound = `${bound.min}..${bound.max}`;
+                            }
+                            return bound;
+                        });
+                        if (truth !== "false" || culpritName === null || culpritBound === null) {
+                            continue;
+                        }
+                        findings.push({
+                            ruleId: "variables/condition-never-holds",
+                            messageKey: "lint.rule.variablesConditionNeverHolds.message",
+                            messageParams: { variable: culpritName, bound: culpritBound },
+                            location: storyLocation(entry, scene, guard.blockId),
+                            target: blockTarget(entry, scene, guard.blockId),
+                        });
+                    }
+                }
+            }
             return findings;
         },
     },

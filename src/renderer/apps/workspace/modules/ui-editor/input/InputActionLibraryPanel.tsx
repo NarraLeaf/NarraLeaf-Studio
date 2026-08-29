@@ -1,7 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { ChevronDown, MoreVertical, Plus, Pointer } from "lucide-react";
-import type { UIInputActionDef, UIInputBinding } from "@shared/types/ui-editor/inputAction";
+import { ChevronDown, FilePlus2, MoreVertical, Plus, Pointer } from "lucide-react";
+import {
+    UI_INPUT_ACTION_BLANK_PRESET_ID,
+    UI_INPUT_ACTION_PRESETS,
+    type UIInputActionDef,
+    type UIInputBinding,
+} from "@shared/types/ui-editor/inputAction";
 import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import type { UIService } from "@/lib/workspace/services/core/UIService";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -9,6 +14,8 @@ import { createInputDialog } from "@/lib/components/dialogs";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "../../../components/ui/freezeGuard";
 import { InputBindingList } from "./InputBindingList";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
+import { onInputActionPanelFocus } from "./inputActionPanelFocus";
 
 type InputActionLibraryPanelProps = {
     documentService: UIDocumentService | null;
@@ -37,15 +44,19 @@ function countAnsweringSurfaces(documentService: UIDocumentService | null): Reco
  * in one place. An author who has just written "click here means advance" on a page finds the word
  * "advance" defined one section down the same rail.
  *
- * Only the *defaults* live here. Which interface answers which action, and with what extra
- * bindings, is the interface's own business and is set in its Input section.
+ * The actions live here and only here: an interface says whether it answers one, not what it is.
+ * That makes this the place an author starts from rather than one they visit, so it opens with the
+ * rail rather than waiting to be found - it was the one section here that did not, and it sat under
+ * a component library long enough to push it off the bottom of the window.
  */
 export function InputActionLibraryPanel({ documentService, uiService }: InputActionLibraryPanelProps) {
     const { t, tn } = useTranslation();
     // Browsable while frozen, as the component library is: reading the vocabulary costs nothing,
     // and only creating, renaming, rebinding and deleting are off.
-    const freeze = useFreezeGuard();
-    const [open, setOpen] = useState(false);
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
+    const [open, setOpen] = useState(true);
+    const [highlighted, setHighlighted] = useState(false);
+    const rootRef = useRef<HTMLDivElement | null>(null);
     const [actions, setActions] = useState<UIInputActionDef[]>([]);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -65,24 +76,72 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     // numbers can move and no more.
     const answeredCounts = useMemo(() => countAnsweringSurfaces(documentService), [actions, documentService]);
 
-    const handleCreate = useCallback(async () => {
-        if (!documentService) {
-            return;
-        }
-        const suggestedName = t("uiEditor.naming.inputAction", { index: actions.length + 1 });
-        const name = inputDialog
-            ? await inputDialog.show({
-                  title: t("uiEditor.inputActions.createTitle"),
-                  initialValue: suggestedName,
-                  required: true,
-                  maxLength: 100,
-              })
-            : suggestedName;
-        if (!name) {
-            return;
-        }
-        documentService.createInputAction(name);
-    }, [actions.length, documentService, inputDialog, t]);
+    /**
+     * Create one action, starting from a preset.
+     *
+     * The preset fills in the name and the bindings and is then spent: what it laid down is edited
+     * from the row like anything else, and nothing records that it was used. Blank is on the same
+     * list rather than being a different button, because picking a starting point is one decision.
+     */
+    // Somebody on the other side of the workspace has said they need an action. Open, come into
+    // view, and mark the section for long enough to be found - the request means "where is this",
+    // so answering it silently would be the same as not answering.
+    useEffect(() => onInputActionPanelFocus(() => {
+        setOpen(true);
+        setHighlighted(true);
+        window.setTimeout(() => {
+            rootRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+        }, 0);
+        window.setTimeout(() => setHighlighted(false), 1600);
+    }), []);
+
+    const handleCreate = useCallback(
+        async (presetId: string) => {
+            if (!documentService) {
+                return;
+            }
+            const preset = UI_INPUT_ACTION_PRESETS.find(entry => entry.id === presetId);
+            const suggestedName = preset && preset.id !== "blank"
+                ? t(`uiEditor.inputActions.presets.${preset.id}` as never)
+                : t("uiEditor.naming.inputAction", { index: actions.length + 1 });
+            const name = inputDialog
+                ? await inputDialog.show({
+                      title: t("uiEditor.inputActions.createTitle"),
+                      initialValue: suggestedName,
+                      required: true,
+                      maxLength: 100,
+                  })
+                : suggestedName;
+            if (!name) {
+                return;
+            }
+            documentService.createInputAction(name, preset?.bindings ?? []);
+        },
+        [actions.length, documentService, inputDialog, t],
+    );
+
+    const openCreateMenu = useCallback(
+        (event: MouseEvent<HTMLButtonElement>) => {
+            event.stopPropagation();
+            const rows = UI_INPUT_ACTION_PRESETS.map(preset => ({
+                id: `preset:${preset.id}`,
+                label: t(`uiEditor.inputActions.presets.${preset.id}` as never),
+                // Blank carries a picture and the templates do not: it is the row that lays nothing
+                // down, and the mark is what keeps it from reading as one more template whose name
+                // happens to be Blank.
+                ...(preset.id === UI_INPUT_ACTION_BLANK_PRESET_ID
+                    ? { icon: <FilePlus2 className="h-4 w-4" aria-hidden /> }
+                    : {}),
+                onClick: () => {
+                    hideMenu();
+                    void handleCreate(preset.id);
+                },
+            }));
+            setMenuItems([rows[0]!, { id: "preset-separator", separator: true }, ...rows.slice(1)]);
+            showMenu(event);
+        },
+        [handleCreate, hideMenu, showMenu, t],
+    );
 
     const handleRename = useCallback(
         async (action: UIInputActionDef) => {
@@ -155,7 +214,13 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
     );
 
     return (
-        <div className="shrink-0 border-t border-edge bg-surface-sunken">
+        <div
+            ref={rootRef}
+            className={`shrink-0 border-t bg-surface-sunken transition-colors ${
+                highlighted ? "border-primary/45 bg-primary/5" : "border-edge"
+            }`}
+            data-help-topic="inputActions"
+        >
             <button
                 type="button"
                 className="flex h-9 w-full items-center gap-2 px-3 text-left text-xs font-semibold text-fg hover:bg-fill-subtle"
@@ -171,7 +236,7 @@ export function InputActionLibraryPanel({ documentService, uiService }: InputAct
                     <button
                         type="button"
                         className="flex min-h-7 w-full items-center justify-center gap-1 rounded-md border border-edge text-xs text-fg-muted hover:bg-fill hover:text-fg"
-                        onClick={() => void handleCreate()}
+                        onClick={openCreateMenu}
                         {...freeze.writes(!documentService, t("uiEditor.inputActions.create"))}
                     >
                         <Plus className="h-3.5 w-3.5" aria-hidden />

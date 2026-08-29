@@ -125,6 +125,11 @@ export const lint = {
             description: "一部の経路はシーンから出ていくが、末尾の行に子ノードがない経路が残っているシーン",
             message: "この行に子ノードがなく、ここでシーンの末尾を越える",
         },
+        storyCallCycle: {
+            title: "循環する呼び出し",
+            description: "戻り付きのジャンプが、その行のあるシーンを呼び出せるシーンに達している",
+            message: "この行が呼び出すシーンから、このシーンが呼び出される",
+        },
         storyUnreachableScene: {
             title: "到達できないシーン",
             description: "開始地点から到達できないシーン",
@@ -290,6 +295,16 @@ export const lint = {
             title: "変数名の衝突",
             description: "同じ名前が 2 か所で宣言されている",
             message: "{variable} が永続変数として 2 回宣言されている",
+        },
+        variablesConditionNeverHolds: {
+            title: "成立し得ない条件",
+            description: "どの経路をたどっても変数がその値に到達しません",
+            message: "ここでの {variable} の範囲は {bound} なので、この条件は成立しません",
+        },
+        variablesReadNeverWritten: {
+            title: "変化しない条件",
+            description: "条件が参照している変数に、プロジェクトのどこからも代入されていません",
+            message: "{variable} を参照する条件が {count} 件ありますが、代入する箇所がありません",
         },
         variablesRandomOutsideAssignment: {
             title: "代入の外にある乱数",

@@ -18,6 +18,10 @@ function runtimeHtml() {
     // injected into <head> at serve time by the runtime main process
     // (src/runtime/main/networkPolicy.ts), because the policy is gated on the
     // project's per-launch `allowHttp` flag which is only known at runtime.
+    // That policy does not permit inline scripts; the same serve-time step stamps its nonce onto
+    // every inline <script> here, which is what lets the import map below run at all. An inline
+    // script this document grows will be nonced with it - one written with its own `src` will not,
+    // and does not need to be.
     // No `lang`: this document is built once and shipped inside every game, so it cannot name a
     // language any of them is in, and `en` was answering for all of them - the attribute picks the
     // Han forms a fallback font draws, so a Japanese title was being set in an English page's face.
@@ -183,20 +187,20 @@ async function buildRuntime(options = {}) {
 // packed app. Emitted for every pack because the requires run eagerly at
 // startup; the modules themselves are inert until the runtime asks them to work.
 //
-// These are opaque support files of @narraleaf/encryption; treat them as a black
-// box and ship them verbatim. The list must track the encryption runtime's
-// computed-require sidecars (native.js loads the codec addon; gate.js is the
+// These are opaque support files of @narraleaf/bindings; treat them as a black
+// box and ship them verbatim. The list must track the codec package's
+// computed-require sidecars (bindings.js loads the codec addon; vendor.js is the
 // codec's key-gating module) — keep it in sync with REQUIRED_RUNTIME_FILES in
 // gameRuntimeArtifactCompiler.ts.
-const RUNTIME_SUPPORT_SIDECARS = ['native.js', 'gate.js'];
+const RUNTIME_SUPPORT_SIDECARS = ['bindings.js', 'vendor.js'];
 
 function copyRuntimeSupportSidecar(runtimeOutDir) {
-    const packageRuntimeDir = path.dirname(require.resolve('@narraleaf/encryption/runtime'));
+    const packageRuntimeDir = path.dirname(require.resolve('@narraleaf/bindings/read'));
     for (const sidecar of RUNTIME_SUPPORT_SIDECARS) {
         const source = path.join(packageRuntimeDir, sidecar);
         if (!fs.existsSync(source)) {
             throw new Error(
-                `[build-runtime] Missing runtime support file "${sidecar}" from @narraleaf/encryption. ` +
+                `[build-runtime] Missing runtime support file "${sidecar}" from @narraleaf/bindings. ` +
                 `Reinstall dependencies so the packaged runtime can boot.`,
             );
         }

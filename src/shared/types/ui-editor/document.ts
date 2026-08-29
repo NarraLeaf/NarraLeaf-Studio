@@ -1,6 +1,6 @@
 import type { AssetVariantMap } from "../assetSet";
 import { isContainerFlowLayoutParent } from "./container";
-import type { UIInputActionDef, UISurfaceActionEnablement, UISurfaceInputMode } from "./inputAction";
+import type { UIInputActionDef, UISurfaceActionEnablement } from "./inputAction";
 import { getUIListChildSlot, isListLikeWidgetType, isUIListScrollbarSlot, UI_LIST_LIKE_WIDGET_TYPES } from "./list";
 import type { UIPageAnimationSettings } from "./pageAnimation";
 import { getUISliderChildSlot } from "./slider";
@@ -8,7 +8,19 @@ import type { UIStructDef, UIStructId } from "./struct";
 import type { UISurfaceBackgroundImage } from "./surfaceBackgroundImage";
 import { getUISwitchChildSlot } from "./switch";
 
-export const UI_DOCUMENT_SCHEMA_VERSION = 11 as const;
+export const UI_DOCUMENT_SCHEMA_VERSION = 12 as const;
+
+/**
+ * The oldest UI document version this build can read.
+ *
+ * The versions from v2 up were bumps and nothing more: each one recorded that an older Studio must
+ * refuse a newer document (a list slot, a value binding, a stage slot it has no reading for), and
+ * none of them converted a document, so a v10 document differs from a v11 one by nothing a reader
+ * has to reconstruct. Only v1 ever needed real work - surfaces named `playerStageSurface` before a
+ * stage surface named the slot it mounts into - and that step is gone, so v1 is refused with the
+ * rest of what is under the floor. See `UIDocumentService.migrateSchemaVersion`.
+ */
+export const UI_DOCUMENT_MIN_SUPPORTED_VERSION = 10;
 
 export type UIDocumentVersion = number;
 export type UIDocumentId = string;
@@ -70,14 +82,13 @@ export type UIAppSurface = {
     rootElementId: UIElementId;
     settings?: UISurfaceSettings;
     /**
-     * What this surface does with input that lands on it. Absent means `capture` (see
-     * `UI_SURFACE_DEFAULT_INPUT_MODE`), which is what every surface authored before the field
-     * existed already did.
-     */
-    input?: UISurfaceInputMode;
-    /**
-     * Which of the project's actions this surface answers, and how. An id here names an entry of
+     * Which of the project's actions this surface answers. An id here names an entry of
      * {@link UIDocument.actions}; absent means it answers none of them.
+     *
+     * Input that lands on this surface's content stops here whether or not an action answered it,
+     * unless the action that answered says otherwise. There is no surface-wide setting for that: a
+     * surface drawn over another is drawn over it, and an action is the only thing that knows
+     * whether what it just did leaves anything for the surface behind to do.
      */
     actions?: UISurfaceActionEnablement[];
 };
@@ -92,8 +103,6 @@ export type UIStageSurface = {
     settings?: UISurfaceSettings;
     mount: UIStageSurfaceMount;
     slots?: Record<string, UISlotDefinition>;
-    /** @see UIAppSurface.input */
-    input?: UISurfaceInputMode;
     /** @see UIAppSurface.actions */
     actions?: UISurfaceActionEnablement[];
 };
@@ -199,7 +208,6 @@ export type UIElement = {
     layout: UILayout;
     style?: UIStyle;
     props?: Record<string, unknown>;
-    behavior?: UIBehavior;
     valueBindings?: Record<string, UIElementValueBinding>;
     /**
      * How this element arrives and leaves - the same record a Surface uses for its page animation.
@@ -331,19 +339,6 @@ export type UILayout = {
 };
 
 export type UIStyle = Record<string, unknown>;
-
-export type UIBehavior = {
-    events?: Record<string, UIBehaviorBinding>;
-};
-
-export type UIBehaviorBinding =
-    | { kind: "noop" }
-    | { kind: "actions"; actions: UIBehaviorAction[] }
-    /** M2: event handler targets an event graph entry on an instance main blueprint. */
-    | { kind: "blueprintEvent"; blueprintId: string; eventId: string };
-
-export type UIBehaviorAction =
-    | { kind: "noop" };
 
 /**
  * True when this element acts as a flow-layout parent: direct children use flex inside the parent

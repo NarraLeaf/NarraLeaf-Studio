@@ -141,11 +141,66 @@ describe("applyMergeDecisions", () => {
     });
 
     /**
-     * Deleting element 3 renumbers everything after it, so the rest of the list - addressed by
-     * index - would settle the wrong elements. Refused rather than silently renumbering, because
-     * no spec produces indexed decisions yet and the day one does this has to be a decision.
+     * A list of records with ids is a keyed collection that happens to be stored in order, and it
+     * is addressed as one: sibling order is the author's arrangement, identity is the id. The
+     * mixer is the first format to need this - see `audioTracks.ts`.
      */
-    it("refuses to remove one element of a list", () => {
+    it("settles an element of a list by its id rather than by where it sits", () => {
+        const document = {tracks: [{id: "bgm", volume: 1}, {id: "sfx", volume: 1}]};
+
+        const settled = applyMergeDecisions(
+            "d.json",
+            document,
+            [decision(["tracks", "sfx"], "conflict", {id: "sfx", volume: 0.3}, {id: "sfx", volume: 0.9})],
+            {[mergeDecisionKey(["tracks", "sfx"])]: "theirs"},
+        );
+
+        expect(settled.tracks).toEqual([{id: "bgm", volume: 1}, {id: "sfx", volume: 0.9}]);
+    });
+
+    /**
+     * Removing by id is sound where removing by position is not: nothing in the list is addressed
+     * by where it sits, so taking one out moves nothing any other decision names.
+     */
+    it("removes an element of a list by id, and says nothing when it is already gone", () => {
+        const document = {tracks: [{id: "bgm", volume: 1}, {id: "sfx", volume: 1}]};
+
+        const settled = applyMergeDecisions(
+            "d.json",
+            document,
+            [
+                decision(["tracks", "sfx"], "conflict", {id: "sfx", volume: 1}, undefined),
+                decision(["tracks", "gone"], "conflict", {id: "gone", volume: 1}, undefined),
+            ],
+            {
+                [mergeDecisionKey(["tracks", "sfx"])]: "theirs",
+                [mergeDecisionKey(["tracks", "gone"])]: "theirs",
+            },
+        );
+
+        expect(settled.tracks).toEqual([{id: "bgm", volume: 1}]);
+    });
+
+    /** The other direction: a record the merged document does not hold yet is appended. */
+    it("puts back an element the chosen side has and the merged document does not", () => {
+        const document = {tracks: [{id: "bgm", volume: 1}]};
+
+        const settled = applyMergeDecisions(
+            "d.json",
+            document,
+            [decision(["tracks", "sfx"], "conflict", undefined, {id: "sfx", volume: 0.5})],
+            {[mergeDecisionKey(["tracks", "sfx"])]: "theirs"},
+        );
+
+        expect(settled.tracks).toEqual([{id: "bgm", volume: 1}, {id: "sfx", volume: 0.5}]);
+    });
+
+    /**
+     * Deleting element 3 renumbers everything after it, so the rest of the list - addressed by
+     * index - would settle the wrong elements. Refused rather than silently renumbering; an id
+     * escapes this because it names an element rather than a position.
+     */
+    it("refuses to remove one element of a list by position", () => {
         const document = {order: ["a", "b", "c"]};
         expect(() => applyMergeDecisions(
             "d.json",

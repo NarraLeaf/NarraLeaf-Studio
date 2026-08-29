@@ -42,6 +42,27 @@ export function gameRuntimeBundleModelEntry(assetId: string): string {
  * bundled plugin entries. Strips leading separators and forces forward slashes
  * so both sides derive the same key from the same logical path.
  */
+/**
+ * The interface code a protected build keeps inside the store rather than beside
+ * it.
+ *
+ * The three are exactly what a browser fetches through the runtime protocol and
+ * nothing else: the document and the two bundles it pulls. `main.js`, the
+ * preload and the codec's own loaders cannot join them - Electron opens those
+ * itself, before anything of ours exists to answer for them - and that is a
+ * ceiling rather than an oversight.
+ *
+ * Named once, here, because the compile decides what to put in and the runtime
+ * decides what it will serve out, and the two disagreeing means either a file
+ * nobody can fetch or a store entry anybody can.
+ */
+export const SEALED_SHELL_FILES = ["index.html", "renderer.js", "renderer.css"] as const;
+
+/** Whether this request names one of them. */
+export function isSealedShellFile(name: string): boolean {
+    return (SEALED_SHELL_FILES as readonly string[]).includes(name);
+}
+
 export function gameRuntimeBundleRuntimeEntry(pathname: string): string {
     return pathname.replace(/\\/g, "/").replace(/^\/+/, "");
 }

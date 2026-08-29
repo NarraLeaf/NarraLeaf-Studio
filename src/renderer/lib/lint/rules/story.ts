@@ -13,18 +13,22 @@ import {
     duplicateStoryEndingNames,
     isPlayableStoryTransitionKind,
     listSceneBlocksInDocumentOrder,
+    listSceneIdsInDocumentOrder,
     listSceneLabels,
     listScenesInDocumentOrder,
     listStoryEndings,
     revealableStageObjectDeclarations,
     sceneLabelNames,
     shownStageObjectKeys,
+    storyTransitionKindOf,
     type StageObjectReference,
     type StoryBlock,
     type StoryBlockId,
+    type StoryDocument,
     type StoryExpr,
     type StoryInlineEvent,
     type StoryScene,
+    type StorySceneId,
 } from "@shared/types/story";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
@@ -266,7 +270,9 @@ function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBl
     seen.add(block.id);
 
     if (block.kind === "jump") {
-        return true;
+        // A returnable jump is not where the scene stops: control comes back to the row after it,
+        // so what terminates this scene is whatever follows.
+        return !block.payload.returnable;
     }
     if (block.kind === "control") {
         if (block.payload.control === "goto") {
@@ -310,9 +316,36 @@ function tailTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBlo
 /**
  * Whether the scene hands control on anywhere at all - a jump or a `/goto`, at any depth, on any
  * path. This is what separates "an ending" from "a forgotten branch"; see `story/dead-end`.
+ *
+ * A returnable jump does not count. The run leaves and comes straight back, so a scene whose only
+ * jump is one of those has handed nothing on: it still stops where its rows stop.
  */
 function hasOutgoingTransfer(scene: StoryScene): boolean {
-    return liveBlocks(scene).some(block => block.kind === "jump" || gotoTarget(block) !== null);
+    return liveBlocks(scene).some(block =>
+        (block.kind === "jump" && !block.payload.returnable) || gotoTarget(block) !== null);
+}
+
+/**
+ * Every scene some returnable jump names, across the whole document.
+ *
+ * A called scene running off its end is a return, not a place the story stops - which is what
+ * `story/dead-end` has to know before it reads the scene's last row. Collected per document rather
+ * than per scene, because the call that reaches a scene can be written anywhere in the story.
+ */
+function collectCalledSceneIds(document: StoryDocument): Set<StorySceneId> {
+    const called = new Set<StorySceneId>();
+    for (const sceneId of listSceneIdsInDocumentOrder(document)) {
+        const scene = document.scenes[sceneId];
+        if (!scene) {
+            continue;
+        }
+        for (const block of liveBlocks(scene)) {
+            if (block.kind === "jump" && block.payload.returnable && block.payload.targetSceneId) {
+                called.add(block.payload.targetSceneId);
+            }
+        }
+    }
+    return called;
 }
 
 /**
@@ -556,8 +589,20 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
          */
         run(ctx) {
             const findings: LintFinding[] = [];
+            const calledByStoryId = new Map<string, Set<StorySceneId>>();
             for (const { entry, scene } of eachScene(ctx)) {
                 const declaresEndings = listStoryEndings(entry.document).length > 0;
+                let called = calledByStoryId.get(entry.id);
+                if (!called) {
+                    called = collectCalledSceneIds(entry.document);
+                    calledByStoryId.set(entry.id, called);
+                }
+                if (called.has(scene.id)) {
+                    // Something jumps here and expects to come back, so running off the end is that
+                    // return rather than a path that stops. Exempted for the whole scene rather than
+                    // per path: which of its rows a caller reaches is not a property of this scene.
+                    continue;
+                }
                 const roots = liveRootBlocks(scene);
                 const last = roots[roots.length - 1];
                 if (!last) {
@@ -578,6 +623,90 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     location: storyLocation(entry, scene, last.id),
                     target: blockTarget(entry, scene, last.id),
                 });
+            }
+            return findings;
+        },
+    },
+    {
+        id: "story/call-cycle",
+        category: "story",
+        defaultSeverity: "error",
+        slug: "storyCallCycle",
+        /**
+         * A returnable jump that can lead back into the scene it was written in.
+         *
+         * `error`, and the reason is what the build produces rather than what the author meant: a
+         * scene suspended by a call is still on stage, holding its layers, its sprites and its
+         * scene-local variables, so there is nowhere to put a second copy of it. The engine refuses
+         * the call outright, which means play stops on that row. A story that ships with one is a
+         * story with a crash in it.
+         *
+         * Only returnable jumps form the graph. A plain jump unloads what it leaves, so a scene
+         * reached through one is not on the call stack and reaching it again is ordinary looping -
+         * which the flow map already draws and `story/dead-end` already reads.
+         */
+        run(ctx) {
+            const findings: LintFinding[] = [];
+            for (const entry of ctx.stories) {
+                const document = entry.document;
+                // The call graph, live rows only: a switched-off jump is a row the compiler drops,
+                // so a cycle that exists only through one cannot happen at run time.
+                type CallEdge = { targetSceneId: StorySceneId; scene: StoryScene; blockId: StoryBlockId };
+                const callsBySceneId = new Map<StorySceneId, CallEdge[]>();
+                for (const sceneId of listSceneIdsInDocumentOrder(document)) {
+                    const scene = document.scenes[sceneId];
+                    if (!scene) {
+                        continue;
+                    }
+                    const calls: CallEdge[] = [];
+                    for (const block of liveBlocks(scene)) {
+                        if (block.kind !== "jump" || !block.payload.returnable) {
+                            continue;
+                        }
+                        const targetSceneId = block.payload.targetSceneId;
+                        if (!targetSceneId || !document.scenes[targetSceneId]) {
+                            // `story/jump-missing` owns a jump that names nothing.
+                            continue;
+                        }
+                        calls.push({ targetSceneId, scene, blockId: block.id });
+                    }
+                    if (calls.length > 0) {
+                        callsBySceneId.set(sceneId, calls);
+                    }
+                }
+
+                // Depth-first, reporting the call that closes the loop rather than every row on it:
+                // that is the one row the author has to change, and the rest of the chain is
+                // legitimate on its own.
+                const state = new Map<StorySceneId, "open" | "done">();
+                const reported = new Set<StoryBlockId>();
+                const visit = (sceneId: StorySceneId): void => {
+                    state.set(sceneId, "open");
+                    for (const call of callsBySceneId.get(sceneId) ?? []) {
+                        const mark = state.get(call.targetSceneId);
+                        if (mark === "open") {
+                            if (!reported.has(call.blockId)) {
+                                reported.add(call.blockId);
+                                findings.push({
+                                    ruleId: "story/call-cycle",
+                                    messageKey: "lint.rule.storyCallCycle.message",
+                                    location: storyLocation(entry, call.scene, call.blockId),
+                                    target: blockTarget(entry, call.scene, call.blockId),
+                                });
+                            }
+                            continue;
+                        }
+                        if (mark !== "done") {
+                            visit(call.targetSceneId);
+                        }
+                    }
+                    state.set(sceneId, "done");
+                };
+                for (const sceneId of listSceneIdsInDocumentOrder(document)) {
+                    if (!state.has(sceneId)) {
+                        visit(sceneId);
+                    }
+                }
             }
             return findings;
         },
@@ -1085,15 +1214,17 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
  * name is the precise test and the structural one is the loose one.
  *
  * The `kind` must be a string, not merely present: the NVL panel's `transition` is a transform ref,
- * which has no `kind` at all, and is not this rule's business.
+ * which has no `kind` at all, and is not this rule's business. Neither is a transition ref whose own
+ * `kind` is missing or blank - {@link storyTransitionKindOf} reads that as `none`, the compiler
+ * reads it the same way, and a cut a row asked for is not a transition it failed to get.
  */
 function transitionKindNamedByBlock(block: StoryBlock): string | null {
     const transition = (block.payload as { transition?: unknown }).transition;
     if (!transition || typeof transition !== "object") {
         return null;
     }
-    const kind = (transition as { kind?: unknown }).kind;
-    return typeof kind === "string" ? kind : null;
+    const kind = storyTransitionKindOf(transition as { kind?: unknown });
+    return kind === "none" ? null : kind;
 }
 
 /**

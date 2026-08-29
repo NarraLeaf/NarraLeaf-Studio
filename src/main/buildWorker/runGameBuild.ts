@@ -1,5 +1,6 @@
 import path from "path";
 import { build, Platform, Arch, type Configuration } from "electron-builder";
+import { perTargetFileSets } from "./perTargetPayload";
 import {
     gameBuildArtifactNamePattern,
     type GameBuildArch,
@@ -92,7 +93,15 @@ function builderConfiguration(config: GameBuildWorkerConfig, target: GameBuildWo
         directories: {
             output: config.outputDir,
         },
-        files: ["**/*"],
+        /*
+         * Everything, except that the staging area is unpacked onto the app root
+         * instead of being copied as itself. electron-builder is invoked once per
+         * target and takes a file set per invocation, so the app dir can hold a
+         * copy of the codec addon and koffi for each target being built and each
+         * package still ends up with exactly its own. See perTargetPayload.ts for
+         * why that is worth doing rather than building one target at a time.
+         */
+        files: perTargetFileSets(target.platformKey),
         asar: true,
         asarUnpack: config.asarUnpack,
         electronFuses: target.fuses,

@@ -6,7 +6,6 @@ import { parseSharedBlueprintAssetJson } from "@shared/blueprint/parseSharedBlue
 import type {
     Blueprint,
     BlueprintDocument,
-    BlueprintPersistentVariable,
     SharedBlueprintAsset,
 } from "@shared/types/blueprint/document";
 import {
@@ -19,7 +18,6 @@ import {
     buildPersistentRuntimeTable,
     buildSavedRuntimeTable,
     migrateVariableRegistryToLatest,
-    seedRegistryEntriesFromBlueprintPersistent,
 } from "@shared/variables/variableRegistryModel";
 import type { DevModeBundle, DevModeCharacterSummary, DevModeStoryLibrary } from "@shared/types/devMode";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "@shared/types/localization";
@@ -32,6 +30,8 @@ import {
 import type { DialogueConfiguration } from "@shared/types/dialogue";
 import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
+import { normalizePreloadConfiguration } from "@shared/types/preload";
+import type { PreloadConfiguration } from "@shared/types/preload";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -121,7 +121,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         ),
     };
     const localBlueprints = uigraphs.blueprintDocument;
-    const variableTables = await loadVariableRuntimeTables(context.projectPath, uigraphsRaw.blueprintDocument);
+    const variableTables = await loadVariableRuntimeTables(context.projectPath);
     const sharedAssets = await loadSharedBlueprints(context.projectPath);
     const sharedBlueprints = foldSharedBlueprints(sharedAssets, context, fold);
     reportLiveVariantReads(context, fold, localBlueprints, sharedAssets);
@@ -174,6 +174,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const preload = await loadPreloadConfiguration(context.projectPath);
     const window = await loadWindowConfiguration(context.projectPath);
     const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
@@ -205,6 +206,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        preload,
         window,
         vfx,
         gameVersion,
@@ -252,22 +254,16 @@ async function readJsonFile<T>(filePath: string): Promise<T> {
  * Load blueprint-type assets from metadata shard + content shards (same layout as renderer Assets pipeline).
  */
 /**
- * Load the project-level variable registry (M-VAR) once and project it to BOTH runtime tables the
- * bundle carries. Prefers `editor/variables.json`; if that file is absent (a project opened only in a
- * pre-M-VAR Studio, or a Dev Mode start before the renderer migrated), it seeds from the legacy
- * `persistentVariables` still on the raw blueprint document, so Dev Mode never loses persistent vars.
+ * Load the project-level variable registry once and project it to BOTH runtime tables the bundle
+ * carries. An absent `editor/variables.json` is a project that has never declared a project-scoped
+ * variable, and reads as two empty tables.
  *
  * One read, two projections - not two loaders: the file is a single registry holding both scopes, and
  * reading it twice would let a write landing between the reads hand the bundle a saved table and a
  * persistent table from different revisions of the same file.
- *
- * The legacy branch contributes nothing to the saved table on purpose: the old blueprint field held
- * persistent variables and only persistent variables, so a project that never wrote a registry has no
- * registry-backed saved variables at all - its saved ones are the story's `/save` rows.
  */
 async function loadVariableRuntimeTables(
     projectPath: string,
-    rawBlueprintDocument: unknown,
 ): Promise<{ persistent: PersistentVariableRuntimeTable; saved: SavedVariableRuntimeTable }> {
     const registryPath = path.join(projectPath, "editor", "variables.json");
     const raw = await readOptionalJsonFile<unknown>(registryPath);
@@ -275,12 +271,7 @@ async function loadVariableRuntimeTables(
         const registry = migrateVariableRegistryToLatest(raw);
         return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
     }
-    const legacy = readRawPersistentVariables(rawBlueprintDocument);
-    const { entries } = seedRegistryEntriesFromBlueprintPersistent(legacy);
-    // Stamped at the current version, not at the version the legacy field belonged to: `entries` was
-    // just built by the seeder, so it already has the current shape (scope included) and claiming an
-    // older version would only mislead anything that reads it.
-    const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries };
+    const registry: VariableRegistry = { schemaVersion: VARIABLE_REGISTRY_SCHEMA_VERSION, entries: {} };
     return { persistent: buildPersistentRuntimeTable(registry), saved: buildSavedRuntimeTable(registry) };
 }
 
@@ -298,16 +289,6 @@ async function loadSaveSchemaTable(projectPath: string): Promise<SaveSchemaRunti
     return raw ? listSaveSchemaFields(migrateSaveSchemaToLatest(raw)) : [];
 }
 
-function readRawPersistentVariables(blueprintDocument: unknown): Record<string, BlueprintPersistentVariable> | undefined {
-    if (typeof blueprintDocument !== "object" || blueprintDocument === null) {
-        return undefined;
-    }
-    const raw = (blueprintDocument as { persistentVariables?: unknown }).persistentVariables;
-    if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-        return undefined;
-    }
-    return raw as Record<string, BlueprintPersistentVariable>;
-}
 
 /**
  * Every shared blueprint asset a project holds, parsed.
@@ -1222,6 +1203,16 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
+ * Load the preload behavior from `.nlproj` `app.preload`. Dense like the ones above: the engine is
+ * configured with a gate at boot whether or not the author ever opened the page. Exported for tests.
+ */
+export async function loadPreloadConfiguration(projectPath: string): Promise<PreloadConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizePreloadConfiguration(app?.preload);
 }
 
 /**

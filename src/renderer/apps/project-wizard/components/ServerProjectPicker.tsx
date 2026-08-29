@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 
-import { getInterface } from "@/lib/app/bridge";
 import { useTranslation } from "@/lib/i18n";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { ServerRow, useServers } from "@/lib/vcs/servers";
 import type { TranslationKey } from "@shared/i18n";
+import { serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsServerProject,
     VcsServerProjectsProblem,
@@ -16,8 +17,11 @@ const PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], TranslationKey> = {
     refused: "wizard.source.onServerRefused",
     unreachable: "wizard.source.onServerUnreachable",
     rejected: "wizard.source.onServerUnknown",
-    // Publishing is the only thing that answers this, and it happens in the workspace.
+    // Publishing is the only thing that answers either of these, and this picker reads a
+    // server's list rather than putting anything on one.
     "wrong-repository": "wizard.source.onServerUnknown",
+    "name-taken": "wizard.source.onServerUnknown",
+    "already-published": "wizard.source.onServerUnknown",
     unknown: "wizard.source.onServerUnknown",
 };
 
@@ -63,17 +67,13 @@ export function ServerProjectPicker({ value, onPick }: ServerProjectPickerProps)
         setLoading(true);
         setProblem(null);
         setProjects(null);
-        const result = await getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
+        const result = await listProjects(remoteOrigin);
         setLoading(false);
-        if (!result?.success) {
-            setProblem("wizard.source.onServerUnknown");
+        if (!result.ok) {
+            setProblem(PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
             return;
         }
-        if (!result.data.ok) {
-            setProblem(PROBLEM_KEYS[result.data.problem.kind]);
-            return;
-        }
-        setProjects(result.data.projects);
+        setProjects(result.value.projects);
     }, []);
 
     useEffect(() => {

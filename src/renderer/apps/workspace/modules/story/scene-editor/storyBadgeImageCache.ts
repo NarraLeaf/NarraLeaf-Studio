@@ -6,6 +6,9 @@ import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAsset
 import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import type { AssetType } from "@/lib/workspace/services/assets/assetTypes";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import { AssetType as AssetTypeEnum } from "@/lib/workspace/services/assets/assetTypes";
+import { resolveEditorAssetSetMember } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 
 /**
  * Where an image's bytes come from. A character's differential sprite is a *project* asset (the
@@ -45,6 +48,8 @@ type Entry = {
      *  superseded (the asset was replaced or deleted mid-fetch) drops its bytes instead of re-minting a
      *  stale URL — which would otherwise resurrect a deleted image or clobber a newer replacement. */
     generation: number;
+    /** Size of the bytes behind `url`, which is what the retention pool below is budgeted in. */
+    bytes: number;
     load: () => Promise<Uint8Array | null>;
 };
 
@@ -91,6 +96,7 @@ function beginLoad(key: string, entry: Entry): void {
                 URL.revokeObjectURL(entry.url);
             }
             entry.url = nextUrl;
+            setEntryBytes(key, entry, bytes.byteLength);
             emit(key);
         })
         .catch(() => {
@@ -109,6 +115,8 @@ function beginLoad(key: string, entry: Entry): void {
 function retain(key: string, load: () => Promise<Uint8Array | null>): void {
     const existing = entries.get(key);
     if (existing) {
+        // Back in use: out of the pool, so a later eviction cannot revoke a URL a row is showing.
+        unpool(key);
         existing.refs++;
         // Keep the freshest loader (services/source may have re-resolved) and, if the last attempt
         // came up empty, give this new subscriber a fresh try instead of the pinned fallback icon.
@@ -119,7 +127,7 @@ function retain(key: string, load: () => Promise<Uint8Array | null>): void {
         return;
     }
 
-    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, generation: 0, load };
+    const entry: Entry = { url: null, refs: 1, disposed: false, loading: false, failed: false, generation: 0, bytes: 0, load };
     entries.set(key, entry);
     beginLoad(key, entry);
 }
@@ -145,6 +153,12 @@ function invalidate(key: string, gone: boolean): void {
         }
         entry.failed = true;
         emit(key);
+        // A pooled entry has no row watching it, so nothing will ever reload it: drop it outright
+        // rather than leave a `failed` shell holding a slot.
+        if (entry.refs <= 0) {
+            unpool(key);
+            dispose(key, entry);
+        }
         return;
     }
     // Replaced content: a fresh load supersedes any in-flight one and swaps the URL on success.
@@ -179,6 +193,76 @@ function ensureAssetInvalidationWired(assets: AssetsService): void {
     });
 }
 
+/**
+ * The retention pool: images that no mounted row is watching any more, kept loaded in case one comes
+ * back.
+ *
+ * The story row list is windowed, so scrolling unmounts every row it passes and mounts it again on
+ * the way back. Disposing at the moment the last row unmounts made a `/background` row's picture cost
+ * a fresh read of the file plus a blob mint and a decode *every time it crossed the viewport* - which
+ * is the delay an author sees as a row that draws its words first and its picture a moment later, and
+ * a large part of what a fast scroll spends its time on. Coming back to a pooled key is a map lookup.
+ *
+ * Budgeted in bytes as well as in entries because the two kinds of entry are three orders of
+ * magnitude apart: a 160px downscale is tens of kilobytes and a background photograph is megabytes.
+ * A count alone would either be too small to hold a screenful of thumbnails or big enough to pin
+ * hundreds of megabytes of full-size images.
+ */
+const RETAINED_LIMIT = 64;
+const RETAINED_BYTES_LIMIT = 32 * 1024 * 1024;
+
+/** Keys released but still loaded, oldest first, with the bytes they are holding between them. */
+const retained: string[] = [];
+let retainedBytes = 0;
+
+function dispose(key: string, entry: Entry): void {
+    entry.disposed = true;
+    if (entry.url) {
+        URL.revokeObjectURL(entry.url);
+    }
+    entries.delete(key);
+}
+
+/** Take a key out of the pool, giving its bytes back to the budget. */
+function unpool(key: string): void {
+    const at = retained.indexOf(key);
+    if (at < 0) {
+        return;
+    }
+    retained.splice(at, 1);
+    retainedBytes -= entries.get(key)?.bytes ?? 0;
+}
+
+/**
+ * Record what an entry is holding. While it sits in the pool its bytes are part of the budget, so a
+ * reload that lands on a pooled entry has to move the difference with it.
+ */
+function setEntryBytes(key: string, entry: Entry, bytes: number): void {
+    const pooled = retained.includes(key);
+    if (pooled) {
+        retainedBytes += bytes - entry.bytes;
+    }
+    entry.bytes = bytes;
+    if (pooled) {
+        evictToBudget();
+    }
+}
+
+function evictToBudget(): void {
+    while (retained.length > 0 && (retained.length > RETAINED_LIMIT || retainedBytes > RETAINED_BYTES_LIMIT)) {
+        const evicted = retained[0];
+        const stale = entries.get(evicted);
+        // Only ever evict something still unwatched: a pooled key can be retained again at any time,
+        // and revoking a URL a mounted row is showing would blank its picture.
+        if (!stale || stale.refs > 0) {
+            unpool(evicted);
+            continue;
+        }
+        unpool(evicted);
+        dispose(evicted, stale);
+    }
+}
+
 function release(key: string): void {
     const entry = entries.get(key);
     if (!entry) {
@@ -188,11 +272,16 @@ function release(key: string): void {
     if (entry.refs > 0) {
         return;
     }
-    entry.disposed = true;
-    if (entry.url) {
-        URL.revokeObjectURL(entry.url);
+    if (!entry.url) {
+        // Nothing to keep: an entry that never loaded is cheaper to rebuild than to track.
+        dispose(key, entry);
+        return;
     }
-    entries.delete(key);
+    // Most recently released goes last, so the oldest unwatched entry is the one evicted.
+    unpool(key);
+    retained.push(key);
+    retainedBytes += entry.bytes;
+    evictToBudget();
 }
 
 function addListener(key: string, listener: () => void): void {
@@ -285,4 +374,32 @@ export function useBadgeImageUrl(source: BadgeImageSource | null): string | null
     const getSnapshot = useCallback(() => (key ? entries.get(key)?.url ?? null : null), [key]);
 
     return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
+ * The image record a story row's asset id names, ready to hand to {@link useBadgeImageUrl}.
+ *
+ * Set ids are resolved to the file that answers for them, because a row may name an asset SET and the
+ * cache addresses bytes by file. The resolution is re-run when the library moves: what a set id names
+ * changes when a tag is written on some other file entirely, so watching the row's own id would miss
+ * it.
+ */
+export function useStoryImageAsset(assetId: string | null | undefined): Asset<AssetType.Image> | null {
+    const { context, isInitialized } = useWorkspace();
+    const libraryRevision = useAssetLibraryRevision();
+    return useMemo(() => {
+        if (!assetId || !context || !isInitialized) {
+            return null;
+        }
+        let assets: AssetsService;
+        try {
+            assets = context.services.get<AssetsService>(Services.Assets);
+        } catch {
+            return null;
+        }
+        const fileId = resolveEditorAssetSetMember(context, assetId) ?? assetId;
+        return assets.getAssets()?.[AssetTypeEnum.Image]?.[fileId] ?? null;
+        // `libraryRevision` is a key, not a value: an import, a rename or a retag can change which
+        // file answers, and asset records are mutated in place so nothing else would re-run this.
+    }, [assetId, context, isInitialized, libraryRevision]);
 }

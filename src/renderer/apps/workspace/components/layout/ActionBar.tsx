@@ -10,6 +10,7 @@ import { getActionGroupItems, getVisibleActionMenuItems, isActionVisible } from 
 import { isActionFrozenOut, resolveFrozenActionDisabled } from "../ui/freezeActionPolicy";
 import { RunControl } from "../../modules/actions/RunControl";
 import { useWorkspaceFreezeReason } from "../../hooks/useWorkspaceFrozen";
+import { useFreezeUnavailableReason } from "../ui/freezeGuard";
 import { useTitleBarActionGroups } from "../../hooks/useTitleBarActionGroups";
 import { useTranslation } from "@/lib/i18n";
 import { WorkspaceMenuAction } from "@shared/types/menu";
@@ -63,6 +64,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
     // The kind, not merely "frozen": one of them leaves the operations main starts alone, and the
     // policy below is what knows which actions those are.
     const freeze = useWorkspaceFreezeReason();
+    const frozenReason = useFreezeUnavailableReason();
     const [focusContext, setFocusContext] = useState<FocusContext | null>(null);
 
     // Subscribe to focus changes
@@ -113,7 +115,7 @@ export function ActionBar({ hideAllGroups = false }: ActionBarProps) {
                 const label = resolvedTooltip || resolvedLabel;
                 // The freeze reason takes the tooltip, because an icon button that is off for no
                 // stated reason reads as a bug; `aria-label` keeps naming the action itself.
-                const title = frozenOut ? t("workspace.shell.freeze.unavailable") : label;
+                const title = frozenOut ? frozenReason : label;
 
                 return (
                     <button

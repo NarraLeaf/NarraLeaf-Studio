@@ -41,6 +41,9 @@ describe("stageSlotRuntimeScopeId", () => {
             "nlr:sess-1:slot:notification:surf-2",
         );
         expect(stageSlotRuntimeScopeId("sess-1", "choice", "surf-3")).toBe("nlr:sess-1:slot:choice:surf-3");
+        // Slot zero is the id every game had before a slot could be drawn twice.
+        expect(stageSlotRuntimeScopeId("sess-1", "choice", "surf-3", 0)).toBe("nlr:sess-1:slot:choice:surf-3");
+        expect(stageSlotRuntimeScopeId("sess-1", "choice", "surf-3", 1)).toBe("nlr:sess-1:slot:choice:surf-3:#1");
         expect(stageSlotRuntimeScopeId("sess-1", "nvl", "surf-4")).toBe("nlr:sess-1:slot:nvl:surf-4");
         expect(stageSlotRuntimeScopeId("sess-1", "onStage", "surf-5")).toBe("nlr:sess-1:slot:onStage:surf-5");
     });

@@ -7,6 +7,7 @@ import { DEFAULT_UI_ROOT_NAME } from "@shared/constants/ui-editor";
 import { getOutlineVisualChildren } from "@/lib/ui-editor/interaction/outline/outlineDropGeometry";
 import { useTranslation } from "@/lib/i18n";
 import { isSurfaceGestureEnabled, type UIEditorReadOnly } from "@/lib/ui-editor/interaction/readOnlyInteraction";
+import { useOutlineElementBadge } from "./outlineBadges";
 
 export const OUTLINE_ROOT_WIDGET_TYPE = "nl.root";
 const ROW_LEFT_PADDING = 6;
@@ -78,6 +79,7 @@ export function OutlineRow({
     readOnly,
 }: OutlineRowBase & { element: UIElement; depth: number }) {
     const { t } = useTranslation();
+    const Badge = useOutlineElementBadge();
     const reorderEnabled = isSurfaceGestureEnabled("outlineReorder", readOnly);
     const renameEnabled = isSurfaceGestureEnabled("outlineRename", readOnly);
     const visibilityEnabled = isSurfaceGestureEnabled("outlineVisibility", readOnly);
@@ -193,6 +195,9 @@ export function OutlineRow({
                     }}
                 >
                     <span className="min-w-0 truncate">{label}</span>
+                    {/* Whatever the workspace put here - in a live session, who else has this
+                        element open. Nothing at all in the runtime; see `outlineBadges`. */}
+                    {Badge ? <Badge elementId={element.id} /> : null}
                     {element.type !== OUTLINE_ROOT_WIDGET_TYPE ? (
                         <span className="min-w-0 max-w-[7rem] truncate font-mono text-2xs font-normal text-fg-subtle opacity-0 transition-opacity group-hover/outline-row:opacity-100">
                             {element.type.replace(/^nl\./, "")}

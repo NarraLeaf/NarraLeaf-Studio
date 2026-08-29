@@ -4,6 +4,7 @@ import type { StoryActionPayload, StoryBlock, StoryDocument, StoryExpr, StorySce
 import { buildSceneFlowGraph } from "./sceneFlowModel";
 import {
     branchDeltaFor,
+    collectBlueprintVariableWrites,
     collectBranchEffects,
     collectSceneEffects,
     computeVariableRanges,
@@ -132,6 +133,54 @@ function conditionBranchBlock(
                 : {}),
         },
     } as StoryBlock;
+}
+
+/** `/blueprint` - a row that runs a graph. What it assigns is not readable from the document. */
+function blueprintBlock(id: string, blueprintId: string, parentId: string | null = null): StoryBlock {
+    return { id, kind: "action", parentId, childrenIds: [], payload: { action: "blueprint", blueprintId } } as StoryBlock;
+}
+
+/** A jump that comes back - `/call` rather than `/jump`. */
+function callBlock(id: string, targetSceneId: string, parentId: string | null = null): StoryBlock {
+    return { id, kind: "jump", parentId, childrenIds: [], payload: { targetSceneId, returnable: true } } as StoryBlock;
+}
+
+/**
+ * A blueprint document holding one graph with one `Set Saved Var` node.
+ *
+ * `owner.kind` is what decides whether the writes are attributable to a row or ambient, so it is the
+ * parameter: `storyAction` is a graph a `/blueprint` row runs, anything else fires on its own.
+ */
+function blueprintDocumentWriting(
+    blueprintId: string,
+    variableId: string,
+    ownerKind: "storyAction" | "surface" = "storyAction",
+): Parameters<typeof collectBlueprintVariableWrites>[0] {
+    return {
+        blueprints: {
+            [blueprintId]: {
+                id: blueprintId,
+                name: "graph",
+                owner: ownerKind === "storyAction"
+                    ? { kind: "storyAction", blueprintId }
+                    : { kind: "surface", surfaceId: "s1" },
+                program: {
+                    kind: "graph",
+                    graphs: {
+                        events: {
+                            e1: {
+                                graph: {
+                                    nodes: {
+                                        n1: { id: "n1", type: "blueprint.saved.set", params: { savedVariableId: variableId } },
+                                    },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    } as unknown as Parameters<typeof collectBlueprintVariableWrites>[0];
 }
 
 function repeatBlock(id: string, childrenIds: string[], parentId: string | null = null): StoryBlock {
@@ -679,5 +728,92 @@ describe("listNumericStoryVariables", () => {
         ]);
 
         expect(ranges.get("a")).toEqual({ kind: "known", min: 5, max: 5 });
+    });
+});
+
+describe("writers the module cannot read", () => {
+    /**
+     * Both cases here used to answer with a number rather than `?`, and both erred the same way -
+     * they narrowed the range. A range that is too narrow is the one error the header forbids,
+     * because it says a value the player can reach is out of reach.
+     */
+
+    it("counts a /blueprint row as an unreadable write to every key its graph may set", () => {
+        const story = document([
+            scene("a", "Start", [affectionDecl, blueprintBlock("bp1", "graph-1"), jumpBlock("j1", "b")]),
+            scene("b", "After", []),
+        ], "a");
+        const graph = buildSceneFlowGraph(story);
+        const writes = collectBlueprintVariableWrites(blueprintDocumentWriting("graph-1", AFFECTION));
+
+        // Without the graph, the row is invisible and 好感 still reads as its declared 0.
+        expect(rangeTuples(computeVariableRanges(graph, story, AFFECTION_KEY)))
+            .toEqual({ a: "0..0", b: "0..0" });
+        // With it, the scene after the row cannot be claimed - the graph decides that number.
+        expect(rangeTuples(computeVariableRanges(graph, story, AFFECTION_KEY, [], writes)))
+            .toEqual({ a: "0..0", b: "?" });
+    });
+
+    it("leaves a variable the graph does not name alone", () => {
+        const story = document([
+            scene("a", "Start", [affectionDecl, blueprintBlock("bp1", "graph-1"), jumpBlock("j1", "b")]),
+            scene("b", "After", []),
+        ], "a");
+        const writes = collectBlueprintVariableWrites(blueprintDocumentWriting("graph-1", GOLD));
+
+        // The poison is per key, not per row: a graph that sets gold says nothing about 好感.
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY, [], writes)))
+            .toEqual({ a: "0..0", b: "0..0" });
+    });
+
+    it("makes a graph no row runs unknown everywhere rather than at one row", () => {
+        const story = document([
+            scene("a", "Start", [affectionDecl, jumpBlock("j1", "b")]),
+            scene("b", "After", []),
+        ], "a");
+        const writes = collectBlueprintVariableWrites(blueprintDocumentWriting("graph-1", AFFECTION, "surface"));
+
+        // A surface's event handler runs when the player clicks, which is any time at all - including
+        // before the first row. There is no scene to attribute it to and no arrival value to state.
+        expect(writes.ambient.has(AFFECTION_KEY)).toBe(true);
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY, [], writes)))
+            .toEqual({ a: "?", b: "?" });
+    });
+
+    it("absorbs what a called scene wrote into the caller's continuation", () => {
+        // `a` calls `sub`, which moves 好感, and then carries on to `b`. Walking only the forward
+        // edge dropped the subroutine's work and reported `b` as though the call never happened.
+        const story = document([
+            scene("a", "Caller", [affectionDecl, callBlock("call1", "sub"), jumpBlock("j1", "b")]),
+            scene("sub", "Subroutine", [setExpressionBlock("w1", stepAst("+", 5), "好感 + (5)")]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY)))
+            .toEqual({ a: "0..0", sub: "0..0", b: "?" });
+    });
+
+    it("does not absorb anything when the call writes nothing", () => {
+        const story = document([
+            scene("a", "Caller", [affectionDecl, callBlock("call1", "sub"), jumpBlock("j1", "b")]),
+            scene("sub", "Subroutine", []),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY)))
+            .toEqual({ a: "0..0", sub: "0..0", b: "0..0" });
+    });
+
+    it("follows the call past its first scene", () => {
+        // The write is one jump beyond the scene the call names, which a set built from the callee
+        // alone would miss - and missing it is what narrows the range.
+        const story = document([
+            scene("a", "Caller", [affectionDecl, callBlock("call1", "sub"), jumpBlock("j1", "b")]),
+            scene("sub", "Subroutine", [jumpBlock("j2", "deep")]),
+            scene("deep", "Deeper", [setExpressionBlock("w1", stepAst("+", 5), "好感 + (5)")]),
+            scene("b", "After", []),
+        ], "a");
+
+        expect(rangeTuples(computeVariableRanges(buildSceneFlowGraph(story), story, AFFECTION_KEY)).b).toBe("?");
     });
 });

@@ -3,6 +3,24 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 
 export type WidgetPatchesByScope = Record<string, Record<string, DevModeWidgetRuntimePatch>>;
 
+/**
+ * Two patches for one drawing, later winning.
+ *
+ * `props` is merged rather than replaced: each write states only the properties it changed, and a
+ * shallow spread would drop everything an earlier write had put there. Every other field is one
+ * fact, so last-writer-wins is what they mean.
+ */
+function mergeOnePatch(
+    previous: DevModeWidgetRuntimePatch | undefined,
+    patch: DevModeWidgetRuntimePatch,
+): DevModeWidgetRuntimePatch {
+    const merged: DevModeWidgetRuntimePatch = { ...(previous ?? {}), ...patch };
+    if (previous?.props || patch.props) {
+        merged.props = { ...(previous?.props ?? {}), ...(patch.props ?? {}) };
+    }
+    return merged;
+}
+
 export function mergeWidgetRuntimePatch(
     current: WidgetPatchesByScope,
     runtimeScopeId: string,
@@ -13,10 +31,7 @@ export function mergeWidgetRuntimePatch(
         ...current,
         [runtimeScopeId]: {
             ...(current[runtimeScopeId] ?? {}),
-            [elementId]: {
-                ...(current[runtimeScopeId]?.[elementId] ?? {}),
-                ...patch,
-            },
+            [elementId]: mergeOnePatch(current[runtimeScopeId]?.[elementId], patch),
         },
     };
 }

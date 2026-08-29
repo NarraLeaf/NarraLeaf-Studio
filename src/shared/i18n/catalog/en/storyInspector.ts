@@ -9,7 +9,6 @@ export const storyInspector = {
     unassigned: "Unassigned",
 
     section: {
-        timing: "Timing",
         conditions: "Conditions",
         appearance: "Appearance",
         blueprint: "Blueprint",
@@ -427,11 +426,6 @@ export const storyInspector = {
         editHint: "Double-click the row to edit narration text.",
     },
 
-    dialogue: {
-        pauseAfter: "Pause after line",
-        pauseSeconds: "Pause (s, optional)",
-    },
-
     choice: {
         prompt: "Prompt",
     },
@@ -445,6 +439,7 @@ export const storyInspector = {
 
     jump: {
         targetScene: "Target scene",
+        returnable: "Return after the target scene",
     },
 
     note: {
@@ -467,6 +462,7 @@ export const storyInspector = {
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
+        waitForEnd: "Wait for the clip",
     },
 
     image: {
@@ -529,6 +525,7 @@ export const storyInspector = {
         none: "No asset",
         clear: "Clear asset",
         selectTitle: "Select {label}",
+        change: "Change",
     },
 
     displayableEffect: {

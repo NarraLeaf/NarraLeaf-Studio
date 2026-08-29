@@ -264,6 +264,23 @@ export interface GlobalStateType extends Record<string, any> {
      * home screen is where that choice is made, and it is one click from the project they left.
      */
     "workspace.reopenLastProject": boolean;
+    /**
+     * Open a workspace window maximized rather than at the frame it was placed at.
+     *
+     * Read by `App.launchWorkspace` as each window is built. Off by default: the frame a workspace
+     * arrives at is already chosen for it - centred at 1400x900 from the home screen, and stepped
+     * down and right of the workspace it was opened alongside - and maximizing on top of that
+     * would put a second project exactly over the first, which is the one thing `workspacePlacement`
+     * offsets to avoid. On, it is the author saying they want the screen filled anyway.
+     *
+     * The placed frame is still what the window falls back to when the maximized state is left, so
+     * this decides how a workspace *arrives*, not what size it is.
+     *
+     * Switching project inside a window is exempt: the replacement takes over the frame of the
+     * window it replaces, maximized or not, which is what makes the switch read as one window
+     * changing project. So is a workspace opened to run a build with nobody at the screen.
+     */
+    "workspace.maximizeOnOpen": boolean;
     /** How many projects the home screen and the native Open Recent submenu keep. */
     "workspace.recentProjectsLimit": number;
     /**
@@ -290,6 +307,17 @@ export interface GlobalStateType extends Record<string, any> {
      * which stay honored for hosts already configured that way.
      */
     "build.electronBuilderBinariesMirror": string;
+    /**
+     * Base URL for the Zig toolchain a build downloads when the host has none; "" = the
+     * official ziglang.org source. A third source rather than a mode of either above for
+     * the same reason those two are separate: the layout is its own
+     * (`<mirror><version>/<archive>`), and nothing about the other two implies it.
+     *
+     * Unlike the two above it has no environment variable beside it. Those two are honoured
+     * because they predate Studio and CI images already export them; a variable invented for
+     * this one would only be a second place to say what this field already says.
+     */
+    "build.zigMirror": string;
     /**
      * Ordered prefix substitutions applied to download URLs Studio did not choose - the
      * plugin `.zip` and icon a registry index names, and the archive a plugin's
@@ -441,6 +469,21 @@ export interface GlobalStateType extends Record<string, any> {
      * team's server has somewhere to say so.
      */
     "team.machineLabel": string;
+    /**
+     * The live session a window was hosting when it went away, by repository id.
+     *
+     * **The one thing about a session that has to survive a window, and only for a minute.** A room
+     * lives in a server's memory and belongs to the window that opened it, so the moment that window
+     * goes - a reload, a crash, a laptop closing - the server ends it, and everybody in it is told.
+     * Nothing left anywhere else says the collaboration was meant to carry on, so a reload used to
+     * be indistinguishable from a goodbye.
+     *
+     * Written when a window becomes a host and cleared when its author leaves on purpose, so what is
+     * here means "this stopped without anybody asking". `at` is what keeps it from meaning anything
+     * else: a record older than a couple of minutes is a session that ended some time ago, and a
+     * workspace opening on it must not start a room around an author who came back tomorrow.
+     */
+    "team.hostedLiveSessions": Record<string, { story: string; at: number }>;
 }
 
 export type GlobalStateKeys = string;
@@ -492,10 +535,12 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     "editor.detachedEditorOnClose": "restoreTab",
     "workspace.confirmBeforeClose": false,
     "workspace.reopenLastProject": false,
+    "workspace.maximizeOnOpen": false,
     "workspace.recentProjectsLimit": 10,
     "dashboard.openOnWorkspaceOpen": true,
     "build.electronMirror": "",
     "build.electronBuilderBinariesMirror": "",
+    "build.zigMirror": "",
     "network.downloadRewrites": [],
     "plugins.registryUrl": "",
     "uiTemplates.registryUrl": "",
@@ -511,6 +556,7 @@ export const GLOBAL_STATE_DEFAULTS: Partial<GlobalStateType> = {
     // default would be written to disk on first read and every installation would then
     // be calling itself the same thing.
     "team.machineLabel": "",
+    "team.hostedLiveSessions": {},
 };
 
 /**

@@ -24,8 +24,14 @@ import { createContext, useContext } from "react";
  * want while they are editing it.
  */
 export type InspectorWrites = {
-    /** The project-relative path this inspector's fields write, or undefined when it cannot say. */
-    scope?: string;
+    /**
+     * The project-relative path this inspector's fields write, or undefined when it cannot say.
+     *
+     * A list where the inspector writes more than one file and needs all of them - the asset
+     * library, whose rows are filed in a shard per type and which a session carries whole or not at
+     * all. `useFreezeGuard` blocks unless every path is allowed.
+     */
+    scope?: string | readonly string[];
     /** The account editing this subject in a live session, or undefined when nobody else is. */
     heldBy?: string;
 };

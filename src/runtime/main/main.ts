@@ -51,7 +51,7 @@ import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointe
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
 import { sniffMediaType } from "./mediaSniff";
-import { createRuntimeResources, type RuntimeResources } from "./runtimeResources";
+import { createRuntimeResources, isSealedBuildSync, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,
     PLUGIN_RUNTIME_API_MODULE_SOURCE,
@@ -98,6 +98,8 @@ import { installWindowCrashHandling } from "./windowCrashHandling";
 import {
     hasDebuggingSwitch,
     hasStartupSwitch,
+    honoursDebuggableMarker,
+    REFUSAL_LOG_PREFIX,
     reviewStartupArguments,
     RUNTIME_LOGS_SWITCH,
 } from "@shared/utils/runtimeStartupArguments";
@@ -143,6 +145,15 @@ const shellManifest = readShellManifest();
 const shellMode = shellManifest.mode;
 
 /**
+ * Whether this build's content is sealed.
+ *
+ * Read from disk rather than from the pack, because the marker below has to be answered before
+ * anything can open one. It is the same file `createRuntimeResources` decides on a moment later, so
+ * the two cannot disagree about what kind of build this is.
+ */
+const shellSealed = isSealedBuildSync(appDir);
+
+/**
  * This build was made to be inspected, so the guards below stand aside for the launch switches
  * they otherwise refuse.
  *
@@ -150,8 +161,17 @@ const shellMode = shellManifest.mode;
  * own: the switch still has to be on the command line for anything to be listening. The pack
  * carries the same marker and stays authoritative - a manifest that claims this while the pack does
  * not is refused by the second gate, which is the one that runs from inside the archive.
+ *
+ * The *shipped* form of a sealed build refuses it whichever marker carries it, because this gate -
+ * the one that decides in time to matter - can only read the manifest, and a protected game cannot
+ * have a text edit standing between a stranger and its decrypted content. An app directory run by
+ * hand is not that form and keeps the marker. See {@link honoursDebuggableMarker}.
  */
-const shellDebuggable = shellManifest.debuggable;
+const shellDebuggable = honoursDebuggableMarker({
+    marker: shellManifest.debuggable,
+    sealed: shellSealed,
+    packaged: app.isPackaged,
+});
 
 /*
  * Before anything has had a chance to print. A shipped game keeps its own output to its log file
@@ -403,8 +423,11 @@ function refuseStartupArguments(): boolean {
     }
     // Written to the log and nowhere else. The player who typed a switch into a launcher gets the
     // file to send to support; anyone probing the game for what it refuses gets a process that
-    // exits and says nothing.
-    logRuntime("error", `refusing to start: this build does not accept ${refused.join(", ")}`);
+    // exits and says nothing. The fixed half of the line is masked in the bundle (it would otherwise
+    // be a plaintext beacon pointing a search straight at this refusal) and reconstructed here, so
+    // the log file still reads plainly. `REFUSAL_LOG_PREFIX` is "refusing to start: this build does
+    // not accept ".
+    logRuntime("error", `${REFUSAL_LOG_PREFIX}${refused.join(", ")}`);
     app.quit();
     return true;
 }
@@ -455,13 +478,13 @@ void app.whenReady().then(async () => {
         explainRefusedPatches: shellMode !== "production" || shellDebuggable,
     });
     const pack = await readPack();
-    if (pack.mode === "production" && pack.debuggable !== true && refusedStartupArguments().length > 0) {
+    if (pack.mode === "production" && !packDebuggable(pack) && refusedStartupArguments().length > 0) {
         // The pack is what a shipped game is, and it is inside the archive - so this is the gate a
         // rewritten shell manifest does not get past on the platforms that validate one.
         app.quit();
         return;
     }
-    if (pack.debuggable === true) {
+    if (packDebuggable(pack)) {
         console.log("[GameRuntime] This build accepts any command line (built under an experimental condition).");
     }
     const allowHttp = pack.network?.allowHttp === true;
@@ -747,6 +770,22 @@ function emitTestEvent(event: GameTestEvent): void {
     }
 }
 
+/**
+ * The pack's own `debuggable` marker, as far as it is allowed to mean anything.
+ *
+ * Put through the same rule as the manifest one. This marker cannot be tampered with - it comes out
+ * of the protected store - so the point is not to defend against an edit; it is that the two gates
+ * have to say the same thing, or a launch could be refused its switch by the first and then be
+ * handed DevTools by the second.
+ */
+function packDebuggable(pack: GameRuntimePackV1): boolean {
+    return honoursDebuggableMarker({
+        marker: pack.debuggable === true,
+        sealed: shellSealed,
+        packaged: app.isPackaged,
+    });
+}
+
 async function readPack(): Promise<GameRuntimePackV1> {
     if (!packPromise) {
         packPromise = runtimeResources()
@@ -789,7 +828,7 @@ function createWindow(pack: GameRuntimePackV1): BrowserWindow {
     // switch on the command line it starts exactly as a production build does, which is what keeps
     // it usable for testing what players get.
     const devToolsEnabled = pack.mode !== "production"
-        || (pack.debuggable === true && hasDebuggingSwitch(startupArguments(), process.platform));
+        || (packDebuggable(pack) && hasDebuggingSwitch(startupArguments(), process.platform));
     const win = new BrowserWindow({
         title: pack.project.name,
         // The design size is the STAGE, not the window: Electron's width/height are the outer size,
@@ -1228,12 +1267,20 @@ function registerRuntimeProtocol(allowHttp: boolean, allowlist: NetworkAllowlist
         try {
             if (url.hostname === "runtime") {
                 const pathname = decodeURIComponent(url.pathname);
+                // Bundled runtime files come from the store; anything the store
+                // does not hold falls back to a loose read from the app dir. The
+                // document goes through the same door as the rest now that a
+                // protected build keeps it there too - it just has the CSP put
+                // into it on the way out.
+                const wanted = isIndexDocument(pathname) ? "index.html" : trimLeadingSlashes(pathname);
+                const bundled = await runtimeResources().readRuntimeFile(wanted);
                 if (isIndexDocument(pathname)) {
-                    return serveIndexDocument(resolveRuntimeStaticPath(appDir, pathname), allowHttp, allowlist);
+                    return serveIndexDocument(
+                        bundled ?? await fs.readFile(resolveRuntimeStaticPath(appDir, pathname)),
+                        allowHttp,
+                        allowlist,
+                    );
                 }
-                // Bundled runtime files (e.g. plugin entries) come from the store;
-                // static runtime files fall back to a loose read from the app dir.
-                const bundled = await runtimeResources().readRuntimeFile(pathname.replace(/^\/+/, ""));
                 if (bundled) {
                     return serveBytes(bundled, getMimeType(pathname));
                 }
@@ -1447,12 +1494,21 @@ function isIndexDocument(pathname: string): boolean {
 }
 
 /** Serve the runtime document with the gated Content-Security-Policy injected. */
+/** Drop the leading slashes a protocol path arrives with; a store entry has none. */
+function trimLeadingSlashes(pathname: string): string {
+    let at = 0;
+    while (at < pathname.length && pathname[at] === "/") {
+        at += 1;
+    }
+    return pathname.slice(at);
+}
+
 async function serveIndexDocument(
-    filePath: string,
+    document: Buffer,
     allowHttp: boolean,
     allowlist: NetworkAllowlist,
 ): Promise<Response> {
-    const html = await fs.readFile(filePath, "utf-8");
+    const html = document.toString("utf-8");
     return new Response(injectRuntimeCsp(html, allowHttp, allowlist), {
         status: 200,
         headers: {
