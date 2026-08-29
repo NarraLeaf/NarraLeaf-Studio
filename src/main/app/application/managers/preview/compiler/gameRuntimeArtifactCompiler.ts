@@ -1158,12 +1158,8 @@ async function resolveTitleCompile(options: {
     const archiveDir = codecArchiveDir();
     const refuse = (detail: string): never => {
         throw new Error(
-            `${options.reason} needs a C toolchain to compile this title's content codec, and one `
-            + `could not be obtained: ${detail}
-`
-            + "Fix that and build again, or turn the feature off. It is not built without it: a "
-            + "codec that is not compiled for this title can be opened by any copy of the codec "
-            + "package, which is what protecting the content is for.",
+            `${options.reason} could not compile this title's content codec: ${detail}. `
+            + "Install a C toolchain and build again, or turn it off.",
         );
     };
     if (options.explicitCompiler) {
