@@ -175,8 +175,12 @@ export function QuickSwitchOverlay({
                                         {row.icon}
                                     </span>
                                     <span className="min-w-0 flex-1 truncate text-sm">{row.title}</span>
+                                    {/* Inherits the row's own foreground, like the same dot on the
+                                        tab strip: it marks one fact about an entry the reader is
+                                        already scanning, and an accent-coloured one would carry
+                                        more weight than the title it sits beside. */}
                                     {row.modified && (
-                                        <Circle className="h-2 w-2 shrink-0 fill-current text-primary" />
+                                        <Circle className="h-2 w-2 shrink-0 fill-current" aria-hidden />
                                     )}
                                     {row.trailing !== undefined && row.trailing !== null && (
                                         <span className="shrink-0 text-xs text-fg-subtle">{row.trailing}</span>

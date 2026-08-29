@@ -572,26 +572,41 @@ export function EditorGroup({ group }: EditorGroupProps) {
                                             {String(tab.title)}
                                         </span>
 
-                                        {tab.modified && (
-                                            <Circle className="w-2 h-2 fill-current text-primary" />
-                                        )}
-
-                                        {closable && (
-                                            <button
-                                                type="button"
-                                                onClick={(e) => handleCloseTab(tab.id, e)}
-                                                className={`
-                                                    w-4 h-4 cursor-default rounded-md flex items-center justify-center transition-colors
-                                                    ${
-                                                        isActive
-                                                            ? "hover:bg-fill-strong"
-                                                            : "opacity-0 group-hover:opacity-100 hover:bg-fill"
-                                                    }
-                                                `}
-                                                aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
-                                            >
-                                                <X className="w-3 h-3" />
-                                            </button>
+                                        {/* One slot for the unsaved dot and the close button, the
+                                            two things a tab says about itself after its name. They
+                                            share it rather than sit side by side: a dirty tab is
+                                            then no wider than a clean one, and the strip fits the
+                                            same number of tabs either way. At rest the dot is what
+                                            shows; hovering swaps in the close button, which is the
+                                            only moment it is wanted. */}
+                                        {(closable || tab.modified) && (
+                                            <span className="relative flex h-4 w-4 flex-shrink-0 items-center justify-center">
+                                                {tab.modified && (
+                                                    <Circle
+                                                        // Inherits the tab's own foreground rather
+                                                        // than wearing the accent: the dot marks one
+                                                        // fact about a tab the author is already
+                                                        // looking at, and an accent-coloured one
+                                                        // outshouts the title beside it.
+                                                        className={`h-2 w-2 fill-current transition-opacity ${closable ? "group-hover:opacity-0" : ""}`}
+                                                        aria-hidden
+                                                    />
+                                                )}
+                                                {closable && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={(e) => handleCloseTab(tab.id, e)}
+                                                        className={`
+                                                            absolute inset-0 cursor-default rounded-md flex items-center justify-center transition
+                                                            ${isActive ? "hover:bg-fill-strong" : "hover:bg-fill"}
+                                                            ${isActive && !tab.modified ? "" : "opacity-0 group-hover:opacity-100"}
+                                                        `}
+                                                        aria-label={t("workspace.shell.closeTab", { name: String(tab.title) })}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </button>
+                                                )}
+                                            </span>
                                         )}
                                     </div>
                                 );
