@@ -1,9 +1,10 @@
 import vm from "vm";
+import { execFileSync } from "child_process";
 import { createRequire } from "module";
 import path from "path";
 import { describe, expect, it } from "vitest";
 import { buildGuardMaskTable, parseGuardMaskTable } from "@shared/utils/runtimeStartupArguments";
-import { bytecodeEngineTag, compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "./mainProcessBytecode";
+import { BYTECODE_V8_FLAGS, bytecodeEngineTag, compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "./mainProcessBytecode";
 
 /**
  * The compile half runs under the game's own engine in a real build; here it runs under the test's
@@ -34,6 +35,37 @@ function loadImage(blob: Buffer, filename: string): Record<string, unknown> {
     const mod = { exports: {} as Record<string, unknown> };
     script.runInThisContext()(mod.exports, createRequire(filename), mod, filename, path.dirname(filename));
     return mod.exports;
+}
+
+/**
+ * Compile and load an image under `flags`, force V8 to flush the loaded module's bytecode, and call
+ * a function that has not run since. Returns what that call returned, or throws what it threw.
+ *
+ * It runs in a child Node because forcing a flush needs `--expose-gc`, and that flag is itself part
+ * of the cache's flags hash - compiling here and loading there would be rejected before reaching the
+ * behaviour under test. Both halves therefore happen in the child, mirroring what the compiler and
+ * the bootstrap do rather than calling them.
+ */
+function probeFlushed(flags: string): string {
+    const body = "module.exports.idle = function idle() { return 'ran'; };";
+    const probe = [
+        "const vm = require('vm'), v8 = require('v8');",
+        `const flags = ${JSON.stringify(flags)};`,
+        `const wrapped = ${JSON.stringify("(function (exports, require, module, __filename, __dirname) { ")} + ${JSON.stringify(body)} + ${JSON.stringify("\n});")};`,
+        "v8.setFlagsFromString(flags);",
+        "const cachedData = new vm.Script(wrapped, { produceCachedData: true }).cachedData;",
+        "v8.setFlagsFromString(flags);",
+        // A backslash-escaped \u200b, so what crosses the command line stays ASCII.
+        "const dummy = '\\\"' + '\\u200b'.repeat(wrapped.length - 2) + '\\\"';",
+        "const script = new vm.Script(dummy, { filename: 'main.js', cachedData });",
+        "if (script.cachedDataRejected) throw new Error('image rejected before the probe could run');",
+        "const mod = { exports: {} };",
+        "script.runInThisContext()(mod.exports, require, mod, 'main.js', '.');",
+        "v8.setFlagsFromString('--stress-flush-code');",
+        "for (let i = 0; i < 5; i++) global.gc();",
+        "process.stdout.write(mod.exports.idle());",
+    ].join("\n");
+    return execFileSync(process.execPath, ["--expose-gc", "-e", probe], { encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
 describe("main process bytecode", () => {
@@ -72,10 +104,22 @@ describe("main process bytecode", () => {
         expect(bytecodeEngineTag()).toContain(`-${process.platform}-${process.arch}`);
     });
 
+    it("keeps running after V8 discards an idle function's bytecode", () => {
+        // V8 throws away the bytecode of functions nobody has called for a while and recompiles them
+        // from source next time. An image has no source - the loader hands V8 a placeholder of the
+        // right length made of zero-width spaces - so a flush turns the next call into a syntax error
+        // against a line of invisible characters, minutes into a player's session. `probeFlushed`
+        // compiles an image, loads it the way the bootstrap does, forces the flush, and calls in.
+        expect(probeFlushed(BYTECODE_V8_FLAGS)).toBe("ran");
+        // ...and the probe has teeth: without the flag that keeps the bytecode, the same call dies
+        // exactly the way a shipped game did.
+        expect(() => probeFlushed("--no-lazy")).toThrow(/Invalid or unexpected token/);
+    });
+
     it("hands the game a loader that names no guard and loads the image beside it", () => {
         const bootstrap = renderMainBytecodeBootstrap();
-        // Sets the same V8 flag the image was compiled under, or the cache is rejected.
-        expect(bootstrap).toContain("--no-lazy");
+        // Sets the same V8 flags the image was compiled under, or the cache is rejected.
+        expect(bootstrap).toContain(`setFlagsFromString(${JSON.stringify(BYTECODE_V8_FLAGS)})`);
         // Reads the image by name and checks the engine tag before running anything.
         expect(bootstrap).toContain(MAIN_BYTECODE_FILENAME);
         expect(bootstrap).toContain("cachedDataRejected");

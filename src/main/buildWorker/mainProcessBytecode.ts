@@ -62,6 +62,26 @@ const WRAP_PREFIX = "(function (exports, require, module, __filename, __dirname)
 const WRAP_SUFFIX = "\n});";
 
 /**
+ * The V8 flags both halves must set before they touch the cache. The two sides set the same string,
+ * because they have to agree twice over.
+ *
+ * `--no-lazy` puts every nested function into the image at compile time. Nothing can be compiled
+ * later: no source ships, and the loader hands V8 a placeholder of the right length instead.
+ *
+ * `--no-flush-bytecode` keeps them there. V8 discards the bytecode of functions that have gone
+ * unused for a while and recompiles them from source on the next call - and the source it would
+ * recompile from is that placeholder, a string of zero-width spaces. Left on, the game starts
+ * cleanly and then dies at the first call into a function that has been idle long enough to be
+ * flushed, with `SyntaxError: Invalid or unexpected token` against a line of invisible characters.
+ * It is a mid-session crash, so a smoke test that starts a build and stops it never sees it.
+ *
+ * Both flags are also part of the flags hash V8 stamps into the cache, so a half-applied change
+ * rejects the image outright rather than running it - which is why they live here as one value that
+ * both halves read.
+ */
+export const BYTECODE_V8_FLAGS = "--no-lazy --no-flush-bytecode";
+
+/**
  * The tag that says which engine produced a bytecode image.
  *
  * V8's own cache check already refuses data from a different version or a different CPU architecture,
@@ -78,17 +98,15 @@ export function bytecodeEngineTag(): string {
 /**
  * Compile a bundled main.js into a bytecode image.
  *
- * `--no-lazy` is set first and is load-bearing twice over: it forces V8 to compile every nested
- * function into the cache now, because no source ships to compile them from later; and it is part of
- * the flags hash V8 stamps into the cache, so the loader must set the same flag or the cache is
- * rejected. The loader below does.
+ * The flags go on first and stay on for the image's whole life; see `BYTECODE_V8_FLAGS` for what
+ * each one buys and why the loader below sets the identical string.
  *
  * Runs wherever the pack is compiled - the build worker (a utility process) for a shipped build.
- * Verified that a utility process and the game's main process produce compatible caches under this
- * flag.
+ * Verified that a utility process and the game's main process produce compatible caches under these
+ * flags.
  */
 export function compileMainToBytecode(mainJsSource: string): Buffer {
-    v8.setFlagsFromString("--no-lazy");
+    v8.setFlagsFromString(BYTECODE_V8_FLAGS);
     const wrapped = WRAP_PREFIX + mainJsSource + WRAP_SUFFIX;
     const script = new vm.Script(wrapped, { produceCachedData: true });
     if (!script.cachedData || script.cachedData.length === 0) {
@@ -109,7 +127,7 @@ export function compileMainToBytecode(mainJsSource: string): Buffer {
  *
  * Electron compiles the app's `main` from source, so this file cannot itself be bytecode - it is the
  * irreducible readable part. It is kept small and says nothing about the guard it is loading. It
- * sets the same V8 flag the image was compiled under, reads the image beside it, checks the engine
+ * sets the same V8 flags the image was compiled under, reads the image beside it, checks the engine
  * tag for a clear failure, and runs the image as the main module - handing it the same `__dirname`
  * the real main.js reads to find everything else in the app directory.
  */
@@ -117,7 +135,7 @@ export function renderMainBytecodeBootstrap(): string {
     // Assembled as a string because it ships as source. Kept deliberately terse.
     return [
         `"use strict";`,
-        `require("v8").setFlagsFromString("--no-lazy");`,
+        `require("v8").setFlagsFromString(${JSON.stringify(BYTECODE_V8_FLAGS)});`,
         `const fs=require("fs"),vm=require("vm"),path=require("path"),{createRequire}=require("module");`,
         `const here=__dirname,file=path.join(here,"main.js"),blob=fs.readFileSync(path.join(here,${JSON.stringify(MAIN_BYTECODE_FILENAME)}));`,
         `if(blob.readUInt32LE(0)!==${BYTECODE_MAGIC})throw new Error("main image unreadable");`,
