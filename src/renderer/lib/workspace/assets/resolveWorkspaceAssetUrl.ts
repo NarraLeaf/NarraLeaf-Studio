@@ -139,7 +139,7 @@ export async function resolveAllWorkspaceAssetUrls(
     // but a model bundle (a directory grant) and anything a set resolves to something else.
     // Those go one at a time below, and there are a handful of them against a library of
     // thousands.
-    const batched: { id: string; type: AssetType; path: string }[] = [];
+    const batched: { id: string; resolvedId: string; type: AssetType; path: string }[] = [];
     const individual: { id: string; type: AssetType }[] = [];
     for (const entry of entries) {
         const resolvedId = resolveEditorAssetSetMember(context, entry.id) ?? entry.id;
@@ -148,7 +148,7 @@ export async function resolveAllWorkspaceAssetUrls(
             individual.push(entry);
             continue;
         }
-        batched.push({ id: entry.id, type: entry.type, path: context.project.resolve(ProjectNameConvention.AssetsDataShard(resolvedId)) });
+        batched.push({ id: entry.id, resolvedId, type: entry.type, path: context.project.resolve(ProjectNameConvention.AssetsDataShard(resolvedId)) });
     }
 
     const urls: Record<string, string> = {};
@@ -163,9 +163,11 @@ export async function resolveAllWorkspaceAssetUrls(
                     return;
                 }
                 // Same bookkeeping the single-asset path does, and for the same reason: a token
-                // carries nothing about the file it opens, so this is the only moment the pair
-                // is known. See assetUrlTokens.ts.
-                recordAssetUrlToken(token, entry.id);
+                // carries nothing about the file it opens, so this is the only moment the pair is
+                // known. Against the id whose FILE this is, which for a set member is the member
+                // rather than the set - the same id the resolver would have written down. The map
+                // is keyed by what the caller asked for, which is the other one.
+                recordAssetUrlToken(token, entry.resolvedId);
                 urls[entry.id] = `${AppProtocol}://${AppHost.Fs}/${token}`;
             });
         } else {
