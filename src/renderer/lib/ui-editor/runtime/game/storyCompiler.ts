@@ -1341,14 +1341,21 @@ async function buildLaunchEntryScene(params: {
         nextActionIndex: params.nextActionIndex,
     };
 
+    // The stage as it stands at the target row, followed by everything the rest of the scene
+    // declares that this path never reached. The second half is not stage state and arrives hidden:
+    // it is here so the tail's rows find the objects a full compile of the scene would have
+    // registered for them - see `StoryStageSnapshot.declarations`. The real state goes first, so a
+    // name that IS on stage is always built from its own record.
+    const preposed = [...snapshot.displayables, ...snapshot.declarations];
+
     // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
         }
     }
     const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             continue;
         }
@@ -1699,7 +1706,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         // A jump nested inside a container is invisible to the walk, so the plan reports the scene as
         // running to its end. If compiling the tail met one, that is the real stop.
         if (playbackStop.reason === "sceneEnd" && ctx.previewEncounteredJump) {
-            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump };
+            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump, followed: false };
         }
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
@@ -1781,7 +1788,9 @@ async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlayback
             statements.push(...body);
         }
     }
-    if (plan.stop.reason === "jump") {
+    // Only the preview holds at a jump. A launch emits it and control leaves for the target scene,
+    // so there is nothing to report - the row did exactly what it says.
+    if (plan.stop.reason === "jump" && !plan.stop.followed) {
         const targetScene = ctx.document.scenes[plan.stop.targetSceneId];
         diagnostic(
             ctx,

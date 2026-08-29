@@ -244,7 +244,7 @@ describe("compileStagePreviewToNlr", () => {
             }, ["target", "jump"]);
 
             const compiled = await compilePlayback(document, "target");
-            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "jump", targetSceneId: "scene-2" });
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "jump", targetSceneId: "scene-2", followed: false });
             expect(compiled.diagnostics).toEqual(expect.arrayContaining([
                 expect.objectContaining({ level: "warning", blockId: "jump", message: expect.stringContaining("Scene 2") }),
             ]));
@@ -262,7 +262,7 @@ describe("compileStagePreviewToNlr", () => {
             }, ["target", "group", "after"]);
 
             const compiled = await compilePlayback(document, "target");
-            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-2" });
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-2", followed: false });
             expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
         });
 
@@ -274,7 +274,7 @@ describe("compileStagePreviewToNlr", () => {
             }, ["target", "group"]);
 
             const compiled = await compilePlayback(document, "target");
-            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-1" });
+            expect(compiled.playbackStop).toEqual({ reason: "jump", blockId: "nested", targetSceneId: "scene-1", followed: false });
             expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
         });
     });
