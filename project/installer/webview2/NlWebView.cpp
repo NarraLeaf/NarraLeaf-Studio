@@ -32,8 +32,11 @@
 // lambda into one of WebView2's COM completion handlers, only comes in through wrl.h.
 #include <wrl.h>
 
+#include <atomic>
+#include <cstdlib>
 #include <deque>
 #include <string>
+#include <thread>
 
 #include "WebView2.h"
 
@@ -129,9 +132,22 @@ struct Host {
     bool lock_ready = false;
     bool com_initialized = false;
 
-    HWND tracked_bar = nullptr; // NSIS's own progress bar, mirrored into the page
+    HWND tracked_bar = nullptr; // NSIS's own progress bar, the raw signal behind the page's
     UINT_PTR tracker = 0;
     int last_permille = -1;
+
+    // Turning that signal into one bar for the whole install; see the note above track_tick.
+    std::atomic<int> phase{0};
+    double last_raw = -1.0;
+    std::wstring stage_dir;    // what the payload is extracted to, and the copy's source
+    std::wstring install_dir;  // the copy's destination
+    long long expected_bytes = 0;
+
+    // Written by the counting thread, read by the timer.
+    std::atomic<long long> stage_files{-1};
+    std::atomic<long long> installed_files{0};
+    std::atomic<long long> installed_bytes{0};
+    std::atomic<long long> counter_generation{0};
 };
 
 Host g_host;
@@ -222,12 +238,148 @@ void set_background(COLORREF colour) {
     controller2->put_DefaultBackgroundColor(background);
 }
 
-// Mirror NSIS's own progress bar into the page.
+// Counts the files under `root` and their bytes. A reparse point is counted as a file and not
+// descended into, so a junction cannot send this walk round the disk twice or round for ever.
+void count_tree(const std::wstring &root, long long &files, long long &bytes, long long generation) {
+    std::deque<std::wstring> pending;
+    pending.push_back(root);
+    while (!pending.empty() && g_host.counter_generation.load() == generation) {
+        const std::wstring dir = pending.front();
+        pending.pop_front();
+
+        WIN32_FIND_DATAW found{};
+        const HANDLE handle = FindFirstFileExW((dir + L"\\*").c_str(), FindExInfoBasic, &found,
+                                               FindExSearchNameMatch, nullptr, 0);
+        if (handle == INVALID_HANDLE_VALUE) {
+            continue;
+        }
+        do {
+            const bool dot = found.cFileName[0] == L'.' &&
+                             (found.cFileName[1] == L'\0' ||
+                              (found.cFileName[1] == L'.' && found.cFileName[2] == L'\0'));
+            if (dot) {
+                continue;
+            }
+            const bool is_dir = (found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+                                (found.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+            if (is_dir) {
+                pending.push_back(dir + L"\\" + found.cFileName);
+            } else {
+                ++files;
+                bytes += (static_cast<long long>(found.nFileSizeHigh) << 32) |
+                         static_cast<long long>(found.nFileSizeLow);
+            }
+        } while (FindNextFileW(handle, &found) && g_host.counter_generation.load() == generation);
+        FindClose(handle);
+    }
+}
+
+// The thread behind the third pass described below. Detached rather than joined, and stopped by
+// bumping the generation it was started with: a worker that outlives its Track call notices on its
+// next directory and returns, which is cheaper to get right than a handle that would have to be
+// waited on from inside a DLL NSIS may be in the middle of unloading.
+void counter_loop(long long generation) {
+    while (g_host.counter_generation.load() == generation) {
+        long long files = 0;
+        long long bytes = 0;
+        count_tree(g_host.install_dir, files, bytes, generation);
+        if (g_host.counter_generation.load() != generation) {
+            return;
+        }
+        g_host.installed_files.store(files);
+        g_host.installed_bytes.store(bytes);
+
+        // The staging tree is only a *total* once the extraction that fills it has finished, and
+        // reaching the copy is what says it has.
+        if (g_host.stage_files.load() < 0 && g_host.phase.load() >= 2 && !g_host.stage_dir.empty()) {
+            long long staged = 0;
+            long long staged_bytes = 0;
+            count_tree(g_host.stage_dir, staged, staged_bytes, generation);
+            if (staged > 0 && g_host.counter_generation.load() == generation) {
+                g_host.stage_files.store(staged);
+            }
+        }
+
+        for (int i = 0; i < 7 && g_host.counter_generation.load() == generation; ++i) {
+            Sleep(100);
+        }
+    }
+}
+
+// One bar for the whole install, out of a control that starts over twice.
 //
-// The bar is real progress and not a guess because it is *NSIS's* number: the stub advances that
-// control as it extracts, from totals it computed at build time. Reading it beats anything the
-// script could report, which could only ever be "section 3 of 5".
+// NSIS's own progress control is real progress rather than a sweep - the stub drives it as it
+// works - but it means something different in each of the three passes the section makes over the
+// payload. Measured end to end on a real install of this build (Windows 11, NVMe):
 //
+//   1. `File` writes the ~322 MB compressed payload out of the installer into $PLUGINSDIR. NSIS
+//      advances the control across the slice of the section that one instruction owns, 0.23 to
+//      0.64, in proportion to the bytes written.                                        ~12 s
+//   2. `Nsis7z::Extract` decompresses that into $PLUGINSDIR\7z-out, driving the same control
+//      absolutely from 0 to 1 and so wiping out what pass 1 left on it.                 ~18 s
+//   3. `CopyFiles` moves the result into the install directory. That is one NSIS instruction, so
+//      the control is *frozen* at 0.665 for the whole of it.                            ~72 s
+//
+// Mirrored straight through, that is a bar which fills, restarts, fills, restarts, and then stands
+// still through the longest pass of the three - and no rescaling can recover that last one,
+// because there is no number in it to rescale.
+//
+// So pass 3 is measured here instead: the files that have appeared in the install directory,
+// against the count of the tree being copied from. Both come off the worker above, because it is
+// upwards of ten thousand entries and this function runs on the thread painting the window.
+//
+// The weights are those measured durations. They are an approximation of relative cost and no
+// more - a slower disk shifts the balance towards the copy, a slower CPU towards the
+// decompression. What the arrangement does guarantee is direction: each pass owns a slice, the
+// slices are in order, and the fraction handed to the page never decreases.
+constexpr double kPhaseBase[3] = {0.00, 0.12, 0.30};
+constexpr double kPhaseWeight[3] = {0.12, 0.18, 0.70};
+
+// The part of NSIS's own range that pass 1 occupies, measured as above. Being wrong here costs
+// linearity inside that one pass and nothing else, because the result is clamped to its slice.
+constexpr double kPayloadLo = 0.23;
+constexpr double kPayloadHi = 0.64;
+
+double clamp01(double value) {
+    return value < 0.0 ? 0.0 : (value > 1.0 ? 1.0 : value);
+}
+
+double whole_install_fraction(double raw) {
+    // A pass ends by resetting the control, and that reset is the only marker of where.
+    const int current = g_host.phase.load();
+    if (g_host.last_raw >= 0.0 && raw < g_host.last_raw - 0.05 && current < 2) {
+        g_host.phase.store(current + 1);
+    }
+    g_host.last_raw = raw;
+
+    // ...and if the resets never come - a future template that stages the payload some other way -
+    // files arriving in the install directory say the copy has started regardless.
+    if (g_host.phase.load() < 2 && g_host.installed_files.load() > 0) {
+        g_host.phase.store(2);
+    }
+
+    const int phase = g_host.phase.load();
+    double local = 0.0;
+    if (phase == 0) {
+        local = clamp01((raw - kPayloadLo) / (kPayloadHi - kPayloadLo));
+    } else if (phase == 1) {
+        local = clamp01(raw);
+    } else {
+        const long long total = g_host.stage_files.load();
+        if (total > 0) {
+            local = clamp01(static_cast<double>(g_host.installed_files.load()) /
+                            static_cast<double>(total));
+        } else if (g_host.expected_bytes > 0) {
+            // No staged tree to compare against - this electron-builder puts it somewhere else.
+            // Bytes on disk against the size the section was built to install is the other real
+            // measure of the same pass. It lags, because the largest files are copied last.
+            local = clamp01(static_cast<double>(g_host.installed_bytes.load()) /
+                            static_cast<double>(g_host.expected_bytes));
+        }
+    }
+    return clamp01(kPhaseBase[phase] + kPhaseWeight[phase] * local);
+}
+
 // Polled from a timer rather than pushed from the script because during an install there is no
 // script to push from - NSIS runs the section on its own thread while this one pumps messages, so
 // a timer here keeps ticking exactly when the bar is moving and the script is busy.
@@ -245,10 +397,12 @@ void CALLBACK track_tick(HWND, UINT, UINT_PTR, DWORD) {
         return;
     }
 
+    const double raw = static_cast<double>(pos) / static_cast<double>(high);
     // Quantised to a tenth of a percent: the page animates the width anyway, and re-running a
-    // script for a change nothing can see is the one cost this timer could actually impose.
-    const int permille = static_cast<int>((static_cast<long long>(pos) * 1000) / high);
-    if (permille == g_host.last_permille) {
+    // script for a change nothing can see is the one cost this timer could actually impose. The
+    // test is `<=` rather than `!=`, which is also what keeps the bar from ever going back.
+    const int permille = static_cast<int>(whole_install_fraction(raw) * 1000.0);
+    if (permille <= g_host.last_permille) {
         return;
     }
     g_host.last_permille = permille;
@@ -310,6 +464,15 @@ void attach_message_handler() {
 
 static UINT_PTR __cdecl plugin_callback(int message) {
     if (message == NSPIM_UNLOAD) {
+        if (g_host.tracker != 0) {
+            KillTimer(nullptr, g_host.tracker);
+            g_host.tracker = 0;
+        }
+        g_host.tracked_bar = nullptr;
+        // The counting worker reads g_host and must stop before any of it is torn down. It is
+        // detached, so this only asks; what makes that safe is that it touches nothing which the
+        // teardown below frees - two atomics and two strings that outlive the callback.
+        g_host.counter_generation.fetch_add(1);
         if (g_host.controller) {
             g_host.controller->Close();
         }
@@ -499,11 +662,16 @@ NSIS_EXPORT(Poll) {
     push_string(message.c_str());
 }
 
-// Track <hwnd of NSIS's progress bar>
+// Track <hwnd of NSIS's progress bar> <staging dir> <install dir> <install size in KiB>
 //
-// Starts mirroring that bar into `window.nlProgress(fraction)`. An empty or zero handle stops it.
-// A thread timer (no window) rather than one owned by the installer's window, so nothing here can
-// outlive or interfere with a dialog NSIS is in the middle of destroying.
+// Starts reporting the install's progress into `window.nlProgress(fraction)`. An empty or zero
+// handle stops it. A thread timer (no window) rather than one owned by the installer's window, so
+// nothing here can outlive or interfere with a dialog NSIS is in the middle of destroying.
+//
+// The three trailing arguments are what lets the copy be measured at all - see the note above
+// whole_install_fraction. All four are always passed, including by the call that stops tracking:
+// this pops a fixed number of items, and popping a variable number off a stack the script also
+// uses would take somebody else's.
 NSIS_EXPORT(Track) {
     nsis_init(string_size, stacktop);
     keep_loaded(extra);
@@ -511,15 +679,35 @@ NSIS_EXPORT(Track) {
     (void)variables;
 
     const HWND bar = reinterpret_cast<HWND>(static_cast<UINT_PTR>(pop_int()));
+    const std::wstring stage = pop_string();
+    const std::wstring install = pop_string();
+    const std::wstring size_kib = pop_string();
 
     if (g_host.tracker != 0) {
         KillTimer(nullptr, g_host.tracker);
         g_host.tracker = 0;
     }
+    // Retires whatever worker the previous Track left running, before anything it reads is
+    // rewritten underneath it.
+    g_host.counter_generation.fetch_add(1);
+
     g_host.tracked_bar = (bar != nullptr && IsWindow(bar)) ? bar : nullptr;
     g_host.last_permille = -1;
+    g_host.phase.store(0);
+    g_host.last_raw = -1.0;
+    g_host.stage_files.store(-1);
+    g_host.installed_files.store(0);
+    g_host.installed_bytes.store(0);
+    g_host.stage_dir = stage;
+    g_host.install_dir = install;
+    g_host.expected_bytes = wcstoll(size_kib.c_str(), nullptr, 10) * 1024;
+
     if (g_host.tracked_bar != nullptr) {
         g_host.tracker = SetTimer(nullptr, 0, 100, track_tick);
+        if (!g_host.install_dir.empty()) {
+            const long long generation = g_host.counter_generation.load();
+            std::thread(counter_loop, generation).detach();
+        }
     }
 }
 
@@ -550,6 +738,13 @@ NSIS_EXPORT(Destroy) {
     keep_loaded(extra);
     (void)hwndParent;
     (void)variables;
+
+    if (g_host.tracker != 0) {
+        KillTimer(nullptr, g_host.tracker);
+        g_host.tracker = 0;
+    }
+    g_host.tracked_bar = nullptr;
+    g_host.counter_generation.fetch_add(1);
 
     if (g_host.controller) {
         g_host.controller->Close();
