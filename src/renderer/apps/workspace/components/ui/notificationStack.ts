@@ -11,25 +11,7 @@
  * worth asserting without a DOM.
  */
 
-/**
- * The number of leading cards that fit in `available` px when stacked with `gap` px between them.
- *
- * The first card is always counted, however tall it is: a message longer than the window is still
- * a message the author has to be able to read and close, and a stack that showed nothing at all
- * would also never dismiss anything, so the queue behind it could never move.
- *
- * `available <= 0` means "not measured yet" and admits everything - the first paint happens before
- * the container has a box, and a stack that flashed empty on every mount would be worse than one
- * that briefly overflows the clip.
- */
-export function visibleCardCount(heights: readonly number[], gap: number, available: number): number {
-    if (heights.length === 0) {
-        return 0;
-    }
-    if (!(available > 0)) {
-        return heights.length;
-    }
-
+function fit(heights: readonly number[], gap: number, available: number): number {
     let used = 0;
     let count = 0;
     for (const height of heights) {
@@ -41,6 +23,42 @@ export function visibleCardCount(heights: readonly number[], gap: number, availa
         count += 1;
     }
     return count;
+}
+
+/**
+ * The number of leading cards that fit in `available` px when stacked with `gap` px between them.
+ *
+ * The first card is always counted, however tall it is: a message longer than the window is still
+ * a message the author has to be able to read and close, and a stack that showed nothing at all
+ * would also never dismiss anything, so the queue behind it could never move.
+ *
+ * `available <= 0` means "not measured yet" and admits everything - the first paint happens before
+ * the container has a box, and a stack that flashed empty on every mount would be worse than one
+ * that briefly overflows the clip.
+ *
+ * `noticeHeight` is the line that says how many are still waiting. It only exists when something
+ * IS waiting, which is why the box is measured twice: once to find out whether the line is needed
+ * at all, and again with room made for it. Once cards are being held back, holding back one more
+ * cannot make the line unnecessary, so a second pass is enough.
+ */
+export function visibleCardCount(
+    heights: readonly number[],
+    gap: number,
+    available: number,
+    noticeHeight = 0,
+): number {
+    if (heights.length === 0) {
+        return 0;
+    }
+    if (!(available > 0)) {
+        return heights.length;
+    }
+
+    const count = fit(heights, gap, available);
+    if (count >= heights.length || noticeHeight <= 0) {
+        return count;
+    }
+    return fit(heights, gap, available - gap - noticeHeight);
 }
 
 /**
