@@ -40,7 +40,13 @@ export interface Notification {
     message: string;
     detail?: string;
     severity?: NotificationSeverity;
-    timeout?: number; // Auto-dismiss timeout in ms, 0 = no auto-dismiss
+    /**
+     * How long the card stays up once it is on screen, in ms; 0 never dismisses itself.
+     *
+     * Time on screen, not time since it was raised: the toast stack queues what does not fit and
+     * pauses on a card being read, so the countdown is run by the container, not by the service.
+     */
+    timeout?: number;
     actions?: NotificationAction[];
     closable?: boolean;
     onClose?: () => void;

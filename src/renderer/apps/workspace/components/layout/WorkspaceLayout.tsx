@@ -61,6 +61,7 @@ import { WorkspaceMenuAction } from "@shared/types/menu";
 import {
     DOCK_REGIONS,
     EDITOR_FLOOR,
+    RAIL_SELECTOR_WIDTH,
     applyResize,
     railColumnOffsets,
     resolveDock,
@@ -1021,7 +1022,10 @@ export function WorkspaceLayout({ title, iconSrc }: WorkspaceLayoutProps) {
                 <EditorClosedTabsKeybinding />
                 <WorkspaceUndoKeybindings />
                 <WorkspaceHistoryMenu />
-                <NotificationContainer />
+                {/* The toast stack is told what it may not reach over. The right selector rail is a
+                    permanent column of controls and the status bar is a permanent row of them; a
+                    card parked on either takes it away for as long as the card is up. */}
+                <NotificationContainer rightInset={RAIL_SELECTOR_WIDTH} bottomInset={statusBarHeight} />
                 <DialogContainer />
             </div>
         </TeamProjectProvider>
