@@ -252,7 +252,7 @@ export const widgets = {
         loop: "循环",
         muted: "静音",
         autoplay: "自动播放",
-        autoplayHint: "仅在游戏中生效；编辑画布始终暂停，预览请使用工具条",
+        autoplayHint: "仅在游戏中生效；编辑画布始终暂停，预览使用工具条",
         volume: "音量",
         volumeHint: "0 到 1；运行时蓝图的音量引脚会覆盖此值",
         audioTrack: "音轨",
@@ -284,7 +284,7 @@ export const widgets = {
         backend: "运行时",
         backendNone: "未选择运行时",
         backendHint: "runtimes/puppet 下每个运行时一个目录",
-        backendNoneInstalled: "本工程的 runtimes/puppet 下没有任何运行时",
+        backendNoneInstalled: "本项目的 runtimes/puppet 下没有任何运行时",
         options: "运行时选项",
         optionsHint: "一个 JSON 对象，原样转交运行时",
         optionsInvalid: "不是 JSON 对象，本次修改未保存",
@@ -305,9 +305,9 @@ export const widgets = {
         clearStateHint: "清空动作、表情、皮肤、参数与插槽",
         backdrop: "背景色",
         backdropHint: "画在模型后面；默认关闭，让画面本身透出来",
-        placeholderUnconfigured: "请选择模型包与运行时",
+        placeholderUnconfigured: "选择模型包与运行时",
         placeholderNoModel: "此处无法读取该模型包",
-        placeholderBackendMissing: "本工程没有名为“{backend}”的运行时",
+        placeholderBackendMissing: "本项目没有名为“{backend}”的运行时",
         placeholderLoading: "正在加载模型…",
         placeholderError: "运行时出错：{error}",
         placeholderBudget: "未绘制：本窗口已经绘制了 {drawn} 个模型",
@@ -364,7 +364,7 @@ export const widgets = {
         },
         dialog: {
             name: "句子",
-            text: "当前对白将显示在这里",
+            text: "当前对白将显示在此处",
         },
         frame: {
             name: "页面",
@@ -382,7 +382,7 @@ export const widgets = {
         },
         nvl: {
             name: "NVL 文本",
-            text: "对白条目文本将显示在这里",
+            text: "对白条目文本将显示在此处",
         },
         nvlList: {
             name: "NVL 列表",

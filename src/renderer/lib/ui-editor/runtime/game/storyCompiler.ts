@@ -1802,7 +1802,20 @@ function snapshotPoseProps(record: StageSnapshotDisplayable): Record<string, unk
     return props;
 }
 
-async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: StageSnapshotDisplayable): Promise<string | null> {
+/**
+ * The `src` a pre-posed snapshot element is CONSTRUCTED with.
+ *
+ * A layered character has to be rebuilt as its whole stack here, not as the single url a preset
+ * character resolves to: an Image's src shape is fixed in its constructor, and every later row for
+ * that character changes tags rather than the source. Handing it a url would leave the portrait
+ * unable to accept a tag change at all - the engine rejects the whole story for it while registering
+ * preloadable sources, so a mid-scene launch into a scene with a layered character crashed the
+ * player instead of starting.
+ */
+async function resolveSnapshotImageSource(
+    ctx: SceneCompileContext,
+    record: StageSnapshotDisplayable,
+): Promise<string | { layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
     const source = record.source;
     const blockId = record.sourceBlockId ?? record.objectName;
     if (!source) {
@@ -1813,6 +1826,12 @@ async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: Stag
     }
     if (source.type === "color") {
         return source.color;
+    }
+    // The snapshot accumulated the tag selection row by row, so the stack opens on the look the
+    // character wore at the launch row rather than on its declared default.
+    const layered = await resolveCharacterLayeredSrc(ctx, source.characterId, blockId, source.tags);
+    if (layered) {
+        return layered;
     }
     return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
@@ -2800,10 +2819,15 @@ async function compileEventRun(
                 // switches when the token is revealed, not at line start.
                 const name = characterStageName(characterId);
                 const image = ctx.images.get(normalizeObjectName(name));
-                if (image) {
+                if (image && Array.isArray(src) && !acceptsAppearanceTags(image)) {
+                    // Same mismatch a `/face` row can hit, and the engine's answer is the same throw -
+                    // here at reveal time rather than during construction. See {@link acceptsAppearanceTags}.
+                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is on stage as a single image, so its appearance tags cannot change; expression skipped.`);
+                } else if (image) {
                     return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                } else {
+                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
                 }
-                diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
             } else {
                 diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
             }
@@ -3238,6 +3262,15 @@ async function compileCharacterStageAction(
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
         const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        // An Image built from a single url has no tag groups, and the engine rejects the whole story
+        // for a tag change aimed at one - during construction, so the player never starts and the row
+        // that caused it is nowhere in the message. That mismatch means an earlier row put this
+        // character on stage as a flat image (an `enter` with its own asset override, or an `/image`
+        // row sharing the stage name), so the diagnostic names the row that cannot act.
+        if (!acceptsAppearanceTags(image)) {
+            diagnostic(ctx, "warning", block.id, `${characterDiagnosticName(ctx, payload)} is on stage as a single image, so its appearance tags cannot change here.`);
+            return statements;
+        }
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
@@ -4458,6 +4491,18 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
     return image;
+}
+
+/**
+ * Whether an Image can take a tag change (`char([...])`) at all.
+ *
+ * The engine normalizes a tag or layered definition into a src object and leaves `config.src` null
+ * for a plain url or colour, so this is the same question it asks - and it has to be asked before a
+ * tag change is compiled, because the engine's own answer is thrown while the story is being
+ * constructed, which takes the whole player down rather than reporting a row.
+ */
+function acceptsAppearanceTags(image: Image): boolean {
+    return (image as unknown as { config?: { src?: unknown } }).config?.src != null;
 }
 
 /** Get-or-create, on the same terms as {@link getImage}: `/text create` rows and snapshot replay. */
@@ -5949,11 +5994,16 @@ async function resolveCharacterImageUrl(
  * group by its tag *set*, so all the layers on one axis collapse onto that axis's single group —
  * which is exactly what makes one `char(["angry"])` move the brows and the mouth together, and why
  * the appearance model keeps each bound layer's option map complete.
+ *
+ * `tags` is the selection the stack opens on. A row leaves it out and gets the character's declared
+ * default look; the snapshot pre-pose passes the selection accumulated up to the launch row, because
+ * an Image's src shape is fixed in its constructor and so is the appearance it starts in.
  */
 async function resolveCharacterLayeredSrc(
     ctx: SceneCompileContext,
     characterId: string | undefined,
     blockId: string,
+    tags?: StoryCharacterTagSelection,
 ): Promise<{ layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
     const appearance = characterId ? ctx.characterSummaries.get(characterId)?.appearance : undefined;
     if (appearance?.kind !== "layered") {
@@ -5992,7 +6042,7 @@ async function resolveCharacterLayeredSrc(
     const emitted = new Set(
         layers.flatMap(layer => (typeof layer === "object" && layer !== null ? Object.keys(layer) : [])),
     );
-    const defaults = Object.values(resolveTagSelection(appearance, undefined)).filter(tagId => emitted.has(tagId));
+    const defaults = Object.values(resolveTagSelection(appearance, tags)).filter(tagId => emitted.has(tagId));
     return { layers, defaults };
 }
 

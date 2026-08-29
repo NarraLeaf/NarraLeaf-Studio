@@ -80,7 +80,7 @@ export const documentDiff = {
         voiceUnits: "语音",
     },
     /**
-     * 第二层，故事列表：工程里有哪些故事、它们叫什么。
+     * 第二层，故事列表：项目里有哪些故事、它们叫什么。
      *
      * 只有合并行，因为列表本身还没有语义 diff——比较时按结构走。
      * `subject` 带的是故事自己的标题，所以下面这些不再重复它。
@@ -194,7 +194,7 @@ export const documentDiff = {
      * 只有第二层用得到：开发者自己命名的那些字符串。
      *
      * 只有三个词而不是对比那一套，因为这些是「选边」的行：合并问的是保留哪一侧的定义，
-     * 而键本身——工程里唯一一张键是人打出来的表——就是这一行的标识。
+     * 而键本身——项目里唯一一张键是人打出来的表——就是这一行的标识。
      */
     localizationKeys: {
         added: "新增命名字符串",
@@ -273,8 +273,8 @@ export const documentDiff = {
         nodeMoved: "在画布上移动",
         nodeType: "节点类型改变",
         nodeField: "{field} 改动",
-        edgeAdded: "新增连线",
-        edgeRemoved: "删除连线",
+        edgeAdded: "新增连接",
+        edgeRemoved: "删除连接",
     },
     assets: {
         added: "新增资产",
@@ -287,7 +287,7 @@ export const documentDiff = {
         orphanContent: "没有对应资产记录的文件",
     },
     /**
-     * 工程配色。
+     * 项目配色。
      *
      * subject 是作者给这个颜色起的名字；内置的那十七条没有名字——它们的名字是面板给的翻译串，
      * 所以这类行只带两个颜色值，底下由 `BrandChangeDetail` 画出整份配色。
@@ -302,11 +302,11 @@ export const documentDiff = {
         fonts: "默认字体改动",
     },
     /**
-     * 构建变体：同一个工程出货的几个版本。
+     * 构建变体：同一个项目出货的几个版本。
      *
      * 除开头三条，下面每一条都只报字段名，不说「改动」——这是八条能共用的唯一一种写法。
      * 其中四条是变体面板本来就用的长名字（「剧本结束后显示的页面」），另外四条各用两遍：
-     * 挂在某个变体下面时由 subject 点名，单独出现时说的是每个变体都继承的那份工程取值。
+     * 挂在某个变体下面时由 subject 点名，单独出现时说的是每个变体都继承的那份项目取值。
      * 发生了什么，行上已经有了：标记，以及旁边那一对值。
      *
      * `version` 说明这是谁的版本。这个界面本身满是版本号（#3、#7），
@@ -316,7 +316,7 @@ export const documentDiff = {
         added: "新增变体",
         removed: "删除变体",
         renamed: "改名",
-        /** 三个身份字段。某一侧没有值，就是这个变体在继承工程的取值。 */
+        /** 三个身份字段。某一侧没有值，就是这个变体在继承项目的取值。 */
         displayName: "应用名称",
         identifier: "标识符",
         version: "项目版本",
@@ -327,7 +327,7 @@ export const documentDiff = {
         order: "变体顺序",
     },
     /**
-     * 工程的调音台。
+     * 项目的调音台。
      *
      * `rerouted` 是这一层存在的理由。一条总线汇入哪里，决定它的音量跟谁相乘、玩家的哪一根滑杆
      * 管得到它，而这件事不改变任何计数——所以在概要那一层，改过路由的文件只能说「变了，但概要
@@ -350,7 +350,7 @@ export const documentDiff = {
         changed: "音轨改动",
     },
     /**
-     * 工程的存档变量与全局变量。
+     * 项目的存档变量与全局变量。
      *
      * `defaultValue` 是这一层存在的理由：它是每一周目的起点，也是变量出现之前写下的存档读出来的值，
      * 改动它就改动了出货的游戏，而计数一动不动。作用域那两条说的是这个变量现在是什么，
@@ -375,7 +375,7 @@ export const documentDiff = {
      *
      * `removed` 是这里唯一一条把代价说出口的，也是唯一一条需要说的。加字段天生是安全的——
      * 槽位里没有这个值就读默认值；删字段则把读它的针脚一并拿掉，玩家硬盘上已有的每一个存档
-     * 从此攥着一个工程里再也没人问得出来的值。
+     * 从此攥着一个项目里再也没人问得出来的值。
      */
     saveSchema: {
         added: "新增存档字段",
@@ -390,10 +390,10 @@ export const documentDiff = {
         reordered: "在字段中的位置改变",
     },
     /**
-     * 工程自己的词汇表。
+     * 项目自己的词汇表。
      *
      * 这里没有「改名」，也不可能有：词条没有 id，写法本身就是身份，所以改写法读作一条没了、
-     * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在工程里每一份剧本上标出的东西。
+     * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在项目里每一份剧本上标出的东西。
      */
     dictionary: {
         added: "新增词条",
@@ -448,7 +448,7 @@ export const documentDiff = {
         voiceNaming: "语音文件命名",
         voiceCast: "语音分配",
         voiceChoices: "选项语音",
-        dialogue: "对话",
+        dialogue: "对白",
         dialogueAutoForwardPause: "自动前进时的停顿时长",
         preferences: "玩家默认设置",
         prefTextSpeed: "文字速度",
@@ -511,7 +511,7 @@ export const documentDiff = {
         signing: "签名",
         build: "构建设置",
         patch: "补丁导出设置",
-        linting: "工程检查",
+        linting: "项目检查",
         dependencies: "依赖",
         dependencyPlugins: "插件列表",
     },
@@ -600,7 +600,7 @@ export const documentDiff = {
      * make a file, they made a project, a story, a set of pages.
      */
     name: {
-        project: "工程设置",
+        project: "项目设置",
         storyIndex: "故事列表",
         story: "故事",
         animationIndex: "动效列表",
@@ -662,8 +662,8 @@ export const documentDiff = {
     tab: {
         workingTree: "改动",
         between: "{from} → {to}",
-        comparingWorkingTree: "当前工程与 {version} 对比",
-        comparingWorkingTreeUnknown: "当前工程与上一个版本对比",
+        comparingWorkingTree: "当前项目与 {version} 对比",
+        comparingWorkingTreeUnknown: "当前项目与上一个版本对比",
         comparingRevisions: "{from} 与 {to} 对比",
         refresh: "重新读取",
         empty: "两个版本之间没有差异",
@@ -671,12 +671,12 @@ export const documentDiff = {
         readFailure: "无法读取本次对比：{error}",
         incomplete: "{total} 份变更文档中比较了 {shown} 份",
         documentsOmitted: "另有 {count} 份文档没有列出",
-        unavailable: "该工程没有可用的版本控制",
+        unavailable: "该项目没有可用的版本控制",
     },
     /** 把一份文件的两个版本放进各自的标签页并排看。这里只放并排排布本身用到的词。 */
     split: {
         open: "并排打开",
-        thisProject: "本工程",
+        thisProject: "本项目",
         notInVersion: "该版本没有这一处",
         resize: "调整两侧宽度",
         previous: "上一处改动",
@@ -706,20 +706,20 @@ export const documentDiff = {
      * 是在跟同伴的改动对齐，不是在做三路合并。
      *
      * `notSaved` 是这整个界面之所以诚实的那一句——哪些冲突已经决定过，没有任何地方读得出来，
-     * 所以这份记录属于 Studio 而不属于仓库；说出来，好过暗示工程自己知道这份进度。
+     * 所以这份记录属于 Studio 而不属于仓库；说出来，好过暗示项目自己知道这份进度。
      *
-     * 它原本还写着「仅在本窗口打开期间有效」，那句当时是真的，现在不是了：选择存在工程旁边的
+     * 它原本还写着「仅在本窗口打开期间有效」，那句当时是真的，现在不是了：选择存在项目旁边的
      * 一份草稿里（`mergeDecisionDraft`）。没变的是要紧的那一半——按下完成之前一个文件都不动，
      * 所以现在只说这一句。草稿存在哪里不该由这行文案解释。
      */
     resolve: {
         tab: "合并",
-        merging: "该工程的两个版本正在合并",
-        none: "该工程没有正在进行的合并",
+        merging: "该项目的两个版本正在合并",
+        none: "该项目没有正在进行的合并",
         automerged: "全部内容已自动合并，完成后记录为一个版本",
         count: {
-            one: "有 {count} 个文件两边都改过，请选择保留哪一边",
-            other: "有 {count} 个文件两边都改过，请选择保留哪一边",
+            one: "有 {count} 个文件在两边均被修改，选择保留其中一边",
+            other: "有 {count} 个文件在两边均被修改，选择保留其中一边",
         },
         takeMine: "保留我的",
         takeTheirs: "保留对方的",
@@ -739,9 +739,9 @@ export const documentDiff = {
         },
         notSaved: "完成合并之前不会写入任何文件",
         abandon: "放弃合并",
-        abandonConfirm: "放弃这次合并？",
+        abandonConfirm: "放弃合并",
         abandonConfirmDetail:
-            "所有文件都会回到从服务器获取之前的状态，包括已经自动合并的文件；本地内容不会丢失，需要时可以再次获取",
+            "所有文件将恢复到从服务器获取前的状态，包括已自动合并的文件。本地内容不会丢失，需要时可再次获取。",
         /**
          * 第二档：在一个文件内部逐条变更选边。
          *
@@ -796,8 +796,8 @@ export const documentDiff = {
         showAll: "显示全部改动",
         /** 画布没有标出来的那些改动，一行说清；标了九条却不说另外三条，读起来就像一共只有九条。 */
         notMarked: {
-            one: "另有 {count} 条改动没有标在这里：",
-            other: "另有 {count} 条改动没有标在这里：",
+            one: "另有 {count} 条改动未标在此处：",
+            other: "另有 {count} 条改动未标在此处：",
         },
         onOtherPages: "{count} 条在其他页面",
         onOtherGraphs: "{count} 条在其他蓝图",
@@ -812,7 +812,7 @@ export const documentDiff = {
         assetsAbsent: "{count} 项不在该版本中",
         assetsFailed: "{count} 项无法读取",
         notDrawn: "该版本的页面无法绘制",
-        emptyGraph: "这张图里没有节点",
+        emptyGraph: "该图中没有节点",
         tooLarge: "该文件过大，无法在此绘制",
         unreadable: "该文件无法按界面文档读取：{error}",
         readFailed: "该版本无法读取：{error}",

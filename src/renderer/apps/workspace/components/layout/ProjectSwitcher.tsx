@@ -149,16 +149,25 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                 type="button"
                 onClick={toggle}
                 className={cn(
-                    "h-8 max-w-56 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
+                    "h-8 px-2 rounded-md flex items-center gap-1.5 text-sm cursor-default transition-colors",
                     open ? "bg-fill text-fg" : "text-fg-muted hover:bg-fill hover:text-fg",
                 )}
-                data-tip={t("workspace.shell.projectSwitcher.openAnother")}
+                /* The full name, above the hint - the face cuts it, and this is the only place left
+                   in the window that can still say it. It is there even when the name fits: whether
+                   the span was cut cannot be known without measuring it, and a name said twice for a
+                   moment is cheaper than one that cannot be read at all. */
+                data-tip={`${displayName}\n${t("workspace.shell.projectSwitcher.openAnother")}`}
 
                 aria-haspopup="menu"
                 aria-expanded={open}
             >
                 <FolderOpen className="w-4 h-4 shrink-0" />
-                <span className="truncate">{displayName}</span>
+                {/* Capped in em rather than pixels, so the budget is a number of CHARACTERS: seven,
+                    which is six CJK glyphs and the ellipsis after them, and rather more Latin ones
+                    because those are narrower - the same width carries about as much meaning either
+                    way. Uncapped, this button is as wide as the project is named, and a long name
+                    pushed the File menu and the run control across the title bar. */}
+                <span className="truncate max-w-[7em]">{displayName}</span>
                 <ChevronDown className={cn("w-3 h-3 shrink-0 transition-transform", open && "rotate-180")} />
             </button>
 

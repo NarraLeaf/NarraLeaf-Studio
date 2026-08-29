@@ -418,10 +418,14 @@ export const AppSettings: AppSettingDefinition[] = [
             default: "settings.items.windowIcon.options.default",
             narra: "settings.items.windowIcon.options.narra",
         },
+        // Hidden on macOS, like the ⌘Q row above and for the mirror-image reason: a Mac window
+        // has no icon of its own to set, so the row could only ever say "not available on this
+        // operating system". Linux keeps it disabled with that reason instead of hidden - a
+        // window icon does exist there, it is just the compositor's to honour or ignore.
+        visible: () => !isMacPlatform(),
         availability: async () => {
-            // Static for the lifetime of the window, like the ⌘Q row above: macOS has no
-            // per-window icon to set, and a Linux window icon is the compositor's to honour or
-            // ignore, so Windows is the only platform where the choice takes effect.
+            // Static for the lifetime of the window: Windows is the only platform left here where
+            // the choice takes effect.
             const { isWindowsPlatform } = await import("@/lib/app/platform");
             return isWindowsPlatform()
                 ? { enabled: true }
@@ -870,6 +874,24 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.reopenLastProject.label",
         description: "Open the project the last session was in, instead of starting on the launcher.",
         descriptionKey: "settings.items.reopenLastProject.description",
+        defaultValue: false,
+    },
+    {
+        // Applied by the main process in `App.launchWorkspace`, as the window is built rather than
+        // once its page has rendered, so a maximized workspace comes up maximized instead of
+        // appearing small and jumping.
+        //
+        // Switching project inside a window does not consult this: the replacement adopts the frame
+        // of the window it takes over from, which is what makes the switch read as one window
+        // rather than two.
+        key: "workspace.maximizeOnOpen",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Open workspaces maximized",
+        labelKey: "settings.items.maximizeOnOpen.label",
+        description: "Fill the screen when a workspace window opens. Switching project keeps the frame of the window it replaces.",
+        descriptionKey: "settings.items.maximizeOnOpen.description",
         defaultValue: false,
     },
     {

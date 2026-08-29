@@ -55,9 +55,9 @@ export const dashboard = {
     },
 
     cast: {
-        title: "角色台词",
+        title: "角色对白",
         speaker: "角色",
-        lines: "台词",
+        lines: "对白",
         words: "字数",
         others: {
             other: "其他 {count} 位角色",
@@ -75,14 +75,14 @@ export const dashboard = {
         streak: "连续写作",
         streakNone: "暂无连续记录",
         peak: "峰值 {words}",
-        empty: "尚未记录写作数据；记录到某一天的写作内容后，柱状图即会出现",
+        empty: "尚未记录写作数据。记录到某一天的写作内容后，柱状图即会出现",
         chartLabel: "最近 30 天每天的写作字数",
         tooltip: {
             added: "{date} · 新增 {words}",
             removed: "{date} · 删减 {words}",
             unchanged: "{date} · 无变化",
-            start: "{date} · 统计从这天开始，没有可对比的基准",
-            rebased: "{date} · 字数统计口径在这天变更，与前一天不可比",
+            start: "{date} · 统计自当天开始，无可对比的基准",
+            rebased: "{date} · 字数统计口径于当天变更，与前一天不可比",
             untracked: "{date} · 早于统计开始时间",
         },
     },
@@ -97,7 +97,7 @@ export const dashboard = {
         ok: "成功",
         failed: "失败",
         empty: "暂无构建记录",
-        emptyHint: "该项目的构建完成后会显示在这里",
+        emptyHint: "该项目的构建完成后将显示在此处",
         logEmpty: "本次构建没有输出记录",
         logOmitted: "为控制记录体积，已省略开头 {count} 行",
     },
@@ -119,8 +119,8 @@ export const dashboard = {
     footer: {
         openOnWorkspaceOpen: "每次进入工作区时显示此仪表盘",
         clear: "清空本项目统计数据",
-        clearConfirm: "确定清空本项目的统计数据？",
+        clearConfirm: "清空本项目的统计数据",
         clearDetail:
-            "清除写作曲线、活跃时长、编辑次数与构建记录；从项目内容统计得出的数字不受影响；此操作无法撤销",
+            "将清除写作曲线、活跃时长、编辑次数与构建记录。从项目内容统计得出的数字不受影响。此操作无法撤销。",
     },
 } satisfies LocaleNamespace<"dashboard">;
