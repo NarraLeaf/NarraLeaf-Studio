@@ -104,13 +104,27 @@ export function AssetField(props: {
             {previewUrl ? (
                 <button
                     type="button"
-                    className="group relative mb-2 block aspect-[16/9] w-full overflow-hidden rounded-md border border-edge bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                    className="group relative mb-2 block w-full overflow-hidden rounded-md border border-edge bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
                     onClick={() => setSelectorOpen(true)}
                     aria-label={t("storyInspector.asset.selectTitle", { label: props.label ?? "" })}
                 >
-                    {/* `contain` rather than `cover`: this is here to be recognised, and a cropped
-                        centre of a wide CG is not the picture the author picked. */}
-                    <img src={previewUrl} alt="" draggable={false} className="absolute inset-0 h-full w-full object-contain" />
+                    {/*
+                     * The box takes the picture's own shape rather than a fixed frame's. A 16:9 frame
+                     * is right for a background and wrong for everything else this field holds: a
+                     * sprite is taller than it is wide, so it landed inside one as a sliver between two
+                     * empty halves - the frame, not the picture, getting the panel's width.
+                     *
+                     * So the image sizes itself and the button wraps it: a wide picture fills the
+                     * column, a tall one takes the height cap and only the width it needs. `contain`
+                     * for both, because this is here to be recognised and a cropped centre is not the
+                     * picture the author picked.
+                     */}
+                    <img
+                        src={previewUrl}
+                        alt=""
+                        draggable={false}
+                        className="mx-auto block max-h-52 w-auto max-w-full object-contain"
+                    />
                     <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-2xs tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
                         {t("storyInspector.asset.change")}
                     </span>
