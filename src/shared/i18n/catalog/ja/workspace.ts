@@ -575,6 +575,9 @@ export const workspace = {
             title: "通知",
             clearAll: "消去",
             empty: "まだ何もない",
+            queued: {
+                other: "残り {count} 件",
+            },
         },
         // 背景画像のダイアログ（設定またはコマンドパレットから開く）。
         background: {

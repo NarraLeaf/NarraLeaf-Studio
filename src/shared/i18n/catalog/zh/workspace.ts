@@ -548,6 +548,9 @@ export const workspace = {
             title: "通知",
             clearAll: "清空",
             empty: "还没有消息",
+            queued: {
+                other: "还有 {count} 条",
+            },
         },
         // 自定义背景对话框（从设置或命令面板打开）。
         background: {
