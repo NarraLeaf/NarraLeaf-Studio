@@ -388,6 +388,14 @@ function conditionSource(
             return `${name} == ${expressionLiteral(ref.value ?? null)}`;
         case "notEquals":
             return `${name} != ${expressionLiteral(ref.value ?? null)}`;
+        case "greaterThan":
+            return `${name} > ${expressionLiteral(ref.value ?? null)}`;
+        case "greaterOrEqual":
+            return `${name} >= ${expressionLiteral(ref.value ?? null)}`;
+        case "lessThan":
+            return `${name} < ${expressionLiteral(ref.value ?? null)}`;
+        case "lessOrEqual":
+            return `${name} <= ${expressionLiteral(ref.value ?? null)}`;
         case "exists":
             return `exists ${name}`;
         default:

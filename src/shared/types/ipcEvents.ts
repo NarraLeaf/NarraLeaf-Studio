@@ -5,7 +5,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
-import type { MissingRecentProject } from "./state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -163,6 +163,7 @@ export enum IPCEventType {
     appRemoveRecentProject = "app.removeRecentProject",
     appRevealRecentProject = "app.revealRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
+    appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
     appProbeDownloadSource = "app.probeDownloadSource",
@@ -927,6 +928,21 @@ export type IPCEvents = {
         data: {},
         response: {
             missing: MissingRecentProject[];
+        };
+    };
+    /**
+     * Every remembered project's own app icon, as a `data:` URL, for the ones that have one.
+     *
+     * Takes no paths, for the same reason its neighbour above does not: the main process reads the
+     * history itself, so this cannot be pointed at a folder the user never opened as a project.
+     * Projects without an icon are simply absent from the answer - the surface draws its monogram.
+     */
+    [IPCEventType.appRecentProjectIcons]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            icons: RecentProjectIcon[];
         };
     };
     [IPCEventType.appSystemPath]: {

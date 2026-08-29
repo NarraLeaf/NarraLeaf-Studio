@@ -184,6 +184,18 @@ export interface EditorTabDefinition<TPayload = any> {
     closable?: boolean;
     modified?: boolean;
     payload?: TPayload; // Payload data passed to the editor component
+    /**
+     * A tab opened to be looked at rather than kept. One group holds at most one of them, and the
+     * next preview opened in that group takes its place - which is what lets an author click down a
+     * list of characters, blueprints or assets without ending the minute with twenty tabs.
+     *
+     * The rule that decides the flag at a call site is *how the tab was reached*: navigation (one
+     * click in a list, a search hit, a diagnostic, a link out of another editor) opens a preview;
+     * intent (a double click, a drag into a pane, "Keep open", creating the thing) opens a tab. Once
+     * a tab is permanent nothing puts it back into preview, so the flag only ever falls away - see
+     * `UIStore.openEditorTabInGroup` and `UIStore.promoteEditorTab`.
+     */
+    preview?: boolean;
 }
 
 /**

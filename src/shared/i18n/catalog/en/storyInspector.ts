@@ -524,6 +524,7 @@ export const storyInspector = {
         none: "No asset",
         clear: "Clear asset",
         selectTitle: "Select {label}",
+        change: "Change",
     },
 
     displayableEffect: {

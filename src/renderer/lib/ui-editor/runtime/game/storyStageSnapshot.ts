@@ -24,7 +24,7 @@ import {
 import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
+import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { translate } from "@/lib/i18n";
 import {
@@ -585,6 +585,11 @@ class SnapshotWalker {
                 return current === condition.value;
             case "notEquals":
                 return current !== condition.value;
+            case "greaterThan":
+            case "greaterOrEqual":
+            case "lessThan":
+            case "lessOrEqual":
+                return compareStoryCondition(condition.operator, current, condition.value);
             case "exists":
                 return current !== null && current !== undefined;
             default:

@@ -34,13 +34,12 @@ export class RecentlyOpened {
     }
 
     /** The history with `project` promoted to the front, deduped by path and trimmed to the limit. */
-    public withProject({ name, path, icon, securityScopedBookmark }: RecentlyOpenedProject): RecentlyOpenedProject[] {
+    public withProject({ name, path, securityScopedBookmark }: RecentlyOpenedProject): RecentlyOpenedProject[] {
         const target = normalizeProjectPath(path);
         return [
             {
                 path,
                 name: recentProjectDisplayName({ name, path }),
-                icon,
                 openedAt: Date.now(),
                 securityScopedBookmark,
             },
