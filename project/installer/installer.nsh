@@ -118,6 +118,7 @@ Var nlHeight
 Var nlState     ; "" not started | "wait" creating | "ready" ours | "off" stock wizard has it
 Var nlTicks
 Var nlSize      ; human-readable install size, e.g. "1.1 GB"
+Var nlKiB       ; the same number unformatted, which is what the plugin measures the copy against
 
 ; --- the window ---------------------------------------------------------------------------------
 
@@ -271,6 +272,8 @@ Function nlMeasure
     !endif
   !endif
 
+  StrCpy $nlKiB $0
+
   ; The defines are in KiB. One decimal place once it is gigabytes, none below that.
   ${If} $0 >= 1048576
     IntOp $1 $0 * 10
@@ -423,12 +426,19 @@ Function nlInstFilesShow
   Call nlRaise
   NlWebView::Eval `window.nlState("installing")`
 
-  ; NSIS's own progress bar, which it advances from totals computed at build time. The plugin reads
-  ; it on a timer of its own and calls window.nlProgress; the script cannot, because the section
-  ; runs on another thread and no page loop is polling while it does.
+  ; NSIS's own progress bar, which it advances as it works. The plugin reads it on a timer of its
+  ; own and calls window.nlProgress; the script cannot, because the section runs on another thread
+  ; and no page loop is polling while it does.
+  ;
+  ; The three other arguments are what turn that reading into progress through the whole install
+  ; rather than through one pass of it - see whole_install_fraction in NlWebView.cpp. `7z-out` is
+  ; where the template extracts the payload before copying it into place
+  ; (app-builder-lib/templates/nsis/include/extractAppPackage.nsh, extractUsing7za); naming it here
+  ; is a coupling to that template, and one that costs only accuracy if it ever moves - the plugin
+  ; falls back to measuring bytes against $nlKiB when the directory is not there.
   FindWindow $0 "#32770" "" $HWNDPARENT
   GetDlgItem $1 $0 1004
-  NlWebView::Track "$1"
+  NlWebView::Track "$1" "$PLUGINSDIR\7z-out" "$INSTDIR" "$nlKiB"
 
   ; Hand over to the finish page as soon as the section is done - there is no visible Next to press.
   SetAutoClose true
@@ -464,7 +474,7 @@ Function nlFinishPage
     Abort
   ${EndIf}
 
-  NlWebView::Track "0"
+  NlWebView::Track "0" "" "" "0"
   NlWebView::Eval `window.nlProgress(1)`
   NlWebView::Eval `window.nlState("done")`
 
