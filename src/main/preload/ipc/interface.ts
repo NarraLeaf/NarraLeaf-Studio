@@ -13,7 +13,7 @@ import type {
     GameProgressImportResult,
 } from "@shared/types/gameProgress";
 import { GlobalStateKeys, GlobalStateValue } from "@shared/types/state/globalState";
-import type { MissingRecentProject } from "@shared/types/state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "@shared/types/state/appStateTypes";
 import { WindowAppType, WindowControlAbility, WindowProps, WindowCloseResults, WorkspaceViewRequest } from "@shared/types/window";
 import type { DevModeBlueprintDebugEventPayload, DevModeEntry, DevModeStatus, DevModeBundle, DevModeConsoleLogPayload, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "@shared/types/gameRuntime";
@@ -355,6 +355,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appRevealRecentProject, { path }) as Promise<RequestStatus<void>>,
         checkRecentProjects: () =>
             ipcClient.invoke(IPCEventType.appCheckRecentProjects, {}) as Promise<RequestStatus<{ missing: MissingRecentProject[] }>>,
+        recentProjectIcons: () =>
+            ipcClient.invoke(IPCEventType.appRecentProjectIcons, {}) as Promise<RequestStatus<{ icons: RecentProjectIcon[] }>>,
         getSystemPath: (name: "desktop" | "home") =>
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>

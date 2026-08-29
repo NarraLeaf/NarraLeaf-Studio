@@ -2,7 +2,7 @@ import { useCallback } from "react";
 import { getInterface } from "@/lib/app/bridge";
 
 // The list itself is shared with the launcher - same history, same live subscription.
-export { useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
+export { useRecentProjectIcons, useRecentProjects, useRemoveRecentProject } from "@/lib/app/hooks/useRecentProjects";
 
 type OpenRecentOptions = {
     /** Close the current window once the target opens - a "switch in this window". */

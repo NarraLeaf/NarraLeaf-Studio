@@ -515,6 +515,7 @@ export const storyInspector = {
         none: "アセットなし",
         clear: "アセットを外す",
         selectTitle: "{label} を選択",
+        change: "変更",
     },
 
     displayableEffect: {

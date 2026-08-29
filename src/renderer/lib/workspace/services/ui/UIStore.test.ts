@@ -70,6 +70,88 @@ describe("UIStore editor tab focus history", () => {
     });
 });
 
+describe("UIStore preview tabs", () => {
+    function previewTab(id: string): EditorTabDefinition {
+        return { ...tab(id), preview: true };
+    }
+
+    it("replaces the group's preview tab in place instead of adding another", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("kept"));
+        store.openEditorTabInGroup(previewTab("look-1"));
+        store.openEditorTabInGroup(previewTab("look-2"));
+
+        expect(mainGroup(store).tabs.map(t => t.id)).toEqual(["kept", "look-2"]);
+        expect(mainGroup(store).focus).toBe("look-2");
+        expect(store.getPreviewEditorTabId("main")).toBe("look-2");
+    });
+
+    it("keeps a promoted tab out of the way of the next preview", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("look-1"));
+
+        expect(store.promoteEditorTab("look-1")).toBe(true);
+        store.openEditorTabInGroup(previewTab("look-2"));
+
+        expect(mainGroup(store).tabs.map(t => t.id)).toEqual(["look-1", "look-2"]);
+        expect(store.promoteEditorTab("look-1")).toBe(false);
+    });
+
+    it("promotes a tab reopened as an ordinary one, and never the other way round", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("a"));
+        store.openEditorTabInGroup(tab("a"));
+
+        expect(store.getPreviewEditorTabId("main")).toBeNull();
+
+        store.openEditorTabInGroup(previewTab("a"));
+        expect(store.getPreviewEditorTabId("main")).toBeNull();
+    });
+
+    it("gives each group its own preview tab", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+        store.openEditorTabInGroup(previewTab("c"), "group-1");
+
+        expect(store.getPreviewEditorTabId("main")).toBe("b");
+        expect(store.getPreviewEditorTabId("group-1")).toBe("c");
+    });
+
+    it("keeps a preview tab that was dragged into another group", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+
+        expect(store.moveEditorTabToGroup("b", "main", "group-1")).toBe(true);
+        expect(store.getPreviewEditorTabId("group-1")).toBeNull();
+    });
+
+    it("leaves one preview tab when two panes holding one are merged", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+        store.openEditorTabInGroup(previewTab("c"), "group-1");
+
+        store.closeOtherEditorGroups("main");
+
+        const previews = mainGroup(store).tabs.filter(t => t.preview).map(t => t.id);
+        expect(previews).toEqual(["b"]);
+    });
+
+    it("focuses the replacement when the preview it took over was the focused tab", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("look-1"));
+
+        store.openEditorTabInGroup(previewTab("look-2"), "main", false);
+
+        expect(mainGroup(store).focus).toBe("look-2");
+    });
+});
+
 describe("UIStore panel ordering", () => {
     it("sorts panels by the static order field within each position by default", () => {
         const store = new UIStore();

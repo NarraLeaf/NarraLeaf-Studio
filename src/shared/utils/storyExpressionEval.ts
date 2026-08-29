@@ -205,13 +205,13 @@ function evaluateBinary(expr: Extract<StoryExpr, { kind: "binary" }>, env: Story
         case "!=":
             return !strictEquals(left, right);
         case "<":
-            return compare(left, right) < 0;
+            return compareStoryValues(left, right) < 0;
         case "<=":
-            return compare(left, right) <= 0;
+            return compareStoryValues(left, right) <= 0;
         case ">":
-            return compare(left, right) > 0;
+            return compareStoryValues(left, right) > 0;
         case ">=":
-            return compare(left, right) >= 0;
+            return compareStoryValues(left, right) >= 0;
     }
 }
 
@@ -547,14 +547,46 @@ export function strictEquals(left: StoryLiteralValue, right: StoryLiteralValue):
     return left === right;
 }
 
-/** Ordering for the relational operators: numeric when both sides are numeric, lexicographic for strings. */
-function compare(left: StoryLiteralValue, right: StoryLiteralValue): number {
+/**
+ * Ordering for the relational operators: numeric when both sides are numeric, lexicographic for
+ * strings. Exported for the same reason {@link strictEquals} is - the compiler, the preview and the
+ * variable-condition picker all test `<` / `<=` / `>` / `>=` against exactly this rule, so a
+ * threshold built from dropdowns and one typed as an expression cannot disagree.
+ */
+export function compareStoryValues(left: StoryLiteralValue, right: StoryLiteralValue): number {
     if (typeof left === "string" && typeof right === "string") {
         return left < right ? -1 : left > right ? 1 : 0;
     }
     const a = toNumber(left);
     const b = toNumber(right);
     return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * A variable condition's four ordered operators, answered by {@link compareStoryValues}.
+ *
+ * Lives here rather than in either evaluator because there are three of them - the compiler's
+ * scene/saved path, its persistent path, and the preview snapshot - and a threshold that means one
+ * thing in the preview and another in the shipped game is worse than one that is simply wrong.
+ *
+ * An absent value orders against nothing, so the branch is not taken: the same answer `equals` gives
+ * when one side has never been stored.
+ */
+export function compareStoryCondition(
+    operator: "greaterThan" | "greaterOrEqual" | "lessThan" | "lessOrEqual",
+    current: StoryLiteralValue | undefined,
+    value: StoryLiteralValue | undefined,
+): boolean {
+    if (current === undefined || current === null || value === undefined || value === null) {
+        return false;
+    }
+    const order = compareStoryValues(current, value);
+    switch (operator) {
+        case "greaterThan": return order > 0;
+        case "greaterOrEqual": return order >= 0;
+        case "lessThan": return order < 0;
+        case "lessOrEqual": return order <= 0;
+    }
 }
 
 // ── Static type inference ─────────────────────────────────────────────────────────────────────────

@@ -75,7 +75,12 @@ const BLUEPRINT_ENTRY_OWNER_KINDS = new Set<string>(
     } satisfies Record<BlueprintEntryOwnerKind, true>),
 );
 
-export type SerializedTab =
+/**
+ * What a tab is, minus how it was opened. The `preview` flag below rides on top of every one of
+ * these, so a session comes back with the same provisional tab it was left with rather than
+ * quietly turning it into one more tab to close.
+ */
+export type SerializedTabContent =
     | { kind: "welcome" }
     | { kind: "help"; topicId?: string }
     | { kind: "dashboard" }
@@ -88,6 +93,11 @@ export type SerializedTab =
     | { kind: "assetText"; assetId: string; title: string }
     | { kind: "storyScene"; title: string; payload: StorySceneEditorTabPayload }
     | { kind: "storyMotion"; title: string; payload: StoryMotionEditorPayload };
+
+export type SerializedTab = SerializedTabContent & {
+    /** The tab was the pane's preview - see `EditorTabDefinition.preview`. */
+    preview?: boolean;
+};
 
 /** Legacy single-group session. Still read (and upgraded) so existing installs keep their tabs. */
 export type WorkspaceEditorSessionV1 = {
@@ -219,6 +229,15 @@ function isStoryMotionEditorPayload(value: unknown): value is StoryMotionEditorP
  * If a tab has no supported serialization strategy, returns null (tab is dropped from session).
  */
 export function trySerializeTab(tab: EditorTabDefinition): SerializedTab | null {
+    const content = serializeTabContent(tab);
+    if (!content) {
+        return null;
+    }
+    return tab.preview ? { ...content, preview: true } : content;
+}
+
+/** The half of {@link trySerializeTab} that decides what kind of tab this is. */
+function serializeTabContent(tab: EditorTabDefinition): SerializedTabContent | null {
     if (tab.id === WELCOME_TAB_ID) {
         return { kind: "welcome" };
     }
@@ -524,6 +543,15 @@ function textIcon(): ReactNode {
  * Exported for the closed-tab reopen path, which shares this rebuild logic.
  */
 export function buildTabDefinition(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
+    const tab = buildTabDefinitionContent(ctx, entry);
+    if (!tab) {
+        return null;
+    }
+    return entry.preview ? { ...tab, preview: true } : tab;
+}
+
+/** The half of {@link buildTabDefinition} that rebuilds the editor behind the tab. */
+function buildTabDefinitionContent(ctx: WorkspaceContext, entry: SerializedTab): EditorTabDefinition | null {
     if (entry.kind === "welcome") {
         return createWelcomeTab();
     }

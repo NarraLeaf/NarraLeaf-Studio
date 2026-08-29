@@ -135,7 +135,7 @@ export function collectQuickOpenEntries(ctx: WorkspaceContext): QuickOpenEntry[]
                 icon: assetIcon(asset),
                 open: () => {
                     if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
-                        openAssetPreviewTabsInEditor(ctx, [asset]);
+                        openAssetPreviewTabsInEditor(ctx, [asset], { preview: true });
                         return;
                     }
                     uiService.getStore().setPanelVisibility(ASSETS_PANEL_ID, true);
