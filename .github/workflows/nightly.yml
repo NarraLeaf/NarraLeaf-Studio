@@ -46,8 +46,11 @@ concurrency:
 
 # The package jobs publish nothing, so the default token stays read-only; the
 # release job below overrides this to contents: write to move the rolling tag.
+# `packages: read` is for the install step: the @narraleaf scope is served by
+# GitHub Packages, which asks for a credential on every package it holds.
 permissions:
   contents: read
+  packages: read
 
 jobs:
   package:
@@ -79,6 +82,15 @@ jobs:
       - name: Enable Corepack
         run: corepack enable
 
+      # See the same step in ci.yml for why this is the run's own GITHUB_TOKEN
+      # and not a stored personal token. Without it the install resolves
+      # @narraleaf/bindings as an anonymous user and dies in the resolution
+      # step, which is how the first 0.9.0 merge to this branch failed.
+      - name: Authenticate to GitHub Packages
+        run: node .github/scripts/write-packages-credential.mjs
+        env:
+          GITHUB_PACKAGES_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # npm_config_arch pins the Electron runtime to the target's architecture
       # rather than the runner's. prepare-preview-runner.js stages
       # node_modules/electron/dist into resources/, and that copy becomes the
@@ -90,7 +102,7 @@ jobs:
       # this is defence against a runner image moving or a row being added.
       #
       # It affects nothing else: electron-builder downloads its own Electron for
-      # the target named by --x64/--arm64, and @narraleaf/encryption ships every
+      # the target named by --x64/--arm64, and @narraleaf/bindings ships every
       # platform's prebuild in the package and picks one at runtime.
       #
       # --no-immutable is required, not a shortcut: yarn defaults to --immutable
