@@ -106,6 +106,8 @@ function createPrivilegedBridge(guarded: boolean): RendererPrivilegedInterface {
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, encoding, raw: false }),
             requestWriteRaw: (actor: PrivilegedActor, path: string) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWrite", path, raw: true }),
+            requestReadManyRaw: (actor: PrivilegedActor, paths: string[]) =>
+                invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestReadMany", paths, raw: true }),
             requestWriteBatch: (actor: PrivilegedActor, entries: PrivilegedWriteBatchEntry[]) =>
                 invoke(IPCEventType.privilegedFsCall, { actor, operation: "requestWriteBatch", entries }),
             ensureRegularFile: (actor: PrivilegedActor, path: string, data: string, encoding: BufferEncoding = "utf-8") =>
