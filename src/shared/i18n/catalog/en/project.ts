@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, signing, compression, and mobile",
+            description: "Security, signing, compression, loading, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -62,6 +62,7 @@ export const project = {
         imageCompression: "Image compression",
         audioCompression: "Audio compression",
         videoCompression: "Video compression",
+        loading: "Loading",
         crash: "Crashes",
         mobile: "Mobile",
     },
@@ -436,6 +437,18 @@ export const project = {
     settings: {
         // What the shipped game does when it stops working. The choice is who the build is for:
         // the author testing it, a player holding it, or a machine running it unattended.
+        preloadBehaviorTitle: "Preload behavior",
+        preloadBehavior: {
+            auto: "Automatic",
+            blocking: "Blocking",
+        },
+        preloadBehaviorNote: {
+            blocking: "Only when preloading causes problems",
+        },
+        preloadBehaviorDetail: {
+            auto: "The game is shown once the opening scene's first frame is ready. Its remaining images keep loading behind it.",
+            blocking: "The game is shown once every image the opening scene uses has loaded.",
+        },
         crashPolicyTitle: "When the game stops working",
         crashPolicyDescription: "The failure is written to the game's log in all three cases.",
         crashPolicy: {

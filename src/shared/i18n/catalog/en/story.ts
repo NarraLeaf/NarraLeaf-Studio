@@ -697,6 +697,7 @@ export const story = {
         // a two-value positional teaches itself faster than a label an author has to guess at.
         mirrorState: "On / Off",
         waitFor: "Seconds or click",
+        waitForEnd: "Wait for the clip",
         // Slots whose payload key already reads as its own name, so they carry no explicit `hint`
         // and fall back to it. Listed here so the coverage test can see them.
         fade: "Fade Seconds",

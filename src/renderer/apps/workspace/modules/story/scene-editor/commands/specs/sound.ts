@@ -134,7 +134,7 @@ export const sound = defineStoryCommand({
     aliases: ["se"],
     category: "sound",
     icon: AudioLines,
-    examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit track=SFX fade=0.2"],
+    examples: ["/sound hit", "/sound hit name=impact vol=0.8", "/sound hit wait"],
     quickParams: ["vol", "loop"],
     params: {
         audio: { aliases: ["src"], hint: "audioAsset", type: { kind: "asset", assetType: "audio", allowSets: true }, positional: true, core: true },
@@ -145,6 +145,8 @@ export const sound = defineStoryCommand({
         // the key, so a fade-in was reachable from the inspector and not from the line.
         fade: { hint: "fade", type: SECONDS_TYPE },
         loop: { hint: "loop", type: { kind: "boolean" } },
+        // Only this command has it: `/bgm` loops, and a looping clip never ends.
+        wait: { hint: "waitForEnd", type: { kind: "boolean" } },
     },
     // A named sound is addressable later (`/stop hit`); the name derives from the file like `/image`.
     deriveArgs: deriveObjectName("audio", "audio", "sound"),
@@ -176,6 +178,10 @@ export const sound = defineStoryCommand({
         const loop = asBoolean(args.loop);
         if (loop !== undefined) {
             payload.loop = loop;
+        }
+        const waitForEnd = asBoolean(args.wait);
+        if (waitForEnd !== undefined) {
+            payload.waitForEnd = waitForEnd;
         }
         return { ...block, payload };
     },

@@ -353,6 +353,7 @@ export interface RendererPreloadedInterface {
         onCloseProgress(handler: (stage: WorkspaceCloseStage | null) => void): AppEventToken;
         onResolveAssetUrl(handler: (payload: { assetId: string; assetType?: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
         onResolveImageAssetUrl(handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>): AppEventToken;
+        onResolveAllAssetUrls(handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>): AppEventToken;
         onBlueprintNavigateFromPreview(handler: (payload: PreviewStudioBlueprintOpenPayload) => void): AppEventToken;
         onMenuAction(handler: (action: MenuActionId) => void): AppEventToken;
         syncNativeMenu(model: NativeMenuModel): void;
@@ -571,6 +572,8 @@ export interface RendererPreloadedInterface {
          */
         resolveWeatherClip(spec: WeatherBakeSpec, attempt: string): Promise<RequestStatus<{ url: string }>>;
         resolveImageAssetUrl(assetId: string): Promise<RequestStatus<{ url: string }>>;
+        /** Every asset the workspace can resolve, in one round trip, keyed by asset id. */
+        resolveAllAssetUrls(): Promise<RequestStatus<{ urls: Record<string, string> }>>;
         openBlueprintInWorkspace(
             payload: PreviewStudioBlueprintOpenPayload & { projectPath: string },
         ): Promise<RequestStatus<void>>;
