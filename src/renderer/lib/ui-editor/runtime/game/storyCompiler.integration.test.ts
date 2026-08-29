@@ -3662,6 +3662,37 @@ describe("story audio", () => {
         expect((sound as any)?.config.endTime).toBe(0.5);
     });
 
+    /**
+     * A sound effect is written between two lines, not as a wait. Before the flag existed every
+     * `/sound` row held the script for the whole length of the clip, so a seven-second chime placed
+     * before a scene's first line stopped it for seven seconds with the stage already finished.
+     */
+    it("plays a sound effect without holding the script, unless the row asked to wait", async () => {
+        const playOptions = async (extra: Record<string, unknown>) => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit", ...extra } as StoryActionPayload,
+                    },
+                }, ["se"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+            const play = compiled.actionIdBindings
+                .map(binding => binding.action as unknown as { type: string; contentNode?: { getContent(): unknown[] } })
+                .find(action => action.type === "sound:play");
+            return play?.contentNode?.getContent()[0] as { waitForEnd?: boolean } | undefined;
+        };
+
+        expect((await playOptions({}))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: false }))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: true }))?.waitForEnd).toBe(true);
+    });
+
     it("lets the sound-control family address a scene's own music", async () => {
         const document = baseDocument({
             quieter: {
@@ -4920,5 +4951,172 @@ describe("a layered character a row-precise launch pre-poses", () => {
             { level: "warning", blockId: "sad", message: "Bob is on stage as a single image, so its appearance tags cannot change here." },
         ]);
         expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+});
+
+/**
+ * A row-precise launch into a scene whose stage objects are declared inside branches.
+ *
+ * The snapshot walk is a RUNTIME state: it follows one path to the target row, so a condition it
+ * meets on the way contributes exactly one arm. A compile's element registry is not - it is built by
+ * walking every row of the scene, so an `/image create` written inside one arm registers that image
+ * for the whole scene and a `/show` inside a different arm three hundred rows later finds it.
+ *
+ * The launch entry scene used to seed its registry from the snapshot alone, so the tail entered a
+ * scene that knew only the objects the ONE path had declared, and every row addressing anything
+ * declared on a different arm reported a stage object missing from a story that compiles without a
+ * word when played from the top. A CG behind a wardrobe choice is the ordinary shape of it: three
+ * arms create three images, and each of the dozen rows that later shows one of the other two errored
+ * and compiled to nothing, so the scene played on with an empty stage.
+ */
+describe("stage objects declared on a branch a row-precise launch did not take", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    function imageRow(id: string, parentId: string | null, payload: Extract<StoryActionPayload, { action: "image" }>): StoryBlock {
+        return { id, kind: "action", parentId, childrenIds: [], payload };
+    }
+
+    function conditionBranch(id: string, parentId: string, childrenIds: string[], condition?: StoryConditionRef): StoryBlock {
+        return {
+            id,
+            kind: "control",
+            parentId,
+            childrenIds,
+            payload: condition
+                ? { control: "conditionBranch", branch: "if", condition }
+                : { control: "conditionBranch", branch: "else" },
+        };
+    }
+
+    /**
+     * `create` in two arms, `show` in two arms, and a launch that starts between them.
+     *
+     * `started` is false, so both walks take the same arm - the `else` - which is exactly the case
+     * that looked fine in the editor and broke in the player: the arm the walk took declares
+     * `cg-else`, and nothing at all declares the other one.
+     */
+    const blocks: Record<string, StoryBlock> = {
+        "create-if": imageRow("create-if", "create-branch-if", {
+            action: "image", operation: "create", objectName: "cg-if", assetId: "asset-if",
+        }),
+        "create-else": imageRow("create-else", "create-branch-else", {
+            action: "image", operation: "create", objectName: "cg-else", assetId: "asset-else",
+        }),
+        "create-branch-if": conditionBranch("create-branch-if", "create-condition", ["create-if"], {
+            kind: "variable", target: { scope: "scene", variableId: "started" }, operator: "isTrue",
+        }),
+        "create-branch-else": conditionBranch("create-branch-else", "create-condition", ["create-else"]),
+        "create-condition": {
+            id: "create-condition",
+            kind: "control",
+            parentId: null,
+            childrenIds: ["create-branch-if", "create-branch-else"],
+            payload: { control: "condition" },
+        },
+        target: narrationBlock("target", "target-text", "Here"),
+        "show-if": imageRow("show-if", "show-branch-if", {
+            action: "image",
+            operation: "show",
+            objectName: "cg-if",
+            target: { kind: "image", name: "cg-if", sourceBlockId: "create-if" },
+        }),
+        "show-else": imageRow("show-else", "show-branch-else", {
+            action: "image",
+            operation: "show",
+            objectName: "cg-else",
+            target: { kind: "image", name: "cg-else", sourceBlockId: "create-else" },
+        }),
+        "show-branch-if": conditionBranch("show-branch-if", "show-condition", ["show-if"], {
+            kind: "variable", target: { scope: "scene", variableId: "started" }, operator: "isTrue",
+        }),
+        "show-branch-else": conditionBranch("show-branch-else", "show-condition", ["show-else"]),
+        "show-condition": {
+            id: "show-condition",
+            kind: "control",
+            parentId: null,
+            childrenIds: ["show-branch-if", "show-branch-else"],
+            payload: { control: "condition" },
+        },
+    };
+
+    const rootBlockIds = ["create-condition", "target", "show-condition"];
+
+    async function compileLaunch(): Promise<Awaited<ReturnType<typeof compileStudioStoryToNlr>>> {
+        const document = baseDocument(blocks, rootBlockIds);
+        return compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl,
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+    }
+
+    it("compiles the tail's rows for them instead of reporting them missing", async () => {
+        const compiled = await compileLaunch();
+
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        // Both arms compile: the row is emitted, not dropped for a stage object nothing declared.
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("show-if");
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("show-else");
+    });
+
+    /**
+     * A declaration carries the source its own row gave it, and arrives hidden.
+     *
+     * Both halves matter. Without the source the tail's `/show` would reveal a blank element, which
+     * is the same empty stage by a different route; with the entrance the launch would open on a CG
+     * the player never chose.
+     */
+    it("carries the declaring row's source and leaves it off the stage", () => {
+        const document = baseDocument(blocks, rootBlockIds);
+        const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
+
+        // The arm the walk took is stage state; the other arm's image is a declaration, and hidden.
+        expect(snapshot.displayables.map(record => record.objectName)).toEqual(["cg-else"]);
+        expect(snapshot.declarations).toEqual([
+            expect.objectContaining({
+                kind: "image",
+                objectName: "cg-if",
+                visible: false,
+                source: { type: "asset", assetId: "asset-if" },
+            }),
+        ]);
+    });
+
+    it("constructs the story the launch produced", async () => {
+        const compiled = await compileLaunch();
+
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+});
+
+/**
+ * The tail of a launch follows its jump, so nothing holds at one.
+ *
+ * The message belongs to the single-scene preview, which really does stop there. A launch emits the
+ * jump and control leaves for the target scene - the run carries on - so the warning marked the last
+ * row of every scene a launch played through with a stop that had not happened.
+ */
+describe("a row-precise launch that reaches a scene jump", () => {
+    it("says nothing about a jump it followed", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            target: narrationBlock("target", "target-text", "Here"),
+            leave: { id: "leave", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-2" } },
+        };
+        const document = baseDocument(blocks, ["target", "leave"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.message.includes("Playback ends here"))).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
     });
 });

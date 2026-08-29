@@ -8,7 +8,7 @@ import { useTranslation } from "@/lib/i18n";
 import { Button } from "@/lib/components/elements";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { cn } from "@/lib/utils/cn";
-import { visibleCardCount } from "./notificationStack";
+import { cardOffsets, visibleCardCount } from "./notificationStack";
 
 /** One outline glyph per type, from the icon set the rest of the workspace uses. */
 const TYPE_ICON: Record<NotificationType, LucideIcon> = {
@@ -26,7 +26,10 @@ const TYPE_ACCENT: Record<NotificationType, string> = {
     [NotificationType.Error]: "border-l-danger text-danger",
 };
 
-/** Vertical space between cards, in px. Mirrors the `gap-2` on the stack. */
+/**
+ * Vertical space between cards, in px. The stack positions its cards itself rather than letting a
+ * flex column do it, so this is the gap: there is no `gap-2` to mirror.
+ */
 const CARD_GAP = 8;
 
 /**
@@ -134,13 +137,16 @@ function NotificationItem({
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             className={cn(
-                "flex w-96 items-start gap-3 rounded-lg p-3",
+                "flex w-full items-start gap-3 rounded-lg p-3",
                 // Per-side widths rather than `border` + `border-l-2`: the engine
                 // (narraleaf-react) ships a compiled Tailwind v4 sheet that the
                 // workspace window injects after its own, and its `.border` rule
                 // lands last and resets all four widths to 1px.
                 "border-y border-r border-l-2 border-edge bg-surface-overlay shadow-lg shadow-black/30",
-                "animate-slide-in-right",
+                // The arrival plays when the card is PRESENTED, not when it is mounted: a card that
+                // waited in the queue was mounted long ago, off-screen, and would otherwise take its
+                // place in silence. Adding the class on promotion is what starts the animation.
+                presented && "animate-toast-in",
                 accent,
             )}
         >
@@ -238,6 +244,12 @@ export interface NotificationContainerProps {
  * Shows the active notifications in the top-right corner, inside the box left over by the title
  * bar, the status bar and the right selector rail. Cards beyond what that box holds wait their
  * turn instead of being drawn over the window chrome - see ./notificationStack.
+ *
+ * The stack owns its own layout. Each card is absolutely placed at an offset it can transition to,
+ * so dismissing one slides the cards below it up rather than snapping them, and a card promoted
+ * out of the queue arrives with the same entrance a freshly raised one gets. Both movements are
+ * short: cards behind are waiting, and a stack that took its time reporting one thing would be in
+ * the way of the next.
  */
 export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: NotificationContainerProps = {}) {
     const { context } = useWorkspace();
@@ -246,6 +258,10 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
     const [heights, setHeights] = useState<Record<string, number>>({});
     const containerRef = useRef<HTMLDivElement>(null);
     const cardRefs = useRef(new Map<string, HTMLElement>());
+    /** Ids that have been rendered in a visible slot once, and may therefore animate to the next. */
+    const placedRef = useRef(new Set<string>());
+    /** How many cards the last render put on screen, for the layout effect below. */
+    const shownRef = useRef(0);
 
     useEffect(() => {
         if (!context) return;
@@ -282,9 +298,22 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
     }, [notifications.length === 0]);
 
     // Every card is mounted, queued ones included: a card's height is what decides whether it fits,
-    // and there is no way to ask for that without laying it out. The queued ones are taken out of
-    // the flow and left unpainted, so they measure without showing.
+    // and there is no way to ask for that without laying it out. The queued ones are parked at the
+    // end of the stack and left unpainted, so they measure without showing.
     useLayoutEffect(() => {
+        // Only the cards that are actually in a slot count as placed. A queued one is parked below
+        // the stack, and letting it transition from there would send it sweeping up across the
+        // status bar on the frame it was promoted; unplaced, it takes its slot outright and only
+        // its own arrival animation plays.
+        const placed = new Set(notifications.slice(0, shownRef.current).map(notification => notification.id));
+        for (const id of placedRef.current) {
+            if (!placed.has(id)) {
+                placedRef.current.delete(id);
+            }
+        }
+        for (const id of placed) {
+            placedRef.current.add(id);
+        }
         setHeights(previous => {
             const next: Record<string, number> = {};
             for (const notification of notifications) {
@@ -312,6 +341,9 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
     }
 
     const shown = visibleCardCount(notifications.map(n => heights[n.id] ?? 0), CARD_GAP, available);
+    shownRef.current = shown;
+
+    const offsets = cardOffsets(notifications.map(n => heights[n.id] ?? 0), CARD_GAP, shown);
 
     return (
         <div
@@ -320,17 +352,32 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
             style={{ right: rightInset + STACK_MARGIN, bottom: bottomInset + STACK_MARGIN }}
             className={cn(
                 "fixed top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50",
-                "flex flex-col items-end gap-2 overflow-hidden pointer-events-none",
+                "w-96 pointer-events-none",
             )}
         >
             {notifications.map((notification, index) => {
                 const queued = index >= shown;
+                // A card that has never been placed must not transition into its first position -
+                // it would glide down from the top of the stack on the frame it appeared. It gets
+                // its offset outright, and the transition from the next render on.
+                const settled = placedRef.current.has(notification.id);
                 return (
                     <div
                         key={notification.id}
                         ref={registerCard(notification.id)}
                         aria-hidden={queued || undefined}
-                        className={cn("pointer-events-auto", queued && "absolute invisible pointer-events-none")}
+                        style={{
+                            transform: `translateY(${offsets[index]}px)`,
+                            // Earlier cards paint over later ones, so a card growing as it is
+                            // unfolded covers the ones being pushed down instead of being overlapped
+                            // by them halfway through the move.
+                            zIndex: notifications.length - index,
+                        }}
+                        className={cn(
+                            "absolute inset-x-0 top-0 pointer-events-auto",
+                            settled && "transition-transform duration-150 ease-out",
+                            queued && "invisible pointer-events-none",
+                        )}
                     >
                         <NotificationItem
                             notification={notification}

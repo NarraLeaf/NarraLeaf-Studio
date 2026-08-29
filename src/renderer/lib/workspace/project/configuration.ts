@@ -23,6 +23,7 @@ import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
+import type { PreloadConfiguration } from "@shared/types/preload";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
@@ -104,6 +105,12 @@ export {
     normalizeDialogueConfiguration,
 } from "@shared/types/dialogue";
 export type { DialogueConfiguration } from "@shared/types/dialogue";
+export {
+    DEFAULT_PRELOAD_CONFIGURATION,
+    PRELOAD_BEHAVIORS,
+    normalizePreloadConfiguration,
+} from "@shared/types/preload";
+export type { PreloadBehavior, PreloadConfiguration } from "@shared/types/preload";
 export {
     DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
     normalizeSaveCompatibilityConfiguration,
@@ -482,6 +489,11 @@ export type ProjectAppConfiguration = {
      * screen offers it.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * How much of the opening scene has to be warm before the game is shown
+     * (see @shared/types/preload); absent until configured.
+     */
+    preload?: PreloadConfiguration;
     /**
      * The key that ties this project to the builds it produces; absent until the
      * author mints one. Travels with the project on purpose - see the type.

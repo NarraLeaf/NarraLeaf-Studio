@@ -239,6 +239,7 @@ export enum IPCEventType {
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
+    workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceReportWriteFreeze = "workspace.reportWriteFreeze",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -256,6 +257,7 @@ export enum IPCEventType {
     devModeControlError = "devMode.control.error",
     devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
+    devModeResolveAllAssetUrls = "devMode.resolveAllAssetUrls",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
@@ -2283,6 +2285,21 @@ export type IPCWorkspaceEvents = {
         };
         response: RequestStatus<{ url: string }>;
     };
+    /**
+     * Every asset in the project, resolved in one round trip, keyed by asset id.
+     *
+     * The per-asset request above answers one question at a time, and a story compile asks it about
+     * a thousand times in a row - once per asset the script references, each awaited before the next
+     * is sent. That is three IPC hops of latency multiplied by the size of the library, and it was
+     * most of the time a Dev Mode launch took. Assets the resolver cannot answer for are left out
+     * rather than reported: the caller falls back to the single-asset path for those.
+     */
+    [IPCEventType.workspaceResolveAllAssetUrls]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ urls: Record<string, string> }>;
+    };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
         consumer: IPCType.Client,
@@ -2469,6 +2486,15 @@ export type IPCDevModeEvents = {
         };
         response: {
             url: string;
+        };
+    };
+    /** See {@link IPCEventType.workspaceResolveAllAssetUrls}; this is the Dev Mode window's door to it. */
+    [IPCEventType.devModeResolveAllAssetUrls]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {};
+        response: {
+            urls: Record<string, string>;
         };
     };
     [IPCEventType.devModeResolveImageAssetUrl]: {
