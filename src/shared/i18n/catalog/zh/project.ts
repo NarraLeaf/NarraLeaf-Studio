@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、签名、压缩与移动端",
+            description: "安全、签名、压缩、载入与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -59,6 +59,7 @@ export const project = {
         imageCompression: "图像压缩",
         audioCompression: "音频压缩",
         videoCompression: "视频压缩",
+        loading: "载入",
         crash: "崩溃",
         mobile: "移动端",
     },
@@ -384,6 +385,18 @@ export const project = {
         },
     },
     settings: {
+        preloadBehaviorTitle: "预加载行为",
+        preloadBehavior: {
+            auto: "自动",
+            blocking: "阻塞",
+        },
+        preloadBehaviorNote: {
+            blocking: "仅在预加载出现问题时使用",
+        },
+        preloadBehaviorDetail: {
+            auto: "开场场景的首帧就绪后显示游戏，其余图像在后台继续载入",
+            blocking: "开场场景用到的全部图像载入后再显示游戏",
+        },
         crashPolicyTitle: "游戏停止工作时",
         crashPolicyDescription: "三种方式都会将错误写入游戏日志",
         crashPolicy: {

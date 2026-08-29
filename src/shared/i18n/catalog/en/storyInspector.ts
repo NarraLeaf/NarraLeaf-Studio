@@ -462,6 +462,7 @@ export const storyInspector = {
         volume: "Volume",
         rate: "Rate",
         loop: "Loop",
+        waitForEnd: "Wait for the clip",
     },
 
     image: {

@@ -1182,7 +1182,7 @@ function ActionPayloadFields(props: {
 type AudioActionPayload = Extract<StoryActionPayload, { action: "audio" }>;
 
 /** The knobs an audio row can carry. Names, not components - the table below is data, not layout. */
-type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "muted" | "seekTime";
+type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "waitForEnd" | "muted" | "seekTime";
 
 /**
  * Which fields each audio operation actually consumes.
@@ -1200,7 +1200,7 @@ type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loo
  */
 const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly AudioField[]> = {
     setBgm: ["track", "asset", "fade", "volume", "loop"],
-    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop"],
+    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop", "waitForEnd"],
     stopSound: ["name", "fade"],
     pauseSound: ["name", "fade"],
     resumeSound: ["name", "fade"],
@@ -1385,6 +1385,16 @@ function AudioActionEditor(props: {
                         // box read "on" because the field is empty would be lying about the game.
                         checked={payload.loop ?? track.loop}
                         onChange={loop => props.onChange({ ...payload, loop })}
+                    />
+                ) : null}
+                {has("waitForEnd") ? (
+                    <ToggleField
+                        label={t("storyInspector.audio.waitForEnd")}
+                        // Off for a looping clip whatever the row stores: a loop never ends, so a
+                        // box reading "on" would promise a wait that cannot happen.
+                        checked={(payload.loop ?? track.loop) ? false : payload.waitForEnd === true}
+                        disabled={Boolean(payload.loop ?? track.loop)}
+                        onChange={waitForEnd => props.onChange({ ...payload, waitForEnd })}
                     />
                 ) : null}
                 {has("muted") ? (

@@ -3662,6 +3662,37 @@ describe("story audio", () => {
         expect((sound as any)?.config.endTime).toBe(0.5);
     });
 
+    /**
+     * A sound effect is written between two lines, not as a wait. Before the flag existed every
+     * `/sound` row held the script for the whole length of the clip, so a seven-second chime placed
+     * before a scene's first line stopped it for seven seconds with the stage already finished.
+     */
+    it("plays a sound effect without holding the script, unless the row asked to wait", async () => {
+        const playOptions = async (extra: Record<string, unknown>) => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit", ...extra } as StoryActionPayload,
+                    },
+                }, ["se"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+            const play = compiled.actionIdBindings
+                .map(binding => binding.action as unknown as { type: string; contentNode?: { getContent(): unknown[] } })
+                .find(action => action.type === "sound:play");
+            return play?.contentNode?.getContent()[0] as { waitForEnd?: boolean } | undefined;
+        };
+
+        expect((await playOptions({}))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: false }))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: true }))?.waitForEnd).toBe(true);
+    });
+
     it("lets the sound-control family address a scene's own music", async () => {
         const document = baseDocument({
             quieter: {

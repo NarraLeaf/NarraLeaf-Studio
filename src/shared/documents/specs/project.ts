@@ -123,6 +123,8 @@ const LABEL = {
 
     crash: "documentDiff.project.crash",
     crashPolicy: "documentDiff.project.crashPolicy",
+    preload: "documentDiff.project.preload",
+    preloadBehavior: "documentDiff.project.preloadBehavior",
 
     assetCompression: "documentDiff.project.assetCompression",
     compressImages: "documentDiff.project.compressImages",
@@ -304,6 +306,7 @@ const APP_GROUPS: ReadonlyMap<string, ConfigGroup> = new Map<string, ConfigGroup
     }],
     ["security", {label: LABEL.security, fields: {encryptAssets: LABEL.encryptAssets}}],
     ["crash", {label: LABEL.crash, fields: {policy: LABEL.crashPolicy}}],
+    ["preload", {label: LABEL.preload, fields: {behavior: LABEL.preloadBehavior}}],
     ["assetCompression", {
         label: LABEL.assetCompression,
         fields: {

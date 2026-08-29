@@ -30,6 +30,7 @@ import {
     resolveLocalizedUnitText,
 } from "@shared/types/localization";
 import { VOICE_LOCALE_STORAGE_KEY } from "@shared/types/voice";
+import { preloadGateFor } from "@shared/types/preload";
 import {
     isAutoSaveId,
     isReservedSaveId,
@@ -2978,6 +2979,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             audioClips: bundle.audio?.clips,
             audioTracks: bundle.audio?.tracks,
         };
+        // Before the walk, not during it: the compiler resolves an asset the moment it reaches one,
+        // and a host that has to ask another window for each answer spends the whole compile waiting
+        // one round trip at a time. Failures inside it are the host's to swallow - it answers by
+        // asset again, which is what every compile did before this existed.
+        await host.prewarmStoryAssetUrls?.();
         const compiled = await compileStudioStoryToNlr(compileInput);
         // Only the compile that is still the current one gets to complain. A hot reload can land
         // while this one is waiting on something slow, and what it found then is about a document
@@ -3127,6 +3133,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // The author's pause length, from the bundle. A bundle written before the setting
             // carries nothing and gets the engine's own value, which is what those builds shipped.
             ...(bundle.dialogue ? { autoForwardDefaultPause: bundle.dialogue.autoForwardDefaultPause } : {}),
+            ...(bundle.preload ? { preloadGate: preloadGateFor(bundle.preload.behavior) } : {}),
         });
         // The author's preference defaults, then whatever the player has chosen on top of them.
         // Before the audio buses on purpose: the three seeded buses and the volume preferences are

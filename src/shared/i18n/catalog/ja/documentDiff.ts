@@ -536,6 +536,8 @@ export const documentDiff = {
         encryptAssets: "アセットを暗号化",
         crash: "クラッシュ",
         crashPolicy: "ゲームが停止したとき",
+        preload: "読み込み",
+        preloadBehavior: "プリロードの動作",
         assetCompression: "圧縮",
         compressImages: "画像を圧縮",
         imageMode: "画像の設定",

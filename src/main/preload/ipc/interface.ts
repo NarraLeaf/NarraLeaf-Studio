@@ -290,6 +290,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.onRequest(IPCEventType.workspaceResolveAssetUrl, handler),
         onResolveImageAssetUrl: (handler: (payload: { assetId: string }) => Promise<RequestStatus<{ url: string }>>) =>
             ipcClient.onRequest(IPCEventType.workspaceResolveImageAssetUrl, handler),
+        onResolveAllAssetUrls: (handler: () => Promise<RequestStatus<{ urls: Record<string, string> }>>) =>
+            ipcClient.onRequest(IPCEventType.workspaceResolveAllAssetUrls, handler),
         onBlueprintNavigateFromPreview: (handler: (payload: PreviewStudioBlueprintOpenPayload) => void) =>
             ipcClient.onMessage(IPCEventType.workspaceBlueprintNavigateFromPreview, handler),
         onMenuAction: (handler: (action: MenuActionId) => void) =>
@@ -420,6 +422,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.devModeResolveAssetUrl, { assetId, assetType }) as Promise<RequestStatus<{ url: string }>>,
         resolveImageAssetUrl: (assetId: string) =>
             ipcClient.invoke(IPCEventType.devModeResolveImageAssetUrl, { assetId }) as Promise<RequestStatus<{ url: string }>>,
+        resolveAllAssetUrls: () =>
+            ipcClient.invoke(IPCEventType.devModeResolveAllAssetUrls, {}) as Promise<RequestStatus<{ urls: Record<string, string> }>>,
         openBlueprintInWorkspace: (payload: PreviewStudioBlueprintOpenPayload & { projectPath: string }) =>
             ipcClient.invoke(IPCEventType.devModeOpenBlueprintInWorkspace, payload) as Promise<RequestStatus<void>>,
         save: {
