@@ -9,11 +9,10 @@
  * needs at run time.
  *
  * @narraleaf/bindings ships something else under it. `prebuilds/<target>/core.a`
- * is the precompiled half of the content codec: a protected build
- * compiles one generated translation unit and links it against that archive, so
- * the archive is a runtime input to the in-app game build rather than build
- * leftovers. The iOS xcframework beside it carries its `libbindings.a` slices
- * for the same reason.
+ * is the precompiled half of the content codec: a protected build compiles the
+ * rest of it and links the two together, so the archive is a runtime input to
+ * the in-app game build rather than build leftovers. The iOS xcframework beside
+ * it carries its own static slices for the same reason.
  *
  * Dropping them is silent - packaging succeeds, and the module is complete
  * everywhere except in the packaged app - so the whole failure lands on an
