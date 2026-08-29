@@ -75,6 +75,20 @@ const CONDITION_OPERATORS_WITH_VALUE = new Set<ConditionOperator>(
     Object.keys(CONDITION_OPERATOR_SYMBOLS) as ConditionOperator[],
 );
 
+const ORDERED_OPERATORS: readonly ConditionOperator[] = ["greaterThan", "greaterOrEqual", "lessThan", "lessOrEqual"];
+
+/**
+ * Whether a variable of this type can be ordered.
+ *
+ * `boolean` cannot: the value control for one is a switch, so offering "is at least" put a threshold
+ * operator above an on/off toggle - a test with no reading. `json` cannot either; it compares by
+ * shape, and ordering it would answer through a numeric coercion of an object, which is `false` for
+ * every pair. Numbers and strings can, and they are what a threshold is written against.
+ */
+function isOrderableType(valueType: StoryVariableValueType): boolean {
+    return valueType === "number" || valueType === "string";
+}
+
 const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     kind: "variable",
     target: { scope: "scene", variableId: "" },
@@ -193,7 +207,7 @@ export function ConditionEditor(props: {
         { value: "variable", label: t("story.interpolation.kindVariable") },
         { value: "blueprint", label: t("story.condition.kindGraph") },
     ], [t]);
-    const operatorOptions: SelectOption[] = useMemo(() => [
+    const allOperatorOptions: SelectOption[] = useMemo(() => [
         { value: "isTrue", label: t("story.condition.opIsOn") },
         { value: "isFalse", label: t("story.condition.opIsOff") },
         { value: "equals", label: t("story.condition.opEquals") },
@@ -258,6 +272,20 @@ export function ConditionEditor(props: {
 
     const currentValueType: StoryVariableValueType =
         allVariables.find(option => variableRefKey(variableValue.target) === option.key)?.valueType ?? "string";
+
+    /**
+     * The operators this variable can take. The stored one is always listed even when its type says
+     * otherwise: a condition written before the variable was retyped still means what it says, and a
+     * dropdown that cannot show its own value reads as empty.
+     */
+    const operatorOptions = useMemo(
+        () => (isOrderableType(currentValueType)
+            ? allOperatorOptions
+            : allOperatorOptions.filter(option =>
+                !ORDERED_OPERATORS.includes(option.value as ConditionOperator)
+                || option.value === variableValue.operator)),
+        [allOperatorOptions, currentValueType, variableValue.operator],
+    );
 
     const setKind = (nextKind: ConditionKind) => {
         if (nextKind === kind) {
