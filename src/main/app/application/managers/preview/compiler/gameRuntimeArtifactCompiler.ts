@@ -226,7 +226,7 @@ export type GameRuntimeArtifactCompileInput = {
      */
     platformKeys?: readonly string[];
     /**
-     * `build.zigMirror` as the author set it, for the toolchain a codec build
+     * `build.zigMirror` as the author set it, for the toolchain a protected build
      * needs. Empty or absent is the official source. Carried on the input for the
      * same reason `hostCacheRoot` is: this runs off the main process, where the
      * setting is out of reach.
@@ -635,13 +635,13 @@ export async function compileGameRuntimeArtifact(
     /*
      * The toolchain that makes this build's binaries its own.
      *
-     * With one, each image is built for this game alone, and a
-     * published copy of the codec package opens nothing this build sealed -
-     * which is the whole reason compiling the codec here exists. Without one, the
-     * material is written into the prebuilt image instead, which is where this
-     * stood before and is still a working protected build; it is just one that
-     * an attacker only has to defeat once for every game rather than once per
-     * game. Whichever it is, it is said out loud on the build log.
+     * With one, each image is built for this game alone, and a published copy of
+     * the codec package opens nothing this build sealed - which is the whole
+     * reason the codec is built here rather than shipped ready-made. Without one,
+     * a prebuilt image is used instead, which is where this stood before and is
+     * still a working protected build; it is just one an attacker has to defeat
+     * once for every game rather than once per game. Whichever it is, it is said
+     * out loud on the build log.
      */
     const titleCompile = await resolveTitleCompile({
         wanted: placements.length > 0 && Boolean(input.packaging),

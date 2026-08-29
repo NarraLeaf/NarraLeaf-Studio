@@ -61,10 +61,10 @@ export function hostCodecTarget(): string {
 }
 
 /**
- * Where the codec build reads `<target>/core.a` - the precompiled half of
- * the codec, which the part generated for this build is linked
- * against. Every caller that compiles a codec passes this; the ones that only
- * copy a prebuilt image do not need it.
+ * Where a codec build reads `<target>/core.a` - the precompiled half of the
+ * codec, which the part generated for this build is linked against. Every
+ * caller that compiles a codec passes this; the ones that only copy a prebuilt
+ * image do not need it.
  *
  * The codec package answers this itself, relative to its own directory, and is
  * right everywhere except inside a packaged Studio. There it is addressed

@@ -738,8 +738,8 @@ describe("game runtime artifact compiler", () => {
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", "acme.sample-plugin");
         await createRuntimeDist(runtimeDistDir);
-        // Protection carries no key material in main.js; the runtime bundle here
-        // is just a marker to prove the compiler never injects anything into it.
+        // The compiler writes nothing into main.js; the runtime bundle here is
+        // just a marker to prove it.
         await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main\n", "utf-8");
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
@@ -789,8 +789,8 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.assets.items[ASSET_ID].relativePath).toBe(`assets/${ASSET_ID}`);
         expect(result.pack.assets.items[ASSET_ID].mimeType).toBe("image/png");
 
-        // main.js carries NO key material: the compiler injects nothing into it,
-        // so it is byte-for-byte what the runtime build produced.
+        // main.js is byte-for-byte what the runtime build produced: the
+        // compiler injects nothing into it.
         const mainJs = await fs.readFile(path.join(result.appDir, "main.js"), "utf-8");
         expect(mainJs).toBe("// runtime main\n");
 

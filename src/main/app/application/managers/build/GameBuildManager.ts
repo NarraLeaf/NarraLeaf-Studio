@@ -1543,8 +1543,8 @@ export class GameBuildManager {
      * nothing else, and gets one.
      */
     /**
-     * The toolchain a codec is compiled with, for the callers that run
-     * outside the compile worker.
+     * The toolchain the codec is compiled with, for the callers that run outside
+     * the compile worker.
      *
      * Same rule as the compile: it is fetched once and cached, and not getting it
      * stops the work rather than quietly producing something weaker. A patch that
@@ -1941,7 +1941,7 @@ export class GameBuildManager {
                 // Electron on the far side.
                 hostCacheRoot: this.app.getCacheRootDir(),
                 downloadRewrites: currentDownloadRewrites(),
-                // Where the compiler for a codec build is fetched from. Same
+                // Where the compiler for a protected build is fetched from. Same
                 // shape as the Electron mirror above and read the same way: a
                 // setting, because an environment variable would be a second place
                 // to configure one thing that only this product reads.
