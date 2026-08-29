@@ -42,6 +42,10 @@ describe("project package", () => {
         expect(shouldExcludeProjectPackagePath("editor/assets/remote/hash")).toBe(true);
         expect(shouldExcludeProjectPackagePath(".nlstudio/cache/state.json")).toBe(true);
         expect(shouldExcludeProjectPackagePath("exports/demo.nlspkg")).toBe(true);
+        expect(shouldExcludeProjectPackagePath("dist/win-unpacked/resources/app.asar")).toBe(true);
+        expect(shouldExcludeProjectPackagePath("dist/mac-arm64/Game.app/Contents/Info.plist")).toBe(true);
+        // Only the build output folder itself. A file an author named after it is theirs.
+        expect(shouldExcludeProjectPackagePath("assets/dist/note.txt")).toBe(false);
         expect(shouldExcludeProjectPackagePath("editor/ui/uidoc.json")).toBe(false);
         expect(shouldExcludeProjectPackagePath("assets/content/ab/cd/file")).toBe(false);
     });
@@ -49,6 +53,8 @@ describe("project package", () => {
     it("excludes the repository and Studio's own state, but not the project's", () => {
         expect(shouldExcludeProjectPackagePath(".lore/store/fragments/00/ab")).toBe(true);
         expect(shouldExcludeProjectPackagePath(".nlstudio/services/panel_state.json")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/preview/main/index.js")).toBe(true);
+        expect(shouldExcludeProjectPackagePath(".nlstudio/preview/userData/saves/1.save")).toBe(true);
         // The ignore policy travels with the project: it is small, and it is right about this
         // project wherever the project ends up.
         expect(shouldExcludeProjectPackagePath(".loreignore")).toBe(false);

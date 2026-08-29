@@ -1,4 +1,3 @@
-import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
@@ -17,6 +16,7 @@ import {
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
+import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
 import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
@@ -231,7 +231,7 @@ async function collectProjectPackagePayload(
             if (entry.isFile()) {
                 files.push({
                     path: relativePath,
-                    data: await fs.readFile(absolutePath),
+                    data: await readProjectFile(absolutePath, relativePath),
                 });
                 continue;
             }
@@ -254,6 +254,20 @@ async function collectProjectPackagePayload(
             files: files.sort((a, b) => a.path.localeCompare(b.path)),
         },
     };
+}
+
+/**
+ * Names the file. A read that fails part-way through a project reports whatever the filesystem
+ * said, and on its own that is a path-shaped sentence about a file the author never mentioned -
+ * which is all an export failure used to put in front of them.
+ */
+async function readProjectFile(absolutePath: string, relativePath: string): Promise<Buffer> {
+    try {
+        return await fs.readFile(absolutePath);
+    } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        throw new Error(`Could not read "${relativePath}" from the project: ${reason}`);
+    }
 }
 
 async function importProjectPackage(packagePath: string, targetDir: string): Promise<{

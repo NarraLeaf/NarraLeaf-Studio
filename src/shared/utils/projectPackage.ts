@@ -114,6 +114,15 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
     if (segments[0] === ".lore") {
         return true;
     }
+    // The builds, not the project. `<project>/dist` is where a game build lands when the author
+    // has not named an output folder of their own, so any project that has been built once holds a
+    // packaged Electron app - hundreds of megabytes that the recipient's own build would produce
+    // again from the sources beside it. It also spares the export the archives inside such a build:
+    // Electron serves reads of any path containing ".asar" out of the archive rather than as the
+    // file, and a walk that reaches one gets ENOENT for a lookup it never asked to make.
+    if (segments[0] === "dist") {
+        return true;
+    }
     if (segments[0] === "editor" && segments[1] === "cache") {
         return true;
     }
@@ -127,6 +136,11 @@ export function shouldExcludeProjectPackagePath(relativePath: string): boolean {
             segments[1] === "temp" ||
             segments[1] === "dev-mode" ||
             segments[1] === "build" ||
+            // What Dev Mode and the preview runner compiled, plus the throwaway save files the
+            // author made while testing. Sits beside `build` and `dev-mode` in every other
+            // respect, and was the largest thing in the one project where this was measured -
+            // half a gigabyte of output the recipient's first preview would write again.
+            segments[1] === "preview" ||
             // Studio's own state, not the project's: panel layout, notification history, recent
             // colours. It moved here out of `editor/services/` when version control needed a line
             // between "the author's project" and "how this window was arranged" - and an export
