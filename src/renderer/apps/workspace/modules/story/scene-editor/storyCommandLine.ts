@@ -1031,6 +1031,7 @@ function audioSentence(
     // One writer, two slots: `/bgm` names it `vol=` and `/vol` takes it as a positional `volume`.
     const volume = { apply: (next: string) => ({ ...payload, volume: Number(next) }) };
     const loop = arg("loop", booleanValue(payload.loop), { apply: next => ({ ...payload, loop: next === "true" }) });
+    const waitForEnd = arg("wait", booleanValue(payload.waitForEnd), { apply: next => ({ ...payload, waitForEnd: next === "true" }) });
     switch (payload.operation) {
         case "setBgm":
             return {
@@ -1053,6 +1054,7 @@ function audioSentence(
                     arg("vol", numberValue(payload.volume), volume),
                     fade,
                     loop,
+                    waitForEnd,
                 ],
             };
         case "setVolume":

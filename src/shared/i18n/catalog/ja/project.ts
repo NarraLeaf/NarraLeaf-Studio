@@ -29,7 +29,7 @@ export const project = {
         },
         settings: {
             title: "設定",
-            description: "セキュリティ、署名、圧縮、モバイル",
+            description: "セキュリティ、署名、圧縮、読み込み、モバイル",
         },
     },
     // ページの中で部分どうしを分ける見出し。見出しは名詞で、文にはしない。何をするかは
@@ -61,6 +61,7 @@ export const project = {
         imageCompression: "画像の圧縮",
         audioCompression: "音声の圧縮",
         videoCompression: "映像の圧縮",
+        loading: "読み込み",
         crash: "クラッシュ",
         mobile: "モバイル",
     },
@@ -395,6 +396,18 @@ export const project = {
         },
     },
     settings: {
+        preloadBehaviorTitle: "プリロードの動作",
+        preloadBehavior: {
+            auto: "自動",
+            blocking: "ブロッキング",
+        },
+        preloadBehaviorNote: {
+            blocking: "プリロードに問題がある場合のみ",
+        },
+        preloadBehaviorDetail: {
+            auto: "開幕シーンの最初のフレームが揃った時点でゲームを表示し、残りの画像は裏で読み込む",
+            blocking: "開幕シーンで使うすべての画像を読み込んでからゲームを表示する",
+        },
         crashPolicyTitle: "ゲームが停止したとき",
         crashPolicyDescription: "いずれの場合もエラーはゲームのログに記録される",
         crashPolicy: {

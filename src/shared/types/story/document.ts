@@ -764,6 +764,18 @@ export type StoryActionPayload =
           muted?: boolean;
           /** Absent = the track's own loop default. */
           loop?: boolean;
+          /**
+           * `playSound` - hold the script on this row until the clip finishes.
+           *
+           * Absent and `false` both mean the next row runs as soon as the clip is playing. A sound
+           * effect written between two lines is not a wait, and a long one used to stop the script
+           * for its whole length with a finished stage on screen. A row that means "hold here"
+           * says so.
+           *
+           * Additive: no document written before this carries it, and every one of them means the
+           * new answer. Ignored on a looping clip, which never ends.
+           */
+          waitForEnd?: boolean;
           /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
           timeMs?: number;
       }

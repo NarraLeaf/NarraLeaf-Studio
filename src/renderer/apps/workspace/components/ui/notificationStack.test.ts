@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { visibleCardCount } from "./notificationStack";
+import { cardOffsets, visibleCardCount } from "./notificationStack";
 
 describe("visibleCardCount", () => {
     it("shows every card when they all fit", () => {
@@ -35,5 +35,19 @@ describe("visibleCardCount", () => {
     it("stops at the first card that does not fit rather than packing later ones in", () => {
         // A short card behind a tall one waits its turn; the stack is a queue, not a bin packer.
         expect(visibleCardCount([80, 300, 40], 8, 200)).toBe(1);
+    });
+});
+
+describe("cardOffsets", () => {
+    it("stacks the visible cards with the gap between them", () => {
+        expect(cardOffsets([40, 60, 30], 8, 3)).toEqual([0, 48, 116]);
+    });
+
+    it("parks the queued cards at the end of the visible stack", () => {
+        expect(cardOffsets([40, 60, 30, 30], 8, 2)).toEqual([0, 48, 116, 116]);
+    });
+
+    it("puts everything at the top when nothing is shown", () => {
+        expect(cardOffsets([40, 60], 8, 0)).toEqual([0, 0]);
     });
 });

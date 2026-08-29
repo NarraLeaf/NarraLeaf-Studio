@@ -30,6 +30,8 @@ import {
 import type { DialogueConfiguration } from "@shared/types/dialogue";
 import { normalizeWindowConfiguration, type WindowConfiguration } from "@shared/types/appWindow";
 import { normalizeDialogueConfiguration } from "@shared/types/dialogue";
+import { normalizePreloadConfiguration } from "@shared/types/preload";
+import type { PreloadConfiguration } from "@shared/types/preload";
 import type { PlayerPreferences } from "@shared/types/preference";
 import { normalizePlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
@@ -172,6 +174,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
     const languageChange = await loadLanguageChangeConfiguration(context.projectPath);
     const saveCompatibility = await loadSaveCompatibilityConfiguration(context.projectPath);
     const dialogue = await loadDialogueConfiguration(context.projectPath);
+    const preload = await loadPreloadConfiguration(context.projectPath);
     const window = await loadWindowConfiguration(context.projectPath);
     const vfx = await loadVfxConfiguration(context.projectPath);
     const gameVersion = await loadGameVersion(context.projectPath);
@@ -203,6 +206,7 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         languageChange,
         saveCompatibility,
         dialogue,
+        preload,
         window,
         vfx,
         gameVersion,
@@ -1199,6 +1203,16 @@ export async function loadDialogueConfiguration(projectPath: string): Promise<Di
     const config = await readProjectConfigRecord(projectPath);
     const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
     return normalizeDialogueConfiguration(app?.dialogue);
+}
+
+/**
+ * Load the preload behavior from `.nlproj` `app.preload`. Dense like the ones above: the engine is
+ * configured with a gate at boot whether or not the author ever opened the page. Exported for tests.
+ */
+export async function loadPreloadConfiguration(projectPath: string): Promise<PreloadConfiguration> {
+    const config = await readProjectConfigRecord(projectPath);
+    const app = config?.app && typeof config.app === "object" ? config.app as Record<string, unknown> : undefined;
+    return normalizePreloadConfiguration(app?.preload);
 }
 
 /**

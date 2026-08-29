@@ -569,6 +569,8 @@ export const documentDiff = {
         encryptAssets: "Encrypt assets",
         crash: "Crashes",
         crashPolicy: "When the game stops working",
+        preload: "Loading",
+        preloadBehavior: "Preload behavior",
         assetCompression: "Compression",
         compressImages: "Compress images",
         imageMode: "Image settings",

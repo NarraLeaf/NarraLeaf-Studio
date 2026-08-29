@@ -573,6 +573,7 @@ export const story = {
         // 和 cameraOperation 一样，直接把两个词写出来：只有两个取值的位置参数，列出来比起一个名字更省事。
         mirrorState: "开 / 关",
         waitFor: "秒数或 click",
+        waitForEnd: "等待播放结束",
         fade: "淡入淡出秒数",
         loop: "循环",
         returnable: "返回",
