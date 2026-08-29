@@ -1,21 +1,13 @@
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import {
-    PROJECT_PACKAGE_EXTENSION,
-    PROJECT_PACKAGE_FORMAT,
-    PROJECT_PACKAGE_FORMAT_VERSION,
-    ProjectPackagePayload,
-    decodeProjectPackage,
-    encodeProjectPackage,
-    normalizeProjectPackagePath,
-    shouldExcludeProjectPackagePath,
-} from "@shared/utils/projectPackage";
+import { PROJECT_PACKAGE_EXTENSION } from "@shared/utils/projectPackage";
 import {
     decodeProjectConfig,
     findProjectConfigFileName,
     sanitizeProjectFileName,
 } from "@shared/utils/nlproj";
+import { readProjectPackageInto, writeProjectPackage } from "../../../utils/projectPackageFile";
 import { unpatchedFsPromises as fs } from "@/utils/unpatchedFs";
 import { showOpenDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
@@ -68,17 +60,21 @@ export class WorkspaceExportProjectPackageHandler extends IPCHandler<IPCEventTyp
                 return this.failed(`File system access is not allowed for export folder: ${exportDir}`);
             }
 
-            const { payload, skippedCount } = await collectProjectPackagePayload(projectRoot, project);
-            const packageBytes = encodeProjectPackage(payload);
             const packagePath = await resolveAvailablePackagePath(exportDir, project.name);
-            await fs.writeFile(packagePath, packageBytes, { flag: "wx" });
+            const written = await writeProjectPackage({
+                projectRoot,
+                packagePath,
+                projectName: project.name,
+                projectIdentifier: project.identifier,
+                createdAt: new Date().toISOString(),
+            });
 
             return this.success({
                 canceled: false,
                 packagePath,
-                fileCount: payload.files.length,
-                byteLength: packageBytes.byteLength,
-                skippedCount,
+                fileCount: written.fileCount,
+                byteLength: written.byteLength,
+                skippedCount: written.skippedCount,
             });
         } catch (error) {
             return this.failed(error);
@@ -120,7 +116,7 @@ export class WorkspaceImportProjectPackageHandler extends IPCHandler<IPCEventTyp
                 return this.failed(`File system access is not allowed for import folder: ${resolvedTarget}`);
             }
 
-            const result = await importProjectPackage(resolvedPackage, resolvedTarget);
+            const result = await readProjectPackageInto(resolvedPackage, resolvedTarget);
             return this.success({
                 projectPath: resolvedTarget,
                 projectName: result.projectName,
@@ -203,104 +199,6 @@ async function readProjectMetadata(projectRoot: string): Promise<ProjectMetadata
     };
 }
 
-async function collectProjectPackagePayload(
-    projectRoot: string,
-    project: ProjectMetadata,
-): Promise<{ payload: ProjectPackagePayload; skippedCount: number }> {
-    const directories = new Set<string>();
-    const files: ProjectPackagePayload["files"] = [];
-    let skippedCount = 0;
-
-    async function walk(directory: string): Promise<void> {
-        const entries = await fs.readdir(directory, { withFileTypes: true });
-        for (const entry of entries) {
-            const absolutePath = path.join(directory, entry.name);
-            const relativePath = toProjectPackagePath(projectRoot, absolutePath);
-
-            if (entry.isSymbolicLink() || shouldExcludeProjectPackagePath(relativePath)) {
-                skippedCount += 1;
-                continue;
-            }
-
-            if (entry.isDirectory()) {
-                directories.add(relativePath);
-                await walk(absolutePath);
-                continue;
-            }
-
-            if (entry.isFile()) {
-                files.push({
-                    path: relativePath,
-                    data: await readProjectFile(absolutePath, relativePath),
-                });
-                continue;
-            }
-
-            skippedCount += 1;
-        }
-    }
-
-    await walk(projectRoot);
-
-    return {
-        skippedCount,
-        payload: {
-            format: PROJECT_PACKAGE_FORMAT,
-            version: PROJECT_PACKAGE_FORMAT_VERSION,
-            createdAt: new Date().toISOString(),
-            projectName: project.name,
-            projectIdentifier: project.identifier,
-            directories: Array.from(directories).sort(),
-            files: files.sort((a, b) => a.path.localeCompare(b.path)),
-        },
-    };
-}
-
-/**
- * Names the file. A read that fails part-way through a project reports whatever the filesystem
- * said, and on its own that is a path-shaped sentence about a file the author never mentioned -
- * which is all an export failure used to put in front of them.
- */
-async function readProjectFile(absolutePath: string, relativePath: string): Promise<Buffer> {
-    try {
-        return await fs.readFile(absolutePath);
-    } catch (error) {
-        const reason = error instanceof Error ? error.message : String(error);
-        throw new Error(`Could not read "${relativePath}" from the project: ${reason}`);
-    }
-}
-
-async function importProjectPackage(packagePath: string, targetDir: string): Promise<{
-    projectName: string;
-    fileCount: number;
-    byteLength: number;
-}> {
-    await fs.mkdir(targetDir, { recursive: true });
-    const existing = await fs.readdir(targetDir);
-    if (existing.length > 0) {
-        throw new Error("Import folder must be empty. Choose an empty folder for the imported project.");
-    }
-
-    const packageBytes = await fs.readFile(packagePath);
-    const payload = decodeProjectPackage(packageBytes);
-
-    for (const directory of payload.directories) {
-        await fs.mkdir(resolveInsideTarget(targetDir, directory), { recursive: true });
-    }
-
-    for (const file of payload.files) {
-        const filePath = resolveInsideTarget(targetDir, file.path);
-        await fs.mkdir(path.dirname(filePath), { recursive: true });
-        await fs.writeFile(filePath, file.data, { flag: "wx" });
-    }
-
-    return {
-        projectName: payload.projectName,
-        fileCount: payload.files.length,
-        byteLength: packageBytes.byteLength,
-    };
-}
-
 async function resolveAvailablePackagePath(exportDir: string, projectName: string): Promise<string> {
     const baseName = sanitizeProjectFileName(projectName);
     for (let index = 0; index < 1000; index += 1) {
@@ -313,22 +211,4 @@ async function resolveAvailablePackagePath(exportDir: string, projectName: strin
         }
     }
     throw new Error("Unable to choose a unique package filename in the selected folder.");
-}
-
-function toProjectPackagePath(projectRoot: string, absolutePath: string): string {
-    const relativePath = path.relative(projectRoot, absolutePath);
-    if (!relativePath || relativePath.startsWith("..") || path.isAbsolute(relativePath)) {
-        throw new Error(`Path is outside project root: ${absolutePath}`);
-    }
-    return normalizeProjectPackagePath(relativePath);
-}
-
-function resolveInsideTarget(targetDir: string, packagePath: string): string {
-    const relativePath = normalizeProjectPackagePath(packagePath);
-    const resolved = path.resolve(targetDir, ...relativePath.split("/"));
-    const relativeToTarget = path.relative(targetDir, resolved);
-    if (relativeToTarget.startsWith("..") || path.isAbsolute(relativeToTarget)) {
-        throw new Error(`Project package path escapes import folder: ${packagePath}`);
-    }
-    return resolved;
 }

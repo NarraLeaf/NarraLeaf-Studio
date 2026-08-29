@@ -1,18 +1,106 @@
+import msgpack from "msgpack-lite";
 import { describe, expect, it } from "vitest";
 import {
+    PROJECT_PACKAGE_BODY_OFFSET,
     PROJECT_PACKAGE_FORMAT,
     PROJECT_PACKAGE_FORMAT_VERSION,
+    PROJECT_PACKAGE_LEGACY_VERSION,
+    ProjectPackageIndex,
     decodeProjectPackage,
-    encodeProjectPackage,
+    decodeProjectPackageIndex,
+    encodeProjectPackageIndex,
+    locateProjectPackageFiles,
     normalizeProjectPackagePath,
+    projectPackageMagic,
+    readProjectPackageVersion,
     shouldExcludeProjectPackagePath,
 } from "./projectPackage";
 
-describe("project package", () => {
-    it("round-trips binary file entries", () => {
-        const encoded = encodeProjectPackage({
-            format: PROJECT_PACKAGE_FORMAT,
-            version: PROJECT_PACKAGE_FORMAT_VERSION,
+/**
+ * A version 1 package, built here because Studio no longer writes them and the reader still has to.
+ * The layout is the whole point of the version that replaced it: eight bytes of magic, then one
+ * msgpack object holding every file's bytes.
+ */
+function legacyPackage(payload: Record<string, unknown>): Uint8Array {
+    const magic = new Uint8Array([0x4e, 0x4c, 0x53, 0x50, 0x4b, 0x47, 0x00, PROJECT_PACKAGE_LEGACY_VERSION]);
+    const body = msgpack.encode({ format: PROJECT_PACKAGE_FORMAT, version: PROJECT_PACKAGE_LEGACY_VERSION, ...payload });
+    const bytes = new Uint8Array(magic.length + body.length);
+    bytes.set(magic, 0);
+    bytes.set(body, magic.length);
+    return bytes;
+}
+
+function index(files: { path: string; size: number }[], directories: string[] = []): ProjectPackageIndex {
+    return {
+        format: PROJECT_PACKAGE_FORMAT,
+        version: PROJECT_PACKAGE_FORMAT_VERSION,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        projectName: "Demo",
+        directories,
+        files,
+    };
+}
+
+describe("project package index", () => {
+    it("round-trips the names and sizes a reader seeks by", () => {
+        const encoded = encodeProjectPackageIndex(index([
+            { path: "Demo.nlproj", size: 3 },
+            { path: "assets/content/file.bin", size: 2 },
+        ], ["assets/content"]));
+
+        const decoded = decodeProjectPackageIndex(encoded, 5);
+        expect(decoded.projectName).toBe("Demo");
+        expect(decoded.directories).toEqual(["assets/content"]);
+        expect(decoded.files).toEqual([
+            { path: "Demo.nlproj", size: 3 },
+            { path: "assets/content/file.bin", size: 2 },
+        ]);
+    });
+
+    it("places each file after the one before it, starting past the magic", () => {
+        const located = locateProjectPackageFiles(index([
+            { path: "a", size: 10 },
+            { path: "b", size: 0 },
+            { path: "c", size: 7 },
+        ]));
+
+        expect(located.map(entry => entry.offset)).toEqual([
+            PROJECT_PACKAGE_BODY_OFFSET,
+            PROJECT_PACKAGE_BODY_OFFSET + 10,
+            PROJECT_PACKAGE_BODY_OFFSET + 10,
+        ]);
+    });
+
+    // Every offset after a wrong size is wrong too, so an index that does not account for exactly
+    // the bytes present is refused rather than followed.
+    it("refuses an index whose sizes do not account for the body", () => {
+        const encoded = encodeProjectPackageIndex(index([{ path: "a", size: 10 }]));
+        expect(() => decodeProjectPackageIndex(encoded, 9)).toThrow("truncated");
+        expect(() => decodeProjectPackageIndex(encoded, 11)).toThrow("longer than its index accounts for");
+        expect(decodeProjectPackageIndex(encoded, 10).files[0].size).toBe(10);
+    });
+
+    it("refuses sizes that are not counts of bytes", () => {
+        for (const size of [-1, 1.5, Number.NaN, "12" as unknown as number]) {
+            const encoded = encodeProjectPackageIndex(index([{ path: "a", size }]));
+            expect(() => decodeProjectPackageIndex(encoded, 0)).toThrow("unusable size");
+        }
+    });
+});
+
+describe("project package magic", () => {
+    it("tells the two formats apart from the first eight bytes alone", () => {
+        expect(readProjectPackageVersion(projectPackageMagic())).toBe(PROJECT_PACKAGE_FORMAT_VERSION);
+        expect(readProjectPackageVersion(legacyPackage({ files: [] }).slice(0, 8)))
+            .toBe(PROJECT_PACKAGE_LEGACY_VERSION);
+        expect(readProjectPackageVersion(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]))).toBeNull();
+        expect(readProjectPackageVersion(new Uint8Array([0x4e, 0x4c]))).toBeNull();
+    });
+});
+
+describe("legacy project package", () => {
+    it("still reads a version 1 package", () => {
+        const decoded = decodeProjectPackage(legacyPackage({
             createdAt: "2026-01-01T00:00:00.000Z",
             projectName: "Demo",
             projectIdentifier: "com.example.demo",
@@ -21,15 +109,21 @@ describe("project package", () => {
                 { path: "Demo.nlproj", data: new Uint8Array([1, 2, 3]) },
                 { path: "assets/content/file.bin", data: new Uint8Array([4, 5]) },
             ],
-        });
+        }));
 
-        const decoded = decodeProjectPackage(encoded);
         expect(decoded.projectName).toBe("Demo");
         expect(decoded.directories).toEqual(["assets/content"]);
         expect(Array.from(decoded.files[0].data)).toEqual([1, 2, 3]);
         expect(Array.from(decoded.files[1].data)).toEqual([4, 5]);
     });
 
+    it("refuses a file that is not a package at all", () => {
+        expect(() => decodeProjectPackage(new Uint8Array([1, 2, 3]))).toThrow("not a NarraLeaf Studio project package");
+        expect(() => decodeProjectPackage(projectPackageMagic())).toThrow("not a NarraLeaf Studio project package");
+    });
+});
+
+describe("project package paths", () => {
     it("rejects absolute and traversal paths", () => {
         expect(() => normalizeProjectPackagePath("../victim.txt")).toThrow("unsafe segments");
         expect(() => normalizeProjectPackagePath("assets/../victim.txt")).toThrow("unsafe segments");

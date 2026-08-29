@@ -1,8 +1,8 @@
-import fsPromises from "fs/promises";
+import nodeFs from "fs";
 import { createRequire } from "module";
 
 /**
- * `fs/promises` with Electron's asar patch left out.
+ * `fs` with Electron's asar patch left out.
  *
  * Electron rewrites every `fs` entry point so that a path containing ".asar" is served from inside
  * that archive instead of being read as the file it is. That is what makes Studio's own resources
@@ -20,13 +20,16 @@ import { createRequire } from "module";
  * is process-wide, so holding it across an await would also unhook the reads Studio makes of its
  * own archive on any other task that happens to run meanwhile.
  */
-function loadUnpatchedFsPromises(): typeof fsPromises {
+function loadUnpatchedFs(): typeof nodeFs {
     try {
-        const originalFs = createRequire(__filename)("original-fs") as { promises?: typeof fsPromises };
-        return originalFs.promises ?? fsPromises;
+        return createRequire(__filename)("original-fs") as typeof nodeFs;
     } catch {
-        return fsPromises;
+        return nodeFs;
     }
 }
 
-export const unpatchedFsPromises: typeof fsPromises = loadUnpatchedFsPromises();
+/** The whole module, for the callback and stream APIs. */
+export const unpatchedFs: typeof nodeFs = loadUnpatchedFs();
+
+/** The promise API of the same module, which is what most callers want. */
+export const unpatchedFsPromises: typeof nodeFs.promises = unpatchedFs.promises;
