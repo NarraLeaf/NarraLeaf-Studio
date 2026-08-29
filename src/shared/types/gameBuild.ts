@@ -408,6 +408,54 @@ export function totalShippedAssetBytes(entries: ShippedAssetReportEntry[]): numb
     return entries.reduce((total, entry) => total + (entry.bytes ?? 0), 0);
 }
 
+/**
+ * What one of the build's two asset passes did, and what it took off the package.
+ *
+ * Two counts rather than one, because they describe different treatments of a file. A compressed
+ * file was re-encoded; a stripped one ships as the format it was, with only the tags naming its
+ * author, their studio and their working directory taken out. The byte figures are disjoint for the
+ * same reason: a re-encoded file lost its tags as part of its own saving, so adding
+ * {@link metadataBytes} to it would count them twice.
+ *
+ * None of it describes the project. Both passes read the library and write into Studio's cache, and
+ * the files an author has on disk are the same afterwards as before.
+ */
+export type AssetCompressionTrackReport = {
+    /** Files whose embedded metadata was removed and that were otherwise left as they were. */
+    stripped: number;
+    /** Bytes that removal took off those files. */
+    metadataBytes: number;
+    /** Files that were re-encoded, and whose re-encoded form the package carries. */
+    compressed: number;
+    /** What those re-encoded files came to before the pass, and after it. */
+    beforeBytes: number;
+    afterBytes: number;
+};
+
+/**
+ * What the two passes ahead of the compiles came to, over the whole run.
+ *
+ * Apart from {@link ShippedAssetReport}, which answers a different question: that one states which
+ * assets were carried, this one states what the carried ones weigh. It is also produced at a
+ * different point - once per run, before any compile - so a run that compiles the desktop pack and
+ * the web export reports one set of figures covering both.
+ */
+export type AssetCompressionReport = {
+    images: AssetCompressionTrackReport;
+    /** Audio and video, which share one pass and one encoder. */
+    media: AssetCompressionTrackReport;
+};
+
+/** Bytes one pass took off the package, over both of its treatments. */
+export function assetCompressionSavedBytes(track: AssetCompressionTrackReport): number {
+    return Math.max(0, track.beforeBytes - track.afterBytes) + track.metadataBytes;
+}
+
+/** Whether a report has anything to state: a run that touched no file has no figures to show. */
+export function assetCompressionDidSomething(report: AssetCompressionReport): boolean {
+    return [report.images, report.media].some(track => track.compressed > 0 || track.stripped > 0);
+}
+
 /** Which pipeline produced a run: the production build, or a patch/DLC export. */
 export type GameBuildRunKind = "build" | "patch";
 
@@ -495,6 +543,14 @@ export type GameBuildStateSnapshot = {
      * variant, so the two agree about the library.
      */
     assetReport?: ShippedAssetReport;
+    /**
+     * What the asset passes took off the package before anything was compiled.
+     *
+     * Absent from any run that reached no asset pass, and from one whose passes found nothing to
+     * do. Reported here rather than in the console, which states the steps a build takes; the
+     * figures are the outcome of those steps and belong with the rest of the run's numbers.
+     */
+    assetCompression?: AssetCompressionReport;
     error?: string;
 };
 

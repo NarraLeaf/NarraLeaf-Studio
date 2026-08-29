@@ -220,7 +220,14 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
     const setModified = useCallback(
         (modified: boolean) => {
-            context?.services.get<UIService>(Services.UI).editor.setModified(tabId, modified);
+            const uiService = context?.services.get<UIService>(Services.UI);
+            uiService?.editor.setModified(tabId, modified);
+            if (modified) {
+                // Typing into a file opened for a look is the author staying with it. Monaco keeps
+                // its own undo stack rather than the workspace's, so the workspace-wide rule that
+                // promotes on an edit never hears about this one.
+                uiService?.editor.promote(tabId);
+            }
         },
         [context, tabId],
     );

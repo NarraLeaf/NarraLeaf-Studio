@@ -57,7 +57,9 @@ export function recordClosedTabs(
 ): void {
     const ordered = [...tabs].sort((a, b) => a.index - b.index);
     ordered.forEach(({ tab, index }, removedBefore) => {
-        const entry = trySerializeTab(tab);
+        // Recorded without the preview flag: asking for a closed tab back is asking for a tab,
+        // not for the provisional slot it happened to be sitting in when it was closed.
+        const entry = trySerializeTab(tab.preview ? { ...tab, preview: false } : tab);
         if (!entry) {
             return;
         }

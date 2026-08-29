@@ -16,9 +16,10 @@ import {
     sanitizeBundleFileName,
     type DiagnosticsEnvironment,
 } from "../../../logging/diagnosticsBundle";
-import type { MissingRecentProject, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon, RecentProjectMissingReason } from "@shared/types/state/appStateTypes";
 import { DirEntry, findProjectConfigFileName } from "@shared/utils/nlproj";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
+import { readProjectLogo } from "../../projectLogo";
 import { backgroundCacheDirectory, cacheBackgroundImage, pruneBackgroundCache } from "../../storage/backgroundCache";
 import { clearCacheBuckets, measureCacheInventory, type CacheLocations } from "../../storage/cacheInventory";
 import { isProtectedStateKey } from "@shared/constants/settingsScopes";
@@ -315,7 +316,6 @@ export class AppAddRecentProjectHandler extends IPCHandler<IPCEventType.appAddRe
         const next = window.app.globalState.recentlyOpened.withProject({
             name: data.name,
             path: data.path,
-            icon: undefined,
             openedAt: Date.now(),
             securityScopedBookmark: window.app.storageManager.getSecurityScopedBookmarkForPath(data.path),
         });
@@ -379,6 +379,32 @@ export class AppCheckRecentProjectsHandler extends IPCHandler<IPCEventType.appCh
             missing: checked
                 .filter((entry): entry is typeof entry & { reason: RecentProjectMissingReason } => entry.reason !== null)
                 .map(({ project, reason }) => ({ name: project.name, path: project.path, reason })),
+        });
+    }
+}
+
+/**
+ * Every remembered project's own app icon, for the ones that have one.
+ *
+ * Read from the projects rather than from the history: what a project uses as its logo is the
+ * project's own content and changes without the history being touched, so a copy kept in the list
+ * would go stale and cost a broadcast to every window each time it was refreshed. One failure
+ * costs its own row - `readProjectLogo` answers null for anything it cannot read, and a row with
+ * no icon draws the name monogram it always did.
+ */
+export class AppRecentProjectIconsHandler extends IPCHandler<IPCEventType.appRecentProjectIcons> {
+    readonly name = IPCEventType.appRecentProjectIcons;
+    readonly type = IPCMessageType.request;
+
+    public async handle(window: AppWindow): Promise<RequestStatus<{ icons: RecentProjectIcon[] }>> {
+        const projects = window.app.globalState.recentlyOpened.list();
+        const resolved = await Promise.all(projects.map(async project => ({
+            path: project.path,
+            icon: await readProjectLogo(project.path),
+        })));
+
+        return this.success({
+            icons: resolved.filter((entry): entry is RecentProjectIcon => entry.icon !== null),
         });
     }
 }

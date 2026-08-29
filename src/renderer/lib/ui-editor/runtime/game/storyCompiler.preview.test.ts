@@ -292,4 +292,49 @@ describe("compileStagePreviewToNlr", () => {
         expect(types.length).toBeGreaterThanOrEqual(4);
         expect(compiled.diagnostics).toEqual([]);
     });
+    /**
+     * A layered character is a stack of images the engine switches by tag, and an Image's src shape
+     * is fixed in its constructor - so pre-posing one as the single url a preset character resolves
+     * to leaves the frozen preview drawing an empty placeholder where the character stands.
+     */
+    it("pre-poses a layered character as its stack, in the look it wears at the target row", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            enter: block("enter", "action", { action: "character", operation: "enter", characterId: "char-bob", tags: { mood: "happy" } }),
+            sad: block("sad", "action", { action: "character", operation: "expression", characterId: "char-bob", tags: { mood: "sad" } }),
+            target: say("target", "Hello."),
+        };
+        const document = baseDocument(blocks, ["enter", "sad", "target"]);
+        const compiled = await compileStagePreviewToNlr({
+            document,
+            sceneId: "scene-1",
+            snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            targetBlockId: "target",
+            characters: [{
+                id: "char-bob",
+                name: "Bob",
+                appearance: {
+                    kind: "layered",
+                    canvas: { width: 100, height: 200 },
+                    axes: [{
+                        id: "mood",
+                        name: "Mood",
+                        tags: [{ id: "happy", name: "Happy" }, { id: "sad", name: "Sad" }],
+                        defaultTagId: "happy",
+                    }],
+                    layers: [{ id: "face", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } }],
+                },
+            }],
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            onBeforeTarget: () => {},
+            onAfterTarget: () => {},
+        });
+
+        const bob = compiled.sceneElements?.["scene-1"]?.images.get("char-bob") as unknown as {
+            config?: { src?: { slots?: unknown; defaults?: string[] } };
+        } | undefined;
+        expect(bob?.config?.src?.slots).toEqual([{ happy: "nlr://asset-happy", sad: "nlr://asset-sad" }]);
+        // The expression row above the target already changed the mood, so the still shows `sad`.
+        expect(bob?.config?.src?.defaults).toEqual(["sad"]);
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+    });
 });

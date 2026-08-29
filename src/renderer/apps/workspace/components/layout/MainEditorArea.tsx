@@ -9,6 +9,7 @@ import { MainEditorEmptyDropZone } from "./MainEditorEmptyDropZone";
 import { WorkspacePanelErrorBoundary } from "../WorkspacePanelErrorBoundary";
 import { leadingPaneBasis } from "./editorSplitResize";
 import { SplitSash } from "./SplitSash";
+import { usePreviewTabPromotion } from "../../hooks/usePreviewTabPromotion";
 import { useTranslation } from "@/lib/i18n";
 
 function renderLayout(layout: EditorGroupType | EditorSplit): React.ReactNode {
@@ -78,6 +79,9 @@ function EditorSplitNode({ split }: { split: EditorSplit }) {
 export function MainEditorArea() {
     const { t } = useTranslation();
     const { editorLayout } = useRegistry();
+    // Mounted once for the whole editor area, because it watches the workspace's undo stacks rather
+    // than any one pane: an edit anywhere promotes the preview tab it was made in.
+    usePreviewTabPromotion();
 
     // Empty state when no tabs are open
     if ("tabs" in editorLayout && editorLayout.tabs.length === 0) {
