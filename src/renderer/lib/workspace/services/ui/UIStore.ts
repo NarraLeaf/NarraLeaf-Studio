@@ -112,8 +112,6 @@ export interface UIState {
     /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
     collapsedPanels: Record<string, string[]>;
     panelVisibility: Record<string, boolean>;
-    editorTabs: EditorTab[];
-    activeEditorTabId: string | null;
     dialogs: Dialog[];
     statusBarItems: StatusBarItem[];
     activeDialogId: string | null;
@@ -144,11 +142,6 @@ export interface UIStateEvents {
     panelVisibilityChanged: { panelId: string; visible: boolean };
     panelOrderChanged: { position: string; order: string[] };
     collapsedPanelsChanged: { position: string; collapsed: string[] };
-    
-    editorTabOpened: EditorTab;
-    editorTabClosed: string; // tab id
-    editorTabActivated: string; // tab id
-    editorTabUpdated: EditorTab;
     
     dialogOpened: Dialog;
     dialogClosed: string; // dialog id
@@ -203,8 +196,6 @@ export class UIStore {
             panelOrder: {},
             collapsedPanels: {},
             panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
             dialogs: [],
             statusBarItems: [],
             activeDialogId: null,
@@ -498,66 +489,78 @@ export class UIStore {
     }
 
     // === Editor Tabs ===
+    //
+    // Tabs live in `editorLayout`, the group tree the tab strip renders. The methods here are for
+    // callers holding a tab id and nothing else - an editor reporting its own edit knows which tab
+    // it is, not which pane it has since been dragged into - so each one finds the owning group and
+    // hands over to the group-aware method further down.
 
-    public openEditorTab(tab: EditorTab): void {
-        // Check if tab already exists
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            // Update existing tab
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-        } else {
-            // Add new tab
-            this.state.editorTabs.push(tab);
-            this.events.emit("editorTabOpened", tab);
-        }
-        // Activate the tab
-        this.state.activeEditorTabId = tab.id;
-        this.events.emit("editorTabActivated", tab.id);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
+    /** The group holding this tab, searched across every pane. */
+    private findGroupWithTab(tabId: string): EditorGroup | null {
+        return this.collectGroups().find(group => group.tabs.some(tab => tab.id === tabId)) ?? null;
     }
 
     public closeEditorTab(tabId: string): void {
-        this.state.editorTabs = this.state.editorTabs.filter(t => t.id !== tabId);
-        // If closed tab was active, activate another
-        if (this.state.activeEditorTabId === tabId) {
-            this.state.activeEditorTabId = this.state.editorTabs.length > 0
-                ? this.state.editorTabs[this.state.editorTabs.length - 1].id
-                : null;
+        const group = this.findGroupWithTab(tabId);
+        if (group) {
+            this.closeEditorTabInGroup(tabId, group.id);
         }
-        this.events.emit("editorTabClosed", tabId);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
     }
 
     public setActiveEditorTab(tabId: string): void {
-        if (this.state.editorTabs.some(t => t.id === tabId)) {
-            this.state.activeEditorTabId = tabId;
-            this.events.emit("editorTabActivated", tabId);
-            this.events.emit("stateChanged", { activeEditorTabId: tabId });
+        const group = this.findGroupWithTab(tabId);
+        if (group) {
+            this.setActiveEditorTabInGroup(tabId, group.id);
         }
     }
 
-    public updateEditorTab(tab: EditorTab): void {
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-            this.events.emit("stateChanged", { editorTabs: [...this.state.editorTabs] });
+    /**
+     * Write fields onto an open tab in place, wherever in the layout it sits.
+     *
+     * This is what puts the unsaved dot on a tab: an editor calls `EditorService.setModified`, which
+     * lands here. The update is skipped outright when every field already holds the value asked for,
+     * because the callers are typing paths - a text editor reports `modified` on every keystroke,
+     * and re-emitting the layout for each one would re-render the whole strip for no change.
+     *
+     * Returns whether an open tab was found, so a caller can tell "not open" from "already so".
+     */
+    public updateEditorTab(tabId: string, updates: Partial<Omit<EditorTab, "id">>): boolean {
+        const group = this.findGroupWithTab(tabId);
+        const current = group?.tabs.find(tab => tab.id === tabId) as Record<string, unknown> | undefined;
+        if (!group || !current) {
+            return false;
         }
+
+        const entries = Object.entries(updates);
+        if (entries.every(([key, value]) => current[key] === value)) {
+            return true;
+        }
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, group.id, target => ({
+            ...target,
+            tabs: target.tabs.map(tab => (tab.id === tabId ? { ...tab, ...updates } : tab)),
+        }));
+
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
     }
 
+    /** Every open tab, in strip order, across all split groups. */
     public getEditorTabs(): EditorTab[] {
-        return [...this.state.editorTabs];
+        return this.collectGroups().flatMap(group => group.tabs);
     }
 
+    /**
+     * The tab editor focus is on - the group's own focus, resolved through the focus history so a
+     * split answers with the pane the author is actually in rather than whichever pane comes first
+     * in the tree. Falls back to the first group's focus for the moment after a layout restore, when
+     * tabs exist but nothing has been focused yet.
+     */
     public getActiveEditorTabId(): string | null {
-        return this.state.activeEditorTabId;
+        return this.getPreferredEditorTabFocusTarget()?.tabId
+            ?? this.findGroup(this.state.editorLayout)?.focus
+            ?? null;
     }
 
     // === Dialogs ===
@@ -1675,8 +1678,6 @@ export class UIStore {
             panelOrder: {},
             collapsedPanels: {},
             panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
             dialogs: [],
             statusBarItems: [],
             activeDialogId: null,

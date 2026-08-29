@@ -287,6 +287,9 @@ export function useTextEditorActions(): PluginTextEditorActionDef[] {
 
 /**
  * Hook to access editor tabs
+ *
+ * Every open tab across all split panes, in strip order. Redrawn on `editorLayoutChanged`, because
+ * the layout *is* the tab list - there is no separate one to watch.
  */
 export function useEditorTabs(): EditorTab[] {
     const uiService = useUIService();
@@ -298,9 +301,9 @@ export function useEditorTabs(): EditorTab[] {
         const store = uiService.getStore();
         setTabs(store.getEditorTabs());
 
-        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if (changes.editorTabs && mounted) {
-                setTabs(changes.editorTabs);
+        const unsubscribe = uiService.getEvents().on("editorLayoutChanged", () => {
+            if (mounted) {
+                setTabs(uiService.getStore().getEditorTabs());
             }
         });
 
@@ -315,6 +318,9 @@ export function useEditorTabs(): EditorTab[] {
 
 /**
  * Hook to access active editor tab
+ *
+ * "Active" is the tab editor focus is on, resolved through the store so that in a split it names the
+ * pane the author is actually working in.
  */
 export function useActiveEditorTab(): { tab: EditorTab | null; tabId: string | null } {
     const uiService = useUIService();
@@ -326,17 +332,17 @@ export function useActiveEditorTab(): { tab: EditorTab | null; tabId: string | n
     useEffect(() => {
         let mounted = true;
 
-        const store = uiService.getStore();
-        const tabId = store.getActiveEditorTabId();
-        const tab = tabId ? store.getEditorTabs().find(t => t.id === tabId) ?? null : null;
-        setResult({ tab, tabId });
+        const resolve = () => {
+            const store = uiService.getStore();
+            const tabId = store.getActiveEditorTabId();
+            const tab = tabId ? store.getEditorTabs().find(t => t.id === tabId) ?? null : null;
+            setResult({ tab, tabId });
+        };
+        resolve();
 
-        const unsubscribe = uiService.getEvents().on("stateChanged", (changes) => {
-            if ((changes.editorTabs || changes.activeEditorTabId !== undefined) && mounted) {
-                const store = uiService.getStore();
-                const tabId = store.getActiveEditorTabId();
-                const tab = tabId ? store.getEditorTabs().find(t => t.id === tabId) ?? null : null;
-                setResult({ tab, tabId });
+        const unsubscribe = uiService.getEvents().on("editorLayoutChanged", () => {
+            if (mounted) {
+                resolve();
             }
         });
 

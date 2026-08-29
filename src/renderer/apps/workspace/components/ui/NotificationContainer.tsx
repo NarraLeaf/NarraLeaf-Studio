@@ -142,7 +142,11 @@ function NotificationItem({
                 // (narraleaf-react) ships a compiled Tailwind v4 sheet that the
                 // workspace window injects after its own, and its `.border` rule
                 // lands last and resets all four widths to 1px.
-                "border-y border-r border-l-2 border-edge bg-surface-overlay shadow-lg shadow-black/30",
+                "border-y border-r border-l-2 border-edge bg-surface-overlay",
+                // A light shadow rather than a dramatic one. The card is opaque and bordered
+                // already, so the shadow only has to lift it off what is behind it; a heavy one
+                // cuts each card out of the window instead of laying it on top.
+                "shadow-sm shadow-black/20",
                 // The arrival plays when the card is PRESENTED, not when it is mounted: a card that
                 // waited in the queue was mounted long ago, off-screen, and would otherwise take its
                 // place in silence. Adding the class on promotion is what starts the animation.
@@ -253,6 +257,7 @@ export interface NotificationContainerProps {
  */
 export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: NotificationContainerProps = {}) {
     const { context } = useWorkspace();
+    const { tn } = useTranslation();
     const [notifications, setNotifications] = useState<Notification[]>([]);
     const [available, setAvailable] = useState(0);
     const [heights, setHeights] = useState<Record<string, number>>({});
@@ -262,6 +267,9 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
     const placedRef = useRef(new Set<string>());
     /** How many cards the last render put on screen, for the layout effect below. */
     const shownRef = useRef(0);
+    /** Height of the waiting line, measured rather than assumed - it is a line of translated text. */
+    const [noticeHeight, setNoticeHeight] = useState(0);
+    const noticeRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         if (!context) return;
@@ -314,6 +322,13 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
         for (const id of placed) {
             placedRef.current.add(id);
         }
+        // The waiting line is measured only while it is up, and its last height is kept once it
+        // goes: zeroing it would give the space back, admit one more card, and put the line back -
+        // which is the same measurement oscillating rather than a stack settling.
+        if (noticeRef.current) {
+            const measured = noticeRef.current.offsetHeight;
+            setNoticeHeight(previous => (previous === measured ? previous : measured));
+        }
         setHeights(previous => {
             const next: Record<string, number> = {};
             for (const notification of notifications) {
@@ -340,8 +355,14 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
         return null;
     }
 
-    const shown = visibleCardCount(notifications.map(n => heights[n.id] ?? 0), CARD_GAP, available);
+    const shown = visibleCardCount(
+        notifications.map(n => heights[n.id] ?? 0),
+        CARD_GAP,
+        available,
+        noticeHeight,
+    );
     shownRef.current = shown;
+    const waiting = notifications.length - shown;
 
     const offsets = cardOffsets(notifications.map(n => heights[n.id] ?? 0), CARD_GAP, shown);
 
@@ -390,6 +411,27 @@ export function NotificationContainer({ rightInset = 0, bottomInset = 0 }: Notif
                     </div>
                 );
             })}
+
+            {/* What is still behind the last card. `offsets[shown]` is where the queue is parked,
+                which is exactly one gap past the bottom of the visible stack. Not announced: the
+                live region is for the messages themselves, and a count that changes with every
+                dismissal would be read out over them. */}
+            {waiting > 0 && (
+                <div
+                    ref={noticeRef}
+                    aria-hidden
+                    style={{ transform: `translateY(${offsets[shown]}px)` }}
+                    className="absolute inset-x-0 top-0 flex justify-end transition-transform duration-150 ease-out"
+                >
+                    {/* On the same opaque surface as the cards, for the same reason they are: this
+                        line sits over whatever the window is showing, and dim text laid straight on
+                        an editor is the one thing it cannot be. No border and no shadow, so it reads
+                        as the end of the stack rather than as another card. */}
+                    <span className="rounded-md bg-surface-overlay px-2 py-0.5 text-2xs text-fg-muted">
+                        {tn("workspace.shell.notifications.queued", waiting)}
+                    </span>
+                </div>
+            )}
         </div>
     );
 }

@@ -51,3 +51,20 @@ describe("cardOffsets", () => {
         expect(cardOffsets([40, 60], 8, 0)).toEqual([0, 0]);
     });
 });
+
+describe("visibleCardCount with the waiting line", () => {
+    it("ignores the line when everything fits", () => {
+        expect(visibleCardCount([80, 80], 8, 400, 20)).toBe(2);
+    });
+
+    it("makes room for the line once cards are being held back", () => {
+        // 3 x 80 + 2 x 8 = 256 fits the box exactly, but the fourth card cannot, so the line is
+        // needed - and it costs a gap plus its own height, which the third card was using.
+        expect(visibleCardCount([80, 80, 80, 80], 8, 256)).toBe(3);
+        expect(visibleCardCount([80, 80, 80, 80], 8, 256, 20)).toBe(2);
+    });
+
+    it("still keeps the first card when the line would crowd it out", () => {
+        expect(visibleCardCount([240, 80], 8, 250, 20)).toBe(1);
+    });
+});
