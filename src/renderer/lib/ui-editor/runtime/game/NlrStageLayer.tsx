@@ -91,10 +91,97 @@ async function waitForImageUrl(url: string): Promise<void> {
     }
 }
 
+/**
+ * How many frames the stage has to hold still before it counts as assembled.
+ *
+ * A scene does not arrive in one commit. The engine creates each of its displayables - the
+ * layers, the background, every sprite the scene declares - through its own `displayable:init`
+ * action, and the action stack runs those one after another, so the stage grows an element at a
+ * time over a few dozen milliseconds. Waiting only for the images that happen to be there in the
+ * first of those commits reveals a stage that is still filling up: MEASURED on a full-length
+ * project, the title screen went at 415ms after the button press and the opening background
+ * arrived at 719ms, so what the player got for those 300ms was black.
+ *
+ * The window has to outlast the gap between two consecutive inits, which is one to two animation
+ * frames on that project; four is that with room to spare, and an already-assembled stage pays it
+ * in full - about 66ms - so it cannot be widened for free.
+ */
+export const STAGE_SETTLE_FRAMES = 4;
+
+/**
+ * Whether this image is one the player can actually see right now: loaded, laid out, and not
+ * hidden by anything between it and the stage root.
+ *
+ * Opacity is multiplied down the ancestor chain because that is where the engine puts it - a
+ * displayable animates its wrapper, not the `<img>` - so reading the element alone would call a
+ * sprite visible while the transform holding it is still at zero.
+ */
+function isPaintingOnStage(image: HTMLImageElement, root: HTMLElement): boolean {
+    if (!image.complete || image.naturalWidth === 0) {
+        return false;
+    }
+    const rect = image.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+        return false;
+    }
+    // Strictly below the root, never the root itself: the whole stage is `visibility: hidden`
+    // until it is revealed, and that is what this is deciding, so counting it would make the
+    // answer always no.
+    let opacity = 1;
+    let node: HTMLElement | null = image;
+    while (node && node !== root) {
+        const style = getComputedStyle(node);
+        if (style.visibility === "hidden" || style.display === "none") {
+            return false;
+        }
+        opacity *= Number.parseFloat(style.opacity || "1");
+        if (opacity <= 0.01) {
+            return false;
+        }
+        node = node.parentElement;
+    }
+    return true;
+}
+
+/**
+ * Resolve once the stage has finished putting its opening frame together.
+ *
+ * Settling is the usual answer: the images stop arriving, they are all loaded, and what is there
+ * is what the first frame will be. MEASURED on a full-length project, that is about 350ms after
+ * the scene mounts, and every one of those milliseconds used to be black on screen.
+ *
+ * The other branch is for a stage that never settles - an opening with a video or a sprite whose
+ * source changes every frame would otherwise wait out the caller's timeout with the title screen
+ * still up. Once anything on the stage is loaded and actually painting there is something worth
+ * revealing, so it goes, still-changing or not.
+ */
+async function waitForStageOpeningFrame(root: HTMLElement): Promise<void> {
+    let previous: string | null = null;
+    let stable = 0;
+    for (;;) {
+        const images = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
+        const signature = images
+            .map(image => `${image.currentSrc || image.src}|${image.complete ? "1" : "0"}`)
+            .join(",");
+        stable = signature === previous ? stable + 1 : 0;
+        previous = signature;
+        if (stable >= STAGE_SETTLE_FRAMES && images.every(image => image.complete)) {
+            return;
+        }
+        if (stable === 0 && images.some(image => isPaintingOnStage(image, root))) {
+            return;
+        }
+        await nextAnimationFrame();
+    }
+}
+
 async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promise<void> {
     // One frame so React has committed the scene and the elements/backgrounds below are the ones
     // that will actually paint.
     await waitForPaintFrames(1);
+    // ...and then as many more as the scene needs to put its opening frame up, because the
+    // first commit is not the last one (see STAGE_SETTLE_FRAMES).
+    await waitForStageOpeningFrame(root);
     const imageElements = Array.from(root.querySelectorAll<HTMLImageElement>("img"));
     // The CSS sweep runs `getComputedStyle` over the entire stage subtree — a forced style recalc
     // whose whole purpose is catching sources the preloader did not know about. On a stage that was

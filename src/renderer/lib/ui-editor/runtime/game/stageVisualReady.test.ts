@@ -5,7 +5,7 @@
  * already fetched and decoded before the game was entered must not re-verify them.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { waitForStageVisualReadyWithTimeout } from "./NlrStageLayer";
+import { STAGE_SETTLE_FRAMES, waitForStageVisualReadyWithTimeout } from "./NlrStageLayer";
 
 let frames = 0;
 let computedStyleCalls = 0;
@@ -62,19 +62,19 @@ function makeStage(): HTMLElement {
 }
 
 describe("waitForStageVisualReadyWithTimeout", () => {
-    it("spends two frames on a warm stage", async () => {
+    it("spends two frames plus the settle window on a warm stage", async () => {
         await waitForStageVisualReadyWithTimeout(makeStage(), { warm: true });
-        expect(frames).toBe(2);
+        expect(frames).toBe(2 + STAGE_SETTLE_FRAMES);
     });
 
-    it("spends four on a cold one", async () => {
+    it("spends four plus the settle window on a cold one", async () => {
         await waitForStageVisualReadyWithTimeout(makeStage(), { warm: false });
-        expect(frames).toBe(4);
+        expect(frames).toBe(4 + STAGE_SETTLE_FRAMES);
     });
 
     it("defaults to the cold path when the caller says nothing", async () => {
         await waitForStageVisualReadyWithTimeout(makeStage());
-        expect(frames).toBe(4);
+        expect(frames).toBe(4 + STAGE_SETTLE_FRAMES);
     });
 
     it("skips the whole-subtree style recalc on a warm stage", async () => {
@@ -87,10 +87,56 @@ describe("waitForStageVisualReadyWithTimeout", () => {
         expect(computedStyleCalls).toBeGreaterThan(0);
     });
 
+    it("holds the reveal while the scene is still putting elements on the stage", async () => {
+        const root = makeStage();
+        let settled = false;
+        void waitForStageVisualReadyWithTimeout(root, { warm: true }).then(() => {
+            settled = true;
+        });
+
+        // One element per pass, the way the engine's serial `displayable:init` puts them there.
+        for (let i = 0; i < 3; i += 1) {
+            await flush(2);
+            expect(settled).toBe(false);
+            const image = document.createElement("img");
+            image.setAttribute("src", `sprite-${i}.png`);
+            Object.defineProperty(image, "complete", { value: true });
+            Object.defineProperty(image, "naturalWidth", { value: 0 });
+            root.appendChild(image);
+        }
+
+        await flush(16);
+        expect(settled).toBe(true);
+    });
+
+    it("reveals a stage that never stops changing, as soon as one of its images is painting", async () => {
+        const root = document.createElement("div");
+        const image = document.createElement("img");
+        Object.defineProperty(image, "complete", { value: true });
+        Object.defineProperty(image, "naturalWidth", { value: 1280 });
+        image.getBoundingClientRect = () => ({ width: 1280, height: 720 }) as DOMRect;
+        // jsdom implements no decoder, and this is the one stage here whose image reports a bitmap.
+        (image as HTMLImageElement & { decode: () => Promise<void> }).decode = () => Promise.resolve();
+        root.appendChild(image);
+        document.body.appendChild(root);
+        // A source that changes every frame never settles, so the settle window alone would hold
+        // the reveal until the caller times out.
+        let tick = 0;
+        const churn = window.setInterval(() => {
+            image.setAttribute("src", `frame-${tick += 1}.png`);
+        }, 0);
+
+        await waitForStageVisualReadyWithTimeout(root, { warm: true });
+        window.clearInterval(churn);
+        expect(frames).toBeLessThan(2 + STAGE_SETTLE_FRAMES);
+    });
+
     it("waits for an element that has not loaded yet, warm or not", async () => {
         const root = document.createElement("div");
         const image = document.createElement("img");
-        Object.defineProperty(image, "complete", { value: false });
+        let loaded = false;
+        Object.defineProperty(image, "complete", { get: () => loaded });
+        Object.defineProperty(image, "naturalWidth", { value: 0 });
         root.appendChild(image);
         document.body.appendChild(root);
 
@@ -102,8 +148,9 @@ describe("waitForStageVisualReadyWithTimeout", () => {
         await flush();
         expect(settled).toBe(false);
 
+        loaded = true;
         image.dispatchEvent(new Event("load"));
-        await flush();
+        await flush(16);
         expect(settled).toBe(true);
     });
 });
