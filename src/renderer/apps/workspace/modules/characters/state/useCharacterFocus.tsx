@@ -53,7 +53,10 @@ type UseCharacterFocusParams = {
 
 type UseCharacterFocusResult = {
     focusedCharacterId: string | null;
+    /** One click: opens the character in the group's preview tab. */
     handleCharacterClick: (character: Character) => void;
+    /** Double click: opens the character in a tab of its own, which nothing takes over. */
+    handleCharacterOpen: (character: Character) => void;
     setFocusToPanel: () => void;
 };
 
@@ -61,7 +64,13 @@ type UseCharacterFocusResult = {
 export function useCharacterFocus({ context, panelId }: UseCharacterFocusParams): UseCharacterFocusResult {
     const [focusedCharacterId, setFocusedCharacterId] = useState<string | null>(null);
 
-    const handleCharacterClick = useCallback((character: Character) => {
+    /**
+     * Show a character, as a preview or as a tab of its own.
+     *
+     * Reading down a cast is the reason the preview tab exists: a click is a look, and the look
+     * before it is the one that gets replaced. A double click says the author means to stay.
+     */
+    const showCharacter = useCallback((character: Character, preview: boolean) => {
         if (!context) return;
 
         const uiService = context.services.get<UIService>(Services.UI);
@@ -72,12 +81,22 @@ export function useCharacterFocus({ context, panelId }: UseCharacterFocusParams)
         uiService.focus.setFocus(FocusArea.LeftPanel, panelId);
         setFocusedCharacterId(characterId);
 
-        uiService.editor.open(createCharacterEditorTab(character), undefined, { activate: true });
+        uiService.editor.open({ ...createCharacterEditorTab(character), preview }, undefined, { activate: true });
 
         // Return focus to the list so keyboard scope stays in the panel.
         uiService.focus.setFocus(FocusArea.LeftPanel, panelId, { silent: true });
         uiService.panels.show("narraleaf-studio:properties");
     }, [context, panelId]);
+
+    const handleCharacterClick = useCallback(
+        (character: Character) => showCharacter(character, true),
+        [showCharacter],
+    );
+
+    const handleCharacterOpen = useCallback(
+        (character: Character) => showCharacter(character, false),
+        [showCharacter],
+    );
 
     const setFocusToPanel = useCallback(() => {
         if (!context) return;
@@ -88,6 +107,7 @@ export function useCharacterFocus({ context, panelId }: UseCharacterFocusParams)
     return {
         focusedCharacterId,
         handleCharacterClick,
+        handleCharacterOpen,
         setFocusToPanel,
     };
 }

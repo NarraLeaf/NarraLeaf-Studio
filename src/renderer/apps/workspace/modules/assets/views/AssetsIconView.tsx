@@ -874,6 +874,7 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
         selectedItems,
         handleItemSelect,
         handleAssetClick,
+        handleAssetOpen,
         isMultiSelectMode,
         showContextMenu,
         handleDragStart,
@@ -910,6 +911,7 @@ function AssetIconTile({ asset, category, caption, assetSetValue }: {
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectIntent || isMultiSelectMode);
             }}
+            onDoubleClick={() => handleAssetOpen(asset)}
             onContextMenu={(e) => showContextMenu(e, category, asset, false, assetSetValue)}
             onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
             onDragEnd={movable ? () => handleDragEnd?.() : undefined}

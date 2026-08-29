@@ -480,6 +480,7 @@ export const workspace = {
             title: "新标签页",
         },
         tabMenu: {
+            keepOpen: "保留标签页",
             close: "关闭",
             closeOthers: "关闭其他",
             closeToRight: "关闭右侧标签",

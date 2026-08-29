@@ -504,6 +504,7 @@ export const workspace = {
             title: "新しいタブ",
         },
         tabMenu: {
+            keepOpen: "タブとして残す",
             close: "閉じる",
             closeOthers: "ほかを閉じる",
             closeToRight: "右側のタブを閉じる",

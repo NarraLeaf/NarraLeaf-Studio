@@ -4,7 +4,13 @@ import { Badge, EmptyState, SearchInput, type BadgeTone } from "@/lib/components
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
-import type { GameBuildPlatform, LastGameBuildRun, ShippedAssetReportEntry } from "@shared/types/gameBuild";
+import {
+    assetCompressionSavedBytes,
+    type AssetCompressionReport,
+    type GameBuildPlatform,
+    type LastGameBuildRun,
+    type ShippedAssetReportEntry,
+} from "@shared/types/gameBuild";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
 import { revealInFileManagerKey } from "@/lib/app/platform";
 import { BuildService } from "@/lib/workspace/services/core/BuildService";
@@ -190,6 +196,10 @@ export function BuildReportTab() {
                         </DashboardSection>
                     ) : null}
 
+                    {state.assetCompression ? (
+                        <CompressionSection report={state.assetCompression} />
+                    ) : null}
+
                     {report === null ? (
                         <p className="text-xs text-fg-subtle">{t("build.report.wholeLibrary")}</p>
                     ) : (
@@ -232,6 +242,51 @@ export function BuildReportTab() {
                 </div>
             </div>
         </div>
+    );
+}
+
+/**
+ * What the two asset passes took off the package, in three figures.
+ *
+ * Shown only for a run whose passes did something, and stated about the package rather than the
+ * project: a compressed image is a smaller copy in Studio's cache that this build carried, and the
+ * file the author drew is untouched. That is also why the byte figures never add up to the size of
+ * the library - they cover the files the passes acted on, not every file that shipped.
+ *
+ * Metadata is one figure across both passes because it is one treatment: an author checking that no
+ * recording ships with their name in it is asking about their whole library, not about audio.
+ */
+function CompressionSection({ report }: { report: AssetCompressionReport }) {
+    const { t, formatNumber } = useTranslation();
+    const saved = assetCompressionSavedBytes(report.images) + assetCompressionSavedBytes(report.media);
+    const strippedFiles = report.images.stripped + report.media.stripped;
+    const strippedBytes = report.images.metadataBytes + report.media.metadataBytes;
+    // A count of zero still says something an author came here to read, but a "0 B" beneath it does
+    // not - the figure under a count of nothing is the same nothing, printed twice.
+    const hint = (bytes: number): string | undefined => (bytes > 0 ? formatByteSize(bytes) : undefined);
+    return (
+        <DashboardSection
+            title={t("build.report.compressionTitle")}
+            description={t("build.report.compressionSaved", { size: formatByteSize(saved) })}
+        >
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                <StatTile
+                    label={t("build.report.compressionImages")}
+                    value={formatNumber(report.images.compressed)}
+                    hint={hint(report.images.beforeBytes - report.images.afterBytes)}
+                />
+                <StatTile
+                    label={t("build.report.compressionMedia")}
+                    value={formatNumber(report.media.compressed)}
+                    hint={hint(report.media.beforeBytes - report.media.afterBytes)}
+                />
+                <StatTile
+                    label={t("build.report.compressionMetadata")}
+                    value={formatNumber(strippedFiles)}
+                    hint={hint(strippedBytes)}
+                />
+            </div>
+        </DashboardSection>
     );
 }
 
