@@ -409,6 +409,7 @@ export const storyInspector = {
         volume: "音量",
         rate: "倍速",
         loop: "循环",
+        waitForEnd: "等待播放结束",
     },
     image: {
         imageName: "图片名称",

@@ -122,10 +122,11 @@ async function waitForStageVisualReady(root: HTMLElement, warm: boolean): Promis
  * the result has been painted, bounded by a timeout. Hosts double-buffering stage sessions use this
  * on the hidden buffer before revealing it, so the swap never shows half-loaded content.
  *
- * Pass `warm` when the stage's assets were already fetched and decoded before this content mounted.
- * The guarantee is the same; it just stops re-verifying what is known to be ready, taking the reveal
- * from four animation frames plus a whole-subtree style recalc down to two frames — the difference
- * between "start" reading as a transition and reading as a wait.
+ * Pass `warm` when a preload pass ran to completion before this content mounted. The guarantee is
+ * the same — every `<img>` on the stage is still awaited — it just stops sweeping the subtree for
+ * CSS sources the preloader would have covered, taking the reveal from four animation frames plus a
+ * whole-subtree style recalc down to two frames: the difference between "start" reading as a
+ * transition and reading as a wait.
  */
 export async function waitForStageVisualReadyWithTimeout(
     root: HTMLElement,
@@ -202,8 +203,11 @@ export function NlrStageLayer(props: {
     const startedSessionRef = useRef<string | null>(null);
     const stageRootRef = useRef<HTMLDivElement>(null);
     const gameStateRef = useRef<PlayerEventContext["gameState"] | null>(null);
-    // Whether the preload pass finished while no scene was mounted — i.e. the stage's assets were
-    // fetched and decoded ahead of the game being entered, and the reveal has nothing left to load.
+    // Whether the preload pass reported ready while no scene was mounted — i.e. the warm-up ran
+    // ahead of the game being entered rather than catching up with a scene already on screen. How
+    // much it warmed is the engine's `preloadGate` (the opening background, or the whole scene);
+    // either way the reveal below still awaits every `<img>` on the stage, so what this saves is
+    // the whole-subtree style recalc and two frames, not the loading itself.
     const warmedBeforeEntryRef = useRef(false);
 
     const handleReady = useCallback((ctx: PlayerEventContext) => {

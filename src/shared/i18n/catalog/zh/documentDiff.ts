@@ -482,6 +482,8 @@ export const documentDiff = {
         encryptAssets: "加密资产",
         crash: "崩溃",
         crashPolicy: "游戏停止工作时",
+        preload: "载入",
+        preloadBehavior: "预加载行为",
         assetCompression: "压缩",
         compressImages: "压缩图像",
         imageMode: "图像设置",

@@ -452,6 +452,7 @@ export const storyInspector = {
         volume: "音量",
         rate: "再生速度",
         loop: "ループ",
+        waitForEnd: "再生の終了を待つ",
     },
 
     image: {
