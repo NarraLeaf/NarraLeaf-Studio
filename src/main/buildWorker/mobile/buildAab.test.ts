@@ -52,8 +52,8 @@ async function buildTemplateApk(extra: ZipWriteEntry[] = []): Promise<Buffer> {
         { name: "res/", source: null },
         { name: ICON_SLOT, source: { kind: "buffer", data: PLACEHOLDER_ICON }, method: "store" },
         { name: ICON_SLOT_HDPI, source: { kind: "buffer", data: PLACEHOLDER_ICON }, method: "store" },
-        { name: "lib/arm64-v8a/libbindings.so", source: { kind: "buffer", data: NATIVE_BYTES }, method: "store" },
-        { name: "lib/x86_64/libbindings.so", source: { kind: "buffer", data: NATIVE_BYTES }, method: "store" },
+        { name: "lib/arm64-v8a/libshellnative.so", source: { kind: "buffer", data: NATIVE_BYTES }, method: "store" },
+        { name: "lib/x86_64/libshellnative.so", source: { kind: "buffer", data: NATIVE_BYTES }, method: "store" },
         { name: "kotlin/kotlin.kotlin_builtins", source: { kind: "buffer", data: Buffer.from("kt") } },
         { name: "resources.arsc", source: { kind: "buffer", data: buildProtoArscFixture() }, method: "store", forceAlign: 4 },
         ...extra,
@@ -151,8 +151,8 @@ describe("buildAab", () => {
             "base/dex/classes2.dex",
             "base/res/mipmap-mdpi-v4/ic_launcher.png",
             "base/res/mipmap-hdpi-v4/ic_launcher.png",
-            "base/lib/arm64-v8a/libbindings.so",
-            "base/lib/x86_64/libbindings.so",
+            "base/lib/arm64-v8a/libshellnative.so",
+            "base/lib/x86_64/libshellnative.so",
             "base/root/kotlin/kotlin.kotlin_builtins",
             "base/resources.pb",
             "base/assets/shell-config.json",
@@ -220,7 +220,7 @@ describe("buildAab", () => {
     it("passes untouched entries through byte-identically", async () => {
         const aab = await build();
         expect(bytesOf(aab, "base/dex/classes.dex").equals(DEX_BYTES)).toBe(true);
-        expect(bytesOf(aab, "base/lib/arm64-v8a/libbindings.so").equals(NATIVE_BYTES)).toBe(true);
+        expect(bytesOf(aab, "base/lib/arm64-v8a/libshellnative.so").equals(NATIVE_BYTES)).toBe(true);
     });
 
     it("replaces icon slots that were overridden and keeps the rest", async () => {

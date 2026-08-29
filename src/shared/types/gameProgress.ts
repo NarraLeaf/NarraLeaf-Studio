@@ -20,8 +20,8 @@
  * # Plain JSON. Not encrypted, not signed
  *
  * This is an interchange document by design. Its whole purpose is that a package which cannot
- * decrypt the other's assets can still read it, so encrypting it with a build binding would
- * defeat the feature, and signing it would only prove which build wrote it - a fact no reader here
+ * decrypt the other's assets can still read it, so protecting it the way the assets are protected
+ * would defeat the feature, and signing it would only prove which build wrote it - a fact no reader here
  * acts on. A player who edits the file gives themselves variables in their own single-player game,
  * which is the same thing a save editor already does and is not a boundary this file is pretending
  * to hold.
