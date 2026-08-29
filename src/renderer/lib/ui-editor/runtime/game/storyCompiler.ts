@@ -1341,14 +1341,21 @@ async function buildLaunchEntryScene(params: {
         nextActionIndex: params.nextActionIndex,
     };
 
+    // The stage as it stands at the target row, followed by everything the rest of the scene
+    // declares that this path never reached. The second half is not stage state and arrives hidden:
+    // it is here so the tail's rows find the objects a full compile of the scene would have
+    // registered for them - see `StoryStageSnapshot.declarations`. The real state goes first, so a
+    // name that IS on stage is always built from its own record.
+    const preposed = [...snapshot.displayables, ...snapshot.declarations];
+
     // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
         }
     }
     const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             continue;
         }
@@ -1699,7 +1706,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         // A jump nested inside a container is invisible to the walk, so the plan reports the scene as
         // running to its end. If compiling the tail met one, that is the real stop.
         if (playbackStop.reason === "sceneEnd" && ctx.previewEncounteredJump) {
-            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump };
+            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump, followed: false };
         }
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
@@ -1781,7 +1788,9 @@ async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlayback
             statements.push(...body);
         }
     }
-    if (plan.stop.reason === "jump") {
+    // Only the preview holds at a jump. A launch emits it and control leaves for the target scene,
+    // so there is nothing to report - the row did exactly what it says.
+    if (plan.stop.reason === "jump" && !plan.stop.followed) {
         const targetScene = ctx.document.scenes[plan.stop.targetSceneId];
         diagnostic(
             ctx,
@@ -3672,7 +3681,9 @@ async function compileAudioAction(
             // replay case.
             return [recordStatement(
                 ctx,
-                sound.play(fadeMs),
+                // Only a row that asked for it holds the script until the clip ends; see
+                // `waitForEnd` on the payload.
+                sound.play(fadeMs, { waitForEnd: payload.waitForEnd === true }),
                 block,
                 undefined,
                 payload.assetId?.trim() || ctx.soundAssetIds.get(name),
@@ -6094,11 +6105,21 @@ async function compileCharacterAvatars(
     // A puppet carries no avatar table: it has no differentials to key one on (see
     // `bindPuppetAvatar`, which sets the character-level default instead).
     const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
-    for (const key of Object.keys(avatarTable ?? {})) {
+    // Concurrently, and this is the one place in the compile where that is worth doing: a baked
+    // avatar is a derived project file rather than a library asset, so it is the one kind of id a
+    // host cannot resolve ahead of time - and a character with a few differentials has hundreds of
+    // keys, each of which was a full round trip to whatever answers for the host before the next
+    // was sent. The keys are independent and both maps below are keyed by this loop's own values,
+    // so the only thing the order decided was how long it took.
+    const avatarKeys = Object.keys(avatarTable ?? {});
+    const avatarUrls = await Promise.all(avatarKeys.map(async key => {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
         const url = assetId
             ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
             : null;
+        return { key, assetId, url };
+    }));
+    for (const { key, assetId, url } of avatarUrls) {
         if (url && assetId) {
             byKey.set(key, url);
             ctx.avatarAssetIdByUrl.set(url, assetId);

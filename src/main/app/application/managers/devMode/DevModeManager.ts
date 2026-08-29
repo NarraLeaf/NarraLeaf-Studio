@@ -1,6 +1,7 @@
 import path from "path";
 import crypto from "crypto";
 import chokidar, { FSWatcher } from "chokidar";
+import type { Stats } from "fs";
 import { App } from "@/app/app";
 import { AppWindow } from "../window/appWindow";
 import { IPCEventType } from "@shared/types/ipcEvents";
@@ -39,10 +40,30 @@ type DevModeSession = {
     windowReady: boolean;
     revision: number;
     watcher: FSWatcher | null;
+    /**
+     * `mtimeMs:size` per watched file, as of the last event this session accepted. See
+     * {@link DevModeManager.fileContentChanged}.
+     */
+    fileIdentities: Map<string, string>;
     pendingBundle: DevModeBundle | null;
     pendingError: string | null;
     reloadTimer: ReturnType<typeof setTimeout> | null;
 };
+
+/**
+ * What a watched file looks like right now, or null when the watcher reported no stats.
+ *
+ * The pair an author can change. A directory watch also reports a last-access-time update as a
+ * change, and NTFS updates access times by default, so *reading* a file looks exactly like editing
+ * one. The running game reads the assets it preloads and a preview build copies every asset it
+ * ships, so a session that was doing nothing but running kept scheduling reloads of itself -
+ * measured at around nine seconds each on a medium project.
+ */
+export function watchedFileIdentity(stats?: Pick<Stats, "mtimeMs" | "size">): string | null {
+    return stats && typeof stats.mtimeMs === "number" && typeof stats.size === "number"
+        ? `${stats.mtimeMs}:${stats.size}`
+        : null;
+}
 
 export class DevModeManager {
     /**
@@ -233,6 +254,7 @@ export class DevModeManager {
             windowReady: false,
             revision: 0,
             watcher: null,
+            fileIdentities: new Map(),
             pendingBundle: null,
             pendingError: null,
             reloadTimer: null,
@@ -505,11 +527,53 @@ export class DevModeManager {
             // Atomic writes put a scratch sibling in the tree for a few milliseconds before renaming
             // it into place. Reporting it would schedule a reload against a file that is already
             // gone, on top of the reload the rename itself triggers.
-            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN },
+            // `alwaysStat` so `fileContentChanged` has a modification time and a size to compare;
+            // without it every reported change would have to be taken at face value.
+            { ignoreInitial: true, ignored: ATOMIC_WRITE_TEMP_PATTERN, alwaysStat: true },
         );
-        session.watcher.on("add", file => this.scheduleReload(session, "add", file));
-        session.watcher.on("change", file => this.scheduleReload(session, "change", file));
-        session.watcher.on("unlink", file => this.scheduleReload(session, "unlink", file));
+        session.watcher.on("add", (file, stats) => {
+            this.rememberFileIdentity(session, file, stats);
+            this.scheduleReload(session, "add", file);
+        });
+        session.watcher.on("change", (file, stats) => {
+            if (!this.fileContentChanged(session, file, stats)) {
+                return;
+            }
+            this.scheduleReload(session, "change", file);
+        });
+        session.watcher.on("unlink", file => {
+            session.fileIdentities.delete(file);
+            this.scheduleReload(session, "unlink", file);
+        });
+    }
+
+    private rememberFileIdentity(session: DevModeSession, file: string, stats?: Stats): void {
+        const identity = watchedFileIdentity(stats);
+        if (identity) {
+            session.fileIdentities.set(file, identity);
+        }
+    }
+
+    /**
+     * Whether a `change` event is about the file's contents rather than about when it was last read.
+     *
+     * The directory watch reports a last-access-time update as a change, and NTFS updates access
+     * times by default - so every asset the running game preloads, and every asset a preview build
+     * copies, came back as "the project changed". What decides instead is the pair the author can
+     * actually change: an edit moves the modification time or the size, and reading the file moves
+     * neither.
+     *
+     * A file whose identity is unknown (no stats, or one this watch has not seen before) counts as
+     * changed. Missing a real edit is a stale game; an extra reload is a slow one.
+     */
+    private fileContentChanged(session: DevModeSession, file: string, stats?: Stats): boolean {
+        const identity = watchedFileIdentity(stats);
+        if (!identity) {
+            return true;
+        }
+        const previous = session.fileIdentities.get(file);
+        session.fileIdentities.set(file, identity);
+        return previous !== identity;
     }
 
     private scheduleReload(session: DevModeSession, event: string, file: string): void {

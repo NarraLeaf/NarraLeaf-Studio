@@ -557,3 +557,83 @@ describe("computeStoryStageSnapshot", () => {
         expect(result.displayables.map(entry => entry.objectName)).toEqual(["a", "b"]);
     });
 });
+
+/**
+ * A persistent variable is the one scope this walk cannot reconstruct: it outlives the run, so
+ * "what does it hold at the target row" is a question only the host that owns the profile can
+ * answer. It used to answer `undefined` regardless, which quietly sent every persistent condition
+ * down its `else` - so a launch after a wardrobe choice pre-posed the outfit nobody picked, while
+ * the tail, compiled against the real store a moment later, played the one they did.
+ */
+describe("computeStoryStageSnapshot and the host's persistent store", () => {
+    const SOCKS = "socks";
+
+    const persistentVariables = {
+        [SOCKS]: { id: SOCKS, name: "Socks", scope: "persistent" as const, valueType: "number" as const, defaultValue: 0, storageKey: SOCKS },
+    };
+
+    /** Three arms, one per outfit, each showing its own image; the third is the `else`. */
+    const document = baseDocument({
+        condition: block("condition", "control", { control: "condition" }, null, ["arm-0", "arm-1", "arm-else"]),
+        "arm-0": block("arm-0", "control", {
+            control: "conditionBranch",
+            branch: "if",
+            condition: { kind: "variable", target: { scope: "persistent", variableId: SOCKS }, operator: "equals", value: 0 },
+        }, "condition", ["cg-0"]),
+        "arm-1": block("arm-1", "control", {
+            control: "conditionBranch",
+            branch: "if",
+            condition: { kind: "variable", target: { scope: "persistent", variableId: SOCKS }, operator: "equals", value: 1 },
+        }, "condition", ["cg-1"]),
+        "arm-else": block("arm-else", "control", { control: "conditionBranch", branch: "else" }, "condition", ["cg-else"]),
+        "cg-0": block("cg-0", "action", { action: "image", operation: "create", objectName: "cg0", assetId: "asset-0" }, "arm-0"),
+        "cg-1": block("cg-1", "action", { action: "image", operation: "create", objectName: "cg1", assetId: "asset-1" }, "arm-1"),
+        "cg-else": block("cg-else", "action", { action: "image", operation: "create", objectName: "cgElse", assetId: "asset-else" }, "arm-else"),
+        target: say("target"),
+    }, ["condition", "target"]);
+
+    function onStage(readPersistent?: (key: string) => number | undefined): string[] {
+        return computeStoryStageSnapshot({
+            document,
+            sceneId: "scene-1",
+            targetBlockId: "target",
+            persistentVariables,
+            ...(readPersistent ? { readPersistent } : {}),
+        }).displayables.map(record => record.objectName);
+    }
+
+    it("takes the arm the stored value selects", () => {
+        expect(onStage(() => 1)).toEqual(["cg1"]);
+    });
+
+    it("falls back to the declared default for a key the store has never held", () => {
+        // What the runtime reads there too - an unwritten persistent variable is its default, not
+        // nothing, so the walk must not treat "unset" as "no arm matches".
+        expect(onStage(() => undefined)).toEqual(["cg0"]);
+    });
+
+    it("takes the else arm when the stored value matches none of them", () => {
+        expect(onStage(() => 7)).toEqual(["cgElse"]);
+    });
+
+    it("says so, and guesses nothing, when there is no store to ask", () => {
+        const result = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target", persistentVariables });
+
+        expect(result.displayables.map(record => record.objectName)).toEqual(["cgElse"]);
+        expect(result.diagnostics.length).toBeGreaterThan(0);
+    });
+
+    /** Whichever arm ran, the other two are declarations - see `StoryStageSnapshot.declarations`. */
+    it("declares the arms it did not take, hidden", () => {
+        const result = computeStoryStageSnapshot({
+            document,
+            sceneId: "scene-1",
+            targetBlockId: "target",
+            persistentVariables,
+            readPersistent: () => 1,
+        });
+
+        expect(result.declarations.map(record => ({ name: record.objectName, visible: record.visible })))
+            .toEqual([{ name: "cg0", visible: false }, { name: "cgElse", visible: false }]);
+    });
+});

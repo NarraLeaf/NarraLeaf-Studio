@@ -82,7 +82,7 @@ describe("collectStoryPlaybackPlan", () => {
 
         const plan = collectStoryPlaybackPlan(scene, "a");
         expect(plan.steps.map(step => step.blockId)).toEqual(["a"]);
-        expect(plan.stop).toEqual({ reason: "jump", blockId: "jump", targetSceneId: "scene-2" });
+        expect(plan.stop).toEqual({ reason: "jump", blockId: "jump", targetSceneId: "scene-2", followed: false });
     });
 
     it("stops immediately when playback starts on a jump row", () => {
