@@ -580,7 +580,7 @@ export function storyConditionSummary(
     }
     const name = variableRefShortLabel(condition.target, lookups);
     const operator = translate(`story.condition.op${conditionOperatorSuffix(condition.operator)}` as TranslationKey);
-    const suffix = condition.operator === "equals" || condition.operator === "notEquals"
+    const suffix = conditionOperatorTakesValue(condition.operator)
         ? ` ${String(condition.value ?? "")}`
         : "";
     return `${name} ${operator}${suffix}`.trim();
@@ -593,7 +593,23 @@ function conditionOperatorSuffix(operator: Extract<StoryConditionRef, { kind: "v
         case "isFalse": return "IsOff";
         case "equals": return "Equals";
         case "notEquals": return "NotEquals";
+        case "greaterThan": return "GreaterThan";
+        case "greaterOrEqual": return "GreaterOrEqual";
+        case "lessThan": return "LessThan";
+        case "lessOrEqual": return "LessOrEqual";
         case "exists": return "Exists";
+    }
+}
+
+/** The operators whose summary has a right-hand side to print. */
+function conditionOperatorTakesValue(operator: Extract<StoryConditionRef, { kind: "variable" }>["operator"]): boolean {
+    switch (operator) {
+        case "isTrue":
+        case "isFalse":
+        case "exists":
+            return false;
+        default:
+            return true;
     }
 }
 

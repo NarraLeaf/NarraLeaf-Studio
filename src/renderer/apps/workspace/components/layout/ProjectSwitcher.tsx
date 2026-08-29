@@ -9,7 +9,7 @@ import type { ProjectService } from "@/lib/workspace/services/core/ProjectServic
 import type { RecentlyOpenedProject } from "@shared/types/state/appStateTypes";
 import { normalizeProjectPath } from "@shared/utils/recentProject";
 import { useWorkspace } from "../../context";
-import { useOpenRecentProject, useRecentProjects } from "../../hooks/useRecentProjects";
+import { useOpenRecentProject, useRecentProjectIcons, useRecentProjects } from "../../hooks/useRecentProjects";
 import { useTitleBarMenu } from "../ui/titleBarMenus";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
 import { focusedRevision, isVersionSurfaceVisible, shortRevision, versionFace } from "./versionRailModel";
@@ -44,6 +44,8 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
     const { t } = useTranslation();
     const { context } = useWorkspace();
     const recentProjects = useRecentProjects();
+    // The app icon each remembered project ships, for the ones that ship one.
+    const iconsByPath = useRecentProjectIcons();
     const openRecentProject = useOpenRecentProject();
 
     // Held in the title bar's bar of menus, so opening this one puts away whatever was open, and
@@ -191,6 +193,7 @@ export function ProjectSwitcher({ versionSurface }: { versionSurface: VersionSur
                                 <RecentProjectRow
                                     key={project.path}
                                     project={project}
+                                    icon={iconsByPath.get(normalizeProjectPath(project.path))}
                                     onSelect={() => handleOpen(project)}
                                 />
                             ))}
@@ -406,7 +409,11 @@ function MenuSeparator() {
     return <div className="h-px bg-fill-strong my-1 mx-2" />;
 }
 
-function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProject; onSelect: () => void }) {
+/** One remembered project. `icon` is its own app icon; without one the row shows a folder. */
+function RecentProjectRow(
+    { project, icon, onSelect }:
+    { project: RecentlyOpenedProject; icon?: string; onSelect: () => void },
+) {
     return (
         <button
             type="button"
@@ -416,8 +423,8 @@ function RecentProjectRow({ project, onSelect }: { project: RecentlyOpenedProjec
             data-tip={`${project.name}\n${project.path}`}
         >
             <span className="shrink-0 w-7 h-7 rounded-md bg-fill grid place-items-center overflow-hidden">
-                {project.icon ? (
-                    <img src={project.icon} alt="" className="w-5 h-5 object-contain" />
+                {icon ? (
+                    <img src={icon} alt="" className="w-5 h-5 object-contain" />
                 ) : (
                     <FolderOpen className="w-4 h-4 text-fg-subtle" />
                 )}

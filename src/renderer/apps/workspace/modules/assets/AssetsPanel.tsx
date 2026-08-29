@@ -318,7 +318,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
 
     const { assets, groups, loading, hasLoaded, error, loadAssets } = useAssetData({ context, isInitialized });
 
-    const { focusedItemId, setFocusedItemId, handleAssetClick, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
+    const { focusedItemId, setFocusedItemId, handleAssetClick, handleAssetOpen, handleGroupFocus, setFocusToPanel } = useAssetFocus({ context, panelId, focusArea });
     
     // No library is handed in: what a shift range covers is the rows the view below is drawing, and
     // the view publishes those through `publishRowOrder`.
@@ -1114,7 +1114,7 @@ export function AssetsPanel({ panelId, payload }: PanelComponentProps<AssetsPane
         assets, groups, assetSets, filteredAssets, filteredGroups, matchedGroupIds, selectedItems, focusedItemId,
         draggedItem, draggedAssetSet, dropTargetId, clipboard, isMultiSelectMode, expandedGroups,
         expandedAssetSets, setExpandedAssetSets, assetSetReveal, assetSetNaming, rootAssetSets, memberAssetIds,
-        handleItemSelect, publishRowOrder, handleAssetClick, handleGroupFocus, showContextMenu,
+        handleItemSelect, publishRowOrder, handleAssetClick, handleAssetOpen, handleGroupFocus, showContextMenu,
         handleAssetSetSelect, showAssetSetContextMenu, showAssetSetValueContextMenu,
         handleDragStart, handleAssetSetDragStart, handleDragEnd, handleDragOverItem, handleDropOnItem, handleImportToGroup,
         setExpandedGroups,

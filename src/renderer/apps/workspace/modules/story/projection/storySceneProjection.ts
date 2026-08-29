@@ -404,8 +404,30 @@ function formatCondition(
     if (condition.kind === "blueprint") {
         return "<graph condition>";
     }
-    return `${describeVariableRef(condition.target, scene, document, variableNames)} ${condition.operator}${condition.value !== undefined ? ` ${String(condition.value)}` : ""}`;
+    const name = describeVariableRef(condition.target, scene, document, variableNames);
+    const comparison = CONDITION_OPERATOR_SYMBOLS[condition.operator];
+    if (comparison) {
+        return `${name} ${comparison} ${formatStoryLiteral(condition.value ?? null)}`;
+    }
+    return `${name} ${condition.operator}`;
 }
+
+/**
+ * How each comparing operator is spelled in a projected line and on a flow node.
+ *
+ * The expression symbols rather than the stored names: both surfaces sit next to conditions that ARE
+ * expressions, and a `/repeat until` printing `gold >= 100` on one row and `gold greaterOrEqual 100`
+ * on the next is one construct written two ways. The three that compare against nothing are absent
+ * and keep printing the operator as it is stored, which is what a flow node has always shown.
+ */
+const CONDITION_OPERATOR_SYMBOLS: Partial<Record<Extract<StoryConditionRef, { kind: "variable" }>["operator"], string>> = {
+    equals: "==",
+    notEquals: "!=",
+    greaterThan: ">",
+    greaterOrEqual: ">=",
+    lessThan: "<",
+    lessOrEqual: "<=",
+};
 
 /**
  * Render an assignment back as the command that would produce it - including the shorthand.

@@ -31,6 +31,15 @@ export interface OpenAssetPreviewTabsOptions {
     returnFocusToAssetsPanel?: { panelId: string; focusArea: FocusArea };
     /** Show properties sidebar after opening previews (assets panel click behavior). */
     showPropertiesPanel?: boolean;
+    /**
+     * Open as a preview tab - the one a pane holds at most one of, replaced by the next preview.
+     *
+     * For the ways in that are a look rather than a decision: one click in the assets panel, a
+     * search hit, a quick-open pick. Ignored when several assets are opened at once, since each
+     * would take the slot of the one before it and only the last would survive; a drop of five
+     * files is five tabs.
+     */
+    preview?: boolean;
 }
 
 /**
@@ -67,6 +76,8 @@ export function openAssetPreviewTabsInEditor(
             ? uiService.getStore().splitEditorGroupForDrop(groupId, splitInto.direction, splitInto.side) ?? groupId
             : groupId;
 
+    const preview = Boolean(options.preview) && previewable.length === 1;
+
     previewable.forEach((asset, index) => {
         const activate = index === previewable.length - 1;
         if (asset.type === AssetType.Image) {
@@ -77,6 +88,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: imageIcon(),
                     component: ImagePreviewEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.Image> },
                 },
                 targetGroupId,
@@ -90,6 +102,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: audioIcon(),
                     component: AudioPreviewEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.Audio> },
                 },
                 targetGroupId,
@@ -103,6 +116,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: videoIcon(),
                     component: VideoPreviewEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.Video> },
                 },
                 targetGroupId,
@@ -116,6 +130,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: fontIcon(),
                     component: FontPreviewEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.Font> },
                 },
                 targetGroupId,
@@ -129,6 +144,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: jsonIcon(),
                     component: JsonPreviewEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.JSON> },
                 },
                 targetGroupId,
@@ -142,6 +158,7 @@ export function openAssetPreviewTabsInEditor(
                     icon: textIcon(),
                     component: TextEditor,
                     closable: true,
+                    preview,
                     payload: { asset: asset as Asset<AssetType.Other> },
                 },
                 targetGroupId,

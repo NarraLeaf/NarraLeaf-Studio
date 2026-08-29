@@ -136,12 +136,12 @@ describe("recentProjectDisplayName", () => {
 describe("withRecentProjectNames", () => {
     it("fills in every missing name and leaves the rest of the record alone", () => {
         const repaired = withRecentProjectNames([
-            { name: "Kept", path: "/a/kept", openedAt: 2, icon: "icon.png" },
+            { name: "Kept", path: "/a/kept", openedAt: 2, securityScopedBookmark: "bookmark" },
             { path: "/a/derived", openedAt: 1 } as never,
         ]);
 
         expect(repaired.map(project => project.name)).toEqual(["Kept", "derived"]);
-        expect(repaired[0].icon).toBe("icon.png");
+        expect(repaired[0].securityScopedBookmark).toBe("bookmark");
         expect(repaired[1].openedAt).toBe(1);
     });
 

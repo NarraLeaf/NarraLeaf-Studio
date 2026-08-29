@@ -42,6 +42,8 @@ vi.mock("../../hooks/useRecentProjects", () => ({
         { name: "Here", path: "D:/games/here", lastOpened: 0 },
     ],
     useOpenRecentProject: () => recents.openRecent,
+    // Decoration: neither project here ships a logo, so every row draws its folder glyph.
+    useRecentProjectIcons: () => new Map<string, string>(),
 }));
 
 const bridge = vi.hoisted(() => ({
