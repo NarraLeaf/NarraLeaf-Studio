@@ -127,6 +127,8 @@ export interface EditorTab<TPayload = any> {
     modified?: boolean;
     badge?: string | number;
     payload?: TPayload; // Payload data for the editor
+    /** Opened to be looked at; replaced by the next preview in its group. See `EditorTabDefinition`. */
+    preview?: boolean;
 }
 
 /**
