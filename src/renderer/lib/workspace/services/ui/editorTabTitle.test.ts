@@ -50,10 +50,9 @@ describe("syncEditorTabTitle", () => {
     });
 
     /**
-     * The reason this helper exists at all: `EditorService.update` writes the flat legacy
-     * `editorTabs` list, which nothing has populated since tabs moved into layout groups - so a tab
-     * dragged into a second pane has to be found by walking the layout, not by assuming the active
-     * group.
+     * The reason this helper takes a tab id and no group: the editor reporting a rename knows which
+     * tab it is and nothing else, so a tab dragged into a second pane has to be found by walking the
+     * layout rather than by assuming the active group.
      */
     it("re-titles a tab that lives in a split group", () => {
         const store = new UIStore();

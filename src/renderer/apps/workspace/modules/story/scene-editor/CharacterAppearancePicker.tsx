@@ -121,15 +121,32 @@ export function CharacterAppearancePicker(props: {
     );
 }
 
-/** The whole stack under the row's selection, composited. */
+/**
+ * The whole stack under the row's selection, composited.
+ *
+ * Sized to be looked at. It used to be 56px wide, which is enough to confirm that a picture exists
+ * and not enough to answer the question it is here for - whether this combination of tags reads as a
+ * character. A sprite is a portrait, so the area has to come from height as much as width.
+ *
+ * A share of the column rather than a fixed block or the whole width: the tag rows beside it are the
+ * control, and they keep the room their words need. The bounds are what stop the share from becoming
+ * either - `min-w` so a narrow panel still shows a face, `max-w` so a wide one does not hand the
+ * sprite the whole rail.
+ */
+const STACK_PREVIEW_PX = 320;
+
 function StackThumb(props: { character: Character; tags: StoryCharacterTagSelection | undefined }) {
-    const { url } = useCompositedSprite(props.character, { tags: props.tags }, 160);
+    const { url } = useCompositedSprite(props.character, { tags: props.tags }, STACK_PREVIEW_PX);
+    // `self-start` so it keeps this shape: the row is a flex box and a stretched child would grow to
+    // the height of the tag list beside it, which on a character with twenty expressions is a column
+    // of empty space with a small picture in the middle of it.
+    const box = "aspect-[2/3] w-[40%] min-w-28 max-w-44 shrink-0 self-start rounded-md";
     if (!url) {
         return (
-            <div className="grid h-20 w-14 shrink-0 place-items-center rounded-md bg-fill text-fg-subtle">
+            <div className={`grid place-items-center bg-fill text-fg-subtle ${box}`}>
                 <ImageOff className="h-4 w-4" />
             </div>
         );
     }
-    return <img src={url} alt="" draggable={false} className="h-20 w-14 shrink-0 rounded-md object-contain" />;
+    return <img src={url} alt="" draggable={false} className={`bg-fill object-contain ${box}`} />;
 }
