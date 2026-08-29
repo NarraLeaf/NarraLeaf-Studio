@@ -130,6 +130,7 @@ import {
 } from "@/lib/ui-editor/runtime/game/storyStageSnapshot";
 import { createPuppetStageHandle, loadPuppetBackends } from "@/lib/ui-editor/runtime/game/puppetBackendHost";
 import { listStoryEndings, savedVariableDefs, sceneVariableDefs, storyPersistentDefs } from "@shared/types/story";
+import type { StoryLiteralValue } from "@shared/types/story";
 import { resolveStagePreloadTarget } from "@/lib/ui-editor/runtime/game/resolveDefaultLaunchScene";
 import { NlrStageLayer, type NlrStageSession } from "@/lib/ui-editor/runtime/game/NlrStageLayer";
 import { RuntimePluginOverlayLayer } from "@/lib/ui-editor/runtime/plugins/RuntimePluginOverlayLayer";
@@ -2881,6 +2882,22 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Row-precise launch ("play from here"): compute the settled stage at the target row and hand
         // the compiler a launch spec, so the entry scene pre-poses there and plays the real story on.
         const startBlockId = request.startBlockId?.trim() || undefined;
+        const snapshotId = request.snapshotId?.trim() || undefined;
+        const scene = storyDocument.scenes[sceneId];
+        // The selected Scene Snapshot's persistent overrides go in FIRST, because the stage walk
+        // below reads the same store to decide which arm of a persistent condition the scene took.
+        // Written after it, they would settle the story the author is about to play while the stage
+        // in front of them was posed down the branch they did not choose.
+        const overrides = snapshotId
+            ? scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values
+            : undefined;
+        if (startBlockId && overrides) {
+            for (const [refKey, value] of Object.entries(overrides)) {
+                if (refKey.startsWith("persistent:")) {
+                    core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
+                }
+            }
+        }
         const launch = startBlockId
             ? {
                 targetBlockId: startBlockId,
@@ -2893,33 +2910,34 @@ export function GameApp(props: GameAppProps): ReactNode {
                     // "play from here" launch would enter with every registry-backed saved variable at
                     // nothing and every `/set` on one silently dropped.
                     savedVariables: bundle.ui.savedVariables,
+                    // The persistent half of the same argument, plus the store to read it from. A
+                    // persistent variable is the one scope the walk cannot reconstruct - it outlives
+                    // the run - and Dev Mode has the profile that holds it, so the pre-pose and the
+                    // tail decide every persistent condition from one value instead of two.
+                    persistentVariables: bundle.ui.persistentVariables,
+                    ...(core
+                        ? { readPersistent: (key: string) => core.scopeBridge.persistenceGet(key) as StoryLiteralValue | null | undefined }
+                        : {}),
                 }),
             }
             : undefined;
-        // Overlay the selected Scene Snapshot's variable overrides: scene/saved values feed the
-        // pre-pose seeds; persistent values seed the host bridge (the compiled story reads them live).
-        const snapshotId = request.snapshotId?.trim() || undefined;
-        if (launch && snapshotId) {
-            const scene = storyDocument.scenes[sceneId];
-            const overrides = scene?.sceneSnapshots?.find(entry => entry.id === snapshotId)?.values;
-            if (overrides) {
-                const sceneDefs = scene ? sceneVariableDefs(scene) : {};
-                // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
-                // since `saved` became a registry scope that id may belong to a registry entry rather
-                // than to a `/save` row - reading only the document would drop those overrides.
-                const savedDefs = savedVariableDefsFromView(
-                    collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
-                );
-                for (const [refKey, value] of Object.entries(overrides)) {
-                    if (refKey.startsWith("scene:")) {
-                        const def = sceneDefs[refKey.slice("scene:".length)];
-                        if (def) launch.snapshot.sceneVariables[def.storageKey] = value;
-                    } else if (refKey.startsWith("saved:")) {
-                        const def = savedDefs[refKey.slice("saved:".length)];
-                        if (def) launch.snapshot.savedVariables[def.storageKey] = value;
-                    } else if (refKey.startsWith("persistent:")) {
-                        core?.scopeBridge.persistenceSet(refKey.slice("persistent:".length), value);
-                    }
+        // The rest of the overlay: scene/saved values feed the pre-pose seeds (the persistent ones
+        // are already in the store above, and the compiled story reads them live).
+        if (launch && overrides) {
+            const sceneDefs = scene ? sceneVariableDefs(scene) : {};
+            // Merged, not `savedVariableDefs` alone: an override key is `saved:<variableId>`, and
+            // since `saved` became a registry scope that id may belong to a registry entry rather
+            // than to a `/save` row - reading only the document would drop those overrides.
+            const savedDefs = savedVariableDefsFromView(
+                collectSavedVariableView(storyDocument, bundle.ui.savedVariables),
+            );
+            for (const [refKey, value] of Object.entries(overrides)) {
+                if (refKey.startsWith("scene:")) {
+                    const def = sceneDefs[refKey.slice("scene:".length)];
+                    if (def) launch.snapshot.sceneVariables[def.storageKey] = value;
+                } else if (refKey.startsWith("saved:")) {
+                    const def = savedDefs[refKey.slice("saved:".length)];
+                    if (def) launch.snapshot.savedVariables[def.storageKey] = value;
                 }
             }
         }

@@ -15,7 +15,13 @@ export interface UseAssetFocusParams {
 export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusParams) {
     const [focusedItemId, setFocusedItemId] = useState<string | null>(null);
 
-    const handleAssetClick = useCallback((asset: Asset, isMultiSelectMode: boolean) => {
+    /**
+     * Show an asset, as the pane's preview or as a tab of its own.
+     *
+     * Clicking down a folder of images is the case the preview tab is for: each look replaces the
+     * one before it, and a double click on the row is how the author says to keep one.
+     */
+    const showAsset = useCallback((asset: Asset, isMultiSelectMode: boolean, preview: boolean) => {
         if (!context) return;
 
         const uiService = context.services.get<UIService>(Services.UI);
@@ -27,9 +33,20 @@ export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusPara
             openAssetPreviewTabsInEditor(context, [asset], {
                 returnFocusToAssetsPanel: { panelId, focusArea },
                 showPropertiesPanel: true,
+                preview,
             });
         }
     }, [context, panelId, focusArea]);
+
+    const handleAssetClick = useCallback(
+        (asset: Asset, isMultiSelectMode: boolean) => showAsset(asset, isMultiSelectMode, true),
+        [showAsset],
+    );
+
+    const handleAssetOpen = useCallback(
+        (asset: Asset) => showAsset(asset, false, false),
+        [showAsset],
+    );
 
     const handleGroupFocus = useCallback((groupId: string) => {
         if (!context) return;
@@ -51,6 +68,7 @@ export function useAssetFocus({ context, panelId, focusArea }: UseAssetFocusPara
         focusedItemId,
         setFocusedItemId,
         handleAssetClick,
+        handleAssetOpen,
         handleGroupFocus,
         setFocusToPanel
     };

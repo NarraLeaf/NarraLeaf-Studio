@@ -2,9 +2,24 @@
 export type RecentlyOpenedProject = {
     name: string;
     path: string;
-    icon?: string;
     openedAt: number;
     securityScopedBookmark?: string;
+};
+
+/**
+ * One remembered project's own app icon, ready to draw.
+ *
+ * Not part of the record above, and deliberately: the history is persisted global state, rewritten
+ * whenever a project is opened and broadcast to every window, so carrying a few hundred kilobytes
+ * of base64 per project in it would make each of those writes expensive - and would still be
+ * showing the logo the project had the last time it was opened. The main process reads the
+ * project's `metadata.icons` instead, on demand (see `readProjectLogo`).
+ */
+export type RecentProjectIcon = {
+    /** The project path, spelled exactly as the history holds it. */
+    path: string;
+    /** A `data:` URL. Projects with no drawable icon are absent rather than listed with an empty one. */
+    icon: string;
 };
 
 /**

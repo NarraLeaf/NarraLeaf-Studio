@@ -458,6 +458,7 @@ export const storyInspector = {
         none: "无资产",
         clear: "清除资产",
         selectTitle: "选择{label}",
+        change: "更换",
     },
     displayableEffect: {
         maskImage: "遮罩图片",

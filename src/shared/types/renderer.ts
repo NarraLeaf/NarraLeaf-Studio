@@ -22,7 +22,7 @@ import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateValue } from "./state/globalState";
 import { GlobalStateKeys } from "./state/globalState";
-import type { MissingRecentProject } from "./state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -480,6 +480,8 @@ export interface RendererPreloadedInterface {
         revealRecentProject(path: string): Promise<RequestStatus<void>>;
         /** Which remembered projects are no longer on disk. Reports only; removes nothing. */
         checkRecentProjects(): Promise<RequestStatus<{ missing: MissingRecentProject[] }>>;
+        /** Each remembered project's own app icon as a `data:` URL. Projects without one are absent. */
+        recentProjectIcons(): Promise<RequestStatus<{ icons: RecentProjectIcon[] }>>;
         getSystemPath(name: "desktop" | "home"): Promise<RequestStatus<{ path: string }>>;
         /**
          * Write a support bundle - `report` plus the environment header and the main-process log
