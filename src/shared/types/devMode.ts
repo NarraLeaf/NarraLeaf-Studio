@@ -3,6 +3,7 @@ import type { BlueprintDocument, SharedBlueprintAsset } from "./blueprint/docume
 import type { BrandColor } from "./brand";
 import type { WindowConfiguration } from "./appWindow";
 import type { DialogueConfiguration } from "./dialogue";
+import type { PreloadConfiguration } from "./preload";
 import type { ProjectFontEntry } from "./typography";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "./variables/registry";
 import type { GameLocalizationBundle, LanguageChangeConfiguration } from "./localization";
@@ -375,6 +376,12 @@ export type DevModeBundle = {
      * predate the section, which every consumer reads as the engine's own values.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * How much of the opening scene has to be warm before the game is shown, baked from `.nlproj`
+     * `app.preload`. Absent on bundles that predate the section, which every consumer reads as the
+     * engine's own default.
+     */
+    preload?: PreloadConfiguration;
     /**
      * What the shipped game's window may do, baked from `.nlproj` `app.window`.
      *

@@ -203,6 +203,19 @@ export type GameAppHost = {
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
     /**
+     * Get whatever {@link GameAppHost.resolveStoryAssetUrl} needs ready before a compile asks it
+     * about a thousand assets one after another.
+     *
+     * A compile resolves as it walks the script, so every asset costs a full round trip to whatever
+     * answers for it before the next one is sent. A host whose resolver is a local lookup (the
+     * packaged game reads its own pack) has nothing to prepare and omits this; a host that has to
+     * ask another window implements it and pays for the whole library once.
+     *
+     * Awaited by the compile and expected to be idempotent: a caller that asks twice for the same
+     * bundle gets the same promise back rather than a second pass.
+     */
+    prewarmStoryAssetUrls?: () => Promise<void>;
+    /**
      * The clip a weather seed describes, produced if it does not exist yet.
      *
      * Optional, and its absence is a real state rather than an oversight: a host that cannot produce

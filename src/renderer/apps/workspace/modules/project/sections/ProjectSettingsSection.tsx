@@ -35,6 +35,8 @@ import {
     MOBILE_VIEWPORT_FITS,
     normalizeCrashConfiguration,
     normalizeMobileConfiguration,
+    normalizePreloadConfiguration,
+    PRELOAD_BEHAVIORS,
     normalizeNetworkConfiguration,
     normalizeSecurityConfiguration,
     readAssetCompressionConfiguration,
@@ -54,6 +56,8 @@ import {
     type MobileOrientation,
     type MobileViewportFit,
     type CrashConfiguration,
+    type PreloadBehavior,
+    type PreloadConfiguration,
     type NetworkConfiguration,
     type SecurityConfiguration,
     type AssetCompressionConfiguration,
@@ -76,7 +80,9 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         () => readAssetCompressionConfiguration(config.app),
     );
     const [crash, setCrash] = useState<CrashConfiguration>(() => normalizeCrashConfiguration(config.app?.crash));
+    const [preload, setPreload] = useState<PreloadConfiguration>(() => normalizePreloadConfiguration(config.app?.preload));
     const [savingCrash, setSavingCrash] = useState(false);
+    const [savingPreload, setSavingPreload] = useState(false);
     const [savingPolicy, setSavingPolicy] = useState(false);
     const [pluginNetwork, setPluginNetwork] = useState<readonly NetworkPluginAllowlistEntry[]>([]);
     const [savingEncrypt, setSavingEncrypt] = useState(false);
@@ -162,6 +168,25 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
             setSavingCrash(false);
         }
     }, [crash, onConfigChange, projectService, savingCrash, uiService]);
+
+    const setPreloadBehavior = useCallback(async (next: string | number) => {
+        if (savingPreload) {
+            return;
+        }
+        const previous = preload;
+        setSavingPreload(true);
+        setPreload(normalizePreloadConfiguration({ behavior: next }));
+        try {
+            const updated = await projectService.updatePreloadConfiguration({ behavior: next as PreloadBehavior });
+            setPreload(normalizePreloadConfiguration(updated.app?.preload));
+            onConfigChange(updated);
+        } catch (error) {
+            setPreload(previous);
+            uiService?.showNotification(error instanceof Error ? error.message : String(error), "error");
+        } finally {
+            setSavingPreload(false);
+        }
+    }, [onConfigChange, preload, projectService, savingPreload, uiService]);
 
     const setEncryptAssets = useCallback(async (next: boolean) => {
         if (savingEncrypt) {
@@ -273,6 +298,19 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
         () => MOBILE_CROP_ANCHORS_X.map(value => ({
             value,
             label: t(`project.settings.cropAnchorX.${value}`),
+        })),
+        [t],
+    );
+
+    const preloadBehaviorOptions: SelectOption[] = useMemo(
+        () => PRELOAD_BEHAVIORS.map(value => ({
+            value,
+            label: t(`project.settings.preloadBehavior.${value}` as TranslationKey),
+            // Only the position an author is being steered away from carries one, which is what
+            // makes it read as guidance rather than as a second column of labels.
+            ...(value === "blocking"
+                ? { secondaryLabel: t("project.settings.preloadBehaviorNote.blocking") }
+                : {}),
         })),
         [t],
     );
@@ -615,6 +653,24 @@ export function ProjectSettingsSection(props: ProjectSectionProps) {
                 </SettingShell>
                     </>
                 )}
+            </SettingsGroup>
+
+            {/* Beside Crashes rather than with the compression groups above: both are about what a
+                player meets while the game is running, and neither changes what the package holds. */}
+            <SettingsGroup title={t("project.group.loading")}>
+                <SettingShell
+                    title={t("project.settings.preloadBehaviorTitle")}
+                    description={t(`project.settings.preloadBehaviorDetail.${preload.behavior}` as TranslationKey)}
+                    tooltip={freeze.writes(savingPreload)["data-tip"]}
+                >
+                    <Select
+                        options={preloadBehaviorOptions}
+                        value={preload.behavior}
+                        disabled={freeze.writes(savingPreload).disabled}
+                        onChange={value => void setPreloadBehavior(value)}
+                        ariaLabel={t("project.settings.preloadBehaviorTitle")}
+                    />
+                </SettingShell>
             </SettingsGroup>
 
             {/* The one part of this page a player can end up looking at, so it gets a heading of

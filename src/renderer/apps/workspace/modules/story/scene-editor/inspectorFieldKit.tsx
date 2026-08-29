@@ -164,7 +164,13 @@ export function SegToggle<T extends string>(props: { value: T; options: { value:
  * `min-h-[34px]` of its own: off the shared size scale, and bottom-aligned against neighbours that
  * are top-aligned, so the one boolean in a grid of fields read as a control borrowed from elsewhere.
  */
-export function ToggleField(props: { label: string; checked: boolean; onChange: (checked: boolean) => void }) {
+export function ToggleField(props: {
+    label: string;
+    checked: boolean;
+    /** For a field the row's own other values have already answered. */
+    disabled?: boolean;
+    onChange: (checked: boolean) => void;
+}) {
     return (
         <div>
             <label className={FIELD_LABEL_CLASS}>{props.label}</label>
@@ -172,6 +178,7 @@ export function ToggleField(props: { label: string; checked: boolean; onChange: 
                 <Switch
                     size="sm"
                     checked={props.checked}
+                    disabled={props.disabled}
                     onCheckedChange={props.onChange}
                     aria-label={props.label}
                 />

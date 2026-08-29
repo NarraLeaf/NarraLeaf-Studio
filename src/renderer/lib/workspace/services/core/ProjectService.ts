@@ -24,6 +24,7 @@ import {
     SigningConfiguration,
     VoiceConfiguration,
     AssetCompressionConfiguration,
+    PreloadConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
@@ -35,6 +36,7 @@ import {
     normalizeNetworkConfiguration,
     normalizePatchConfiguration,
     normalizePlayerPreferences,
+    normalizePreloadConfiguration,
     normalizeSaveCompatibilityConfiguration,
     normalizeSaveLocationConfiguration,
     normalizeSecurityConfiguration,
@@ -641,6 +643,28 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 dialogue,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Merge a partial patch into the preload behavior. Written by the project Settings page and
+     * baked into the bundle the game app configures the engine from at boot.
+     */
+    public async updatePreloadConfiguration(patch: Partial<PreloadConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const preload = normalizePreloadConfiguration({
+                ...normalizePreloadConfiguration(config.app?.preload),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                preload,
             };
             return {
                 ...config,

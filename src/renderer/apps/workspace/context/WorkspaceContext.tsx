@@ -9,7 +9,7 @@ import { freezeProjectWrites } from "@/lib/app/writeFreeze";
 import { reportWorkspaceAnomaly } from "@/lib/workspace/recovery/anomalyLog";
 import { startRecoveryShell } from "@/lib/workspace/recovery/recoveryShell";
 import { Workspace } from "@/lib/workspace/workspace";
-import { createWorkspaceAssetUrlResolver } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
+import { createWorkspaceAssetUrlResolver, resolveAllWorkspaceAssetUrls } from "@/lib/workspace/assets/resolveWorkspaceAssetUrl";
 import { Services, WorkspaceContext as WorkspaceCtx } from "@/lib/workspace/services/services";
 import { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { UIService } from "@/lib/workspace/services/core/UIService";
@@ -324,9 +324,19 @@ export function WorkspaceProvider({ children }: WorkspaceProviderProps) {
 
         const assetToken = getInterface().workspace.onResolveAssetUrl(handler);
         const imageToken = getInterface().workspace.onResolveImageAssetUrl(handler);
+        // The whole library in one request. Dev Mode compiles a story by walking it and resolving as
+        // it goes, so one asset at a time meant one three-hop wait at a time.
+        const allToken = getInterface().workspace.onResolveAllAssetUrls(async () => {
+            try {
+                return { success: true, data: { urls: await resolveAllWorkspaceAssetUrls(context) } };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : String(error) };
+            }
+        });
         return () => {
             assetToken.cancel();
             imageToken.cancel();
+            allToken.cancel();
         };
     }, [context]);
 

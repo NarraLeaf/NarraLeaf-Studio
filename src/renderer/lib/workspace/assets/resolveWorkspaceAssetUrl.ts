@@ -100,6 +100,49 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
 }
 
 /**
+ * Resolve every asset in the project at once, keyed by asset id.
+ *
+ * Same resolution as {@link createWorkspaceAssetUrlResolver} - it IS that resolver, called for each
+ * asset - so there is no second answer that can drift from the first. What it adds is that the
+ * thousand round trips a story compile used to make happen concurrently and in one request instead
+ * of one at a time: the compiler resolves as it walks, so each of those was a full three-hop wait
+ * before the next was sent, and on a medium project that was most of a Dev Mode launch.
+ *
+ * Assets that cannot be resolved are left out rather than reported. The caller falls back to the
+ * single-asset path for anything missing, which is also where synthetic ids (a baked character
+ * avatar) are answered - those are not library assets and are not in this map.
+ *
+ * Concurrency is bounded because each resolution reads a file to mint its grant, and a project with
+ * a few thousand assets would otherwise open that many handles at once.
+ */
+export async function resolveAllWorkspaceAssetUrls(
+    context: WorkspaceContext,
+    concurrency = 32,
+): Promise<Record<string, string>> {
+    const assetsService = context.services.get<AssetsService>(Services.Assets);
+    const resolve = createWorkspaceAssetUrlResolver(context);
+    const entries: { id: string; type: AssetType }[] = [];
+    for (const [type, bucket] of Object.entries(assetsService.getAssets())) {
+        for (const asset of Object.values(bucket ?? {})) {
+            entries.push({ id: asset.id, type: type as AssetType });
+        }
+    }
+    const urls: Record<string, string> = {};
+    let index = 0;
+    await Promise.all(Array.from({ length: Math.max(1, concurrency) }, async () => {
+        while (index < entries.length) {
+            const entry = entries[index];
+            index += 1;
+            const result = await resolve(entry.id, entry.type).catch(() => null);
+            if (result?.success) {
+                urls[entry.id] = result.url;
+            }
+        }
+    }));
+    return urls;
+}
+
+/**
  * The member an asset set resolves to for the language the editor is previewing in.
  *
  * The project's source language, which is the one an author writes and previews in; a preview of
