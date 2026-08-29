@@ -112,8 +112,16 @@ export function createWorkspaceAssetUrlResolver(context: WorkspaceContext): Work
  * single-asset path for anything missing, which is also where synthetic ids (a baked character
  * avatar) are answered - those are not library assets and are not in this map.
  *
- * Concurrency is bounded because each resolution reads a file to mint its grant, and a project with
- * a few thousand assets would otherwise open that many handles at once.
+ * Almost all of it is one round trip. Every ordinary asset resolves to a read grant over its own
+ * content shard, and asking for those one at a time - even thirty-two at a time - is a thousand
+ * waits on the wire: MEASURED at 2.0s of a 4.4s Dev Mode boot on a 954-asset project, against
+ * about 90ms of actual filesystem work. `requestReadManyRaw` mints them together.
+ *
+ * The stragglers - a model bundle, whose grant is over a directory, and anything an asset set
+ * resolves to something that is not a plain shard - still go one at a time through the resolver
+ * itself, with the concurrency bounded because each of those does read a file to mint its grant.
+ * So does the whole library if the batch fails: this is a faster way to ask, never a second answer
+ * that could differ from the resolver's.
  */
 export async function resolveAllWorkspaceAssetUrls(
     context: WorkspaceContext,
@@ -127,11 +135,52 @@ export async function resolveAllWorkspaceAssetUrls(
             entries.push({ id: asset.id, type: type as AssetType });
         }
     }
+    // Everything whose grant is a plain file read of its own content shard, which is every asset
+    // but a model bundle (a directory grant) and anything a set resolves to something else.
+    // Those go one at a time below, and there are a handful of them against a library of
+    // thousands.
+    const batched: { id: string; resolvedId: string; type: AssetType; path: string }[] = [];
+    const individual: { id: string; type: AssetType }[] = [];
+    for (const entry of entries) {
+        const resolvedId = resolveEditorAssetSetMember(context, entry.id) ?? entry.id;
+        const asset = findAsset(assetsService, resolvedId, entry.type);
+        if (!asset || asset.type === AssetType.Model || characterAvatarProjectPath(resolvedId)) {
+            individual.push(entry);
+            continue;
+        }
+        batched.push({ id: entry.id, resolvedId, type: entry.type, path: context.project.resolve(ProjectNameConvention.AssetsDataShard(resolvedId)) });
+    }
+
     const urls: Record<string, string> = {};
+    if (batched.length > 0) {
+        const granted = await appPrivilegedFacade.fs
+            .requestReadManyRaw(batched.map(entry => entry.path))
+            .catch(() => null);
+        if (granted?.success && granted.data?.ok) {
+            granted.data.data.forEach((token, at) => {
+                const entry = batched[at];
+                if (!token || !entry) {
+                    return;
+                }
+                // Same bookkeeping the single-asset path does, and for the same reason: a token
+                // carries nothing about the file it opens, so this is the only moment the pair is
+                // known. Against the id whose FILE this is, which for a set member is the member
+                // rather than the set - the same id the resolver would have written down. The map
+                // is keyed by what the caller asked for, which is the other one.
+                recordAssetUrlToken(token, entry.resolvedId);
+                urls[entry.id] = `${AppProtocol}://${AppHost.Fs}/${token}`;
+            });
+        } else {
+            // The batch is an optimisation over the resolver, never a second answer: if it could
+            // not be had, ask for them one at a time exactly as this used to.
+            individual.push(...batched.map(entry => ({ id: entry.id, type: entry.type })));
+        }
+    }
+
     let index = 0;
-    await Promise.all(Array.from({ length: Math.max(1, concurrency) }, async () => {
-        while (index < entries.length) {
-            const entry = entries[index];
+    await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, individual.length)) }, async () => {
+        while (index < individual.length) {
+            const entry = individual[index];
             index += 1;
             const result = await resolve(entry.id, entry.type).catch(() => null);
             if (result?.success) {

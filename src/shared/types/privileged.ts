@@ -27,6 +27,19 @@ export type PrivilegedFileSystemCall =
     | { operation: "details"; path: string }
     | { operation: "requestRead"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestRead"; path: string; raw: true }
+    /**
+     * One read grant per path, minted in a single round trip.
+     *
+     * Every path is authorized individually, exactly as a `requestRead` for it alone would be,
+     * and a path that is denied or missing comes back as `null` rather than refusing the
+     * batch: unlike a write grant there is nothing shared between the answers, so a caller
+     * resolving a library of assets wants the ones that worked.
+     *
+     * What it saves is the round trips. Resolving a project's assets asked for one grant at a
+     * time, and on a 954-asset project that was 2.0s of a 4.4s Dev Mode boot spent almost
+     * entirely on the wire rather than on the disk.
+     */
+    | { operation: "requestReadMany"; paths: string[]; raw: true }
     | { operation: "requestWrite"; path: string; raw: false; encoding: FsTextEncoding }
     | { operation: "requestWrite"; path: string; raw: true }
     /**
@@ -85,6 +98,8 @@ export type PrivilegedFileSystemCallResult =
     | FsRequestResult<FileDetails>
     | FsRequestResult<string>
     | FsRequestResult<string[]>
+    /** requestReadMany: one grant per requested path, null where that path could not be granted. */
+    | FsRequestResult<(string | null)[]>
     /** selectSaveFile: the chosen path, or null when the dialog was cancelled. */
     | FsRequestResult<string | null>
     | FsRequestResult<void>
