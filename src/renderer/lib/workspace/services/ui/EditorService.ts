@@ -31,6 +31,16 @@ export class EditorService {
     }
 
     /**
+     * Turn a preview tab into an ordinary one, and answer whether it was a preview.
+     *
+     * What an editor calls when the author starts working in it - see `UIStore.promoteEditorTab`
+     * for the rest of the rule. Safe to call on any tab: an ordinary one answers false.
+     */
+    public promote(tabId: string, groupId?: string): boolean {
+        return this.store.promoteEditorTab(tabId, groupId);
+    }
+
+    /**
      * Close an editor tab
      */
     public close(tabId: string): void {

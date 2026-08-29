@@ -251,13 +251,11 @@ export class NotificationService {
             read: false,
         });
 
-        // Auto-dismiss if timeout is set
-        if (notification.timeout && notification.timeout > 0) {
-            setTimeout(() => {
-                this.close(id);
-            }, notification.timeout);
-        }
-
+        // `timeout` is a duration on screen, and only the view knows when that starts. The toast
+        // stack shows as many cards as the corner of the window holds and queues the rest, so a
+        // notification raised during a burst may not be visible for some seconds - counted from
+        // here, it would expire before anyone saw it. The container runs the countdown instead,
+        // starting it when the card is presented and pausing it while the card is being read.
         return id;
     }
 

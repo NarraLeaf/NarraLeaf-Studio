@@ -10,6 +10,7 @@ import { electronBuilderCacheRoot } from "../storage/cacheInventory";
 import type { DevModeConsoleLogPayload } from "@shared/types/devMode";
 import type { GameRuntimeLaunchEntry } from "@shared/types/gameRuntime";
 import {
+    assetCompressionDidSomething,
     currentGameBuildPlatform,
     deriveAndroidVersionCode,
     deriveGameAppId,
@@ -25,6 +26,8 @@ import {
     normalizeIosBundleId,
     webExportDirName,
     webExportZipName,
+    type AssetCompressionReport,
+    type AssetCompressionTrackReport,
     type BuildPreflightFinding,
     type GameBuildDesktopPlatform,
     type GameBuildFormat,
@@ -83,7 +86,7 @@ import {
 } from "./preflight";
 import { formatArtifactSizeReport, measureBuildArtifacts } from "./artifactSize";
 import { readLastGameBuildRun, writeLastGameBuildRun } from "./lastRunRecord";
-import { optimizeProjectImages, type AssetImageOptimizationResult } from "./optimizeAssetImages";
+import { optimizeProjectImages } from "./optimizeAssetImages";
 import { compressProjectMedia } from "./compressAssetMedia";
 import { openWebImageCodec } from "./webImageCodec";
 import { findMacSigningIdentities, macIdentityPresent } from "./macSigningIdentity";
@@ -197,6 +200,29 @@ type BuildSession = {
      * answer replaces the first rather than being merged with it.
      */
     assetReport: ShippedAssetReport | null;
+    /**
+     * What the two asset passes came to, held until the run finishes so the published snapshot can
+     * carry it. Null until they have run, which is every run that failed before them.
+     */
+    assetCompression: AssetCompressionReport | null;
+};
+
+/**
+ * One asset pass's product: the files a compile copies in place of the author's, and the figures
+ * the report states about them.
+ */
+type AssetPassOutcome = {
+    files: Record<string, OptimizedAssetFile>;
+    track: AssetCompressionTrackReport;
+};
+
+/** A pass that did nothing and a pass that could not run have the same figures to state. */
+const NO_ASSET_COMPRESSION: AssetCompressionTrackReport = {
+    stripped: 0,
+    metadataBytes: 0,
+    compressed: 0,
+    beforeBytes: 0,
+    afterBytes: 0,
 };
 
 const DEFAULT_OUTPUT_DIR_NAME = "dist";
@@ -905,6 +931,7 @@ export class GameBuildManager {
             kind: "build",
             appTagName: "",
             assetReport: null,
+            assetCompression: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -983,6 +1010,7 @@ export class GameBuildManager {
             kind: "patch",
             appTagName: "",
             assetReport: null,
+            assetCompression: null,
         };
         this.sessions.set(key, session);
         const frozen = getWorkspaceFreeze(normalizedProjectPath);
@@ -1211,6 +1239,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+            ...(session.assetCompression ? { assetCompression: session.assetCompression } : {}),
         });
         const folder = dlc ? dlcDirectoryName(process.platform) : PATCH_DIRECTORY_NAME;
         this.emit(session, {
@@ -1537,8 +1566,9 @@ export class GameBuildManager {
             return { compiler, workDir, archiveDir: codecArchiveDir() };
         } catch (error) {
             throw new Error(
-                `${reason} needs a C toolchain to compile this title's content codec, and one could `
-                + `not be obtained: ${error instanceof Error ? error.message : String(error)}`,
+                `${reason} could not compile this title's content codec: `
+                + `${error instanceof Error ? error.message : String(error)}. `
+                + "Install a C toolchain and build again, or turn it off.",
             );
         }
     }
@@ -2147,6 +2177,7 @@ export class GameBuildManager {
             artifactSizes,
             outputDir,
             ...(session.assetReport ? { assetReport: session.assetReport } : {}),
+            ...(session.assetCompression ? { assetCompression: session.assetCompression } : {}),
         });
         this.emit(session, {
             level: "success",
@@ -3267,7 +3298,12 @@ export class GameBuildManager {
         //
         // Cleared here rather than by either pass, because what follows them is the compile.
         this.reportProgress(session, null);
-        return { ...images, ...media };
+        const compression: AssetCompressionReport = { images: images.track, media: media.track };
+        // Recorded only when there is something to state. A project of PNGs an encoder cannot
+        // improve on gets a report page with no compression section, rather than one stating four
+        // zeroes and inviting an author to work out what went wrong.
+        session.assetCompression = assetCompressionDidSomething(compression) ? compression : null;
+        return { ...images.files, ...media.files };
     }
 
     /**
@@ -3282,7 +3318,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         config: AssetCompressionConfiguration,
-    ): Promise<Record<string, OptimizedAssetFile>> {
+    ): Promise<AssetPassOutcome> {
         try {
             const result = await compressProjectMedia({
                 projectPath,
@@ -3297,21 +3333,26 @@ export class GameBuildManager {
                 this.emit(session, {
                     level: "info",
                     source: "Build",
-                    message: `removed embedded metadata from ${result.stripped} media file(s), `
-                        + `saving ${formatByteSize(result.metadataBytes)}`,
+                    message: `processing metadata for ${result.stripped} media file(s)...`,
                 });
             }
             if (result.converted > 0) {
-                const saved = result.beforeBytes - result.afterBytes;
-                const percent = Math.round((saved / result.beforeBytes) * 100);
                 this.emit(session, {
                     level: "info",
                     source: "Build",
-                    message: `compressed ${result.converted} media file(s), `
-                        + `saving ${formatByteSize(saved)} (${percent}%)`,
+                    message: `running media compression on ${result.converted} file(s)...`,
                 });
             }
-            return result.media;
+            return {
+                files: result.media,
+                track: {
+                    stripped: result.stripped,
+                    metadataBytes: result.metadataBytes,
+                    compressed: result.converted,
+                    beforeBytes: result.beforeBytes,
+                    afterBytes: result.afterBytes,
+                },
+            };
         } catch (error) {
             this.emit(session, {
                 level: "warning",
@@ -3319,7 +3360,7 @@ export class GameBuildManager {
                 message: "could not compress the audio and video, so they ship as they are: "
                     + (error instanceof Error ? error.message : String(error)),
             });
-            return {};
+            return { files: {}, track: NO_ASSET_COMPRESSION };
         }
     }
 
@@ -3334,7 +3375,7 @@ export class GameBuildManager {
         session: BuildSession,
         projectPath: string,
         config: AssetCompressionConfiguration,
-    ): Promise<AssetImageOptimizationResult["images"]> {
+    ): Promise<AssetPassOutcome> {
         try {
             const result = await optimizeProjectImages({
                 projectPath,
@@ -3349,30 +3390,34 @@ export class GameBuildManager {
                 this.emit(session, {
                     level: "info",
                     source: "Build",
-                    message: `removed embedded metadata from ${result.stripped} image(s), `
-                        + `saving ${formatByteSize(result.metadataBytes)}`,
+                    message: `processing metadata for ${result.stripped} image(s)...`,
                 });
             }
-            if (result.converted === 0) {
-                return result.images;
+            if (result.converted > 0) {
+                this.emit(session, {
+                    level: "info",
+                    source: "Build",
+                    message: `running image compression on ${result.converted} image(s)...`,
+                });
             }
-            const saved = result.beforeBytes - result.afterBytes;
-            const percent = Math.round((saved / result.beforeBytes) * 100);
-            this.emit(session, {
-                level: "info",
-                source: "Build",
-                message: `${resolveImageCompression(config).enabled ? "recompressed" : "converted"} ${result.converted} image(s) to WebP, `
-                    + `saving ${formatByteSize(saved)} (${percent}%)`,
-            });
-            return result.images;
+            return {
+                files: result.images,
+                track: {
+                    stripped: result.stripped,
+                    metadataBytes: result.metadataBytes,
+                    compressed: result.converted,
+                    beforeBytes: result.beforeBytes,
+                    afterBytes: result.afterBytes,
+                },
+            };
         } catch (error) {
             this.emit(session, {
                 level: "warning",
                 source: "Build",
-                message: "could not optimize the images, so they ship as they are: "
+                message: "could not compress the images, so they ship as they are: "
                     + (error instanceof Error ? error.message : String(error)),
             });
-            return {};
+            return { files: {}, track: NO_ASSET_COMPRESSION };
         }
     }
 
@@ -3677,14 +3722,6 @@ async function fileExists(filePath: string): Promise<boolean> {
 
 function isActiveStatus(status: GameBuildStateSnapshot["status"]): boolean {
     return status === "preparing" || status === "compiling" || status === "packaging";
-}
-
-/** A saving, at the precision an author reading a build log cares about. */
-function formatByteSize(bytes: number): string {
-    if (bytes >= 1024 * 1024) {
-        return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-    }
-    return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 type GameBuildDesktopTarget = GameBuildTarget & { platform: GameBuildDesktopPlatform };

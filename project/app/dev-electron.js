@@ -365,8 +365,11 @@ function broadcastReload(target = 'all') {
         format: 'cjs',
         bundle: true,
         // @narraleaf/bindings and koffi both resolve their own binaries by path
-        // at runtime; keep this list in sync with build-main.js.
-        external: ['electron', '@narraleaf/bindings', 'koffi'],
+        // at runtime; 7zip-bin computes the path to its 7za executable from its
+        // own __dirname, so bundled it points at the bundle directory and the
+        // extractor the content codec's toolchain unpack needs is not there.
+        // Keep this list in sync with build-main.js.
+        external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
         sourcemap: true,
         target: ['node18'],
     }, () => {

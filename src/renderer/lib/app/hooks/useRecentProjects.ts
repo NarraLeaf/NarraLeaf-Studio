@@ -93,6 +93,63 @@ export function useRevealRecentProject(): (projectPath: string) => Promise<strin
 }
 
 /**
+ * Each remembered project's own app icon as a `data:` URL, keyed by normalized path.
+ *
+ * A project that ships a logo is drawn by it rather than by the two letters of its name, which is
+ * what every project used to get. Absent from the map means "no logo to draw" - a project that
+ * never set one, or one whose icon we could not read - and the surface falls back to the monogram.
+ *
+ * Resolved by the main process from each project's own `metadata.icons`, not carried in the
+ * history record: the logo is project content and changes without the history being touched, so a
+ * copy stored alongside the path would show the previous one until the project was opened again.
+ *
+ * Read again whenever the history changes - which is what puts an icon on a project the moment it
+ * is opened for the first time - and whenever this window is focused. The second one is what makes
+ * changing a logo visible: an author sets one in the workspace's Project panel and then looks at
+ * the title bar's switcher or the launcher, and neither of those is a new window, so without it
+ * they would keep showing the folder glyph until Studio was restarted.
+ */
+export function useRecentProjectIcons(): ReadonlyMap<string, string> {
+    const [icons, setIcons] = useState<ReadonlyMap<string, string>>(new Map());
+
+    useEffect(() => {
+        let cancelled = false;
+
+        const load = async () => {
+            try {
+                const result = await getInterface().app.recentProjectIcons();
+                if (!cancelled && result.success) {
+                    setIcons(new Map(result.data.icons.map(
+                        entry => [normalizeProjectPath(entry.path), entry.icon],
+                    )));
+                }
+            } catch (error) {
+                // Decoration only: the list is perfectly usable in monograms.
+                console.error("[recent] Failed to read recent project icons:", error);
+            }
+        };
+
+        const reload = () => void load();
+
+        reload();
+        window.addEventListener("focus", reload);
+        const token = getInterface().app.state.onGlobalStateChanged((change) => {
+            if (change.key === RECENT_PROJECTS_KEY) {
+                reload();
+            }
+        });
+
+        return () => {
+            cancelled = true;
+            window.removeEventListener("focus", reload);
+            token.cancel();
+        };
+    }, []);
+
+    return icons;
+}
+
+/**
  * Which remembered projects are not on disk, keyed by normalized path. Checked once, when the
  * surface using this mounts.
  *

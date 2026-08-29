@@ -90,6 +90,7 @@ function Harness({ onRender, library = [], assetTransfers = {} }: {
         handleItemSelect: () => undefined,
         publishRowOrder: () => undefined,
         handleAssetClick: () => undefined,
+        handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
         assetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),
