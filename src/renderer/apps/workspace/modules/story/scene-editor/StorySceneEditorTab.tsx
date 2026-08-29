@@ -921,10 +921,25 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         getItemKey: index => editor.visibleRows[index]?.block.id ?? index,
     });
 
-    // The overview block's height changes (collapse, a background image loading), and the list's start
-    // offset with it. Measured after every commit rather than once: a stale margin puts every row a
-    // constant distance from where the scrollbar says it is.
-    useLayoutEffect(() => {
+    /**
+     * The overview block's height changes (collapse, a background image loading), and the list's start
+     * offset with it. A stale margin puts every row a constant distance from where the scrollbar says
+     * it is, so this has to keep up with the card above it.
+     *
+     * What it must NOT do is run on every commit, which is what it used to do. The read is two
+     * `getBoundingClientRect` calls inside a layout effect - so it forces a synchronous style and
+     * layout pass immediately after React has just added and removed rows - and the virtualiser
+     * commits on every frame of a scroll. On a 500-row scene that was the single most expensive thing
+     * a fast scroll did, 12% of the main thread, for a value that cannot change while scrolling:
+     * the expression is scroll-invariant by construction (the list's top falls by exactly what
+     * `scrollTop` gains), so every one of those passes recomputed the number it already had.
+     *
+     * It is now driven by the two things that CAN move the list: the card above it changing size, and
+     * the scroller itself changing size. Both arrive through one ResizeObserver, which reports a box
+     * without forcing anything. The keyed re-measure below it covers the rest - a different scene, a
+     * different row count, a slot opening - where the list's own start can move within one commit.
+     */
+    const measureRowListMargin = useCallback(() => {
         const list = rowListRef.current;
         const scroller = editor.scrollContainerRef.current;
         if (!list || !scroller) {
@@ -932,7 +947,30 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         const margin = list.getBoundingClientRect().top - scroller.getBoundingClientRect().top + scroller.scrollTop;
         setRowListMargin(previous => (Math.abs(previous - margin) > 0.5 ? margin : previous));
-    });
+    }, [editor.scrollContainerRef]);
+
+    useLayoutEffect(() => {
+        const list = rowListRef.current;
+        const scroller = editor.scrollContainerRef.current;
+        if (!list || !scroller) {
+            return;
+        }
+        measureRowListMargin();
+        const observer = new ResizeObserver(() => measureRowListMargin());
+        observer.observe(scroller);
+        // The scene overview card: the list's only sibling above it, and the one whose height the
+        // margin actually is.
+        const above = list.previousElementSibling;
+        if (above) {
+            observer.observe(above);
+        }
+        return () => observer.disconnect();
+    }, [measureRowListMargin, editor.scrollContainerRef, editor.scene?.id]);
+
+    // A commit that can move the list's start without resizing anything the observer watches.
+    useLayoutEffect(() => {
+        measureRowListMargin();
+    }, [measureRowListMargin, active, editor.density, editor.visibleRows.length, editor.editorMode.kind]);
 
     /**
      * Throw away the measured heights when the density changes.
@@ -1313,26 +1351,20 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
      * the row that would have said it is out of sight.
      */
     const [scrollContext, setScrollContext] = useState<string | null>(null);
-    const scrollContextRef = useRef<() => void>(() => {});
-    scrollContextRef.current = () => {
-        const el = scrollContainerRef.current;
-        if (!el) {
-            return;
-        }
-        const top = el.getBoundingClientRect().top;
-        // Only the mounted rows are candidates, which is at most a window's worth — and the read is
-        // once per animation frame while scrolling, not once per scroll event.
-        const rows = el.querySelectorAll<HTMLElement>("[data-story-row-block-id]");
-        let firstVisibleId: StoryBlockId | null = null;
-        for (const node of rows) {
-            if (node.getBoundingClientRect().bottom > top + 1) {
-                firstVisibleId = node.dataset.storyRowBlockId ?? null;
-                break;
-            }
-        }
+    const scrollContextRef = useRef<(firstVisibleId: StoryBlockId | null) => void>(() => {});
+    scrollContextRef.current = firstVisibleId => {
         setScrollContext(describeScrollContext(editorRef.current.visibleRows, editorRef.current.characters, firstVisibleId));
     };
 
+    /**
+     * One read per animation frame, feeding both things a scroll updates.
+     *
+     * The context line and the saved anchor both want the same fact - which row is at the top of the
+     * viewport - and each used to go and find it: two `querySelectorAll` sweeps over the mounted rows
+     * and two runs of `getBoundingClientRect` down them, per frame, forcing layout twice for one
+     * answer. The anchor already carries the block id it settled on, so the context line reads it off
+     * the anchor instead of repeating the search.
+     */
     const handleScroll = useCallback(() => {
         const el = scrollContainerRef.current;
         if (el) {
@@ -1343,10 +1375,14 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
         }
         scrollSaveRafRef.current = window.requestAnimationFrame(() => {
             scrollSaveRafRef.current = null;
-            scrollContextRef.current();
-            const el = scrollContainerRef.current;
-            if (el && sceneId && panelStateService) {
-                patchStoryEditorViewState(panelStateService, sceneId, { scroll: captureStoryEditorScrollAnchor(el) });
+            const scroller = scrollContainerRef.current;
+            if (!scroller) {
+                return;
+            }
+            const anchor = captureStoryEditorScrollAnchor(scroller);
+            scrollContextRef.current(anchor.blockId);
+            if (sceneId && panelStateService) {
+                patchStoryEditorViewState(panelStateService, sceneId, { scroll: anchor });
             }
         });
     }, [scrollContainerRef, sceneId, panelStateService]);
