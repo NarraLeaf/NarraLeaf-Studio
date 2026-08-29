@@ -857,6 +857,45 @@ authLoginWithToken: exchanging external token:
 ——`diagnoseEndpoint` 读的是 Node 自带的机构表，而后端客户端读的是操作系统那份，
 所以一个「本账号已信任的私有 CA」在探针眼里是不受信的、在登录时却好用。
 
+### 4.38 刚克隆的工程一打开就有一项「谁也没改过」的变更 —— 是收敛，不是缺陷
+
+真机实测过的现象：克隆下来、打开，版本轨立刻显示 `editor/ui/uidoc.json` 已修改，作者什么都没做。
+查下来**不是版本控制的问题，是界面文档的加载期收敛**，而且它按设计只发生一次。
+
+`UIDocumentService.load()` 有四个「改了就存回去」的理由（`needsSave`）：
+
+| 理由 | 什么时候为真 |
+|---|---|
+| `schemaChanged` | 盘上的 `schemaVersion` 比本构建低 |
+| `normalizedChanged` | 归一化器改了任何东西（`nl.image` 旧属性折叠、输入模型） |
+| `mainSurfaceChanged` | 主表面或它的根元素不在 |
+| `flowLayoutsChanged` | 流式布局的子元素坐标不在归位 |
+
+**一次实测的两条**（同一台机器、同一份构建，各复制一份工程再打开）：
+
+- **v11 的工程** → `uidoc.json` 改成 v12，外加新建 `editor/save-schema.json`：两项变更。
+  v12 是 2026-08-27 19:50 `7c56f44a7` 抬的，而那天晚上看到这个现象的克隆正好是 v11。
+- **v12 的工程**（版本已经跟本构建一致）→ **照样改**。diff 是
+  `nl.image` 的三个 `props.assetId` 折进 `imageFill`（2026-08-28 `d1d494d8e`，见
+  `legacy-image-props-fold`）加一个 `meta.updatedAt`。
+
+**第二次打开同一份工程，文件逐字节不变**——收敛成立。所以这是「旧形状被就地改写一次」，
+不是每次打开都脏。
+
+**新建的工程碰不到**：出厂骨架模板已经是收敛后的形状（v12、5 个 `nl.image` 全无旧属性）。
+守卫在 `src/renderer/apps/project-wizard/starterTemplateSettled.test.ts`：七条断言逐条对应
+上表那四个理由，每条都做过 non-vacuous 验证（把模板改坏，对应那条必红）。
+
+**混版本不在射程内，这是裁决而不是疏漏**（2026-08-28，用户）。Studio 还没发布，眼下正是在为发布
+**砍掉**更早的兼容形状，所以「一队人跑着两个 Studio 版本」这个人群目前不存在：地板以下的文档直接
+拒绝，收敛把还在的旧形状一次改写掉，都是有意的。上面那段现象因此只会落在**本机的老工程**上，
+打开一次就过去了。
+
+发布之后混版本才成立，届时要面对的是这三件事，先记在这里免得重新推导一遍：老工程升级格式时，
+① 版本轨只说「1 项变更 · 界面页面」，没有一句话说那是格式升级；② 升级一旦提交，仍在旧 Studio 上
+的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
+than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
+
 ## 5. 服务端策略
 
 ### 5.1 P0：不需要任何服务端，也不需要包装

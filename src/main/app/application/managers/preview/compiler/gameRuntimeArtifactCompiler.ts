@@ -504,6 +504,15 @@ export async function compileGameRuntimeArtifact(
     if (shell === "web" && input.encryptionKey) {
         throw new Error("Web artifact compile does not support asset protection");
     }
+    // The first thing done with the output root is to delete `<root>/app` recursively. A relative
+    // root resolves against whatever working directory the host process happens to have - in
+    // development that is the Studio checkout itself - so a caller that handed over an unresolved
+    // path would empty and rewrite a directory inside someone's source tree rather than inside a
+    // staging area. Every caller derives this from a project path, which is absolute; a relative
+    // one means that path was never resolved, and refusing is cheaper than the deletion.
+    if (!path.isAbsolute(input.outputRoot)) {
+        throw new Error(`Artifact compile needs an absolute output root, got "${input.outputRoot}"`);
+    }
     const outputRoot = input.outputRoot;
     const appDir = path.join(outputRoot, "app");
     const userDataDir = mode === "preview" ? path.join(outputRoot, "userData") : null;
@@ -1149,12 +1158,8 @@ async function resolveTitleCompile(options: {
     const archiveDir = codecArchiveDir();
     const refuse = (detail: string): never => {
         throw new Error(
-            `${options.reason} needs a C toolchain to compile this title's content codec, and one `
-            + `could not be obtained: ${detail}
-`
-            + "Fix that and build again, or turn the feature off. It is not built without it: a "
-            + "codec that is not compiled for this title can be opened by any copy of the codec "
-            + "package, which is what protecting the content is for.",
+            `${options.reason} could not compile this title's content codec: ${detail}. `
+            + "Install a C toolchain and build again, or turn it off.",
         );
     };
     if (options.explicitCompiler) {

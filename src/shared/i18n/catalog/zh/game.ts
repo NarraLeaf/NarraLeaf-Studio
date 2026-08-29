@@ -15,7 +15,7 @@ export const game = {
             missing: "该 id 下没有存档。",
             malformed: "存储的内容不是存档格式。",
             unsupported: "该存档的格式本次构建无法读取。",
-            policy: "本工程不恢复来自另一次构建的旧存档。",
+            policy: "本项目不恢复来自其他构建的旧存档。",
             unanchored: "该存档未记录位置，无法据此重新开始故事。",
             sceneGone: "该存档记录的场景不在本次构建中。",
             relaunch: "无法从该存档记录的位置重新开始故事。{error}",
@@ -39,7 +39,7 @@ export const game = {
     },
     session: {
         title: "游戏已经打开",
-        detail: "它正在另一个浏览器标签页中运行。关闭那个标签页，然后重新载入本页。",
+        detail: "它正在另一个浏览器标签页中运行。关闭该标签页，然后重新载入本页。",
         reload: "重新载入",
     },
 } satisfies LocaleNamespace<"game">;

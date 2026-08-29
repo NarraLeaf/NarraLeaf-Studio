@@ -817,6 +817,22 @@ describe("game runtime artifact compiler", () => {
         )).rejects.toThrow();
     });
 
+    it("refuses an output root that is not absolute", async () => {
+        // Nothing is created first: the point is that the refusal lands before the compile deletes
+        // `<root>/app`, which a relative root would resolve against the host's working directory -
+        // the Studio checkout, in development.
+        const input = previewCompileInput(path.join(tempDir, "project"), path.join(tempDir, "runtime-dist"), 47351);
+
+        await expect(compileGameRuntimeArtifact({
+            ...input,
+            outputRoot: path.join(".nlstudio", "preview"),
+        })).rejects.toThrow(/absolute output root/);
+        await expect(compileGameRuntimeArtifact({
+            ...input,
+            outputRoot: "",
+        })).rejects.toThrow(/absolute output root/);
+    });
+
     it("writes a production app without a control channel or sibling userData", async () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
@@ -1917,7 +1933,7 @@ describe("weather clips in the pack", () => {
             platformKeys: ["windows-x64"],
             encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
             // No toolchain, and nowhere to put one.
-        })).rejects.toThrow(/Asset protection needs a C toolchain/);
+        })).rejects.toThrow(/Asset protection could not compile this title's content codec/);
     });
 
     /*

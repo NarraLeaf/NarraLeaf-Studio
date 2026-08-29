@@ -1537,8 +1537,9 @@ export class GameBuildManager {
             return { compiler, workDir, archiveDir: codecArchiveDir() };
         } catch (error) {
             throw new Error(
-                `${reason} needs a C toolchain to compile this title's content codec, and one could `
-                + `not be obtained: ${error instanceof Error ? error.message : String(error)}`,
+                `${reason} could not compile this title's content codec: `
+                + `${error instanceof Error ? error.message : String(error)}. `
+                + "Install a C toolchain and build again, or turn it off.",
             );
         }
     }
