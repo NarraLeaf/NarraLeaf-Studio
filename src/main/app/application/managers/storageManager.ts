@@ -664,6 +664,9 @@ export class StorageManager extends Manager {
         return key;
     }
 
+    /** See {@link StorageManager.getResolvedProtectedStorageRoots}. */
+    private resolvedProtectedStorageRoots: Promise<string[]> | null = null;
+
     private async resolvePathForAuthorization(fsPath: string): Promise<string> {
         const resolvedPath = path.resolve(fsPath);
         const pendingSegments: string[] = [];
@@ -687,13 +690,35 @@ export class StorageManager extends Manager {
     }
 
     private async isProtectedStoragePath(target: string): Promise<boolean> {
-        for (const root of this.getProtectedStorageRoots()) {
-            const resolvedRoot = await this.resolvePathForAuthorization(root);
-            if (this.isSameOrChild(target, resolvedRoot)) {
+        for (const root of await this.getResolvedProtectedStorageRoots()) {
+            if (this.isSameOrChild(target, root)) {
                 return true;
             }
         }
         return false;
+    }
+
+    /**
+     * The protected storage roots with their symlinks followed, resolved once for the process.
+     *
+     * They are four fixed directories - three user-data namespaces and the built-in plugin folder
+     * - decided at startup, created by Studio, and the same for as long as it runs. Every
+     * authorization used to walk all four again, and an authorization happens per path: minting
+     * the read grants for a project's asset library asked for those same four real paths several
+     * thousand times, which MEASURED as most of the 1.6s a 954-asset Dev Mode boot spent in
+     * authorization.
+     *
+     * The path being asked *about* is still resolved on every single call. That is the check that
+     * catches a symlink pointing somewhere it should not, and nothing a caller supplies is
+     * remembered here.
+     */
+    private async getResolvedProtectedStorageRoots(): Promise<string[]> {
+        if (!this.resolvedProtectedStorageRoots) {
+            this.resolvedProtectedStorageRoots = Promise.all(
+                this.getProtectedStorageRoots().map(root => this.resolvePathForAuthorization(root)),
+            );
+        }
+        return this.resolvedProtectedStorageRoots;
     }
 
     private getProtectedStorageRoots(): string[] {

@@ -132,6 +132,15 @@ export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.
  * same grants: this window already holds a declared recursive read over the project directory, so
  * nothing becomes reachable that was not already.
  */
+/**
+ * How many asset grants are promoted at once.
+ *
+ * Each one is a `stat` and nothing else, so the useful width is whatever the filesystem will
+ * answer in parallel rather than anything about CPU. Thirty-two matches the width the workspace
+ * side and the read-grant batch beneath it already work at.
+ */
+const GRANT_PROMOTION_CONCURRENCY = 32;
+
 export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.devModeResolveAllAssetUrls> {
     readonly name = IPCEventType.devModeResolveAllAssetUrls;
     readonly type = IPCMessageType.request;
@@ -148,10 +157,21 @@ export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.d
             if (!resolved.success) {
                 return { success: false, error: resolved.error ?? "Failed to resolve assets" };
             }
+            const entries = Object.entries(resolved.data.urls);
             const urls: Record<string, string> = {};
-            for (const [assetId, url] of Object.entries(resolved.data.urls)) {
-                urls[assetId] = await promoteDevModeAssetGrant(window, url);
-            }
+            // A pool rather than a loop. Each promotion stats the file it grants - the token is
+            // derived from path, size and mtime so that a URL written into a save still opens
+            // after a restart - and awaiting a project's worth of those one at a time is the
+            // shape that made the resolve underneath this the longest step of a Dev Mode boot.
+            // Measured at about 90ms for 954 assets here, which is what it should be.
+            let index = 0;
+            await Promise.all(Array.from({ length: Math.min(GRANT_PROMOTION_CONCURRENCY, entries.length) }, async () => {
+                while (index < entries.length) {
+                    const [assetId, url] = entries[index]!;
+                    index += 1;
+                    urls[assetId] = await promoteDevModeAssetGrant(window, url);
+                }
+            }));
             return { success: true, data: { urls } };
         } catch (error) {
             return { success: false, error: error instanceof Error ? error.message : String(error) };

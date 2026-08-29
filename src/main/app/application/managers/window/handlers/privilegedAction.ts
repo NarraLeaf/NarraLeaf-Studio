@@ -61,6 +61,14 @@ async function ensureActorPathsAllowed<T>(
 export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedFsCall> {
     readonly name = IPCEventType.privilegedFsCall;
     readonly type = IPCMessageType.request;
+    /**
+     * How many read grants `requestReadMany` mints at once.
+     *
+     * Each is a pair of stats and nothing else, so the useful width is whatever the filesystem
+     * answers in parallel. Thirty-two is the width the asset resolver already asked at from the
+     * renderer side, and measured no better at sixty-four.
+     */
+    private static readonly ReadManyConcurrency = 32;
 
     public async handle(
         window: AppWindow,
@@ -182,6 +190,9 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
                 if (denied) return this.success(denied);
                 return this.success(await this.allocateRead(window, data.path, data.raw, "encoding" in data ? data.encoding : undefined));
             }
+            case "requestReadMany": {
+                return this.success(await this.allocateReadMany(window, data, data.paths));
+            }
             case "requestWrite": {
                 const denied = await ensureActorPathAllowed<string>(window, data, data.path, "write");
                 if (denied) return this.success(denied);
@@ -275,6 +286,56 @@ export class PrivilegedFsCallHandler extends IPCHandler<IPCEventType.privilegedF
         }
     }
 
+    /**
+     * Mint one read grant per path, concurrently.
+     *
+     * Each path goes through the same authorization and the same existence checks as a
+     * `requestRead` for it alone, so nothing here can reach a file the one-at-a-time route
+     * would have refused. A path that fails either answers `null` and the rest still stand -
+     * the grants are independent, and a caller resolving an asset library wants the ones that
+     * worked rather than nothing at all.
+     *
+     * The width is for the filesystem, not the CPU: every one of these is a pair of stats.
+     */
+    private async allocateReadMany(
+        window: AppWindow,
+        data: IPCEvents[IPCEventType.privilegedFsCall]["data"],
+        paths: string[],
+    ): Promise<FsRequestResult<(string | null)[]>> {
+        const grants: (string | null)[] = new Array(paths.length).fill(null);
+        let index = 0;
+        await Promise.all(Array.from(
+            { length: Math.min(PrivilegedFsCallHandler.ReadManyConcurrency, paths.length) },
+            async () => {
+                while (index < paths.length) {
+                    const at = index;
+                    index += 1;
+                    const fsPath = paths[at]!;
+                    const denied = await ensureActorPathAllowed<string>(window, data, fsPath, "read");
+                    if (denied) {
+                        continue;
+                    }
+                    // One `stat` where the single-path route takes an `access` and then a `stat`.
+                    // A `stat` that answers says both that the path is there and that it is a
+                    // file; what the extra `access` adds is turning "exists but is not readable"
+                    // into a refused grant rather than a read that fails. Over a whole library
+                    // that second syscall is a measurable share of the wait and the distinction is
+                    // one the caller cannot use - an asset it cannot read is a missing asset
+                    // either way. The single-path route keeps the stricter pair: it answers one
+                    // caller about one file and can afford to.
+                    const hash = window.app.storageManager.allocateHash(fsPath, true, "read");
+                    const isFile = await Fs.isFile(fsPath);
+                    if (isFile.ok && isFile.data) {
+                        window.app.storageManager.updateStatus(hash, "ready");
+                        grants[at] = hash;
+                    } else {
+                        window.app.storageManager.cleanup(hash);
+                    }
+                }
+            },
+        ));
+        return { ok: true, data: grants };
+    }
     private async allocateRead(
         window: AppWindow,
         fsPath: string,

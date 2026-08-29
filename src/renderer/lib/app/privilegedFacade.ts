@@ -84,6 +84,15 @@ function createBoundPrivilegedFacade(token: PrivilegedFacadeToken) {
                 privileged().fs.requestRead(actor(), path, encoding),
             requestReadRaw: (path: string): Promise<RequestStatus<FsRequestResult<string>>> =>
                 privileged().fs.requestReadRaw(actor(), path),
+            /**
+             * One read grant per path, in one round trip.
+             *
+             * Reads are not gated by the freeze latch, so this is a straight pass-through; the
+             * authorization each path passes is the same one `requestReadRaw` applies to it
+             * alone. Answers `null` in place of a path it could not grant.
+             */
+            requestReadManyRaw: (paths: string[]): Promise<RequestStatus<FsRequestResult<(string | null)[]>>> =>
+                privileged().fs.requestReadManyRaw(actor(), paths),
             requestWrite: (path: string, encoding: FsTextEncoding): Promise<RequestStatus<FsRequestResult<string>>> =>
                 refuseFrozenWrite(path)
                     ? frozenRejection(path)
