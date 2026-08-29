@@ -4,12 +4,12 @@ import { RendererError } from "@shared/utils/error";
 import { FileSystemService } from "../../core/FileSystem";
 import { Services, WorkspaceContext } from "../../services";
 import { ASSET_CATEGORY_ORDER, ASSET_CATEGORY_TYPES, AssetCategory, AssetType, categoryOfAssetType } from "../assetTypes";
-import { Asset, AssetGroup, AssetGroupMap, AssetSource, LegacyTypedAssetGroup } from "../types";
+import { Asset, AssetGroup, AssetGroupMap, AssetSource } from "../types";
 import { RequestStatus } from "@shared/types/ipcEvents";
 import { AssetsService } from "../../core/AssetsService";
 import type { AssetDeleteOptions } from "../assetDeleteGuard";
 import { reconcileAssetOrder } from "../assetOrder";
-import { legacyShardTypesFor, mergeLegacyGroupShards, normalizeAssetGroupRecords } from "../assetCategoryShards";
+import { normalizeAssetGroupRecords } from "../assetCategoryShards";
 
 /** An empty group map — one record per category, in sidebar order. */
 function emptyGroupMap(): AssetGroupMap {
@@ -314,41 +314,40 @@ export class GroupAssetsManager {
         };
     }
 
+    /**
+     * Whether one asset may be filed in this folder, as the message saying it may not.
+     *
+     * Split out of the move itself so that a multi-selection can be checked whole before a single
+     * record changes - see {@link AssetsService.moveAssetsToGroup}. Half a drag is an arrangement the
+     * author never asked for, and the half that landed would look exactly like the whole of it.
+     *
+     * The category is the asset's own, which is what refuses a cross-category move: an mp3 may join
+     * any folder under Media, and no folder anywhere else.
+     */
+    public checkMoveTarget<T extends AssetType>(asset: Asset<T>, groupId?: string): string | null {
+        this.assertGroups();
+        const category = categoryOfAssetType(asset.type);
+        if (groupId && !this.assetsGroups[category][groupId]) {
+            return `Group not found: ${groupId}`;
+        }
+        if (!this.assetsService.getAssetsMetadataManager().getAssets()[asset.type][asset.id]) {
+            return `Asset not found: ${asset.id}`;
+        }
+        return null;
+    }
+
+    /**
+     * File one asset in a folder.
+     *
+     * A thin front on {@link AssetsService.moveAssetsToGroup}, which is where filing actually
+     * happens: one asset is a selection of one, and having two paths would mean a live session heard
+     * about one of them - the batch verb is stated there.
+     */
     public async moveAssetToGroup<T extends AssetType>(
         asset: Asset<T>,
         groupId?: string
     ): Promise<RequestStatus<void>> {
-        this.assertGroups();
-
-        // Verify group exists if provided. The category is the asset's own, which is what refuses a
-        // cross-category move: an mp3 may join any folder under Media, and no folder anywhere else.
-        const category = categoryOfAssetType(asset.type);
-        if (groupId && !this.assetsGroups![category][groupId]) {
-            return {
-                success: false,
-                error: `Group not found: ${groupId}`,
-            };
-        }
-
-        const metadata = this.assetsService.getAssetsMetadataManager().getAssets();
-        const existingAsset = metadata[asset.type][asset.id];
-        if (!existingAsset) {
-            return {
-                success: false,
-                error: `Asset not found: ${asset.id}`,
-            };
-        }
-
-        existingAsset.groupId = groupId;
-        this.assetsService.markDirty(asset.type);
-
-        // Emit update event so UI can react
-        this.assetsService.getEvents().emit("updated", existingAsset);
-
-        return {
-            success: true,
-            data: void 0,
-        };
+        return this.assetsService.moveAssetsToGroup([asset as Asset<AssetType, AssetSource>], groupId);
     }
 
     /**
@@ -430,31 +429,29 @@ export class GroupAssetsManager {
     }
 
     /**
-     * The folder list of every category, folding the type-named shards up on the open that finds a
-     * category shard missing.
-     *
-     * The merge is the whole reason an absent file cannot simply read as `{}`: a project whose
-     * folders live in `assets.groups.audio.json` would open with every audio asset un-filed, and
-     * re-filing a library by hand is not something an author can be asked to do. The old shards are
-     * read, never written and never deleted.
+     * The folder list of every category, creating the shard of one that has none yet.
      *
      * **Reading is what this depends on; writing is only an optimisation.** The shape is
      * `AssetOrderManager.init`'s, and for the same reason: every writer on `FileSystemService`
      * answers a refused write - a frozen workspace, a working tree being re-read after a restore - as
      * a no-op success, so creating the shard first and then reading it back is a load path that
-     * fails on every project the freeze latch is closed over. The merged records are resolved in
-     * memory here; the file is written afterwards, and its failure costs the next open the same
-     * merge and nothing else.
+     * fails on every project the freeze latch is closed over. The records are resolved in memory
+     * here; the file is written afterwards, and its failure costs the next open the same work and
+     * nothing else.
+     *
+     * A shard that is present but unreadable is not an absent one. It still holds the author's
+     * folders, and a stat that failed says nothing at all - creating a fresh empty file over either
+     * would be a library deleted by a bad read.
      */
     private async fetchAssetsGroups(): Promise<AssetGroupMap> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
         const data: AssetGroupMap = emptyGroupMap();
-        /** Categories built from the type-named shards on this open, i.e. the files to create. */
-        const migrated: AssetCategory[] = [];
+        /** Categories with no shard on disk yet, i.e. the files to create. */
+        const missing: AssetCategory[] = [];
 
         for (const category of ASSET_CATEGORY_ORDER) {
             const shardPath = this.getContext().project.resolve(ProjectNameConvention.AssetsGroupsShard(category));
-            const shardResult = await filesystemService.readJSON<Record<string, LegacyTypedAssetGroup>>(shardPath);
+            const shardResult = await filesystemService.readJSON<Record<string, Partial<AssetGroup>>>(shardPath);
             if (shardResult.ok) {
                 // Key order stands as the group order until the sibling order file says otherwise;
                 // for a project that predates that file it *is* the order, and this parse is where
@@ -463,31 +460,27 @@ export class GroupAssetsManager {
                 continue;
             }
 
-            // Only a definite "not there" is a shard to migrate. A file that is present but
-            // unreadable still holds the author's folders, and a stat that failed says nothing at
-            // all - treating either as absent would merge over a live list.
             const existsResult = await filesystemService.isFileExists(shardPath);
             if (!existsResult.ok || existsResult.data) {
                 throw new RendererError(`Failed to read assets groups shard: ${shardPath}`);
             }
 
-            Object.assign(data[category], await this.readLegacyGroupShards(category));
-            migrated.push(category);
+            missing.push(category);
         }
 
-        await this.createMigratedGroupShards(migrated, data);
+        await this.createMissingGroupShards(missing, data);
 
         return data;
     }
 
     /**
-     * Write the category shards this open had to build from the type-named ones.
+     * Write the category shards this open found absent.
      *
      * Best-effort by construction: a refused write reports success without touching the disk, so
      * there is nothing here to assert on. A genuine failure still reaches the author - every write
      * through `FileSystemService` is observed by `SaveStatusService`.
      */
-    private async createMigratedGroupShards(categories: readonly AssetCategory[], data: AssetGroupMap): Promise<void> {
+    private async createMissingGroupShards(categories: readonly AssetCategory[], data: AssetGroupMap): Promise<void> {
         const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
 
         await Promise.all(categories.map(async category => {
@@ -499,44 +492,6 @@ export class GroupAssetsManager {
                 );
             }
         }));
-    }
-
-    /**
-     * The type-named shards behind a category, read in member order.
-     *
-     * An absent file contributes nothing; one that exists and cannot be read throws, *before* the
-     * merged result is written anywhere. The two are not the same answer: a shard that is on disk
-     * and unreadable holds folders this merge would otherwise drop, and the created category shard
-     * would then be the file every later open reads instead - one bad read, migrated into a
-     * permanent loss.
-     */
-    private async readLegacyGroupShards(category: AssetCategory): Promise<Record<string, AssetGroup>> {
-        const legacyTypes = legacyShardTypesFor(category);
-        if (legacyTypes.length === 0) {
-            return {};
-        }
-
-        const filesystemService = this.getContext().services.get<FileSystemService>(Services.FileSystem);
-        const shards: { type: AssetType; records: Record<string, LegacyTypedAssetGroup> | null }[] = [];
-        for (const type of legacyTypes) {
-            // `AssetsGroupsShard` now takes a category; the legacy files are named after a type, and
-            // those two id spaces overlap only where the migration is a no-op. Built here rather than
-            // through the convention so the convention stops naming files nothing writes any more.
-            const path = this.getContext().project.resolve(["assets", `assets.groups.${type}.json`]);
-            const existsResult = await filesystemService.isFileExists(path);
-            if (existsResult.ok && !existsResult.data) {
-                continue;
-            }
-            const result = await filesystemService.readJSON<Record<string, LegacyTypedAssetGroup>>(path);
-            if (!result.ok) {
-                throw new RendererError(
-                    `Failed to read legacy assets groups shard: ${path}: ${result.error.code} ${result.error.message}`
-                );
-            }
-            shards.push({ type, records: result.data });
-        }
-
-        return mergeLegacyGroupShards(category, shards);
     }
 
     /**

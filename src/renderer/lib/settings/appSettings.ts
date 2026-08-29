@@ -418,10 +418,14 @@ export const AppSettings: AppSettingDefinition[] = [
             default: "settings.items.windowIcon.options.default",
             narra: "settings.items.windowIcon.options.narra",
         },
+        // Hidden on macOS, like the ⌘Q row above and for the mirror-image reason: a Mac window
+        // has no icon of its own to set, so the row could only ever say "not available on this
+        // operating system". Linux keeps it disabled with that reason instead of hidden - a
+        // window icon does exist there, it is just the compositor's to honour or ignore.
+        visible: () => !isMacPlatform(),
         availability: async () => {
-            // Static for the lifetime of the window, like the ⌘Q row above: macOS has no
-            // per-window icon to set, and a Linux window icon is the compositor's to honour or
-            // ignore, so Windows is the only platform where the choice takes effect.
+            // Static for the lifetime of the window: Windows is the only platform left here where
+            // the choice takes effect.
             const { isWindowsPlatform } = await import("@/lib/app/platform");
             return isWindowsPlatform()
                 ? { enabled: true }
@@ -873,6 +877,24 @@ export const AppSettings: AppSettingDefinition[] = [
         defaultValue: false,
     },
     {
+        // Applied by the main process in `App.launchWorkspace`, as the window is built rather than
+        // once its page has rendered, so a maximized workspace comes up maximized instead of
+        // appearing small and jumping.
+        //
+        // Switching project inside a window does not consult this: the replacement adopts the frame
+        // of the window it takes over from, which is what makes the switch read as one window
+        // rather than two.
+        key: "workspace.maximizeOnOpen",
+        category: "workspace",
+        scope: SettingScope.Global,
+        type: SettingValueType.Boolean,
+        label: "Open workspaces maximized",
+        labelKey: "settings.items.maximizeOnOpen.label",
+        description: "Fill the screen when a workspace window opens. Switching project keeps the frame of the window it replaces.",
+        descriptionKey: "settings.items.maximizeOnOpen.description",
+        defaultValue: false,
+    },
+    {
         // Read by the main process (`RecentlyOpened.limit`) every time the history is written, so
         // shortening it takes effect on the next project opened rather than retroactively. Has
         // been honored since the history existed and simply had no control anywhere.
@@ -1213,6 +1235,24 @@ export const AppSettings: AppSettingDefinition[] = [
         labelKey: "settings.items.electronBuilderBinariesMirror.label",
         description: "Mirror for the installer tooling a build downloads (NSIS, AppImage, code-signing helpers).",
         descriptionKey: "settings.items.electronBuilderBinariesMirror.description",
+        defaultValue: "",
+        options: [OFFICIAL_SOURCE_VALUE],
+        optionLabelKeys: {
+            [OFFICIAL_SOURCE_VALUE]: "settings.source.noMirror",
+        },
+    },
+    {
+        // Read by `zigToolchain.zigMirror`, and the only way to point that download
+        // somewhere else. A third field for the reason the second one exists: the layout is
+        // `<mirror><version>/<archive>`, which neither of the two above can be made to produce.
+        key: "build.zigMirror",
+        category: "network",
+        scope: SettingScope.Global,
+        type: SettingValueType.Source,
+        label: "Compiler toolchain mirror",
+        labelKey: "settings.items.zigMirror.label",
+        description: "Mirror for the compiler toolchain a build downloads.",
+        descriptionKey: "settings.items.zigMirror.description",
         defaultValue: "",
         options: [OFFICIAL_SOURCE_VALUE],
         optionLabelKeys: {

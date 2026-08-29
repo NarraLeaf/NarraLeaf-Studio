@@ -114,6 +114,46 @@ export function zoomGraphNavAt(
     return { zoom, x: anchorX - held.x * zoom, y: anchorY - held.y * zoom };
 }
 
+/**
+ * The zoom at which a card is drawn at the size its author laid it out in.
+ *
+ * The reading threshold, and the one number this canvas has that means anything to a person: the
+ * pin labels are drawn from `GRAPH_NODE_PIN_FONT` upwards, so a graph fitted at 0.06 has to come
+ * back to roughly sixteen times that before its titles are letters again. Expressed as the zoom
+ * that cancels the fitted scale rather than as a constant, because the fitted scale is whatever
+ * this graph's extent and this pane's width made it.
+ */
+export function readableGraphNavZoom(fittedScale: number): number {
+    const fitted = Number.isFinite(fittedScale) && fittedScale > 0 ? fittedScale : 1;
+    return clampGraphNavZoom(1 / fitted, fitted);
+}
+
+/**
+ * The view moved until one box of the fitted picture sits in the middle of the frame.
+ *
+ * Arithmetic, not animation, and no state of its own: it answers where the transform has to be for
+ * a given card to be in the middle, and the caller holds it exactly as it holds a drag's. The box
+ * is in the fitted picture's coordinates ({@link graphNodeBox}), so both columns move by the same
+ * graph distance and a node that never moved is centred in each of them at once - which is the one
+ * property the shared viewport exists to give.
+ *
+ * The zoom is handed in rather than chosen here, because the two callers of this want different
+ * things from it: arriving at a change should be close enough to read, and stepping to the next one
+ * should not throw away the magnification the author already picked.
+ */
+export function frameGraphNavOn(
+    box: { left: number; top: number; width: number; height: number },
+    frame: { width: number; height: number },
+    zoom: number,
+): GraphNav {
+    const safe = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+    return {
+        zoom: safe,
+        x: frame.width / 2 - (box.left + box.width / 2) * safe,
+        y: frame.height / 2 - (box.top + box.height / 2) * safe,
+    };
+}
+
 /** A box of the fitted picture, where the current view draws it. */
 export function graphNavBox(
     box: { left: number; top: number; width: number; height: number },

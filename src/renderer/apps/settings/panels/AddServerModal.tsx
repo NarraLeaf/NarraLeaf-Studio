@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useTranslation } from "@/lib/i18n";
 import { getInterface } from "@/lib/app/bridge";
+import { listProjects } from "@/lib/team";
 import {
     Button,
     FieldLabel,
@@ -229,9 +230,14 @@ export function AddServerModal({
      * red text on a step that succeeded.
      */
     const countProjects = useCallback(async (remoteOrigin: string) => {
-        const result = await getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
-        if (!alive.current || !result?.success || !result.data.ok) return;
-        const projects = result.data.projects.length;
+        // Asked over the session, which the just-stored server can open: `addServer` has
+        // written the record and sealed the token by the time this runs, so the socket has
+        // everything it needs. A refusal is still nothing to say - see the note above.
+        const result = await listProjects(remoteOrigin);
+        if (!alive.current || !result.ok) return;
+        // What the server holds rather than how many rows it sent: one answer is bounded,
+        // and a deployment past that bound would otherwise be reported at the bound.
+        const projects = result.value.total;
         setStage(current => (current.kind === "joined" ? { ...current, projects } : current));
     }, []);
 
@@ -290,6 +296,7 @@ export function AddServerModal({
                 name: discovery.name,
                 version: discovery.version,
                 capabilities: discovery.capabilities,
+                policy: discovery.policy,
             })
             .catch(() => null);
         if (!result?.success) {

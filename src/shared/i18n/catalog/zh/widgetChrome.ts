@@ -2,8 +2,8 @@ import type { LocaleNamespace } from "../types";
 
 export const widgetChrome = {
     docker: {
-        insert: "插入{name}",
-        drawing: "正在绘制 {name}，请在画布上拖动以创建",
+        insert: "插入 {name}",
+        drawing: "正在绘制 {name}，在画布上拖动以创建",
         moreInsertElements: "更多插入元素",
         components: "组件",
         openComponentLibrary: "打开组件库",
@@ -75,11 +75,6 @@ export const widgetChrome = {
         emptyLayer: "空图层",
         openControlBlueprint: "打开控件蓝图",
         noBlueprintForControl: "此控件没有蓝图",
-        legacyHookCount: {
-            one: "UI 文档中存在 {count} 个旧版钩子",
-            other: "UI 文档中存在 {count} 个旧版钩子",
-        },
-        eventSchemaMismatch: "事件结构不匹配，请在编辑器中查看诊断信息",
     },
     dockerItems: {
         size: "尺寸",

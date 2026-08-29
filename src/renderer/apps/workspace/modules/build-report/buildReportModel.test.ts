@@ -41,6 +41,7 @@ describe("buildArtifactRows", () => {
     it("pairs each artifact with its measured size", () => {
         const rows = buildArtifactRows({
             status: "done",
+            progress: null,
             artifacts: ["/dist/a.zip", "/dist/b.dmg"],
             artifactSizes: [{ path: "/dist/b.dmg", bytes: 20 }, { path: "/dist/a.zip", bytes: 10 }],
         });
@@ -53,6 +54,7 @@ describe("buildArtifactRows", () => {
     it("leaves an unmeasured artifact without a size rather than at zero", () => {
         const rows = buildArtifactRows({
             status: "done",
+            progress: null,
             artifacts: ["/dist/a.zip"],
             artifactSizes: [{ path: "/dist/a.zip" }],
         });
@@ -60,13 +62,13 @@ describe("buildArtifactRows", () => {
     });
 
     it("reports the artifacts of a run that measured nothing", () => {
-        const rows = buildArtifactRows({ status: "done", artifacts: ["/dist/patch.nlpatch"] });
+        const rows = buildArtifactRows({ status: "done", progress: null, artifacts: ["/dist/patch.nlpatch"] });
         expect(rows).toEqual([{ path: "/dist/patch.nlpatch", name: "patch.nlpatch" }]);
         expect(totalArtifactBytes(rows)).toBe(0);
     });
 
     it("is empty for a run that produced nothing", () => {
-        expect(buildArtifactRows({ status: "error" })).toEqual([]);
+        expect(buildArtifactRows({ status: "error", progress: null })).toEqual([]);
     });
 });
 
@@ -126,30 +128,31 @@ describe("groupShippedAssets", () => {
 
 describe("formatBuildDuration", () => {
     it("states seconds under a minute", () => {
-        expect(formatBuildDuration({ status: "done", startedAt: 0, finishedAt: 2500 }, t))
+        expect(formatBuildDuration({ status: "done", progress: null, startedAt: 0, finishedAt: 2500 }, t))
             .toBe(`build.report.durationSeconds:${JSON.stringify({ seconds: "2.5" })}`);
     });
 
     it("states minutes and padded seconds over a minute", () => {
-        expect(formatBuildDuration({ status: "done", startedAt: 0, finishedAt: 125_000 }, t))
+        expect(formatBuildDuration({ status: "done", progress: null, startedAt: 0, finishedAt: 125_000 }, t))
             .toBe(`build.report.durationMinutes:${JSON.stringify({ minutes: 2, seconds: "05" })}`);
     });
 
     it("says nothing about a run that carries no stamps", () => {
-        expect(formatBuildDuration({ status: "error" }, t)).toBe("");
-        expect(formatBuildDuration({ status: "error", startedAt: 10 }, t)).toBe("");
+        expect(formatBuildDuration({ status: "error", progress: null }, t)).toBe("");
+        expect(formatBuildDuration({ status: "error", progress: null, startedAt: 10 }, t)).toBe("");
     });
 });
 
 describe("shippedAssetReport", () => {
     it("is null for a run that narrowed nothing", () => {
-        const previewLike: GameBuildStateSnapshot = { status: "done", artifacts: [] };
+        const previewLike: GameBuildStateSnapshot = { status: "done", progress: null, artifacts: [] };
         expect(shippedAssetReport(previewLike)).toBeNull();
     });
 
     it("hands back the report a run that narrowed the library carries", () => {
         const state: GameBuildStateSnapshot = {
             status: "done",
+            progress: null,
             assetReport: {
                 included: [entry("a1", "Title screen", "image", 100)],
                 excluded: [],

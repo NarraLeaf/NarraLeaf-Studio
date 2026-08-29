@@ -4,14 +4,14 @@ export const wizard = {
     appTitle: "添加项目",
     steps: {
         origin: "来源",
-        project: "工程",
+        project: "项目",
         stage: "舞台",
         review: "确认",
         source: "地址",
         clone: "克隆",
         import: "导入",
         // 为服务器新建项目时第一页的名字。来源已由打开这个窗口的动作决定，那一栏不在页面上，
-        // 留下的是这个工程用什么做出来。
+        // 留下的是这个项目用什么做出来。
         template: "模板",
     },
     nav: {
@@ -37,7 +37,7 @@ export const wizard = {
     },
     origin: {
         create: {
-            label: "新建工程",
+            label: "新建项目",
             description: "从模板创建",
         },
         import: {
@@ -54,7 +54,7 @@ export const wizard = {
     template: {
         blank: {
             name: "空白",
-            description: "只有工程结构",
+            description: "只有项目结构",
         },
     },
     project: {
@@ -106,13 +106,13 @@ export const wizard = {
         addressInvalid: "项目地址末尾需要带上项目名，例如 lore://studio.example.lan:41337/my-game",
         parsedServer: "服务器",
         onServerLabel: "服务器上的项目",
-        onServerHint: "选一个，或在下方填写项目地址",
-        onServerEmpty: "这台服务器上还没有项目。",
-        onServerLoading: "正在询问服务器……",
-        onServerNoToken: "Studio 无法向这台服务器提问。请用令牌重新添加它。",
-        onServerRefused: "这台服务器拒绝了已保存的令牌。请用新令牌重新添加。",
-        onServerUnreachable: "这台服务器没有响应。",
-        onServerUnknown: "这台服务器的回应 Studio 读不懂。",
+        onServerHint: "选择，或在下方填写项目地址",
+        onServerEmpty: "该服务器上还没有项目。",
+        onServerLoading: "正在询问服务器…",
+        onServerNoToken: "Studio 无法向该服务器提问。请使用令牌重新添加。",
+        onServerRefused: "该服务器拒绝了已保存的令牌。请使用新令牌重新添加。",
+        onServerUnreachable: "该服务器没有响应。",
+        onServerUnknown: "该服务器的响应 Studio 无法解析。",
         onServerMadeBy: "由 {name} 创建",
         parsedName: "服务器上的项目名",
         destinationHint: "必须是新建或空的文件夹",
@@ -130,12 +130,12 @@ export const wizard = {
     review: {
         template: "模板",
         notSpecified: "未指定",
-        // 为服务器新建项目时取代版本控制那一行：发送到服务器本身就把工程纳入了版本控制，
+        // 为服务器新建项目时取代版本控制那一行：发送到服务器本身就把项目纳入了版本控制，
         // 两行说的是同一件事。
         server: "服务器",
     },
     validation: {
-        templateFailed: "无法将模板内容复制到工程中",
+        templateFailed: "无法将模板内容复制到项目中",
         nameRequired: "项目名称为必填项",
         locationRequired: "项目位置为必填项",
         templateRequired: "项目模板为必填项",

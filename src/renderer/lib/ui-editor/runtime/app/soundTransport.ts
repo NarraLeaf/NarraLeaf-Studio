@@ -107,21 +107,15 @@ export type SoundTransportOptions = {
 export type SoundPlayback = AudioTrackPlayback & { fadeInMs: number };
 
 /**
- * Exported so the migration from the old `soundChannel` select is testable without a live game:
- * the whole point of the track model is that this function, not the node, decides the bus.
+ * Exported so bus resolution is testable without a live game: the whole point of the track model is
+ * that this function, not the node, decides the bus.
  */
 export function resolveSoundPlayback(
     input: BlueprintSoundPlayInput,
     tracks: readonly ProjectAudioTrack[] | undefined,
 ): SoundPlayback {
     const list = tracks && tracks.length > 0 ? tracks : BUILTIN_AUDIO_TRACKS;
-    // A graph written before tracks existed carries `channel` and no `audioTrackId`. Mapping it to
-    // that channel's seeded bus reproduces the old behaviour exactly, which is why the fallback
-    // lives here rather than in a document migration alone - a graph can reach the runtime
-    // unmigrated (an older project opened by a plugin, a hand-written host call) and must still
-    // make a sound.
-    const legacyTrackId = input.channel ? DEFAULT_AUDIO_TRACK_ID[input.channel] : null;
-    const track = resolveAudioTrack(list, input.audioTrackId ?? legacyTrackId, input.channel ?? "sound");
+    const track = resolveAudioTrack(list, input.audioTrackId ?? null, "sound");
     const playback = resolveAudioTrackPlayback(track, { volume: input.volume, loop: input.loop });
     const fadeInMs = typeof input.fadeInMs === "number" && Number.isFinite(input.fadeInMs)
         ? Math.max(0, input.fadeInMs)

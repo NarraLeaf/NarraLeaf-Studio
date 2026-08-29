@@ -3,6 +3,8 @@
  * Comments in English per project convention.
  */
 
+import { isUIElementRefInScope } from "@shared/types/ui-editor/componentInstanceKey";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_APPEND_ITEM,
     BLUEPRINT_NODE_TYPE_ELEMENT_LIST_CLEAR,
@@ -216,11 +218,10 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
         if (ref.elementType !== LIST_ELEMENT_TYPE) {
             throw new BlueprintGraphExecutionError("List node requires an nl.list element", ctx.node.id);
         }
-        const currentSurfaceId = ctx.executionOwner?.surfaceId;
-        if (currentSurfaceId && ref.surfaceId !== currentSurfaceId) {
+        if (!isUIElementRefInScope(ref.surfaceId, ctx.executionOwner)) {
             throw new BlueprintGraphExecutionError("List node can only target the current Surface", ctx.node.id);
         }
-        return ref.elementId;
+        return buildUIWidgetAddress(ref.elementId, ctx.instanceKey);
     }
     if (target === "element") {
         throw new BlueprintGraphExecutionError("List Element node requires a List input", ctx.node.id);
@@ -229,7 +230,7 @@ function resolveListElementId(ctx: Parameters<BlueprintNodeDef["execute"]>[0], t
     if (!elementId) {
         throw new BlueprintGraphExecutionError("List node requires a List target", ctx.node.id);
     }
-    return elementId;
+    return buildUIWidgetAddress(elementId, ctx.instanceKey);
 }
 
 function normalizeArray(value: unknown): unknown[] {

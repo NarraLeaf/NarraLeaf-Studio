@@ -14,10 +14,9 @@ import {isJsonObject, requireDocumentObject, requireOptionalMap} from "./parseHe
  * `Changed (12488 → 12502)` - a byte count, for a rename. `decode` is what removed that; see
  * `DocumentSpec.decode`.
  *
- * Two paths, because the document has had two names. The current one takes the project's name
- * (`sanitizeProjectFileName` decides its spelling), the legacy one is the fixed `project.json` that
- * projects created before the extension existed still carry. Neither pattern contains the other -
- * a `.nlproj` is never a `project.json` - so the registry keeps both without either winning.
+ * One path, taking the project's own name (`sanitizeProjectFileName` decides its spelling). The
+ * fixed `project.json` projects used before the extension existed is not read any more, here or
+ * anywhere - see `findProjectConfigFileName`.
  *
  * **Read-side only.** `parse` is a shape gate, not a migration: `ProjectService` owns reading and
  * writing the real thing, normalizes fourteen configuration groups on the way in through
@@ -29,18 +28,11 @@ import {isJsonObject, requireDocumentObject, requireOptionalMap} from "./parseHe
  */
 export const PROJECT_CONFIG_DOCUMENT_PATH = `<projectName>${NLPROJ_EXT}`;
 
-/** The fixed name projects created before {@link PROJECT_CONFIG_DOCUMENT_PATH} existed still use. */
-export const LEGACY_PROJECT_CONFIG_DOCUMENT_PATH = "project.json";
-
 export const projectConfigSpec = defineDocumentSpec<ProjectConfigData>({
     kind: "project",
     version: 1,
-    paths: [PROJECT_CONFIG_DOCUMENT_PATH, LEGACY_PROJECT_CONFIG_DOCUMENT_PATH],
-    // Decided by the path rather than by sniffing the first byte: the two names are two eras of
-    // this document and each era has exactly one format, so there is nothing to guess.
-    decode: (bytes, path) => path.toLowerCase().endsWith(NLPROJ_EXT)
-        ? decodeProjectConfig(bytes)
-        : JSON.parse(new TextDecoder().decode(bytes)),
+    paths: [PROJECT_CONFIG_DOCUMENT_PATH],
+    decode: bytes => decodeProjectConfig(bytes),
     parse: (raw, context) => {
         const record = requireDocumentObject(raw, context, "a project configuration");
         // The two fields nothing downstream can do without: the name is the game's, and the
@@ -131,10 +123,25 @@ const LABEL = {
 
     crash: "documentDiff.project.crash",
     crashPolicy: "documentDiff.project.crashPolicy",
+    preload: "documentDiff.project.preload",
+    preloadBehavior: "documentDiff.project.preloadBehavior",
 
-    assetOptimization: "documentDiff.project.assetOptimization",
-    lossyImages: "documentDiff.project.lossyImages",
-    lossyQuality: "documentDiff.project.lossyQuality",
+    assetCompression: "documentDiff.project.assetCompression",
+    compressImages: "documentDiff.project.compressImages",
+    imageMode: "documentDiff.project.imageMode",
+    imageQuality: "documentDiff.project.imageQuality",
+    imageWebpQuality: "documentDiff.project.imageWebpQuality",
+    imageMaxDimension: "documentDiff.project.imageMaxDimension",
+    compressAudio: "documentDiff.project.compressAudio",
+    audioMode: "documentDiff.project.audioMode",
+    audioQuality: "documentDiff.project.audioQuality",
+    audioBitrateKbps: "documentDiff.project.audioBitrateKbps",
+    audioSampleRateHz: "documentDiff.project.audioSampleRateHz",
+    compressVideo: "documentDiff.project.compressVideo",
+    videoMode: "documentDiff.project.videoMode",
+    videoQuality: "documentDiff.project.videoQuality",
+    videoCrf: "documentDiff.project.videoCrf",
+    videoMaxHeight: "documentDiff.project.videoMaxHeight",
 
     mobile: "documentDiff.project.mobile",
     mobileOrientation: "documentDiff.project.mobileOrientation",
@@ -299,9 +306,26 @@ const APP_GROUPS: ReadonlyMap<string, ConfigGroup> = new Map<string, ConfigGroup
     }],
     ["security", {label: LABEL.security, fields: {encryptAssets: LABEL.encryptAssets}}],
     ["crash", {label: LABEL.crash, fields: {policy: LABEL.crashPolicy}}],
-    ["assetOptimization", {
-        label: LABEL.assetOptimization,
-        fields: {lossyImages: LABEL.lossyImages, lossyQuality: LABEL.lossyQuality},
+    ["preload", {label: LABEL.preload, fields: {behavior: LABEL.preloadBehavior}}],
+    ["assetCompression", {
+        label: LABEL.assetCompression,
+        fields: {
+            compressImages: LABEL.compressImages,
+            imageMode: LABEL.imageMode,
+            imageQuality: LABEL.imageQuality,
+            imageWebpQuality: LABEL.imageWebpQuality,
+            imageMaxDimension: LABEL.imageMaxDimension,
+            compressAudio: LABEL.compressAudio,
+            audioMode: LABEL.audioMode,
+            audioQuality: LABEL.audioQuality,
+            audioBitrateKbps: LABEL.audioBitrateKbps,
+            audioSampleRateHz: LABEL.audioSampleRateHz,
+            compressVideo: LABEL.compressVideo,
+            videoMode: LABEL.videoMode,
+            videoQuality: LABEL.videoQuality,
+            videoCrf: LABEL.videoCrf,
+            videoMaxHeight: LABEL.videoMaxHeight,
+        },
     }],
     ["vfx", {label: LABEL.vfx, fields: {frameRate: LABEL.vfxFrameRate}}],
     ["mobile", {

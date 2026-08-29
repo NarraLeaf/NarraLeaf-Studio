@@ -2,7 +2,7 @@ import { constants as bufferConstants } from "buffer";
 import fs from "fs/promises";
 import { createReadStream } from "fs";
 import path from "path";
-import { protectBuffer } from "@narraleaf/encryption";
+import { packBuffer } from "@narraleaf/bindings";
 import { readKeystore } from "./keystoreReader";
 import { buildAab } from "./buildAab";
 import { signJar } from "./jarSigning";
@@ -15,6 +15,7 @@ import {
     type ApkSigningIdentity,
 } from "./signingIdentity";
 import type { ZipEntrySource } from "./zipWriter";
+import { countBuildStep } from "../stepProgress";
 import type { GameBuildWorkerAndroidSigning, GameBuildWorkerMobileJob } from "../protocol";
 
 /**
@@ -94,13 +95,19 @@ async function siteEntries(
     contentKey: string | undefined,
 ): Promise<SiteEntry[]> {
     const entries: SiteEntry[] = [];
+    // Counted only when there is a key, because only then is there any work here to count: without
+    // one this loop builds a stream descriptor per file and is over in a moment, and a bar that
+    // fills and empties inside one frame reports nothing anybody can read. With one it is a read
+    // and an encryption of every file in the game, which is minutes for a voiced project.
+    const counted = countBuildStep(contentKey ? files.length : 0, "file");
     for (const file of files) {
         if (contentKey) {
             // Read and protect one file at a time. The package is assembled in
             // memory anyway (see MAX_PAYLOAD_BYTES), so this holds one plaintext
             // file beyond that, not the whole payload at once.
-            const data = protectBuffer(await fs.readFile(file.absolutePath), contentKey);
+            const data = packBuffer(await fs.readFile(file.absolutePath), contentKey);
             entries.push({ relativePath: file.relativePath, source: { kind: "buffer", data } });
+            counted.advance();
         } else {
             entries.push({
                 relativePath: file.relativePath,
@@ -113,7 +120,7 @@ async function siteEntries(
     const overrideBytes = Buffer.from(indexHtmlOverride, "utf8");
     const overrideEntry: SiteEntry = {
         relativePath: "index.html",
-        source: { kind: "buffer", data: contentKey ? protectBuffer(overrideBytes, contentKey) : overrideBytes },
+        source: { kind: "buffer", data: contentKey ? packBuffer(overrideBytes, contentKey) : overrideBytes },
     };
     const index = entries.findIndex(entry => entry.relativePath === "index.html");
     if (index >= 0) {
@@ -121,6 +128,7 @@ async function siteEntries(
     } else {
         entries.push(overrideEntry);
     }
+    counted.end();
     return entries;
 }
 

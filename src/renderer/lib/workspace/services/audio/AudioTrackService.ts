@@ -12,6 +12,7 @@ import {
     type ProjectAudioTrack,
     type ProjectAudioTrackDocument,
 } from "@shared/types/audioTrack";
+import type { LiveAudioTrackOp } from "@shared/live/ops";
 import type { TranslationKey } from "@shared/i18n";
 import { createProjectDocumentStorage } from "../core/DocumentStorage";
 import { FileSystemService } from "../core/FileSystem";
@@ -25,6 +26,31 @@ import { HistoryService } from "../history/HistoryService";
 import type { HistoryLabel } from "../history/historyModel";
 import { projectHistoryScope } from "../history/historyScopes";
 import { EventEmitter } from "../ui/EventEmitter";
+
+/**
+ * Somewhere a mixer edit can go instead of into the document.
+ *
+ * **The seam a live session hangs the mixer off, and the reason the audio section needs no
+ * live-session code.** The shape is `StoryOpSink`'s and the bargain is the same: with a sink
+ * installed an edit becomes an operation and the document is not touched; the tracks move when the
+ * operation comes back as somebody's effect and {@link AudioTrackService.applyLiveOp} applies it.
+ * Nothing is applied optimistically, so nothing ever has to be taken back.
+ *
+ * ⚠ **Asked from the mutators rather than from {@link AudioTrackService.applyTrackMutation},
+ * which is where every edit really does converge.** That method takes a function over the whole list
+ * and can only say "the tracks changed" - which is whole-document last-writer-wins, the one verb the
+ * session vocabulary refuses. The mutators know what they meant, so that is where they say it. It is
+ * `AssetsService.recordChanged`'s answer to the same shape of service.
+ */
+export type AudioTrackOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means this edit is not
+     * the sink's business and the caller carries on as usual.
+     */
+    handle(op: LiveAudioTrackOp): boolean;
+};
 
 type AudioTrackServiceEvents = {
     tracksChanged: ProjectAudioTrack[];
@@ -77,6 +103,8 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
     private readonly events = new EventEmitter<AudioTrackServiceEvents>();
     private dirty = false;
     private revision = 0;
+    /** Where mixer edits go instead of into the document, when something else owns them. */
+    private opSink: AudioTrackOpSink | null = null;
     private readonly autoSaver = new DebouncedSaver({
         delayMs: DEFAULT_AUTOSAVE_DELAY_MS,
         maxWaitMs: DEFAULT_AUTOSAVE_MAX_WAIT_MS,
@@ -249,6 +277,11 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             volume: input?.volume ?? 1,
             loop: input?.loop ?? false,
         };
+        // Appended, which is what `beforeId: null` says. The sink is asked with the record as it
+        // WOULD have been written; see {@link AudioTrackOpSink}.
+        if (this.opSink?.handle({ op: "create-audio-track", track, beforeId: null })) {
+            return track;
+        }
         this.applyTrackMutation(tracks => [...tracks, track], audioTrackLabel("add", track.name));
         return this.getTrack(id) ?? track;
     }
@@ -275,6 +308,9 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             volume: source.volume,
             loop: source.loop,
         };
+        if (this.opSink?.handle({ op: "create-audio-track", track: copy, beforeId: this.trackAfter(id) })) {
+            return copy;
+        }
         this.applyTrackMutation(tracks => {
             const index = tracks.findIndex(track => track.id === id);
             const next = [...tracks];
@@ -282,6 +318,13 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             return next;
         }, audioTrackLabel("add", copy.name));
         return this.getTrack(copy.id) ?? copy;
+    }
+
+    /** The id of the bus that sits after `id` in the stored order, or null when it is the last. */
+    private trackAfter(id: string): string | null {
+        const tracks = this.getDocument().tracks;
+        const index = tracks.findIndex(track => track.id === id);
+        return index < 0 ? null : tracks[index + 1]?.id ?? null;
     }
 
     /**
@@ -292,9 +335,27 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
      * be refused, not clamped, and this method has no way to say no.
      */
     public updateTrack(id: string, patch: Partial<Omit<ProjectAudioTrack, "id" | "builtin" | "parentId">>): void {
+        if (this.stateRecord(id, track => ({ ...track, ...patch, id: track.id }))) {
+            return;
+        }
         this.applyTrackMutation(tracks => tracks.map(track => (
             track.id === id ? { ...track, ...patch, id: track.id } : track
         )));
+    }
+
+    /**
+     * Hand the record this edit would have written to the sink, and say whether it took it.
+     *
+     * One place rather than two, because the operation carries the whole record and every field
+     * edit therefore has the same statement to make - and a record composed a second time is a
+     * record that falls behind the one the mutator writes.
+     */
+    private stateRecord(id: string, edit: (track: ProjectAudioTrack) => ProjectAudioTrack): boolean {
+        const existing = this.getTrack(id);
+        if (!this.opSink || !existing) {
+            return false;
+        }
+        return this.opSink.handle({ op: "update-audio-track", trackId: id, track: edit({ ...existing }) });
     }
 
     /** Rename. Blank is refused rather than stored, because the normalizer would fall it back to the id. */
@@ -333,6 +394,9 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
         if (!this.canReparentTrack(id, parentId)) {
             return false;
         }
+        if (this.stateRecord(id, track => ({ ...track, parentId }))) {
+            return true;
+        }
         this.applyTrackMutation(tracks => tracks.map(track => (
             track.id === id ? { ...track, parentId } : track
         )));
@@ -359,6 +423,11 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
         if (isBuiltinAudioTrackId(id) || !doomed) {
             return false;
         }
+        // The promotion is DERIVED: every machine works out which buses fed this one from a mixer
+        // the room already agrees on, so naming them would be a second statement of the same fact.
+        if (this.opSink?.handle({ op: "delete-audio-track", trackId: id })) {
+            return true;
+        }
         const inheritedParent = doomed.parentId;
         this.applyTrackMutation(
             tracks => tracks
@@ -377,6 +446,9 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
      * longer a block of built-ins at the front to protect.
      */
     public moveTrack(id: string, beforeId: string | null): void {
+        if (this.opSink?.handle({ op: "move-audio-track", trackId: id, beforeId })) {
+            return;
+        }
         this.applyTrackMutation(tracks => {
             const moving = tracks.find(track => track.id === id);
             if (!moving || beforeId === id) {
@@ -390,6 +462,99 @@ export class AudioTrackService extends Service<AudioTrackService> implements IAu
             rest.splice(index, 0, moving);
             return rest;
         });
+    }
+
+    /* --------------------------------------------------------------- the live-session seam */
+
+    /** Send mixer edits somewhere else, or take them back. Null restores ordinary behaviour. */
+    public setOperationSink(sink: AudioTrackOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /** The tracks as they stand, or null before this window has read them. What a digest reads. */
+    public tracksOrNull(): readonly ProjectAudioTrack[] | null {
+        return this.document?.tracks ?? null;
+    }
+
+    /**
+     * Apply one operation to the mixer, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the tracks
+     * are finally allowed to move.
+     *
+     * ⚠ **No undo step is pushed here.** Inside a session undo means "send the inverse of my
+     * last operation", and an entry on the project stack would be a whole-document snapshot taken
+     * before anybody else joined - the catastrophe the session's own undo exists to avoid.
+     */
+    public applyLiveOp(op: LiveAudioTrackOp): void {
+        switch (op.op) {
+            case "create-audio-track": {
+                const reparent = new Set(op.reparent ?? []);
+                this.commitTracks(tracks => {
+                    const rest = tracks
+                        .filter(track => track.id !== op.track.id)
+                        // Undoing a deletion: the buses that were promoted out of it come home. An
+                        // ordinary creation names none, so this is a no-op for it.
+                        .map(track => (reparent.has(track.id) ? { ...track, parentId: op.track.id } : track));
+                    const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+                    if (index < 0) {
+                        return [...rest, { ...op.track }];
+                    }
+                    const next = [...rest];
+                    next.splice(index, 0, { ...op.track });
+                    return next;
+                });
+                return;
+            }
+            case "update-audio-track":
+                this.commitTracks(tracks => tracks.map(track => (
+                    track.id === op.trackId ? { ...op.track, id: op.trackId } : track
+                )));
+                return;
+            case "delete-audio-track": {
+                const doomed = this.getTrack(op.trackId);
+                if (!doomed) {
+                    // Already gone, so there is nothing to remove and nothing to promote. Not an
+                    // error: the host refuses a deletion it can see is impossible, and a machine
+                    // that is behind is caught by the digest rather than by a throw in an applier.
+                    return;
+                }
+                const inheritedParent = doomed.parentId;
+                this.commitTracks(tracks => tracks
+                    .filter(track => track.id !== op.trackId)
+                    .map(track => (track.parentId === op.trackId ? { ...track, parentId: inheritedParent } : track)));
+                return;
+            }
+            case "move-audio-track":
+                this.commitTracks(tracks => {
+                    const moving = tracks.find(track => track.id === op.trackId);
+                    if (!moving || op.beforeId === op.trackId) {
+                        return tracks;
+                    }
+                    const rest = tracks.filter(track => track.id !== op.trackId);
+                    const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+                    if (index < 0) {
+                        return [...rest, moving];
+                    }
+                    rest.splice(index, 0, moving);
+                    return rest;
+                });
+                return;
+            default: {
+                // A verb with no applier would otherwise be a silent no-op: the effect lands on
+                // every other machine in the room and not on this one, and nothing says so until a
+                // digest disagrees one message later.
+                const unapplied: never = op;
+                throw new RendererError(`No applier for live audio track operation: ${JSON.stringify(unapplied)}`);
+            }
+        }
+    }
+
+    /** {@link applyTrackMutation} without the undo step. What an effect being applied goes through. */
+    private commitTracks(mutator: (tracks: ProjectAudioTrack[]) => ProjectAudioTrack[]): void {
+        const document = this.getDocument();
+        document.tracks = normalizeProjectAudioTracks(mutator([...document.tracks]));
+        this.commitMutation();
     }
 
     private setDirty(value: boolean): void {

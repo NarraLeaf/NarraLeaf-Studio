@@ -138,9 +138,10 @@ export function StudioPreview({ surface }: StudioPreviewProps) {
                 <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-fg-muted">
                     <Menu className="h-4 w-4" />
                 </span>
-                <span className="flex h-8 min-w-0 max-w-56 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted">
+                <span className="flex h-8 min-w-0 items-center gap-1.5 rounded-md px-2 text-sm text-fg-muted">
                     <FolderOpen className="h-4 w-4 shrink-0" />
-                    <span className="truncate">{projectName}</span>
+                    {/* The same character budget the real switcher caps its name to. */}
+                    <span className="truncate max-w-[7em]">{projectName}</span>
                     <ChevronDown className="h-3 w-3 shrink-0" />
                 </span>
                 <span className="flex h-8 shrink-0 items-center rounded-md text-sm text-fg-muted">

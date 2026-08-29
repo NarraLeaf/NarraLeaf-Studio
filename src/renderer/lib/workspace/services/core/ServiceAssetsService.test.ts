@@ -150,67 +150,18 @@ describe("ServiceAssetsService store routing", () => {
     });
 });
 
-describe("ServiceAssetsService store migration", () => {
-    const LEGACY = versionedStore("panel_state");
-    const MIGRATED = studioStore("panel_state");
-    const LAYOUT = { version: 1, panels: { explorer: { width: 240 } } };
-
-    it("carries the versioned copy over, then removes it", async () => {
-        const harness = await createHarness({ [LEGACY]: LAYOUT });
-
-        expect(await harness.service.readStore("panel_state")).toEqual(ok(LAYOUT));
-
-        expect(harness.files.get(MIGRATED)).toBe(JSON.stringify(LAYOUT));
-        expect(harness.files.has(LEGACY)).toBe(false);
-        // Written and confirmed before the old file is touched: a crash in between
-        // leaves the layout on disk twice, never nowhere.
-        expect(harness.calls.indexOf(`write ${MIGRATED}`))
-            .toBeLessThan(harness.calls.indexOf(`deleteFile ${LEGACY}`));
-    });
-
-    it("keeps the only copy when the new one cannot be written", async () => {
-        const harness = await createHarness({ [LEGACY]: LAYOUT });
-        harness.writeError = FsRejectErrorCode.PERMISSION_DENIED;
-
-        expect(await harness.service.readStore("panel_state")).toEqual(ok(LAYOUT));
-
-        expect(harness.files.has(MIGRATED)).toBe(false);
-        expect(harness.files.get(LEGACY)).toBe(JSON.stringify(LAYOUT));
-        expect(harness.calls).not.toContain(`deleteFile ${LEGACY}`);
-    });
-
-    it("tidies the leftover on the next launch when a frozen workspace no-ops the removal", async () => {
-        const harness = await createHarness({ [LEGACY]: LAYOUT });
-        harness.frozen = true;
-
-        // The author still gets their layout, and the copy that matters is in place.
-        expect(await harness.service.readStore("panel_state")).toEqual(ok(LAYOUT));
-        expect(harness.files.get(MIGRATED)).toBe(JSON.stringify(LAYOUT));
-        // The delete reported success and did nothing.
-        expect(harness.calls).toContain(`deleteFile ${LEGACY}`);
-        expect(harness.files.has(LEGACY)).toBe(true);
-
-        harness.frozen = false;
-        harness.calls.length = 0;
-
-        // Next launch. The new path answers, so nothing is copied - and the leftover is
-        // still removed, because "the old file exists" is its own condition.
-        expect(await harness.service.readStore("panel_state")).toEqual(ok(LAYOUT));
-        expect(harness.files.has(LEGACY)).toBe(false);
-        expect(harness.calls).not.toContain(`write ${MIGRATED}`);
-    });
-
-    it("leaves an unreadable legacy file alone rather than guess it is junk", async () => {
-        const harness = await createHarness();
-        harness.files.set(LEGACY, "{ not json");
+describe("ServiceAssetsService store routing, once a project has moved", () => {
+    it("does not look in the versioned tree for a Studio-state store", async () => {
+        // Studio state used to live in `editor/services/` and was carried over to `.nlstudio/` on
+        // the read that found it there. That carry is gone: a store the new path does not have is
+        // simply absent, which every caller already reads as "start empty" and regenerates by using
+        // the editor. Reading the versioned copy would put editor state back into version control.
+        const harness = await createHarness({ [versionedStore("panel_state")]: { version: 1 } });
 
         const read = await harness.service.readStore("panel_state");
 
-        // The new path's NOT_FOUND, which every caller already reads as "start empty".
         expect(read.ok).toBe(false);
-        // An unreadable read is also what a transient IPC failure looks like; deleting on
-        // that is the one way this migration could destroy something.
-        expect(harness.files.has(LEGACY)).toBe(true);
+        expect(harness.files.has(versionedStore("panel_state"))).toBe(true);
     });
 });
 

@@ -1,7 +1,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { VCS_UNCONFIGURED_REMOTE_URL, isVcsPlatformSupported } from "@shared/types/vcs";
 import {
     branchMergeResolveMine,
@@ -13,6 +13,7 @@ import {
     syncRevision,
     type LoreGlobals,
 } from "./lore";
+import { LORE_TEST_SERVER, loreTestIdentity, signInLoreTestAccount } from "./loreTestAccount";
 import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote";
 
 /**
@@ -33,19 +34,22 @@ import { cloneInto, publishToRemote, pushToRemote, writeRemote } from "./remote"
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const DOCUMENT = "doc.json";
 
 const base = `${JSON.stringify({ id: "s", title: "Prologue" }, null, 2)}\n`;
 const authorText = `${JSON.stringify({ id: "s", title: "AUTHOR wrote this" }, null, 2)}\n`;
 const serverText = `${JSON.stringify({ id: "s", title: "SERVER wrote this" }, null, 2)}\n`;
 
+/** The author, and the identity a run with no token goes online as. */
+const AUTHOR = "orientation@narraleaf";
+
 function offline(root: string): LoreGlobals {
-    return { repositoryPath: root, offline: true, identity: "orientation@narraleaf", cache: true };
+    return { repositoryPath: root, offline: true, identity: AUTHOR, cache: true };
 }
 
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 async function commitAll(globals: LoreGlobals, root: string, message: string): Promise<void> {
@@ -55,6 +59,11 @@ async function commitAll(globals: LoreGlobals, root: string, message: string): P
 }
 
 describe.skipIf(!supported || SERVER === "")("which side resolve_mine writes after a sync", () => {
+    // The account a verifying server wants is not the author name; see ./loreTestAccount.ts.
+    beforeAll(async () => {
+        await signInLoreTestAccount();
+    }, 60_000);
+
     it("compares its bytes against the author's text and the server's", async () => {
         const authorRoot = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-orient-author-")));
         const cloneBase = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "nl-orient-clone-")));

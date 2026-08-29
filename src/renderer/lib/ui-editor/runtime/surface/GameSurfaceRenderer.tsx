@@ -10,21 +10,29 @@ import {
 } from "react";
 import type { UIDocument, UISurface } from "@shared/types/ui-editor/document";
 import {
-    normalizeUISurfaceInputMode,
     type UIInputPointerGesture,
 } from "@shared/types/ui-editor/inputAction";
-import { stopsAtLane } from "@/lib/ui-editor/runtime/input/inputLaneWalk";
 import {
     hitsConsumeInput,
     resolveSurfaceInputActionHits,
+    stopsAtLane,
     type UIInputSignal,
+    type UIPointerInputDevice,
 } from "@/lib/ui-editor/runtime/input/surfaceInputActions";
 import {
     claimInputLaneVisit,
     handOffInputToLaneBehind,
-    readSurfaceHitChain,
+    readPointerEventDevice,
+    readSurfaceHitNodes,
     readWheelGesture,
 } from "@/lib/ui-editor/runtime/input/surfaceInputDom";
+import {
+    claimTouchStroke,
+    getSharedTouchGestureTracker,
+    isTouchStrokeInFlight,
+    readTouchGestureDetail,
+    UI_TOUCH_GESTURE_EVENT,
+} from "@/lib/ui-editor/runtime/input/touchGesture";
 import {
     isWheelPointerGesture,
     readInputEventTime,
@@ -45,6 +53,39 @@ import type { DevModeWidgetRuntimePatch } from "@/lib/ui-editor/blueprint-runtim
 import { getSurfaceBackgroundColor } from "@/lib/ui-editor/runtime/surfaceBackground";
 import { getSurfaceAnimationPlan } from "@/lib/ui-editor/runtime/surfaceAnimationPlan";
 import { useWidgetRuntimeStateStore } from "@/lib/ui-editor/runtime/appearance/WidgetRuntimeStateContext";
+
+/**
+ * The part of an input event a lane step needs.
+ *
+ * Written as a shape rather than as a union of event types so that one function serves both routes
+ * into routing: React's synthetic mouse and wheel events satisfy it as they are, and the private
+ * CustomEvent a recognised touch gesture arrives on is wrapped in one of these. There is no second
+ * copy of the walk for touch to drift away from.
+ */
+type UIInputLaneEvent = {
+    nativeEvent: Event;
+    target: EventTarget | null;
+    clientX: number;
+    clientY: number;
+    stopPropagation: () => void;
+};
+
+/** What the input is, in the terms a binding is written in. */
+type UIInputLaneGesture = {
+    gesture: UIInputPointerGesture;
+    device: UIPointerInputDevice;
+    /**
+     * The input is one the touch recogniser produced rather than one the browser raised.
+     *
+     * Two rules turn on it. A touch stroke has an explicit end, so it is not subject to the wheel
+     * gate's silence window - running it through would let one stroke's claim swallow the next
+     * stroke that happened to follow within a fifth of a second. And a stroke something answered has
+     * to have its trailing synthetic click suppressed, which is only meaningful while the stroke is
+     * the thing in hand: the tap-synthesised `click` that arrives afterwards is a touch input too,
+     * and claiming on that one would eat the *following* tap.
+     */
+    fromTouchStroke?: boolean;
+};
 
 export type GameSurfaceRendererProps = {
     document: UIDocument;
@@ -198,9 +239,8 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * field existed already did - so an old document routes exactly as it used to. `none` takes the
      * surface out of input altogether, keyboard included: it is drawn, and nothing else.
      */
-    const inputMode = normalizeUISurfaceInputMode(surface.input);
-    const laneInteractive = interactive && inputMode !== "none";
-    const laneKeyboardInteractive = keyboardInteractive && inputMode !== "none";
+    const laneInteractive = interactive;
+    const laneKeyboardInteractive = keyboardInteractive;
     const actionVocabulary = document.actions;
     const surfaceActions = surface.actions;
     /**
@@ -243,35 +283,39 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
      * Stopping is `stopPropagation` on the way out plus, for `pass`, a copy of the event aimed at
      * whatever the browser paints behind this surface. An action with `consume` (the default) ends
      * the walk wherever the mode would have carried it.
+     *
+     * Returns whether an action here consumed the input, which is what a touch stroke's caller needs
+     * to know: only a stroke that actually fired something claims its trailing click.
      */
     const runLaneStep = useCallback(
-        (event: ReactMouseEvent<HTMLDivElement> | ReactWheelEvent<HTMLDivElement>, gesture: UIInputPointerGesture) => {
+        (event: UIInputLaneEvent, input: UIInputLaneGesture): boolean => {
             const shell = shellRef.current;
             if (!laneInteractive || !shell || !laneKey) {
-                return;
+                return false;
             }
             if (!claimInputLaneVisit(event.nativeEvent, laneKey)) {
-                return;
+                return false;
             }
-            const wheel = isWheelPointerGesture(gesture);
+            const wheel = isWheelPointerGesture(input.gesture) && !input.fromTouchStroke;
             const eventTime = readInputEventTime(event.nativeEvent);
             if (wheel && !wheelGestureGate.admit(event.nativeEvent, eventTime)) {
                 // The tail of a gesture something already answered. Swallowed rather than passed on:
                 // the whole point is that no lane hears the rest of it.
                 event.stopPropagation();
-                return;
+                return false;
             }
             const point = toDesignPoint(event, shell);
-            const signal: UIInputSignal = { kind: "pointer", gesture, ...point };
+            const signal: UIInputSignal = { kind: "pointer", gesture: input.gesture, device: input.device, ...point };
             const hits = dispatchSurfaceInputAction
                 ? resolveSurfaceInputActionHits({
                       vocabulary: actionVocabulary,
                       enablements: surfaceActions,
                       signal,
-                      hitChain: readSurfaceHitChain({
+                      hitChain: readSurfaceHitNodes({
                           document,
                           target: event.target,
                           surfaceRoot: shell,
+                          gesture: input.gesture,
                       }),
                   })
                 : [];
@@ -282,17 +326,17 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
             if (wheel && consumed) {
                 wheelGestureGate.claim(eventTime);
             }
-            if (stopsAtLane(inputMode, consumed)) {
+            if (stopsAtLane(hits)) {
                 event.stopPropagation();
-                return;
+                return consumed;
             }
             handOffInputToLaneBehind({ event: event.nativeEvent, surfaceRoot: shell });
+            return consumed;
         },
         [
             actionVocabulary,
             dispatchSurfaceInputAction,
             document,
-            inputMode,
             laneInteractive,
             laneKey,
             surfaceActions,
@@ -305,26 +349,54 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         if (laneInteractive && dispatchSurfaceBlueprintEvent && shell) {
             void dispatchSurfaceBlueprintEvent("mouseClick", toDesignPoint(event, shell));
         }
-        runLaneStep(event, "click");
+        // A tap synthesises a click, and it reports itself as one: the event is a `PointerEvent`
+        // whose `pointerType` says which hand raised it, so an action fired from a tap says `touch`
+        // without anything having to infer it from the shape of the gesture.
+        runLaneStep(event, { gesture: "click", device: readPointerEventDevice(event.nativeEvent) });
     }, [dispatchSurfaceBlueprintEvent, laneInteractive, runLaneStep, toDesignPoint]);
 
     const handleSurfaceDoubleClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
-        runLaneStep(event, "doubleClick");
+        runLaneStep(event, { gesture: "doubleClick", device: readPointerEventDevice(event.nativeEvent) });
+    }, [runLaneStep]);
+
+    /**
+     * The middle button, which arrives as `auxclick` rather than as a click.
+     *
+     * `click` is the primary button only, so a wheel press reaches nothing without this. The event
+     * fires for every non-primary button, so the number is checked: the secondary one already has a
+     * gesture of its own and would otherwise raise two.
+     */
+    const handleSurfaceAuxClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        if (event.button !== 1) {
+            return;
+        }
+        runLaneStep(event, { gesture: "middleClick", device: readPointerEventDevice(event.nativeEvent) });
     }, [runLaneStep]);
 
     const handleSurfaceRightClick = useCallback((event: ReactMouseEvent<HTMLDivElement>) => {
+        // One browser event, two gestures, told apart by whether a finger is on the glass. Android
+        // raises `contextmenu` from the platform's own held finger; that is a duplicate of the long
+        // press this runtime recognises for itself, and it is swallowed rather than answered - iOS
+        // raises nothing of the kind, and an author must not be able to feel which phone a player is
+        // holding. A right button raised it when no stroke is in flight, and that is `rightClick`.
+        if (isTouchStrokeInFlight()) {
+            event.preventDefault();
+            return;
+        }
         const shell = shellRef.current;
         if (laneInteractive && dispatchSurfaceBlueprintEvent && shell) {
             event.preventDefault();
             void dispatchSurfaceBlueprintEvent("rightClick", toDesignPoint(event, shell));
         }
-        runLaneStep(event, "rightClick");
+        runLaneStep(event, { gesture: "rightClick", device: readPointerEventDevice(event.nativeEvent) });
     }, [dispatchSurfaceBlueprintEvent, laneInteractive, runLaneStep, toDesignPoint]);
 
     const handleSurfaceWheel = useCallback((event: ReactWheelEvent<HTMLDivElement>) => {
         const gesture = readWheelGesture(event);
         if (gesture) {
-            runLaneStep(event, gesture);
+            // A `WheelEvent` is not a pointer event and names no device. A trackpad's two fingers
+            // are the trackpad's, not the player's: what reaches here is always the mouse family.
+            runLaneStep(event, { gesture, device: "pointer" });
             return;
         }
         // A wheel event whose deltas name no direction still belongs to the gesture in flight.
@@ -333,6 +405,60 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         wheelGestureGate.admit(event.nativeEvent, readInputEventTime(event.nativeEvent));
     }, [runLaneStep]);
 
+    /**
+     * A gesture the touch recogniser produced, taking this lane's turn.
+     *
+     * A native listener rather than a React prop, because the event name is a private one React has
+     * no `on...` for. Everything after that is the walk every other input takes - the same
+     * `runLaneStep`, so a touch gesture is answered by the same rules with the same order.
+     *
+     * The recogniser aims it at the element the stroke started on, which is the browser's own rule
+     * for a touch stroke: every event of it goes to the element the first finger landed on, whatever
+     * has since scrolled underneath. So the hit chain is stable for the whole stroke, and
+     * `overControls` asks the same question `Is Action Held` does - what did the player put their
+     * finger on.
+     */
+    const handleTouchGesture = useCallback((event: Event) => {
+        const detail = readTouchGestureDetail(event);
+        if (!detail) {
+            return;
+        }
+        const consumed = runLaneStep(
+            {
+                nativeEvent: event,
+                target: event.target,
+                clientX: detail.clientX,
+                clientY: detail.clientY,
+                stopPropagation: () => event.stopPropagation(),
+            },
+            { gesture: detail.gesture, device: "touch", fromTouchStroke: true },
+        );
+        if (consumed) {
+            // The stroke has been answered, so the click the browser synthesises when the finger
+            // lifts must fire nothing - otherwise a drag that opens the log advances the dialogue on
+            // its way out. Claimed only on a real answer, exactly as the wheel gate is.
+            claimTouchStroke();
+        }
+    }, [runLaneStep]);
+
+    const hasRootElement = Boolean(rootElement);
+
+    useEffect(() => {
+        if (!laneInteractive || !hasRootElement) {
+            return undefined;
+        }
+        const shell = shellRef.current;
+        if (!shell) {
+            return undefined;
+        }
+        // Armed on mount rather than on the first gesture: the recogniser is a set of window
+        // listeners, and one built after the finger has already landed has missed the `touchstart`
+        // that says where the stroke began.
+        getSharedTouchGestureTracker();
+        shell.addEventListener(UI_TOUCH_GESTURE_EVENT, handleTouchGesture);
+        return () => shell.removeEventListener(UI_TOUCH_GESTURE_EVENT, handleTouchGesture);
+    }, [handleTouchGesture, hasRootElement, laneInteractive]);
+
     const shellStyle: CSSProperties = {
         position: "relative",
         width: scaledWidth,
@@ -340,7 +466,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         overflow: "hidden",
         // A surface that takes no input is click-through as well as inert, so the thing behind it is
         // reachable rather than merely unblocked-in-principle.
-        ...(inputMode === "none" ? { pointerEvents: "none" as const } : surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
     const surfaceStyle: CSSProperties = {
         position: "relative",
@@ -350,7 +476,7 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         backgroundColor: backgroundColor ?? getSurfaceBackgroundColor(surface),
         transform: `scale(${safeScale})`,
         transformOrigin: "top left",
-        ...(inputMode === "none" ? { pointerEvents: "none" as const } : surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
+        ...(surfacePointerEvents ? { pointerEvents: surfacePointerEvents } : {}),
     };
 
     if (!rootElement) {
@@ -361,16 +487,16 @@ export function GameSurfaceRenderer(props: GameSurfaceRendererProps) {
         // A surface out of input is passive as well as inert. Widget wrappers set `pointer-events:
         // auto` on themselves, so making only the shell click-through would leave every widget on it
         // still blocking whatever is behind - which is the opposite of what "none" says.
-        <SurfacePassiveContext.Provider value={passive || inputMode === "none"}>
+        <SurfacePassiveContext.Provider value={passive}>
         <div
             ref={shellRef}
             className="ui-editor-surface"
             data-ui-surface-id={surface.id}
             data-ui-surface-kind={surface.kind}
-            data-ui-surface-input={inputMode}
             style={shellStyle}
             onClick={laneInteractive ? handleSurfaceClick : undefined}
             onDoubleClick={laneInteractive ? handleSurfaceDoubleClick : undefined}
+            onAuxClick={laneInteractive ? handleSurfaceAuxClick : undefined}
             onContextMenu={laneInteractive ? handleSurfaceRightClick : undefined}
             onWheel={laneInteractive ? handleSurfaceWheel : undefined}
         >

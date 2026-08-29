@@ -10,6 +10,7 @@ import {
     storyRowAccentColor,
     storyRowSentence,
     storyRowSpeaker,
+    storyConditionSummary,
     storyTextSegmentPlain,
     type StoryRowLookups,
 } from "./storyRowProjection";
@@ -330,5 +331,53 @@ describe("projectStoryRow", () => {
     it("keeps describeStoryBlock as the base sentence for rows with no tokens", () => {
         const block = action({ action: "wait", mode: "click" });
         expect(storyRowSentence(block, bare)).toBe(describeStoryBlock(block, bare));
+    });
+});
+
+describe("storyConditionSummary", () => {
+    const scene: StoryScene = { id: "s", name: "S", runtimeName: "s", rootBlockIds: [], blocks: {} };
+    const registry = {
+        scene,
+        scenes: { s: scene },
+        projectVariableName: (scopeName: "saved" | "persistent", variableId: string) =>
+            scopeName === "persistent" && variableId === "gold" ? "Gold" : null,
+    };
+
+    /**
+     * The defect this guards: a branch on a persistent variable printed the SCOPE - "persistent
+     * equals 1" - because the summary had no way to reach the project registry the variable is
+     * declared in. Every persistent branch in a story read as the same line.
+     */
+    it("names a persistent variable rather than its scope", () => {
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "equals", value: 1 },
+            registry,
+        )).toBe("Gold equals 1");
+    });
+
+    it("falls back to the scope word only when the registry does not know the variable", () => {
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "unknown" }, operator: "isTrue" },
+            registry,
+        )).toBe("persistent is on");
+    });
+
+    it("prints each ordered comparison with its value", () => {
+        const summary = (operator: "greaterThan" | "greaterOrEqual" | "lessThan" | "lessOrEqual") =>
+            storyConditionSummary(
+                { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator, value: 100 },
+                registry,
+            );
+        expect(summary("greaterThan")).toBe("Gold is greater than 100");
+        expect(summary("greaterOrEqual")).toBe("Gold is at least 100");
+        expect(summary("lessThan")).toBe("Gold is less than 100");
+        expect(summary("lessOrEqual")).toBe("Gold is at most 100");
+    });
+
+    it("prints no value for the operators that compare against nothing", () => {
+        expect(storyConditionSummary(
+            { kind: "variable", target: { scope: "persistent", variableId: "gold" }, operator: "exists" },
+            registry,
+        )).toBe("Gold is set");
     });
 });

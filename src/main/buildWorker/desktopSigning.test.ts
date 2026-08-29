@@ -29,11 +29,11 @@ const FUSES: GameBuildWorkerFuses = {
 };
 
 function windowsTarget(signing?: GameBuildWorkerTarget["signing"]): GameBuildWorkerTarget {
-    return { platform: "windows", formats: ["nsis"], arch: "x64", fuses: FUSES, ...(signing ? { signing } : {}) };
+    return { platform: "windows", platformKey: "windows-x64", formats: ["nsis"], arch: "x64", fuses: FUSES, ...(signing ? { signing } : {}) };
 }
 
 function macTarget(signing?: GameBuildWorkerTarget["signing"]): GameBuildWorkerTarget {
-    return { platform: "macos", formats: ["dmg"], arch: "arm64", fuses: FUSES, ...(signing ? { signing } : {}) };
+    return { platform: "macos", platformKey: "macos-arm64", formats: ["dmg"], arch: "arm64", fuses: FUSES, ...(signing ? { signing } : {}) };
 }
 
 const NOTARIZATION: GameBuildWorkerNotarization = {
@@ -292,7 +292,7 @@ describe("withNotarizationEnv", () => {
 describe("signtoolPathForTargets", () => {
     it("finds the path a signtool-driven target carries", () => {
         expect(signtoolPathForTargets([
-            { platform: "linux", formats: ["appimage"], arch: "x64", fuses: FUSES },
+            { platform: "linux", platformKey: "linux-x64", formats: ["appimage"], arch: "x64", fuses: FUSES },
             windowsTarget({ source: "certificate-store", certificateSha1: "AB", signtoolPath: "C:/kits/signtool.exe" }),
         ])).toBe("C:/kits/signtool.exe");
     });

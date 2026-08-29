@@ -13,11 +13,18 @@ import type {
     StoryTransformRef,
     StoryVariableRef,
 } from "@shared/types/story";
-import { isStoryExpressionEvaluable, resolveDisplayableTargetRef, savedVariableDefs, sceneVariableDefs } from "@shared/types/story";
+import {
+    declaresStageObject,
+    isStoryExpressionEvaluable,
+    resolveDisplayableTargetRef,
+    savedVariableDefs,
+    sceneVariableDefs,
+    storyPersistentDefs,
+} from "@shared/types/story";
 import type { SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildMergedVariableView, type MergedPersistentView } from "@shared/variables/mergedPersistentView";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
+import { compareStoryCondition, evaluateStoryExpression, isTruthy } from "@shared/utils/storyExpressionEval";
 import { composeStoryFilter, foldStoryTransformLook } from "@shared/story/transformProps";
 import { translate } from "@/lib/i18n";
 import {
@@ -119,6 +126,24 @@ export type StoryStageSnapshot = {
     background: { assetId?: string; color?: string } | null;
     /** Displayables in creation order. */
     displayables: StageSnapshotDisplayable[];
+    /**
+     * Stage objects the scene declares somewhere this walk did not go - the other arms of a menu,
+     * the branches of a condition it did not take, and everything past the target row.
+     *
+     * The snapshot above is a RUNTIME state: one path through the scene, ending at the target row.
+     * A compile's element registry is not - it is built by walking every row of the scene, so an
+     * `/image create` written inside one arm of a condition registers that image for the whole
+     * scene and the `/show` inside another arm three hundred rows later finds it. A row-precise
+     * launch replaces the scene with a pre-posed one and plays the tail into it, so without this
+     * list the tail's registry would hold only what the ONE path declared, and every row addressing
+     * anything declared on a different arm would report a stage object that is missing from a story
+     * a normal playthrough compiles without a word. These are declarations, never a pose that is
+     * seen: images and texts arrive hidden, exactly as `/image create` leaves them.
+     *
+     * Empty of anything already in {@link displayables} - what the path really declared belongs
+     * there, with its accumulated state, and the two lists must not both speak for one object.
+     */
+    declarations: StageSnapshotDisplayable[];
     /** Props accumulated against the built-in scene background image. */
     backgroundProps: Record<string, unknown>;
     backgroundEffects: StageSnapshotEffects;
@@ -197,6 +222,27 @@ export function computeStoryStageSnapshot(input: {
      * default and every `/set` on it would be dropped - pass them whenever the caller has a bundle.
      */
     savedVariables?: SavedVariableRuntimeTable;
+    /**
+     * The project registry's `persistent` entries (bundle `ui.persistentVariables`), paired with
+     * {@link readPersistent}. Same role the `saved` table plays: without it a persistent variable
+     * declared on the registry rather than by a `/persist` row cannot be resolved to a storage key.
+     */
+    persistentVariables?: SavedVariableRuntimeTable;
+    /**
+     * The host's live persistent store, read by storage key.
+     *
+     * Persistent state is the one scope this walk cannot reconstruct and must not invent: it
+     * outlives the scene, the story and the run, so "what it holds at the target row" is a question
+     * only the host that owns the profile can answer. A host that has one (Dev Mode does) passes
+     * this and every persistent condition on the way to the target row is decided by the same value
+     * the compiled tail will read a moment later - which is the whole point, because the two
+     * disagreeing is a stage pre-posed down one branch and then played down another.
+     *
+     * Absent means no store to ask, and the walk falls back to reporting the guess it is making.
+     * `undefined` from the reader means the key is not stored yet: the declared default stands, the
+     * way it does at runtime.
+     */
+    readPersistent?: (storageKey: string) => StoryLiteralValue | null | undefined;
 }): StoryStageSnapshot {
     const scene = input.document.scenes[input.sceneId];
     if (!scene) {
@@ -210,6 +256,11 @@ export function computeStoryStageSnapshot(input: {
         input.targetBlockId,
         animations,
         savedVariableDefsFromView(collectSavedVariableView(input.document, input.savedVariables)),
+        savedVariableDefsFromView(buildMergedVariableView(
+            Object.values(input.persistentVariables ?? {}),
+            Object.values(storyPersistentDefs(input.document)),
+        )),
+        input.readPersistent,
     );
     return walker.run();
 }
@@ -226,6 +277,11 @@ class SnapshotWalker {
     private readonly sceneDefs: Record<string, StorySceneVariableDefinition>;
     private readonly displayables = new Map<string, StageSnapshotDisplayable>();
     private readonly order: string[] = [];
+    /** The declaration pass's own table - see {@link StoryStageSnapshot.declarations}. */
+    private readonly declared = new Map<string, StageSnapshotDisplayable>();
+    private readonly declaredOrder: string[] = [];
+    /** True while the declaration pass runs, so {@link ensure} files into {@link declared}. */
+    private declaring = false;
     private readonly diagnostics: StageSnapshotDiagnostic[] = [];
     private readonly variables: VariableStore = { scene: new Map(), saved: new Map() };
     private readonly assignedScene: Record<string, StoryLiteralValue> = {};
@@ -245,6 +301,10 @@ class SnapshotWalker {
         private readonly animations: ReadonlyMap<string, StoryAnimationAsset>,
         /** Merged saved table (registry + story rows); see {@link collectSavedVariableView}. */
         private readonly savedDefs: Record<string, StorySavedVariableDefinition>,
+        /** Merged persistent table, read only through {@link readPersistent}. */
+        private readonly persistentDefs: Record<string, StorySavedVariableDefinition>,
+        /** The host's live persistent store, or undefined when there is none to ask. */
+        private readonly readPersistent: ((storageKey: string) => StoryLiteralValue | null | undefined) | undefined,
     ) {
         let cursor = targetBlockId ? scene.blocks[targetBlockId] : undefined;
         while (cursor && !this.pathBlockIds.has(cursor.id)) {
@@ -271,9 +331,14 @@ class SnapshotWalker {
                 this.diagnostic(this.targetBlockId, translate("story.preview.diagnostics.targetUnreachable"));
             }
         }
+        this.collectDeclarations(this.scene.rootBlockIds);
+        this.hideDeclarations();
         return {
             background: this.background,
             displayables: this.order.map(key => this.displayables.get(key) as StageSnapshotDisplayable),
+            declarations: this.declaredOrder
+                .filter(key => !this.displayables.has(key))
+                .map(key => this.declared.get(key) as StageSnapshotDisplayable),
             backgroundProps: this.backgroundProps,
             backgroundEffects: this.backgroundEffects,
             builtinLayerProps: this.builtinLayerProps,
@@ -283,6 +348,61 @@ class SnapshotWalker {
             nvl: this.nvl,
             diagnostics: this.diagnostics,
         };
+    }
+
+    /**
+     * The declaration pass: every row of the scene, every arm of every branch, target row or not.
+     *
+     * Deliberately blind to the path and to the target - it answers "what does this scene declare",
+     * which is the question a compile's element registry answers, and that one has no path in it.
+     * The rows are replayed through the same `apply*` methods the stage walk uses so a declaration's
+     * source, layer, size and pose come out of one reading of the row rather than two; only the
+     * table they land in changes. What is dropped afterwards is being SEEN: a `/character enter` is
+     * a declaration and an entrance at once, and the entrance belongs to the arm that runs.
+     *
+     * Layers keep their own default, because a declared layer really is visible and hiding one
+     * would take everything a later row puts on it down with it.
+     */
+    private collectDeclarations(blockIds: readonly string[]): void {
+        for (const blockId of blockIds) {
+            const block = this.scene.blocks[blockId];
+            if (!block) {
+                continue;
+            }
+            if (block.kind === "action" && declaresStageObject(block.payload)) {
+                this.declaring = true;
+                switch (block.payload.action) {
+                    case "image":
+                        this.applyImage(block, block.payload);
+                        break;
+                    case "text":
+                        this.applyText(block, block.payload);
+                        break;
+                    case "layer":
+                        this.applyLayer(block, block.payload);
+                        break;
+                    case "character":
+                        this.applyCharacter(block, block.payload);
+                        break;
+                    // video / vfx / audio declare Actionables, which no displayable record models.
+                    default:
+                        break;
+                }
+                this.declaring = false;
+            }
+            this.collectDeclarations(block.childrenIds ?? []);
+        }
+    }
+
+    /** Strip the "and it is seen" half off every declaration; see {@link collectDeclarations}. */
+    private hideDeclarations(): void {
+        for (const record of this.declared.values()) {
+            if (record.kind === "layer") {
+                continue;
+            }
+            record.visible = false;
+            delete record.props.opacity;
+        }
     }
 
     private visitList(blockIds: readonly string[], insideNvl: boolean): void {
@@ -395,6 +515,26 @@ class SnapshotWalker {
         }
     }
 
+    /**
+     * A persistent variable's current value from the host's store, or undefined when there is no
+     * store to ask (or the variable is not declared anywhere this walk can see).
+     *
+     * Wrapped in an object so "the store holds null" and "there is no store" stay apart: only the
+     * second is a guess worth a diagnostic. A key the store has never been written to falls back to
+     * the declared default, which is what the runtime reads there too.
+     */
+    private readStoredPersistent(variableId: string): { value: StoryLiteralValue | null } | undefined {
+        if (!this.readPersistent) {
+            return undefined;
+        }
+        const def = this.persistentDefs[variableId];
+        if (!def) {
+            return undefined;
+        }
+        const stored = this.readPersistent(def.storageKey);
+        return { value: stored === undefined ? def.defaultValue ?? null : stored };
+    }
+
     private evaluateCondition(condition: StoryConditionRef | undefined, blockId: string): boolean {
         if (!condition) {
             return false;
@@ -418,8 +558,11 @@ class SnapshotWalker {
         const target = condition.target;
         let current: StoryLiteralValue | null | undefined;
         if (target.scope === "persistent") {
-            this.diagnostic(blockId, translate("story.preview.diagnostics.persistentConditionDefaults"));
-            current = undefined;
+            const stored = this.readStoredPersistent(target.variableId);
+            if (stored === undefined) {
+                this.diagnostic(blockId, translate("story.preview.diagnostics.persistentConditionDefaults"));
+            }
+            current = stored?.value;
         } else if (target.scope === "scene") {
             const def = this.sceneDefs[target.variableId];
             if (!def) {
@@ -442,6 +585,11 @@ class SnapshotWalker {
                 return current === condition.value;
             case "notEquals":
                 return current !== condition.value;
+            case "greaterThan":
+            case "greaterOrEqual":
+            case "lessThan":
+            case "lessOrEqual":
+                return compareStoryCondition(condition.operator, current, condition.value);
             case "exists":
                 return current !== null && current !== undefined;
             default:
@@ -883,11 +1031,15 @@ class SnapshotWalker {
         };
     }
 
-    /** Read a variable out of the preview's own store. Persistent variables have no preview backing. */
+    /** Read a variable out of the walk's own store, or - for a persistent one - out of the host's. */
     private readVariable(ref: StoryVariableRef, blockId: string): StoryLiteralValue | undefined {
         if (ref.scope === "persistent") {
-            this.diagnostic(blockId, translate("story.preview.diagnostics.persistentReadEmpty"));
-            return undefined;
+            const stored = this.readStoredPersistent(ref.variableId);
+            if (stored === undefined) {
+                this.diagnostic(blockId, translate("story.preview.diagnostics.persistentReadEmpty"));
+                return undefined;
+            }
+            return stored.value ?? undefined;
         }
         if (ref.scope === "scene") {
             const def = this.sceneDefs[ref.variableId];
@@ -903,7 +1055,9 @@ class SnapshotWalker {
 
     private ensure(kind: "image" | "text" | "layer", objectName: string | undefined, sourceBlockId: string): StageSnapshotDisplayable {
         const key = this.key(kind, objectName ?? "");
-        const existing = this.displayables.get(key);
+        const table = this.declaring ? this.declared : this.displayables;
+        const order = this.declaring ? this.declaredOrder : this.order;
+        const existing = table.get(key);
         if (existing) {
             return existing;
         }
@@ -916,8 +1070,8 @@ class SnapshotWalker {
             props: {},
             effects: {},
         };
-        this.displayables.set(key, record);
-        this.order.push(key);
+        table.set(key, record);
+        order.push(key);
         return record;
     }
 
@@ -926,6 +1080,12 @@ class SnapshotWalker {
     }
 
     private diagnostic(blockId: string | undefined, message: string): void {
+        // The declaration pass replays rows the player may never reach, so what it approximates is
+        // not a fact about this playthrough and saying so would put a mark on a row for a reason
+        // that does not apply to it. It reads rows; the stage walk is what reports on them.
+        if (this.declaring) {
+            return;
+        }
         this.diagnostics.push({ level: "warning", blockId, message });
     }
 }

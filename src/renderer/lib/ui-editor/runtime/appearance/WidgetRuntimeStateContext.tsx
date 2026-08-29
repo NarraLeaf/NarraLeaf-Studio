@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useMemo, useSyncExternalStore } from "react";
+import { buildUIWidgetAddress } from "@shared/types/ui-editor/widgetAddress";
 import {
     STATIC_WIDGET_RUNTIME_SNAPSHOT,
     type UIDisplayableMotionOverride,
@@ -90,8 +91,10 @@ export function useWidgetRuntimeStateStore(): WidgetRuntimeStateStore | null {
 export function useWidgetRuntimeElementKey(elementId: string): string {
     const runtimeScopeId = useContext(WidgetRuntimeScopeContext);
     const instance = useContext(WidgetRuntimeInstanceContext);
-    const scoped = runtimeScopeId ? `${runtimeScopeId}\0${elementId}` : elementId;
-    return instance ? `${scoped}\0${instance.key}` : scoped;
+    // One spelling with the write side: the host API keys everything it stores by the same address
+    // (`widgetAddress.ts`), and a key built two ways stops matching the first time either is touched.
+    const address = buildUIWidgetAddress(elementId, instance?.key);
+    return runtimeScopeId ? `${runtimeScopeId}\0${address}` : address;
 }
 
 /** Subscribe to any widget-runtime change (hover/active/focus/variant override). */

@@ -25,10 +25,20 @@ import { Character } from "@/lib/workspace/services/character/Character";
 import { PropertyEditor } from "./framework";
 import { InspectorWritesProvider } from "./framework/fields/inspectorWrites";
 import {
+    interfaceDocumentFreezeScope,
+    useUIElementClaimHold,
+    useUIElementClaimOf,
+} from "../ui-editor/uiLiveSession";
+import {
     characterDocumentFreezeScope,
     useCharacterClaimHold,
     useCharacterClaimOf,
 } from "../characters/characterLiveSession";
+import {
+    assetLibraryFreezeScope,
+    useAssetClaimHold,
+    useAssetClaims,
+} from "../assets/assetLiveSession";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import { EnhancedInput } from "@/lib/components/inputs/EnhancedInput";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
@@ -1136,6 +1146,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
             : documentService;
         const all = collectSurfaceDiagnostics(diagnosticDocumentService.getDocument(), deferredUiSelection.surfaceId, {
             blueprintDocument: bp,
+            componentId: componentId ?? undefined,
         });
         const idSet = new Set(deferredUiSelection.elementIds);
         const picked = all.filter(d => !d.elementId || idSet.has(d.elementId)).slice(0, 5);
@@ -1418,10 +1429,13 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
         }
         if (uiInspectorContent) {
             return (
-                <>
+                <UIElementInspector
+                    componentId={parseComponentEditorSurfaceId(deferredUiSelection?.surfaceId ?? "")}
+                    elementId={deferredUiSelection?.elementIds.length === 1 ? deferredUiSelection.elementIds[0] : null}
+                >
                     {uiSelectionDiagnosticStrip}
                     {uiInspectorContent}
-                </>
+                </UIElementInspector>
             );
         }
         if (activeComponentDefinition && documentService) {
@@ -1452,7 +1466,7 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
 
         // Asset editor
         if (activeAsset && assetContext && assetSchema) {
-            return <PropertyEditor schema={assetSchema} data={assetContext} />;
+            return <AssetInspector assetId={activeAsset.id} schema={assetSchema} data={assetContext} />;
         }
 
         // Asset set editor
@@ -1541,6 +1555,42 @@ export function PropertiesPanel({ panelId, payload }: PanelComponentProps) {
  * else holds it the fields stand down: the host would refuse the operation anyway, and letting the
  * author write a paragraph first is exactly the injury the claim exists to prevent.
  */
+/**
+ * The interface branch of the inspector, and the two things a live session adds to it.
+ *
+ * `CharacterInspector`'s counterpart three documents along, and the same two: the branch says which
+ * files it writes - both interface documents, because an element edit reconciles a blueprint behind
+ * it - and it holds the element for as long as it is open here.
+ *
+ * ⚠ **Only a single selection is claimed.** A rubber-band over forty elements is a gesture about
+ * their arrangement rather than about anything written in them, and forty claims would take forty
+ * rows of the room's claim set for a drag nobody is drafting into. What a multi-selection still gets
+ * is the freeze scope, so its layout fields go on working.
+ *
+ * Unlike the character and asset branches this wraps the content rather than building it: the
+ * interface inspector is assembled per selection several screens up, and a second assembly here
+ * would be a second schema to keep in step with the first.
+ */
+function UIElementInspector({ componentId, elementId, children }: {
+    componentId: string | null;
+    elementId: string | null;
+    children: React.ReactNode;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useUIElementClaimHold({ service: live, componentId, elementId });
+    const heldBy = useUIElementClaimOf(componentId, elementId);
+    const writes = useMemo(
+        () => ({ scope: interfaceDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return <InspectorWritesProvider value={writes}>{children}</InspectorWritesProvider>;
+}
+
 function CharacterInspector({ characterId, schema, data }: {
     characterId: string;
     schema: PropertyEditorSchema<CharacterEditorContext>;
@@ -1555,6 +1605,49 @@ function CharacterInspector({ characterId, schema, data }: {
     const heldBy = useCharacterClaimOf(characterId);
     const writes = useMemo(
         () => ({ scope: characterDocumentFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
+        [heldBy],
+    );
+
+    return (
+        <InspectorWritesProvider value={writes}>
+            <PropertyEditor schema={schema} data={data} />
+        </InspectorWritesProvider>
+    );
+}
+
+/**
+ * The asset branch of the inspector, and the two things a live session adds to it.
+ *
+ * `CharacterInspector` two documents along, and deliberately its counterpart: every field in the
+ * asset schema writes the metadata shard the asset is filed in, so this branch can say which file it
+ * writes, and a session that leaves those shards writable therefore leaves these fields working.
+ *
+ * ⚠ **The scope is the whole library rather than this asset's own shard**, and that is honest: a
+ * session carries every shard or none, so the narrower question would have the same answer with more
+ * ways to get it wrong.
+ *
+ * The claim is held for as long as the record is open here, not for as long as somebody is typing -
+ * the text fields keep a draft in their own state until the field is blurred, so an author who has
+ * stopped to think still has half a description that nobody else can see. While somebody else holds
+ * it the fields stand down: the host would refuse the operation anyway, and letting the author write
+ * a paragraph first is exactly the injury the claim exists to prevent.
+ */
+function AssetInspector({ assetId, schema, data }: {
+    assetId: string;
+    schema: PropertyEditorSchema<AssetEditorContext>;
+    data: AssetEditorContext;
+}) {
+    const { context, isInitialized } = useWorkspace();
+    const live = useMemo(
+        () => (context && isInitialized ? context.services.get<LiveSessionService>(Services.Live) : null),
+        [context, isInitialized],
+    );
+    useAssetClaimHold({ service: live, assetId });
+    // Its own subscription rather than the browser's: the inspector is a different panel and may be
+    // open while the asset browser is not. One per panel, never one per row.
+    const heldBy = useAssetClaims()[assetId] ?? null;
+    const writes = useMemo(
+        () => ({ scope: assetLibraryFreezeScope(), ...(heldBy === null ? {} : { heldBy }) }),
         [heldBy],
     );
 

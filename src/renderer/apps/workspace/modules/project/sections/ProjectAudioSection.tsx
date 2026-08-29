@@ -30,6 +30,7 @@ import { Plus } from "lucide-react";
 import { useTranslation } from "@/lib/i18n";
 import { HelpTrigger } from "@/lib/help";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { audioTrackFreezeScope } from "./audioTrackFreeze";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { Button, HintPopover, Input, Select, Slider, Switch, type SelectOption } from "@/lib/components/elements";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
@@ -84,7 +85,7 @@ const HEADER_WIDTH_CLAMP = "min-w-0 [&>button]:min-w-0 [&>button>span]:min-w-0";
 export function ProjectAudioSection({ uiService }: ProjectSectionProps) {
     const { t, tn } = useTranslation();
     const { context, isInitialized } = useWorkspace();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(audioTrackFreezeScope());
 
     const trackService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -254,7 +255,7 @@ function TrackItem({
     onDelete: () => void;
 }) {
     const { t, tn } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(audioTrackFreezeScope());
     const frozen = freeze.writes(!service);
 
     /**

@@ -179,15 +179,18 @@ interface UnclaimedDocument {
 /**
  * The documents the registry does not answer for, in order of specificity.
  *
- * Not every file Studio writes has a document spec - the story index, the animation library and the
- * asset browser's own shards have none - and a path a spec does not claim would otherwise fall
- * through to being named after itself, which is exactly the four rows the version rail was drawing.
+ * Not every file Studio writes has a document spec - the animation library and the asset browser's
+ * own shards have none - and a path a spec does not claim would otherwise fall through to being
+ * named after itself, which is exactly the four rows the version rail was drawing.
+ *
+ * The story index used to be the first entry here and is now claimed by `storyIndexSpec`, which
+ * answers with the same key one step earlier. Its name is therefore in `DOCUMENT_KIND_NAME_KEY`
+ * only, and the two spellings cannot drift because there is no longer a second one.
  *
  * **First match wins, so the order is load-bearing**: `editor/story/animations/index.json` is also
  * a `<animationId>.json`, and the animation list is not an animation.
  */
 const UNCLAIMED_DOCUMENTS: readonly UnclaimedDocument[] = [
-    { pattern: compileDocumentPathPattern("editor/story/index.json"), key: "documentDiff.name.storyIndex" },
     {
         pattern: compileDocumentPathPattern("editor/story/animations/index.json"),
         key: "documentDiff.name.animationIndex",
@@ -295,6 +298,30 @@ export function renderDocumentName(name: DocumentName, t: Translator["t"]): stri
 /** Whether this name is the author's own word for the thing, rather than one Studio supplied. */
 export function isAuthoredName(name: DocumentName): boolean {
     return name.source === "authored";
+}
+
+/**
+ * A few documents, named, one per line - for a place with room for a short list and no columns.
+ *
+ * The notice a conflicted sync leaves is the caller this exists for, and it exists because that
+ * notice used to print repository paths at an author while the panel it sends them to called the
+ * same files by their titles. One of the two was Studio talking about its own storage, and it was
+ * the one that arrived first.
+ *
+ * The limit is the caller's, and truncation is silent HERE on purpose: this returns lines, and how
+ * to say "and more" belongs to the surface that knows how much room it has. Every caller so far
+ * pairs it with a count of the whole set, so nothing is hidden by the pairing.
+ */
+export function listDocumentNames(
+    paths: readonly string[],
+    context: DocumentNameContext,
+    t: Translator["t"],
+    limit: number,
+): string {
+    return paths
+        .slice(0, limit)
+        .map(path => renderDocumentName(documentNameOf(path, context), t))
+        .join("\n");
 }
 
 /**

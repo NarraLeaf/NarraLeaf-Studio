@@ -1,22 +1,57 @@
-import type { TeamOutcome } from "@/lib/team";
+import type { TeamAck, TeamOutcome } from "@/lib/team";
 import type { WorkspaceFreezeReason } from "@/lib/app/writeFreeze";
 import type { LiveCastView } from "@shared/live/cast";
 import type {
+    LiveAppTagOp,
+    LiveAssetFolder,
+    LiveAssetFolderOp,
+    LiveAssetOp,
+    LiveAssetRecord,
+    LiveBrandOp,
+    LiveAssetSetOp,
+    LiveAudioTrackOp,
     LiveCharacterOp,
     LiveDerived,
     LiveDialogueRowRef,
+    LiveDictionaryOp,
     LiveDigestScope,
+    LiveDlcOp,
+    LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveStoryOp,
+    LiveUIGraphOp,
+    LiveUIOp,
+    LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
-import type { LocalizationUnit } from "@shared/types/localization";
+import type { ProjectAppTagDocument } from "@shared/types/appTag";
+import type { ProjectBrandDocument } from "@shared/types/brand";
+import type { ProjectDlcDocument } from "@shared/types/dlc";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
+import type { UIDocument } from "@shared/types/ui-editor/document";
+import type { UIGraphDocument } from "@shared/types/ui-editor/graph";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
 import type { StoryDocument, StoryId } from "@shared/types/story";
-import type { TeamLiveEvent, TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveEvent, TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
+import type { TeamTransferOutcome, TeamTransferView } from "@shared/types/teamTransfer";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
+import type { AppTagOpSink } from "../appTag/AppTagService";
+import type { BrandOpSink } from "../brand/BrandService";
+import type { AssetBlobPort, AssetOpSink } from "../core/AssetsService";
+import type { AssetSetOpSink } from "../assets/AssetSetService";
+import type { AudioTrackOpSink } from "../audio/AudioTrackService";
 import type { CharacterOpSink } from "../core/CharacterService";
+import type { DlcOpSink } from "../dlc/DlcService";
+import type { DictionaryOpSink } from "../dictionary/DictionaryService";
 import type { LocalizationOpSink } from "../localization/LocalizationService";
 import type { StoryOpSink } from "../story/StoryService";
+import type { UIOpSink } from "../ui-editor/UIDocumentService";
+import type { UIGraphOpSink } from "../ui-editor/UIGraphService";
+import type { VariableOpSink } from "../variables/VariableRegistryService";
 import type { VoiceOpSink } from "../voice/VoiceService";
 
 /**
@@ -54,10 +89,38 @@ export type LiveRooms = {
         /** The story document the room is about. Required by the server; see {@link TeamLiveSession}. */
         story: string;
         title?: string;
-    }): Promise<TeamOutcome<TeamLiveSession>>;
+        /** How people get in. The server's own default - anybody who can see it - when absent. */
+        rule?: TeamLiveJoinRule;
+    }): Promise<TeamOutcome<{
+        session: TeamLiveSession;
+        /**
+         * The four digits somebody joins this room by.
+         *
+         * ⚠ **Answered here and in no other call**, because it is deliberately not on the room
+         * record: that record is broadcast to everybody watching the project, and a passcode
+         * everybody is told has said nothing. Empty from a server too old to mint one.
+         */
+        code: string;
+    }>>;
     join(sessionId: string): Promise<TeamOutcome<TeamLiveSession>>;
-    leave(sessionId: string): Promise<TeamOutcome<null>>;
-    close(sessionId: string): Promise<TeamOutcome<null>>;
+    /** Join the room a passcode names. The code is the address and the entitlement at once. */
+    joinByCode(code: string): Promise<TeamOutcome<TeamLiveSession>>;
+    /**
+     * Which room a passcode names, without joining it.
+     *
+     * Separate from {@link joinByCode} because what a joiner has to do before joining depends on
+     * the room: which document it is about, which revision it opened on, and whether anybody has
+     * to say yes first. Reading it costs one round trip and answers all three.
+     */
+    byCode(code: string): Promise<TeamOutcome<TeamLiveSession>>;
+    /** Change how a running room may be joined. Only the window that opened it may. */
+    rule(sessionId: string, rule: TeamLiveJoinRule): Promise<TeamOutcome<TeamAck>>;
+    /** Ask to be let into a room that is joined by asking. */
+    requestJoin(sessionId: string): Promise<TeamOutcome<TeamAck>>;
+    /** Answer somebody who asked. Only the window that opened the room may. */
+    answerJoin(sessionId: string, instance: string, admit: boolean): Promise<TeamOutcome<TeamAck>>;
+    leave(sessionId: string): Promise<TeamOutcome<TeamAck>>;
+    close(sessionId: string): Promise<TeamOutcome<TeamAck>>;
     /**
      * Say one thing to a room.
      *
@@ -70,8 +133,15 @@ export type LiveRooms = {
     /**
      * Listen to one room. `from` is the instance the server says sent it, never something the
      * message claims about itself. Returns the unsubscribe.
+     *
+     * `account` is the person behind that instance, and it comes from the same place `from` does:
+     * the server stamps both on every message it relays. It is carried because the alternative was
+     * for the host to look the sender up in its own copy of the roster, which is one delivery
+     * behind - a member whose arrival this window has not been told about yet is a member it cannot
+     * name, and a claim it cannot name is a claim it throws away. An empty string is a server too
+     * old to say, which leaves the roster to answer as before.
      */
-    listen(sessionId: string, onMessage: (payload: unknown, from: string) => void): () => void;
+    listen(sessionId: string, onMessage: (payload: unknown, from: string, account: string) => void): () => void;
     /**
      * Watch a project's rooms opening and closing. Returns the unsubscribe.
      *
@@ -147,8 +217,50 @@ export type LiveLocalizationPort = {
     loadAll(): Promise<readonly string[]>;
     /** One language's entries as they stand, or null when this window does not hold them. */
     units(locale: string): Readonly<Record<string, LocalizationUnit>> | null;
+    /**
+     * Read the named-string registry, and say whether this window holds it.
+     *
+     * ⚠ **A second document on one port**, which no other kind here does, and it is the same service
+     * owning both: `editor/localization/keys.json` holds the source texts the per-language libraries
+     * are translations of. They are addressed apart everywhere it matters - their own `LiveDocument`,
+     * their own digest, their own claim - so what they share is a sink and a port, not an identity.
+     */
+    loadKeys(): Promise<boolean>;
+    /** Every named string as it stands, or null when this window does not hold the registry. */
+    keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
     /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
-    applyOp(op: LiveLocalizationOp): void;
+    applyOp(op: LiveLocalizationOp | LiveLocalizationKeyOp): void;
+};
+
+/**
+ * The project's variable registry - `editor/variables.json`.
+ *
+ * The cast port's shape rather than a library's: there is one registry per project, so nothing here
+ * is parameterised and there is no set of them to load. What it does have that the cast does not is
+ * {@link readable}, because the registry survives a document it could not parse - the service keeps
+ * an empty stand-in so the project still opens, and a session that carried THAT would be applying
+ * operations to a registry with nothing to do with the file on disk.
+ *
+ * ⚠ **Removing an entry reaches a second document.** Deleting a variable also clears the params of
+ * every blueprint node that named it - and the blueprint document is one a session carries now, so
+ * that sweep is derived rather than refused: the effect says the variable is gone, and every machine
+ * works out the same nodes. Which is why {@link applyOp} answers with scopes.
+ */
+export type LiveVariablesPort = {
+    /** Where registry edits go instead of into the registry, or null to take them back. */
+    setSink(sink: VariableOpSink | null): void;
+    /** Whether this window holds a registry it could actually read. */
+    readable(): boolean;
+    /** One entry as it stands, or null when there is none. Read for a digest and for an inverse. */
+    entry(variableId: string): VariableRegistryEntry | null;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * Answers with every unit it changed beyond the one the operation names - the blueprints a
+     * deletion's node sweep rewrote. Derived work is what has to be fingerprinted rather than
+     * assumed, and this is what puts those blueprints into the effect's digests.
+     */
+    applyOp(op: LiveVariableOp): readonly LiveDigestScope[];
 };
 
 /** One language's voice takes. The translations port's mirror, method for method. */
@@ -182,7 +294,193 @@ export type LiveCastPort = {
     applyOp(op: LiveCharacterOp): readonly LiveDigestScope[];
 };
 
-/** The five things a session asks of version control. */
+/**
+ * The asset library's metadata, one shard per asset type.
+ *
+ * Four methods where the libraries have four, and one of them is not a promise: an asset shard is
+ * read as the workspace starts rather than when a panel opens it, so there is nothing for a session
+ * to load on the way in. What it answers instead is which shards it holds - the same one set that
+ * becomes what the session carries and what the write boundary leaves writable.
+ *
+ * ⚠ **Nothing here reaches the bytes**, and that is the whole shape of the document. A session
+ * carries what the project says about a file; `AssetsService` refuses to import, replace, duplicate
+ * or delete one for as long as a sink is installed, which is why no port method offers it.
+ */
+export type LiveAssetsPort = {
+    /**
+     * Where asset edits go instead of into the library, and where the files they name come from.
+     * Null takes both back.
+     */
+    setSink(sink: AssetOpSink | null, blobs: AssetBlobPort | null): void;
+    /** Every asset type whose shard this window holds. Empty before the library is up. */
+    shardTypes(): readonly string[];
+    /** One type's records as they stand, or null when this window does not hold them. */
+    records(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+    /**
+     * Whether one record is there.
+     *
+     * A boolean where the cast's port answers with the record, because presence is the whole of what
+     * the host asks - and a record handed over here would invite a later reader to plan against a
+     * copy rather than against the document.
+     */
+    hasRecord(assetType: string, assetId: string): boolean;
+    /**
+     * Try the files that were waiting again.
+     *
+     * Called when one of them has landed or been given up on, which is the only moment the answer
+     * can have changed. There is no timer behind it and there must not be one: a transfer nobody
+     * ever completes would otherwise be a machine asking about it for the rest of the session.
+     */
+    resumePayloads(): void;
+    /**
+     * Say that a file on its way has moved, so the browser redraws what is arriving.
+     *
+     * Separate from {@link resumePayloads} because it is a different event: nothing has finished and
+     * nothing can be done about it - a number has changed. The two were one call at first, and the
+     * consequence was a queue that ran once per eighth of a second for the length of an import.
+     */
+    noteTransferProgress(): void;
+    /** Every section whose folders this window holds. */
+    folderCategories(): readonly string[];
+    /** One section's folders as they stand, or null when this window does not hold them. */
+    folders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Synchronous even though it is about files**, and that is the whole shape of the design:
+     * what it applies is RECORDS, and the files that go with them are queued and put down afterwards.
+     * An applier that awaited a disk write would make the host's "one operation at a time, nothing
+     * interleaves" promise into an ordering problem.
+     *
+     * Answers every unit it changed beyond the one the operation names - the asset shards a folder
+     * deletion emptied - because derived work is what has to be fingerprinted rather than assumed.
+     */
+    applyOp(op: LiveAssetOp | LiveAssetFolderOp): readonly LiveDigestScope[];
+};
+
+/**
+ * The build variants - one of the three configuration tables a session carries.
+ *
+ * Four methods, and they are the same four the two below have: somewhere for its edits to go, the
+ * document to fingerprint, whether a row is still there, and an applier that does not consult the
+ * sink. There is no `loadAll` on any of them, and that is what makes them the cheapest documents to
+ * share: all three services read their file as the workspace starts rather than when a panel opens
+ * it, so a session has nothing to fetch on the way in.
+ */
+export type LiveAppTagsPort = {
+    setSink(sink: AppTagOpSink | null): void;
+    /** The document as it stands, or null when this window does not hold it. Read for the digest. */
+    document(): ProjectAppTagDocument | null;
+    /** Whether one variant is still in the list. What the host's refusal is decided on. */
+    hasTag(tagId: string): boolean;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveAppTagOp): void;
+};
+
+/** The DLC list. The variants' port, method for method. */
+export type LiveDlcPort = {
+    setSink(sink: DlcOpSink | null): void;
+    document(): ProjectDlcDocument | null;
+    hasDlc(dlcId: string): boolean;
+    applyOp(op: LiveDlcOp): void;
+};
+
+/** The palette and the default font stack. The variants' port, method for method. */
+export type LiveBrandPort = {
+    setSink(sink: BrandOpSink | null): void;
+    document(): ProjectBrandDocument | null;
+    hasColor(colorId: string): boolean;
+    applyOp(op: LiveBrandOp): void;
+};
+
+/**
+ * The interface and its blueprints - `editor/ui/uidoc.json` and `editor/ui/uigraphs.json`.
+ *
+ * **One port for two documents, and that is a statement rather than a shortcut.** Everywhere else a
+ * document has a port of its own; these two are one editing surface written to two files. Adding a
+ * widget to a Surface writes the first and then reconciles a private blueprint for it in the second,
+ * in the same synchronous step - so a session that carried one of them would spend its life
+ * announcing that the other could not be saved. They are loaded together, frozen together, and the
+ * one applier below reports units of both.
+ */
+export type LiveUIPort = {
+    /**
+     * Where interface and blueprint edits go instead of into the documents, or null to take both
+     * back. One call, because there is no state in which one of them is redirected and the other is
+     * not.
+     */
+    setSink(sink: { ui: UIOpSink; graphs: UIGraphOpSink } | null): void;
+    /**
+     * Whether this window holds both documents.
+     *
+     * What the session carries and what the write boundary leaves writable, from one answer - the
+     * shape every other port's `loadAll` has. Nothing to load: both are read as the workspace starts
+     * rather than when a panel opens them.
+     */
+    held(): boolean;
+    /** The interface document as it stands, or null when this window does not hold it. */
+    document(): UIDocument | null;
+    /** The blueprint document as it stands, or null when this window does not hold it. */
+    graphs(): UIGraphDocument | null;
+    /**
+     * Whether one element is in the interface right now.
+     *
+     * A boolean, with the asset port's `hasRecord`: presence is the whole of what the host asks, and
+     * handing the record over would invite a later reader to plan against a copy.
+     */
+    hasElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Apply one operation, without consulting the sink. Synchronous, for the story port's reason.
+     *
+     * ⚠ **Answers with every unit it changed, and for an interface operation that includes units of
+     * the OTHER document.** Applying an interface delta runs the blueprint reconciliation behind it,
+     * which is derived work - every machine computes the same records from the same effect, which is
+     * why the ids it mints are derived from the owner key rather than freshly minted. Derived work is
+     * exactly the work that has to be fingerprinted rather than assumed, so what it touched is
+     * reported here and reaches the effect's digests.
+     */
+    applyOp(op: LiveUIOp | LiveUIGraphOp): readonly LiveDigestScope[];
+};
+
+/**
+ * The three small project tables a session carries, as one shape three times over.
+ *
+ * The dictionary, the mixer and the asset sets are one document each per project, and each needs
+ * exactly the three things a shared document has to provide: somewhere for its edits to go, a way to
+ * read it, and an applier that does not consult the sink. Fewer methods than the libraries have,
+ * because there is nothing to load on the way in - all three are read as the workspace starts rather
+ * than when a panel opens them - and fewer than the story has, because none of them derives anything
+ * anybody else has to write.
+ *
+ * Three named ports rather than one generic one: the operation types differ, and a port that took
+ * `LiveOp` would let a caller hand a story operation to the mixer.
+ */
+export type LiveDictionaryPort = {
+    /** Where dictionary edits go instead of into the document, or null to take them back. */
+    setSink(sink: DictionaryOpSink | null): void;
+    /** The document as it stands, or null when this window does not hold it. */
+    document(): ProjectDictionaryDocument | null;
+    /** Apply one operation, without consulting the sink. Synchronous, and has to stay that way. */
+    applyOp(op: LiveDictionaryOp): void;
+};
+
+/** The project's mixer. {@link LiveDictionaryPort}'s shape, one document along. */
+export type LiveAudioTrackPort = {
+    setSink(sink: AudioTrackOpSink | null): void;
+    tracks(): readonly ProjectAudioTrack[] | null;
+    applyOp(op: LiveAudioTrackOp): void;
+};
+
+/** The project's asset sets. {@link LiveDictionaryPort}'s shape again. */
+export type LiveAssetSetPort = {
+    setSink(sink: AssetSetOpSink | null): void;
+    sets(): readonly AssetSet[] | null;
+    applyOp(op: LiveAssetSetOp): void;
+};
+
+/** What a session asks of version control. */
 export type LiveVersionPort = {
     /** Record a checkpoint. The revision it made, or null when there was nothing to record. */
     checkpoint(): Promise<string | null>;
@@ -190,10 +488,51 @@ export type LiveVersionPort = {
     head(): Promise<string | null>;
     /** Whether the working tree holds anything no revision has. */
     hasUncommittedChanges(): Promise<boolean>;
-    /** Put this branch on the server, so the revision a room opens on is one others can fetch. */
-    push(): Promise<void>;
-    /** Bring the working tree up to the server. `conflicts` is what the merge left to a human. */
+    /**
+     * Put this branch on the server, so the revision a room opens on is one others can fetch.
+     *
+     * Answers `diverged` instead of throwing for the one refusal a session can act on: both sides
+     * have moved on, and the way past it is a sync. Everything else still throws, because nothing
+     * here knows what to do about it.
+     */
+    push(): Promise<{ diverged: boolean }>;
+    /**
+     * Bring the working tree - and this repository's knowledge of the server's revisions - up to
+     * date. `conflicts` is what the merge left to a human.
+     *
+     * ⚠ **It is also the only way to LEARN a revision.** There is no fetch verb: a repository can
+     * only put down a version it holds, and a room's version was pushed by another machine seconds
+     * ago. So entering a room syncs first and adopts second, and the merge in between is a side
+     * effect of the fetch rather than the point of it.
+     */
     sync(): Promise<{ conflicts: readonly string[] }>;
+    /**
+     * Throw the open merge away and put the working tree back to what it was before it started.
+     *
+     * What a session does with a merge it only wanted the fetch from. Everything the merge could
+     * not settle is about to be overwritten by the room's own copy anyway, and a session that
+     * stopped to ask its author to settle a conflict between two copies of one afternoon's work is
+     * the failure this path exists to remove - the checkpoint taken on the way in is where their
+     * side of it went.
+     */
+    abortMerge(): Promise<void>;
+    /**
+     * Put this working tree on the content of one version.
+     *
+     * **The step that makes entering a room free of version work**, and the reason it is an adoption
+     * rather than a merge. Everybody in a room has to be looking at the same document, and a merge
+     * cannot promise that: two machines that applied the same session's effects hold the same story
+     * with two different save timestamps in it, so merging their copies produces a conflict about a
+     * field neither author has ever seen. Adoption has no such case - the room's version is written
+     * over this tree byte for byte - and it is safe to do without asking because the checkpoint
+     * taken first is where whatever was here went.
+     *
+     * ⚠ **It records a revision of its own**, because the backend has no verb that moves a branch
+     * backwards (see `VcsManager.restoreRevision`). What that revision holds is the room's content,
+     * so a machine that adopts and later syncs merges "we changed nothing" against the host's work,
+     * which settles without a question.
+     */
+    adopt(revision: string): Promise<void>;
 };
 
 /** The write latch, as much of it as a session touches. */
@@ -212,6 +551,23 @@ export type LiveFreezePort = {
     lift(session: string): void;
 };
 
+/**
+ * The one thing about a session that outlives the window it was running in.
+ *
+ * **Deliberately the smallest fact that could not be recovered from anywhere else.** Everything else
+ * a session knows is the server's - who is in a room, what it is about, what it opened on - and
+ * asking the server is always better than remembering. What the server cannot say is that a room
+ * ENDED because a window went away rather than because somebody left: a room belongs to the window
+ * that opened it and the server closes it either way, so from the next launch the two are the same
+ * event. This is the note that tells them apart, and it is thrown away as soon as it has been read.
+ */
+export type LiveMemoryPort = {
+    /** Say this window is hosting a session on this story, or that it is not any more. */
+    remember(hosting: { story: StoryId } | null): void;
+    /** What this window was hosting when it went away, with when, or null. */
+    recall(): Promise<{ story: StoryId; at: number } | null>;
+};
+
 /** The undo stacks, as much of them as a session touches. */
 export type LiveHistoryPort = {
     /**
@@ -222,6 +578,60 @@ export type LiveHistoryPort = {
      * deleting everything they wrote, with nothing on either screen reporting it.
      */
     forgetStoryScenes(storyId: StoryId): void;
+    /**
+     * Throw away every Surface and blueprint stack.
+     *
+     * {@link forgetStoryScenes}' counterpart, and the same danger one document along: each entry in
+     * them is a whole-Surface or whole-blueprint snapshot of a document only this author ever had.
+     * One applied - during a session or after it - would put the screen back the way it was before
+     * anybody else joined, deleting everything they have added since, with nothing on either machine
+     * reporting it.
+     *
+     * ⚠ **Not scoped to one Surface, unlike the story's.** A session opens on one story, so only its
+     * scenes are at risk; the interface is one document with every Surface in it, and every stack
+     * over it is about to become historical.
+     */
+    forgetInterfaceEditors(): void;
+};
+
+/**
+ * Where a file goes to reach the room, and how far it has got.
+ *
+ * **Everything here names a path and never a byte.** The reading, the writing and the connection
+ * happen in the main process, which is the only one that may reach the network - so what this port
+ * carries is an address, a length and a count. See `@shared/types/teamTransfer`.
+ */
+export type LiveTransferPort = {
+    /**
+     * Put one file where the room can read it.
+     *
+     * ⚠ **Answers before the bytes have gone anywhere**, once the server has agreed to hold it. That
+     * is the last moment at which "this will not travel" is a refusal an author reads rather than an
+     * import that stops halfway on everybody else's screen.
+     */
+    offer(input: {
+        remoteOrigin: string;
+        project: string;
+        transferId: string;
+        label: string;
+        source: string;
+    }): Promise<TeamTransferOutcome>;
+    /** Start collecting one file into the place it belongs. */
+    collect(input: {
+        remoteOrigin: string;
+        project: string;
+        transferId: string;
+        label: string;
+        destination: string;
+        size: number;
+        digest: string;
+    }): Promise<TeamTransferOutcome>;
+    /** Stop these, and take them off the server. What cancelling an import reaches. */
+    abandon(remoteOrigin: string, project: string, transferIds: readonly string[]): Promise<void>;
+    /** Everything this window is carrying or collecting. */
+    list(): Promise<readonly TeamTransferView[]>;
+    /** Pick up whatever this project left half-carried, in an earlier session or an earlier run. */
+    resume(remoteOrigin: string, project: string): Promise<void>;
 };
 
 /** Everything {@link LiveSession} needs from the world. */
@@ -236,9 +646,20 @@ export type LiveSessionDeps = {
     cast: LiveCastPort;
     localization: LiveLocalizationPort;
     voice: LiveVoicePort;
+    assets: LiveAssetsPort;
+    appTags: LiveAppTagsPort;
+    dlc: LiveDlcPort;
+    brand: LiveBrandPort;
+    ui: LiveUIPort;
+    dictionary: LiveDictionaryPort;
+    audioTracks: LiveAudioTrackPort;
+    assetSets: LiveAssetSetPort;
+    variables: LiveVariablesPort;
     version: LiveVersionPort;
     freeze: LiveFreezePort;
     history: LiveHistoryPort;
+    transfers: LiveTransferPort;
+    memory: LiveMemoryPort;
     /**
      * Milliseconds from a source that only moves forward, and a delayed run that can be cancelled.
      *

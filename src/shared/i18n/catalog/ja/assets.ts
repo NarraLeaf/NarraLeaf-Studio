@@ -426,6 +426,7 @@ export const assets = {
         /** その他だけ。作者が読み込むのではなく作れる唯一のアセット。 */
         newTextFile: "新規テキストファイル",
         importAssets: "アセットを読み込む…",
+        cancelTransfer: "読み込みを中止",
         replaceContent: "ファイルを差し替え…",
         copyCount: {
             other: "{count} 件をコピー",
@@ -602,6 +603,17 @@ export const assets = {
      * テキストファイルの作成。既定の名前は文ではなく名前。入力欄には後ろに `.txt` が付いた形で
      * 入り、作者はたいてい丸ごと打ち替える。
      */
+    live: {
+        recordClaimed: "{name} がこのアセットを編集している",
+        transferring: "このアセットは {percent}% 転送済み",
+        refusedTitle: "セッションに取り込まれていない",
+        refusedQuotaOne: "{name} はこのプロジェクトが同時に転送できる量を超えている。転送中のファイルが届いてから読み込む",
+        refusedQuotaMany: "{count} 件のファイルがこのプロジェクトが同時に転送できる量を超えている。転送中のファイルが届いてから読み込む",
+        refusedOne: "{name} をサーバーに送信できなかった",
+        refusedMany: "{count} 件のファイルをサーバーに送信できなかった",
+        replaceRefused: "そのファイルをサーバーに送信できなかった",
+        replaceRefusedQuota: "そのファイルはこのプロジェクトが同時に転送できる量を超えている",
+    },
     newTextFile: {
         title: "新規テキストファイル",
         prompt: "ファイル名を決める。拡張子を打てばそれを使い、無ければ .txt になる",

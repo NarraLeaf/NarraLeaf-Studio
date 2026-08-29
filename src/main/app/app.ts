@@ -136,6 +136,14 @@ export type OpenProjectOptions = {
      * props. See `WindowProps[WindowAppType.Workspace].commandLineBuild`.
      */
     commandLineBuild?: WindowProps[WindowAppType.Workspace]["commandLineBuild"];
+    /**
+     * A live session the window should join once it is up. See the prop of the same name.
+     *
+     * ⚠ **Carried into the props for a window this opens, and SENT to one it finds already open.**
+     * One project is one window, so the launcher's request lands on an existing workspace as often
+     * as not - and that window read its props at load, long before anybody asked.
+     */
+    joinLive?: WindowProps[WindowAppType.Workspace]["joinLive"];
 };
 
 /**
@@ -205,12 +213,19 @@ export class App extends BaseApp {
         // stages, and only the window layer can ask a window to do that. Handed in as a
         // function because VcsManager holds a BaseApp: without it a commit would still
         // succeed and would describe a document that is about to change on disk.
-        this.vcsManager = new VcsManager(this, async projectPath => {
-            const workspace = this.findWorkspaceForProject(projectPath);
-            if (workspace) {
-                await this.flushWorkspacePendingSaves(workspace);
-            }
-        });
+        this.vcsManager = new VcsManager(
+            this,
+            async projectPath => {
+                const workspace = this.findWorkspaceForProject(projectPath);
+                if (workspace) {
+                    await this.flushWorkspacePendingSaves(workspace);
+                }
+            },
+            // Publishing lists a server's projects and records a new one over the session the
+            // TeamManager holds, rather than a second request that presents the token afresh.
+            // That manager is constructed just below, so this reads it when a publish runs.
+            (remoteOrigin, method, params) => this.teamManager.call(remoteOrigin, method, params),
+        );
 
         // A server is now a place Studio holds a session with, and that is a thing of
         // its own rather than a corner of version control. It is given the list of
@@ -221,9 +236,9 @@ export class App extends BaseApp {
         this.updateManager = new UpdateManager(this);
         this.confirmQuitManager = new ConfirmQuitManager(this);
         // Everything is read through a function rather than captured: this constructor runs before
-        // Electron is ready, and `getUserDataDir` has no answer until it is.
+        // Electron is ready, and `getCacheRootDir` has no answer until it is.
         this.spellcheckManager = new SpellcheckManager({
-            userDataDir: () => this.getUserDataDir(),
+            cacheRoot: () => this.getCacheRootDir(),
             readSetting: () => this.globalState.get(SPELLCHECK_LANGUAGE_KEY),
         });
 
@@ -1607,6 +1622,18 @@ export class App extends BaseApp {
         const window = new AppWindow<WindowAppType.Workspace>(this, config, props);
         window.setTitle("Workspace - NarraLeaf Studio");
         this.applyWindowIcon(window);
+        // Maximized right here rather than once the page reports ready: the window is on screen
+        // from the moment it is constructed, so anything later is the author watching a small
+        // window appear and then jump. The frame above stays as the size it falls back to when the
+        // maximized state is left.
+        //
+        // Not for a window that is not being shown - a build with nobody at the screen has no frame
+        // worth choosing, and a window loading behind the one it replaces takes that window's frame
+        // instead (see `handOverToReplacement`), which is the whole reason a switch reads as one
+        // window changing project.
+        if (!hidden && this.globalState.get("workspace.maximizeOnOpen")) {
+            window.maximize();
+        }
         if (hidden) {
             // Chromium treats a window that is not on screen as backgrounded and drops its timers to
             // one a second. A build runs its whole life that way, and a build is full of debounces,
@@ -1760,6 +1787,13 @@ export class App extends BaseApp {
 
         const existing = this.findWorkspaceForProject(projectPath);
         if (existing) {
+            if (options.joinLive) {
+                // ⚠ Sent rather than passed, because props are read once at load and this window
+                // loaded long ago. Dropping it here would be the commonest case of all: the
+                // workspace has no join control of its own, so a launcher asking to join a room in
+                // a project already on screen would do nothing at all and say nothing about it.
+                existing.sendIpcEvent(IPCEventType.workspaceJoinLive, { joinLive: options.joinLive });
+            }
             // A minimized window ignores focus() on macOS, so bring it back up first.
             if (existing.win.isMinimized()) {
                 existing.win.restore();
@@ -1789,7 +1823,11 @@ export class App extends BaseApp {
         }
         const launch = pending ?? this.launchWorkspace(
             opener,
-            { projectPath, ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}) },
+            {
+                projectPath,
+                ...(options.commandLineBuild ? { commandLineBuild: options.commandLineBuild } : {}),
+                ...(options.joinLive ? { joinLive: options.joinLive } : {}),
+            },
             options.background
                 // Never sized, never placed, never shown. A window with no frame on screen has no
                 // bounds worth choosing, and `show: false` is what keeps it off the operator's

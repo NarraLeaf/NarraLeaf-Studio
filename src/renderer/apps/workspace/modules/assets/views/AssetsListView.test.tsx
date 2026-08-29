@@ -56,7 +56,10 @@ const FOLDER: AssetGroup = {
 
 const importToGroup = vi.fn();
 
-function Harness({ publishRowOrder = () => undefined }: { publishRowOrder?: (keys: readonly string[]) => void }) {
+function Harness({ publishRowOrder = () => undefined, assetTransfers = {} }: {
+    publishRowOrder?: (keys: readonly string[]) => void;
+    assetTransfers?: Readonly<Record<string, number>>;
+}) {
     const [scrollElement, setScrollElement] = useState<HTMLDivElement | null>(null);
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
@@ -85,6 +88,7 @@ function Harness({ publishRowOrder = () => undefined }: { publishRowOrder?: (key
         handleItemSelect: () => undefined,
         publishRowOrder,
         handleAssetClick: () => undefined,
+        handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
         assetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),
@@ -103,6 +107,8 @@ function Harness({ publishRowOrder = () => undefined }: { publishRowOrder?: (key
         setAssetsIconToolbarCenter: () => undefined,
         mediaSupport: new Map(),
         handleConvertMedia: () => undefined,
+        assetClaims: {},
+        assetTransfers,
     };
 
     return (
@@ -170,6 +176,23 @@ describe("AssetsListView on a large library", () => {
         fireEvent.drop(loose, { dataTransfer: { files: [], types: [] } });
 
         expect(importToGroup).not.toHaveBeenCalled();
+    });
+
+    it("fills the row of a file that is still arriving, at the share that has landed", () => {
+        // The library is the only place this is said. A file coming in over a session is a row that
+        // is already there and a file that is not, so the row is what fills up.
+        render(<Harness assetTransfers={{ "a-0": 0.42 }} />);
+
+        const bands = document.querySelectorAll("[data-asset-transfer]");
+        expect(bands).toHaveLength(1);
+        expect((bands[0] as HTMLElement).dataset.assetTransfer).toBe("42");
+        expect((bands[0] as HTMLElement).style.width).toBe("42%");
+    });
+
+    it("draws no band on a library where nothing is arriving, which is every ordinary moment", () => {
+        render(<Harness />);
+
+        expect(document.querySelectorAll("[data-asset-transfer]")).toHaveLength(0);
     });
 
     it("opens a folder without mounting what is inside it", () => {

@@ -13,7 +13,7 @@ import {
 import { ReadonlyBlueprintSection } from "@/lib/ui-editor/widget-modules/shared/blueprint/ReadonlyBlueprintSection";
 import { createListItemFieldBindingField } from "@/lib/ui-editor/widget-modules/shared/blueprint/BlueprintValueField";
 import { i18nStore } from "@/lib/i18n";
-import { getImageWidgetRectangleProps } from "./helpers";
+import { getRectangleLikeProps } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 
 /** Module-level so FieldRenderer keeps a stable component identity across schema rebuilds (preserves variant selection). */
 function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
@@ -32,7 +32,7 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
         }
         const next = isUsableAppearanceModel(appearance)
             ? ensureImageAppearanceHasAllKeys(appearance, element)
-            : createInitialImageAppearance(getImageWidgetRectangleProps(element));
+            : createInitialImageAppearance(getRectangleLikeProps(element));
         if (next !== appearance) {
             documentService.updateElementProps(element.id, {
                 appearance: next,
@@ -42,7 +42,7 @@ function ImageAppearanceField(props: CustomFieldProps<UIInspectorData>) {
 
     const panelAppearance = isUsableAppearanceModel(appearance)
         ? appearance
-        : createInitialImageAppearance(getImageWidgetRectangleProps(element));
+        : createInitialImageAppearance(getRectangleLikeProps(element));
 
     return (
         <AppearanceAuthoringPanel

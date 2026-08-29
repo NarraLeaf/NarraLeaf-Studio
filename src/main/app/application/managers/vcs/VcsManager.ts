@@ -24,11 +24,7 @@ import type {
     VcsRevisionDiffResult,
     VcsRevisionKind,
     VcsServerDescription,
-    VcsServerMembersOutcome,
     VcsServerProbe,
-    VcsServerProjectDeleteOutcome,
-    VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
     VcsServerReach,
     VcsServerSession,
     VcsSignInResult,
@@ -39,12 +35,14 @@ import type {
     VcsWorkingFileRequest,
     VcsWorkingTreeDiffResult,
 } from "@shared/types/vcs";
+import { DEFAULT_PUBLISH_LINEAGE_RULE } from "@shared/types/vcs";
 import { composeVcsIdentity, parseVcsRemoteUrl, VcsErrorCode, vcsSignInRequired } from "@shared/types/vcs";
 import {
     composeRestoreMessage,
     VCS_CHECKPOINT_MESSAGES,
     VCS_DEFAULT_COMMIT_MESSAGE,
     VCS_DEFAULT_MERGE_MESSAGE,
+    VCS_LIVE_SESSION_MESSAGE,
 } from "@shared/vcs/systemRevisionMessage";
 import { BaseApp } from "../../baseApp";
 import { Manager } from "../manager";
@@ -70,7 +68,12 @@ import { applyRevisionRestore, planRevisionRestore, readWorkingSetPaths } from "
 import { readWorkingSetFile } from "./workingFile";
 // Same again: a child process and `fs`, with no backend in it. It is a value import
 // because trusting an authority happens on a failed sign-in, which is not a cold path.
-import { authorityDirectory, authorityInstallPlan, runAuthorityInstall } from "./authorityTrust";
+import {
+    authorityDirectory,
+    authorityInstallPlan,
+    rememberAcceptedAuthority,
+    runAuthorityInstall,
+} from "./authorityTrust";
 // Value import, and safe to be one for the same reason: `tls` and `https` and the module
 // above, with nothing of Lore's in it. It is not behind the plug either, because asking an
 // address what it is has to work on a host that has no backend to sign anything in.
@@ -79,17 +82,12 @@ import { probeVcsServer, serverAddressForAuthUrl } from "./serverDiscovery";
 // repository id of a project that has not been opened has to be readable without taking
 // the exclusive lock on it.
 import { readRepositoryId } from "./localRepositories";
-import { listServerMembers } from "./serverMembers";
 import { signInWithPassword } from "./serverPassword";
 import {
-    createServerProject,
-    deleteServerProject,
-    getServerProject,
-    listServerProjectHistory,
-    listServerProjects,
-    type ServerProjectResult,
-    type ServerProjectsResult,
-} from "./serverProjects";
+    createServerProjectOverSession,
+    listServerProjectsOverSession,
+    type TeamSessionCall,
+} from "./serverProjectsSession";
 import { forgetServerToken, recallServerToken, rememberServerToken } from "./serverTokens";
 
 /**
@@ -261,6 +259,19 @@ function isMissingBackendSession(error: unknown): boolean {
 }
 
 /**
+ * The backend refusing a push because both sides have moved on.
+ *
+ * Matched on the sentence for {@link isMissingBackendSession}'s reason - it arrives as a plain
+ * `LoreCallError` with no code of its own - and the phrase is the backend's own and measured
+ * (`Branch has diverged, sync to merge remote changes`). A future wording that this misses reads as
+ * it did before this existed, which is the raw sentence, rather than as anything worse.
+ */
+function isDivergedBranch(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    return /diverged/i.test(message);
+}
+
+/**
  * A project path this layer cannot work in, said so before anything acts on it.
  *
  * Named rather than anonymous for the reason {@link isNothingToCommit} explains: callers
@@ -278,6 +289,38 @@ export class VcsProjectPathError extends Error {
             + `"ack".`,
         );
         this.name = "VcsProjectPathError";
+    }
+}
+
+/**
+ * A sync asked for on a tree that still has changes nobody has recorded.
+ *
+ * Named rather than anonymous for the reason {@link isNothingToCommit} explains: this one reaches an
+ * author, so the renderer has to be able to say it in their language rather than showing this
+ * sentence.
+ */
+export class VcsUncommittedChangesError extends Error {
+    readonly code = VcsErrorCode.UncommittedChanges;
+
+    constructor() {
+        super("Submit a version before syncing: this project has changes that are not recorded yet");
+        this.name = "VcsUncommittedChangesError";
+    }
+}
+
+/**
+ * A push refused because this branch and the server's have both moved on.
+ *
+ * Named rather than passed through for the reason {@link VcsUncommittedChangesError} is named: it
+ * reaches an author, and what reached them was the backend's English with the internal verb that
+ * failed in front of it. The remedy has not changed and neither has the situation - only who says it.
+ */
+export class VcsBranchDivergedError extends Error {
+    readonly code = VcsErrorCode.BranchDiverged;
+
+    constructor(readonly detail: string) {
+        super(detail);
+        this.name = "VcsBranchDivergedError";
     }
 }
 
@@ -398,6 +441,7 @@ function describeServerSession(
         name: description.name,
         version: description.version,
         capabilities: [...description.capabilities],
+        policy: { ...description.policy },
     };
 }
 
@@ -418,7 +462,21 @@ export class VcsManager extends Manager {
      */
     private shuttingDown = false;
 
-    constructor(app: BaseApp, private readonly flushPendingSaves?: PendingSaveFlush) {
+    /**
+     * How this manager reaches a server over its session, for the two questions publishing
+     * asks there - what a server already holds, and recording a new project on it.
+     *
+     * Handed in the way {@link flushPendingSaves} is, and for the same reason: this manager
+     * holds a `BaseApp` and the sessions live on the {@link TeamManager}, which is built
+     * after this one. A thunk closes over that manager and reads it when a publish runs,
+     * long after both exist. Absent only in a test that does not publish; the product always
+     * wires it.
+     */
+    constructor(
+        app: BaseApp,
+        private readonly flushPendingSaves?: PendingSaveFlush,
+        private readonly teamSessionCall?: TeamSessionCall,
+    ) {
         super(app);
     }
 
@@ -503,10 +561,12 @@ export class VcsManager extends Manager {
      * something the author pressed, and not for anything that happens on opening a
      * project.
      *
-     * `{ online: true }` is therefore reachable from exactly five places, all of them in
-     * this class and all of them named after an act the author performed: reading the
-     * sync state, pushing, syncing, cloning, and signing in. Adding a sixth means
-     * deciding, again, that a socket may be opened without anyone asking for it.
+     * `offline: false` is therefore reachable from exactly six places, all of them in this
+     * class and all of them named after an act the author performed: reading the sync
+     * state, pushing, syncing, cloning, signing in, and putting this tree on the version a
+     * live session is running from - which is somebody having pressed Join. Adding a
+     * seventh means deciding, again, that a socket may be opened without anyone asking for
+     * it. The sixth reads only; see {@link restoreRevision}.
      */
     private globalsFor(root: string, options: { online?: boolean } = {}): LoreGlobals {
         return {
@@ -1001,11 +1061,29 @@ export class VcsManager extends Manager {
             const { session, backend } = await this.sessionFor(projectPath);
             const globals = { ...session.globals, identity: this.resolveIdentity(options.identity, session.remoteOrigin) };
 
-            const entries = await backend.listFilesAt(
-                globals,
-                session.store,
-                session.repositoryId,
-                revision,
+            // Which of the two acts this is. The mechanics below are identical; what differs is the
+            // two sentences the revisions carry - permanent repository content that a collaborator
+            // reads - and where the version being written may be fetched from. See
+            // `VcsRestoreOptions.purpose`.
+            const live = options.purpose === "live-session";
+            /**
+             * The globals the version is READ through, which for a session is the sixth online call.
+             *
+             * ⚠ **Reads only.** The commits below stay on the session's offline globals, and that is
+             * measured rather than tidy (§4.29): on a repository registered with a server, a
+             * revision committed under `offline: false` cannot have its content read back by the
+             * process that wrote it.
+             *
+             * Online because a session's version is one another machine has just pushed. Every other
+             * restore is of a revision this repository already holds, and {@link globalsFor} explains
+             * why nothing gets to open a socket without somebody having asked - joining a room is
+             * somebody asking.
+             */
+            const readGlobals = live ? { ...globals, offline: false } : globals;
+
+            const entries = await this.withServerSession(
+                live ? session.remoteOrigin : null,
+                () => backend.listFilesAt(readGlobals, session.store, session.repositoryId, revision),
             );
             const plan = planRevisionRestore({
                 revision: entries,
@@ -1014,7 +1092,7 @@ export class VcsManager extends Manager {
 
             const checkpoint = await backend
                 .commitWorkingTree(globals, {
-                    message: CHECKPOINT_MESSAGES.restore,
+                    message: live ? CHECKPOINT_MESSAGES["live-session"] : CHECKPOINT_MESSAGES.restore,
                     kind: "checkpoint",
                 })
                 .catch((error) => {
@@ -1030,18 +1108,21 @@ export class VcsManager extends Manager {
                 checkpoint ? `checkpoint ${checkpoint.revision}` : "clean tree, no checkpoint",
             );
 
-            const applied = await applyRevisionRestore({
-                projectPath: session.root,
-                plan,
-                source: {
-                    read: (entry) => backend.readEntryBytes(
-                        globals,
-                        session.store,
-                        session.repositoryId,
-                        entry,
-                    ),
-                },
-            });
+            const applied = await this.withServerSession(
+                live ? session.remoteOrigin : null,
+                () => applyRevisionRestore({
+                    projectPath: session.root,
+                    plan,
+                    source: {
+                        read: (entry) => backend.readEntryBytes(
+                            readGlobals,
+                            session.store,
+                            session.repositoryId,
+                            entry,
+                        ),
+                    },
+                }),
+            );
 
             let recordFailure: string | null = null;
             const recorded = await backend
@@ -1051,10 +1132,16 @@ export class VcsManager extends Manager {
                     // history whose entries read in whichever language happened to be selected that
                     // day is worse than one that reads in English throughout. The label is a
                     // revision number, which is not language.
-                    message: composeRestoreMessage(
-                        options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
-                    ),
-                    kind: "commit",
+                    message: live
+                        ? VCS_LIVE_SESSION_MESSAGE
+                        : composeRestoreMessage(
+                            options.label?.trim() || revision.slice(0, RESTORE_MESSAGE_HASH_LENGTH),
+                        ),
+                    // A checkpoint rather than a commit for a session, because the author did not
+                    // ask for it: the rail collapses checkpoints, and a room entered three times in
+                    // an afternoon must not put three rows the author cannot act on into a history
+                    // they read to find their own work.
+                    kind: live ? "checkpoint" : "commit",
                 })
                 .catch((error) => {
                     if (isNothingToCommit(error)) return null;
@@ -1724,6 +1811,14 @@ export class VcsManager extends Manager {
         await fs.access(target);
 
         const outcome = await runAuthorityInstall(authorityInstallPlan(target));
+        if (outcome.installed) {
+            // The platform's store has it now, and this process cannot see it there: node
+            // read that store once, when it first needed it, and answers from that reading
+            // for as long as it runs. The copy is what the probe that follows this - and
+            // the sign-in after that - build their chain against, so that pressing the
+            // button is the end of the matter rather than the first half of it.
+            await rememberAcceptedAuthority(this.app.getUserDataDir(), target);
+        }
         this.app.logger.info(
             "[Vcs]", outcome.installed ? "Trusted" : "Failed to trust", "a server authority from", target,
         );
@@ -1937,33 +2032,6 @@ export class VcsManager extends Manager {
     }
 
     /**
-     * The projects one server holds.
-     *
-     * Asked of the server rather than remembered, every time: a list kept here
-     * would be a list that is wrong the moment somebody else pushes, and this is
-     * one small request over a connection that is already trusted.
-     */
-    public async listServerProjects(remoteOrigin: string): Promise<ServerProjectsResult> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjects(credentials);
-    }
-
-    /**
-     * Who has an account on one server.
-     *
-     * **Only asked of a server that advertised `members`.** The gate is in the renderer,
-     * where the decision whether to draw a roster at all is made; a deployment that offers
-     * no such thing is one with no such section, rather than one that answers a question
-     * with a 404 for somebody to put a sentence to.
-     */
-    public async listServerMembers(remoteOrigin: string): Promise<VcsServerMembersOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerMembers(credentials);
-    }
-
-    /**
      * Exchange a username and password for a token, on a server that offers it.
      *
      * **The one server call here that takes an address rather than a `remoteOrigin`**, and
@@ -1992,76 +2060,6 @@ export class VcsManager extends Manager {
             outcome.ok ? "accepted" : outcome.reason,
         );
         return outcome;
-    }
-
-    /**
-     * What one server knows about one of its projects.
-     *
-     * The server's own explanation for not having read a project ends here, in the log:
-     * it is an English sentence naming the internals it was written about, and the whole
-     * point of the coded refusals either side of this line is that nothing like it reaches
-     * a reader.
-     */
-    public async getServerProject(
-        remoteOrigin: string,
-        projectId: string,
-    ): Promise<VcsServerProjectDetailOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-
-        const read = await getServerProject({ ...credentials, projectId });
-        if (!read.ok) return read;
-        if (!read.detail.file.readable && read.reason !== "") {
-            this.app.logger.info(
-                "[Vcs]", remoteOrigin, "has not read", projectId, "-", read.reason,
-            );
-        }
-        return { ok: true, detail: read.detail };
-    }
-
-    /**
-     * Take one project off a server.
-     *
-     * **The project stops being on the server; the repository keeps everything in it.**
-     * Nothing an author wrote is destroyed here, and there is no argument to this that
-     * would destroy any of it: the server drops the project from its list, and the store
-     * behind it is untouched. A project removed by mistake is published again under the
-     * same repository id and comes back with its history.
-     *
-     * Nothing local is touched either. A copy of the project on this machine goes on
-     * opening, and its remote goes on pointing where it pointed - the project is no
-     * longer on the server's list, which is a different thing from being disconnected
-     * from it.
-     */
-    public async deleteServerProject(
-        remoteOrigin: string,
-        projectId: string,
-    ): Promise<VcsServerProjectDeleteOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-
-        const removed = await deleteServerProject({ ...credentials, projectId });
-        this.app.logger.info(
-            "[Vcs]", remoteOrigin, "delete", projectId,
-            removed.ok ? "removed" : removed.problem.kind,
-        );
-        return removed;
-    }
-
-    /** The latest revisions on one of a server's projects, newest first. */
-    public async listServerProjectHistory(
-        remoteOrigin: string,
-        projectId: string,
-        options?: { limit?: number; before?: string },
-    ): Promise<VcsServerProjectHistoryOutcome> {
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
-        return listServerProjectHistory({
-            ...credentials,
-            projectId,
-            ...(options?.limit === undefined ? {} : { limit: options.limit }),
-            ...(options?.before === undefined ? {} : { before: options.before }),
-        });
     }
 
     /**
@@ -2116,6 +2114,18 @@ export class VcsManager extends Manager {
      *
      * A project the server already holds is connected and not registered again, which is
      * the second machine joining a project that is already published.
+     *
+     * ⚠ **Two questions, and asking only the first is how this shipped broken.** "Is this
+     * repository already here" is answered by the repository id, which is what a clone -
+     * or a copied project folder - carries. "Is this NAME free" is a different question
+     * about a different thing, and the address written at the end is built from the name.
+     * Answering only the first and then writing the name typed today produced a project
+     * that pushed, reported `remoteBranchExists: true`, and could not be listed or cloned
+     * by anybody, because the name had never been registered anywhere - measured, with the
+     * row sitting on the server under the name it was first published as. See
+     * {@link publishToRemote}, which cannot save it: a registration refused because the
+     * SAME id is already there is swallowed as "already done", which is true of the
+     * repository and false of the name.
      */
     public async publishProject(
         projectPath: string,
@@ -2128,33 +2138,95 @@ export class VcsManager extends Manager {
             throw new Error(`${root} is not under version control, so there is nothing to publish`);
         }
 
-        const credentials = this.serverCredentials(remoteOrigin);
-        if (credentials === null) return { ok: false, problem: { kind: "no-token" } };
+        // The guard, not the transport: the list and the registration go over the session
+        // now, but this still answers "can this installation reach that server at all" -
+        // no stored record, or no token to be read - before anything is attempted, so a
+        // machine that cannot ask says so rather than opening a socket to find out.
+        if (this.serverCredentials(remoteOrigin) === null) {
+            return { ok: false, problem: { kind: "no-token" } };
+        }
+        const call = this.teamSessionCall;
+        if (call === undefined) {
+            throw new Error("Publishing needs a Team session, which this manager was not given");
+        }
 
         // Asked rather than assumed, and it is the same question the launcher's list
         // answers: a project already on this server is one somebody has published, and
         // registering it a second time is refused by the server anyway.
-        const held = await listServerProjects(credentials);
+        const held = await listServerProjectsOverSession(call, remoteOrigin);
         if (!held.ok) return held;
-        const already = held.projects.some((project) => project.id.toLowerCase() === repositoryId);
+        // **Lineage, which is what the repository id is.** Two copies of one project - a clone,
+        // or a folder somebody duplicated to start a variant - carry the same id, so a row with
+        // this id IS this project on this server, whatever it happens to be called there.
+        const lineage = held.projects.find((project) => project.id.toLowerCase() === repositoryId);
 
-        if (!already) {
-            const registered = await createServerProject({ ...credentials, name, repositoryId });
-            if (!registered.ok) return registered;
-            this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
-        }
-
-        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
-        if (already) {
-            // Today's behaviour for a project the server already holds: the address, and
-            // nothing sent. Whether this machine's versions belong on top of what is
-            // already there is a question the Send button asks with the state in front
-            // of the author, rather than one a connection answers for them.
+        if (lineage) {
+            // The operator's rule, where they have stated one, and it is asked BEFORE anything
+            // is written: a refusal that had already left an address behind would be a refusal
+            // the author has to undo.
+            if (lineage.name !== name && this.publishLineageRule(remoteOrigin) === "refuse") {
+                this.app.logger.info(
+                    "[Vcs] Refused to publish", root, "as", name,
+                    "- already on", remoteOrigin, "as", lineage.name, "and that server says one name",
+                );
+                return { ok: false, problem: { kind: "already-published", name: lineage.name } };
+            }
+            // Connected under the name the server already holds it as, never the one typed
+            // today. The address is what a collaborator clones by, and only that name resolves.
+            // What this leaves is two histories of one project on one server, which is exactly
+            // what Send and Get are for: whether this machine's versions belong on top of what
+            // is there is a question asked with the state in front of the author, and the answer
+            // to a divergence is a merge they settle rather than a second registration.
+            await this.setRemote(projectPath, `${remoteOrigin}/${lineage.name}`);
+            if (lineage.name !== name) {
+                this.app.logger.info(
+                    "[Vcs] Connected", root, "to", remoteOrigin, "as", lineage.name,
+                    "- already registered under that name, not", name,
+                );
+                return { ok: true, connectedAs: lineage.name };
+            }
             return { ok: true };
         }
+
+        // A different project already answering to this name. Refused rather than published
+        // through: registering here would put a second repository at an address somebody
+        // else's project is cloned by, and the server is the one that decides which of them
+        // a clone gets. Nothing has been written at this point - the address included.
+        if (held.projects.some((project) => project.name.toLowerCase() === name.toLowerCase())) {
+            this.app.logger.info("[Vcs] Refused to publish", root, "as", name, "- taken on", remoteOrigin);
+            return { ok: false, problem: { kind: "name-taken" } };
+        }
+
+        // `clientId` is the repository id: it is stable and unique to this publish, so a
+        // create retried after a dropped session is the same write to the server rather
+        // than a second project under the same repository.
+        const registered = await createServerProjectOverSession(call, remoteOrigin, {
+            name,
+            repositoryId,
+            clientId: repositoryId,
+        });
+        if (!registered.ok) return registered;
+        this.app.logger.info("[Vcs] Registered", registered.project.name, "on", remoteOrigin, repositoryId);
+
+        await this.setRemote(projectPath, `${remoteOrigin}/${name}`);
         await this.push(projectPath);
         this.app.logger.info("[Vcs] Published", root, "to", remoteOrigin, "as", name);
         return { ok: true };
+    }
+
+    /**
+     * What one server says to do with a repository it already holds.
+     *
+     * Read off the session this installation stored when it last asked that server about
+     * itself, rather than by asking now: publishing already knows which server it is talking
+     * to, and a probe here would put a network call in front of a decision the last one
+     * answered. A server that has never said - one older than the rule, or one added before
+     * Studio kept it - is `merge`, which is both the safe assumption and what every
+     * deployment behaved like before there was anything to say.
+     */
+    private publishLineageRule(remoteOrigin: string): "merge" | "refuse" {
+        return this.storedServerSession(remoteOrigin)?.policy?.publishLineage
+            ?? DEFAULT_PUBLISH_LINEAGE_RULE;
     }
 
     /** Every session this installation has recorded, in the order they were written. */
@@ -2245,8 +2317,11 @@ export class VcsManager extends Manager {
      * Send this branch's revisions to the server.
      *
      * Refused by the backend when the branch has diverged, with a sentence that names the
-     * remedy (`Branch has diverged, sync to merge remote changes`). That error is passed
-     * through unchanged - see `remote.ts`.
+     * remedy (`Branch has diverged, sync to merge remote changes`). **That one is renamed
+     * rather than passed through** ({@link VcsBranchDivergedError}): the remedy is right,
+     * but it arrived as English carrying the internal verb that failed, in front of an
+     * author whose interface is not in English. Every other refusal still passes through -
+     * see `remote.ts`.
      *
      * Nothing is written locally, so a failure leaves the project exactly as it was.
      */
@@ -2258,7 +2333,12 @@ export class VcsManager extends Manager {
                 offline: false,
                 // The account id, not the author's name - see `resolveOnlineIdentity`.
                 identity: this.resolveOnlineIdentity(session.remoteOrigin),
-            }));
+            })).catch((error: unknown) => {
+                if (isDivergedBranch(error)) {
+                    throw new VcsBranchDivergedError(error instanceof Error ? error.message : String(error));
+                }
+                throw error;
+            });
             this.app.logger.info(
                 "[Vcs] Pushed", session.root, result.branch,
                 result.alreadyPushed ? "(already up to date)" : "",
@@ -2305,10 +2385,7 @@ export class VcsManager extends Manager {
             // anything has staged it - and a commit is what clears it.
             const pending = await backend.getStatus(globals);
             if (!pending.clean) {
-                throw new Error(
-                    "There are unsubmitted changes in this project. Submit a version before syncing,"
-                    + " so that anything the server sends can be merged onto a recorded state.",
-                );
+                throw new VcsUncommittedChangesError();
             }
 
             const result = await this.withServerSession(
@@ -2586,8 +2663,9 @@ export class VcsManager extends Manager {
         return this.serialize(root, async () => {
             const backend = await this.requireBackend();
             const globals = this.globalsFor(root, { online: true });
+            let cloned: { branch: string; fileCount: number };
             try {
-                const cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
+                cloned = await this.withServerSession(remoteOrigin, () => backend.cloneInto(
                     {
                         ...globals,
                         // Online, so the account id if this installation has signed in to the
@@ -2597,7 +2675,6 @@ export class VcsManager extends Manager {
                     { repositoryUrl, onProgress: options.onProgress },
                 ));
                 this.app.logger.info("[Vcs] Cloned", repositoryUrl, "->", root, `${cloned.fileCount} file(s)`);
-                return { root, ...cloned };
             } catch (error) {
                 // Logged here because nothing else does: the handler turns this into a
                 // refusal the wizard prints, and a clone that failed used to leave the log
@@ -2616,7 +2693,83 @@ export class VcsManager extends Manager {
                     this.app.logger.warn("[Vcs] Failed to release after clone", root, error);
                 });
             }
+
+            /*
+             * Record the address the copy came from.
+             *
+             * Lore writes a `remote_url` of its own during the clone and it is the ORIGIN alone -
+             * the repository name is stripped on the way in. Studio's own reader wants the whole
+             * address, the one {@link setRemote} writes, so a clone that left Lore's spelling in
+             * place answered `getRemote` with null: the project reads as belonging to no server,
+             * `getServerSession` finds nothing to match it against, and every Send and Get after
+             * it fails at `withServerSession` with `No token stored` - a sentence that blames the
+             * credentials for an address that was never written down. Measured: the person who
+             * joins a project could never send anything back.
+             *
+             * Only the address, not {@link setRemote}'s second half: this repository was just
+             * cloned FROM that server, so it is registered there by construction and there is
+             * nothing to register again.
+             *
+             * Written once the repository is released, for the reason `setRemote` closes the
+             * session first - the backend reads this file when a store is opened.
+             *
+             * A failure here is logged rather than thrown. The clone itself worked and its files
+             * are on disk; turning that into "the clone failed" would leave the author with a
+             * destination folder that is no longer empty and a wizard that will not retry into it.
+             * The project opens, and the server can be set from the version rail.
+             */
+            await backend.writeRemote(root, repositoryUrl).catch((error: unknown) => {
+                this.app.logger.warn(
+                    "[Vcs] Cloned", root, "but could not record its server:",
+                    error instanceof Error ? error.message : String(error),
+                );
+            });
+
+            await this.fetchRevisionHistory(backend, root, remoteOrigin);
+            return { root, ...cloned };
         });
+    }
+
+    /**
+     * Pull the revision history's own objects down, while the network is still open.
+     *
+     * **A clone brings the working tree, not the history behind it.** Measured: a copy of a
+     * project with four revisions answers `revisionHistory: Not found` to every LOCAL history
+     * read, for ever - Studio's reads are offline by design, so the version rail tells whoever
+     * joined a project that it has no versions at all, and the comparison, the merge base and
+     * every "what changed" beside them have nothing to walk. One read with a socket open fetches
+     * what is missing and `cache: true` keeps it, so this is a one-off repair rather than a
+     * policy change: no read after it has to go online, and the six places that may open a socket
+     * stay six - this is inside the clone, which is one of them.
+     *
+     * Best effort, and deliberately last. The clone has already landed and its files are on disk;
+     * a prefetch that failed must not turn that into "the clone failed" and leave the author with
+     * a destination folder a wizard will not retry into. What they get instead is exactly today's
+     * behaviour, which the next online read repairs.
+     */
+    private async fetchRevisionHistory(
+        backend: VcsBackend,
+        root: string,
+        remoteOrigin: string | null,
+    ): Promise<void> {
+        const globals = {
+            ...this.globalsFor(root, { online: true }),
+            identity: this.resolveOnlineIdentity(remoteOrigin),
+        };
+        try {
+            const graph = await this.withServerSession(
+                remoteOrigin,
+                () => backend.readRevisionGraph(globals),
+            );
+            this.app.logger.info("[Vcs] Fetched history for", root, `${graph.size} revision(s)`);
+        } catch (error) {
+            this.app.logger.warn(
+                "[Vcs] Cloned", root, "but could not fetch its history:",
+                error instanceof Error ? error.message : String(error),
+            );
+        } finally {
+            await backend.releaseRepository(globals).catch(() => undefined);
+        }
     }
 
     /**

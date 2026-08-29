@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "Settings",
-            description: "Security, signing, optimization, and mobile",
+            description: "Security, signing, compression, loading, and mobile",
         },
     },
     // The headings that tell one part of a sub-page from the next. A heading is a noun, never a
@@ -59,9 +59,17 @@ export const project = {
         linting: "Project check",
         security: "Security",
         signing: "Signing",
-        optimization: "Optimization",
+        imageCompression: "Image compression",
+        audioCompression: "Audio compression",
+        videoCompression: "Video compression",
+        loading: "Loading",
         crash: "Crashes",
         mobile: "Mobile",
+    },
+    /** The two ways a track's settings can be stated. */
+    compressionMode: {
+        auto: "Automatic",
+        advanced: "Advanced",
     },
     distribution: {
         description: "Kept with the project and shared by everyone who builds it. A build accepts only patches made under the key it was built with.",
@@ -77,6 +85,20 @@ export const project = {
     },
     subPage: {
         backAria: "Back to project overview",
+    },
+    /**
+     * Said at the top of a project page when its settings are read-only.
+     *
+     * The project's configuration is one file that no freeze lets through, so all of these fields
+     * grey out together - and a tooltip on a disabled field is awkward to reach at all.
+     *
+     * ⚠ The live sentence does NOT list what is still editable. Three tables reachable from these
+     * pages have documents of their own that a session carries, and naming them here would be a
+     * list that falls behind the vocabulary; "what the session carries" cannot.
+     */
+    frozen: {
+        live: "The project's own settings are read-only during a live session. What is still editable here is what the session carries.",
+        frozen: "The project's own settings are read-only while the project is frozen.",
     },
     details: {
         nameLabel: "Application Name",
@@ -415,6 +437,18 @@ export const project = {
     settings: {
         // What the shipped game does when it stops working. The choice is who the build is for:
         // the author testing it, a player holding it, or a machine running it unattended.
+        preloadBehaviorTitle: "Preload behavior",
+        preloadBehavior: {
+            auto: "Automatic",
+            blocking: "Blocking",
+        },
+        preloadBehaviorNote: {
+            blocking: "Only when preloading causes problems",
+        },
+        preloadBehaviorDetail: {
+            auto: "The game is shown once the opening scene's first frame is ready. Its remaining images keep loading behind it.",
+            blocking: "The game is shown once every image the opening scene uses has loaded.",
+        },
         crashPolicyTitle: "When the game stops working",
         crashPolicyDescription: "The failure is written to the game's log in all three cases.",
         crashPolicy: {
@@ -452,10 +486,33 @@ export const project = {
         // machine can build it: a certificate is obtained days before the build that uses it, and
         // preparing one is why this sits in the panel rather than in the build dialog.
         signingDescription: "Which credential signs each platform. Certificates and passwords stay on this machine; the project stores only which one to use.",
-        lossyImagesTitle: "Recompress images",
-        lossyImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
-        lossyQualityTitle: "Image quality",
-        lossyQualityDescription: "WebP quality used when recompressing, from 1 to 100.",
+        imageModeTitle: "Image compression settings",
+        imageWebpQualityTitle: "WebP quality",
+        imageWebpQualityDescription: "Quality passed to the WebP encoder, from 1 to 100.",
+        imageMaxDimensionTitle: "Maximum image size",
+        imageMaxDimensionDescription: "Images longer than this on their longest edge are scaled down. 0 keeps every image at the size it was saved.",
+        audioModeTitle: "Audio compression settings",
+        audioBitrateKbpsTitle: "Audio bitrate",
+        audioBitrateKbpsDescription: "AAC bitrate, in kbit/s.",
+        audioSampleRateHzTitle: "Maximum sample rate",
+        audioSampleRateHzDescription: "Audio recorded above this rate is resampled down to it. 0 keeps every recording at its own rate.",
+        videoModeTitle: "Video compression settings",
+        videoCrfTitle: "Video CRF",
+        videoCrfDescription: "VP9 constant rate factor. Lower is better quality and a larger file.",
+        videoMaxHeightTitle: "Maximum video height",
+        videoMaxHeightDescription: "Video taller than this is scaled down. 0 keeps every clip at its own size.",
+        compressImagesTitle: "Enable image compression",
+        compressImagesDescription: "Re-encode images as lossy WebP, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        imageQualityTitle: "Image quality",
+        imageQualityDescription: "Quality used when compressing images, from 1 to 100.",
+        compressAudioTitle: "Enable audio compression",
+        compressAudioDescription: "Re-encode audio as AAC, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        audioQualityTitle: "Audio quality",
+        audioQualityDescription: "Quality used when compressing audio, from 1 to 100.",
+        compressVideoTitle: "Enable video compression",
+        compressVideoDescription: "Re-encode video as VP9, in every package this project builds. The files are much smaller, and the lost detail cannot be recovered.",
+        videoQualityTitle: "Video quality",
+        videoQualityDescription: "Quality used when compressing video, from 1 to 100.",
         // Not "Mobile orientation": it sits under the Mobile heading, and the repeated word cost the
         // label a second line in a 318px panel.
         orientationTitle: "Orientation",
@@ -549,5 +606,14 @@ export const project = {
                 other: "{count} actions",
             },
         },
+    },
+    // What a live session changes about this page. The build variants, the DLC and the palette are
+    // three of the documents a session carries, so all three stay editable - and a row somebody else
+    // is inside is read-only while they are in it, which is what the mark says.
+    live: {
+        // On the mark a row wears while somebody else is inside it, and on the row's own fields. A
+        // person is named: there is no width for a name beside the monogram, and a truncated one
+        // names nobody. One sentence for the three tables - the page already says which it is.
+        entryClaimed: "{name} is editing this entry",
     },
 } as const;

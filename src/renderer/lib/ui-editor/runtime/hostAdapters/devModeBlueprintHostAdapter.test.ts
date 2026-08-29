@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildUIListItemInstanceKey } from "@shared/types/ui-editor/list";
+import { buildUIComponentInstanceKey } from "@shared/types/ui-editor/componentInstanceKey";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { BLUEPRINT_DOCUMENT_SCHEMA_VERSION } from "@shared/types/blueprint/schema";
 import {
@@ -27,6 +28,14 @@ type ChainNode = {
     type: string;
     /** The event this element's private blueprint declares a head for, if any. */
     listensTo?: "mouseClick" | "mouseEnter";
+    /**
+     * Make this element a placement of a component whose root is the next node in the chain.
+     *
+     * The chain then crosses a boundary the document tree does not span: the definition's root has
+     * no parent, so a walk that only reads `parentId` stops inside the component and the container
+     * that placed it never hears the press.
+     */
+    placesComponent?: string;
 };
 
 const HEAD_TYPE_BY_EVENT = {
@@ -44,6 +53,26 @@ const HEAD_TYPE_BY_EVENT = {
  */
 function createChainFixture(chain: readonly ChainNode[]) {
     const blueprintIdOf = (elementId: string) => `bp-${elementId}`;
+    /** The component a node is authored in, walking back up the chain to the placement that opens one. */
+    const componentIdOf = (node: ChainNode): string | undefined => {
+        for (let i = chain.indexOf(node) - 1; i >= 0; i--) {
+            const owner = chain[i]!.placesComponent;
+            if (owner) {
+                return owner;
+            }
+        }
+        return undefined;
+    };
+    const ownerOf = (node: ChainNode) => {
+        const componentId = componentIdOf(node);
+        return componentId
+            ? ({ kind: "componentWidgetMain" as const, componentId, elementId: node.id })
+            : ({ kind: "widgetMain" as const, surfaceId: "surface", elementId: node.id });
+    };
+    const ownerKeyOf = (node: ChainNode) => {
+        const componentId = componentIdOf(node);
+        return componentId ? `componentWidgetMain:${componentId}:${node.id}` : `widgetMain:surface:${node.id}`;
+    };
     const listeners = chain.filter(node => node.listensTo);
     for (const node of listeners) {
         releaseBlueprintWidgetLocals("surface", node.id, blueprintIdOf(node.id));
@@ -57,7 +86,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
                 {
                     id: blueprintIdOf(node.id),
                     name: `${node.id} logic`,
-                    owner: { kind: "widgetMain" as const, surfaceId: "surface", elementId: node.id },
+                    owner: ownerOf(node),
                     frontend: "visual" as const,
                     programKind: "graph" as const,
                     members: {
@@ -103,7 +132,7 @@ function createChainFixture(chain: readonly ChainNode[]) {
         ),
         ownerRecords: Object.fromEntries(
             listeners.map(node => [
-                `widgetMain:surface:${node.id}`,
+                ownerKeyOf(node),
                 {
                     activeBlueprintId: blueprintIdOf(node.id),
                     privateBlueprintIds: [blueprintIdOf(node.id)],
@@ -122,14 +151,30 @@ function createChainFixture(chain: readonly ChainNode[]) {
             layout: { x: 0, y: 0, width: 320, height: 180 },
         },
     };
+    /** Nodes that live in a component definition rather than on the Surface, by component id. */
+    const componentElements = new Map<string, Record<string, UIElement>>();
+    const componentOfNode = new Map<string, string>();
     chain.forEach((node, index) => {
-        elements[node.id] = {
+        const parent = index === 0 ? null : chain[index - 1]!;
+        const insideComponent = parent?.placesComponent ?? (parent ? componentOfNode.get(parent.id) : undefined);
+        const element: UIElement = {
             id: node.id,
             type: node.type,
-            parentId: index === 0 ? "root" : chain[index - 1]!.id,
-            childrenIds: index === chain.length - 1 ? [] : [chain[index + 1]!.id],
+            // A definition's root has no parent: which page it lands on is the placement's business.
+            parentId: parent?.placesComponent ? null : (parent?.id ?? "root"),
+            childrenIds: index === chain.length - 1 || node.placesComponent ? [] : [chain[index + 1]!.id],
             layout: { x: 0, y: 0, width: 120, height: 80 },
         };
+        if (insideComponent) {
+            componentOfNode.set(node.id, insideComponent);
+            const pool = componentElements.get(insideComponent) ?? {};
+            pool[node.id] = element;
+            componentElements.set(insideComponent, pool);
+            return;
+        }
+        elements[node.id] = node.placesComponent
+            ? { ...element, extra: { componentLink: { componentId: node.placesComponent, linked: true } } }
+            : element;
     });
 
     const document: UIDocument = {
@@ -148,6 +193,12 @@ function createChainFixture(chain: readonly ChainNode[]) {
             },
         ],
         elements,
+        components: [...componentElements].map(([id, pool]) => ({
+            id,
+            name: id,
+            rootElementId: Object.values(pool).find(element => element.parentId === null)!.id,
+            elements: pool,
+        })),
     };
     const bundle: DevModeBundle = {
         bundleId: "bundle",
@@ -157,7 +208,6 @@ function createChainFixture(chain: readonly ChainNode[]) {
             uidoc: document,
             uigraphs: {
                 schemaVersion: UI_GRAPH_DOCUMENT_SCHEMA_VERSION,
-                graphs: {},
                 blueprintDocument,
             },
             localBlueprints: blueprintDocument,
@@ -296,6 +346,49 @@ describe("createDevModeBlueprintHostAdapter", () => {
         });
 
         expect(fixture.heard("page")).toBe(true);
+        fixture.cleanup();
+    });
+
+    it("carries a press out of a component and on up the page that placed it", async () => {
+        // A definition's root has no parent, so the walk would end inside the component and the
+        // container that placed it would never hear a press over the card it holds. The instance
+        // key names the element that placed it, which is where the walk carries on from.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container", listensTo: "mouseClick" },
+            { id: "card", type: "nl.container", placesComponent: "slot" },
+            { id: "card-root", type: "nl.container", listensTo: "mouseClick" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("card-root", "mouseClick", { x: 1, y: 2, button: 0 }, {
+            componentId: "slot",
+            componentParams: { slot: "3" },
+            instanceKey: buildUIComponentInstanceKey(undefined, "card"),
+        });
+
+        // Read off the debug bus rather than the blueprint's own locals: a component blueprint's
+        // variables are stored per instance under a key of their own, and what this is about is
+        // which graphs ran, not where either of them keeps its state.
+        expect(fixture.firedOrder()).toEqual(["card-root", "page"]);
+        fixture.cleanup();
+    });
+
+    it("leaves the component's own context behind when it does", async () => {
+        // Past the placement, `componentId` would send every lookup back inside the definition and
+        // the params belong to a drawing the event has just left. The placement is on the Surface,
+        // so it has to be found there - which is what this asserts by giving it something to hear.
+        const fixture = createChainFixture([
+            { id: "page", type: "nl.container" },
+            { id: "card", type: "nl.container", placesComponent: "slot", listensTo: "mouseClick" },
+            { id: "card-root", type: "nl.container" },
+        ]);
+
+        await fixture.adapter.blueprintRuntime?.dispatchElementBlueprintEvent("card-root", "mouseClick", { x: 1, y: 2, button: 0 }, {
+            componentId: "slot",
+            instanceKey: buildUIComponentInstanceKey(undefined, "card"),
+        });
+
+        expect(fixture.heard("card")).toBe(true);
+        expect(fixture.firedOrder()).toEqual(["card"]);
         fixture.cleanup();
     });
 });

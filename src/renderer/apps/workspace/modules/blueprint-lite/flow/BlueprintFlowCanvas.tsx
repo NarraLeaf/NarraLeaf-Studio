@@ -135,6 +135,7 @@ import {
 import type { IBlueprintNodeCatalogService } from "@/lib/workspace/services/services";
 import type { BlueprintGraphEditorDiagnostic } from "@/lib/workspace/services/ui-editor/blueprint/graphValidation";
 import type { BlueprintGraphVariableTypeInferenceContext } from "@/lib/workspace/services/ui-editor/blueprint/graphVariableTypeInference";
+import { interfaceDocumentFreezeScope } from "../../ui-editor/uiLiveSession";
 
 /** Ephemeral React Flow node while choosing drop position — not in BlueprintGraphIr until commit. */
 const BP_PLACEMENT_PREVIEW_ID = "__bp_placement_preview__";
@@ -489,7 +490,7 @@ function BlueprintFlowCanvasInner({
     // right-click-to-add, Delete - and leaves selection, panning, zoom and the minimap exactly as they
     // were. There is nothing to grey out on a drag, so the only honest affordance is that it never
     // starts; see `components/ui/freezeGuard`.
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const { t } = useTranslation();
     const { getNodes, screenToFlowPosition, fitView, getViewport, setViewport, setCenter } = useReactFlow();
     const [nodes, setNodes, onNodesChange] = useNodesState<Node<BlueprintFlowNodeData>>([]);

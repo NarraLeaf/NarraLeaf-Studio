@@ -23,7 +23,8 @@ import {
     SecurityConfiguration,
     SigningConfiguration,
     VoiceConfiguration,
-    AssetOptimizationConfiguration,
+    AssetCompressionConfiguration,
+    PreloadConfiguration,
     normalizeAutoSaveConfiguration,
     normalizeBuildConfiguration,
     normalizeCrashConfiguration,
@@ -35,6 +36,7 @@ import {
     normalizeNetworkConfiguration,
     normalizePatchConfiguration,
     normalizePlayerPreferences,
+    normalizePreloadConfiguration,
     normalizeSaveCompatibilityConfiguration,
     normalizeSaveLocationConfiguration,
     normalizeSecurityConfiguration,
@@ -43,7 +45,7 @@ import {
     normalizeVoiceConfiguration,
     normalizeWindowConfiguration,
     type WindowConfiguration,
-    readAssetOptimizationConfiguration,
+    readAssetCompressionConfiguration,
     normalizeDistributionConfiguration,
     type DistributionConfiguration,
 } from "../../project/configuration";
@@ -113,7 +115,7 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
         const configFileName = findProjectConfigFileName(fileStats);
 
         if (!configFileName) {
-            throw new RendererError("Project config not found: no .nlproj or project.json in project root");
+            throw new RendererError("Project config not found: no .nlproj in project root");
         }
 
         const configPath = join(projectPath, configFileName);
@@ -302,35 +304,35 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
     }
 
     /**
-     * Read the effective asset optimization policy, falling back to the default
-     * (lossy off) for projects that predate `app.assetOptimization`.
+     * Read the effective asset compression policy, falling back to the default
+     * (every track off) for projects that predate `app.assetCompression`.
      */
-    public getAssetOptimizationConfiguration(): AssetOptimizationConfiguration {
-        return readAssetOptimizationConfiguration(this.getProjectConfig().app);
+    public getAssetCompressionConfiguration(): AssetCompressionConfiguration {
+        return readAssetCompressionConfiguration(this.getProjectConfig().app);
     }
 
     /**
-     * Merge a partial patch into the asset optimization policy. Written by the
+     * Merge a partial patch into the asset compression policy. Written by the
      * project settings UI and read by the build, which applies it to every
      * package it produces.
      *
-     * Writing lands on `app.assetOptimization`, and the key this used to live
-     * under is left where it is rather than deleted: a project opened by an
-     * older Studio then still finds the settings it knows about, and the read
-     * above prefers the new key whenever both are present.
+     * Writing lands on `app.assetCompression`, and the keys this used to live
+     * under are left where they are rather than deleted: a project opened by an
+     * older Studio then still finds the setting it knows about, and the read
+     * above prefers the current key whenever more than one is present.
      */
-    public async updateAssetOptimizationConfiguration(
-        patch: Partial<AssetOptimizationConfiguration>,
+    public async updateAssetCompressionConfiguration(
+        patch: Partial<AssetCompressionConfiguration>,
     ): Promise<ProjectConfig> {
         return this.updateProjectConfig(config => {
-            const assetOptimization: AssetOptimizationConfiguration = {
-                ...readAssetOptimizationConfiguration(config.app),
+            const assetCompression: AssetCompressionConfiguration = {
+                ...readAssetCompressionConfiguration(config.app),
                 ...patch,
             };
             const app: ProjectAppConfiguration = {
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
-                assetOptimization,
+                assetCompression,
             };
             return {
                 ...config,
@@ -641,6 +643,28 @@ export class ProjectService extends Service<ProjectService> implements IProjectS
                 ...config.app,
                 network: normalizeNetworkConfiguration(config.app?.network),
                 dialogue,
+            };
+            return {
+                ...config,
+                app,
+            };
+        });
+    }
+
+    /**
+     * Merge a partial patch into the preload behavior. Written by the project Settings page and
+     * baked into the bundle the game app configures the engine from at boot.
+     */
+    public async updatePreloadConfiguration(patch: Partial<PreloadConfiguration>): Promise<ProjectConfig> {
+        return this.updateProjectConfig(config => {
+            const preload = normalizePreloadConfiguration({
+                ...normalizePreloadConfiguration(config.app?.preload),
+                ...patch,
+            });
+            const app: ProjectAppConfiguration = {
+                ...config.app,
+                network: normalizeNetworkConfiguration(config.app?.network),
+                preload,
             };
             return {
                 ...config,

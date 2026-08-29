@@ -2,7 +2,7 @@ import {
     CHARACTER_STORE_VERSION,
     CharacterStoreDocument,
     isNewerCharacterStore,
-    migrateCharacterStore,
+    findUnreadableCharacterAppearance,
 } from "@shared/characters/characterStoreModel";
 import type {CharacterGroup, StoredCharacter} from "@shared/types/character/model";
 import {defineDocumentSpec} from "../registry";
@@ -37,12 +37,11 @@ export const charactersSpec = defineDocumentSpec<CharacterStoreDocument>({
     parse: (raw, context) => {
         const record = requireDocumentObject(raw, context, "a character store");
 
-        // Before anything is read, let alone migrated. Migration is destructive by design for a kind
-        // it does not recognise - `isCurrentAppearance` reads an unknown kind as the pre-rework model
-        // and replaces the character with an empty preset - so on a store that may hold kinds from a
-        // newer Studio the only safe move is to touch nothing. `CharacterService` shows such a store
-        // read-only; here, where the caller may be a diff over a revision, it is corrupt: a document
-        // this build cannot represent must never reach `serialize`.
+        // Before anything is read. On a store that may hold appearance kinds from a newer Studio the
+        // only safe move is to touch nothing, and to say so by version rather than by failing to
+        // recognise a kind one at a time. `CharacterService` shows such a store read-only; here,
+        // where the caller may be a diff over a revision, it is corrupt: a document this build
+        // cannot represent must never reach `serialize`.
         if (isNewerCharacterStore(record.version)) {
             return context.corrupt(
                 `written by a newer version of Studio (store version ${String(record.version)}; `
@@ -60,10 +59,15 @@ export const charactersSpec = defineDocumentSpec<CharacterStoreDocument>({
         requireOptionalMap(record, "groups", context);
 
         const entries = (characters ?? []) as unknown[];
-        // The existing migration, called rather than reimplemented, and it mutates in place. It is
-        // idempotent - a character already on the two-kind model is left alone - so parsing a
-        // current document is a walk and nothing else.
-        migrateCharacterStore(entries);
+        // An appearance whose kind this build does not recognise is the store's own way of saying
+        // it came from somewhere this one cannot follow - a newer Studio (already refused above by
+        // version) or a hand edit. Naming it and refusing loses nothing; the alternative this
+        // replaced read such a kind as the pre-rework model and wrote back an empty preset, which
+        // is a character deleted by being opened.
+        const unreadable = findUnreadableCharacterAppearance(entries);
+        if (unreadable !== null) {
+            return context.corrupt(`character "${unreadable}" has an appearance this build cannot read`);
+        }
 
         const {version: _version, characters: _characters, groups: _groups, ...rest} = record;
         return {

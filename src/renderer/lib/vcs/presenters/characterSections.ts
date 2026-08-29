@@ -175,10 +175,18 @@ function run(key: string, changes: DocumentChange[]): Candidate[] {
  * So each of them is answered with the key the panel the author edits it in already uses: the
  * character properties schema for the profile fields
  * (`modules/properties/schemas/characterSchema.ts`), the puppet editor for a custom runtime's.
- * **No word is invented here.** A field the panel does not name - a character's nicknames, their
- * attributes, the group they belong to, a layered appearance's canvas or PSD link - is absent, and
- * its row keeps the stored name it always had. A word made up here would read to the author as the
- * panel's own, and there would then be two of them.
+ *
+ * **No word is coined here.** Six fields the editor draws without ever labelling - a character's
+ * nicknames, the group a row was moved into, a layered appearance's canvas, its avatar axes and the
+ * PSD it came from, and the state a puppet rests in - are named under
+ * `documentDiff.characters.fields`, from the vocabulary the controls that reach them already use.
+ * They are held there rather than beside the panel's own labels for the reason that block gives: a
+ * word under `characters.*` that no panel draws would be read as the panel's own the next time
+ * someone looks for one, and there would then be two of them.
+ *
+ * `attributes` and `options` are named in neither place. Studio has no surface for either - both are
+ * bags a plugin or an import writes through - so their rows keep the stored name, which is the only
+ * name anyone able to reach them has.
  */
 export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> = {
     // The profile, in the order the properties panel lists it.
@@ -189,6 +197,10 @@ export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> 
     defaultAvatarAssetId: "characters.properties.defaultAvatar",
     voiceTrackId: "characters.properties.voiceTrack",
     portrait: "characters.preview.portraitTitle",
+    // Two the panel shows without labelling: the nicknames printed under a name in the cast list,
+    // and the group a row was moved into.
+    nicknames: "documentDiff.characters.fields.nicknames",
+    groupId: "documentDiff.characters.fields.group",
     // The appearance: the whole of it, the named combinations a layered one stores, and the four
     // fields a character drawn by a runtime is set up with.
     appearance: "characters.create.appearanceLabel",
@@ -197,6 +209,13 @@ export const CHARACTER_FIELD_NAME_KEY: Readonly<Record<string, TranslationKey>> 
     backend: "characters.editor.puppet.backend",
     entry: "characters.editor.puppet.entry",
     size: "characters.editor.puppet.size",
+    // Four more the editor reaches through a button or an unlabelled control: the canvas declared
+    // from the largest layer, the axes the dialog avatar varies with, the PSD a stack was imported
+    // from, and the motion, expression and skin a puppet rests in.
+    canvas: "documentDiff.characters.fields.canvas",
+    avatarAxisIds: "documentDiff.characters.fields.avatarAxes",
+    psd: "documentDiff.characters.fields.psd",
+    defaultState: "documentDiff.characters.fields.puppetDefaultState",
 };
 
 /**

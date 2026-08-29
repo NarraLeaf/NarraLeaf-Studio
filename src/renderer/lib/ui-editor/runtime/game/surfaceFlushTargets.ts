@@ -11,10 +11,6 @@ function hasValueBindings(element: UIElement): boolean {
     return Object.keys(element.valueBindings ?? {}).length > 0;
 }
 
-function hasLegacyFlushBinding(element: UIElement): boolean {
-    return element.behavior?.events?.flush?.kind === "blueprintEvent";
-}
-
 function blueprintHasFlushHead(blueprint: Blueprint | undefined, elementType: string): boolean {
     if (!blueprint) {
         return false;
@@ -66,11 +62,7 @@ export function collectSurfaceFlushElementIds(input: {
         if (!element) {
             return;
         }
-        if (
-            hasValueBindings(element) ||
-            hasLegacyFlushBinding(element) ||
-            hasWidgetFlushBlueprint(blueprintDocument, surface.id, element)
-        ) {
+        if (hasValueBindings(element) || hasWidgetFlushBlueprint(blueprintDocument, surface.id, element)) {
             out.add(elementId);
         }
         for (const childId of element.childrenIds ?? []) {

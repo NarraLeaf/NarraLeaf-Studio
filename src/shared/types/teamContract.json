@@ -1,8 +1,18 @@
 {
-  "note": "The Team protocol's wire names. A byte-identical copy lives in Studio at src/shared/types/teamContract.json; both move together or the two stop understanding each other. Each side has a test that pins its own constants to this file, so a rename that forgets one half fails there rather than on somebody's machine.",
-  "protocol": 1,
+  "_generated": "This file is generated from protocol/src/index.ts by scripts/gen-contract.mjs. Do not edit it by hand.",
+  "protocol": 2,
   "socketPath": "/api/team/v1/socket",
-  "capabilities": ["session", "comments", "clients", "live", "overlay"],
+  "capabilities": [
+    "session",
+    "comments",
+    "clients",
+    "live",
+    "overlay",
+    "admin",
+    "password-sign-in",
+    "project-history",
+    "blobs"
+  ],
   "errorCodes": [
     "unknown-method",
     "bad-params",
@@ -16,6 +26,9 @@
   "methods": [
     "projects.list",
     "projects.get",
+    "projects.history",
+    "projects.create",
+    "projects.forget",
     "members.list",
     "threads.list",
     "threads.get",
@@ -32,24 +45,57 @@
     "live.join",
     "live.leave",
     "live.close",
+    "live.rule",
+    "live.byCode",
+    "live.requestJoin",
+    "live.answerJoin",
     "live.say",
     "overlay.list",
     "overlay.put",
-    "overlay.drop"
+    "overlay.drop",
+    "admin.users.list",
+    "admin.users.create",
+    "admin.users.disable",
+    "admin.users.enable",
+    "admin.users.grantAdmin",
+    "admin.users.revokeAdmin",
+    "admin.users.revokeTokens",
+    "admin.tokens.mint",
+    "admin.settings.list",
+    "admin.settings.set",
+    "admin.keys.list",
+    "admin.keys.rotate",
+    "admin.keys.retire",
+    "admin.audit.list",
+    "admin.server.status"
   ],
   "topics": {
     "projects": "projects",
-    "members": "members",
     "project": "project:{project}",
     "projectThreads": "project:{project}/threads",
     "projectOverlay": "project:{project}/overlay",
     "projectClients": "project:{project}/clients",
     "projectLive": "project:{project}/live",
-    "live": "live:{session}"
+    "live": "live:{session}",
+    "adminUsers": "admin/users",
+    "adminSettings": "admin/settings",
+    "adminKeys": "admin/keys",
+    "adminRefusals": "admin/refusals"
   },
   "frames": {
-    "fromServer": ["hello", "result", "error", "subscribed", "event", "bye"],
-    "fromClient": ["call", "subscribe", "unsubscribe"]
+    "fromServer": [
+      "hello",
+      "result",
+      "error",
+      "subscribed",
+      "event",
+      "bye"
+    ],
+    "fromClient": [
+      "call",
+      "subscribe",
+      "unsubscribe"
+    ]
   },
   "limits": {
     "anchorField": 512,
@@ -57,6 +103,8 @@
     "suggestion": 65536,
     "overlayBody": 65536,
     "livePayload": 16384,
-    "instanceField": 256
+    "instanceField": 256,
+    "pageBytes": 1048576,
+    "answerBytes": 2097152
   }
 }

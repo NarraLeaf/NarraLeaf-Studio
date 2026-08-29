@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
-    type AssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
+    DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    DEFAULT_ASSET_QUALITY,
+    type AssetCompressionConfiguration,
+} from "@shared/types/assetCompression";
 import {
     jpegHasIccProfile,
     planAssetImageTranscode,
@@ -64,7 +65,7 @@ function webp(): Uint8Array {
     return Uint8Array.from(bytes);
 }
 
-const LOSSY: AssetOptimizationConfiguration = { ...DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION, lossyImages: true };
+const LOSSY: AssetCompressionConfiguration = { ...DEFAULT_ASSET_COMPRESSION_CONFIGURATION, compressImages: true };
 
 /** Manifest keys for ordinary assets are UUIDs, so a "/" only ever means a bundle member. */
 const ASSET_ID = "3f2a1c04-5b6d-4e7f-8a9b-0c1d2e3f4a5b";
@@ -134,18 +135,43 @@ describe("planAssetImageTranscode", () => {
     // The lossless arm answers to nothing in the configuration, which is the whole reason it is
     // not a setting: there is no policy under which a PNG is left as it is.
     it("converts a plain PNG losslessly, with nothing in the policy turned on", () => {
-        expect(planAssetImageTranscode(candidate(png()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(png()), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "lossless" });
     });
 
     it("leaves a JPEG alone unless lossy is on, because lossless WebP of one is bigger", () => {
-        expect(planAssetImageTranscode(candidate(jpeg()), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(jpeg()), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "not-enabled" });
     });
 
     it("converts both PNG and JPEG once lossy is turned on", () => {
-        expect(planAssetImageTranscode(candidate(png()), LOSSY)).toEqual({ action: "lossy" });
-        expect(planAssetImageTranscode(candidate(jpeg()), LOSSY)).toEqual({ action: "lossy" });
+        // The plan carries the quality rather than leaving the caller to read it back out of the
+        // configuration, so that nothing downstream has to know whether it came from the shared
+        // scale or from an author who typed it.
+        const expected = { action: "lossy", quality: DEFAULT_ASSET_QUALITY, resizeTo: null };
+        expect(planAssetImageTranscode(candidate(png()), LOSSY)).toEqual(expected);
+        expect(planAssetImageTranscode(candidate(jpeg()), LOSSY)).toEqual(expected);
+    });
+
+    it("reads the WebP quality an advanced project set, and the scale otherwise", () => {
+        const advanced: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageWebpQuality: 55 };
+        expect(planAssetImageTranscode(candidate(png()), advanced)).toMatchObject({ quality: 55 });
+        expect(planAssetImageTranscode(candidate(png()), { ...LOSSY, imageQuality: 40 }))
+            .toMatchObject({ quality: 40 });
+    });
+
+    it("shrinks an image past the cap, and leaves one inside it alone", () => {
+        // The fixture is 64x64. Enlarging would spend bytes on pixels no artist drew, so the cap
+        // only ever works downwards.
+        const capped: AssetCompressionConfiguration = { ...LOSSY, imageMode: "advanced", imageMaxDimension: 32 };
+        expect(planAssetImageTranscode(candidate(png()), capped))
+            .toMatchObject({ resizeTo: { width: 32, height: 32 } });
+        expect(planAssetImageTranscode(candidate(png()), { ...capped, imageMaxDimension: 512 }))
+            .toMatchObject({ resizeTo: null });
+        // Auto has no cap at all: a build cannot tell art drawn at twice the stage size from art
+        // that is meant to be that size.
+        expect(planAssetImageTranscode(candidate(png()), { ...LOSSY, imageMaxDimension: 32 }))
+            .toMatchObject({ resizeTo: null });
     });
 
     it("refuses an APNG even when it would otherwise qualify", () => {
@@ -155,7 +181,7 @@ describe("planAssetImageTranscode", () => {
 
     it("refuses a colour-managed image in either mode", () => {
         const managed = png([chunk("iCCP", ascii("Display P3"))]);
-        expect(planAssetImageTranscode(candidate(managed), DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION))
+        expect(planAssetImageTranscode(candidate(managed), DEFAULT_ASSET_COMPRESSION_CONFIGURATION))
             .toEqual({ action: "skip", reason: "color-managed" });
         expect(planAssetImageTranscode(candidate(jpeg([app2("ICC_PROFILE")])), LOSSY))
             .toEqual({ action: "skip", reason: "color-managed" });
@@ -170,7 +196,7 @@ describe("planAssetImageTranscode", () => {
 
     it("still converts a baked character avatar, whose id is synthetic but slash-free", () => {
         expect(planAssetImageTranscode(candidate(png(), { manifestKey: "character-avatar:yuki:a1%2Bb2" }), LOSSY))
-            .toEqual({ action: "lossy" });
+            .toMatchObject({ action: "lossy" });
     });
 
     it("refuses a format it does not convert, including WebP itself", () => {

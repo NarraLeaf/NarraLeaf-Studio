@@ -6,7 +6,7 @@ import {
     SPELLCHECK_CODE_PATTERN,
     SPELLCHECK_MAX_EXPANDED_BYTES,
 } from "@shared/constants/spellcheckRegistry";
-import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace } from "@shared/types/constants";
 import type { InstalledSpellcheckDictionary } from "@shared/types/spellcheck";
 import type { SpellcheckRegistryEntry } from "@shared/types/spellcheckRegistry";
 
@@ -44,8 +44,8 @@ export type DictionaryManifest = {
 export class DictionaryCache {
     private readonly root: string;
 
-    constructor(userDataDir: string) {
-        this.root = path.join(userDataDir, UserDataNamespace.Cache, CacheNamespace.SpellcheckDictionaries);
+    constructor(cacheRoot: string) {
+        this.root = path.join(cacheRoot, CacheNamespace.SpellcheckDictionaries);
     }
 
     public directory(): string {

@@ -10,6 +10,13 @@ import type { WeatherSeedRef } from "../../weather/model";
 // content the author had sold separately - silently, in the one direction nobody checks. Refusing
 // the document is the point.
 export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
+// What follows is the story document's version log. It is kept in full, and deliberately, even for
+// versions this build can no longer open: most entries say what the model IS and why, not only what
+// a converter did, and that is the only written record of several of these decisions. Read it as
+// history, not as a list of shapes the code still handles.
+// The ladder itself stops at STORY_DOCUMENT_MIN_SUPPORTED_VERSION - see
+// `@shared/story/migrateStoryDocument`, which explains why a floor is the honest answer for a
+// product with no releases behind it. A document below that floor is refused by name.
 // v4 adds the `invalid` block kind and dialogue's `speakerName`. Both are additive - v3 documents
 // load unchanged - but a v3 Studio would silently drop an unresolved command line and render a
 // temp-speaker line with no speaker, so the bump makes it refuse the document instead.
@@ -196,7 +203,26 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // re-parsed as a soft wipe with the default feather of 12 - a hard edge lost to editing the row.
 // The bump is not optional: a v21 Studio meeting `holdMs` ignores it and plays a hold it was not asked
 // for, then writes the document back without it. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 22 as const;
+// v23 gives a jump the choice of coming back: `StoryJumpPayload.returnable`. A returnable jump
+// suspends the scene it leaves instead of unloading it, plays the scene it names, and resumes at the
+// row after itself - the shape every other engine in this genre calls call/return, and the one this
+// story model had no way to write. Until now the only way to reuse a fixed sequence was to copy it
+// into every scene that needed it, because the jump that reached it could not come back and each
+// caller would have needed a branch of its own to be jumped back to.
+// No migration: a v22 document cannot carry the field, and absent reads as `false`, which is the
+// jump it has always been. The bump is not optional, and the reason is what a v22 Studio would
+// *play*: it would ignore the field, compile a plain jump, and run the called scene as the end of
+// the story rather than as a detour - so every row after the jump, in every scene that made one,
+// would silently never run. Refusing the document is the point.
+// v24 lets a variable condition compare rather than only match: `greaterThan`, `greaterOrEqual`,
+// `lessThan` and `lessOrEqual` join the operators a `{kind:"variable"}` condition can carry. The
+// picker could previously say only "equals" and "does not equal", so every threshold - the most
+// common test a branch makes - had to be written in the expression tier instead.
+// No migration: a v23 document cannot carry one of the four. The bump is not optional, and the
+// reason is what a v23 Studio would *play*: every operator switch in the compiler, the preview and
+// the script projections ends in a `default` that evaluates false, so a threshold branch would
+// silently never be taken. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 24 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -437,27 +463,6 @@ export type StorySavedVariableDefinition = {
 
 export type StoryLiteralValue = string | number | boolean | null | StoryLiteralValue[] | { [key: string]: StoryLiteralValue };
 
-// --- Legacy shapes, retained only as migration input. ---
-// v5 and earlier persisted variable REGISTRIES: `StoryScene.sceneVariables` and
-// `StoryDocument.savedVariables` (Record<variableId, definition>). v6 replaced both with
-// `declaration` blocks; the migration reads the old fields off the raw object and strips them.
-export type StoryVariableScopeLegacy = "studioGlobal" | "gamePersistent" | "sceneLocal";
-
-export type StoryVariableDefinitionLegacy = {
-    id: string;
-    name: string;
-    scope: StoryVariableScopeLegacy;
-    valueType: StoryVariableValueType;
-    defaultValue?: StoryLiteralValue;
-    meta?: StoryMeta;
-};
-
-export type StoryPersistentDefinitionLegacy = {
-    namespace: string;
-    defaultContent: Record<string, StoryLiteralValue>;
-    meta?: StoryMeta;
-};
-
 export type StoryBlockKind = "nodeAction" | "action" | "control" | "jump" | "note" | "invalid" | "declaration" | "empty";
 
 export type StoryBlock =
@@ -622,8 +627,6 @@ export type StoryNodeActionPayload =
           speakerName?: string;
           text: StoryTextSegment;
           voiceAssetId?: string;
-          /** Auto-pause after the line: `true` waits for a click, a number waits that many ms. */
-          pauseAfter?: boolean | number;
       }
     | {
           action: "choice";
@@ -761,6 +764,18 @@ export type StoryActionPayload =
           muted?: boolean;
           /** Absent = the track's own loop default. */
           loop?: boolean;
+          /**
+           * `playSound` - hold the script on this row until the clip finishes.
+           *
+           * Absent and `false` both mean the next row runs as soon as the clip is playing. A sound
+           * effect written between two lines is not a wait, and a long one used to stop the script
+           * for its whole length with a finished stage on screen. A row that means "hold here"
+           * says so.
+           *
+           * Additive: no document written before this carries it, and every one of them means the
+           * new answer. Ignored on a looping clip, which never ends.
+           */
+          waitForEnd?: boolean;
           /** `seekSound` — where to move the play head, in milliseconds (seconds on the line). */
           timeMs?: number;
       }
@@ -1236,6 +1251,27 @@ export type StoryEndingPage =
 export type StoryJumpPayload = {
     targetSceneId: StorySceneId;
     transition?: StoryTransitionRef;
+    /**
+     * Come back to the row after this one when the scene it names runs out (schema v23).
+     *
+     * Absent or `false` is the jump this row has always been: the scene it is written in is unloaded
+     * and nothing after the row ever runs. `true` suspends that scene instead - it keeps its stage,
+     * its sprites and its scene-local variables, its background music is paused, and it stops
+     * painting - and the story resumes here when the called scene runs out of rows.
+     *
+     * Written as a flag rather than as a second block kind on purpose. What a row does is decided by
+     * a word the author typed on it and the row prints back, not by the *kind* of thing the target
+     * is - which is the distinction `/goto` and `/jump` are two commands over (see the note on the
+     * `goto` spec). Every reader that only wants to know where the row points reads
+     * `targetSceneId` and is unaffected; the readers that care whether control comes back are the
+     * ones that ask for this.
+     *
+     * Two consequences the engine enforces and the lint rules mirror, both from a suspended scene
+     * being one real scene rather than a saved position: a scene already on the call stack cannot be
+     * called (so `A -> B -> A` throws rather than recursing), and a plain jump taken while a call is
+     * open gives the call up and unloads everything parked behind it.
+     */
+    returnable?: boolean;
 };
 
 export type StoryNotePayload = {
@@ -1330,13 +1366,6 @@ export type StoryVariableRef =
     // (registry entry id, or declaration block id for a story `/persis` row) - which equals its storage
     // key, so the resolver still hands that value to the host persistence bridge.
     | { scope: "persistent"; variableId: string };
-
-/** Legacy (schema v1) free-form variable reference, retained for migration + picker safety-net. */
-export type StoryVariableRefLegacy = {
-    scope: StoryVariableScopeLegacy;
-    namespace?: string;
-    key: string;
-};
 
 /**
  * The stage singletons every scene has without a creator block: the scene background image
@@ -1445,7 +1474,22 @@ export type StoryConditionRef =
     | {
           kind: "variable";
           target: StoryVariableRef;
-          operator: "isTrue" | "isFalse" | "equals" | "notEquals" | "exists";
+          /**
+           * The comparisons the picker offers, in the order it lists them. The four ordered ones
+           * hold whatever `<`, `<=`, `>` and `>=` mean in an expression - the same {@link
+           * compareStoryValues} rule - so a branch built from dropdowns and one typed as
+           * `gold >= 100` test the value the same way.
+           */
+          operator:
+              | "isTrue"
+              | "isFalse"
+              | "equals"
+              | "notEquals"
+              | "greaterThan"
+              | "greaterOrEqual"
+              | "lessThan"
+              | "lessOrEqual"
+              | "exists";
           value?: StoryLiteralValue;
       }
     | {
@@ -1832,6 +1876,37 @@ export type StoryTransitionRef = {
     holdMs?: number;
     props?: Record<string, StoryLiteralValue>;
 };
+
+/**
+ * The transition a stored ref actually names, with "it names none" read as `none`.
+ *
+ * `kind` is required by the type above and absent on disk all the same. The v17→v18 migration used
+ * to run a `StoryTransitionRef` through the transform migration - the two answer to the same field
+ * name on different payloads - and returned `{mode: "props", to: {}}`: the row kept its transition
+ * field and lost the only word in it. That is fixed where it was written, but every document a
+ * build with the defect migrated still carries such a ref, and the word is not recoverable, because
+ * nothing else in the row says which transition it was.
+ *
+ * A row that names no transition is a row that plays a cut, which is exactly what `none` means, so
+ * it is read as `none` rather than as a transition this build cannot find. The change lands
+ * instantly either way; the difference is that an author is no longer told to fix a row whose only
+ * fault is a field that was eaten, on a build where picking `none` writes no `kind` either.
+ *
+ * Every reader of a stored `kind` asks through here - the story compiler, the
+ * `story/transition-unavailable` lint rule, the inspector's picker, the quick-edit chips and the
+ * script export - so none of them can reach a different verdict about the same row.
+ */
+export function storyTransitionKindOf(transition: { kind?: unknown } | null | undefined): StoryTransitionKind {
+    const kind = transition?.kind;
+    // A blank string is the same statement as an absent one, and reaches here the same way.
+    if (typeof kind !== "string" || kind.trim() === "") {
+        return "none";
+    }
+    // Not necessarily a member of the union: a word off disk this build has never heard of stays
+    // itself, so {@link isPlayableStoryTransitionKind} can still report it. The declared type of
+    // `StoryTransitionRef.kind` already makes the same claim about the same string.
+    return kind as StoryTransitionKind;
+}
 
 export type StoryDiagnosticsMeta = {
     sourceLine?: number;

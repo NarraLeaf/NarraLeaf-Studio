@@ -1,7 +1,8 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { GameMenu, Script, Word, useUIMenuContext, type ChoiceEvaluated } from "narraleaf-react";
 import type { UIStageSurface } from "@shared/types/ui-editor/document";
 import { BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY } from "@shared/types/blueprint/hostApi";
+import type { ChoiceMenus, ChoiceSlotItem, ChoiceSlotRuntime } from "./choiceMenus";
 import {
     collectSurfaceElementIdsByType,
     StageSlotSurfaceBody,
@@ -13,31 +14,15 @@ import {
 const CHOICE_LIST_WIDGET_TYPE = "nl.choice.list";
 
 /**
- * Runtime bridge registered while a NarraLeaf choice menu is mounted.
+ * Runtime bridge registered while a NarraLeaf choice menu is mounted, and one option on it.
  *
+ * Declared beside the registry that holds them ({@link ChoiceMenus}) because more than one menu can
+ * be on the stage at once; re-exported here, where they were, for the callers that ask this module.
  * `items` is what is on screen; `choose` addresses the engine's own index, which is the `index`
- * field of an item and not its position in this array - a hidden option is left out of the list
+ * field of an item and not its position in that array - a hidden option is left out of the list
  * without renumbering the ones after it.
  */
-export type ChoiceSlotRuntime = {
-    count: number;
-    items: readonly ChoiceSlotItem[];
-    choose: (index: number) => void;
-};
-
-export type ChoiceSlotItem = {
-    text: string;
-    index: number;
-    disabled: boolean;
-    /**
-     * The option's voice unit id, or "" when it has no take in any dub language.
-     *
-     * Put on the item rather than looked up on demand because a blueprint running inside a choice
-     * row can only see that row: `Play Choice Voice` reads this field, and without it the row has
-     * no handle on the take at all.
-     */
-    voiceId: string;
-};
+export type { ChoiceSlotItem, ChoiceSlotRuntime } from "./choiceMenus";
 
 // `Script.getCtx`, `Word.getText`, and `Lambda.evaluate` are NarraLeaf-internal statics hidden
 // from the public typings; mirror NLR's own `Item.tsx` usage through structural casts and keep
@@ -115,13 +100,48 @@ function choiceVoiceId(choice: ChoiceEvaluated): string {
 export function ChoiceSlotSurface(props: {
     options: GameUiSlotHostOptions;
     surface: UIStageSurface;
-    setChoiceRuntime: (runtime: ChoiceSlotRuntime | null) => void;
+    choiceMenus: ChoiceMenus;
 }) {
-    const { options, surface, setChoiceRuntime } = props;
-    const runtime = useStageSlotSurfaceRuntime({ options, surface, slotId: "choice" });
+    const { options, surface, choiceMenus } = props;
+    // Which drawing of the choice surface this is. `useId` names the drawing without side effects,
+    // so the claim below can be made during render and answers the same slot however many times a
+    // render is replayed; the slot itself is what everything this menu addresses is keyed by.
+    const drawingId = useId();
+    const slot = choiceMenus.claimSlot(drawingId);
     const { core, bundle, widgetRuntimeStore } = options;
-    const { runtimeScopeId, flushSlotElements } = runtime;
     const menu = useUIMenuContext();
+    /**
+     * What this menu offers, for the host API bound to it below.
+     *
+     * Through a ref rather than a dependency: the options object feeds the memo that builds this
+     * slot's blueprint host API, and rebuilding that every time an option's disabled state is
+     * re-evaluated would throw away the running scope's API on a frame the player is looking at.
+     */
+    const ownRuntimeRef = useRef<ChoiceSlotRuntime | null>(null);
+
+    /**
+     * This drawing's own view of the two choice host calls.
+     *
+     * A graph running inside a menu means *this* menu - the row it is on belongs to this one - and
+     * the host API is built per runtime scope, which is now per menu. So binding them here is all
+     * it takes for `Select Choice` and `Get Choice Count` to address the menu the caller is in,
+     * with no signature anywhere learning a second argument. Callers outside every menu (the skip
+     * loop, Dev Mode's test controls) keep asking the registry instead.
+     */
+    const scopedOptions = useMemo<GameUiSlotHostOptions>(() => ({
+        ...options,
+        getChoiceCountInGame: () => ownRuntimeRef.current?.count ?? 0,
+        selectChoiceInGame: async (index: number) => {
+            const own = ownRuntimeRef.current;
+            if (!own) {
+                throw new Error("Select Choice: no active choice menu");
+            }
+            own.choose(index);
+        },
+    }), [options]);
+
+    const runtime = useStageSlotSurfaceRuntime({ options: scopedOptions, surface, slotId: "choice", slot });
+    const { runtimeScopeId, flushSlotElements } = runtime;
 
     const listElementIds = useMemo(
         () => collectSurfaceElementIdsByType(bundle.ui.uidoc, surface, CHOICE_LIST_WIDGET_TYPE),
@@ -162,9 +182,19 @@ export function ChoiceSlotSurface(props: {
                 evaluated: choiceText(choice),
             });
         };
-        setChoiceRuntime({ count: items.length, items, choose });
-        return () => setChoiceRuntime(null);
-    }, [items, menu, setChoiceRuntime]);
+        const own: ChoiceSlotRuntime = { count: items.length, items, choose };
+        ownRuntimeRef.current = own;
+        choiceMenus.setRuntime(drawingId, own);
+        return () => {
+            ownRuntimeRef.current = null;
+            choiceMenus.setRuntime(drawingId, null);
+        };
+    }, [choiceMenus, drawingId, items, menu]);
+
+    // The slot is given back only when this drawing leaves for good, so a re-render that changes
+    // the options or the menu never hands this menu's scope - and the widget keys and surface state
+    // under it - to a menu standing beside it.
+    useEffect(() => () => choiceMenus.release(drawingId), [choiceMenus, drawingId]);
 
     useEffect(() => {
         if (!core) {
@@ -173,16 +203,23 @@ export function ChoiceSlotSurface(props: {
         for (const elementId of listElementIds) {
             widgetRuntimeStore.setListItems(stageSlotWidgetRuntimeKey(runtimeScopeId, elementId), items);
         }
+        // One global, and possibly several menus. It is the answer for a graph that is not running
+        // inside any of them - every graph that is has its own count bound above - so it carries the
+        // newest menu on the stage, and a menu leaving hands it back to whichever is still there
+        // rather than to zero.
         core.scopeBridge.globalSet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY, items.length);
         flushSlotElements();
         return () => {
-            core.scopeBridge.globalSet(BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY, 0);
+            core.scopeBridge.globalSet(
+                BLUEPRINT_GAME_CHOICE_COUNT_STATE_KEY,
+                choiceMenus.current()?.count ?? 0,
+            );
         };
-    }, [core, flushSlotElements, items, listElementIds, runtimeScopeId, widgetRuntimeStore]);
+    }, [choiceMenus, core, flushSlotElements, items, listElementIds, runtimeScopeId, widgetRuntimeStore]);
 
     return (
         <GameMenu className="h-full w-full">
-            <StageSlotSurfaceBody options={options} surface={surface} runtime={runtime} />
+            <StageSlotSurfaceBody options={scopedOptions} surface={surface} runtime={runtime} />
         </GameMenu>
     );
 }
@@ -190,14 +227,14 @@ export function ChoiceSlotSurface(props: {
 export function createChoiceSlotComponent(
     options: GameUiSlotHostOptions,
     surface: UIStageSurface,
-    setChoiceRuntime: (runtime: ChoiceSlotRuntime | null) => void,
+    choiceMenus: ChoiceMenus,
 ) {
     return function ChoiceSlotGameUI(_props: { items: number[] }) {
         return (
             <ChoiceSlotSurface
                 options={options}
                 surface={surface}
-                setChoiceRuntime={setChoiceRuntime}
+                choiceMenus={choiceMenus}
             />
         );
     };

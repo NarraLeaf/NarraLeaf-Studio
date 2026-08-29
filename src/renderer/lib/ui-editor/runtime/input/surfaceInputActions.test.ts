@@ -5,9 +5,13 @@ import {
     hitChainHasOperableElement,
     hitsConsumeInput,
     isOperableHitElement,
+    pointerInputClaimedByControl,
     resolveSurfaceInputActionHits,
+    stopsAtLane,
+    type UIInputHitNode,
     type UIInputSignal,
 } from "./surfaceInputActions";
+import type { UIInputActionEventPayload } from "@shared/types/ui-editor/inputActionEvent";
 
 const ADVANCE: UIInputActionDef = {
     id: "advance",
@@ -17,7 +21,9 @@ const ADVANCE: UIInputActionDef = {
 
 const VOCABULARY: Record<string, UIInputActionDef> = { advance: ADVANCE };
 
-const CLICK: UIInputSignal = { kind: "pointer", gesture: "click", x: 12, y: 34 };
+const CLICK: UIInputSignal = { kind: "pointer", gesture: "click", device: "pointer", x: 12, y: 34 };
+
+const PAYLOAD: UIInputActionEventPayload = { actionId: "advance", source: "pointer", x: 0, y: 0 };
 
 function element(type: string, props?: Record<string, unknown>): UIElement {
     return {
@@ -30,10 +36,15 @@ function element(type: string, props?: Record<string, unknown>): UIElement {
     };
 }
 
+/** One element under the pointer, with what its scroller can still do. */
+function node(type: string, props?: Record<string, unknown>, scrollerCanTravel = false): UIInputHitNode {
+    return { element: element(type, props), scrollerCanTravel };
+}
+
 function hits(input: {
     enablements: UISurfaceActionEnablement[];
     signal?: UIInputSignal;
-    hitChain?: UIElement[];
+    hitChain?: UIInputHitNode[];
     vocabulary?: Record<string, UIInputActionDef>;
 }) {
     return resolveSurfaceInputActionHits({
@@ -84,40 +95,17 @@ describe("resolveSurfaceInputActionHits", () => {
         expect(hits({ enablements: [{ actionId: "advance" }], signal: { kind: "key", event: { key: "Escape" } } })).toEqual([]);
     });
 
-    it("takes a surface's replacement bindings over the project's", () => {
-        expect(
-            hits({
-                enablements: [{ actionId: "advance", overrideBindings: [{ kind: "key", key: "Space" }] }],
-            }),
-        ).toEqual([]);
-        expect(
-            hits({
-                enablements: [{ actionId: "advance", overrideBindings: [{ kind: "key", key: "Space" }] }],
-                signal: { kind: "key", event: { key: " " } },
-            }),
-        ).toHaveLength(1);
-    });
-
     it("stands a pointer binding down over a control", () => {
-        expect(hits({ enablements: [{ actionId: "advance" }], hitChain: [element("nl.button")] })).toEqual([]);
-        expect(hits({ enablements: [{ actionId: "advance" }], hitChain: [element("nl.container")] })).toHaveLength(1);
+        expect(hits({ enablements: [{ actionId: "advance" }], hitChain: [node("nl.button")] })).toEqual([]);
+        expect(hits({ enablements: [{ actionId: "advance" }], hitChain: [node("nl.container")] })).toHaveLength(1);
     });
 
     it("stands it down over a video that is showing controls", () => {
         expect(
-            hits({ enablements: [{ actionId: "advance" }], hitChain: [element("nl.video", { controls: true })] }),
+            hits({ enablements: [{ actionId: "advance" }], hitChain: [node("nl.video", { controls: true })] }),
         ).toEqual([]);
         expect(
-            hits({ enablements: [{ actionId: "advance" }], hitChain: [element("nl.video", { controls: false })] }),
-        ).toHaveLength(1);
-    });
-
-    it("fires over a control when the surface asked it to", () => {
-        expect(
-            hits({
-                enablements: [{ actionId: "advance", overControls: "fire" }],
-                hitChain: [element("nl.button")],
-            }),
+            hits({ enablements: [{ actionId: "advance" }], hitChain: [node("nl.video", { controls: false })] }),
         ).toHaveLength(1);
     });
 
@@ -132,9 +120,32 @@ describe("resolveSurfaceInputActionHits", () => {
                 vocabulary: keyAction,
                 enablements: [{ actionId: "advance" }],
                 signal: { kind: "key", event: { key: " " } },
-                hitChain: [element("nl.button")],
+                hitChain: [node("nl.button")],
             }),
         ).toEqual([{ actionId: "advance", consume: true, payload: { actionId: "advance", source: "key" } }]);
+    });
+
+    it("reports the device the signal came from rather than assuming a mouse", () => {
+        // The same gesture reaches routing from both hands: a `click` is a mouse button and the
+        // click a tap synthesises. An author asking "was this a finger" is asking about the device,
+        // and the answer has to come off the signal rather than off the gesture's name.
+        const source = (signal: UIInputSignal) => hits({ enablements: [{ actionId: "advance" }], signal })[0]?.payload.source;
+
+        expect(source(CLICK)).toBe("pointer");
+        expect(source({ ...CLICK, device: "touch" })).toBe("touch");
+    });
+
+    it("reports a key as a key whatever else is happening", () => {
+        const keyAction: Record<string, UIInputActionDef> = {
+            advance: { id: "advance", name: "Advance", bindings: [{ kind: "key", key: "Space" }] },
+        };
+        expect(
+            hits({
+                vocabulary: keyAction,
+                enablements: [{ actionId: "advance" }],
+                signal: { kind: "key", event: { key: " " } },
+            })[0]?.payload.source,
+        ).toBe("key");
     });
 
     it("ignores an action this project does not define", () => {
@@ -156,5 +167,54 @@ describe("hitsConsumeInput", () => {
 
     it("is false when nothing fired", () => {
         expect(hitsConsumeInput([])).toBe(false);
+    });
+});
+
+describe("pointerInputClaimedByControl", () => {
+    it("gives a control every gesture it can be under", () => {
+        for (const gesture of ["click", "doubleClick", "rightClick", "middleClick", "longPress"] as const) {
+            expect(pointerInputClaimedByControl([node("nl.button")], gesture)).toBe(true);
+        }
+    });
+
+    it("gives a scroller a scroll only while it can still travel", () => {
+        // The whole reason "fire over controls anyway" is not a setting: a list at the bottom of its
+        // travel has nothing left to do with the wheel, so the action bound to it is the only thing
+        // that can answer.
+        expect(pointerInputClaimedByControl([node("nl.list", undefined, true)], "wheelDown")).toBe(true);
+        expect(pointerInputClaimedByControl([node("nl.list", undefined, false)], "wheelDown")).toBe(false);
+    });
+
+    it("ignores scenery whether or not it scrolls", () => {
+        expect(pointerInputClaimedByControl([node("nl.container", undefined, true)], "wheelDown")).toBe(false);
+        expect(pointerInputClaimedByControl([node("nl.container")], "click")).toBe(false);
+    });
+
+    it("answers for the whole chain, not just the innermost", () => {
+        expect(pointerInputClaimedByControl([node("nl.text"), node("nl.button")], "click")).toBe(true);
+        expect(pointerInputClaimedByControl([], "click")).toBe(false);
+    });
+});
+
+describe("stopsAtLane", () => {
+    it("stops an input nothing answered", () => {
+        expect(stopsAtLane([])).toBe(true);
+    });
+
+    it("stops it when the action that fired said so", () => {
+        expect(stopsAtLane([{ actionId: "advance", consume: true, payload: PAYLOAD }])).toBe(true);
+    });
+
+    it("sends it on when the action that fired said so", () => {
+        expect(stopsAtLane([{ actionId: "advance", consume: false, payload: PAYLOAD }])).toBe(false);
+    });
+
+    it("stops it when any of several actions said so", () => {
+        expect(
+            stopsAtLane([
+                { actionId: "advance", consume: false, payload: PAYLOAD },
+                { actionId: "backlog", consume: true, payload: PAYLOAD },
+            ]),
+        ).toBe(true);
     });
 });

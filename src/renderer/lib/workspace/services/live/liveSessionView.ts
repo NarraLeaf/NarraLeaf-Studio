@@ -3,7 +3,7 @@ import type { LiveInverseReason } from "@/lib/live/inverse";
 import type { LiveSessionEntryRefusal } from "@/lib/team/liveSessionEntry";
 import type { LiveOpKind, LiveRefusalReason } from "@shared/live/ops";
 import type { StoryBlockId, StoryId } from "@shared/types/story";
-import type { TeamLiveSession, TeamProblem } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveMember, TeamLiveSession, TeamProblem } from "@shared/types/team";
 
 /**
  * Everything a live session is willing to say about itself, as one value.
@@ -28,8 +28,13 @@ export type LiveSessionRole = "host" | "guest";
  * in which this machine's document is knowingly behind: it has joined, it has asked the host for
  * everything since the room opened, and until that arrives what is on screen is the revision the
  * room opened on rather than what the room is looking at.
+ *
+ * `asking` is a phase of its own for the opposite reason: nothing on this machine has happened yet
+ * and nothing is going to until a person somewhere else looks at a notification. Nothing has been
+ * checkpointed, nothing has been adopted, and the window is free to walk away - which is not true
+ * of any part of `entering`.
  */
-export type LiveSessionPhase = "idle" | "entering" | "catching-up" | "active" | "leaving";
+export type LiveSessionPhase = "idle" | "asking" | "entering" | "catching-up" | "active" | "leaving";
 
 /** Why a session is over. */
 export type LiveSessionEndCause =
@@ -87,15 +92,37 @@ export type LiveEntryFailure =
      */
     | { kind: "clone-required"; project: string; revision?: string }
     /**
-     * The tree could not be brought to the revision the room opened on - somebody has pushed past
-     * it. Joining anyway would put two machines in one room holding different documents, which is
-     * the one failure the digest guard exists to catch after the fact.
+     * This project's history and the server's have both moved on, and could not be brought together.
+     *
+     * ⚠ **Not reachable from joining any more.** A machine that joins a room ADOPTS the version it
+     * opened on - the room's copy is written over this tree, after a checkpoint - so there is no
+     * such thing as a tree that cannot reach it. What is left is the other half: opening a room
+     * means publishing what this window is holding, and a push refused twice over is a divergence
+     * only a person can settle.
      */
-    | { kind: "revision-mismatch"; expected: string; actual: string | null }
+    | { kind: "revision-mismatch"; revision: string | null }
     /** The sync left files a human has to settle. The merge comes first; the session is not urgent. */
     | { kind: "merge-conflicts"; paths: readonly string[] }
     /** The room named is not open on this project any more. */
     | { kind: "room-gone"; sessionId: string }
+    /**
+     * No room answers to those four digits.
+     *
+     * ⚠ **The same answer a code that is simply wrong gets, and the server gives it deliberately.**
+     * "There is no such room" and "there is a room and that is not its code" are one sentence to
+     * whoever typed them, and telling the two apart would turn ten thousand guesses into a map of
+     * which rooms exist.
+     */
+    | { kind: "no-such-code" }
+    /** The host was asked and said no. */
+    | { kind: "join-refused" }
+    /**
+     * The host was asked and half a minute went by.
+     *
+     * Not a refusal: the request is still standing on the server, and this window simply stopped
+     * waiting in front of the author. See {@link LIVE_ASK_TO_JOIN_MS}.
+     */
+    | { kind: "join-unanswered" }
     /**
      * The room does not say which document it is about, so there is nothing to follow.
      *
@@ -170,6 +197,28 @@ export type LiveSessionView = {
     entryFailure: LiveEntryFailure | null;
     /** How the last session ended, or null when none has. Survives into `idle` so it can be read. */
     ended: LiveSessionEnd | null;
+    /**
+     * How people get into this room, or null outside one.
+     *
+     * The room's own answer rather than what this window asked for: the host may change it while
+     * the session runs, and every window in the room is told when it does.
+     */
+    rule: TeamLiveJoinRule | null;
+    /**
+     * The four digits somebody joins by. Host only, and null for everybody else.
+     *
+     * ⚠ **Only the window that opened the room is ever told them.** They are not on the room
+     * record - that record is broadcast to everybody watching the project - so a guest has no way
+     * to learn them and no reason to: the host is the one doing the inviting.
+     */
+    code: string | null;
+    /**
+     * Who is waiting to be let in, oldest first. Host only, and empty for everybody else.
+     *
+     * Only ever populated for a `request` room, because nothing else produces a request. Emptied
+     * as each one is answered, and by the room ending.
+     */
+    requests: readonly TeamLiveMember[];
 };
 
 /** A window in no session, and never in one. The state every workspace starts in. */
@@ -191,4 +240,7 @@ export const IDLE_LIVE_SESSION: LiveSessionView = {
     canRedo: false,
     entryFailure: null,
     ended: null,
+    rule: null,
+    code: null,
+    requests: [],
 };

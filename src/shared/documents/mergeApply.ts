@@ -127,7 +127,10 @@ function containerAt(documentPath: string, root: unknown, path: readonly string[
     for (let index = 0; index < path.length - 1; index += 1) {
         const segment = path[index];
         if (Array.isArray(current)) {
-            current = current[elementIndex(documentPath, path, segment, current.length)];
+            const at = elementById(current, segment);
+            current = at === -1
+                ? current[elementIndex(documentPath, path, segment, current.length)]
+                : current[at];
         } else if (isRecord(current)) {
             current = current[segment];
         } else {
@@ -147,6 +150,18 @@ function setAt(documentPath: string, root: unknown, path: readonly string[], val
     const container = containerAt(documentPath, root, path);
     const last = path[path.length - 1];
     if (Array.isArray(container)) {
+        const at = elementById(container, last);
+        if (at !== -1) {
+            container[at] = value;
+            return;
+        }
+        // A record this list does not hold yet: the author flipped a conflict to the side that has
+        // it. Appended, because an id says nothing about where in a list it belongs and every other
+        // decision addressing this list addresses it by id too - so nothing moves under them.
+        if (isRecord(value) && typeof value["id"] === "string" && value["id"] === last) {
+            container.push(value);
+            return;
+        }
         // Bounded by the current length +1: an index past the end would leave holes, which JSON
         // writes as `null` and no spec means.
         container[elementIndex(documentPath, path, last, container.length + 1)] = value;
@@ -158,22 +173,47 @@ function setAt(documentPath: string, root: unknown, path: readonly string[], val
 /**
  * Remove what a side does not hold.
  *
- * **Refused inside an array, deliberately.** Deleting element 3 renumbers everything after it, so
- * the remaining decisions in the same list - addressed by index - would settle the wrong elements,
- * and the ones already applied would have moved. No spec produces indexed decisions today
- * (`mergeKeyed` is the only producer and it is keyed by id); the day one does, this has to be a
- * designed answer rather than a silent renumbering.
+ * **Refused inside an array by POSITION, allowed by id.** Deleting element 3 renumbers everything
+ * after it, so the remaining decisions in the same list - addressed by index - would settle the
+ * wrong elements and the ones already applied would have moved. An id survives that: nothing in the
+ * list is addressed by where it sits, so taking one out moves nothing any decision names. That is
+ * the whole difference, and it is why a list of records with ids is a keyed collection that happens
+ * to be stored in order rather than a positional one.
+ *
+ * An id the list does not hold is already in the state the chosen side asked for, and says so
+ * silently. A numeric segment that names no element is the positional case and refuses.
  */
 function removeAt(documentPath: string, root: unknown, path: readonly string[]): void {
     const container = containerAt(documentPath, root, path);
+    const last = path[path.length - 1];
     if (Array.isArray(container)) {
-        throw new MergeChangeUnaddressableError(
-            documentPath,
-            path,
-            "removing one element of a list would renumber the others, so it is not settled one change at a time",
-        );
+        const at = elementById(container, last);
+        if (at !== -1) {
+            container.splice(at, 1);
+            return;
+        }
+        if (/^\d+$/.test(last)) {
+            throw new MergeChangeUnaddressableError(
+                documentPath,
+                path,
+                "removing one element of a list by position would renumber the others, so it is not settled one change at a time",
+            );
+        }
+        return;
     }
-    delete container[path[path.length - 1]];
+    delete container[last];
+}
+
+/**
+ * Where a segment lands in a list of records, by the `id` those records carry, or -1.
+ *
+ * Tried before a position is, so that a list whose element ids happen to look like numbers is still
+ * addressed by what a spec meant. Nothing in the codebase produces positional decisions
+ * (`mergeKeyed` is the only producer and it is keyed), so this is the ordinary case and the index
+ * arithmetic below it is the fallback.
+ */
+function elementById(container: readonly unknown[], segment: string): number {
+    return container.findIndex(entry => isRecord(entry) && entry["id"] === segment);
 }
 
 function elementIndex(documentPath: string, path: readonly string[], segment: string, limit: number): number {

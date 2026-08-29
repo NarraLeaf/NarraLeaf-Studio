@@ -112,8 +112,6 @@ export interface UIState {
     /** Panel ids folded into a dock's collapse group, per position (see sidebarPanelGroup.ts). */
     collapsedPanels: Record<string, string[]>;
     panelVisibility: Record<string, boolean>;
-    editorTabs: EditorTab[];
-    activeEditorTabId: string | null;
     dialogs: Dialog[];
     statusBarItems: StatusBarItem[];
     activeDialogId: string | null;
@@ -144,11 +142,6 @@ export interface UIStateEvents {
     panelVisibilityChanged: { panelId: string; visible: boolean };
     panelOrderChanged: { position: string; order: string[] };
     collapsedPanelsChanged: { position: string; collapsed: string[] };
-    
-    editorTabOpened: EditorTab;
-    editorTabClosed: string; // tab id
-    editorTabActivated: string; // tab id
-    editorTabUpdated: EditorTab;
     
     dialogOpened: Dialog;
     dialogClosed: string; // dialog id
@@ -203,8 +196,6 @@ export class UIStore {
             panelOrder: {},
             collapsedPanels: {},
             panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
             dialogs: [],
             statusBarItems: [],
             activeDialogId: null,
@@ -498,66 +489,78 @@ export class UIStore {
     }
 
     // === Editor Tabs ===
+    //
+    // Tabs live in `editorLayout`, the group tree the tab strip renders. The methods here are for
+    // callers holding a tab id and nothing else - an editor reporting its own edit knows which tab
+    // it is, not which pane it has since been dragged into - so each one finds the owning group and
+    // hands over to the group-aware method further down.
 
-    public openEditorTab(tab: EditorTab): void {
-        // Check if tab already exists
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            // Update existing tab
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-        } else {
-            // Add new tab
-            this.state.editorTabs.push(tab);
-            this.events.emit("editorTabOpened", tab);
-        }
-        // Activate the tab
-        this.state.activeEditorTabId = tab.id;
-        this.events.emit("editorTabActivated", tab.id);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
+    /** The group holding this tab, searched across every pane. */
+    private findGroupWithTab(tabId: string): EditorGroup | null {
+        return this.collectGroups().find(group => group.tabs.some(tab => tab.id === tabId)) ?? null;
     }
 
     public closeEditorTab(tabId: string): void {
-        this.state.editorTabs = this.state.editorTabs.filter(t => t.id !== tabId);
-        // If closed tab was active, activate another
-        if (this.state.activeEditorTabId === tabId) {
-            this.state.activeEditorTabId = this.state.editorTabs.length > 0
-                ? this.state.editorTabs[this.state.editorTabs.length - 1].id
-                : null;
+        const group = this.findGroupWithTab(tabId);
+        if (group) {
+            this.closeEditorTabInGroup(tabId, group.id);
         }
-        this.events.emit("editorTabClosed", tabId);
-        this.events.emit("stateChanged", {
-            editorTabs: [...this.state.editorTabs],
-            activeEditorTabId: this.state.activeEditorTabId,
-        });
     }
 
     public setActiveEditorTab(tabId: string): void {
-        if (this.state.editorTabs.some(t => t.id === tabId)) {
-            this.state.activeEditorTabId = tabId;
-            this.events.emit("editorTabActivated", tabId);
-            this.events.emit("stateChanged", { activeEditorTabId: tabId });
+        const group = this.findGroupWithTab(tabId);
+        if (group) {
+            this.setActiveEditorTabInGroup(tabId, group.id);
         }
     }
 
-    public updateEditorTab(tab: EditorTab): void {
-        const index = this.state.editorTabs.findIndex(t => t.id === tab.id);
-        if (index >= 0) {
-            this.state.editorTabs[index] = tab;
-            this.events.emit("editorTabUpdated", tab);
-            this.events.emit("stateChanged", { editorTabs: [...this.state.editorTabs] });
+    /**
+     * Write fields onto an open tab in place, wherever in the layout it sits.
+     *
+     * This is what puts the unsaved dot on a tab: an editor calls `EditorService.setModified`, which
+     * lands here. The update is skipped outright when every field already holds the value asked for,
+     * because the callers are typing paths - a text editor reports `modified` on every keystroke,
+     * and re-emitting the layout for each one would re-render the whole strip for no change.
+     *
+     * Returns whether an open tab was found, so a caller can tell "not open" from "already so".
+     */
+    public updateEditorTab(tabId: string, updates: Partial<Omit<EditorTab, "id">>): boolean {
+        const group = this.findGroupWithTab(tabId);
+        const current = group?.tabs.find(tab => tab.id === tabId) as Record<string, unknown> | undefined;
+        if (!group || !current) {
+            return false;
         }
+
+        const entries = Object.entries(updates);
+        if (entries.every(([key, value]) => current[key] === value)) {
+            return true;
+        }
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, group.id, target => ({
+            ...target,
+            tabs: target.tabs.map(tab => (tab.id === tabId ? { ...tab, ...updates } : tab)),
+        }));
+
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
     }
 
+    /** Every open tab, in strip order, across all split groups. */
     public getEditorTabs(): EditorTab[] {
-        return [...this.state.editorTabs];
+        return this.collectGroups().flatMap(group => group.tabs);
     }
 
+    /**
+     * The tab editor focus is on - the group's own focus, resolved through the focus history so a
+     * split answers with the pane the author is actually in rather than whichever pane comes first
+     * in the tree. Falls back to the first group's focus for the moment after a layout restore, when
+     * tabs exist but nothing has been focused yet.
+     */
     public getActiveEditorTabId(): string | null {
-        return this.state.activeEditorTabId;
+        return this.getPreferredEditorTabFocusTarget()?.tabId
+            ?? this.findGroup(this.state.editorLayout)?.focus
+            ?? null;
     }
 
     // === Dialogs ===
@@ -934,10 +937,13 @@ export class UIStore {
         index: number | undefined,
     ): boolean {
         const from = this.findGroup(this.state.editorLayout, fromGroupId);
-        const moved = from?.tabs.find((tab) => tab.id === tabId);
-        if (!from || !moved || !this.findGroup(this.state.editorLayout, toGroupId)) {
+        const found = from?.tabs.find((tab) => tab.id === tabId);
+        if (!from || !found || !this.findGroup(this.state.editorLayout, toGroupId)) {
             return false;
         }
+        // Arranging a tab is keeping it: a preview dragged into another group, or into a pane of
+        // its own, stops being the slot the next preview would take over.
+        const moved = found.preview ? { ...found, preview: false } : found;
 
         // A same-group index was measured against the list *including* the dragged tab, so once the
         // tab is pulled out every position past it shifts down by one.
@@ -1000,7 +1006,7 @@ export class UIStore {
             merged.focus = merged.tabs[merged.tabs.length - 1]?.id ?? null;
         }
 
-        this.state.editorLayout = merged;
+        this.state.editorLayout = UIStore.withSinglePreviewTab(merged);
         this.pruneEditorTabFocusHistory();
         if (merged.focus) {
             this.recordEditorTabFocus(merged.id, merged.focus);
@@ -1119,6 +1125,13 @@ export class UIStore {
     public restoreEditorLayout(layout: EditorLayout): void {
         this.state.editorLayout = layout;
         this.pruneEmptyEditorGroups();
+        for (const group of this.collectGroups()) {
+            this.state.editorLayout = this.updateGroup(
+                this.state.editorLayout,
+                group.id,
+                UIStore.withSinglePreviewTab,
+            );
+        }
         for (const group of this.collectGroups()) {
             this.ensureEditorGroupHasValidFocus(group.id);
         }
@@ -1275,6 +1288,17 @@ export class UIStore {
         });
     }
 
+    /**
+     * The tab editor focus most recently sat on, and the group holding it.
+     *
+     * For callers that have to answer "which editor is the author working in" while focus is
+     * somewhere that is not an editor - the property inspector writes into the editor behind it,
+     * and so does a panel command.
+     */
+    public getLastFocusedEditorTab(): EditorTabFocusTarget | null {
+        return this.getPreferredEditorTabFocusTarget();
+    }
+
     public getEditorTabFocusHistoryKeys(): string[] {
         this.pruneEditorTabFocusHistory();
         return [...this.editorTabFocusHistory];
@@ -1283,15 +1307,38 @@ export class UIStore {
     public openEditorTabInGroup<TPayload = any>(tab: EditorTabDefinition<TPayload>, groupId?: string, activate: boolean = true, index?: number): void {
         const targetGroup = this.findGroup(this.state.editorLayout, groupId);
         const targetId = this.resolveGroupId(groupId);
+        /** The preview tab this open took the place of, so its close can be announced below. */
+        let replacedTabId: string | null = null;
 
         this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (group) => {
             // Check if tab already exists
             const existingIndex = group.tabs.findIndex((t) => t.id === tab.id);
             if (existingIndex >= 0) {
-                // Update existing tab with new payload
+                // Update existing tab with new payload. A tab that is already an ordinary one stays
+                // ordinary: whatever made it so - an edit, a double click - outranks the navigation
+                // that reached it again, and an open that asks for an ordinary tab promotes the
+                // preview it lands on.
+                const kept = group.tabs[existingIndex];
                 const updatedTabs = [...group.tabs];
-                updatedTabs[existingIndex] = tab as EditorTabDefinition<any>;
+                updatedTabs[existingIndex] = {
+                    ...(tab as EditorTabDefinition<any>),
+                    preview: Boolean(kept.preview && tab.preview),
+                };
                 return { ...group, tabs: updatedTabs, focus: activate ? tab.id : group.focus };
+            }
+            // A new preview takes the slot of the preview already in this group rather than adding
+            // to the strip - one group, one preview tab.
+            const previewIndex = tab.preview ? group.tabs.findIndex((t) => t.preview) : -1;
+            if (previewIndex >= 0) {
+                const replaced = group.tabs[previewIndex];
+                replacedTabId = replaced.id;
+                const updatedTabs = [...group.tabs];
+                updatedTabs[previewIndex] = tab as EditorTabDefinition<any>;
+                // The replacement inherits the slot, so it inherits the focus that was on it -
+                // otherwise a non-activating open would leave the group pointing at a tab that is
+                // no longer there.
+                const focus = activate || group.focus === replaced.id ? tab.id : group.focus;
+                return { ...group, tabs: updatedTabs, focus };
             }
             // Add new tab - at `index` when given (reopening a closed tab puts it
             // back where it was), appended otherwise.
@@ -1308,9 +1355,70 @@ export class UIStore {
             this.pruneEditorTabFocusHistory();
         }
 
+        if (replacedTabId) {
+            this.events.emit("editorTabClosedInGroup", { tabId: replacedTabId, groupId: targetId });
+        }
         this.events.emit("editorTabOpenedInGroup", { tab: tab as EditorTabDefinition<any>, groupId: targetId, activated: activate });
         this.events.emit("editorLayoutChanged", this.state.editorLayout);
         this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+    }
+
+    /**
+     * Turn a preview tab into an ordinary one, and answer whether it was a preview.
+     *
+     * The only direction this flag travels. Called by everything that means "I am staying here":
+     * a double click on the tab, dragging it, "Keep open", and an edit landing in the editor it
+     * holds.
+     */
+    public promoteEditorTab(tabId: string, groupId?: string): boolean {
+        // Without a named group the tab is looked for across the layout rather than assumed to be
+        // in the first one: the editor that reports its own edit knows its tab id and nothing else.
+        const group = groupId
+            ? this.findGroup(this.state.editorLayout, groupId)
+            : this.collectGroups().find((candidate) => candidate.tabs.some((tab) => tab.id === tabId));
+        if (!group?.tabs.some((tab) => tab.id === tabId && tab.preview)) {
+            return false;
+        }
+        const targetId = group.id;
+
+        this.state.editorLayout = this.updateGroup(this.state.editorLayout, targetId, (target) => ({
+            ...target,
+            tabs: target.tabs.map((tab) => (tab.id === tabId ? { ...tab, preview: false } : tab)),
+        }));
+
+        this.events.emit("editorLayoutChanged", this.state.editorLayout);
+        this.events.emit("stateChanged", { editorLayout: this.state.editorLayout });
+        return true;
+    }
+
+    /** The group's preview tab, if it holds one. */
+    public getPreviewEditorTabId(groupId?: string): string | null {
+        const group = this.findGroup(this.state.editorLayout, this.resolveGroupId(groupId));
+        return group?.tabs.find((tab) => tab.preview)?.id ?? null;
+    }
+
+    /**
+     * At most one preview tab per group: the first keeps the flag, the rest become ordinary tabs.
+     *
+     * Enforced where whole groups arrive at once rather than through an open - a restored session,
+     * two panes merging - because the invariant belongs to the group, not to the path that filled
+     * it.
+     */
+    private static withSinglePreviewTab(group: EditorGroup): EditorGroup {
+        let seen = false;
+        let changed = false;
+        const tabs = group.tabs.map((tab) => {
+            if (!tab.preview) {
+                return tab;
+            }
+            if (!seen) {
+                seen = true;
+                return tab;
+            }
+            changed = true;
+            return { ...tab, preview: false };
+        });
+        return changed ? { ...group, tabs } : group;
     }
 
     public updateEditorTabPayload<TPayload = any>(tabId: string, payload: TPayload, groupId?: string): void {
@@ -1570,8 +1678,6 @@ export class UIStore {
             panelOrder: {},
             collapsedPanels: {},
             panelVisibility: {},
-            editorTabs: [],
-            activeEditorTabId: null,
             dialogs: [],
             statusBarItems: [],
             activeDialogId: null,

@@ -262,7 +262,7 @@ function broadcastReload(target = 'all') {
         // cannot be bundled"). It is a *runtime* dependency here — the Live2D runtime
         // installer bundles the author's Cubism SDK on their machine. Keep this list in
         // sync with build-main.js, which has carried the entry since that feature landed.
-        external: ['electron', 'esbuild', '@narraleaf/encryption', 'koffi'],
+        external: ['electron', 'esbuild', '@narraleaf/bindings', 'koffi'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -299,9 +299,9 @@ function broadcastReload(target = 'all') {
         bundle: true,
         // electron-builder reads template files relative to itself at runtime;
         // 7zip-bin resolves its 7za binary relative to its own __dirname;
-        // @narraleaf/encryption loads a platform-specific native addon by path.
+        // @narraleaf/bindings loads a platform-specific native addon by path.
         // All break if inlined, so keep this list in sync with build-main.js.
-        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/encryption'],
+        external: ['electron', 'electron-builder', '7zip-bin', '@narraleaf/bindings'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -364,9 +364,12 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        // @narraleaf/encryption and koffi both resolve their own binaries by path
-        // at runtime; keep this list in sync with build-main.js.
-        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        // @narraleaf/bindings and koffi both resolve their own binaries by path
+        // at runtime; 7zip-bin computes the path to its 7za executable from its
+        // own __dirname, so bundled it points at the bundle directory and the
+        // extractor the content codec's toolchain unpack needs is not there.
+        // Keep this list in sync with build-main.js.
+        external: ['electron', '@narraleaf/bindings', 'koffi', '7zip-bin'],
         sourcemap: true,
         target: ['node18'],
     }, () => {
@@ -389,7 +392,7 @@ function broadcastReload(target = 'all') {
         platform: 'node',
         format: 'cjs',
         bundle: true,
-        external: ['electron', '@narraleaf/encryption', 'koffi'],
+        external: ['electron', '@narraleaf/bindings', 'koffi'],
         sourcemap: true,
         target: ['node18'],
         tsconfig: path.join(rootDir, 'src', 'renderer', 'tsconfig.json'),

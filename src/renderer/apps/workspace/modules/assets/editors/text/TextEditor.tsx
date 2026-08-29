@@ -9,6 +9,7 @@ import { FileSystemService } from "@/lib/workspace/services/core/FileSystem";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { ProjectNameConvention } from "@/lib/workspace/project/nameConvention";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { assetLibraryFreezeScope } from "../../assetLiveSession";
 import {
     useTextEditorActions,
     useTextEditorLanguages,
@@ -94,7 +95,7 @@ function loadStudioMonaco(): Promise<typeof StudioMonaco> {
 export function TextEditor({ tabId, payload, active }: EditorComponentProps<TextEditorTabPayload>) {
     const { t } = useTranslation();
     const { context } = useWorkspace();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(assetLibraryFreezeScope());
     const asset = payload?.asset;
 
     // Seeded from the record rather than from the defaults, so the very first frame of a GBK file's
@@ -219,7 +220,14 @@ export function TextEditor({ tabId, payload, active }: EditorComponentProps<Text
 
     const setModified = useCallback(
         (modified: boolean) => {
-            context?.services.get<UIService>(Services.UI).editor.setModified(tabId, modified);
+            const uiService = context?.services.get<UIService>(Services.UI);
+            uiService?.editor.setModified(tabId, modified);
+            if (modified) {
+                // Typing into a file opened for a look is the author staying with it. Monaco keeps
+                // its own undo stack rather than the workspace's, so the workspace-wide rule that
+                // promotes on an edit never hears about this one.
+                uiService?.editor.promote(tabId);
+            }
         },
         [context, tabId],
     );

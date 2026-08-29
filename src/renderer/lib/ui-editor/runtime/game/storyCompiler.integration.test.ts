@@ -982,32 +982,6 @@ describe("compileStudioStoryToNlr", () => {
         });
     });
 
-    it("compiles dialogue pauseAfter without diagnostics", async () => {
-        const blocks: Record<string, StoryBlock> = {
-            say: {
-                id: "say",
-                kind: "nodeAction",
-                parentId: null,
-                childrenIds: [],
-                payload: {
-                    action: "dialogue",
-                    characterId: "char-alice",
-                    pauseAfter: 500,
-                    text: { textId: "text-say", value: "Hello", role: "dialogue" },
-                },
-            },
-        };
-
-        const compiled = await compileStudioStoryToNlr({
-            document: baseDocument(blocks, ["say"]),
-            sceneId: "scene-1",
-            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
-        });
-
-        expect(compiled.diagnostics).toEqual([]);
-        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("say");
-    });
-
     describe("character nametag fallbacks", () => {
         function dialogueBlocks(characterId: string): Record<string, StoryBlock> {
             return {
@@ -1553,6 +1527,34 @@ describe("compileStudioStoryToNlr", () => {
         // `none` is the author asking for a cut, not a transition that went missing - it returns
         // before the switch and must never reach the report the other two cases below do.
         const compiled = await compileBackgroundTransition("none");
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(findTransition(compiled)).toBeUndefined();
+    });
+
+    it("plays a ref that names no kind as a cut, and says nothing about it either", async () => {
+        // The shape the v17→v18 migration used to leave behind when it ran a transition ref through
+        // the transform migration: the row keeps its `transition` field and loses the only word in
+        // it. The word is not recoverable from anything else in the row, so this is read as the cut
+        // it now names rather than reported as a transition this build cannot find - "choose a
+        // transition on this row" is not advice an author can act on about a field that was eaten,
+        // and the row is indistinguishable from one that was never given a transition at all.
+        const bg: StoryBlock = {
+            id: "bg",
+            kind: "action",
+            parentId: null,
+            childrenIds: [],
+            payload: {
+                action: "setBackground",
+                assetId: "asset-bg",
+                transition: { mode: "props", to: {} } as unknown as StoryTransitionRef,
+            },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ bg }, ["bg"]),
+            sceneId: "scene-1",
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
 
         expect(compiled.diagnostics).toEqual([]);
         expect(findTransition(compiled)).toBeUndefined();
@@ -3660,6 +3662,37 @@ describe("story audio", () => {
         expect((sound as any)?.config.endTime).toBe(0.5);
     });
 
+    /**
+     * A sound effect is written between two lines, not as a wait. Before the flag existed every
+     * `/sound` row held the script for the whole length of the clip, so a seven-second chime placed
+     * before a scene's first line stopped it for seven seconds with the stage already finished.
+     */
+    it("plays a sound effect without holding the script, unless the row asked to wait", async () => {
+        const playOptions = async (extra: Record<string, unknown>) => {
+            const compiled = await compileStudioStoryToNlr({
+                document: baseDocument({
+                    se: {
+                        id: "se",
+                        kind: "action",
+                        parentId: null,
+                        childrenIds: [],
+                        payload: { action: "audio", operation: "playSound", objectName: "impact", assetId: "asset-hit", ...extra } as StoryActionPayload,
+                    },
+                }, ["se"]),
+                sceneId: "scene-1",
+                resolveAssetUrl: async assetId => `nlr://${assetId}`,
+            });
+            const play = compiled.actionIdBindings
+                .map(binding => binding.action as unknown as { type: string; contentNode?: { getContent(): unknown[] } })
+                .find(action => action.type === "sound:play");
+            return play?.contentNode?.getContent()[0] as { waitForEnd?: boolean } | undefined;
+        };
+
+        expect((await playOptions({}))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: false }))?.waitForEnd).toBe(false);
+        expect((await playOptions({ waitForEnd: true }))?.waitForEnd).toBe(true);
+    });
+
     it("lets the sound-control family address a scene's own music", async () => {
         const document = baseDocument({
             quieter: {
@@ -4803,5 +4836,287 @@ describe("stage object references", () => {
             expect(compiled.diagnostics).toEqual([]);
             expect(compiledRows(compiled)).toEqual(["rename"]);
         });
+    });
+});
+
+/**
+ * A layered character on stage when a row-precise launch starts.
+ *
+ * The snapshot files every character as one image record, and the pre-pose used to build all of them
+ * from the single url a preset character resolves to. An Image's src shape is fixed in its
+ * constructor, so a layered character came back as a flat image that can never take a tag change -
+ * and the engine's answer to a tag change aimed at one is thrown while the story is being
+ * CONSTRUCTED, before a single row runs. Launching mid-scene into any scene where a layered
+ * character walks on therefore took the whole player down with "Invalid src handler".
+ */
+describe("a layered character a row-precise launch pre-poses", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    const BOB: DevModeCharacterSummary = {
+        id: "char-bob",
+        name: "Bob",
+        appearance: {
+            kind: "layered",
+            canvas: { width: 100, height: 200 },
+            axes: [{
+                id: "mood",
+                name: "Mood",
+                tags: [{ id: "happy", name: "Happy" }, { id: "sad", name: "Sad" }],
+                defaultTagId: "happy",
+            }],
+            layers: [{ id: "face", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } }],
+        },
+    };
+
+    function characterBlock(id: string, payload: Extract<StoryActionPayload, { action: "character" }>): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    /**
+     * The stack every portrait a tag row addresses was constructed with, as the engine normalized it.
+     *
+     * A launch compiles the row twice - once in the pre-posed entry scene and once in the normal
+     * scene, which stays in the story for jump-backs - so this reports both, and the pre-posed one is
+     * the one that used to come back flat.
+     */
+    function portraitSrcsFor(
+        compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>,
+        blockId: string,
+    ): ({ defaults?: string[]; slots?: unknown } | null | undefined)[] {
+        return compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter(action => action?.type === "image:setAppearance")
+            .map(action => action.callee?.config?.src);
+    }
+
+    const blocks = {
+        enter: characterBlock("enter", { action: "character", operation: "enter", characterId: "char-bob", tags: { mood: "happy" } }),
+        sad: characterBlock("sad", { action: "character", operation: "expression", characterId: "char-bob", tags: { mood: "sad" } }),
+        target: narrationBlock("target", "target-text", "Here"),
+        back: characterBlock("back", { action: "character", operation: "expression", characterId: "char-bob", tags: { mood: "happy" } }),
+    };
+
+    async function compileLaunch() {
+        const document = baseDocument(blocks, Object.keys(blocks));
+        return compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [BOB],
+            resolveAssetUrl,
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+    }
+
+    it("builds it as its whole stack, so the tail's expression rows compile", async () => {
+        const compiled = await compileLaunch();
+
+        const srcs = portraitSrcsFor(compiled, "back");
+        expect(srcs).toHaveLength(2);
+        // Neither portrait is a flat image: both can take the tag change the row asks for.
+        expect(srcs.every(src => Boolean(src?.slots))).toBe(true);
+        // The pre-posed one opens in the look the character wore at the launch row (`sad`), not in
+        // its declared default - the normal scene, played from the top, starts at the default.
+        expect(srcs.map(src => src?.defaults)).toEqual(expect.arrayContaining([["sad"], ["happy"]]));
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+    });
+
+    it("constructs the story the launch produced", async () => {
+        const compiled = await compileLaunch();
+
+        // The engine's own check, and where this used to blow up: registering preloadable sources
+        // walks every `setAppearance` and rejects one aimed at an image with no tag groups.
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+
+    it("reports the row instead of building a story that cannot be constructed", async () => {
+        // The mismatch this cannot fix: an `enter` that overrode the portrait with a flat asset. The
+        // rows after it ask a single image to change tags, which is exactly what the engine refuses -
+        // so the compiler has to refuse it first, by the row, rather than hand over a broken story.
+        const document = baseDocument({
+            enter: characterBlock("enter", { action: "character", operation: "enter", characterId: "char-bob", assetId: "asset-override" }),
+            sad: blocks.sad,
+        }, ["enter", "sad"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [BOB],
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "sad", message: "Bob is on stage as a single image, so its appearance tags cannot change here." },
+        ]);
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+});
+
+/**
+ * A row-precise launch into a scene whose stage objects are declared inside branches.
+ *
+ * The snapshot walk is a RUNTIME state: it follows one path to the target row, so a condition it
+ * meets on the way contributes exactly one arm. A compile's element registry is not - it is built by
+ * walking every row of the scene, so an `/image create` written inside one arm registers that image
+ * for the whole scene and a `/show` inside a different arm three hundred rows later finds it.
+ *
+ * The launch entry scene used to seed its registry from the snapshot alone, so the tail entered a
+ * scene that knew only the objects the ONE path had declared, and every row addressing anything
+ * declared on a different arm reported a stage object missing from a story that compiles without a
+ * word when played from the top. A CG behind a wardrobe choice is the ordinary shape of it: three
+ * arms create three images, and each of the dozen rows that later shows one of the other two errored
+ * and compiled to nothing, so the scene played on with an empty stage.
+ */
+describe("stage objects declared on a branch a row-precise launch did not take", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    function imageRow(id: string, parentId: string | null, payload: Extract<StoryActionPayload, { action: "image" }>): StoryBlock {
+        return { id, kind: "action", parentId, childrenIds: [], payload };
+    }
+
+    function conditionBranch(id: string, parentId: string, childrenIds: string[], condition?: StoryConditionRef): StoryBlock {
+        return {
+            id,
+            kind: "control",
+            parentId,
+            childrenIds,
+            payload: condition
+                ? { control: "conditionBranch", branch: "if", condition }
+                : { control: "conditionBranch", branch: "else" },
+        };
+    }
+
+    /**
+     * `create` in two arms, `show` in two arms, and a launch that starts between them.
+     *
+     * `started` is false, so both walks take the same arm - the `else` - which is exactly the case
+     * that looked fine in the editor and broke in the player: the arm the walk took declares
+     * `cg-else`, and nothing at all declares the other one.
+     */
+    const blocks: Record<string, StoryBlock> = {
+        "create-if": imageRow("create-if", "create-branch-if", {
+            action: "image", operation: "create", objectName: "cg-if", assetId: "asset-if",
+        }),
+        "create-else": imageRow("create-else", "create-branch-else", {
+            action: "image", operation: "create", objectName: "cg-else", assetId: "asset-else",
+        }),
+        "create-branch-if": conditionBranch("create-branch-if", "create-condition", ["create-if"], {
+            kind: "variable", target: { scope: "scene", variableId: "started" }, operator: "isTrue",
+        }),
+        "create-branch-else": conditionBranch("create-branch-else", "create-condition", ["create-else"]),
+        "create-condition": {
+            id: "create-condition",
+            kind: "control",
+            parentId: null,
+            childrenIds: ["create-branch-if", "create-branch-else"],
+            payload: { control: "condition" },
+        },
+        target: narrationBlock("target", "target-text", "Here"),
+        "show-if": imageRow("show-if", "show-branch-if", {
+            action: "image",
+            operation: "show",
+            objectName: "cg-if",
+            target: { kind: "image", name: "cg-if", sourceBlockId: "create-if" },
+        }),
+        "show-else": imageRow("show-else", "show-branch-else", {
+            action: "image",
+            operation: "show",
+            objectName: "cg-else",
+            target: { kind: "image", name: "cg-else", sourceBlockId: "create-else" },
+        }),
+        "show-branch-if": conditionBranch("show-branch-if", "show-condition", ["show-if"], {
+            kind: "variable", target: { scope: "scene", variableId: "started" }, operator: "isTrue",
+        }),
+        "show-branch-else": conditionBranch("show-branch-else", "show-condition", ["show-else"]),
+        "show-condition": {
+            id: "show-condition",
+            kind: "control",
+            parentId: null,
+            childrenIds: ["show-branch-if", "show-branch-else"],
+            payload: { control: "condition" },
+        },
+    };
+
+    const rootBlockIds = ["create-condition", "target", "show-condition"];
+
+    async function compileLaunch(): Promise<Awaited<ReturnType<typeof compileStudioStoryToNlr>>> {
+        const document = baseDocument(blocks, rootBlockIds);
+        return compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            resolveAssetUrl,
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+    }
+
+    it("compiles the tail's rows for them instead of reporting them missing", async () => {
+        const compiled = await compileLaunch();
+
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+        // Both arms compile: the row is emitted, not dropped for a stage object nothing declared.
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("show-if");
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("show-else");
+    });
+
+    /**
+     * A declaration carries the source its own row gave it, and arrives hidden.
+     *
+     * Both halves matter. Without the source the tail's `/show` would reveal a blank element, which
+     * is the same empty stage by a different route; with the entrance the launch would open on a CG
+     * the player never chose.
+     */
+    it("carries the declaring row's source and leaves it off the stage", () => {
+        const document = baseDocument(blocks, rootBlockIds);
+        const snapshot = computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" });
+
+        // The arm the walk took is stage state; the other arm's image is a declaration, and hidden.
+        expect(snapshot.displayables.map(record => record.objectName)).toEqual(["cg-else"]);
+        expect(snapshot.declarations).toEqual([
+            expect.objectContaining({
+                kind: "image",
+                objectName: "cg-if",
+                visible: false,
+                source: { type: "asset", assetId: "asset-if" },
+            }),
+        ]);
+    });
+
+    it("constructs the story the launch produced", async () => {
+        const compiled = await compileLaunch();
+
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+});
+
+/**
+ * The tail of a launch follows its jump, so nothing holds at one.
+ *
+ * The message belongs to the single-scene preview, which really does stop there. A launch emits the
+ * jump and control leaves for the target scene - the run carries on - so the warning marked the last
+ * row of every scene a launch played through with a stop that had not happened.
+ */
+describe("a row-precise launch that reaches a scene jump", () => {
+    it("says nothing about a jump it followed", async () => {
+        const blocks: Record<string, StoryBlock> = {
+            target: narrationBlock("target", "target-text", "Here"),
+            leave: { id: "leave", kind: "jump", parentId: null, childrenIds: [], payload: { targetSceneId: "scene-2" } },
+        };
+        const document = baseDocument(blocks, ["target", "leave"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.message.includes("Playback ends here"))).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
     });
 });

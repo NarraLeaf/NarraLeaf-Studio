@@ -112,6 +112,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_GET_SPEAKER_COLOR,
     BLUEPRINT_NODE_TYPE_GAME_GET_NOTIFICATIONS,
     BLUEPRINT_NODE_TYPE_GAME_CLEAR_TEXT_READ,
+    BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+    BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+    BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
     BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE,
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ,
     BLUEPRINT_NODE_TYPE_GAME_GET_SENTENCE_SPEED,
@@ -333,6 +336,15 @@ const OFFLINE_NETWORK_HOST: BlueprintHostApiRuntime["network"] = {
     fetch: async () => ({ outcome: "networkError", status: 0, body: null, error: "offline" }),
 };
 
+/**
+ * Nobody is at the keyboard in these tests, so nothing is being held down - and with no window to
+ * watch, the device is the one a machine without a coarse pointer reads before any input arrives.
+ */
+const NO_HELD_INPUT_HOST: BlueprintHostApiRuntime["input"] = {
+    isActionHeld: () => false,
+    getDevice: () => "pointer",
+};
+
 /** No host in these tests owns a window, so no cursor can be moved from one. */
 const NO_POINTER_HOST: BlueprintHostApiRuntime["pointer"] = {
     moveTo: async () => ({ outcome: "unsupported", error: "no window" }),
@@ -437,6 +449,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     canUndoHistory: () => false,
                     canRedoHistory: () => false,
                     getNametag: () => null,
+                    isDialogWaiting: () => false,
+                    getDialogText: () => "",
+                    isNarrator: () => false,
                     getSpeakerAvatar: () => null,
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
@@ -466,6 +481,7 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
@@ -606,6 +622,9 @@ function createPageNavigationHostAdapter(
                     canUndoHistory: () => false,
                     canRedoHistory: () => false,
                     getNametag: () => null,
+                    isDialogWaiting: () => false,
+                    getDialogText: () => "",
+                    isNarrator: () => false,
                     getSpeakerAvatar: () => null,
                     getSpeakerColor: () => ({ r: 255, g: 255, b: 255, a: 1 }),
                     getCharacter: () => null,
@@ -635,6 +654,7 @@ function createPageNavigationHostAdapter(
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
@@ -671,6 +691,9 @@ function createGameSaveHostAdapter(options: {
     autoSaveWrites?: boolean[];
     autoSaves?: AutoSaveEntry[];
     nametag?: string | null;
+    dialogWaiting?: boolean;
+    dialogText?: string;
+    narrator?: boolean;
     speakerAvatar?: BlueprintImageAsset | null;
     /** Raw profile hex, as the mirror carries it - the bridge parses it. */
     speakerColor?: string | null;
@@ -786,6 +809,9 @@ function createGameSaveHostAdapter(options: {
                     canUndoHistory: () => options.canUndo === true,
                     canRedoHistory: () => options.canRedo === true,
                     getNametag: () => options.nametag ?? null,
+                    isDialogWaiting: () => options.dialogWaiting === true,
+                    getDialogText: () => options.dialogText ?? "",
+                    isNarrator: () => options.narrator === true,
                     getSpeakerAvatar: () => options.speakerAvatar ?? null,
                     getSpeakerColor: () =>
                         normalizeBlueprintRGBAColor(options.speakerColor ?? null),
@@ -835,6 +861,7 @@ function createGameSaveHostAdapter(options: {
                 },
                 sound: SILENT_SOUND_HOST,
                 network: OFFLINE_NETWORK_HOST,
+                input: NO_HELD_INPUT_HOST,
                 pointer: NO_POINTER_HOST,
                 progress: NO_PROGRESS_HOST,
                 storage: NO_STORAGE_HOST,
@@ -2242,6 +2269,30 @@ describe("built-in blueprint nodes", () => {
                 createGameSaveHostAdapter({ textRead: true }),
             ),
         ).toBe(true);
+        expect(
+            await readThroughEdge(
+                "dialogWaiting",
+                BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING,
+                "isWaiting",
+                createGameSaveHostAdapter({ dialogWaiting: true }),
+            ),
+        ).toBe(true);
+        expect(
+            await readThroughEdge(
+                "dialogText",
+                BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT,
+                "text",
+                createGameSaveHostAdapter({ dialogText: "It never rains here." }),
+            ),
+        ).toBe("It never rains here.");
+        expect(
+            await readThroughEdge(
+                "narrator",
+                BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR,
+                "isNarrator",
+                createGameSaveHostAdapter({ narrator: true }),
+            ),
+        ).toBe(true);
 
         const withoutHostApi = (nodeType: string, portId: string): unknown =>
             resolveDataPinValue(
@@ -2266,6 +2317,12 @@ describe("built-in blueprint nodes", () => {
         expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_CHOICE_COUNT, "count")).toBe(0);
         expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_NVL_MODE, "isNvlMode")).toBe(false);
         expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ, "isRead")).toBe(false);
+        // No host is "no line on screen", which for these three is the blank rather than an absent
+        // value: a click-to-continue indicator bound to Is Dialog Waiting has to lay out on a title
+        // screen, before any game exists, and it must be off there.
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_DIALOG_WAITING, "isWaiting")).toBe(false);
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_GET_DIALOG_TEXT, "text")).toBe("");
+        expect(withoutHostApi(BLUEPRINT_NODE_TYPE_GAME_IS_NARRATOR, "isNarrator")).toBe(false);
     });
 
     it("executes game preference getter and setter nodes through host APIs", async () => {
@@ -3246,11 +3303,17 @@ describe("built-in blueprint nodes", () => {
         ]);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
             "in",
+            // Named on the card by a picker and on the pin by whatever computed it, resolved the
+            // way the catalogue resolves every such pair - wired wins. Optional, because the picker
+            // is what an author uses almost always and an unset pin must not read as "no page".
+            "surfaceId",
             "props",
         ]);
-        expect(frameBlueprintNodes
-            .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
-            ?.pins.find(pin => pin.id === "props")?.optional).toBe(true);
+        for (const pinId of ["surfaceId", "props"]) {
+            expect(frameBlueprintNodes
+                .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)
+                ?.pins.find(pin => pin.id === pinId)?.optional, `${pinId} must be optional`).toBe(true);
+        }
         expect(frameBlueprintNodes
             .find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_IS_SURFACE_EXITING)
             ?.pins.map(pin => pin.id)).toEqual(["isExiting"]);
@@ -7578,7 +7641,7 @@ describe("sound node transport", () => {
                     play: {
                         id: "play",
                         type: BLUEPRINT_NODE_TYPE_SOUND_PLAY,
-                        params: { soundAssetId: "asset-theme", soundChannel: "bgm" },
+                        params: { soundAssetId: "asset-theme", audioTrackId: "bgm" },
                     },
                     duck: {
                         id: "duck",
@@ -7601,9 +7664,8 @@ describe("sound node transport", () => {
             blueprintLocals: {},
         });
 
-        // The node stores the pre-track "soundChannel"; resolveTrackId maps it to that channel's
-        // seeded bus so a graph written before tracks existed still plays on the BGM bus. Every
-        // unwired override travels as undefined, which is what lets the track supply the default.
+        // Every unwired override travels as undefined, which is what lets the track supply the
+        // default.
         expect(log.play).toEqual([{
             assetId: "asset-theme",
             audioTrackId: "bgm",

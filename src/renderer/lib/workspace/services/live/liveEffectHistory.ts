@@ -1,7 +1,12 @@
+import type { LiveAssetFolder, LiveAssetRecord } from "@shared/live/ops";
 import { inverseOf, type LiveBefore } from "@/lib/live/inverse";
 import type { LiveCastView } from "@shared/live/cast";
-import type { LiveDerived, LiveEffect, LiveOp } from "@shared/live/ops";
-import type { StoryDocument } from "@shared/types/story";
+import type { AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { LiveDerived, LiveDocument, LiveEffect, LiveOp } from "@shared/live/ops";
+import type { LocalizationKeyDefinition } from "@shared/types/localization";
+import type { StoryDocument, StoryId } from "@shared/types/story";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { LiveUndoRefusalReason } from "./liveSessionView";
 
 /**
@@ -42,7 +47,21 @@ export type LiveStepDirection = "undo" | "redo";
 
 /** A step that can be taken, or the reason it cannot. */
 export type LiveStepPlan =
-    | { index: number; direction: LiveStepDirection; op: LiveOp; derived?: LiveDerived }
+    | {
+          index: number;
+          direction: LiveStepDirection;
+          op: LiveOp;
+          /**
+           * The document the step is about - the one the effect being taken back named.
+           *
+           * Carried rather than composed by the sender, because a session's stories are not one:
+           * every story document in the project is shared, so an inverse addressed to "the room's
+           * story" would take a rename back on the wrong file. The effect already states which
+           * document it was about, and this is that statement travelling one step further.
+           */
+          document: LiveDocument;
+          derived?: LiveDerived;
+      }
     | { impossible: LiveUndoRefusalReason };
 
 type Entry = {
@@ -96,7 +115,45 @@ export class LiveEffectHistory {
      */
     public plan(
         direction: LiveStepDirection,
-        context: { self: string; document: StoryDocument; cast: LiveCastView },
+        context: {
+            self: string;
+            /**
+             * One story document as it stands now, by id, or null where this machine does not hold
+             * it.
+             *
+             * ⚠ **A reader rather than a document, because a session carries every story in the
+             * project.** The step being taken back names the document it was about, and that is
+             * not always the one the room is named after: a character deleted in a session rewrites
+             * the rows that spoke it wherever the author put them, and a second story opened in the
+             * same window is edited through the same session. Handed one document, this could only
+             * invert against that one - so a step on any other story was answered `scene-gone` or
+             * `no-record`, which is a safe refusal and still a refusal to undo something undoable.
+             */
+            story(storyId: StoryId): StoryDocument | null;
+            cast: LiveCastView;
+            /** One asset shard as it stands now, for the steps that are about the library. */
+            assets(assetType: string): Readonly<Record<string, LiveAssetRecord>> | null;
+            /** One section's folders as they stand now, for the steps that are about them. */
+            assetFolders(category: string): Readonly<Record<string, LiveAssetFolder>> | null;
+            /**
+             * Whether one row of a configuration table is still there.
+             *
+             * Predicates rather than the documents, for `LiveInverseContext`'s reason: the record an
+             * inverse puts back comes from what was captured, and presence is the only thing the
+             * document itself is asked.
+             */
+            hasAppTag(tagId: string): boolean;
+            hasDlc(dlcId: string): boolean;
+            hasBrandColor(colorId: string): boolean;
+            /** The mixer as it stands now, for the steps that are about it. */
+            audioTracks(): readonly ProjectAudioTrack[] | null;
+            /** The asset sets as they stand now, for the steps that are about them. */
+            assetSets(): readonly AssetSet[] | null;
+            /** One registry entry as it stands now, for the steps that are about the variables. */
+            variables(variableId: string): VariableRegistryEntry | null;
+            /** Every named string as it stands now, for the steps that are about them. */
+            keys(): Readonly<Record<string, LocalizationKeyDefinition>> | null;
+        },
     ): LiveStepPlan {
         const index = direction === "undo" ? this.cursor - 1 : this.cursor;
         if (index < 0) {
@@ -106,10 +163,29 @@ export class LiveEffectHistory {
             return { impossible: "nothing-to-redo" };
         }
         const entry = this.entries[index];
+        // The document the effect NAMED, read now. Null for a step about anything else - the cast,
+        // a library, one of the tables - which is what `LiveInverseContext.document` means by
+        // absent, and those inverses never look at it.
+        const about = entry.current.effect.document;
+        const document = about.doc === "story" ? context.story(about.storyId) : null;
+        if (about.doc === "story" && document === null) {
+            // The story this step was about is not held here any more, so there is nothing to read
+            // an inverse against. Refused by name rather than inverted against the wrong file.
+            return { impossible: "no-record" };
+        }
         const inverse = inverseOf(entry.current.effect, {
             self: context.self,
-            document: context.document,
+            document,
             cast: context.cast,
+            assets: context.assets,
+            assetFolders: context.assetFolders,
+            hasAppTag: context.hasAppTag,
+            hasDlc: context.hasDlc,
+            hasBrandColor: context.hasBrandColor,
+            audioTracks: context.audioTracks,
+            assetSets: context.assetSets,
+            variables: context.variables,
+            keys: context.keys,
             before: entry.current.before,
         });
         if ("impossible" in inverse) {
@@ -123,6 +199,7 @@ export class LiveEffectHistory {
             index,
             direction,
             op: inverse.op,
+            document: entry.current.effect.document,
             ...(derived === undefined ? {} : { derived }),
         };
     }

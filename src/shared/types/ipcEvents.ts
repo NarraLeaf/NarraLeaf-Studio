@@ -5,7 +5,7 @@ import { FsRequestResult, PlatformInfo } from "./os";
 import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
-import type { MissingRecentProject } from "./state/appStateTypes";
+import type { MissingRecentProject, RecentProjectIcon } from "./state/appStateTypes";
 import { DevModeBlueprintDebugEventPayload, DevModeBundle, DevModeConsoleLogPayload, DevModeEntry, DevModeStatus, DevModeStoryRowHighlight, DevModeStoryRowOpenPayload, DevModeStoryRowOpenRequest, DevModeStoryRowPayload } from "./devMode";
 import type { GameRuntimeLaunchEntry, PreviewStatus } from "./gameRuntime";
 import type { GameTestCommand, GameTestEventPayload, GameTestLaunchRequest, GameTestLaunchResult } from "./gameTest";
@@ -103,9 +103,7 @@ import type {
     VcsServerProbe,
     VcsPasswordSignInOutcome,
     VcsPublishOutcome,
-    VcsServerMembersOutcome, VcsServerProjectDeleteOutcome, VcsServerProjectDetailOutcome,
-    VcsServerProjectHistoryOutcome,
-    VcsServerProjectOutcome, VcsServerProjectsOutcome, VcsServerSession,
+    VcsServerSession,
     VcsRevisionDiffResult,
     VcsStatus,
     VcsSyncResult,
@@ -123,6 +121,7 @@ import type {
     TeamEventMessage,
     TeamSubscribeOutcome,
 } from "./team";
+import type { TeamTransferOutcome, TeamTransferRequest } from "./teamTransfer";
 
 export enum IPCEventType {
     getPlatform = "getPlatform",
@@ -164,6 +163,7 @@ export enum IPCEventType {
     appRemoveRecentProject = "app.removeRecentProject",
     appRevealRecentProject = "app.revealRecentProject",
     appCheckRecentProjects = "app.checkRecentProjects",
+    appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
     appProbeDownloadSource = "app.probeDownloadSource",
@@ -232,11 +232,14 @@ export enum IPCEventType {
     workspaceImportProjectPackage = "workspace.projectPackage.import",
     workspaceExportConsoleLogs = "workspace.console.exportLogs",
     workspaceSetRecoveryMode = "workspace.setRecoveryMode",
+    workspaceLiveIntentTaken = "workspace.liveIntentTaken",
+    workspaceJoinLive = "workspace.joinLive",
     workspaceOpenProjectFolder = "workspace.openProjectFolder",
     workspaceConfirmClose = "workspace.confirmClose",
     workspaceCloseProgress = "workspace.closeProgress",
     workspaceFlushPendingSaves = "workspace.flushPendingSaves",
     workspaceResolveAssetUrl = "workspace.resolveAssetUrl",
+    workspaceResolveAllAssetUrls = "workspace.resolveAllAssetUrls",
     workspaceResolveImageAssetUrl = "workspace.resolveImageAssetUrl",
     workspaceReportWriteFreeze = "workspace.reportWriteFreeze",
     workspaceBlueprintNavigateFromPreview = "workspace.blueprint.navigateFromPreview",
@@ -254,6 +257,7 @@ export enum IPCEventType {
     devModeControlError = "devMode.control.error",
     devModeResolveAssetUrl = "devMode.resolveAssetUrl",
     devModeResolveImageAssetUrl = "devMode.resolveImageAssetUrl",
+    devModeResolveAllAssetUrls = "devMode.resolveAllAssetUrls",
     devModeOpenBlueprintInWorkspace = "devMode.openBlueprintInWorkspace",
     devModeForwardBlueprintDebugEvent = "devMode.blueprintDebug.forward",
     devModeForwardStoryRow = "devMode.storyRow.forward",
@@ -399,11 +403,6 @@ export enum IPCEventType {
     vcsAddServer = "vcs.addServer",
     vcsRefreshServer = "vcs.refreshServer",
     vcsForgetServer = "vcs.forgetServer",
-    vcsListServerProjects = "vcs.listServerProjects",
-    vcsGetServerProject = "vcs.getServerProject",
-    vcsDeleteServerProject = "vcs.deleteServerProject",
-    vcsListServerProjectHistory = "vcs.listServerProjectHistory",
-    vcsListServerMembers = "vcs.listServerMembers",
     vcsSignInWithPassword = "vcs.signInWithPassword",
     vcsPublishProject = "vcs.publishProject",
     vcsListLocalRepositories = "vcs.listLocalRepositories",
@@ -441,6 +440,21 @@ export enum IPCEventType {
     teamEvent = "team.event",
     /** Pushed: a session opened, dropped, or was refused. */
     teamConnectionChanged = "team.connectionChanged",
+    /**
+     * Bytes, which is the one thing the five above cannot carry.
+     *
+     * ⚠ **A sixth, and deliberately the only one.** `teamCall` is a named method with JSON on
+     * either side, and a file is none of that: it runs for minutes, says how far it has got, can be
+     * stopped, and above all must never have its contents put through a message - the renderer may
+     * not reach the network, and a file crossing here would be a copy of itself in a second heap on
+     * its way to a third. So this carries a **path and a count**, never a byte, and the main
+     * process does the reading, the writing and the connection.
+     *
+     * It is one event rather than four for {@link teamCall}'s reason: the action is named inside
+     * it. Anything that has to move bytes to a server later - and there will be something - asks
+     * here rather than adding a seventh.
+     */
+    teamTransfer = "team.transfer",
 }
 
 export type VoidRequestStatus = RequestStatus<void>;
@@ -916,6 +930,21 @@ export type IPCEvents = {
         data: {},
         response: {
             missing: MissingRecentProject[];
+        };
+    };
+    /**
+     * Every remembered project's own app icon, as a `data:` URL, for the ones that have one.
+     *
+     * Takes no paths, for the same reason its neighbour above does not: the main process reads the
+     * history itself, so this cannot be pointed at a folder the user never opened as a project.
+     * Projects without an icon are simply absent from the answer - the surface draws its monogram.
+     */
+    [IPCEventType.appRecentProjectIcons]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {},
+        response: {
+            icons: RecentProjectIcon[];
         };
     };
     [IPCEventType.appSystemPath]: {
@@ -1426,73 +1455,6 @@ export type IPCVcsEvents = {
         response: { servers: VcsServerSession[] };
     };
     /**
-     * What one server holds, asked of that server.
-     *
-     * **Goes to the network**, and answers with the list or with a coded reason it
-     * has none. The token it is asked with never crosses this boundary in either
-     * direction: the main process sealed it when the server was added.
-     */
-    [IPCEventType.vcsListServerProjects]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerProjectsOutcome;
-    };
-    /**
-     * What one server knows about one of its projects.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-detail`.
-     * A `file` that is not readable is a complete answer rather than a failure, and the
-     * server's own explanation for it is deliberately not carried across: it is an
-     * English sentence about the server's internals, and Studio has its own line for
-     * this in every language it speaks.
-     */
-    [IPCEventType.vcsGetServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDetailOutcome;
-    };
-    /**
-     * Take one project off a server.
-     *
-     * **Goes to the network**, and it is the one call here that changes what a server
-     * holds rather than reading it. What it changes is the list: the server stops
-     * carrying the project, and the repository keeps its store and every revision in it.
-     * Nothing here destroys an author's work, and no argument to it would.
-     */
-    [IPCEventType.vcsDeleteServerProject]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string },
-        response: VcsServerProjectDeleteOutcome;
-    };
-    /**
-     * The latest revisions on one of a server's projects, newest first.
-     *
-     * **Goes to the network**, and only to a server that advertised `project-history`.
-     * An answer with no `revisions` field at all is the ordinary one for a project the
-     * server has not read, and it is not an empty history.
-     */
-    [IPCEventType.vcsListServerProjectHistory]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string; projectId: string; limit?: number; before?: string },
-        response: VcsServerProjectHistoryOutcome;
-    };
-    /**
-     * Who has an account on one server.
-     *
-     * **Goes to the network**, and only to a server that advertised `members`. Takes no
-     * project, like the calls above it: a roster belongs to the server.
-     */
-    [IPCEventType.vcsListServerMembers]: {
-        type: IPCMessageType.request,
-        consumer: IPCType.Host,
-        data: { remoteOrigin: string },
-        response: VcsServerMembersOutcome;
-    };
-    /**
      * Exchange a username and password for a token, on a server that offers it.
      *
      * **Goes to the network**, and it is the one call here that carries no token — this
@@ -1658,6 +1620,12 @@ export type IPCTeamEvents = {
         consumer: IPCType.Client,
         data: { connection: TeamConnection },
         response: never;
+    };
+    [IPCEventType.teamTransfer]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: TeamTransferRequest,
+        response: TeamTransferOutcome;
     };
 };
 
@@ -2238,6 +2206,20 @@ export type IPCWorkspaceEvents = {
         response: void;
     };
     /**
+     * Forget the live session this window was told to join, having now acted on it.
+     *
+     * Window props are read once by each load of the renderer and survive a reload, so an intent
+     * left in place would be taken up again by every later load of this window - dragging an
+     * author back into a room they had deliberately left. Cleared rather than remembered in the
+     * renderer, because the renderer is the thing a reload throws away.
+     */
+    [IPCEventType.workspaceLiveIntentTaken]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /**
      * Show this window's project folder in the OS file manager.
      *
      * Only ever the window's own project - the path is not a parameter - because "open a folder for
@@ -2302,6 +2284,21 @@ export type IPCWorkspaceEvents = {
             assetType?: string;
         };
         response: RequestStatus<{ url: string }>;
+    };
+    /**
+     * Every asset in the project, resolved in one round trip, keyed by asset id.
+     *
+     * The per-asset request above answers one question at a time, and a story compile asks it about
+     * a thousand times in a row - once per asset the script references, each awaited before the next
+     * is sent. That is three IPC hops of latency multiplied by the size of the library, and it was
+     * most of the time a Dev Mode launch took. Assets the resolver cannot answer for are left out
+     * rather than reported: the caller falls back to the single-asset path for those.
+     */
+    [IPCEventType.workspaceResolveAllAssetUrls]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Client,
+        data: {};
+        response: RequestStatus<{ urls: Record<string, string> }>;
     };
     [IPCEventType.workspaceResolveImageAssetUrl]: {
         type: IPCMessageType.request,
@@ -2489,6 +2486,15 @@ export type IPCDevModeEvents = {
         };
         response: {
             url: string;
+        };
+    };
+    /** See {@link IPCEventType.workspaceResolveAllAssetUrls}; this is the Dev Mode window's door to it. */
+    [IPCEventType.devModeResolveAllAssetUrls]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {};
+        response: {
+            urls: Record<string, string>;
         };
     };
     [IPCEventType.devModeResolveImageAssetUrl]: {
@@ -3592,6 +3598,21 @@ export type IPCMenuEvents = {
         type: IPCMessageType.message,
         consumer: IPCType.Client,
         data: { view: WorkspaceViewRequest },
+        response: never;
+    };
+    /**
+     * Main telling the already-open workspace which live session to join.
+     *
+     * The other half of the `joinLive` window prop, and needed for the same reason Settings needs
+     * `settingsHighlight`: one project is one window, so a launcher asking to join a room in a
+     * project this machine already has open reaches a window that exists - and a prop is read once,
+     * at load. Without this the intent would be dropped in silence, which is the commonest case of
+     * all now that the workspace has no join control of its own.
+     */
+    [IPCEventType.workspaceJoinLive]: {
+        type: IPCMessageType.message,
+        consumer: IPCType.Client,
+        data: { joinLive: NonNullable<WindowProps[WindowAppType.Workspace]["joinLive"]> },
         response: never;
     };
     /**

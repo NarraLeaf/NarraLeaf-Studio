@@ -4,11 +4,10 @@ import type { ImageFill, ImageFillMode } from "@shared/types/ui-editor/imageFill
 import type { AppearanceModel } from "@shared/types/ui-editor/appearance";
 import { isAppearanceModel } from "@shared/types/ui-editor/appearance";
 import { createRectangleDockerBarItems } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleDockerBar";
-import { normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
+import { getRectangleLikeProps, normalizeImageFill } from "@/lib/ui-editor/widget-modules/shared/chrome/rectangleHelpers";
 import { buildImageFillPropsUpdate } from "@/lib/ui-editor/widget-modules/shared/chrome/imageFillProps";
 import { resolveImageRectangleLike } from "@/lib/ui-editor/runtime/appearance/AppearanceResolver";
 import { DEFAULT_SYSTEM_INTERACTION_SIGNALS } from "@/lib/ui-editor/runtime/appearance/SystemInteractionState";
-import { getImageWidgetRectangleProps } from "./helpers";
 
 const FIT_OPTION_VALUES: readonly ImageFillMode[] = ["cover", "contain", "stretch", "crop", "tile"];
 
@@ -27,7 +26,7 @@ const DEFAULT_APPEARANCE_RESOLVE_CONTEXT = {
 
 export function createImageDockerBarItems(ctx: DockerBarContext): DockerBarItem[] {
     const { element, documentService, stateService, surfaceId } = ctx;
-    const rectItems = createRectangleDockerBarItems(ctx, { resolveProps: getImageWidgetRectangleProps });
+    const rectItems = createRectangleDockerBarItems(ctx, { resolveProps: getRectangleLikeProps });
     const rawAppearance = (element.props as { appearance?: unknown } | undefined)?.appearance;
     const appearance: AppearanceModel | undefined = isAppearanceModel(rawAppearance) ? rawAppearance : undefined;
     const props = resolveImageRectangleLike(element, appearance, DEFAULT_APPEARANCE_RESOLVE_CONTEXT);

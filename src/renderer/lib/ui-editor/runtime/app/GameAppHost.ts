@@ -171,6 +171,21 @@ export type GameAppHost = {
      * preview means.
      */
     installedDlcIds?: readonly string[];
+    /**
+     * Draw the surfaces as soon as they can be drawn, instead of holding the loading screen
+     * until the story environment has booted.
+     *
+     * Off by default, and it has to be: a shipped game shows nothing until its opening scene is
+     * warm, which is what makes Start Game instant and keeps a title screen from painting before
+     * `gameReady` has run the graphs behind it.
+     *
+     * Dev Mode turns it on. Half of what Dev Mode is for is looking at the interface, and
+     * compiling the story and warming its first scene is the longest part of its boot - MEASURED
+     * at 2.3s of 3.3s on a full-length project, all of it behind a dark loading page. With this
+     * on the surfaces are up in about a second and the story boots behind them. What it costs is
+     * the guarantee: press Start before the environment is ready and the press waits for it.
+     */
+    surfacesBeforeStoryBoot?: boolean;
     /** Gate for boot side effects (appBoot, NLR boot preload, keyboard). Preview: pack+assets ready. */
     ready: boolean;
     /** What the NLR boot preload does: direct story launch or menu (default scene preheat). */
@@ -202,6 +217,19 @@ export type GameAppHost = {
         assetId: string,
         assetType?: StoryAssetKind,
     ) => Promise<string | null | undefined> | string | null | undefined;
+    /**
+     * Get whatever {@link GameAppHost.resolveStoryAssetUrl} needs ready before a compile asks it
+     * about a thousand assets one after another.
+     *
+     * A compile resolves as it walks the script, so every asset costs a full round trip to whatever
+     * answers for it before the next one is sent. A host whose resolver is a local lookup (the
+     * packaged game reads its own pack) has nothing to prepare and omits this; a host that has to
+     * ask another window implements it and pays for the whole library once.
+     *
+     * Awaited by the compile and expected to be idempotent: a caller that asks twice for the same
+     * bundle gets the same promise back rather than a second pass.
+     */
+    prewarmStoryAssetUrls?: () => Promise<void>;
     /**
      * The clip a weather seed describes, produced if it does not exist yet.
      *

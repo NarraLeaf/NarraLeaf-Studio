@@ -1,3 +1,5 @@
+import type { DownloadProgressEvent } from "@shared/types/downloadProgress";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 import type {
     GameBuildArch,
     GameBuildDesktopPlatform,
@@ -197,6 +199,14 @@ export type GameBuildWorkerTarget = {
     formats: GameBuildFormat[];
     /** The single arch to package for; see GameBuildTarget.arch for why one. */
     arch: GameBuildArch;
+    /**
+     * `<platform>-<arch>`, the name this target's machine code was staged under.
+     *
+     * Computed by the manager rather than spelled again here, because it has to
+     * match the name the compile used exactly and two independent spellings of
+     * one key is how the koffi copy shipped nothing for a year.
+     */
+    platformKey: string;
     /** Electron fuse set for this platform's binaries. */
     fuses: GameBuildWorkerFuses;
     /**
@@ -402,6 +412,35 @@ export type GameBuildWorkerLogMessage = {
     message: string;
 };
 
+/**
+ * A file this worker is pulling down, so the window can show that the build is waiting on a network
+ * rather than merely being slow.
+ *
+ * Separate from the log channel because it is not prose: it carries a byte count the main process
+ * turns into a task, and the words an author reads are picked there, in the language that window is
+ * showing. What electron-builder downloads on its own account does not come through here - nothing
+ * in this process can see those - and is read off the worker's own output instead.
+ */
+export type GameBuildWorkerDownloadMessage = {
+    type: "download";
+    event: DownloadProgressEvent;
+};
+
+/**
+ * How far through a countable step of the packaging this worker is, or `null` for a stretch that
+ * has no denominator.
+ *
+ * Most of what this worker does is one call into electron-builder per target, which reports nothing
+ * back until it has finished; those stretches send `null` and the window shows a sweep. The steps
+ * either side of them - protecting a mobile payload file by file, precompressing the site, hashing
+ * and signing the finished artifacts - all know how much work they have before they start, and
+ * those count.
+ */
+export type GameBuildWorkerProgressMessage = {
+    type: "progress";
+    progress: StudioTaskProgress | null;
+};
+
 export type GameBuildWorkerDoneMessage = {
     type: "done";
     /** Absolute paths of the artifacts electron-builder reported. */
@@ -417,5 +456,7 @@ export type GameBuildWorkerInboundMessage = GameBuildWorkerStartMessage;
 
 export type GameBuildWorkerOutboundMessage =
     | GameBuildWorkerLogMessage
+    | GameBuildWorkerDownloadMessage
+    | GameBuildWorkerProgressMessage
     | GameBuildWorkerDoneMessage
     | GameBuildWorkerErrorMessage;

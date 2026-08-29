@@ -83,7 +83,7 @@ describe("dictionary index validation", () => {
 });
 
 describe("SpellcheckManager", () => {
-    let userDataDir: string;
+    let cacheRoot: string;
     let setting: string | undefined;
     let indexBody: string;
     let payload: Buffer;
@@ -94,14 +94,14 @@ describe("SpellcheckManager", () => {
 
     function manager(): SpellcheckManager {
         return new SpellcheckManager({
-            userDataDir: () => userDataDir,
+            cacheRoot: () => cacheRoot,
             readSetting: () => setting,
             readRegistryUrl: () => INDEX_URL,
         });
     }
 
     beforeEach(async () => {
-        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-"));
+        cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-"));
         setting = undefined;
         indexBody = indexJson([entry()]);
         payload = PACKED;
@@ -114,11 +114,11 @@ describe("SpellcheckManager", () => {
 
     afterEach(async () => {
         vi.unstubAllGlobals();
-        await fs.rm(userDataDir, { recursive: true, force: true });
+        await fs.rm(cacheRoot, { recursive: true, force: true });
     });
 
     function cacheDir(): string {
-        return path.join(userDataDir, "cache", "spellcheck-dictionaries");
+        return path.join(cacheRoot, "spellcheck-dictionaries");
     }
 
     it("downloads into the cache, then checks and suggests from it", async () => {
@@ -274,19 +274,19 @@ describe("SpellcheckManager in Chinese and Japanese", () => {
     const ZH_DOWNLOAD = "https://cdn.example.com/zh.txt.gz";
     const JA_DOWNLOAD = "https://cdn.example.com/ja.txt.gz";
 
-    let userDataDir: string;
+    let cacheRoot: string;
     const window = {};
 
     function manager(): SpellcheckManager {
         return new SpellcheckManager({
-            userDataDir: () => userDataDir,
+            cacheRoot: () => cacheRoot,
             readSetting: () => undefined,
             readRegistryUrl: () => INDEX_URL,
         });
     }
 
     beforeEach(async () => {
-        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-cjk-"));
+        cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-spellcheck-cjk-"));
         const body = indexJson([
             entry({
                 code: "zh",
@@ -316,7 +316,7 @@ describe("SpellcheckManager in Chinese and Japanese", () => {
 
     afterEach(async () => {
         vi.unstubAllGlobals();
-        await fs.rm(userDataDir, { recursive: true, force: true });
+        await fs.rm(cacheRoot, { recursive: true, force: true });
     });
 
     it("marks nothing in a sentence made of words", async () => {
@@ -378,18 +378,18 @@ describe("SpellcheckManager in Chinese and Japanese", () => {
 });
 
 describe("DictionaryCache", () => {
-    let userDataDir: string;
+    let cacheRoot: string;
 
     beforeEach(async () => {
-        userDataDir = await fs.mkdtemp(path.join(os.tmpdir(), "nls-dict-cache-"));
+        cacheRoot = await fs.mkdtemp(path.join(os.tmpdir(), "nls-dict-cache-"));
     });
 
     afterEach(async () => {
-        await fs.rm(userDataDir, { recursive: true, force: true });
+        await fs.rm(cacheRoot, { recursive: true, force: true });
     });
 
     it("round-trips the words it was given", async () => {
-        const cache = new DictionaryCache(userDataDir);
+        const cache = new DictionaryCache(cacheRoot);
         await cache.write(entry(), PACKED);
 
         expect(await cache.readWords("en-GB")).toBe(WORDS);
@@ -402,19 +402,19 @@ describe("DictionaryCache", () => {
     });
 
     it("answers nothing for a language it does not have", async () => {
-        const cache = new DictionaryCache(userDataDir);
+        const cache = new DictionaryCache(cacheRoot);
         expect(await cache.readWords("de")).toBeNull();
         expect(await cache.listInstalled()).toEqual([]);
     });
 
     it("will not let a code escape its own directory", async () => {
-        const cache = new DictionaryCache(userDataDir);
+        const cache = new DictionaryCache(cacheRoot);
         await expect(cache.write(entry({ code: "../escape" }), PACKED)).rejects.toThrow(/filename/);
         expect(await cache.readWords("../escape")).toBeNull();
     });
 
     it("does not offer a language whose word list never arrived", async () => {
-        const cache = new DictionaryCache(userDataDir);
+        const cache = new DictionaryCache(cacheRoot);
         await cache.write(entry(), PACKED);
         // What an interrupted download leaves behind. A manifest alone describes nothing that can
         // be checked against.

@@ -392,6 +392,8 @@ stage → commit（不 set）              -> rev3 无 probe.kind          ✅ �
 顺带实测：Lore 自己也往同一张表里写 `branch` / `timestamp` / `message` / `created-by` /
 `committed-by`。所以 Studio 的键必须带前缀（`narraleaf.kind`），而**提交信息与作者名是读得回来的**。
 
+❗ **合并开着的时候，那个暂存修订就是这次合并，写它会把合并换掉**——见 §4.34。
+
 ### 4.22 `repositoryFlush` 会等满 `storeKeepAliveSeconds`
 
 写路径末尾那一句强制的 flush（§4.11），耗时**不是**取决于要落盘多少东西，而是等前面那些
@@ -702,6 +704,197 @@ Failed to parse JSON from <project>/editor/story/index.json
 > `kind: "merge"` 是第三种冻结原因。`WorkspaceFreezeKind` 的注释早就写着「加第三种会在上报处
 > 编译失败，那正是该被问『这种情况怎么说』的地方」——确实如此：构建/预览在合并态下同样要拒绝，
 > 但话术不是「解除冻结」而是「先把合并做完」。
+
+### 4.34 ❗ 给暂存修订写元数据，会把那次**合并换掉**（已修）
+
+真机上看到的是：作者把每个冲突选完、按「完成合并」（合并状态确实关了、工作树干净），
+再上传**仍然** `branchPush: Branch has diverged`；再按一次「从服务器获取」（静默、无冲突、
+多一个修订）之后才能发出去。
+
+**合并修订的两个 parent 是同一个修订**——作者自己的 tip，写了两遍：
+
+```
+1 942e699fbb <-
+2 5eca573ac6 <- 942e699fbb
+3 274134c073 <- 5eca573ac6,5eca573ac6      ← 合并；远端 tip cfa2e56266 不在里面
+```
+
+所以 §4.26「合并修订确实有两个 parent」**数对了、人错了**：`parents.length === 2` 一直成立，
+而两条线从来没接上。
+
+#### 定到哪一行
+
+对着真服务器做的对照（每种写法一个独立仓库，都是同步产生的冲突）：
+
+| 怎么收尾 | parent 含远端 tip | 推得上去 |
+|---|---|---|
+| `stage` + `commit`（离线 / 在线 / 保活存储 / 先读 history / 先读 status / 同一个 store 里解冲突） | ✅ | ✅ |
+| `commit`（不 stage） | ✅ | ✅ |
+| **`stage` + `revisionMetadataSet` + `commit`** | ❌ | ❌ |
+| `stage` + `commit` + `revisionMetadataSet` | ✅ | ✅（但标签落到下一个修订，见 §4.21） |
+| `commitWorkingTree` / `VcsManager.completeMerge` | ❌ | ❌ |
+
+即 **§4.21 那一行就是原因**：`revisionMetadataSet` 写的是暂存修订，而合并开着的时候
+**那个暂存修订就是这次合并**，写它等于把它换成一个普通的暂存修订，
+随后的 commit 于是把本地 tip 当成两个 parent 都写上。
+
+#### 修法：合并那次提交**不打标签**
+
+`commitWorkingTree` 现在在 stage 之后问一次状态（`scan:false, revisionOnly:true`，本来就要问），
+`revisionMerged && revisionStaged` 为真就跳过 `setRevisionMetadata`，并且 `VcsCommitResult.kind`
+返回 `undefined`——**记下的是什么就答什么**。
+
+提前排除的替代方案：改成提交之后再打标签——实测它会落到**下一个**修订（正是 §4.21），
+合并照样没标签，而下一次普通提交会被标两次。
+
+屏幕上不损失什么：版本轨画历史时 `row.merge`（两个 parent）**比** `kind` **先被问到**，
+合并行拿的是合并图标；而被折叠掉的只有 `checkpoint`，没标签不会被折叠。
+
+守卫在 `merge.integration.test.ts`：本地那条管 parent 是不是那两个分支 tip（不需服务器），
+远端那条管「同步产生的合并做完之后一次就推得上去」。**两条缺一不可**：
+parent 数量一直是 2，而本地合并怎么写都对。
+
+### 4.35 跑远端集成测试要先登录，而 `identity` 得是**账号 id**
+
+以前远端那半只能对着一台**不验身份**的 loreserver 跑；对着真服务器第一句就是
+`repositoryCreate: connecting to remote: No token stored`。两个坑，都是同一回事的两面：
+
+1. **裸 globals**：上网的调用 `identity` 必须是登录拿到的**账号 id**，不是人名。
+   Lore 的会话存在按系统用户的 auth store 里，**就是按这个键查的**（`serverSession.ts` 写了）；
+2. **`VcsManager`**：它不接受 identity 参数，而是从设置里读
+   `versionControl.serverSessions`（`resolveOnlineIdentity`）。测试里那个空的 `fakeApp`
+   于是以作者名上网——**不报错**，`sync` 只是找不到分支、答一个干净的空结果，
+   于是一条关于冲突的 spec 失败在「没有冲突」上。
+
+现在**每一个有远端块的文件都接好了**，共用 `loreTestAccount.ts`：三个环境变量在那里读一次，
+`signInLoreTestAccount()` 在每个远端 `describe` 的 `beforeAll` 里登录一次（进程内只登录一次），
+`loreTestIdentity(AUTHOR)` 给上网的 globals 填账号 id、给没有令牌的运行填回作者名。
+所以一台裸 loreserver 照旧能跑，一台验身份的服务器也能一条命令跑完整个目录：
+
+```bash
+LORE_TEST_REMOTE="lore://127.0.0.1:41437" LORE_TEST_AUTH="https://127.0.0.1:41502" \
+  LORE_TEST_TOKEN="$(nlteam token mint <user> --root <台子> …)" \
+  npx vitest run src/main/app/application/managers/vcs/
+```
+
+`serverSession.integration.test.ts` 以前只认 `LORE_TEST_AUTH_URL`，于是这条命令会静默跳过它；
+现在两个名字都收。
+
+⚠ **那台服务器的证书颁发机构必须是这台机器已经信任的。** `signInToServer` 没有 pinning 钩子——
+客户端库拿宿主自己的信任库建链，Windows 上连 `SSL_CERT_FILE` 都不看（`authorityTrust.ts` 开头
+写了原因）。所以 `nlteam init` 新起一台服务器跑测试会卡在 `transport error`，而那句话被归类成
+`certificate`：不是缺陷，是这台机器不认识那个新 CA。可行的做法是**整份复制一台已经被信任的台子**
+（`tls/` 一起复制——证书按主机名签、跟端口无关），端口整组错开再起。
+
+❗ **每条远端 spec 都会在服务器上留一个工程登记**，而它们不会自己消失（拿掉登记是一次 Team 调用，
+测试进程没有 Team 会话）。所以跑之前先复制一份台子、跑完把复制的那份整个删掉，比事后去共用台子上
+一条条摘干净省事得多。真要摘：`DELETE FROM projects WHERE ...`，就是 `projects.forget` 做的事。
+
+### 4.36 ❗ 克隆不会把历史本身带下来，于是克隆出来的工程**没有历史**（已修）
+
+实测：一个已经有四个修订的工程，克隆下来之后每一次**本地**历史读都是
+`revisionHistory: Not found`；而 Studio 的读全是离线的，所以版本轨对刚加入工程的人说
+**「还没有版本」**——而那份工程明明有历史。比较、合并基、「改了什么」都跟着没东西可走。
+
+一个只有**一个**修订的工程看不到这个（tip 后面没东西可缺），这是它一直没被发现的原因之一；
+另一个是**失败与「真的没有版本」在屏幕上长得一模一样**。
+
+测量（同一份克隆，依次）：
+
+| 读法 | 结果 |
+|---|---|
+| `history()` 离线 | ❌ `Not found` |
+| `history()` **在线** | ✅ 4 个修订 |
+| `history()` 离线（紧接着再读一次） | ✅ 4 个修订 |
+| `history({limit: 1})` 离线 | ✅ 1 个修订 |
+
+即 **一次在线读就把缺的那些取回来了，而且 `cache: true` 会留住**（一次性修复）；
+带 `limit` 的读不会走到缺的那一段，所以不报错。
+
+真机上也验了一份早先存疑的仓库（`Address not found: fe2109bb…`）：一次在线读之后
+`ok 7 revisions`，随后的离线读也好了。所以那个洞**就是克隆留下的**，不是同步造的。
+
+**修法：克隆自己把历史取下来**。`VcsManager.cloneRepository` 写完地址之后多一步
+`readRevisionGraph`（在线）。三条理由：那一刻网络本来就开着；克隆本来就是
+「六个允许上网的地方」之一，所以**不用开第七个**；取下来就留住，后面所有读照旧离线。
+失败只记日志：克隆已经落盘，把它变成「克隆失败」会给作者留一个非空目录、向导再也不肯往里克隆。
+
+守卫：`clonedHistory.integration.test.ts`（需服务器）——断言是在**上不了网的 globals** 上做的，
+否则一次在线读怎么都会绿。夹具必须推四个修订，一个修订的工程证不了任何事。
+
+⚠ `signInRecovery.test.ts` 盯的是克隆的**调用顺序**，所以它多了 `history` + `release` 两步。
+
+### 4.37 ❗ 服务器**拒绝**令牌，Studio 却说不出那是拒绝（已修）
+
+上一条把整个目录接到验身份的服务器上之后，第一次看见这个。拿一个签名无效的令牌登录，
+服务器答的原话是：
+
+```
+authLoginWithToken: exchanging external token:
+  code: 'The request does not have valid authentication credentials',
+  message: "the token presented for exchange was not accepted"
+```
+
+一望而知是「拒绝」，而 `describeSignInFailure` 把它归成了 **`unknown`**——那条正则找的是
+`unauthenticated` / `permission denied` / `invalid` / `expired` / `refused` 五个词，
+这句话**一个都不含**（`not have valid` 不是 `invalid`，`authentication` 不是 `unauthenticated`）。
+
+后果落在文案上：设置面里那句话从
+「**The server refused this token. It may have expired or been revoked.**」
+退成「**The server could not be added.**」——恰好把「令牌过期了、去换一个」这个唯一的下一步吞掉。
+
+**为什么一直没人看见**：这条路只有在**这台机器已经信任那个颁发机构之后**才走得到。
+在那之前每次登录都断在传输层，被上面的 `certificate` 分支接走了。而「已经信任」恰恰是
+真实作者的常态——第一次点过「信任」以后就一直是。
+
+**修法**：把那个判断抽成 `isSignInRefusal(message)`（`serverSession.ts`，已导出），
+词表补上 `not accepted` 与 `valid authentication credentials`——后者是 gRPC 的
+`UNAUTHENTICATED` 规范句、不是 loreserver 自己的措辞，所以值得按原句收。
+单测在 `serverSession.test.ts`，用的就是上面这句实测原文。
+
+`serverSession.integration.test.ts` 那条 `certificate` 断言也跟着改了：它现在收
+**`certificate` 或 `refused` 两者之一，并且拒收第三种答案**。测试问不出这台机器信不信那个 CA
+——`diagnoseEndpoint` 读的是 Node 自带的机构表，而后端客户端读的是操作系统那份，
+所以一个「本账号已信任的私有 CA」在探针眼里是不受信的、在登录时却好用。
+
+### 4.38 刚克隆的工程一打开就有一项「谁也没改过」的变更 —— 是收敛，不是缺陷
+
+真机实测过的现象：克隆下来、打开，版本轨立刻显示 `editor/ui/uidoc.json` 已修改，作者什么都没做。
+查下来**不是版本控制的问题，是界面文档的加载期收敛**，而且它按设计只发生一次。
+
+`UIDocumentService.load()` 有四个「改了就存回去」的理由（`needsSave`）：
+
+| 理由 | 什么时候为真 |
+|---|---|
+| `schemaChanged` | 盘上的 `schemaVersion` 比本构建低 |
+| `normalizedChanged` | 归一化器改了任何东西（`nl.image` 旧属性折叠、输入模型） |
+| `mainSurfaceChanged` | 主表面或它的根元素不在 |
+| `flowLayoutsChanged` | 流式布局的子元素坐标不在归位 |
+
+**一次实测的两条**（同一台机器、同一份构建，各复制一份工程再打开）：
+
+- **v11 的工程** → `uidoc.json` 改成 v12，外加新建 `editor/save-schema.json`：两项变更。
+  v12 是 2026-08-27 19:50 `7c56f44a7` 抬的，而那天晚上看到这个现象的克隆正好是 v11。
+- **v12 的工程**（版本已经跟本构建一致）→ **照样改**。diff 是
+  `nl.image` 的三个 `props.assetId` 折进 `imageFill`（2026-08-28 `d1d494d8e`，见
+  `legacy-image-props-fold`）加一个 `meta.updatedAt`。
+
+**第二次打开同一份工程，文件逐字节不变**——收敛成立。所以这是「旧形状被就地改写一次」，
+不是每次打开都脏。
+
+**新建的工程碰不到**：出厂骨架模板已经是收敛后的形状（v12、5 个 `nl.image` 全无旧属性）。
+守卫在 `src/renderer/apps/project-wizard/starterTemplateSettled.test.ts`：七条断言逐条对应
+上表那四个理由，每条都做过 non-vacuous 验证（把模板改坏，对应那条必红）。
+
+**混版本不在射程内，这是裁决而不是疏漏**（2026-08-28，用户）。Studio 还没发布，眼下正是在为发布
+**砍掉**更早的兼容形状，所以「一队人跑着两个 Studio 版本」这个人群目前不存在：地板以下的文档直接
+拒绝，收敛把还在的旧形状一次改写掉，都是有意的。上面那段现象因此只会落在**本机的老工程**上，
+打开一次就过去了。
+
+发布之后混版本才成立，届时要面对的是这三件事，先记在这里免得重新推导一遍：老工程升级格式时，
+① 版本轨只说「1 项变更 · 界面页面」，没有一句话说那是格式升级；② 升级一旦提交，仍在旧 Studio 上
+的人**硬拒**读不了（`schemaVersion > UI_DOCUMENT_SCHEMA_VERSION`，"UI document schema is newer
+than this Studio version"）；③ 不提交则人人背着同一项幽灵改动，每次合并都撞。**发布前不要动它。**
 
 ## 5. 服务端策略
 
@@ -1049,6 +1242,45 @@ window[RendererInterfaceKey].vcs
 但连线的几何不依赖它们画出来。⚠ **贴合视图那一档下节点标题仍然只是几个字的残段**：详情栏只有
 三百多像素宽，那一档看的是结构和蒙版，读字要缩放进去。
 
+### 角色表是一人一张卡
+
+`characterSections.ts` / `CharacterChangeDetail`：分组照抄角色表自己的形状——一个角色一张卡、
+卡头是作者起的名字，不属于任何角色的行（角色顺序、分组）收成卡前后两段。**预算是整个面板一份
+而不是每张卡一份**：行没有虚拟化，一份文档可能带着生成器的整份改动预算。装不下的那张卡保留装得下的
+行并自己报告余量，它后面的卡不画——半张卡也比没有强，作者至少知道那个角色变了。
+
+**字段的名字取自作者编辑它的那块面板**（`CHARACTER_FIELD_NAME_KEY`）。生成器交回来的是文档里的
+存储键（`defaultAvatarAssetId`、`backend`），而标签是「资料 {field}」，原样画出来就是把 JSON 键摆在
+作者面前。六个面板画得出、却从不给标签的字段（别名、分组、画布、头像差分轴、PSD、傀儡的默认状态）
+在 `documentDiff.characters.fields` 下另有词条，取词来源是那些控件自己的说法（设定画布、
+头像随此轴变化、导入 PSD）。⚠ **它们不放进 `characters.*`**：面板不画的词摆在面板自己的命名空间里，
+下一个人会把它当成面板的标签，于是同一件东西有了两个名字。
+
+⚠ **`attributes` 与傀儡的 `options` 保留存储键，这是裁决不是欠账**：Studio 没有编辑它们的界面，
+两者都是插件或导入写进去的数据袋，存储名是任何能碰到它们的人唯一知道的名字。
+`characterSections.test.ts` 两头钉着——一头是「每个词都得是产品已经画得出的」，
+一头是这两个键必须查不到。
+
+### 改动行也是回到画布上的路
+
+画布上的蒙版和它底下的那份改动行问的是**相反的两个问题**，所以答案不一样：点蒙版问「这个节点上
+改了什么」，答案是把列表收窄到那一行；点改动行问「这条改动在哪」，答案是把画布挪到它身上，
+而**收窄在这里是错的**——那会把作者正在逐条走的行本身拿走。
+
+这条缝是 `RowReveal`（`DocumentChangeList.tsx`）：`can` **逐行**回答「这个面能不能挪过去」，`go` 挪，
+`label` 给行凑出可读的名字。逐行问是因为**看起来能点、点下去不动的行比不能点的行更坏**：
+不在当前这张图上的改动、不属于任何节点的改动、页面没有句柄的元素，它们的行仍然是文字。
+列表自己一个字都不判断——它是版本轨道也在画的那份列表，那里它上面什么都没有。
+
+蓝图那侧挪的是**两列共用的那个变换**，落点取**两个版本的并集**：被拖过的节点在这一张图里有两个位置，
+只框住新版那个会把旧版那张卡推出画面，而「一边有、一边没有」正是**新增**的样子——作者问的是它挪去了哪，
+拿到的却是另一个问题的答案。连线同理，框的是它连的两张卡而不是线的中点。
+缩放取「够读」与「装得下」里较小的那个，**装得下赢**：阅读阈值是偏好，把一半答案留在画面外是错答案；
+已经比「够读」更近的缩放不动它，那是作者自己挑的。地板是适应视图，所以这个动作只可能是往里走。
+
+界面那侧没有可挪的平移（页面是整页画出来的），行点击就只把那个元素的蒙版点出来。
+⚠ **两侧不许只做一侧**：两块画布共用 `CanvasShell` 正是为了不长成两个功能。
+
 ### 分屏里的故事是剧本，不是改动行
 
 `storyScriptPlan.ts` / `StoryScriptRow.tsx`：每一半按**它那一版的字节**画场景的块，沿用故事编辑器
@@ -1159,8 +1391,66 @@ settle 之后 set 只重写**字节真的变了**的那些文件；settle 后的
 
 ## 10. 待解问题
 
-- **resolve 面板没有做过目视验收**：它需要一个真实的合并冲突，而 Studio 里建不出分支、也没有服务器。
-  机制有单测（三态选择、未决拦住完成、`blocked` 的文件仍给整文件两个按钮），但没有人看过它一眼。
+- ~~**resolve 面板没有做过目视验收**~~ —— **2026-08-25 做了**，用两份 clone 对同一行台词和同一个
+  元素名各改一次，push 一边、另一边 Get，造出真冲突。**机制全部成立**：三态选择在（`已自动合并`
+  是第三个）、未决时底部写「还有 N 个文件没选边」并拦住完成、`ui-document` 没有 merge3 所以只给
+  整文件两个按钮、完成后逐文件按各自的选择落盘（实测一份保留我的、一份保留对方的，结果正确，
+  冲突标记清干净）。**说话的那一半原有五处欠账，目视验收又添了第 6 处；2026-08-25 六处全部了结**：
+
+  1. ✅ **索引与详情曾按文件命名**（`storydoc.json` / `editor/story/stories/48bb82a5-…`）。现在走
+     `documentName.ts`，与比较界面同一套四态答案：故事显示作者起的标题，没有自己名字的显示种类名，
+     读不到标题的显示「故事（id）」。路径退到 tooltip，目录那一列删掉——名字自己就能区分了。
+     ⚠ **`buildConflictRows` 的 `names` 是必填的**，理由与 `buildChangeIndex` 相同：默认值等于给
+     「悄悄退回文件名」留一条路，而合并正是最不该有这条路的界面。名字读**工作树**那一份故事库，
+     因为合并期间它就是自动合并的结果；它自己也冲突时读不出来，那就落到 `unnamed`。
+  2. ✅ **冲突的值曾是序列化 JSON**（`text {"textId":"…","role":"narration","value":"…"}`）。
+     `describeMergeSides` 现在**同时描述两侧**：嵌套字段展开成 `text.value` 这样的名字，
+     **两侧不同的字段排在最前**，两列用同一份字段表所以逐行对得上。一行台词因此以它自己开头。
+     判据写在函数注释里：一条决策存在的理由就是两侧不同，先画双方一致的部分等于先画不是问题的那部分。
+  3. ✅ 名字被截成 `s…` 随 1 一起消失。
+  4. ✅ 合并期间作者的文件在磁盘上带着 `<<<<<<< ours` / `||||||| original` / `>>>>>>> theirs`，
+     这是设计（见 §4.23 与 merge 冻结的注释）。曾经**只有重新打开工程**能正确面对它：
+     `workspaceProjectPreflight` 在任何文档被解析之前装上替身与冻结，而**刚刚同步出冲突的那个窗口
+     按原样重读**，于是故事面板空白、仪表盘 0 场景，还没有冻结保护。
+     现在同步走进同一个状态：`sync` 在重读之前调用 `WorkspaceFreezeService.showMergeConflicts`，
+     装冻结、装替身、丢掉可能正在看的历史版本，然后才重读。
+     ⚠ **冲突路径问仓库要，不取 `result.data.conflicts`**——两条路因此是同一个问题的同一个答案，
+     而不是碰巧一致；同步自己那份还更易逝（走事件流，下一次调用就没了，§4.24）。
+     ⚠ **不 flush**：到这一步工作树已经被改写，flush 等于把编辑器手里的合并前内容写回去，
+     正是这道冻结要拦的那次写。
+     **恢复模式不再被提议**——它是为「没人说得清的损坏」准备的，而合并说得清自己，出路是把合并
+     做完或放弃（`useRecoveryOffer` 问仓库有没有未完成的合并，**不是问冻结**：冻结在开工程时
+     才 armed，答不了「刚刚同步出冲突的这个窗口」）。
+  5. ✅ 4 修好之后那两条红色通知不再出现（它们本来就是 4 的后果）。剩下的那处自相矛盾也修了：
+     面板顶栏从前**无条件**写「该工程的两个版本正在合并」，于是合并一结束，它就和自己面板正文里
+     那句「该工程没有正在进行的合并」当面顶牛——一屏两个答案，错的那个还在上面。
+     现在走 `mergeHeadingKey(state)`：有合并才说合并，没有就退回面板自己的名字（「合并」），
+     那句话不主张任何事。⚠ **它收的是 state 不是布尔**：`null` 是「还没人问过」，
+     把它折进「没有合并」等于把一个仅仅是**大概率**的判断摆上屏幕。
+  6. ✅ **同步的冲突通知曾按文件命名**：`syncConflictDetailMany` 把
+     `editor/story/stories/48bb…/storydoc.json` 原样列给作者，而它指过去的那个面板管同一批文件
+     叫作者起的名字——先到的那条反而是 Studio 在讲自己的存储。现在走 `listDocumentNames`，
+     和索引、详情、版本轨道同一套答案。
+     ⚠ **名字是当场读一次**（`readDocumentNames`），不是挂 `useDocumentNames`：后者会让每个
+     用到 `useVersionSurface` 的表面都背上一次故事索引读取，只为一条几乎不出现的通知。
+
+  **4 的目视验收（2026-08-25，真机、真服务器、真冲突）**：两份克隆各自改过同一份故事，按下轨道上
+  的「从服务器获取」，同步以两个冲突结束（`storydoc.json` 与 `uidoc.json`）。同一个窗口随即显示：
+
+  - 仪表盘 `场景 1 · 字数 9 · 蓝图节点 3 · 界面 1`——与同步前逐项相同，而这正是从前归零的地方；
+  - 故事面板 `故事（1）Harbour · Chapter 1 · Scene 1· 2 行`，打开后两行台词是作者自己那一侧
+    （`Second line, rewritten on B.` / `Ben adds a line.`）；
+  - 状态栏 `当前不保存任何改动 · 有一次合并尚未完成，在版本面板中完成合并后恢复保存`，
+    轨道上是 `合并进行中 · 有 2 个文件要选保留哪一边 · 完成合并`；
+  - 界面上**没有**「恢复模式」，也没有「该工程未能正常加载」。
+
+  **5 与 6 的目视验收（同日，同一台服务器、同一次冲突）**：
+
+  - 通知从两行路径变成 `有 2 个文件在本地和服务器上都被修改过： Harbour 界面页面`；
+  - 合并进行中时顶栏是「该工程的两个版本正在合并」；按「放弃合并」并确认之后，**同一个还开着的
+    标签页**里那句降到 0 次，顶栏变成「合并」、正文是「该工程没有正在进行的合并」，
+    「当前不保存任何改动」也一并消失（冻结随合并结束解除），故事面板仍是
+    `Harbour · Chapter 1（1）· Scene 1 · 2 行`。
 - **`ui-document` / `ui-graphs` 没有 `merge3`，这是裁决不是欠账**：两个作者各自重排同一个界面树，
   交织出的第三种布局能正常渲染、谁都没写过——正是 `DocumentMergeRefusal` 存在的那种静默失败。
   真要做，先解决寻址：元素跨 surface 拖动时两侧地址不同（`uiDocumentDiff.ts` 顶部有说明）。

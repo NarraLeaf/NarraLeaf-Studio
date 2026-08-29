@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { translate } from "@/lib/i18n";
+import { listDocumentNames } from "@/lib/vcs/documentName";
+import { readDocumentNames } from "@/lib/vcs/storyTitles";
 import { Services } from "@/lib/workspace/services/services";
 import { VcsCallError, VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { WorkspaceFreezeService } from "@/lib/workspace/services/core/WorkspaceFreezeService";
@@ -26,6 +28,14 @@ import {
     type VersionSurfaceState,
 } from "../components/layout/versionRailModel";
 import { useWorkspace } from "../context";
+
+/**
+ * How many conflicted documents the sync's notice names before it stops.
+ *
+ * A notice is read at a glance or not at all, and a merge can leave two hundred files behind. The
+ * sentence around this always states the full count, so the list is a sample and never the claim.
+ */
+const SYNC_CONFLICT_LINES = 5;
 
 /**
  * The one data surface behind the version rail, the switcher menu and the status-bar cell.
@@ -126,9 +136,25 @@ const PUBLISH_PROBLEM_KEYS: Record<VcsServerProjectsProblem["kind"], Translation
     refused: "workspace.shell.versionControl.server.publish.refused",
     unreachable: "workspace.shell.versionControl.server.publish.unreachable",
     "wrong-repository": "workspace.shell.versionControl.server.publish.wrongRepository",
+    "name-taken": "workspace.shell.versionControl.server.publish.nameTaken",
+    "already-published": "workspace.shell.versionControl.server.publish.alreadyPublished",
     rejected: "workspace.shell.versionControl.server.publish.unknown",
     unknown: "workspace.shell.versionControl.server.publish.unknown",
 };
+
+/**
+ * The sentence one refusal is drawn as, with whatever it names filled in.
+ *
+ * The key still comes from the table above, so a refusal added to the vocabulary is still a
+ * compile error here rather than a blank line on screen. What this adds is the one thing a
+ * table cannot carry: a refusal that names something has to be given the something.
+ */
+function publishProblemSentence(problem: VcsServerProjectsProblem): string {
+    const key = PUBLISH_PROBLEM_KEYS[problem.kind];
+    return problem.kind === "already-published"
+        ? translate(key, { name: problem.name })
+        : translate(key);
+}
 
 export interface VersionFailure {
     /**
@@ -1030,8 +1056,21 @@ export function useVersionSurface(): VersionSurface {
             const outcome = await services.versionControl.publish(remoteOrigin, name);
             if (!alive.current) return outcome.ok;
             if (!outcome.ok) {
-                setFailure({ text: translate(PUBLISH_PROBLEM_KEYS[outcome.problem.kind]), tone: "failure" });
+                setFailure({ text: publishProblemSentence(outcome.problem), tone: "failure" });
                 return false;
+            }
+            if (outcome.connectedAs !== undefined) {
+                // A note rather than a failure, because nothing failed: this project has been on
+                // that server before and is registered under the name it was published as, so it
+                // is connected under that one. Said because the author typed a name and the
+                // address does not carry it - a substitution nobody is told about is the thing
+                // this line exists to prevent.
+                setFailure({
+                    text: translate("workspace.shell.versionControl.server.publish.connectedAs", {
+                        name: outcome.connectedAs,
+                    }),
+                    tone: "note",
+                });
             }
             setRemoteUrl(await services.versionControl.getRemote());
             setSyncState(await services.versionControl.getSyncState());
@@ -1119,19 +1158,41 @@ export function useVersionSurface(): VersionSurface {
             // stream that is gone by the next call (docs §4.24), and the repository's answer is
             // recovered from disk - so it is the one that survives the window closing, and the one
             // the resolve surface will be working from.
-            setMerge(await services.versionControl.getMergeState());
+            const merge = await services.versionControl.getMergeState();
+            setMerge(merge);
             if (!alive.current) return true;
-            if (result.conflicts.length > 0) {
+            // The repository's list where there is one, for the reason the re-read above gives: the
+            // notice and the panel that resolves it must be about the same set of files. Gated on
+            // `inProgress` rather than trusting `conflicts` to be empty without it - the same
+            // predicate `VersionControlService.sync` uses, and the two must not be able to disagree
+            // about whether there is a merge. A closed merge reports nothing: there would be nowhere
+            // for the notice to send anybody. Null is no version control at all, and then the sync's
+            // own list is the only answer there is.
+            const conflicts = merge === null
+                ? result.conflicts
+                : (merge.inProgress ? merge.conflicts : []);
+            if (conflicts.length > 0) {
+                // Named rather than listed as paths. This notice arrives at the same moment as the
+                // panel that will settle them, and that panel calls a story by the author's own
+                // title - two surfaces about the same files, one saying `Harbour` and the other
+                // `editor/story/stories/48bb.../storydoc.json`, are two different things as far as
+                // anybody reading them is concerned.
+                //
+                // Read here rather than through `useDocumentNames`, which would put a story-index
+                // read behind every surface that mounts this hook, for the sake of a notice that
+                // almost never appears.
+                const names = await readDocumentNames(services.versionControl, { at: "working-tree" });
+                if (!alive.current) return true;
                 services.ui.notifications.showSticky({
                     type: NotificationType.Error,
                     message: translate("workspace.shell.versionControl.syncConflictTitle"),
                     detail: translate(
-                        result.conflicts.length === 1
+                        conflicts.length === 1
                             ? "workspace.shell.versionControl.syncConflictDetailOne"
                             : "workspace.shell.versionControl.syncConflictDetailMany",
                         {
-                            count: String(result.conflicts.length),
-                            files: result.conflicts.slice(0, 5).join("\n"),
+                            count: String(conflicts.length),
+                            files: listDocumentNames(conflicts, names, translate, SYNC_CONFLICT_LINES),
                         },
                     ),
                 });
@@ -1269,6 +1330,13 @@ function describeFailure(thrown: unknown): VersionFailure {
             return { text: translate("workspace.shell.versionControl.unavailable.installation"), tone: "failure" };
         case VcsErrorCode.ShuttingDown:
             return { text: translate("workspace.shell.versionControl.closingWithApp"), tone: "failure" };
+        case VcsErrorCode.UncommittedChanges:
+            return { text: translate("workspace.shell.versionControl.commitBeforeSync"), tone: "failure" };
+        case VcsErrorCode.BranchDiverged:
+            // The backend's own sentence names the same remedy, and it named it in English with the
+            // internal verb that failed in front of it (`branchPush: Branch has diverged, …`). What
+            // is translated here is the situation, not a paraphrase of a message.
+            return { text: translate("workspace.shell.versionControl.branchDiverged"), tone: "failure" };
         // `ProjectPath` deliberately falls through to the raw sentence: it can only be reached
         // through a defect, and that sentence is three lines of diagnosis aimed at whoever has to
         // fix it. Paraphrasing it would throw away the only copy.

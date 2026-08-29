@@ -14,6 +14,7 @@ import { buildSceneFlowGraph } from "@/apps/workspace/modules/story-flow/sceneFl
 import { SceneFlowCanvas } from "@/apps/workspace/modules/story-flow/SceneFlowCanvas";
 import {
     branchDeltaFor,
+    collectBlueprintVariableWrites,
     collectBranchEffects,
     computeVariableRanges,
     listNumericStoryVariables,
@@ -1187,6 +1188,12 @@ function SceneTab(props: {
     // Flat, both scopes: every API below keys an entry by the scope it declares, and a counter an
     // author wants the map focused on is as likely to be a game-level flag as a per-playthrough one.
     const registryVariables = useMemo(() => [...registry.saved, ...registry.persistent], [registry]);
+    // Off the bundle, like every other lookup in this embed - reaching for a workspace service here
+    // is what kills the Dev Mode mount.
+    const blueprintWrites = useMemo(
+        () => collectBlueprintVariableWrites(bundle.ui.localBlueprints, registryVariables),
+        [bundle, registryVariables],
+    );
     const { t } = useTranslation();
     const currentActionId = useCurrentActionId(storyRuntime);
 
@@ -1280,7 +1287,7 @@ function SceneTab(props: {
         if (!focused) {
             return undefined;
         }
-        const effects = collectBranchEffects(graph, document);
+        const effects = collectBranchEffects(graph, document, blueprintWrites);
         const chips: Record<string, string> = {};
         for (const branch of graph.branches) {
             const delta = branchDeltaFor(effects.get(branch.id) ?? [], focused.key);
@@ -1290,7 +1297,7 @@ function SceneTab(props: {
             }
         }
         return chips;
-    }, [focused, graph, document]);
+    }, [focused, graph, document, blueprintWrites]);
 
     /**
      * The counter's range ON ARRIVAL at each scene — what the author could be holding when they get
@@ -1302,11 +1309,12 @@ function SceneTab(props: {
             return undefined;
         }
         const chips: Record<StorySceneId, string> = {};
-        for (const [sceneId, range] of computeVariableRanges(graph, document, focused.key, registryVariables)) {
+        const ranges = computeVariableRanges(graph, document, focused.key, registryVariables, blueprintWrites);
+        for (const [sceneId, range] of ranges) {
             chips[sceneId] = formatStoryVariableRangeChip(range);
         }
         return chips;
-    }, [focused, graph, document, registryVariables]);
+    }, [focused, graph, document, registryVariables, blueprintWrites]);
 
     const liveValue = useMemo(() => {
         void currentActionId;

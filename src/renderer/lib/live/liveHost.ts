@@ -1,6 +1,7 @@
 import {
     CLAIMED_OPS,
     characterClaimKey,
+    localizationKeyClaimKey,
     opAddresses,
     opBelongsTo,
     opClaimKeys,
@@ -21,9 +22,20 @@ import {
     type LiveRefusal,
     type LiveRefusalReason,
     storyRowClaimKey,
+    uiElementClaimKey,
+    variableClaimKey,
     type LiveResync,
 } from "@shared/live/ops";
-import { liveSessionCarries, NO_LIVE_LOCALES, type LiveSessionLocales } from "@shared/live/sharedDocuments";
+import {
+    liveSessionCarries,
+    NO_LIVE_INTERFACE,
+    NO_LIVE_LOCALES,
+    NO_LIVE_REGISTRIES,
+    type LiveSessionInterface,
+    type LiveSessionLocales,
+    type LiveSessionRegistries,
+} from "@shared/live/sharedDocuments";
+import type { LiveUIElementRef } from "@shared/live/uiParts";
 import type { StoredCharacter } from "@shared/types/character/model";
 import type { StoryBlock, StoryBlockId, StoryId, StoryScene, StorySceneId } from "@shared/types/story";
 import { LiveClaimStore } from "./claims";
@@ -60,8 +72,50 @@ export type LiveHostDeps = {
      * way in. Both go to the same table.
      */
     locales?: LiveSessionLocales;
+    /**
+     * The asset types whose metadata shards this session carries.
+     *
+     * Beside {@link locales} rather than folded in, for its reason: these are the shards this machine
+     * holds. Both go to the same table.
+     */
+    assetTypes?: readonly string[];
+    /** The sections whose folders this session carries. Beside {@link assetTypes}, and a different axis. */
+    assetCategories?: readonly string[];
+    /**
+     * Whether this session carries the interface and its blueprints.
+     *
+     * A flag rather than a list: there is one of each per project. Both or neither - see
+     * `LiveSessionInterface` for why one without the other is not a shape this can take.
+     */
+    ui?: LiveSessionInterface;
+    /**
+     * Which of the two project-level registries this session carries.
+     *
+     * Booleans rather than a list, because neither is parameterised - and read rather than assumed,
+     * for {@link locales}' reason: a registry this machine could not parse is one no operation can be
+     * applied to.
+     */
+    registries?: LiveSessionRegistries;
+    /**
+     * Whether one variable registry entry is there right now.
+     *
+     * The registry's answer to {@link readCharacter}, and a boolean for `hasAsset`'s reason: presence
+     * is the whole of what is asked, and handing the entry over would invite a later reader to plan
+     * against a copy instead of against the document.
+     */
+    hasVariable(variableId: string): boolean;
     /** The scene as it stands right now, or null when that story has no such scene. */
     readScene(storyId: StoryId, sceneId: StorySceneId): StoryScene | null;
+    /**
+     * The chapter as it stands right now - its id and the scenes it claims - or null when that story
+     * has no such chapter.
+     *
+     * The outline's answer to {@link readScene}, and the record rather than a boolean because the
+     * host asks two things of it: whether a scene can be filed there, and which scenes leave with a
+     * chapter that is being removed. The second is not knowable from a presence check, and it has to
+     * be asked *before* the removal - afterwards there is nowhere left to learn what was in it.
+     */
+    readChapter(storyId: StoryId, chapterId: string): { id: string; sceneIds: readonly StorySceneId[] } | null;
     /**
      * The character record as it stands right now, or null when the cast has no such member.
      *
@@ -70,6 +124,55 @@ export type LiveHostDeps = {
      * panel is theirs to keep.
      */
     readCharacter(characterId: string): StoredCharacter | null;
+    /**
+     * Whether one asset record is in the library right now.
+     *
+     * The library's answer to {@link readCharacter}, and a boolean rather than the record because
+     * presence is the whole of what is asked: an operation naming a record that is gone is refused so
+     * that the author keeps the inspector full of their own typing. Handing the record over would
+     * invite a later reader to plan against a copy instead of against the document.
+     */
+    hasAsset(assetType: string, assetId: string): boolean;
+    /**
+     * One section's folder records as they stand, or null when this machine does not hold them.
+     *
+     * The whole map rather than one folder, because the question the host asks is about the shape of
+     * the tree - whether the folder being deleted has folders under it - and that is not knowable
+     * from one record.
+     */
+    readAssetFolders(category: string): Readonly<Record<string, { parentGroupId?: unknown }>> | null;
+    /**
+     * Whether one row of a configuration table is still there.
+     *
+     * Three predicates, one per table, and booleans for {@link hasAsset}'s reason: presence is the
+     * whole of what is asked. An update naming a row that is gone is refused so the author keeps the
+     * field they are typing into - and, for the first two, so that nobody's edit puts back an edition
+     * of the game or a file already in players' hands.
+     */
+    hasAppTag(tagId: string): boolean;
+    hasDlc(dlcId: string): boolean;
+    hasBrandColor(colorId: string): boolean
+    /**
+     * Whether one interface element is in the document right now.
+     *
+     * A boolean, with `hasAsset`: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy rather than against the document.
+     */
+    hasUIElement(ref: LiveUIElementRef): boolean;
+    /** Whether one blueprint is in the document right now. The element's counterpart. */
+    hasBlueprint(blueprintId: string): boolean;
+    /**
+     * Whether one bus is in the mixer right now.
+     *
+     * A boolean with {@link hasAsset} rather than the record with {@link readCharacter}, and for
+     * that method's reason: presence is the whole of what is asked, and handing the record over
+     * would invite a later reader to plan against a copy instead of against the document.
+     *
+     * Permissive when absent, so a caller that has not wired the mixer yet gets a host that works.
+     */
+    hasAudioTrack?(trackId: string): boolean;
+    /** Whether one asset set is declared right now. The mixer's, one document along. */
+    hasAssetSet?(setId: string): boolean;
     /**
      * The fingerprint of one unit after an operation landed on it, or null when this machine cannot
      * compute one.
@@ -127,7 +230,12 @@ export type LiveHostDeps = {
      *
      * Asked when an instance takes something, because a claim is recorded against a PERSON: a refusal
      * names one, and an instance id means nothing at all to whoever reads it. Nothing composes it -
-     * the room's own roster is the only thing that knows which account a window signed in as.
+     * the room's own roster is what knows which account a window signed in as.
+     *
+     * ⚠ **The fallback, not the first answer.** A message relayed by a server carries the sender's
+     * account on it, and that is both fresher and from the same authority - see {@link receive}.
+     * This answers for the host's own claims, which no message carries, and for a transport that
+     * says nothing about who spoke.
      *
      * ⚠ **A claim that cannot name a person is not recorded**, which is why the answer may be null
      * rather than falling back to the instance id. A set carrying ids would name nobody in a
@@ -156,6 +264,14 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-entry-scene": true,
     "rename-story": true,
     "reorder-chapters": true,
+    "create-scene": true,
+    "delete-scene": true,
+    "update-scene": true,
+    "move-scene": true,
+    "set-scene-snapshots": true,
+    "create-chapter": true,
+    "rename-chapter": true,
+    "delete-chapter": true,
     "create-character": true,
     "update-character": true,
     "delete-character": true,
@@ -165,6 +281,43 @@ const KNOWN_OPS: Readonly<Record<LiveOpKind, true>> = {
     "set-translations": true,
     "set-take": true,
     "set-takes": true,
+    "update-asset": true,
+    "move-assets": true,
+    "create-assets": true,
+    "replace-asset-content": true,
+    "delete-assets": true,
+    "write-ui": true,
+    "write-ui-graphs": true,
+    "set-asset-folder": true,
+    "delete-asset-folder": true,
+    "restore-asset-folder": true,
+    "create-app-tag": true,
+    "update-app-tag": true,
+    "delete-app-tag": true,
+    "set-app-tag-defaults": true,
+    "create-dlc": true,
+    "update-dlc": true,
+    "delete-dlc": true,
+    "create-brand-color": true,
+    "update-brand-color": true,
+    "delete-brand-color": true,
+    "move-brand-color": true,
+    "set-brand-fonts": true,
+    "set-dictionary-entry": true,
+    "set-dictionary-options": true,
+    "create-audio-track": true,
+    "update-audio-track": true,
+    "delete-audio-track": true,
+    "move-audio-track": true,
+    "create-asset-sets": true,
+    "update-asset-set": true,
+    "delete-asset-sets": true,
+    "move-asset-sets": true,
+    "create-variable": true,
+    "update-variable": true,
+    "delete-variable": true,
+    "set-key": true,
+    "remove-key": true,
 };
 
 /** What the host decided to do about one operation: perform this, or refuse for that reason. */
@@ -212,8 +365,12 @@ export class LiveHost {
      *
      * `from` is the instance the transport says sent it, not something the message claims about
      * itself - an intent carries no author for that reason, and the effect's `by` comes from here.
+     *
+     * `sentBy` is the account behind that instance, from the same authority and on the same
+     * message. Optional because only a claim needs it, and absent it falls back to `accountOf` -
+     * see {@link claim} for why being told beats looking it up.
      */
-    public receive(message: LiveMessage, from: string): LiveOutbound | null {
+    public receive(message: LiveMessage, from: string, sentBy?: string): LiveOutbound | null {
         switch (message.kind) {
             case "intent":
                 return this.intent(message, from);
@@ -224,7 +381,7 @@ export class LiveHost {
                 // store's revision moving rather than from here, so ONE path covers a claim taken,
                 // one given back, one that lapsed and one forgotten because what it held was
                 // deleted - and a set is never sent twice for one change.
-                this.claim(message, from);
+                this.claim(message, from, sentBy);
                 return null;
             case "effect":
             case "refusal":
@@ -339,16 +496,54 @@ export class LiveHost {
                 this.positions.remember(scene, applied.blockId);
             }
         }
+        // Every row a structural deletion is about to take with it, read while the scenes that hold
+        // them are still there. Afterwards there is nowhere left to learn which rows they were.
+        const leaving = this.rowsLeavingWith(applied, document);
         const alsoTouched = this.deps.applyOp(applied, document, derived) ?? [];
         if (applied.op === "delete-block") {
             // Nobody is writing a row that is gone.
             this.claims.forget(storyRowClaimKey(applied.blockId));
+        }
+        for (const blockId of leaving) {
+            // Nor a row whose whole scene is gone. Left in the set they would name rows nobody can
+            // reach until they lapsed - and would refuse the author who put the scene back, in their
+            // own restored scene.
+            this.claims.forget(storyRowClaimKey(blockId));
         }
         if (applied.op === "delete-character") {
             // Nor a record that is gone. The story rows it spoke keep their words under a bare name;
             // what nobody is doing any more is editing the record.
             this.claims.forget(characterClaimKey(applied.characterId));
         }
+        if (applied.op === "write-ui") {
+            // Nor an element that is gone. A delta whose removals somebody else held was refused
+            // before it got here, so what this releases is the deleter's own hold - which would
+            // otherwise sit in the room's set naming an element nobody can select until it lapsed.
+            for (const [elementId, record] of Object.entries(applied.parts.elements ?? {})) {
+                if (record === null) {
+                    this.claims.forget(uiElementClaimKey(null, elementId));
+                }
+            }
+            for (const [componentId, delta] of Object.entries(applied.parts.componentElements ?? {})) {
+                for (const [elementId, record] of Object.entries(delta)) {
+                    if (record === null) {
+                        this.claims.forget(uiElementClaimKey(componentId, elementId));
+                    }
+                }
+            }
+        }
+        // There is deliberately no asset counterpart to those two. A session carries no verb that
+        if (applied.op === "delete-variable") {
+            // Nobody is inside a registry row that is gone.
+            this.claims.forget(variableClaimKey(applied.variableId));
+        }
+        if (applied.op === "remove-key") {
+            // Nor a named string that is gone. Its translations stay where they are, but the row
+            // that held the source text is not there for anybody to be inside any more.
+            this.claims.forget(localizationKeyClaimKey(applied.name));
+        }
+        // There is deliberately no asset counterpart to those. A session carries no verb that
+        // removes an asset record, so a claim on one can only ever be given back or lapse.
         if (applied.op === "insert-block") {
             // A row that exists again has a real position, and a remembered one would outrank it.
             this.positions.forget(applied.sceneId, applied.block.id);
@@ -413,6 +608,61 @@ export class LiveHost {
             case "rename-scene": {
                 if (!this.deps.readScene(storyId, op.sceneId)) {
                     return { refuse: "scene-gone" };
+                }
+                return { op };
+            }
+
+            case "create-scene": {
+                // The chapter has to be somewhere for the scene to land in. One that carries its own
+                // chapter is making it here, so there is nothing to look up; one that names a chapter
+                // somebody deleted while the author was typing a name is refused rather than filed
+                // into a document that draws it nowhere - `scenes` would hold it and no chapter would
+                // claim it, which on every screen reads as a scene that was never created.
+                //
+                // ⚠ The scene id is deliberately NOT checked against one already there, with
+                // `create-character`: the id was minted by whoever built the record, so a collision
+                // is a uuid collision rather than a race, and a *retry* is answered by the receipts.
+                if (op.chapterId !== null && op.chapter === undefined
+                    && !this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
+                }
+                return { op };
+            }
+
+            case "delete-scene":
+            case "update-scene":
+            case "set-scene-snapshots": {
+                if (!this.deps.readScene(storyId, op.sceneId)) {
+                    return { refuse: "scene-gone" };
+                }
+                return { op };
+            }
+
+            case "move-scene": {
+                if (!this.deps.readScene(storyId, op.sceneId)) {
+                    return { refuse: "scene-gone" };
+                }
+                if (op.chapterId !== null && !this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
+                }
+                // ⚠ The sibling is deliberately not checked, which is `insert-block`'s answer rather
+                // than `move-block`'s. A row that lands in the wrong place is a paragraph the author
+                // has to find before they can undo it; a scene that lands at the end of the chapter
+                // they are already looking at is one drag away, and it is in the chapter they asked
+                // for either way.
+                return { op };
+            }
+
+            case "create-chapter":
+                // Nothing to check, with `create-character`: the id was minted by whoever built the
+                // record. A chapter carrying scenes is an undo putting a deletion back, and the
+                // scenes in it are the ones that left with it.
+                return { op };
+
+            case "rename-chapter":
+            case "delete-chapter": {
+                if (!this.deps.readChapter(storyId, op.chapterId)) {
+                    return { refuse: "chapter-gone" };
                 }
                 return { op };
             }
@@ -615,6 +865,257 @@ export class LiveHost {
                 // button, and the one drafted thing on it is a short direction note. See
                 // `CLAIMED_OPS` for the test both answers come from.
                 return { op };
+
+            case "update-asset": {
+                if (!this.deps.hasAsset(op.assetType, op.assetId)) {
+                    // ⚠ Says the record is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would put a record back after somebody deleted the file,
+                    // leaving a row in the browser with no bytes under it.
+                    return { refuse: "asset-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "move-assets": {
+                // Whole or not at all, and checked before a single row moves: half a drag is an
+                // arrangement the author never asked for, and the half that landed would look
+                // exactly like the whole of it. Unclaimed - see `CLAIMED_OPS`.
+                for (const move of op.moves) {
+                    if (!this.deps.hasAsset(op.assetType, move.assetId)) {
+                        return { refuse: "asset-gone" };
+                    }
+                }
+                return { op };
+            }
+
+            case "create-assets": {
+                // ⚠ The ids were minted by whoever built the records, so one already here is not a
+                // race - it is a retry that escaped the receipts, or a build that mints them
+                // differently. Refused rather than applied: writing over an existing record under
+                // its own id is the one way an import destroys a file that was already there.
+                for (const create of op.creates) {
+                    const id = create.record.id;
+                    if (typeof id !== "string" || this.deps.hasAsset(op.assetType, id)) {
+                        return { refuse: "asset-id-taken" };
+                    }
+                }
+                // Nothing here asks whether the bytes have arrived. See `LiveRefusalReason`.
+                return { op };
+            }
+
+            case "replace-asset-content": {
+                if (!this.deps.hasAsset(op.assetType, op.assetId)) {
+                    return { refuse: "asset-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "delete-assets": {
+                // Whole or not at all, then the claims - the rule every batch follows. Half a
+                // deletion is a library nobody produced, and the author would be told one row was
+                // taken while watching the rest of it disappear.
+                for (const assetId of op.assetIds) {
+                    if (!this.deps.hasAsset(op.assetType, assetId)) {
+                        return { refuse: "asset-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-asset-folder":
+            case "restore-asset-folder":
+                // Last-writer-wins, with `set-character-group`: a folder is four fields and none of
+                // them is drafted anywhere, so there is nothing a race can destroy.
+                return { op };
+
+            case "set-dictionary-entry":
+                // Nothing to check, and the reason is the translation library's: in this document an
+                // entry that is not there is not a state to be found missing - it is what a word the
+                // project does not write looks like. So an operation naming a term nobody has is an
+                // author teaching the project a spelling, which is the ordinary case rather than a
+                // race. Unclaimed, so there is nothing else to ask.
+                return { op };
+
+            case "set-dictionary-options":
+                // Last-writer-wins with the story's name: two people turning a check on and off is
+                // two edits, and the loser lost a click.
+                return { op };
+
+            case "create-audio-track":
+            case "create-asset-sets":
+                // Not checked against what is already there, and not claimed - `create-character`'s
+                // reason exactly: the ids were minted by whoever built the records, so one already
+                // present is a uuid collision rather than a race, and a retry is answered by the
+                // receipts. The creation that undoes a deletion names ids that have just left.
+                return { op };
+
+            case "update-audio-track":
+            case "move-audio-track":
+            case "delete-audio-track": {
+                if (this.deps.hasAudioTrack && !this.deps.hasAudioTrack(op.trackId)) {
+                    // ⚠ Says the bus is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would bring back a bus somebody deleted, and every reference
+                    // that had fallen back to a seeded one would quietly re-point at it.
+                    return { refuse: "track-gone" };
+                }
+                // ⚠ A deletion naming one of the three seeded buses is deliberately NOT refused
+                // here. It cannot be produced by this build - `deleteTrack` answers false before a
+                // sink is ever asked - and the normalizer re-seeds a missing built-in on every
+                // machine, so the room converges on the same mixer either way. A refusal nobody can
+                // reach is a refusal nobody maintains.
+                return { op };
+            }
+
+            case "update-asset-set": {
+                if (this.deps.hasAssetSet && !this.deps.hasAssetSet(op.setId)) {
+                    return { refuse: "set-gone" };
+                }
+                return { op };
+            }
+
+            case "delete-asset-sets":
+                // Deliberately tolerant of a set that is already gone, with
+                // `delete-character-group`: the second of two deletions changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return { op };
+
+            case "move-asset-sets": {
+                // Whole or not at all, and checked before a single row moves - the rule every batch
+                // follows. Half a drag is an arrangement the author never asked for, and the half
+                // that landed would look exactly like the whole of it.
+                for (const move of op.moves) {
+                    if (this.deps.hasAssetSet && !this.deps.hasAssetSet(move.setId)) {
+                        return { refuse: "set-gone" };
+                    }
+                }
+                return { op };
+            }
+
+            case "delete-asset-folder": {
+                const folders = this.deps.readAssetFolders(op.category);
+                if (!folders || !folders[op.folderId]) {
+                    // Deliberately tolerant of a folder that is already gone, with
+                    // `delete-character-group`: the second of two deletions changes nothing, and
+                    // refusing it would report a conflict where there is only agreement.
+                    return { op };
+                }
+                if (!op.recursive && hasChildFolder(folders, op.folderId)) {
+                    // ⚠ The author was asked "this folder has folders in it" before anything was
+                    // removed, and said no. Applying it anyway would take them regardless.
+                    return { refuse: "folder-not-empty" };
+                }
+                return { op };
+            }
+
+            case "create-app-tag":
+            case "create-dlc":
+            case "create-brand-color":
+                // Not checked against a row already there, and not claimed, with `create-character`:
+                // the id was minted by whoever built the record, so two of them colliding is a uuid
+                // collision rather than a race, and a *retry* of one create is answered by the
+                // receipts. The applier replaces rather than duplicates for the same reason.
+                return { op };
+
+            case "update-app-tag":
+            case "delete-app-tag": {
+                if (!this.deps.hasAppTag(op.tagId)) {
+                    // ⚠ Says the row is gone. It never says the author's typing is - the instruction
+                    // `row-gone` and `character-gone` both carry.
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "write-ui": {
+                // Whole or not at all, and the presence check comes first: an element this delta was
+                // *changing* has to still be there, or applying would resurrect it on every screen
+                // in the room with every machine agreeing about it. Creations are not checked - the
+                // ids were minted by whoever built the records.
+                for (const ref of op.updates ?? []) {
+                    if (!this.deps.hasUIElement(ref)) {
+                        // ⚠ Says the element is gone. It never says the author's typing is - the
+                        // same instruction `row-gone` and `character-gone` carry.
+                        return { refuse: "ui-element-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "set-app-tag-defaults":
+                // Nothing to find: the project's own record is the document's root and exists in
+                // every project, including one whose variant list is empty. The claim check is the
+                // whole of it, and it is over the release variant's row - see `opClaimKeys`.
+                return this.claimed(op, by) ?? { op };
+
+            case "update-dlc":
+            case "delete-dlc": {
+                if (!this.deps.hasDlc(op.dlcId)) {
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "create-variable":
+                // Not checked against an entry already there, and not claimed, with
+                // `create-character`: the id was minted by whoever built the entry, so a collision is
+                // a uuid collision rather than a race, and a retry is answered by the receipts.
+                return { op };
+
+            case "update-variable":
+            case "delete-variable": {
+                if (!this.deps.hasVariable(op.variableId)) {
+                    // ⚠ Says the entry is gone. It never says the author's typing is - the same
+                    // instruction `row-gone` and `character-gone` carry. An update that created what
+                    // it could not find would put back a variable somebody removed, leaving every
+                    // blueprint node that used to name it still empty.
+                    return { refuse: "variable-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "update-brand-color":
+            case "delete-brand-color": {
+                if (!this.deps.hasBrandColor(op.colorId)) {
+                    return { refuse: "config-entry-gone" };
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+
+            case "move-brand-color":
+                // Last-writer-wins and unclaimed, with `move-block` and `move-assets`: a drag
+                // rearranges the palette without touching a word anybody wrote. Deliberately tolerant
+                // of a colour that has gone since - the applier leaves the order as it is, and
+                // refusing would report a conflict over a gesture that costs nobody anything.
+                return { op };
+
+            case "set-brand-fonts":
+                // Last-writer-wins for the stack as a whole. Nothing on it is typed, so there is no
+                // draft for a race to destroy - see `CLAIMED_OPS`.
+                return { op };
+            case "write-ui-graphs": {
+                for (const blueprintId of op.updates ?? []) {
+                    if (!this.deps.hasBlueprint(blueprintId)) {
+                        return { refuse: "ui-blueprint-gone" };
+                    }
+                }
+                return this.claimed(op, by) ?? { op };
+            }
+            case "set-key":
+                // ⚠ The claim check and nothing else, with `set-translation`. There is no "key is
+                // gone" refusal to pair with `row-gone`, because this verb is the service's own
+                // create-or-replace: an operation naming a key nobody has is an author declaring a
+                // string, which is the ordinary case rather than a race. What CAN be raced is the
+                // source text somebody is halfway through, and that is what the claim covers.
+                return this.claimed(op, by) ?? { op };
+
+            case "remove-key":
+                // Claimed, with `delete-character`: taking away the row somebody is inside takes the
+                // sentence they were writing. Deliberately tolerant of a key that is already gone,
+                // with `delete-character-group` - the second of two removals changes nothing, and
+                // refusing it would report a conflict where there is only agreement.
+                return this.claimed(op, by) ?? { op };
         }
     }
 
@@ -676,7 +1177,7 @@ export class LiveHost {
      * every kind of claim, and the worst a key for nothing can do is put a name over something nobody
      * in the room is looking at.
      */
-    private claim(message: LiveClaim, from: string): void {
+    private claim(message: LiveClaim, from: string, sentBy?: string): void {
         if (!this.isMember(from)) {
             return;
         }
@@ -684,7 +1185,17 @@ export class LiveHost {
             this.claims.release(message.key, from);
             return;
         }
-        const account = this.deps.accountOf?.(from) ?? null;
+        // ⚠ **What the transport was told, before what this window worked out.** Both name the same
+        // authority - the server stamps the instance and the account on every message it relays -
+        // but only one of them is on the message. Looking the sender up in the roster asks a copy
+        // that is a delivery behind: the roster arrives on the project's topic and the claim on the
+        // room's, so a member who joined a moment ago can be writing a row before this window has
+        // been told they are here. That gap used to end here, silently, in the branch below - and
+        // silently is the whole of the injury, because an unclaimed row is one somebody else may
+        // take without ever being refused.
+        const account = (sentBy !== undefined && sentBy !== "" ? sentBy : null)
+            ?? this.deps.accountOf?.(from)
+            ?? null;
         if (account === null) {
             // Nothing rather than a claim held by an id nobody would recognise. See `accountOf`.
             return;
@@ -713,10 +1224,44 @@ export class LiveHost {
         return this.deps.isMember ? this.deps.isMember(instance) : true;
     }
 
+    /**
+     * Every row a structural deletion is about to remove, read before it happens.
+     *
+     * Empty for everything else, so the caller can ask unconditionally: the two verbs that take rows
+     * away without naming one are a scene deletion and a chapter deletion, and both are answerable
+     * only while the document still holds what they are about.
+     */
+    private rowsLeavingWith(op: LiveOp, document: LiveDocument): readonly StoryBlockId[] {
+        if (op.op !== "delete-scene" && op.op !== "delete-chapter") {
+            return [];
+        }
+        const storyId = storyOf(document);
+        const sceneIds = op.op === "delete-scene"
+            ? [op.sceneId]
+            : this.deps.readChapter(storyId, op.chapterId)?.sceneIds ?? [];
+        return sceneIds.flatMap(sceneId => Object.keys(this.deps.readScene(storyId, sceneId)?.blocks ?? {}));
+    }
+
     /** Whether this session speaks for a document, asked of the one table both halves read. */
     private carries(document: LiveDocument): boolean {
-        return liveSessionCarries(this.deps.stories, document, this.deps.locales ?? NO_LIVE_LOCALES);
+        return liveSessionCarries(
+            this.deps.stories,
+            document,
+            this.deps.locales ?? NO_LIVE_LOCALES,
+            this.deps.assetTypes ?? [],
+            this.deps.assetCategories ?? [],
+            this.deps.ui ?? NO_LIVE_INTERFACE,
+            this.deps.registries ?? NO_LIVE_REGISTRIES,
+        );
     }
+}
+
+/** Whether any folder in this section names `folderId` as its parent. */
+function hasChildFolder(
+    folders: Readonly<Record<string, { parentGroupId?: unknown }>>,
+    folderId: string,
+): boolean {
+    return Object.values(folders).some(folder => folder.parentGroupId === folderId);
 }
 
 /**

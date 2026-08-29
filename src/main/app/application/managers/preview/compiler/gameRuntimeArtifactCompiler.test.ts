@@ -1,23 +1,25 @@
+import { execFileSync } from "child_process";
 import crypto from "crypto";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
+import { encodeProjectConfig } from "@shared/utils/nlproj";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-    createProjectMaterial,
-    createSealedLayer,
+    createProjectToken,
+    createAssetOverlay,
     derivePackKey,
-    projectVerificationKey,
-    runtimeSupportPath,
-    LAYER_FILE_EXTENSION,
-} from "@narraleaf/encryption";
+    projectStamp,
+    archiveReaderPath,
+    OVERLAY_FILE_EXTENSION,
+} from "@narraleaf/bindings";
 import {
-    openSealedBundle,
-    openSealedLayer,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-} from "@narraleaf/encryption/runtime";
+    openAssetArchive,
+    openAssetOverlay,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+} from "@narraleaf/bindings/read";
 import { GAME_RUNTIME_PACK_SCHEMA_VERSION } from "@shared/types/gameRuntime";
 import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
 import { UI_DOCUMENT_SCHEMA_VERSION } from "@shared/types/ui-editor/document";
@@ -305,7 +307,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47340),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 
@@ -318,6 +320,68 @@ describe("game runtime artifact compiler", () => {
         expect(result.pack.plugins[0].sidecars).toEqual([{
             id: SIDECAR_ID,
             entry: `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/win-x64/tool.exe`,
+            kind: "executable",
+            autostart: "onGameStart",
+            startupTimeoutMs: 5000,
+            shutdownTimeoutMs: 3000,
+            restart: { maxRetries: 3, backoffMs: 1000 },
+        }]);
+    });
+
+    /*
+     * The case this replaced: a build with more than one desktop target shipped
+     * NO sidecars at all, with a warning telling the author to build one platform
+     * at a time. The obstacle was the pack rather than the copying - it named one
+     * file per sidecar, and the name is not the same on both.
+     */
+    it("ships a sidecar for every target, naming the file each machine spawns", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+        const manifest = await writeSidecarPlugin({
+            installDir: pluginInstallDir,
+            files: { "bin/tool.exe": "MZ fake executable", "bin/tool": "#!/bin/sh" },
+            entry: "unused",
+            include: [],
+            targets: {
+                "windows-x64": { entry: "bin/tool.exe", include: ["bin/tool.exe"] },
+                "linux-x64": { entry: "bin/tool", include: ["bin/tool"] },
+            },
+        });
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: ["windows-x64", "linux-x64"],
+            runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
+        });
+
+        // Each target's own file, under its own staging directory - the packaging
+        // step maps one of these onto the app root per package.
+        const staged = (platformKey: string, name: string) => path.join(
+            result.appDir, "platform", platformKey, "sidecars", SIDECAR_PLUGIN_ID, SIDECAR_ID, "bin", name);
+        await expect(fs.readFile(staged("windows-x64", "tool.exe"), "utf-8")).resolves.toBe("MZ fake executable");
+        await expect(fs.readFile(staged("linux-x64", "tool"), "utf-8")).resolves.toBe("#!/bin/sh");
+        // And neither is at the app root, where it would ship to both.
+        await expect(fs.access(path.join(result.appDir, "sidecars"))).rejects.toThrow();
+
+        // One pack entry, naming a file per machine, keyed the way a running game
+        // describes itself rather than the way the build dialog does.
+        expect(result.pack.plugins[0].sidecars).toEqual([{
+            id: SIDECAR_ID,
+            entry: {
+                "win32-x64": `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/tool.exe`,
+                "linux-x64": `sidecars/${SIDECAR_PLUGIN_ID}/${SIDECAR_ID}/bin/tool`,
+            },
             kind: "executable",
             autostart: "onGameStart",
             startupTimeoutMs: 5000,
@@ -346,7 +410,7 @@ describe("game runtime artifact compiler", () => {
 
         await expect(compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47341),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         })).rejects.toThrow(
             new RegExp(`Sidecar "${SIDECAR_ID}" of plugin "${SIDECAR_PLUGIN_ID}".+bin/tool\\.exe.+sha256`, "s"),
@@ -357,7 +421,7 @@ describe("game runtime artifact compiler", () => {
         const projectPath = path.join(tempDir, "project");
         const runtimeDistDir = path.join(tempDir, "runtime-dist");
         const pluginInstallDir = path.join(tempDir, "plugins", SIDECAR_PLUGIN_ID);
-        const hostUserDataDir = path.join(tempDir, "userData");
+        const hostCacheRoot = path.join(tempDir, "userData");
         await createRuntimeDist(runtimeDistDir);
         await createMinimalProject(projectPath);
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
@@ -367,7 +431,7 @@ describe("game runtime artifact compiler", () => {
         // offline machine would; the compile must not reach the network.
         const dependencyBytes = "redistributable library bytes";
         const dependencySha256 = sha256OfText(dependencyBytes);
-        const sourcePath = buildDependencySourcePath(hostUserDataDir, dependencySha256);
+        const sourcePath = buildDependencySourcePath(hostCacheRoot, dependencySha256);
         await fs.mkdir(path.dirname(sourcePath), { recursive: true });
         await fs.writeFile(sourcePath, dependencyBytes, "utf-8");
         const fetchMock = vi.fn();
@@ -395,8 +459,8 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47342),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
-            hostUserDataDir,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
+            hostCacheRoot,
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 
@@ -426,7 +490,7 @@ describe("game runtime artifact compiler", () => {
 
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47343),
-            sidecarPlatformKey: SIDECAR_PLATFORM_KEY,
+            platformKeys: [SIDECAR_PLATFORM_KEY],
             runtimePlugins: [pluginSource(manifest, pluginInstallDir)],
         });
 
@@ -716,9 +780,9 @@ describe("game runtime artifact compiler", () => {
         await expect(fs.access(path.join(result.appDir, "assets"))).rejects.toThrow();
         await expect(fs.access(path.join(result.appDir, "plugins"))).rejects.toThrow();
         // The consolidated store and the support binary are present.
-        await expect(fs.access(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME))).resolves.toBeUndefined();
-        await expect(fs.access(path.join(result.appDir, RUNTIME_SUPPORT_FILENAME))).resolves.toBeUndefined();
-        expect(result.packPath).toBe(path.join(result.appDir, RUNTIME_BUNDLE_FILENAME));
+        await expect(fs.access(path.join(result.appDir, ASSET_ARCHIVE_FILENAME))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, ARCHIVE_READER_FILENAME))).resolves.toBeUndefined();
+        expect(result.packPath).toBe(path.join(result.appDir, ASSET_ARCHIVE_FILENAME));
 
         // The asset is addressed by an extension-free store entry; the media type
         // is still known from the manifest.
@@ -732,9 +796,9 @@ describe("game runtime artifact compiler", () => {
 
         // The reader this build produced opens the store on its own, with
         // nothing passed to it.
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -747,10 +811,26 @@ describe("game runtime artifact compiler", () => {
 
         // The store is bound to the reader this build produced: the copy the
         // package ships does not open it.
-        await expect(openSealedBundle(
-            runtimeSupportPath(),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        await expect(openAssetArchive(
+            archiveReaderPath(),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         )).rejects.toThrow();
+    });
+
+    it("refuses an output root that is not absolute", async () => {
+        // Nothing is created first: the point is that the refusal lands before the compile deletes
+        // `<root>/app`, which a relative root would resolve against the host's working directory -
+        // the Studio checkout, in development.
+        const input = previewCompileInput(path.join(tempDir, "project"), path.join(tempDir, "runtime-dist"), 47351);
+
+        await expect(compileGameRuntimeArtifact({
+            ...input,
+            outputRoot: path.join(".nlstudio", "preview"),
+        })).rejects.toThrow(/absolute output root/);
+        await expect(compileGameRuntimeArtifact({
+            ...input,
+            outputRoot: "",
+        })).rejects.toThrow(/absolute output root/);
     });
 
     it("writes a production app without a control channel or sibling userData", async () => {
@@ -844,6 +924,57 @@ describe("game runtime artifact compiler", () => {
     });
 
     /*
+     * The one combination the marker must not survive.
+     *
+     * A protected build's runtime refuses a debugging switch whatever its markers say, because the
+     * gate that decides in time reads the loose manifest - a text file - and a build whose author
+     * paid for asset protection cannot have a one-word edit standing between a stranger and a
+     * debugger attached to the process that holds the decrypted content. So the artifact does not
+     * carry the claim at all, and says why.
+     */
+    it("keeps the debuggable marker on a protected build, and says how far it reaches", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// runtime main", "utf-8");
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            debuggable: true,
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        expect(result.pack.debuggable).toBe(true);
+        // The artifact is honest about being half a debuggable one, because the difference only
+        // shows up when someone runs the packaged game and nothing attaches.
+        expect(result.notices.some(notice => notice.includes("run directly"))).toBe(true);
+
+        // Both markers, because the runtime reads them at different moments and puts each through
+        // the same rule - an artifact carrying only one of them would be refused by the other gate.
+        const manifest = JSON.parse(await fs.readFile(path.join(result.appDir, "package.json"), "utf-8"));
+        expect(manifest.narraleaf.debuggable).toBe(true);
+
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+        );
+        try {
+            const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+            expect(pack.debuggable).toBe(true);
+        } finally {
+            await reader.close();
+        }
+    });
+
+    /*
      * The point of the whole opaque-read design, asserted end to end: a shipped protected build must
      * be unable to answer "what is in here", while still being able to answer "give me this id".
      *
@@ -869,9 +1000,9 @@ describe("game runtime artifact compiler", () => {
             encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -932,9 +1063,9 @@ describe("game runtime artifact compiler", () => {
             encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
         });
 
-        const reader = await openSealedBundle(
-            path.join(result.appDir, RUNTIME_SUPPORT_FILENAME),
-            path.join(result.appDir, RUNTIME_BUNDLE_FILENAME),
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
         );
         try {
             const pack = JSON.parse((await reader.read("pack")).toString("utf-8"));
@@ -1115,7 +1246,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47340),
             mode: "production",
@@ -1144,7 +1275,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const result = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47341),
             mode: "production",
@@ -1154,27 +1285,27 @@ describe("game runtime artifact compiler", () => {
         });
 
         expect(result.pack.addOns?.verificationKey)
-            .toBe(projectVerificationKey(projectMaterial, "com.example.patchable"));
+            .toBe(projectStamp(projectMaterial, "com.example.patchable"));
         // What a later patch export reads to decide whether this build can be sent the difference
         // rather than a whole pack. Dropped, every patch made for this build silently goes back to
         // replacing the content of every other patch installed beside it.
         expect(result.pack.addOns?.packDeltaVersion).toBe(PACK_DELTA_VERSION);
         // Loose payload, and still a binary beside it.
         await expect(fs.access(path.join(result.appDir, "pack.json"))).resolves.toBeUndefined();
-        const binaryPath = path.join(result.appDir, RUNTIME_SUPPORT_FILENAME);
+        const binaryPath = path.join(result.appDir, ARCHIVE_READER_FILENAME);
         await expect(fs.access(binaryPath)).resolves.toBeUndefined();
 
         // Bound to this title: a patch for it opens, and the same patch does not
         // open against the copy the package ships.
-        const patchPath = path.join(tempDir, `patch${LAYER_FILE_EXTENSION}`);
-        const writer = await createSealedLayer(patchPath, {
+        const patchPath = path.join(tempDir, `patch${OVERLAY_FILE_EXTENSION}`);
+        const writer = await createAssetOverlay(patchPath, {
             projectMaterial,
             titleId: "com.example.patchable",
         });
         await writer.add("assets/probe", Buffer.from("patched bytes"));
         await writer.finalize();
 
-        const reader = await openSealedLayer(binaryPath, patchPath, {
+        const reader = await openAssetOverlay(binaryPath, patchPath, {
             verificationKey: result.pack.addOns?.verificationKey,
         });
         try {
@@ -1183,7 +1314,7 @@ describe("game runtime artifact compiler", () => {
         } finally {
             await reader.close();
         }
-        await expect(openSealedLayer(runtimeSupportPath(), patchPath, {
+        await expect(openAssetOverlay(archiveReaderPath(), patchPath, {
             verificationKey: result.pack.addOns?.verificationKey,
         })).rejects.toThrow();
     });
@@ -1201,7 +1332,7 @@ describe("game runtime artifact compiler", () => {
         await writeAsset(projectPath, ASSET_ID, "local image bytes");
         await writeProjectIcon(projectPath, "configured icon bytes");
 
-        const projectMaterial = createProjectMaterial();
+        const projectMaterial = createProjectToken();
         const release = await compileGameRuntimeArtifact({
             ...previewCompileInput(projectPath, runtimeDistDir, 47342),
             mode: "production",
@@ -1211,18 +1342,18 @@ describe("game runtime artifact compiler", () => {
             distribution: { key: projectMaterial, titleId: "com.example.full" },
         });
 
-        const demoPatch = path.join(tempDir, `demo${LAYER_FILE_EXTENSION}`);
-        const writer = await createSealedLayer(demoPatch, {
+        const demoPatch = path.join(tempDir, `demo${OVERLAY_FILE_EXTENSION}`);
+        const writer = await createAssetOverlay(demoPatch, {
             projectMaterial,
             titleId: "com.example.full-demo",
         });
         await writer.add("assets/probe", Buffer.from("demo bytes"));
         await writer.finalize();
 
-        await expect(openSealedLayer(
-            path.join(release.appDir, RUNTIME_SUPPORT_FILENAME),
+        await expect(openAssetOverlay(
+            path.join(release.appDir, ARCHIVE_READER_FILENAME),
             demoPatch,
-            { verificationKey: projectVerificationKey(projectMaterial, "com.example.full-demo") },
+            { verificationKey: projectStamp(projectMaterial, "com.example.full-demo") },
         )).rejects.toThrow();
     });
 });
@@ -1254,6 +1385,8 @@ async function writeSidecarPlugin(input: {
     include: string[];
     sha256?: Record<string, string>;
     platformKey?: string;
+    /** Several targets, when the point of the test is that they differ. */
+    targets?: Record<string, { entry: string; include: string[] }>;
     buildDependencies?: PluginBuildDependencyContribution[];
 }): Promise<NormalizedPluginManifestV2> {
     await fs.mkdir(input.installDir, { recursive: true });
@@ -1287,13 +1420,18 @@ async function writeSidecarPlugin(input: {
                 startupTimeoutMs: 5000,
                 shutdownTimeoutMs: 3000,
                 restart: { maxRetries: 3, backoffMs: 1000 },
-                targets: {
-                    [input.platformKey ?? SIDECAR_PLATFORM_KEY]: {
-                        entry: input.entry,
-                        include: input.include,
-                        sha256: declared,
+                targets: input.targets
+                    ? Object.fromEntries(Object.entries(input.targets).map(([key, target]) => [
+                        key,
+                        { entry: target.entry, include: target.include, sha256: declared },
+                    ]))
+                    : {
+                        [input.platformKey ?? SIDECAR_PLATFORM_KEY]: {
+                            entry: input.entry,
+                            include: input.include,
+                            sha256: declared,
+                        },
                     },
-                },
             }],
             buildDependencies: input.buildDependencies ?? [],
             buildConfig: [],
@@ -1383,8 +1521,8 @@ function previewCompileInput(
 async function createRuntimeDist(runtimeDistDir: string): Promise<void> {
     await fs.mkdir(runtimeDistDir, { recursive: true });
     await fs.writeFile(path.join(runtimeDistDir, "main.js"), "// main", "utf-8");
-    await fs.writeFile(path.join(runtimeDistDir, "native.js"), "// native", "utf-8");
-    await fs.writeFile(path.join(runtimeDistDir, "gate.js"), "// gate", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "bindings.js"), "// bindings", "utf-8");
+    await fs.writeFile(path.join(runtimeDistDir, "vendor.js"), "// vendor", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "preload.js"), "// preload", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.js"), "// renderer", "utf-8");
     await fs.writeFile(path.join(runtimeDistDir, "renderer.css"), "/* renderer css */", "utf-8");
@@ -1424,8 +1562,8 @@ async function createMinimalProject(
     await fs.mkdir(path.join(projectPath, "editor", "ui"), { recursive: true });
     await fs.mkdir(path.join(projectPath, "assets"), { recursive: true });
     await fs.writeFile(
-        path.join(projectPath, "project.json"),
-        JSON.stringify({
+        path.join(projectPath, "Fixture Project.nlproj"),
+        encodeProjectConfig({
             name: "Fixture Project",
             identifier: "fixture.project",
             ...(options.app ? { app: options.app } : {}),
@@ -1441,8 +1579,7 @@ async function createMinimalProject(
                     },
                 },
             },
-        }),
-        "utf-8",
+        }) as unknown as Uint8Array,
     );
     await fs.writeFile(
         path.join(projectPath, "editor", "ui", "uidoc.json"),
@@ -1615,7 +1752,15 @@ describe("weather clips in the pack", () => {
     });
 
     afterEach(async () => {
-        await fs.rm(tempDir, { recursive: true, force: true });
+        /*
+         * Tolerated, and only here. A compile that builds a codec for its title
+         * loads the result to seal with, and Windows will not unlink a loaded
+         * image - so the working copy outlives this suite. A real build has the
+         * same lock and does not care: the compile runs in a utility process that
+         * exits, and the next build finds nothing held. Failing the run over a
+         * temporary directory would report a locked file as a broken compiler.
+         */
+        await fs.rm(tempDir, { recursive: true, force: true }).catch(() => undefined);
     });
 
     it("carries a produced clip under the id the running game asks for", async () => {
@@ -1742,6 +1887,192 @@ describe("weather clips in the pack", () => {
         expect(report?.excluded.map(entry => entry.name)).toEqual(["spare.png"]);
         expect(report?.excluded[0].bytes).toBe("unreferenced bytes".length);
         expect(report?.excludedBytes).toBe("unreferenced bytes".length);
+    });
+
+    /*
+     * A C toolchain, if this machine keeps one. Compiling a codec for a title is
+     * the shipping path now, so a test of that path needs a compiler; fetching one
+     * would pull 76 MB into a unit test, so it is looked for and the test says so
+     * when there is none.
+     */
+    function localToolchain(): string | null {
+        const candidates = [process.env.ZIG, process.platform === "win32" ? "zig.exe" : "zig"]
+            .filter((entry): entry is string => Boolean(entry));
+        for (const candidate of candidates) {
+            try {
+                execFileSync(candidate, ["version"], { stdio: "ignore" });
+                return candidate;
+            } catch {
+                continue;
+            }
+        }
+        return null;
+    }
+
+    /*
+     * The ruling this enforces: a build that cannot compile its codec for the
+     * title STOPS. It used to write the material into the prebuilt image and carry
+     * on with a warning, which handed the author a package that any copy of the
+     * codec package can open, having told them their content was protected.
+     */
+    it("refuses to build protected content it cannot compile a codec for", async () => {
+        const projectPath = path.join(tempDir, "refuses");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist-refuses");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        await expect(compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: ["windows-x64"],
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            // No toolchain, and nowhere to put one.
+        })).rejects.toThrow(/Asset protection could not compile this title's content codec/);
+    });
+
+    /*
+     * Phase four: the interface code goes inside the store rather than beside it.
+     *
+     * What it does not cover is the ceiling, and the ceiling is the point of the
+     * assertion below about main.js and the preload: Electron opens those two
+     * itself, before anything of ours could answer for them, so they stay
+     * readable however much else moves. What is in them is the loader that asks
+     * the store for the game, not the game.
+     */
+    it("keeps a protected build's interface code in the store, not beside it", async () => {
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeAsset(projectPath, ASSET_ID, "local image bytes");
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const result = await compileGameRuntimeArtifact({
+            ...previewCompileInput(projectPath, runtimeDistDir, 47380),
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+        });
+
+        for (const name of ["index.html", "renderer.js", "renderer.css"]) {
+            await expect(fs.access(path.join(result.appDir, name)), `${name} is still loose`).rejects.toThrow();
+        }
+        // The two that cannot move, and are expected to still be there.
+        await expect(fs.access(path.join(result.appDir, "main.js"))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(result.appDir, "preload.js"))).resolves.toBeUndefined();
+
+        const reader = await openAssetArchive(
+            path.join(result.appDir, ARCHIVE_READER_FILENAME),
+            path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+        );
+        try {
+            /* Byte for byte what the runtime build produced: the store holds the
+             * shipped interface, not a rendition of it. */
+            for (const name of ["index.html", "renderer.js", "renderer.css"]) {
+                const expected = await fs.readFile(path.join(runtimeDistDir, name));
+                expect((await reader.read(name)).equals(expected), name).toBe(true);
+            }
+        } finally {
+            await reader.close();
+        }
+    });
+
+    /*
+     * The defect this replaced: a build packaging for Windows and macOS together
+     * wrote one copy of the codec addon, of whichever machine was doing the
+     * packaging, and every package but that one shipped an image its loader
+     * refuses. It was silent - the build succeeded, the installer was produced,
+     * and the game failed on a player's machine at first start.
+     */
+    it("stages a codec copy for every target a packaged build serves", { timeout: 60_000 }, async () => {
+        const toolchain = localToolchain();
+        if (!toolchain) {
+            // Loud rather than silent: this needs a C toolchain, and a machine
+            // without one has not run it. Set ZIG, or put zig on PATH.
+            console.warn("[compiler] SKIPPED per-target staging: no C toolchain (set ZIG to run it)");
+            return;
+        }
+        const projectPath = path.join(tempDir, "project");
+        const runtimeDistDir = path.join(tempDir, "runtime-dist");
+        await createRuntimeDist(runtimeDistDir);
+        await createMinimalProject(projectPath);
+        await writeProjectIcon(projectPath, "configured icon bytes");
+
+        const hostKey = process.platform === "win32" ? "windows-x64" : `${process.platform === "darwin" ? "macos" : "linux"}-${process.arch}`;
+        const otherKey = hostKey === "linux-x64" ? "windows-x64" : "linux-x64";
+        const result = await compileGameRuntimeArtifact({
+            projectPath,
+            runtimeDistDir,
+            runtimeVersion: "0.0.1-test",
+            entry: { kind: "surface", surfaceId: "surface-main" },
+            outputRoot: path.join(projectPath, ".nlstudio", "build", "staging"),
+            mode: "production",
+            packaging: true,
+            platformKeys: [hostKey, otherKey],
+            encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
+            titleCompiler: toolchain as string,
+        });
+
+        // Nothing at the app root: the packaging step is what puts one there, and
+        // a copy sitting at the root would ship to every package unconditionally.
+        await expect(fs.access(path.join(result.appDir, ARCHIVE_READER_FILENAME))).rejects.toThrow();
+
+        const staged = await Promise.all([hostKey, otherKey].map(key =>
+            fs.readFile(path.join(result.appDir, "platform", key, ARCHIVE_READER_FILENAME))));
+
+        /*
+         * And it says which protection it produced. This compile was given no
+         * cache directory, so there is nowhere to put a toolchain and the codec
+         * ships as built - a working protected build, but one a published copy of
+         * the codec package can open. An author who asked for protection is told
+         * that rather than left to assume the stronger answer.
+         */
+        expect(result.codecCompiledForTitle).toBe(true);
+
+        /*
+         * And it hands over a copy this machine can open. Something has to read
+         * the store back - the shipped-content audit does, on every narrowed
+         * build - and once the shipped copies are staged per target, one of them
+         * may be for another machine and none of them is at the path that used to
+         * be searched. The first real build after that change failed exactly
+         * there, so the path is part of the result now rather than assumed.
+         */
+        expect(result.codecHostImage).toBeTruthy();
+        await expect(fs.access(result.codecHostImage as string)).resolves.toBeUndefined();
+        // Outside the app dir: it is a working file, not something a player receives.
+        expect(path.relative(result.appDir, result.codecHostImage as string).startsWith("..")).toBe(true);
+        // Different machines, so different images - the assertion the old code
+        // would have failed, since it wrote the same bytes to both.
+        expect(staged[0].equals(staged[1])).toBe(false);
+
+        /*
+         * And they are bound to ONE store: the copy staged for this machine opens
+         * what this compile sealed, which is what lets one compile serve packages
+         * for several machines at once.
+         *
+         * Everywhere but Windows. Loading the copy pins the file, and Windows will
+         * not delete a pinned one - the temporary tree then outlives the test and
+         * the suite fails on the way out rather than on the assertion. It is the
+         * same lock that makes the shipped binary a copy rather than the built
+         * file. The property holds on both, and the codec package's own suite
+         * checks it for every target on whichever machine runs it.
+         */
+        if (process.platform !== "win32") {
+            const reader = await openAssetArchive(
+                path.join(result.appDir, "platform", hostKey, ARCHIVE_READER_FILENAME),
+                path.join(result.appDir, ASSET_ARCHIVE_FILENAME),
+            );
+            try {
+                const sealedPack = JSON.parse((await reader.read("pack")).toString("utf-8"));
+                expect(sealedPack.entry.surfaceId).toBe("surface-main");
+            } finally {
+                await reader.close();
+            }
+        }
     });
 
     it("carries the library whole for a preview, and reports nothing about it", async () => {

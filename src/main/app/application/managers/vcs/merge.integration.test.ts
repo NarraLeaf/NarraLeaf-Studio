@@ -13,6 +13,7 @@ import {
     createBranch,
     createRepository,
     flushRepository,
+    history,
     openStore,
     releaseRepository,
     repositoryStatus,
@@ -22,6 +23,9 @@ import {
     type StoreHandle,
 } from "./lore";
 import { abortMerge, readMergeState, resolveConflicts, restartConflicts, unresolveConflicts } from "./merge";
+import { commitWorkingTree } from "./repository";
+import { setRevisionMetadata } from "./lore";
+import { LORE_TEST_SERVER, loreTestIdentity, loreTestSession, signInLoreTestAccount } from "./loreTestAccount";
 import { readRevisionKind } from "./repository";
 import { blobAt } from "./revisionReader";
 import { cloneInto, publishToRemote, pushToRemote, syncFromRemote, writeRemote } from "./remote";
@@ -55,11 +59,16 @@ import { VcsManager } from "./VcsManager";
  * LORE_TEST_REMOTE="lore://127.0.0.1:41337" \
  *   npx vitest run src/main/app/application/managers/vcs/merge.integration.test.ts
  * ```
+ *
+ * **A server that verifies identities needs a token as well.** `loreTestAccount.ts` is where
+ * that is arranged, for this file and for the five others with a remote block.
  */
 
 const supported = isVcsPlatformSupported() || Boolean(process.env.LORE_LIB_PATH);
-const SERVER = (process.env.LORE_TEST_REMOTE ?? "").trim();
+const SERVER = LORE_TEST_SERVER;
 const remoteEnabled = supported && SERVER !== "";
+/** The author the local block commits as, and the identity a run with no token goes online as. */
+const AUTHOR = "spec@narraleaf";
 
 const DOCUMENT = "doc.json";
 /** A second conflicted file, so "one side per PATH" can be told from "one side for the merge". */
@@ -110,8 +119,10 @@ function offline(root: string): LoreGlobals {
     return globals;
 }
 
+/**
+/** Globals for a call that reaches the network, as the account the token belongs to. */
 function online(root: string): LoreGlobals {
-    return { ...offline(root), offline: false };
+    return { ...offline(root), offline: false, identity: loreTestIdentity(AUTHOR) };
 }
 
 function write(root: string, relative: string, contents: string): void {
@@ -236,7 +247,14 @@ function fakeApp(): BaseApp {
     const noop = () => undefined;
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
-        getGlobalState: () => ({ get: () => undefined }),
+        // The one setting a manager reads here: the sign-in it makes its online calls as. Empty
+        // for the local block, which never goes online.
+        getGlobalState: () => ({
+            get: (key: string) => {
+                const session = loreTestSession();
+                return key === "versionControl.serverSessions" && session ? [session] : undefined;
+            },
+        }),
     } as unknown as BaseApp;
 }
 
@@ -501,6 +519,43 @@ describe.skipIf(!supported)("closing a merge", () => {
      *  - **the merge's three sides are gone from disk**, so the commit carried none of them into
      *    the author's history (§4.23) and `readMergeState` no longer reports a merge.
      */
+    /**
+     * The revision that closes a merge has TWO parents, and Studio's own path is what has to.
+     *
+     * §4.26 measured this on a revision the backend committed for itself. What it did not measure
+     * is the commit Studio makes: `commitWorkingTree` stages the repository root first, which
+     * §4.25's experiment did not do, and a stage that re-recorded the tree as an ordinary change
+     * set would produce a single-parent commit - right content, closed merge state, and two lines
+     * that never joined. From outside that looks like nothing at all until a push is refused.
+     *
+     * Pinned here because a push cannot be: the remote half of this file needs a server, and a
+     * server that verifies identities cannot be reached from a test process at all yet (§4.34).
+     * This is the half that can run everywhere, and it is the half that would catch a regression
+     * in Studio's own commit rather than in the backend's.
+     */
+    it("records both parents, so the merge joins the two lines", async () => {
+        const fixture = await twoSided("nl-merge-parents-");
+        await branchMergeStart(fixture.globals, { branch: "feature" });
+        await flushRepository(fixture.globals);
+        await releaseRepository(fixture.globals);
+
+        const manager = new VcsManager(fakeApp());
+        try {
+            await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
+        } finally {
+            await manager.closeProject(fixture.root);
+        }
+
+        const globals = offline(fixture.root);
+        const graph = await history(globals, {});
+        const tip = [...graph.nodes.values()].sort((a, b) => b.number - a.number)[0];
+        expect(tip.parents).toHaveLength(2);
+        // Both of them, and specifically the two branch tips the merge was between - a revision
+        // with two parents that were not those would join the wrong lines.
+        expect([...tip.parents].sort()).toEqual([fixture.mine, fixture.theirs].sort());
+        await releaseRepository(globals);
+    }, 300_000);
+
     it("takes a side per path, records one revision, and reads the result back", async () => {
         const fixture = await twoSidedPair("nl-merge-complete-");
         await branchMergeStart(fixture.globals, { branch: "feature" });
@@ -530,10 +585,17 @@ describe.skipIf(!supported)("closing a merge", () => {
                 });
                 expect(sha256(bytes)).toBe(sha256(Buffer.from(text, "utf-8")));
             }
-            expect(done.revision.kind).toBe("commit");
+            // ⚠ **The revision that closes a merge is deliberately NOT labelled**, which is the
+            // one thing here that changed after §4.34 and the one that looks like a regression.
+            // The label is written to the STAGED revision, and while a merge is staged that
+            // write replaces the merge - the commit then records the local tip twice and the
+            // author's push is refused after they have resolved everything. The label costs
+            // nothing on screen: the history draws a two-parent revision with the merge icon
+            // before it consults `kind`, and only `checkpoint` is ever collapsed out.
+            expect(done.revision.kind).toBeUndefined();
 
             await manager.closeProject(fixture.root);
-            expect(await readRevisionKind(offline(fixture.root), done.revision.revision)).toBe("commit");
+            expect(await readRevisionKind(offline(fixture.root), done.revision.revision)).toBeUndefined();
         } finally {
             await manager.closeProject(fixture.root);
         }
@@ -609,7 +671,29 @@ describe.skipIf(!supported)("closing a merge", () => {
 });
 
 describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
-    /** Unique per run: the server keeps repositories by name, so a fixed one collides. */
+    /**
+     * Unique per run: the server keeps repositories by name, so a fixed one collides.
+     *
+     * ⚠ **Each run leaves one registration per spec behind, and nothing here removes them.**
+     * Taking a project off a server's list is a Team call and this process has no Team session -
+     * it speaks to the repository, not to the service in front of it. So a server used for this
+     * accumulates `conflict-…`, `orientation-…`, `readback-…` and `pushafter-…` rows, which
+     * matters because the one people point at is shared. Sweep them from a Studio that is signed
+     * in to it, which does have the session:
+     *
+     * ```js
+     * const origin = "lore://127.0.0.1:41337";
+     * const listed = await window.__NLS_RENDERER_INTERFACE__.team.call(origin, "projects.list", {});
+     * for (const p of listed.data.value.projects) {
+     *     if (/^(conflict|orientation|readback|pushafter)-/.test(p.name)) {
+     *         await window.__NLS_RENDERER_INTERFACE__.team.call(origin, "projects.forget", { project: p.id });
+     *     }
+     * }
+     * ```
+     *
+     * It removes the listing only - the repository and its revisions stay - so nothing that was
+     * swept is destroyed, and a name can be registered again.
+     */
     function serverUrl(name: string): string {
         return `${SERVER}/${name}-${Date.now().toString(36)}`;
     }
@@ -647,6 +731,9 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
         writeDeep(authorRoot, sides.file, sides.base);
         await commitAll(authorGlobals, authorRoot, "base");
 
+        // Before the first call that leaves this machine, and only once for the whole block.
+        await signInLoreTestAccount(authorRoot);
+
         const url = serverUrl(name);
         await writeRemote(authorRoot, url);
         await publishToRemote(online(authorRoot), { url, repositoryId: created.repository });
@@ -678,6 +765,55 @@ describe.skipIf(!remoteEnabled)("a conflicted sync", () => {
      * and every conflicted sync degraded to the `["*"]` placeholder. An author cannot resolve
      * `*`, and no UI can draw it.
      */
+    /**
+     * **The merge the author finished is one the server takes**, which is what makes finishing it
+     * finishing it.
+     *
+     * The defect this pins was invisible to everything else in the build and cost an author a
+     * second round trip they were given no reason for: every conflict resolved, "Finish merge"
+     * pressed, the merge state closed, the working tree clean - and the push still refused with
+     * `Branch has diverged`. Pressing Get again reported no conflicts, made a revision of its own,
+     * and only then would the work send.
+     *
+     * The cause is one line, and it is measured down to that line in §4.34: `commitWorkingTree`
+     * labelled the STAGED revision with the revision kind, and while a merge is staged that
+     * revision IS the merge - writing to it replaced it, and the commit that followed recorded the
+     * local tip as both of its parents. Two parents, so nothing counted them; the same one twice,
+     * so the two lines never joined.
+     *
+     * Asserted on the parents AND on the push, because either alone would have passed while the
+     * defect was live: the parent count was already 2, and a local merge (the spec in the block
+     * above) joins correctly either way. Only a merge a sync produced, pushed to the server it came
+     * from, fails.
+     */
+    it("closes a synced merge into something the server accepts", async () => {
+        const fixture = await divergedProject("pushafter");
+        await syncFromRemote(online(fixture.root));
+        const remoteTip = (await repositoryStatus(online(fixture.root), { scan: false, revisionOnly: true }))
+            .revision?.revisionRemote ?? "";
+        await releaseRepository(online(fixture.root));
+        expect(remoteTip).not.toBe("");
+
+        const manager = new VcsManager(fakeApp());
+        try {
+            await manager.completeMerge(fixture.root, [{ path: DOCUMENT, choice: "mine" }], { message: "merged" });
+        } finally {
+            await manager.closeProject(fixture.root);
+        }
+
+        const graph = await history(offline(fixture.root), {});
+        const tip = [...graph.nodes.values()].sort((a, b) => b.number - a.number)[0];
+        await releaseRepository(offline(fixture.root));
+        // The incoming side is one of the two parents. Before the fix both of them were the
+        // author's own tip, which is a merge revision that joins a line to itself.
+        expect(tip.parents).toContain(remoteTip);
+        expect(new Set(tip.parents).size).toBe(2);
+
+        // And the server takes it, first time, with no second sync in between.
+        await expect(pushToRemote(online(fixture.root))).resolves.toBeTruthy();
+        await releaseRepository(online(fixture.root));
+    }, 300_000);
+
     it("names the conflicting paths instead of answering with a placeholder", async () => {
         const { root: authorRoot, globals: authorGlobals } = await divergedProject("conflict");
 

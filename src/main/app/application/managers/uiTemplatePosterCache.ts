@@ -1,6 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
-import { CacheNamespace, UserDataNamespace } from "@shared/types/constants";
+import { CacheNamespace } from "@shared/types/constants";
 import type { UIThemeDescriptor } from "@shared/types/uiTemplateRegistry";
 import { fetchThemePreviews } from "./uiTemplateRegistryClient";
 
@@ -29,8 +29,8 @@ export class UITemplatePosterCache {
     /** In-flight fetches, so a grid of themes appearing at once makes one request each. */
     private readonly inFlight = new Map<string, Promise<string | null>>();
 
-    constructor(userDataDir: string) {
-        this.cacheDir = path.join(userDataDir, UserDataNamespace.Cache, CacheNamespace.UITemplatePosters);
+    constructor(cacheRoot: string) {
+        this.cacheDir = path.join(cacheRoot, CacheNamespace.UITemplatePosters);
     }
 
     /**

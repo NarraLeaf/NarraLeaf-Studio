@@ -101,10 +101,11 @@ import {
     sceneVariableDefs,
     soundStageObjectName,
     storyPersistentDefs,
+    storyTransitionKindOf,
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
+import { compareStoryCondition, evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
@@ -1340,14 +1341,21 @@ async function buildLaunchEntryScene(params: {
         nextActionIndex: params.nextActionIndex,
     };
 
+    // The stage as it stands at the target row, followed by everything the rest of the scene
+    // declares that this path never reached. The second half is not stage state and arrives hidden:
+    // it is here so the tail's rows find the objects a full compile of the scene would have
+    // registered for them - see `StoryStageSnapshot.declarations`. The real state goes first, so a
+    // name that IS on stage is always built from its own record.
+    const preposed = [...snapshot.displayables, ...snapshot.declarations];
+
     // Custom layers first so images/texts can bind to them, all pre-posed via constructor config.
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             getLayer(ctx, record.objectName, record.zIndex ?? 0, snapshotPoseProps(record));
         }
     }
     const registrations: { element: Image | Text; layer: Layer | undefined }[] = [];
-    for (const record of snapshot.displayables) {
+    for (const record of preposed) {
         if (record.kind === "layer") {
             continue;
         }
@@ -1698,7 +1706,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         // A jump nested inside a container is invisible to the walk, so the plan reports the scene as
         // running to its end. If compiling the tail met one, that is the real stop.
         if (playbackStop.reason === "sceneEnd" && ctx.previewEncounteredJump) {
-            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump };
+            playbackStop = { reason: "jump", ...ctx.previewEncounteredJump, followed: false };
         }
     } else {
         const targetBlock = input.targetBlockId ? scene.blocks[input.targetBlockId] : undefined;
@@ -1780,7 +1788,9 @@ async function compilePlaybackTail(ctx: SceneCompileContext, plan: StoryPlayback
             statements.push(...body);
         }
     }
-    if (plan.stop.reason === "jump") {
+    // Only the preview holds at a jump. A launch emits it and control leaves for the target scene,
+    // so there is nothing to report - the row did exactly what it says.
+    if (plan.stop.reason === "jump" && !plan.stop.followed) {
         const targetScene = ctx.document.scenes[plan.stop.targetSceneId];
         diagnostic(
             ctx,
@@ -1801,7 +1811,20 @@ function snapshotPoseProps(record: StageSnapshotDisplayable): Record<string, unk
     return props;
 }
 
-async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: StageSnapshotDisplayable): Promise<string | null> {
+/**
+ * The `src` a pre-posed snapshot element is CONSTRUCTED with.
+ *
+ * A layered character has to be rebuilt as its whole stack here, not as the single url a preset
+ * character resolves to: an Image's src shape is fixed in its constructor, and every later row for
+ * that character changes tags rather than the source. Handing it a url would leave the portrait
+ * unable to accept a tag change at all - the engine rejects the whole story for it while registering
+ * preloadable sources, so a mid-scene launch into a scene with a layered character crashed the
+ * player instead of starting.
+ */
+async function resolveSnapshotImageSource(
+    ctx: SceneCompileContext,
+    record: StageSnapshotDisplayable,
+): Promise<string | { layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
     const source = record.source;
     const blockId = record.sourceBlockId ?? record.objectName;
     if (!source) {
@@ -1812,6 +1835,12 @@ async function resolveSnapshotImageSource(ctx: SceneCompileContext, record: Stag
     }
     if (source.type === "color") {
         return source.color;
+    }
+    // The snapshot accumulated the tag selection row by row, so the stack opens on the look the
+    // character wore at the launch row rather than on its declared default.
+    const layered = await resolveCharacterLayeredSrc(ctx, source.characterId, blockId, source.tags);
+    if (layered) {
+        return layered;
     }
     return resolveCharacterImageUrl(ctx, source.characterId, source.pose, blockId);
 }
@@ -2461,7 +2490,12 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
             diagnostic(ctx, "error", block.id, `Jump target scene not found: ${block.payload.targetSceneId || "(empty)"}`);
             return [];
         }
-        const chain = ctx.nlrScene.jumpTo(target, await createTransition(block.payload.transition, ctx, block.id) as any);
+        const transition = await createTransition(block.payload.transition, ctx, block.id);
+        // A returnable jump takes the config object, because that is where the flag lives; a plain
+        // one keeps handing the transition straight in, which is the call every existing row makes.
+        const chain = block.payload.returnable
+            ? ctx.nlrScene.jumpTo(target, { returnable: true, ...(transition ? { transition } : {}) } as any)
+            : ctx.nlrScene.jumpTo(target, transition as any);
         return [recordStatement(ctx, chain, block)];
     }
 
@@ -2581,9 +2615,6 @@ async function compileNodeAction(ctx: SceneCompileContext, block: Extract<StoryB
                 AUDIO_TRACK_ID_VOICE,
                 { src: voiceUrl },
             );
-        }
-        if (block.payload.pauseAfter !== undefined) {
-            config.pause = block.payload.pauseAfter;
         }
         const sayConfig = Object.keys(config).length > 0 ? (config as any) : undefined;
         const eventMap = await resolveSegmentEvents(ctx, block.payload.text, block.id);
@@ -2797,10 +2828,15 @@ async function compileEventRun(
                 // switches when the token is revealed, not at line start.
                 const name = characterStageName(characterId);
                 const image = ctx.images.get(normalizeObjectName(name));
-                if (image) {
+                if (image && Array.isArray(src) && !acceptsAppearanceTags(image)) {
+                    // Same mismatch a `/face` row can hit, and the engine's answer is the same throw -
+                    // here at reveal time rather than during construction. See {@link acceptsAppearanceTags}.
+                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is on stage as a single image, so its appearance tags cannot change; expression skipped.`);
+                } else if (image) {
                     return TextEvent.expression(image, src, sound ? { sound } : undefined);
+                } else {
+                    diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
                 }
-                diagnostic(ctx, "warning", blockId, `Inline event: character "${characterId}" is not on stage (show it before this line; a character shown under a custom stage name cannot be targeted by an inline expression); expression skipped.`);
             } else {
                 diagnostic(ctx, "warning", blockId, `Inline event: character image source not found for ${characterId}.`);
             }
@@ -3235,6 +3271,15 @@ async function compileCharacterStageAction(
     if (layeredSrc) {
         const appearance = ctx.characterSummaries.get(payload.characterId!)?.appearance;
         const image = staged ?? getImage(ctx, name, { autoFit: true, src: layeredSrc as never });
+        // An Image built from a single url has no tag groups, and the engine rejects the whole story
+        // for a tag change aimed at one - during construction, so the player never starts and the row
+        // that caused it is nowhere in the message. That mismatch means an earlier row put this
+        // character on stage as a flat image (an `enter` with its own asset override, or an `/image`
+        // row sharing the stage name), so the diagnostic names the row that cannot act.
+        if (!acceptsAppearanceTags(image)) {
+            diagnostic(ctx, "warning", block.id, `${characterDiagnosticName(ctx, payload)} is on stage as a single image, so its appearance tags cannot change here.`);
+            return statements;
+        }
         await bindCharacterPortrait(ctx, payload.characterId, image);
         const selection = payload.operation === "enter"
             ? resolveTagSelection(appearance, payload.tags)
@@ -3636,7 +3681,9 @@ async function compileAudioAction(
             // replay case.
             return [recordStatement(
                 ctx,
-                sound.play(fadeMs),
+                // Only a row that asked for it holds the script until the clip ends; see
+                // `waitForEnd` on the payload.
+                sound.play(fadeMs, { waitForEnd: payload.waitForEnd === true }),
                 block,
                 undefined,
                 payload.assetId?.trim() || ctx.soundAssetIds.get(name),
@@ -4246,10 +4293,69 @@ function whileLoopCondition(until: (scriptCtx: ScriptCtx) => boolean, blockId: s
     };
 }
 
+/**
+ * Whether this row is a `/jump <scene> return` that is actually in the build.
+ *
+ * The one row whose actions have to stay together, and {@link compileUnchainedGroupBody} is the only
+ * reader. A disabled row compiles to nothing, so it is not one.
+ */
+function isReturnableJump(block: StoryBlock | undefined): block is Extract<StoryBlock, { kind: "jump" }> {
+    return Boolean(block && !block.disabled && block.kind === "jump" && block.payload.returnable);
+}
+
+/**
+ * Compile a group's rows for a body the engine stores UNCHAINED, folding a returnable jump into a
+ * branch of its own.
+ *
+ * `Control.all`, `any`, `allAsync`, `repeat` and `whileLoop` hand the engine a flat array and start
+ * one concurrent branch per action in it, where `Control.do` and `doAsync` link theirs into a single
+ * run. The difference is invisible for a row that compiles to one action, and fatal for the one row
+ * that does not. A returnable jump is three actions - the `control:do` that enters the target,
+ * `scene:callTo`, and the `scene:resume` linked behind it that IS the call's return address - so
+ * spread across three branches the call has nothing behind it and the engine stops the game with
+ * "A scene call has no return address."
+ *
+ * Wrapping that row's actions in a `Control.do` puts the three back into one branch, which the call
+ * can read its return address out of again. Only that row is wrapped: every other row that compiles
+ * to several actions is *meant* to be several branches here, and stories written against that shape
+ * would play differently if it changed. The wrapper carries no link of its own, which the engine
+ * requires of anything it is handed as a branch (`ControlAction.checkActionChain`).
+ *
+ * A compile pass's injections around that row go inside the wrapper with it, because they are what
+ * the pass asked for: "before this happens" and "after this has happened" is a run, not three things
+ * racing. Injections around any other row are untouched.
+ */
+async function compileUnchainedGroupBody(ctx: SceneCompileContext, blockIds: readonly string[]): Promise<NlrStatement[]> {
+    const statements: NlrStatement[] = [];
+    for (const blockId of blockIds) {
+        const block = ctx.scene.blocks[blockId];
+        const compiled = await compileBlock(ctx, blockId);
+        if (compiled.length > 0 && isReturnableJump(block)) {
+            // Recorded against the jump's own row, after the actions that row already emitted. An
+            // action id is numbered within its row alone, so the wrapper takes the next number in
+            // that row's own run and no other row's ids move.
+            statements.push(recordStatement(ctx, Control.do(compiled as any), block));
+        } else {
+            statements.push(...compiled);
+        }
+        // The same stop `compileBlockList` makes: nothing written after an `/ending` row plays.
+        if (endsPlayback(block)) {
+            break;
+        }
+    }
+    return statements;
+}
+
 async function compileControlGroup(ctx: SceneCompileContext, block: Extract<StoryBlock, { kind: "control" }>): Promise<NlrStatement[]> {
     const payload = block.payload as Extract<StoryControlPayload, { control: "sequence" | "parallel" | "race" | "repeat" }>;
-    const children = await compileBlockList(ctx, block.childrenIds);
     const mode = payload.mode ?? (payload.control === "parallel" ? "all" : payload.control === "race" ? "any" : "do");
+    // Which of the two body shapes below this group hands the engine. `repeat` is decided by the row
+    // and not by `mode`, in its counted form and in its `until` form alike, so it is tested first -
+    // a stale `mode` on a repeat row never reaches the call.
+    const unchainedBody = payload.control === "repeat" || mode === "all" || mode === "allAsync" || mode === "any";
+    const children = unchainedBody
+        ? await compileUnchainedGroupBody(ctx, block.childrenIds)
+        : await compileBlockList(ctx, block.childrenIds);
     // `until` selects the conditional form. A group that carries one is never a counted repeat, even
     // if a stale `times` rode along - the schema calls them mutually exclusive and this is where it
     // has to be true.
@@ -4394,6 +4500,18 @@ function getImage(ctx: SceneCompileContext, objectName: string, options?: { laye
     setStableElementId(ctx.elementIdBindings, image, `nl:image:${ctx.scene.id}:${name}`);
     ctx.images.set(name, image);
     return image;
+}
+
+/**
+ * Whether an Image can take a tag change (`char([...])`) at all.
+ *
+ * The engine normalizes a tag or layered definition into a src object and leaves `config.src` null
+ * for a plain url or colour, so this is the same question it asks - and it has to be asked before a
+ * tag change is compiled, because the engine's own answer is thrown while the story is being
+ * constructed, which takes the whole player down rather than reporting a row.
+ */
+function acceptsAppearanceTags(image: Image): boolean {
+    return (image as unknown as { config?: { src?: unknown } }).config?.src != null;
 }
 
 /** Get-or-create, on the same terms as {@link getImage}: `/text create` rows and snapshot replay. */
@@ -5318,7 +5436,15 @@ function createAnimationTransform(
 }
 
 async function createTransition(transition: StoryTransitionRef | undefined, ctx: SceneCompileContext, blockId: string): Promise<unknown | undefined> {
-    if (!transition || transition.kind === "none") {
+    // A ref that names no kind plays a cut, the same as one that says `none` - see
+    // `storyTransitionKindOf`. Deliberately not reported: the row names no transition, so there is
+    // none for this build to be missing, and the row an eaten `kind` leaves behind is
+    // indistinguishable from one the author never gave a transition to.
+    //
+    // `kind === "none"` is stated here as well as asked through the helper, and has to be: the
+    // literal comparison is what narrows `none` out of the union, without which `kind` is not
+    // `never` at the bottom of the switch and the exhaustiveness gate there cannot compile.
+    if (!transition || transition.kind === "none" || storyTransitionKindOf(transition) === "none") {
         return undefined;
     }
     const duration = Math.max(0, transition.durationMs ?? 300);
@@ -5796,12 +5922,25 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
             return persistent.equals(storageKey, condition.value as any);
         case "notEquals":
             return persistent.notEquals(storageKey, condition.value as any);
+        case "greaterThan":
+        case "greaterOrEqual":
+        case "lessThan":
+        case "lessOrEqual": {
+            // `evaluate` rather than a dedicated Persistent method: the engine has none for ordering,
+            // and routing the four through the expression evaluator's own rule is what keeps a
+            // dropdown threshold and a typed `gold >= 100` from disagreeing on the same values.
+            const operator = condition.operator;
+            const target = condition.value as StoryLiteralValue | undefined;
+            return persistent.evaluate(storageKey, (current: any) =>
+                compareStoryCondition(operator, current as StoryLiteralValue | undefined, target));
+        }
         case "exists":
             return persistent.isNotNull(storageKey);
         default:
             return falseCondition;
     }
 }
+
 
 /** App-level persistent condition: a runtime closure reading the shared host snapshot. */
 function persistentCondition(
@@ -5834,6 +5973,11 @@ function persistentCondition(
                 return equals(current, value);
             case "notEquals":
                 return !equals(current, value);
+            case "greaterThan":
+            case "greaterOrEqual":
+            case "lessThan":
+            case "lessOrEqual":
+                return compareStoryCondition(operator, current, value);
             case "exists":
                 return current !== null && current !== undefined;
             default:
@@ -5877,11 +6021,16 @@ async function resolveCharacterImageUrl(
  * group by its tag *set*, so all the layers on one axis collapse onto that axis's single group —
  * which is exactly what makes one `char(["angry"])` move the brows and the mouth together, and why
  * the appearance model keeps each bound layer's option map complete.
+ *
+ * `tags` is the selection the stack opens on. A row leaves it out and gets the character's declared
+ * default look; the snapshot pre-pose passes the selection accumulated up to the launch row, because
+ * an Image's src shape is fixed in its constructor and so is the appearance it starts in.
  */
 async function resolveCharacterLayeredSrc(
     ctx: SceneCompileContext,
     characterId: string | undefined,
     blockId: string,
+    tags?: StoryCharacterTagSelection,
 ): Promise<{ layers: (string | null | Record<string, string | null>)[]; defaults: string[] } | null> {
     const appearance = characterId ? ctx.characterSummaries.get(characterId)?.appearance : undefined;
     if (appearance?.kind !== "layered") {
@@ -5920,7 +6069,7 @@ async function resolveCharacterLayeredSrc(
     const emitted = new Set(
         layers.flatMap(layer => (typeof layer === "object" && layer !== null ? Object.keys(layer) : [])),
     );
-    const defaults = Object.values(resolveTagSelection(appearance, undefined)).filter(tagId => emitted.has(tagId));
+    const defaults = Object.values(resolveTagSelection(appearance, tags)).filter(tagId => emitted.has(tagId));
     return { layers, defaults };
 }
 
@@ -5956,11 +6105,21 @@ async function compileCharacterAvatars(
     // A puppet carries no avatar table: it has no differentials to key one on (see
     // `bindPuppetAvatar`, which sets the character-level default instead).
     const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
-    for (const key of Object.keys(avatarTable ?? {})) {
+    // Concurrently, and this is the one place in the compile where that is worth doing: a baked
+    // avatar is a derived project file rather than a library asset, so it is the one kind of id a
+    // host cannot resolve ahead of time - and a character with a few differentials has hundreds of
+    // keys, each of which was a full round trip to whatever answers for the host before the next
+    // was sent. The keys are independent and both maps below are keyed by this loop's own values,
+    // so the only thing the order decided was how long it took.
+    const avatarKeys = Object.keys(avatarTable ?? {});
+    const avatarUrls = await Promise.all(avatarKeys.map(async key => {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
         const url = assetId
             ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
             : null;
+        return { key, assetId, url };
+    }));
+    for (const { key, assetId, url } of avatarUrls) {
         if (url && assetId) {
             byKey.set(key, url);
             ctx.avatarAssetIdByUrl.set(url, assetId);

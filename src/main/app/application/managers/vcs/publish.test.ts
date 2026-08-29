@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { BaseApp } from "../../baseApp";
 import { VcsManager } from "./VcsManager";
+import type { TeamSessionCall } from "./serverProjectsSession";
 
 /**
  * Putting a project that already exists on to a server.
@@ -60,22 +61,32 @@ vi.mock("./backend", () => ({
     getVcsAvailability: async () => ({ available: true }),
 }));
 
+/**
+ * The two questions publishing asks the server, now answered over the session.
+ *
+ * `list` and `create` stand in for `projects.list` and `projects.create` on the wire: each
+ * hands back a {@link TeamCallOutcome}, the value under the key the wire carries. The real
+ * `serverProjectsSession` reader parses those, so a row still has to carry the fields it
+ * insists on. The order the two are asked in is what these tests are about, so each records
+ * itself in `lore.calls` before it answers.
+ */
 const server = vi.hoisted(() => ({
-    listServerProjects: vi.fn(),
-    createServerProject: vi.fn(),
+    list: vi.fn(),
+    create: vi.fn(),
 }));
 
-vi.mock("./serverProjects", async importOriginal => ({
-    ...(await importOriginal<Record<string, unknown>>()),
-    listServerProjects: (...args: unknown[]) => {
+/** The session transport handed to the manager: one function, dispatched by method. */
+const teamSessionCall: TeamSessionCall = (_remoteOrigin, method, params) => {
+    if (method === "projects.list") {
         lore.calls.push("list");
-        return server.listServerProjects(...args) as unknown;
-    },
-    createServerProject: (...args: unknown[]) => {
+        return Promise.resolve(server.list());
+    }
+    if (method === "projects.create") {
         lore.calls.push("register");
-        return server.createServerProject(...args) as unknown;
-    },
-}));
+        return Promise.resolve(server.create(params));
+    }
+    return Promise.resolve({ ok: false, problem: { kind: "unsupported" } });
+};
 
 const repositoryId = vi.hoisted(() => ({ value: "019fda5ba4fe799096aaab7585aa4722" as string | undefined }));
 
@@ -102,9 +113,14 @@ const SESSION = {
     signedInAt: 0,
 };
 
-function fakeApp(): BaseApp {
+function fakeApp(policy?: { publishLineage: "merge" | "refuse" }): BaseApp {
     const noop = () => undefined;
-    const state = new Map<string, unknown>([["versionControl.serverSessions", [SESSION]]]);
+    const state = new Map<string, unknown>([
+        // What the server said about itself when it was last asked, which is where a rule
+        // it states is read from - see `VcsManager.publishLineageRule` for why it is read
+        // here rather than probed at the moment it is needed.
+        ["versionControl.serverSessions", [policy === undefined ? SESSION : { ...SESSION, policy }]],
+    ]);
     return {
         logger: { info: noop, warn: noop, error: noop, debug: noop },
         getGlobalState: () => ({
@@ -115,18 +131,19 @@ function fakeApp(): BaseApp {
     } as unknown as BaseApp;
 }
 
-/** The project row a server answers a registration with. */
+/** The wire's answer to `projects.list`: the rows under their own key. */
+function listed(projects: unknown[] = []) {
+    return { ok: true, value: { projects } };
+}
+
+/** A whole project row, as a server lists it - the fields the reader insists on, and more. */
+function projectRow(id = REPOSITORY, name = "driftwood") {
+    return { id, name, description: "", createdAt: 0, remote: `${ORIGIN}/${name}` };
+}
+
+/** The wire's answer to `projects.create`: the one row it recorded, under its own key. */
 function recorded(id = REPOSITORY) {
-    return {
-        ok: true,
-        project: {
-            id,
-            name: "driftwood",
-            description: "",
-            createdAt: 0,
-            remote: `${ORIGIN}/driftwood`,
-        },
-    };
+    return { ok: true, value: { project: projectRow(id) } };
 }
 
 let manager: VcsManager;
@@ -135,9 +152,9 @@ beforeEach(() => {
     lore.calls.length = 0;
     lore.failures.clear();
     repositoryId.value = REPOSITORY;
-    server.listServerProjects.mockReset().mockResolvedValue({ ok: true, projects: [] });
-    server.createServerProject.mockReset().mockResolvedValue(recorded());
-    manager = new VcsManager(fakeApp());
+    server.list.mockReset().mockResolvedValue(listed());
+    server.create.mockReset().mockResolvedValue(recorded());
+    manager = new VcsManager(fakeApp(), undefined, teamSessionCall);
 });
 
 describe("publishing a project to a server", () => {
@@ -156,13 +173,14 @@ describe("publishing a project to a server", () => {
     it("registers the repository this machine already has, rather than asking for a new one", async () => {
         await manager.publishProject(PROJECT, ORIGIN, "driftwood");
 
-        expect(server.createServerProject).toHaveBeenCalledWith(
-            expect.objectContaining({ name: "driftwood", repositoryId: REPOSITORY }),
+        // The id it already has, and a stable client id so a retry is not a second project.
+        expect(server.create).toHaveBeenCalledWith(
+            expect.objectContaining({ name: "driftwood", repositoryId: REPOSITORY, clientId: REPOSITORY }),
         );
     });
 
     it("writes nothing and sends nothing when the server will not record the project", async () => {
-        server.createServerProject.mockResolvedValue({ ok: false, problem: { kind: "refused" } });
+        server.create.mockResolvedValue({ ok: false, problem: { kind: "refused", code: "refused", detail: "" } });
 
         const outcome = await manager.publishProject(PROJECT, ORIGIN, "driftwood");
 
@@ -186,8 +204,9 @@ describe("publishing a project to a server", () => {
     it("connects a project the server already holds, and sends nothing", async () => {
         // The second machine joining work that is already published. Whether this
         // machine's versions belong on top of what is there is what Send asks, with the
-        // state in front of the author.
-        server.listServerProjects.mockResolvedValue({ ok: true, projects: [{ id: REPOSITORY.toUpperCase() }] });
+        // state in front of the author. A whole row, because the reader keeps only rows
+        // that carry the fields everything downstream reads.
+        server.list.mockResolvedValue(listed([projectRow(REPOSITORY.toUpperCase())]));
 
         await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({ ok: true });
 
@@ -196,6 +215,68 @@ describe("publishing a project to a server", () => {
             `writeRemote ${ORIGIN}/driftwood`,
             `publishToRemote ${ORIGIN}/driftwood ${REPOSITORY}`,
         ]);
+    });
+
+    it("connects under the name the server already holds this repository as", async () => {
+        // ⚠ The case that shipped broken. A copied project folder carries the same
+        // repository, so this repository has been on this server before - under whatever it
+        // was called then. Connecting it at the name typed today wrote an address that
+        // pushed and could not be cloned or listed by anybody, because that name was never
+        // registered: `publishToRemote` swallows a refusal that names the same id as
+        // "already done", which is true of the repository and false of the name.
+        server.list.mockResolvedValue(listed([projectRow(REPOSITORY, "seagrass")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: true, connectedAs: "seagrass" });
+
+        // The name the server holds, in the address and in the registration alike - and
+        // nothing registered a second time, because this is one project either way.
+        expect(lore.calls).toEqual([
+            "list",
+            `writeRemote ${ORIGIN}/seagrass`,
+            `publishToRemote ${ORIGIN}/seagrass ${REPOSITORY}`,
+        ]);
+        expect(server.create).not.toHaveBeenCalled();
+    });
+
+    it("refuses a repeat publish where the server says a project gets one name", async () => {
+        // The operator's rule rather than Studio's judgement. `merge` is what every server
+        // older than the rule behaved like, so the strict one has to be asked for.
+        const strict = new VcsManager(fakeApp({ publishLineage: "refuse" }), undefined, teamSessionCall);
+        server.list.mockResolvedValue(listed([projectRow(REPOSITORY, "seagrass")]));
+
+        await expect(strict.publishProject(PROJECT, ORIGIN, "driftwood")).resolves.toEqual({
+            ok: false,
+            problem: { kind: "already-published", name: "seagrass" },
+        });
+
+        // Asked before anything is written, so there is no address to undo: a refusal that
+        // left one behind would be a refusal the author has to clean up after.
+        expect(lore.calls).toEqual(["list"]);
+    });
+
+    it("refuses a name a different project on that server answers to", async () => {
+        // Two repositories at one address is one address that resolves to whichever the
+        // server picks. The remedy is the author's - another name - so nothing is written
+        // here at all, the address included.
+        server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "driftwood")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
+
+        expect(lore.calls).toEqual(["list"]);
+        expect(server.create).not.toHaveBeenCalled();
+    });
+
+    it("publishes past a name that differs only in case, because a server does not", async () => {
+        // The name is matched without regard to case on purpose: an address that differs
+        // from another project's only by a capital letter is one an author reads as the
+        // same address, and the two of them being different projects is the surprise this
+        // refusal exists to prevent.
+        server.list.mockResolvedValue(listed([projectRow("019fda5ba4fe799096aaab7585aa4799", "Driftwood")]));
+
+        await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
+            .resolves.toEqual({ ok: false, problem: { kind: "name-taken" } });
     });
 
     it("puts the address back when connecting fails, and sends nothing", async () => {
@@ -235,7 +316,7 @@ describe("publishing a project to a server", () => {
     });
 
     it("hands back a list that could not be read, rather than registering a second time", async () => {
-        server.listServerProjects.mockResolvedValue({ ok: false, problem: { kind: "unreachable" } });
+        server.list.mockResolvedValue({ ok: false, problem: { kind: "offline", detail: "" } });
 
         await expect(manager.publishProject(PROJECT, ORIGIN, "driftwood"))
             .resolves.toEqual({ ok: false, problem: { kind: "unreachable" } });

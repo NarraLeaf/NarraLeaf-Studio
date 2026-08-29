@@ -19,6 +19,7 @@ import type {
     LastGameBuildRun,
 } from "@shared/types/gameBuild";
 import { isDesktopBuildPlatform } from "@shared/types/gameBuild";
+import type { StudioTaskProgress } from "@shared/types/studioTask";
 // Type-only: the draft records which page the dialog was on, and the page list is the dialog's.
 import type { BuildDialogPage } from "@/apps/workspace/modules/actions/buildDialogState";
 import type { LintReport, LintReportEntry, LintSeverity } from "@/lib/lint/types";
@@ -119,7 +120,7 @@ export type BuildDialogDraft = {
     page: BuildDialogPage;
 };
 
-const IDLE_STATE: GameBuildStateSnapshot = { status: "idle" };
+const IDLE_STATE: GameBuildStateSnapshot = { status: "idle", progress: null };
 
 /** Console channel the production build logs to; also where it drives the progress bar. */
 export const BUILD_CONSOLE_CHANNEL = "build";
@@ -133,11 +134,15 @@ export const BUILD_CONSOLE_CHANNEL = "build";
 export const BUILD_CONSOLE_SOURCE = "Build";
 
 /**
- * The pipeline reports only coarse phases (preparing → compiling → packaging), and the
- * longest phase - electron-builder packaging - is fully opaque: there is no real
- * fraction to show. Rather than fake a fill level that creeps upward (which is a lie
- * about how far along the build is), the bar runs as an indeterminate animation while a
- * build is active. It snaps to a solid 100% only on real completion.
+ * The pipeline reports coarse phases (preparing → compiling → packaging), and within them a count
+ * for the steps that have one - see {@link GameBuildStateSnapshot.progress}. So the bar is
+ * determinate while a step is counting and indeterminate for everything else, which is most of a
+ * build and all of the electron-builder packaging: that phase hands a Go binary one target at a
+ * time and hears nothing back until each is finished, and a bar filled from the target count would
+ * be an interpolation over targets that differ by orders of magnitude.
+ *
+ * It snaps to a solid 100% only on real completion, which is the status saying so and never a
+ * counter reaching its total.
  */
 const BUILD_ACTIVE_STATUSES: readonly GameBuildStatus[] = ["preparing", "compiling", "packaging"];
 
@@ -345,7 +350,7 @@ export class BuildService extends Service<BuildService> {
         // Committed: the selection is now persisted as BuildConfiguration, so
         // the draft has served its purpose and must not shadow it next time.
         this.clearDraft();
-        this.updateState({ status: "preparing", startedAt, platforms });
+        this.updateState({ status: "preparing", progress: null, startedAt, platforms });
         const result = await getInterface().gameBuild.start(this.projectPath(), {
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,
@@ -355,7 +360,7 @@ export class BuildService extends Service<BuildService> {
         } else {
             // `startedAt` matters as much as the message: the dashboard archives this as a finished
             // build, and without it the record's duration is measured from the epoch.
-            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: result.error });
+            this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: result.error });
         }
         return this.state;
     }
@@ -385,6 +390,7 @@ export class BuildService extends Service<BuildService> {
             console.error("[Build] failed to flush editor state before build", error);
             this.updateState({
                 status: "error",
+                progress: null,
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
@@ -406,6 +412,7 @@ export class BuildService extends Service<BuildService> {
             }
             this.updateState({
                 status: "error",
+                progress: null,
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
@@ -450,6 +457,7 @@ export class BuildService extends Service<BuildService> {
             }
             this.updateState({
                 status: "error",
+                progress: null,
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
@@ -480,6 +488,7 @@ export class BuildService extends Service<BuildService> {
             }
             this.updateState({
                 status: "error",
+                progress: null,
                 startedAt,
                 finishedAt: Date.now(),
                 platforms,
@@ -573,7 +582,7 @@ export class BuildService extends Service<BuildService> {
         if (refusal) {
             return refusal;
         }
-        this.updateState({ status: "preparing", startedAt, platforms });
+        this.updateState({ status: "preparing", progress: null, startedAt, platforms });
         const result = await getInterface().gameBuild.exportPatch(this.projectPath(), {
             kind: "surface",
             surfaceId: MAIN_APP_SURFACE_ID,
@@ -581,7 +590,7 @@ export class BuildService extends Service<BuildService> {
         if (result.success) {
             this.updateState(result.data.state);
         } else {
-            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: result.error });
+            this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: result.error });
         }
         return this.state;
     }
@@ -769,7 +778,7 @@ export class BuildService extends Service<BuildService> {
             consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
             // `startedAt` and `platforms` carried through for the reason the gates either side carry
             // them: the dashboard archives a refused run as a finished build.
-            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+            this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: refusal });
             return this.state;
         }
 
@@ -895,7 +904,7 @@ export class BuildService extends Service<BuildService> {
             { count: touching.length, variant },
         );
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
-        this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: refusal });
+        this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: refusal });
         return this.state;
     }
 
@@ -1022,6 +1031,7 @@ export class BuildService extends Service<BuildService> {
         // them: the dashboard archives a refused run as a finished build.
         this.updateState({
             status: "error",
+            progress: null,
             startedAt,
             finishedAt: Date.now(),
             platforms,
@@ -1162,6 +1172,7 @@ export class BuildService extends Service<BuildService> {
         // them: the dashboard archives a refused run as a finished build.
         this.updateState({
             status: "error",
+            progress: null,
             startedAt,
             finishedAt: Date.now(),
             platforms,
@@ -1260,6 +1271,7 @@ export class BuildService extends Service<BuildService> {
         consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", refusal, { source: BUILD_CONSOLE_SOURCE });
         this.updateState({
             status: "error",
+            progress: null,
             startedAt,
             finishedAt: Date.now(),
             platforms,
@@ -1344,6 +1356,7 @@ export class BuildService extends Service<BuildService> {
         // them: the dashboard archives a refused run as a finished build.
         this.updateState({
             status: "error",
+            progress: null,
             startedAt,
             finishedAt: Date.now(),
             platforms,
@@ -1394,7 +1407,7 @@ export class BuildService extends Service<BuildService> {
             const message = "The project check failed to run";
             consoleService?.log(BUILD_CONSOLE_CHANNEL, "error", message, { source: BUILD_CONSOLE_SOURCE });
             this.logLintGateHint(consoleService);
-            this.updateState({ status: "error", startedAt, finishedAt: Date.now(), platforms, error: message });
+            this.updateState({ status: "error", progress: null, startedAt, finishedAt: Date.now(), platforms, error: message });
             return this.state;
         }
 
@@ -1417,6 +1430,7 @@ export class BuildService extends Service<BuildService> {
         // duration is measured from the epoch and it cannot say what it was building.
         this.updateState({
             status: "error",
+            progress: null,
             startedAt,
             finishedAt: Date.now(),
             platforms,
@@ -1526,9 +1540,11 @@ export class BuildService extends Service<BuildService> {
             this.pendingRun = null;
         }
         this.state = next;
-        // Phase transitions (not every poll tick) drive the console progress bar.
-        if (previous.status !== next.status) {
-            this.syncConsoleProgress(next.status);
+        const phaseChanged = previous.status !== next.status;
+        // Phase transitions and a moved count drive the console progress bar - not every poll tick,
+        // which returns an equal snapshot for as long as a step takes.
+        if (phaseChanged || !isSameProgress(previous.progress, next.progress)) {
+            this.syncConsoleProgress(next, phaseChanged);
         }
         // Polling returns a fresh snapshot object every second; only notify
         // subscribers when something they render actually changed, so a
@@ -1540,12 +1556,18 @@ export class BuildService extends Service<BuildService> {
     }
 
     /**
-     * Reflect the build phase onto the console's bottom progress bar (the "build"
-     * channel). Because the pipeline exposes no real fraction, an active build shows an
-     * indeterminate animation (honest "working", never a faked fill level). Completion
-     * snaps to a solid 100% and lingers briefly; a failure turns the bar warning.
+     * Reflect the build onto the console's bottom progress bar (the "build" channel).
+     *
+     * A step that counted itself fills the bar; anything else animates, which is the honest
+     * "working" for a stretch nothing can measure. Completion snaps to a solid 100% and lingers
+     * briefly; a failure turns the bar warning.
+     *
+     * @param phaseChanged Whether this call follows a change of phase rather than a moved count.
+     *                     Only a new phase may reset the bar - re-running that reset on every count
+     *                     would clear the warning colour an error-level log had flipped on.
      */
-    private syncConsoleProgress(status: GameBuildStatus): void {
+    private syncConsoleProgress(state: GameBuildStateSnapshot, phaseChanged: boolean): void {
+        const status = state.status;
         const consoleService = this.tryGetConsole();
         if (!consoleService) {
             return;
@@ -1575,16 +1597,23 @@ export class BuildService extends Service<BuildService> {
             return;
         }
 
-        // Active build. "preparing" opens a fresh run: drop any stale (done/error) bar
-        // and start a clean indeterminate animation with the error colour reset. Later
-        // phases just ensure the animation exists without disturbing an error flip that
-        // an error-level log may have already applied.
-        if (status === "preparing") {
+        // Active build. "preparing" opens a fresh run: drop the previous run's bar, so the one
+        // set below is a new one and starts without its warning colour.
+        if (status === "preparing" && phaseChanged) {
             consoleService.setProgress(BUILD_CONSOLE_CHANNEL, null);
-            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { indeterminate: true, error: false });
-        } else if (!consoleService.getProgress(BUILD_CONSOLE_CHANNEL)) {
-            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { indeterminate: true });
         }
+
+        const progress = state.progress;
+        if (progress && progress.total > 0) {
+            consoleService.setProgress(BUILD_CONSOLE_CHANNEL, {
+                value: Math.min(1, progress.done / progress.total),
+                indeterminate: false,
+            });
+            return;
+        }
+        // No count: back to the animation, and back to empty. Each countable step is a count of its
+        // own, so carrying the last one's fill into the next would start it part-full.
+        consoleService.setProgress(BUILD_CONSOLE_CHANNEL, { value: 0, indeterminate: true });
     }
 
     private tryGetConsole(): ConsoleService | null {
@@ -1685,4 +1714,25 @@ function isSameSnapshot(a: GameBuildStateSnapshot, b: GameBuildStateSnapshot): b
         && a.error === b.error
         && a.outputDir === b.outputDir
         && (a.artifacts?.length ?? 0) === (b.artifacts?.length ?? 0);
+}
+
+/**
+ * Whether two snapshots report the same count.
+ *
+ * Deliberately not part of {@link isSameSnapshot}: that one decides whether to re-render the
+ * toolbar and the dialog, and a count that moves once a second would re-render both for the whole
+ * of a build. The bar is driven from the poll directly instead.
+ *
+ * Absent counts as no count, not only `null`. The snapshot crosses IPC and is read back off disk,
+ * and a run recorded before this field existed carries no key at all - which says exactly what
+ * `null` says and must not be read as an object.
+ */
+function isSameProgress(
+    a: StudioTaskProgress | null | undefined,
+    b: StudioTaskProgress | null | undefined,
+): boolean {
+    if (!a || !b) {
+        return !a === !b;
+    }
+    return a.done === b.done && a.total === b.total && a.unit === b.unit;
 }

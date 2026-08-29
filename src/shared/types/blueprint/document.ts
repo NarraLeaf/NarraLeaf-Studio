@@ -110,16 +110,6 @@ export type BlueprintVariable = {
 };
 
 /**
- * Legacy shape, retained only as migration input. Project-level persistent variables left the
- * blueprint document for the project-level variable registry (M-VAR); the v8→v9 migration reads this
- * off the raw document and seeds `editor/variables.json`.
- */
-export type BlueprintPersistentVariable = BlueprintVariable & {
-    /** Stable storage key used for host persistence. Defaults to id and is not changed by rename. */
-    storageKey: string;
-};
-
-/**
  * Evaluable value source for field-backed bindings.
  * M3-min: surfaceState (current page); globalState added for cross-page data flow.
  */

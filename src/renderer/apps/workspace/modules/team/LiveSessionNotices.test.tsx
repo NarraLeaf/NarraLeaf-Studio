@@ -35,7 +35,10 @@ vi.mock("@/lib/i18n", async importOriginal => ({
 const world = vi.hoisted(() => ({
     view: {} as LiveSessionView,
     listeners: new Set<(view: LiveSessionView) => void>(),
-    show: vi.fn(),
+    // Answers an id, because the request notice closes itself once it has been answered.
+    show: vi.fn((_options: RaisedNotice) => "notice-1"),
+    close: vi.fn(),
+    answerRequest: vi.fn(() => Promise.resolve(true)),
 }));
 
 // One workspace object for the whole file: the real one is a React context value and is stable for
@@ -50,10 +53,11 @@ vi.mock("@/apps/workspace/context", () => {
                         world.listeners.add(handler);
                         return () => world.listeners.delete(handler);
                     },
+                    answerRequest: world.answerRequest,
                 };
             }
             if (id === Services.UI) {
-                return { notifications: { show: world.show } };
+                return { notifications: { show: world.show, close: world.close } };
             }
             return null;
         },
@@ -68,6 +72,8 @@ beforeEach(() => {
     world.view = IDLE_LIVE_SESSION;
     world.listeners.clear();
     world.show.mockClear();
+    world.close.mockClear();
+    world.answerRequest.mockClear();
 });
 
 afterEach(cleanup);
@@ -82,7 +88,16 @@ function publish(view: LiveSessionView) {
     });
 }
 
-function shown(): { type: NotificationType; message: string; detail?: string }[] {
+/** One notice as the surface raised it. */
+type RaisedNotice = {
+    type: NotificationType;
+    message: string;
+    detail?: string;
+    timeout?: number;
+    actions?: { label: string; primary?: boolean; onClick: () => void }[];
+};
+
+function shown(): RaisedNotice[] {
     return world.show.mock.calls.map(call => call[0]);
 }
 
@@ -120,6 +135,47 @@ describe("what a live session tells the author", () => {
         publish({ ...refusal, appliedSeq: 5 });
 
         expect(shown()).toHaveLength(1);
+    });
+
+    it("keeps a request on screen until it is answered, unlike everything else here", () => {
+        // ⚠ Measured on a real machine: the toast was gone in five seconds, before anybody could
+        // have reached it, and the only thing left was a mark in the title bar. Every other notice
+        // in this file REPORTS something; this one asks a question with a person waiting on the
+        // other end, and a question that takes itself off the screen cannot be answered.
+        render(<LiveSessionNotices />);
+
+        publish({
+            ...IDLE_LIVE_SESSION,
+            phase: "active",
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+
+        const [notice] = shown();
+        expect(notice?.message).toBe("workspace.shell.team.liveAsked(ben)");
+        expect(notice?.timeout).toBe(0);
+        // And the two answers are on it, which is the whole reason it exists where the author is
+        // already looking.
+        expect(notice?.actions?.map(action => action.label))
+            .toEqual(["workspace.shell.team.liveAdmit", "workspace.shell.team.liveTurnAway"]);
+    });
+
+    it("takes the question away when it is answered, because it no longer has one", () => {
+        // The other half of keeping it up: a sticky question that survives its own answer is a
+        // control the author has already used still sitting there asking to be used again.
+        render(<LiveSessionNotices />);
+        publish({
+            ...IDLE_LIVE_SESSION,
+            phase: "active",
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+
+        const [notice] = shown();
+        act(() => notice?.actions?.[0]?.onClick());
+
+        expect(world.close).toHaveBeenCalledWith("notice-1");
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", true);
     });
 
     it("says why an undo sent nothing, and stays quiet at the end of the stack", () => {

@@ -29,7 +29,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import type { VcsChangeKind, VcsFileChange, VcsServerProject, VcsServerSession, VcsSyncState } from "@shared/types/vcs";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import { HelpTrigger } from "@/lib/help";
 import { useTranslation } from "@/lib/i18n";
@@ -48,6 +49,7 @@ import { SERVER_PROBLEM_KEYS } from "@/apps/launcher/tabs/serverProblemKeys";
 import { useWorkspace } from "../../context";
 import { openVcsChangesTab } from "../../modules/vcs-changes/openVcsChangesTab";
 import { openLiveSessionDialog } from "../../modules/team/liveSessionController";
+import { liveLeaveAct } from "../../modules/team/liveSessionText";
 import { useLiveSession } from "../../modules/team/useLiveSession";
 import { LiveMemberAvatars } from "../../modules/team/LiveMemberAvatars";
 import type { VersionSurface } from "../../hooks/useVersionSurface";
@@ -124,9 +126,9 @@ export function VersionRail({ surface, presence, onExpandedChange }: VersionRail
      */
     const live = useLiveSession();
     const inSession = surface.frozen === "live-session";
-    const leaveSessionLabel = t(live.view.role === "host"
-        ? "workspace.shell.team.liveEndSession"
-        : "workspace.shell.team.liveLeaveSession");
+    // Named after what it does: a host walking out of a room with somebody else in it hands it over,
+    // and the strip and the dialog have to say the same thing about the same press.
+    const leaveSessionLabel = t(liveLeaveAct(live.view).key);
     const visible = isVersionSurfaceVisible(state);
     const open = presence === "panel";
 
@@ -1012,21 +1014,21 @@ function useServerProjects(remoteOrigin: string | null): HeldProjects {
 
         const answer = outstanding.current?.key === remoteOrigin
             ? outstanding.current.answer
-            : getInterface().vcs.listServerProjects(remoteOrigin).catch(() => null);
+            : listProjects(remoteOrigin);
         outstanding.current = { key: remoteOrigin, answer };
 
         void answer.then(result => {
             if (!live) return;
-            const read = result as Awaited<ReturnType<ReturnType<typeof getInterface>["vcs"]["listServerProjects"]>> | null;
-            if (read === null || !read.success) {
-                setHeld({ reading: false, projects: null, problem: "launcher.servers.problem.unknown" });
+            const read = result as Awaited<ReturnType<typeof listProjects>>;
+            if (!read.ok) {
+                setHeld({
+                    reading: false,
+                    projects: null,
+                    problem: SERVER_PROBLEM_KEYS[serverProblemFromTeam(read.problem).kind],
+                });
                 return;
             }
-            if (!read.data.ok) {
-                setHeld({ reading: false, projects: null, problem: SERVER_PROBLEM_KEYS[read.data.problem.kind] });
-                return;
-            }
-            setHeld({ reading: false, projects: read.data.projects, problem: null });
+            setHeld({ reading: false, projects: read.value.projects, problem: null });
         });
 
         return () => { live = false; };

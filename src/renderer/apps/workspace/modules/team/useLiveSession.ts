@@ -4,7 +4,7 @@ import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessi
 import { IDLE_LIVE_SESSION, type LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { StoryId } from "@shared/types/story";
-import type { TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 import { useWorkspace } from "../../context";
 
 /**
@@ -30,9 +30,30 @@ export type LiveSessionSurface = {
      * would land.
      */
     busy: boolean;
-    open: (input: { storyId: StoryId; title?: string }) => void;
-    join: (input: { session: TeamLiveSession | string }) => void;
+    open: (input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }) => void;
+    /**
+     * ⚠ **There is deliberately no `join` here.** Every way into somebody else's room is in the
+     * launcher's Team screen, because joining one usually means getting the project first and that
+     * is the launcher's flow - so the workspace joins only what it was sent to join, through the
+     * window prop `LiveSessionService` reads on the way up. A control added here would be a second
+     * way in, on the surface that cannot clone.
+     */
     leave: () => void;
+    /**
+     * Change how people get into the running room. Host only.
+     *
+     * Awaited rather than fired, unlike the three above: the control that calls it is a set of
+     * choices and has to put itself back where it was when the server says no.
+     */
+    setRule: (rule: TeamLiveJoinRule) => Promise<boolean>;
+    /**
+     * Say yes or no to somebody waiting to be let in. Host only.
+     *
+     * Awaited for `setRule`'s reason: the row it answers disappears when the session publishes the
+     * shorter list, and a control that had already redrawn as gone would be lying about a server
+     * that has not answered yet.
+     */
+    answerRequest: (instance: string, admit: boolean) => Promise<boolean>;
 };
 
 export function useLiveSession(): LiveSessionSurface {
@@ -67,8 +88,16 @@ export function useLiveSession(): LiveSessionSurface {
         view,
         busy,
         open: useCallback(input => run(session => session.open(input)), [run]),
-        join: useCallback(input => run(session => session.join(input)), [run]),
         leave: useCallback(() => run(session => session.leave()), [run]),
+        setRule: useCallback(
+            (rule: TeamLiveJoinRule) => service?.setRule(rule) ?? Promise.resolve(false),
+            [service],
+        ),
+        answerRequest: useCallback(
+            (instance: string, admit: boolean) =>
+                service?.answerRequest(instance, admit) ?? Promise.resolve(false),
+            [service],
+        ),
     };
 }
 
@@ -135,7 +164,7 @@ function sameLibrary(previous: LiveSessionStories, next: readonly LiveSessionSto
 }
 
 /**
- * The room on this project that this window could join, or null.
+ * The room open on this project that this window is not in, or null.
  *
  * ⚠ **A room this window has just closed is not one of them, and it has to be excluded by name.**
  * The list comes from the server and the session's own state does not, so between ending a room and

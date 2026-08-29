@@ -5,6 +5,8 @@ import type {
     CompileWorkerOutboundMessage,
     ShippedContentAuditReport,
 } from "./compileWorkerProtocol";
+import { setDownloadReporter } from "./downloadReporting";
+import { setStepProgressReporter } from "./stepProgress";
 
 /**
  * Artifact-compile worker entry, forked as an Electron utility process. Running
@@ -31,6 +33,18 @@ function send(message: CompileWorkerOutboundMessage): void {
     parentPort.postMessage(message);
 }
 
+// The one thing this compile does that is neither reading nor writing a local file: fetching what a
+// project needs and this machine has not got - the redistributables a plugin declares, and the
+// toolchain a protected build compiles with. Registered at load rather than per compile because the
+// downloaders sit several layers in, none of which has any business carrying a progress channel.
+setDownloadReporter(event => send({ type: "download", event }));
+
+// How far through a countable step of the compile this is. Registered at load for the same reason,
+// and it is the seam a pass over a known list reports through: `countBuildStep` in `stepProgress`,
+// advanced once per item, closed when the pass ends. A pass that cannot say how much work it has
+// before it starts opens no counter, and the window keeps its sweep.
+setStepProgressReporter(progress => send({ type: "progress", progress }));
+
 /**
  * Load and run the audit bundle sitting beside this one.
  *
@@ -39,12 +53,15 @@ function send(message: CompileWorkerOutboundMessage): void {
  * where those aliases mean something else. A missing bundle is a Studio defect and throws - a check
  * that quietly did not run would be worse than one that was never written.
  */
-async function auditShippedContent(appDir: string): Promise<ShippedContentAuditReport> {
+async function auditShippedContent(
+    appDir: string,
+    supportBinaryPath: string | null,
+): Promise<ShippedContentAuditReport> {
     const modulePath = path.join(__dirname, "contentAudit.js");
     const audit = require(modulePath) as {
-        runShippedContentAudit(appDir: string): Promise<ShippedContentAuditReport>;
+        runShippedContentAudit(appDir: string, supportBinaryPath?: string): Promise<ShippedContentAuditReport>;
     };
-    return await audit.runShippedContentAudit(appDir);
+    return await audit.runShippedContentAudit(appDir, supportBinaryPath ?? undefined);
 }
 
 parentPort.on("message", event => {
@@ -68,7 +85,7 @@ parentPort.on("message", event => {
             // there belongs to a build of that variant, which is what reports it. It is the caller
             // that knows this, because it is the caller that throws the package away.
             const audit = result.assetReport && !message.input.forComparison
-                ? await auditShippedContent(result.appDir)
+                ? await auditShippedContent(result.appDir, result.codecHostImage)
                 : undefined;
             send({ type: "done", result, ...(audit ? { audit } : {}) });
         })

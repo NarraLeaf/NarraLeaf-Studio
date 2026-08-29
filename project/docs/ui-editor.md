@@ -60,7 +60,7 @@
 
 ## Blueprint 模型
 
-- 当前事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`，不是 legacy `graphs` map。
+- 事件图真相是 `UIGraphDocument.blueprintDocument.blueprints[*].program.graphs`。文档根上那张 legacy `graphs` map 已删除。
 - Private owner slot 包括 `globalMain`、`surfaceMain:<surfaceId>`、`widgetMain:<surfaceId>:<elementId>`、`widgetValue:<surfaceId>:<elementId>:<encodedPropPath>`。
 - Blueprint Value 是新的单点属性动态数据提供方案，当前覆盖 `nl.text` 的 `props.text`、`nl.button` 的 `props.label`、Page 组件 `nl.frame` 的 `props.params`、`nl.slider` 的 `props.value`。Text / Button / Slider 检视器不再使用旧 `binding:` 元数据连接内容字段，而是在 `UIElement.valueBindings` 中记录 `{ kind: "blueprintValue", blueprintId, valueType }`。
 - 字面值切换为 Blueprint Value 时，`LocalBlueprintService` 会为该属性创建私有 value blueprint，并用当前字面值种子化默认 `Init` layer：`blueprint.event.head.init` 连接到 `blueprint.data.returnValue`。`string` 值使用 Text literal，`json` 值使用 JSON literal，`float` 值使用 Float literal。不会创建额外刷新 layer；刷新由 Blueprint Value 内部记录的 Element 属性依赖驱动。
@@ -101,7 +101,6 @@
 - Function graph service API 存在，但 Workspace UI 暴露不完整。
 - 完整 DevTools、节点高亮、调用栈、局部变量、TS source map 等不是完整闭环。
 - Widget logic command 中 `setSource`、`refreshItems` 等仍是 planned；当前 runtime 主要实现 visible/enabled/variant、button label/pointer、state/persistence/navigation/devtools 等能力。
-- `UIBehaviorAction` 类型层基本只有 `noop`，旧 actions 行为绑定没有形成完整动作系统。
 - Page 作为游戏内 layer 的真实运行时 host 语义仍待 page/layer API 完成。
 
 ## 修改建议

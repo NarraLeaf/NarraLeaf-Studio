@@ -40,19 +40,31 @@ import {
     type NetworkPluginAllowlistEntry,
 } from "@shared/types/networkAllowlist";
 import {
-    bindRuntimeBinary,
-    createSealedBundle,
-    projectVerificationKey,
-    runtimeSupportPath,
-    RUNTIME_BUNDLE_FILENAME,
-    RUNTIME_SUPPORT_FILENAME,
-    type SealedBundleWriter,
-} from "@narraleaf/encryption";
+    prepareArchiveReader,
+    createAssetArchive,
+    projectStamp,
+    ASSET_ARCHIVE_FILENAME,
+    ARCHIVE_READER_FILENAME,
+    type AssetArchiveWriter,
+} from "@narraleaf/bindings";
+import { PER_TARGET_DIR_NAME, runningPlatformKeysFor } from "../../../../../buildWorker/perTargetPayload";
+import {
+    codecArchiveDir,
+    codecPlacementsFor,
+    hostCodecTarget,
+    placeCodecBinary,
+    writeSupportBinary,
+    type CodecPlacement,
+} from "../../../../../buildWorker/codecBinary";
+import { ensureZigToolchain } from "../../../../../buildWorker/zigToolchain";
+import { compileMainToBytecode, MAIN_BYTECODE_FILENAME, renderMainBytecodeBootstrap, reseedGuardMaskTable } from "../../../../../buildWorker/mainProcessBytecode";
 import {
     GAME_RUNTIME_BUNDLE_PACK_ENTRY,
     gameRuntimeBundleAssetEntry,
     gameRuntimeBundleModelEntry,
     gameRuntimeBundleRuntimeEntry,
+    isSealedShellFile,
+    SEALED_SHELL_FILES,
 } from "@shared/utils/gameRuntimeBundle";
 import { readProjectAppTagDocumentFromDir } from "../../../utils/appTagsFile";
 import { resolveAppTag, resolveAppTagEndingSurface } from "@shared/types/appTag";
@@ -68,6 +80,7 @@ import {
 import type { DownloadRewriteRule } from "@shared/types/downloadSource";
 import { splitAssetStorageId } from "@shared/utils/assetStorageId";
 import { PACK_DELTA_VERSION } from "@shared/utils/packDelta";
+import { countBuildStep } from "../../../../../buildWorker/stepProgress";
 import { getMimeType } from "@shared/utils/fs";
 import { detectModelBundleEntry, normalizeBundlePath, sortBundlePaths } from "@shared/utils/modelBundle";
 import { PUPPET_RUNTIMES_PROJECT_DIR, PUPPET_RUNTIME_ENTRY_FILE } from "@shared/utils/puppetRuntimes";
@@ -87,7 +100,7 @@ import { WEB_APPLE_TOUCH_FILENAME, WEB_FAVICON_FILENAME, writeWebShellFiles } fr
 const ASSET_TYPES = ["image", "audio", "video", "json", "blueprint", "font", "model", "other"] as const;
 /** Asset types whose payload is a directory tree rather than one file. */
 const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
-// "native.js" and "gate.js" are opaque support modules of @narraleaf/encryption
+// "bindings.js" and "vendor.js" are opaque support modules of @narraleaf/bindings
 // that the packaged main.js requires (via computed requires the bundler cannot
 // inline) from its own directory at startup; they are produced by the runtime
 // build (build-runtime.js) and must ship next to main.js in every pack, so they
@@ -95,7 +108,7 @@ const BUNDLE_ASSET_TYPES: ReadonlySet<string> = new Set(["model"]);
 // run unconditionally at load, so a pack missing either crashes on launch
 // regardless of whether asset protection is enabled. Keep this list in sync with
 // RUNTIME_SUPPORT_SIDECARS in project/build/build-runtime.js.
-const REQUIRED_RUNTIME_FILES = ["main.js", "native.js", "gate.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
+const REQUIRED_RUNTIME_FILES = ["main.js", "bindings.js", "vendor.js", "preload.js", "renderer.js", "renderer.css", "index.html"] as const;
 // The web shell replaces the Electron trio with the browser bridge bundle; the
 // renderer pair is shared verbatim. Its index.html is generated per pack (see
 // webShell.ts), not copied from the runtime dist.
@@ -200,13 +213,34 @@ export type GameRuntimeArtifactCompileInput = {
      */
     locale?: LocaleCode;
     /**
-     * `<platform>-<arch>` this app dir's native payload is built for - the key
-     * plugin sidecar binaries are declared under. A production build passes the
-     * target's key; a preview passes the host's own, so an author can exercise a
-     * sidecar without a full build. Absent for web compiles, which ship no
-     * sidecars at all (a static site has no process to spawn).
+     * Every `<platform>-<arch>` this app dir has to carry machine code for - the
+     * keys plugin sidecar binaries are declared under.
+     *
+     * A production build passes all of its desktop targets and the payload is
+     * staged per target, because one app dir is packaged several times and each
+     * package must end up with its own; see perTargetPayload.ts. A preview passes
+     * the host's own and it is staged at the app root, because a preview is run
+     * here rather than packaged. Empty for web compiles, which ship no native
+     * payload at all - a static site has no process to spawn and no addon to
+     * load.
      */
-    sidecarPlatformKey?: string;
+    platformKeys?: readonly string[];
+    /**
+     * `build.zigMirror` as the author set it, for the toolchain a codec build
+     * needs. Empty or absent is the official source. Carried on the input for the
+     * same reason `hostCacheRoot` is: this runs off the main process, where the
+     * setting is out of reach.
+     */
+    zigMirror?: string;
+    /**
+     * A C toolchain the caller has already got hold of, used instead of fetching
+     * one.
+     *
+     * For a machine that keeps its own - an author who builds offline, or a test
+     * that must not pull 76 MB to check the path it is testing. Absent is the
+     * normal case: the toolchain is fetched once and cached.
+     */
+    titleCompiler?: string;
     /**
      * Every build target this one artifact serves.
      *
@@ -254,8 +288,8 @@ export type GameRuntimeArtifactCompileInput = {
      * process (see compileGameRuntimeArtifactInWorker), where app.getPath is
      * unavailable.
      */
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /**
      * Studio's own icon, shipped when the project configures none. Passed in
@@ -278,6 +312,10 @@ export type GameRuntimeArtifactCompileInput = {
      * The experimental `debuggable-build` condition, and nothing else, sets it. It is written into
      * both the pack and the loose app manifest because the runtime checks the two at different
      * moments - the manifest before Chromium starts, the pack once it is open.
+     *
+     * A sealed artifact still carries it, but it means less there: the runtime honours it only
+     * while the app directory is being run by hand, never in the packaged game. The compile says so
+     * rather than leaving the author to discover it. See `honoursDebuggableMarker`.
      */
     debuggable?: boolean;
     /**
@@ -290,7 +328,7 @@ export type GameRuntimeArtifactCompileInput = {
     shell?: "electron" | "web";
     /**
      * Opaque pack key for asset protection. When set, packaged output is
-     * protected via @narraleaf/encryption; when absent, output is written
+     * protected via @narraleaf/bindings; when absent, output is written
      * verbatim (protection off).
      */
     encryptionKey?: string;
@@ -339,21 +377,32 @@ export type GameRuntimeArtifactCompileInput = {
      * them is what a player receives, and re-encoding artwork nobody will keep is
      * time an author is waiting through.
      */
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 };
 
 /**
- * One image the build already re-encoded: the file to copy in place of the
+ * One asset the build already re-encoded: the file to copy in place of the
  * project's, and what those bytes are.
+ *
+ * Written by two passes with nothing in common but this shape - one re-encodes
+ * images in a hidden Chromium window, the other runs sound and video through
+ * FFmpeg - and read here as a single table, so that a compile never has to know
+ * which of them produced a given entry.
  *
  * Declared here rather than imported from the build manager because this module
  * runs in a utility process, and the value arrives across that boundary as
  * plain data.
  */
-export type OptimizedAssetImageInput = {
+export type OptimizedAssetFile = {
     path: string;
-    ext: string;
-    mimeType: string;
+    /**
+     * Both absent when the replacement is the same kind of file as the source -
+     * an image whose metadata was removed without re-encoding it. The manifest
+     * already states what that image is, and restating it here would be a second
+     * place for the two to disagree.
+     */
+    ext?: string;
+    mimeType?: string;
 };
 
 export type GameRuntimeArtifactCompileResult = {
@@ -373,6 +422,27 @@ export type GameRuntimeArtifactCompileResult = {
      * author is reading.
      */
     notices: string[];
+    /**
+     * Whether this build's codec binaries were compiled for this title, rather
+     * than the shipped ones written into.
+     *
+     * On the result rather than in `notices` because it is the difference between
+     * an attack that has to be repeated for every game and one that has to be
+     * mounted once, and an author who asked for protection should be told which
+     * they got in the voice that difference deserves. Null when the question does
+     * not arise: an unprotected build, or a preview.
+     */
+    codecCompiledForTitle: boolean | null;
+    /**
+     * A copy of the codec this machine can load, carrying what this build sealed
+     * with. Null when the build sealed nothing.
+     *
+     * The shipped copies are staged per target and one of them may be for another
+     * machine entirely, so "the binary in the app dir" is no longer a thing that
+     * exists, let alone something this process can open. Anything that has to
+     * read the artifact back - the shipped-content audit does - is told where.
+     */
+    codecHostImage: string | null;
     /**
      * Whether an asset set collapsed a build axis, i.e. this artifact deliberately leaves part of
      * the library out.
@@ -405,7 +475,7 @@ export type GameRuntimeArtifactCompileResult = {
  */
 type PackTarget =
     | { kind: "loose" }
-    | { kind: "sealed"; writer: SealedBundleWriter };
+    | { kind: "sealed"; writer: AssetArchiveWriter };
 
 type AssetMetadataRecord = {
     id?: unknown;
@@ -434,6 +504,15 @@ export async function compileGameRuntimeArtifact(
     if (shell === "web" && input.encryptionKey) {
         throw new Error("Web artifact compile does not support asset protection");
     }
+    // The first thing done with the output root is to delete `<root>/app` recursively. A relative
+    // root resolves against whatever working directory the host process happens to have - in
+    // development that is the Studio checkout itself - so a caller that handed over an unresolved
+    // path would empty and rewrite a directory inside someone's source tree rather than inside a
+    // staging area. Every caller derives this from a project path, which is absolute; a relative
+    // one means that path was never resolved, and refusing is cheaper than the deletion.
+    if (!path.isAbsolute(input.outputRoot)) {
+        throw new Error(`Artifact compile needs an absolute output root, got "${input.outputRoot}"`);
+    }
     const outputRoot = input.outputRoot;
     const appDir = path.join(outputRoot, "app");
     const userDataDir = mode === "preview" ? path.join(outputRoot, "userData") : null;
@@ -448,19 +527,139 @@ export async function compileGameRuntimeArtifact(
     if (userDataDir) {
         await fs.mkdir(userDataDir, { recursive: true });
     }
-    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, input.sidecarPlatformKey);
+    /*
+     * A packaged app dir is packaged once per target and each package must come
+     * out holding its own machine code, so the payload is staged per target and
+     * the packaging step maps one directory over the app root. A preview is run
+     * from this directory rather than packaged, so its payload goes where the
+     * game will look for it: here. See perTargetPayload.ts.
+     */
+    const nativePayloadKeys = shell === "web" ? [] : [...(input.platformKeys ?? [])];
+    const perTargetPayload = Boolean(input.packaging);
+    const payloadDirFor = (platformKey: string): string => (perTargetPayload
+        ? path.join(appDir, PER_TARGET_DIR_NAME, platformKey)
+        : appDir);
+    /*
+     * A protected build keeps its interface code in the store rather than beside
+     * it, so those three are left out here and added to the store further down,
+     * once there is a store to add them to. Everything else is copied either way:
+     * Electron opens main.js and the preload itself, before anything of ours
+     * could answer for them.
+     */
+    const sealsShell = Boolean(input.encryptionKey) && shell !== "web";
+    // A shipped desktop game hardens its launch guard by shipping main.js as bytecode. Preview and
+    // the experimental debuggable build stay readable source so an author can inspect and step
+    // through the real main process; the web shell has no main.js at all.
+    //
+    // The bytecode is produced by this build worker, so it carries the host's CPU architecture, and
+    // a V8 cache is not portable across architectures. One app directory serves every target in the
+    // build and main.js sits at its shared root, so bytecode is only safe when every architecture
+    // that root will be packaged for is the host's own. A universal macOS build (one root, two
+    // architectures) and any cross-architecture target (e.g. an Intel-Mac game from an Apple-Silicon
+    // Studio) therefore keep readable main.js - shipping bytecode there would refuse to boot on the
+    // player's machine. `runningPlatformKeysFor` expands each target key, universal included, into
+    // its `<platform>-<arch>` running keys; every one must be this host's.
+    // Re-keying the guard's masked table happens on every shipped desktop build; shipping it as
+    // bytecode additionally requires that every architecture the shared app root is packaged for is
+    // the host's own (a V8 cache does not port across architectures, and one app root serves every
+    // target - see the comment above and mainProcessBytecode.ts).
+    const reseedGuard = mode === "production" && input.debuggable !== true && shell === "electron";
+    const hostRunningKey = `${process.platform}-${process.arch}`;
+    const servedRunningKeys = nativePayloadKeys.flatMap(runningPlatformKeysFor);
+    const bytecodeMain = reseedGuard
+        && servedRunningKeys.length > 0 && servedRunningKeys.every(key => key === hostRunningKey);
+    await copyRuntimeFiles(input.runtimeDistDir, appDir, mode, shell, nativePayloadKeys, payloadDirFor, sealsShell, bytecodeMain, reseedGuard);
     // The support binary ships for protection, and also for a build that carries a
     // distribution key without it: a patch is read through that binary, so making
     // it conditional on protection alone would silently make patches a privilege
     // of protected builds. Two different questions, and they do not share a switch.
     const needsSupportBinary = Boolean(input.encryptionKey)
         || Boolean(input.distribution && shell !== "web");
-    if (needsSupportBinary) {
-        // createSealedBundle binds this pack's protection material into the copy
-        // when it opens the store (below), so no key material is handled here or
-        // written into any JS. An unprotected build has no store to open, so it
-        // binds the copy on its own further down.
-        await fs.copyFile(runtimeSupportPath(), path.join(appDir, RUNTIME_SUPPORT_FILENAME));
+    /*
+     * Where each target's copy of the support binary goes, and which prebuilt
+     * image each starts from.
+     *
+     * Both halves used to be answered for the host and the host only, which is
+     * correct exactly when the machine packaging is the machine that will run the
+     * result. A build producing Windows and macOS packages together wrote one
+     * copy, of this machine's image, and every package but one shipped a binary
+     * its loader refuses.
+     */
+    /* Collected here and reported once the artifact is written; the first of them
+     * is raised by the codec below. */
+    const notices: string[] = [];
+/* A compile with no target named is a preview: it runs from this app dir on
+     * this machine, so there is one copy, here, for this machine. */
+    const placements = !needsSupportBinary
+        ? []
+        : nativePayloadKeys.length > 0
+            ? codecPlacementsFor(
+                nativePayloadKeys,
+                platformKey => path.join(payloadDirFor(platformKey), ARCHIVE_READER_FILENAME),
+            )
+            : [{
+                platformKey: hostCodecTarget(),
+                destination: path.join(appDir, ARCHIVE_READER_FILENAME),
+                slices: [hostCodecTarget()],
+            }];
+    /*
+     * Every image the placements are made of, and where each is produced.
+     *
+     * Produced somewhere neutral rather than at the shipped path, because a
+     * universal package's copy is two images in one file and neither of them is
+     * that file. Everything below hands this map to the codec package, which
+     * either writes this build's material into each or compiles each for this
+     * title; the placements are assembled from the result afterwards.
+     */
+    const imageDir = path.join(outputRoot, "codec-images");
+    const images: Record<string, string> = {};
+    /*
+     * One image for this machine as well, whether or not this machine is a target.
+     *
+     * Something has to be able to OPEN what was just sealed - the audit that
+     * proves the shipped game still reaches every asset it asks for does exactly
+     * that - and only an image built for this machine can be loaded here. When
+     * this machine is a target it is the copy that ships; when it is not (a
+     * Linux package built on a Mac) it exists only to be read here, out in the
+     * staging directory rather than in the app dir, so it ships nowhere.
+     */
+    const slices = new Set(placements.flatMap(placement => placement.slices));
+    if (placements.length > 0) {
+        slices.add(hostCodecTarget());
+    }
+    for (const slice of slices) {
+        images[slice] = path.join(imageDir, slice, ARCHIVE_READER_FILENAME);
+        await fs.mkdir(path.dirname(images[slice]), { recursive: true });
+    }
+
+    /*
+     * The toolchain that makes this build's binaries its own.
+     *
+     * With one, each image is built for this game alone, and a
+     * published copy of the codec package opens nothing this build sealed -
+     * which is the whole reason compiling the codec here exists. Without one, the
+     * material is written into the prebuilt image instead, which is where this
+     * stood before and is still a working protected build; it is just one that
+     * an attacker only has to defeat once for every game rather than once per
+     * game. Whichever it is, it is said out loud on the build log.
+     */
+    const titleCompile = await resolveTitleCompile({
+        wanted: placements.length > 0 && Boolean(input.packaging),
+        /* Named so the sentence tells the author which switch to reach for. */
+        reason: input.encryptionKey ? "Asset protection" : "Shipping a build that can accept patches",
+        ...(input.titleCompiler ? { explicitCompiler: input.titleCompiler } : {}),
+        ...(input.hostCacheRoot ? { cacheRoot: input.hostCacheRoot } : {}),
+        ...(input.zigMirror ? { mirror: input.zigMirror } : {}),
+        ...(input.downloadRewrites ? { rewrites: input.downloadRewrites } : {}),
+        workDir: imageDir,
+    });
+    if (!titleCompile) {
+        /* Not a packaged build: a preview, whose binary is never handed to
+         * anyone, so the prebuilt image with this pack's material written into it
+         * is all it needs. */
+        for (const [slice, destination] of Object.entries(images)) {
+            await writeSupportBinary(slice, destination);
+        }
     }
 
     const projectConfig = await readProjectConfig(input.projectPath);
@@ -473,7 +672,6 @@ export async function compileGameRuntimeArtifact(
         throw new Error(`Blueprint script compile failed:\n${detail}`);
     }
     const bundleId = crypto.randomUUID();
-    const notices: string[] = [];
     // Set from inside the assembly below, and read after it to decide whether the library must be
     // narrowed. A `let` rather than a return value because the assembler answers with a bundle, and
     // this is a fact about how that bundle was produced rather than part of it.
@@ -518,7 +716,7 @@ export async function compileGameRuntimeArtifact(
             assembled,
             input.runtimePlugins ?? [],
             message => notices.push(message),
-            input.assetImages,
+            input.assetReplacements,
         )
         : null;
     const bundle = shippedBundle(shipped?.bundle ?? assembled, mode);
@@ -532,10 +730,11 @@ export async function compileGameRuntimeArtifact(
     // but no store never opens one, so this is the only place its binary is bound
     // - and an unbound binary reads no patch at all.
     if (input.distribution && needsSupportBinary && !input.encryptionKey) {
-        await bindRuntimeBinary(path.join(appDir, RUNTIME_SUPPORT_FILENAME), {
+        await prepareArchiveReader(images, {
             projectMaterial: input.distribution.key,
             titleId: input.distribution.titleId,
-        });
+        }, titleCompile ?? undefined);
+        await placeCodecImages(placements, images);
     }
 
     // Everything below either writes loose files or streams into the store; on
@@ -543,15 +742,67 @@ export async function compileGameRuntimeArtifact(
     const target: PackTarget = input.encryptionKey
         ? {
             kind: "sealed",
-            writer: await createSealedBundle(
-                path.join(appDir, RUNTIME_BUNDLE_FILENAME),
-                path.join(appDir, RUNTIME_SUPPORT_FILENAME),
+            /*
+             * Every target's copy at once. They are bound to one store because
+             * they carry the same material - the store a Windows package ships is
+             * the store the macOS package built beside it opens - which is what
+             * lets one compile serve a build that produces several packages.
+             */
+            writer: await createAssetArchive(
+                path.join(appDir, ASSET_ARCHIVE_FILENAME),
+                images,
                 input.distribution
                     ? { projectMaterial: input.distribution.key, titleId: input.distribution.titleId }
                     : undefined,
+                titleCompile ?? undefined,
             ),
         }
         : { kind: "loose" };
+    /*
+     * After the codec package has had its say and not before: whichever route was
+     * taken, the images only carry this build's material once it has written them
+     * or compiled them, and a copy taken earlier would be a copy of the wrong
+     * thing. Once placed, the app dir holds what ships and the images do not
+     * matter.
+     */
+    if (input.encryptionKey) {
+        await placeCodecImages(placements, images);
+    }
+
+    /*
+     * The interface code, into the store rather than beside it.
+     *
+     * Here rather than with the rest of the runtime files because there was no
+     * store to put them in at that point. What a player receives for these three
+     * is now bytes inside the same blob as the assets, which is the difference
+     * between reading the game's code with a text editor and having to open the
+     * store first.
+     *
+     * The ceiling is real and it is two files wide: Electron opens main.js and
+     * the preload itself, before any of this exists, so they stay readable. What
+     * is behind them is not the game's own code - it is the loader that asks the
+     * store for it.
+     */
+    if (target.kind === "sealed" && sealsShell) {
+        for (const fileName of SEALED_SHELL_FILES) {
+            await target.writer.add(
+                gameRuntimeBundleRuntimeEntry(fileName),
+                await fs.readFile(path.join(input.runtimeDistDir, fileName)),
+            );
+        }
+    }
+
+    // The marker is written either way, but on a sealed artifact it reaches only half as far: the
+    // runtime honours it while this app directory is run by hand and refuses it in the packaged
+    // game, because the gate that decides in time reads the loose manifest and a shipped protected
+    // build cannot have a text edit standing between a stranger and its content.
+    const debuggable = input.debuggable === true;
+    if (debuggable && input.encryptionKey) {
+        notices.push(
+            "asset protection is on: this artifact accepts a debugging switch only while its app "
+            + "directory is run directly, never as the packaged game",
+        );
+    }
 
     try {
         const assetManifest = await copyProjectAssets({
@@ -559,7 +810,7 @@ export async function compileGameRuntimeArtifact(
             assetsDir,
             target,
             include: shipped?.include ?? null,
-            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
+            ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
         });
         // Baked character avatars are derived project files, not library assets, so the walk
         // above never sees them. Without this pass a packaged game resolves every avatar to
@@ -570,7 +821,7 @@ export async function compileGameRuntimeArtifact(
             target,
             manifest: assetManifest,
             characterIds: shipped?.characterIds ?? null,
-            ...(input.assetImages ? { assetImages: input.assetImages } : {}),
+            ...(input.assetReplacements ? { assetReplacements: input.assetReplacements } : {}),
         });
         // Weather clips are derived the same way and are invisible to the sweep for a stronger
         // reason: the id that addresses one is COMPUTED by the running game rather than written in
@@ -608,8 +859,11 @@ export async function compileGameRuntimeArtifact(
             pluginConfig,
             ...(input.platforms ? { platforms: input.platforms } : {}),
             onNotice: message => notices.push(message),
-            ...(input.sidecarPlatformKey ? { sidecarPlatformKey: input.sidecarPlatformKey } : {}),
-            ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+            /* Staged the same way as the codec and koffi, now that the pack can
+             * name a file per machine. See mergeSidecarEntries. */
+            platformKeys: nativePayloadKeys,
+            destinationDirFor: payloadDirFor,
+            ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
             ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
         });
         const packPuppetRuntimes = await copyPuppetRuntimes({
@@ -628,7 +882,7 @@ export async function compileGameRuntimeArtifact(
             schemaVersion: GAME_RUNTIME_PACK_SCHEMA_VERSION,
             generatedAt: new Date().toISOString(),
             mode,
-            ...(input.debuggable ? { debuggable: true } : {}),
+            ...(debuggable ? { debuggable: true } : {}),
             runtimeVersion: input.runtimeVersion,
             project: {
                 name: input.productName?.trim()
@@ -690,7 +944,7 @@ export async function compileGameRuntimeArtifact(
             ...(input.distribution
                 ? {
                     addOns: {
-                        verificationKey: projectVerificationKey(
+                        verificationKey: projectStamp(
                             input.distribution.key,
                             input.distribution.titleId,
                         ),
@@ -723,7 +977,7 @@ export async function compileGameRuntimeArtifact(
         if (target.kind === "sealed") {
             await target.writer.add(GAME_RUNTIME_BUNDLE_PACK_ENTRY, packJson);
             await target.writer.finalize();
-            packPath = path.join(appDir, RUNTIME_BUNDLE_FILENAME);
+            packPath = path.join(appDir, ASSET_ARCHIVE_FILENAME);
         } else {
             packPath = path.join(appDir, "pack.json");
             await fs.writeFile(packPath, packJson);
@@ -750,6 +1004,10 @@ export async function compileGameRuntimeArtifact(
             pack,
             copiedAssetCount: Object.keys(assetManifest).length,
             notices,
+            codecCompiledForTitle: placements.length > 0 && Boolean(input.packaging)
+                ? titleCompile !== null
+                : null,
+            codecHostImage: images[hostCodecTarget()] ?? null,
             collapsedBuildAxis,
             ...(shipped ? { assetReport: shipped.report } : {}),
         };
@@ -864,15 +1122,115 @@ async function assertRuntimeDistReady(runtimeDistDir: string, shell: "electron" 
     }
 }
 
+/**
+ * The C toolchain a shipped build's codec is compiled with.
+ *
+ * Only for a build that will be packaged. A preview runs from the app dir on
+ * this machine and is thrown away; fetching a compiler to make its binary unique
+ * to a title nobody will ship would be the cost of the feature with none of the
+ * point.
+ *
+ * Not getting one FAILS THE BUILD, and that is a decision rather than an
+ * oversight. The alternative was to write the material into the prebuilt image
+ * instead: the game would work, the store would still be sealed, and what would
+ * be lost is that a published copy of the codec package could open it - the one
+ * thing the whole arrangement exists to prevent. An author who switched
+ * protection on and got a build back has been told they are protected. Handing
+ * them a weaker artifact with a line on a console is telling them something else
+ * quietly, and the difference only shows up when somebody has already published
+ * the game.
+ *
+ * So it stops, and the author decides: fix the machine, or turn off the thing
+ * that needs it.
+ */
+async function resolveTitleCompile(options: {
+    wanted: boolean;
+    reason: string;
+    explicitCompiler?: string;
+    cacheRoot?: string;
+    mirror?: string;
+    rewrites?: readonly DownloadRewriteRule[];
+    workDir: string;
+}): Promise<{ compiler: string; workDir: string; archiveDir: string } | null> {
+    if (!options.wanted) {
+        return null;
+    }
+    const archiveDir = codecArchiveDir();
+    const refuse = (detail: string): never => {
+        throw new Error(
+            `${options.reason} could not compile this title's content codec: ${detail}. `
+            + "Install a C toolchain and build again, or turn it off.",
+        );
+    };
+    if (options.explicitCompiler) {
+        await fs.mkdir(options.workDir, { recursive: true });
+        return { compiler: options.explicitCompiler, workDir: options.workDir, archiveDir };
+    }
+    if (!options.cacheRoot) {
+        // The toolchain lives under it, so without one there is nowhere to put a
+        // toolchain. A packaged build always carries it; a caller that asked for
+        // packaging without it is a defect rather than a state.
+        return refuse("this build was started without a cache directory to keep one in");
+    }
+    try {
+        const compiler = await ensureZigToolchain({
+            cacheRoot: options.cacheRoot,
+            ...(options.mirror ? { mirror: options.mirror } : {}),
+            ...(options.rewrites ? { rewrites: options.rewrites } : {}),
+        });
+        await fs.mkdir(options.workDir, { recursive: true });
+        return { compiler, workDir: options.workDir, archiveDir };
+    } catch (error) {
+        return refuse(error instanceof Error ? error.message : String(error));
+    }
+}
+
+/** Assemble each package's copy from the images produced for it. */
+async function placeCodecImages(
+    placements: readonly CodecPlacement[],
+    images: Readonly<Record<string, string>>,
+): Promise<void> {
+    for (const placement of placements) {
+        await placeCodecBinary(placement, images);
+    }
+}
+
 async function copyRuntimeFiles(
     runtimeDistDir: string,
     appDir: string,
     mode: "preview" | "production",
     shell: "electron" | "web",
-    sidecarPlatformKey?: string,
+    /** Every target this app dir carries machine code for; empty for a web compile. */
+    platformKeys: readonly string[],
+    /** Where one target's machine code goes. See perTargetPayload.ts. */
+    payloadDirFor: (platformKey: string) => string,
+    /** Leave the interface code out; the caller puts it in the store instead. */
+    sealsShell: boolean,
+    /** Ship main.js as V8 bytecode behind a small loader rather than as readable source. */
+    bytecodeMain: boolean,
+    /** Re-key the guard's masked table in main.js per game (applies whether or not it is bytecode). */
+    reseedGuard: boolean,
 ): Promise<void> {
     await fs.mkdir(appDir, { recursive: true });
     for (const fileName of shell === "web" ? WEB_REQUIRED_RUNTIME_FILES : REQUIRED_RUNTIME_FILES) {
+        if (sealsShell && isSealedShellFile(fileName)) {
+            continue;
+        }
+        // A shipped, non-debuggable build hardens its main.js. The guard's masked table is re-keyed
+        // per game either way; then, when the target architecture is the host's, the readable source
+        // becomes a main.jsc image and main.js becomes the small loader that runs it. Only main.js -
+        // preload is opened by Electron in a sandboxed context that cannot load it this way, and the
+        // renderer three go into the store (above). See mainProcessBytecode.ts.
+        if (fileName === "main.js" && reseedGuard) {
+            const source = reseedGuardMaskTable(await fs.readFile(path.join(runtimeDistDir, fileName), "utf8"));
+            if (bytecodeMain) {
+                await fs.writeFile(path.join(appDir, MAIN_BYTECODE_FILENAME), compileMainToBytecode(source));
+                await fs.writeFile(path.join(appDir, fileName), renderMainBytecodeBootstrap(), "utf8");
+            } else {
+                await fs.writeFile(path.join(appDir, fileName), source, "utf8");
+            }
+            continue;
+        }
         await fs.copyFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
     for (const fileName of OPTIONAL_RUNTIME_FILES) {
@@ -884,8 +1242,20 @@ async function copyRuntimeFiles(
         }
         await copyOptionalFile(path.join(runtimeDistDir, fileName), path.join(appDir, fileName));
     }
-    if (shell !== "web") {
-        await copyKoffiPackage(appDir, sidecarPlatformKey);
+    if (shell === "web") {
+        return;
+    }
+    /*
+     * koffi's addon is machine code like the codec's, so it is staged the same
+     * way: one copy per target, and the packaging step brings the right one to
+     * the app root. A compile that names no target is a preview, which runs here.
+     */
+    if (platformKeys.length === 0) {
+        await copyKoffiPackage(appDir, undefined);
+        return;
+    }
+    for (const platformKey of platformKeys) {
+        await copyKoffiPackage(payloadDirFor(platformKey), platformKey);
     }
 }
 
@@ -895,7 +1265,7 @@ async function copyRuntimeFiles(
  * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
  * this application already depends on and already signs. It cannot be bundled - it resolves its own
  * `.node` by path at run time - so it ships as a directory beside the game's `main.js`, the way
- * `native.js`/`gate.js` ship for the encryption addon.
+ * `bindings.js`/`vendor.js` ship for the addon.
  *
  * The directory is `koffi/`, deliberately not `node_modules/koffi/`. electron-builder derives the
  * app's `node_modules` from the staged `package.json`'s dependencies and ships nothing else under
@@ -957,7 +1327,7 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * The packaged game's main process needs an FFI to position the system cursor, and koffi is the one
  * this application already depends on and already signs. It cannot be bundled - it resolves its own
  * `.node` by path at run time - so it ships as a package directory beside the game's `main.js`,
- * the way `native.js`/`gate.js` ship for the encryption addon.
+ * the way `bindings.js`/`vendor.js` ship for the addon.
  *
  * Only the prebuilds for the target are copied. The package carries eighteen of them and weighs
  * 24 MB; a game needs one (two for a universal macOS build), and shipping the rest would put an ARM
@@ -968,7 +1338,7 @@ export function koffiPrebuildDirectories(platformKey: string | undefined): strin
  * on the compile log, because the previous version of this said nothing and that is how it shipped
  * broken.
  */
-async function copyKoffiPackage(appDir: string, platformKey: string | undefined): Promise<void> {
+async function copyKoffiPackage(destinationDir: string, platformKey: string | undefined): Promise<void> {
     const directories = koffiPrebuildDirectories(platformKey);
     if (directories.length === 0) {
         console.warn(`[Compile] no koffi prebuild is known for "${platformKey}"; the game cannot move the cursor`);
@@ -982,7 +1352,7 @@ async function copyKoffiPackage(appDir: string, platformKey: string | undefined)
         console.warn("[Compile] koffi is not resolvable from this installation", error);
         return;
     }
-    const targetRoot = path.join(appDir, SHIPPED_KOFFI_DIR_NAME);
+    const targetRoot = path.join(destinationDir, SHIPPED_KOFFI_DIR_NAME);
     const copied: string[] = [];
     for (const directory of directories) {
         const prebuild = path.join(packageRoot, "build", "koffi", directory, "koffi.node");
@@ -1040,7 +1410,7 @@ async function planShippedAssets(
     bundle: DevModeBundle,
     runtimePlugins: readonly GameRuntimePluginSource[],
     onNotice?: (message: string) => void,
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>,
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>,
 ): Promise<{
     bundle: DevModeBundle;
     include: Set<string>;
@@ -1092,7 +1462,7 @@ async function planShippedAssets(
             include,
             characters: bundle.storyLibrary?.characters ?? [],
             shippedCharacterIds: cast.characterIds,
-            ...(assetImages ? { assetImages } : {}),
+            ...(assetReplacements ? { assetReplacements } : {}),
         }),
     };
 }
@@ -1113,7 +1483,7 @@ async function describeShippedAssets(input: {
     include: ReadonlySet<string>;
     characters: readonly { id: string; name?: string }[];
     shippedCharacterIds: ReadonlySet<string>;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<ShippedAssetReport> {
     const included: ShippedAssetReportEntry[] = [];
     const excluded: ShippedAssetReportEntry[] = [];
@@ -1123,7 +1493,7 @@ async function describeShippedAssets(input: {
         // not: a re-encoded image ships as the smaller file, and reporting its source size would
         // credit the build with bytes it never wrote.
         const measured = carried
-            ? input.assetImages?.[assetId]?.path ?? record.sourcePath
+            ? input.assetReplacements?.[assetId]?.path ?? record.sourcePath
             : record.sourcePath;
         const bytes = await measureAssetBytes(measured);
         const entry: ShippedAssetReportEntry = {
@@ -1356,15 +1726,34 @@ async function copyProjectAssets(input: {
      * can have lost its last reference, and narrowing there could only ever take something away.
      */
     include: ReadonlySet<string> | null;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<Record<string, GameRuntimeAssetManifestEntry>> {
     const manifest: Record<string, GameRuntimeAssetManifestEntry> = {};
+    /*
+     * Every type's registry is read before any asset moves, so the count is known
+     * before the first copy rather than discovered while copying.
+     *
+     * This is the step a protected build spends its time in - the library is
+     * where the gigabytes are - so it is the one worth being able to report a
+     * real fraction for. The registries are small JSON files listing what the
+     * project owns; reading them up front costs nothing and is what turns "still
+     * working" into "412 of 900".
+     */
+    const registries: Array<[typeof ASSET_TYPES[number], Record<string, AssetMetadataRecord>]> = [];
     for (const type of ASSET_TYPES) {
         const metadataPath = path.join(input.projectPath, "assets", `assets.metadata.${type}.json`);
         const metadata = await readOptionalJson<Record<string, AssetMetadataRecord>>(metadataPath);
-        if (!metadata) {
-            continue;
+        if (metadata) {
+            registries.push([type, metadata]);
         }
+    }
+    /* Counted the same way the loop below decides, so the denominator describes
+     * the work that will actually happen rather than the library's size. */
+    const shipping = registries.reduce((sum, [, metadata]) => sum + Object.keys(metadata)
+        .filter(assetId => !input.include || input.include.has(assetId)).length, 0);
+    const counted = countBuildStep(shipping, "file");
+    try {
+    for (const [type, metadata] of registries) {
         for (const [assetId, rawAsset] of Object.entries(metadata)) {
             if (input.include && !input.include.has(assetId)) {
                 continue;
@@ -1379,6 +1768,9 @@ async function copyProjectAssets(input: {
                     sourceDir: sourcePath,
                     authoredEntry: readAuthoredBundleEntry(rawAsset),
                 }));
+                /* A bundle is one library entry however many files it expands
+                 * into, which is what the denominator counted. */
+                counted.advance();
                 continue;
             }
             const sourceLabel = normalized.source === "remote" ? "remote asset" : "local asset";
@@ -1388,7 +1780,7 @@ async function copyProjectAssets(input: {
             // file in the author's project this asset came from, which is exactly
             // as true afterwards, and they are the only trail from a shipped
             // asset back to its source. See `optimizeProjectImages`.
-            const optimized = input.assetImages?.[normalized.id];
+            const optimized = input.assetReplacements?.[normalized.id];
             const payloadPath = optimized?.path ?? sourcePath;
             const ext = optimized?.ext ?? normalized.ext;
             // The MIME type is derived from the extension, not from where the
@@ -1423,7 +1815,13 @@ async function copyProjectAssets(input: {
                 ext,
                 mimeType,
             };
+            counted.advance();
         }
+    }
+    } finally {
+        /* Ends the step whether the copy finished or threw: a bar left at 412 of
+         * 900 after a failed build describes a build that is still running. */
+        counted.end();
     }
     return manifest;
 }
@@ -1585,7 +1983,7 @@ async function copyBakedCharacterAvatars(input: {
      * sits on disk, and this walk would copy every one of them into a demo.
      */
     characterIds: ReadonlySet<string> | null;
-    assetImages?: Readonly<Record<string, OptimizedAssetImageInput>>;
+    assetReplacements?: Readonly<Record<string, OptimizedAssetFile>>;
 }): Promise<void> {
     const root = path.join(input.projectPath, "resources", "characters", "avatars");
     let characterDirs: string[];
@@ -1609,7 +2007,7 @@ async function copyBakedCharacterAvatars(input: {
             const sourcePath = path.join(dir, fileName);
             // Re-encoded like any other image, and by the same pass: a bake is a
             // PNG shown on almost every line of dialogue.
-            const optimized = input.assetImages?.[id];
+            const optimized = input.assetReplacements?.[id];
             const payloadPath = optimized?.path ?? sourcePath;
             const ext = optimized?.ext ?? "png";
             let relativePath: string;
@@ -1765,14 +2163,16 @@ async function copyRuntimePlugins(input: {
     runtimePlugins: GameRuntimePluginSource[];
     target: PackTarget;
     /**
-     * Absent on web compiles only - a static site has no process to spawn. A
-     * preview passes the *host's* key and does ship sidecars, which is the point:
-     * exercising one should not cost a full production build. See the field of
-     * the same name on GameRuntimeArtifactInput.
+     * Every target this pack serves. Empty on web compiles only - a static site
+     * has no process to spawn. A preview passes the host's own key and does ship
+     * sidecars, which is the point: exercising one should not cost a full
+     * production build.
      */
-    sidecarPlatformKey?: string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    platformKeys: readonly string[];
+    /** Where one target's files go. See perTargetPayload.ts. */
+    destinationDirFor: (platformKey: string) => string;
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
     /** What each plugin's declared fields resolve against. See {@link readPluginConfigSource}. */
     pluginConfig: { tag: ProjectAppTag; base: AppTagPluginConfig };
@@ -1802,15 +2202,23 @@ async function copyRuntimePlugins(input: {
             manifest: plugin.manifest,
             onWarning: message => console.warn("[gameRuntimeArtifactCompiler]", message),
         });
-        const sidecars = input.sidecarPlatformKey
-            ? await copyPluginSidecars({
-                appDir: input.appDir,
+        /*
+         * Every target this pack serves, each into its own staging directory.
+         * The answers are merged below: one sidecar becomes one pack entry that
+         * names a file per machine, so a Windows package and a Linux package
+         * built together each spawn their own.
+         */
+        const perTarget: GameRuntimePackSidecarEntry[][] = [];
+        for (const platformKey of input.platformKeys) {
+            perTarget.push(await copyPluginSidecars({
+                destinationDir: input.destinationDirFor(platformKey),
                 plugin,
-                platformKey: input.sidecarPlatformKey,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                platformKey,
+                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
-            })
-            : [];
+            }));
+        }
+        const sidecars = mergeSidecarEntries(perTarget.flat());
         // Per plugin and nothing wider: the entry a plugin reads at runtime is its own, so a value
         // one plugin's author typed is never in front of another's code.
         const buildConfig = resolveShippedPluginBuildConfig(
@@ -1854,12 +2262,42 @@ async function copyRuntimePlugins(input: {
  * Preflight warns the author before they commit to the build; here it is worth
  * only a log line.
  */
+/**
+ * One entry per sidecar, naming a file per machine.
+ *
+ * The targets are copied one at a time and each answers for itself, so a sidecar
+ * a plugin ships for three platforms arrives here three times. They agree about
+ * everything except which file to spawn, which is the whole reason the pack has
+ * to hold a map at all.
+ *
+ * A pack that serves one machine collapses back to a bare string. Not for
+ * tidiness: it is what every pack said before this, and a game built by an older
+ * Studio reads that shape and only that shape.
+ */
+function mergeSidecarEntries(entries: readonly GameRuntimePackSidecarEntry[]): GameRuntimePackSidecarEntry[] {
+    const merged = new Map<string, GameRuntimePackSidecarEntry>();
+    for (const entry of entries) {
+        const seen = merged.get(entry.id);
+        if (!seen) {
+            merged.set(entry.id, { ...entry, entry: { ...(entry.entry as Record<string, string>) } });
+            continue;
+        }
+        Object.assign(seen.entry as Record<string, string>, entry.entry as Record<string, string>);
+    }
+    return [...merged.values()].map(entry => {
+        const byMachine = entry.entry as Record<string, string>;
+        const keys = Object.keys(byMachine);
+        return keys.length === 1 ? { ...entry, entry: byMachine[keys[0]] } : entry;
+    });
+}
+
 async function copyPluginSidecars(input: {
-    appDir: string;
+    /** Where this target's files go; the app root for a preview, a staged directory for a build. */
+    destinationDir: string;
     plugin: GameRuntimePluginSource;
     platformKey: string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<GameRuntimePackSidecarEntry[]> {
     const { plugin, platformKey } = input;
@@ -1876,7 +2314,7 @@ async function copyPluginSidecars(input: {
         }
         const where = `Sidecar "${sidecar.id}" of plugin "${plugin.manifest.id}" (${platformKey})`;
         const sidecarRelativeDir = path.posix.join(SIDECAR_DIR_NAME, plugin.manifest.id, sidecar.id);
-        const sidecarDir = path.join(input.appDir, ...sidecarRelativeDir.split("/"));
+        const sidecarDir = path.join(input.destinationDir, ...sidecarRelativeDir.split("/"));
         for (const include of target.include) {
             const { sourcePath, relativePath } = await resolveSidecarInclude({
                 include,
@@ -1884,7 +2322,7 @@ async function copyPluginSidecars(input: {
                 platformKey,
                 target,
                 where,
-                ...(input.hostUserDataDir ? { hostUserDataDir: input.hostUserDataDir } : {}),
+                ...(input.hostCacheRoot ? { hostCacheRoot: input.hostCacheRoot } : {}),
                 ...(input.downloadRewrites ? { downloadRewrites: input.downloadRewrites } : {}),
             });
             // The include path is also the path inside the sidecar directory
@@ -1904,7 +2342,13 @@ async function copyPluginSidecars(input: {
         }
         entries.push({
             id: sidecar.id,
-            entry: path.posix.join(sidecarRelativeDir, ...normalizeSidecarPath(target.entry).split("/")),
+            /* One name per machine this target runs on. Merged with the other
+             * targets' answers below; a build serving one machine collapses back
+             * to a bare string, which is what every pack said before. */
+            entry: Object.fromEntries(runningPlatformKeysFor(platformKey).map((key: string) => [
+                key,
+                path.posix.join(sidecarRelativeDir, ...normalizeSidecarPath(target.entry).split("/")),
+            ])),
             kind: sidecar.kind,
             autostart: sidecar.autostart,
             startupTimeoutMs: sidecar.startupTimeoutMs,
@@ -1935,8 +2379,8 @@ async function resolveSidecarInclude(input: {
     platformKey: string;
     target: { sha256: Record<string, string> };
     where: string;
-    hostUserDataDir?: string;
-    /** The author's download rewrites, for the same reason `hostUserDataDir` travels. */
+    hostCacheRoot?: string;
+    /** The author's download rewrites, for the same reason `hostCacheRoot` travels. */
     downloadRewrites?: readonly DownloadRewriteRule[];
 }): Promise<{ sourcePath: string; relativePath: string }> {
     const { include, plugin, platformKey, where } = input;
@@ -1959,7 +2403,7 @@ async function resolveSidecarInclude(input: {
                 `so "${include}" cannot be shipped`,
             );
         }
-        if (!input.hostUserDataDir) {
+        if (!input.hostCacheRoot) {
             // A programming error rather than an author's: whoever asked for a
             // sidecar platform key owes the compile a cache root as well.
             throw new Error(
@@ -1967,7 +2411,7 @@ async function resolveSidecarInclude(input: {
             );
         }
         const dependencyDir = await ensurePluginBuildDependency({
-            userDataDir: input.hostUserDataDir,
+            cacheRoot: input.hostCacheRoot,
             dependencyId,
             platformKey,
             target: dependencyTarget,

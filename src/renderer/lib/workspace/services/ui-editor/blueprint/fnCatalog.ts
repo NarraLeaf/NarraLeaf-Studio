@@ -104,10 +104,20 @@ export function parseBlueprintFnRef(raw: unknown): { blueprintId: string; headNo
 // Declaration scanning
 // ---------------------------------------------------------------------------
 
+/**
+ * Owners whose blueprint may declare a Fn.
+ *
+ * A Fn is factoring inside one blueprint - `findBlueprintFnByRef` resolves it by the blueprint id
+ * baked into the ref, and calls never cross a blueprint - so the list is about which owners write
+ * graphs big enough to want it rather than about anything a Fn can reach. `componentWidgetMain` is
+ * on it for that reason: a definition's graph runs once per instance, which makes it the *most*
+ * likely place for one chain to be needed from three call sites.
+ */
 const FN_DECL_OWNER_KINDS: ReadonlySet<BlueprintOwnerRef["kind"]> = new Set([
     "globalMain",
     "surfaceMain",
     "widgetMain",
+    "componentWidgetMain",
     "storyAction",
 ]);
 
@@ -332,9 +342,14 @@ function callerSurfaceId(caller: BlueprintOwnerRef): string | undefined {
 
 /**
  * Scoping matrix:
- * - globalMain decls: visible to global, surface, widget, and widgetValue callers.
+ * - globalMain decls: visible to every caller. A global helper that some owners cannot reach is a
+ *   helper an author has to copy, which is the thing a global one exists to stop.
  * - surfaceMain / widgetMain decls: visible only to callers on the same surface.
- * - componentWidgetMain / sharedAsset callers see nothing (v1 out of scope).
+ * - componentWidgetMain decls: visible only inside the same component definition. A definition is
+ *   instantiated wherever somebody places it, so "the same surface" is not a question that can be
+ *   asked about it; the definition itself is the boundary, and it is the right one - a graph that
+ *   runs once per instance is exactly where one chain gets wanted from three call sites.
+ * - sharedAsset callers see nothing.
  */
 export function isBlueprintFnVisibleToOwner(
     declOwner: BlueprintOwnerRef,
@@ -345,9 +360,13 @@ export function isBlueprintFnVisibleToOwner(
             caller.kind === "globalMain" ||
             caller.kind === "surfaceMain" ||
             caller.kind === "widgetMain" ||
+            caller.kind === "componentWidgetMain" ||
             caller.kind === "widgetValue" ||
             caller.kind === "storyAction"
         );
+    }
+    if (declOwner.kind === "componentWidgetMain") {
+        return caller.kind === "componentWidgetMain" && caller.componentId === declOwner.componentId;
     }
     if (declOwner.kind === "surfaceMain" || declOwner.kind === "widgetMain") {
         const surfaceId = callerSurfaceId(caller);

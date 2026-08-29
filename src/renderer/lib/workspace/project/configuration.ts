@@ -23,6 +23,7 @@ import type { LocalizationConfiguration } from "@shared/types/localization";
 import type { PlayerPreferences } from "@shared/types/preference";
 import type { AutoSaveConfiguration } from "@shared/types/saves";
 import type { DialogueConfiguration } from "@shared/types/dialogue";
+import type { PreloadConfiguration } from "@shared/types/preload";
 import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { SaveLocationConfiguration } from "@shared/utils/userDataLocation";
 import type { LanguageChangeConfiguration } from "@shared/types/localization";
@@ -30,7 +31,7 @@ import type { SigningPlatform } from "@shared/types/signing";
 import type { WindowConfiguration } from "@shared/types/appWindow";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import type { VoiceConfiguration } from "@shared/types/voice";
-import type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+import type { AssetCompressionConfiguration } from "@shared/types/assetCompression";
 import type { LintRuleSeverity } from "@/lib/lint/types";
 import {
     GAME_BUILD_FORMATS_BY_PLATFORM,
@@ -62,13 +63,32 @@ export type { VfxConfiguration, VfxFrameRate } from "@shared/types/vfx";
 export { DEFAULT_WINDOW_CONFIGURATION, normalizeWindowConfiguration } from "@shared/types/appWindow";
 export type { WindowConfiguration } from "@shared/types/appWindow";
 export {
-    ASSET_LOSSY_QUALITY_MAX,
-    ASSET_LOSSY_QUALITY_MIN,
-    DEFAULT_ASSET_OPTIMIZATION_CONFIGURATION,
-    normalizeAssetOptimizationConfiguration,
-    readAssetOptimizationConfiguration,
-} from "@shared/types/assetOptimization";
-export type { AssetOptimizationConfiguration } from "@shared/types/assetOptimization";
+    ASSET_COMPRESSION_MODES,
+    ASSET_COMPRESSION_TRACKS,
+    ASSET_QUALITY_MAX,
+    ASSET_QUALITY_MIN,
+    AUDIO_BITRATE_KBPS_MAX,
+    AUDIO_BITRATE_KBPS_MIN,
+    AUDIO_SAMPLE_RATE_MAX,
+    AUDIO_SAMPLE_RATE_MIN,
+    DEFAULT_ASSET_COMPRESSION_CONFIGURATION,
+    DIMENSION_CAP_MAX,
+    DIMENSION_CAP_MIN,
+    VIDEO_CRF_MAX,
+    VIDEO_CRF_MIN,
+    advancedSeedForTrack,
+    assetTrackEnabled,
+    normalizeAssetCompressionConfiguration,
+    readAssetCompressionConfiguration,
+    resolveAudioCompression,
+    resolveImageCompression,
+    resolveVideoCompression,
+} from "@shared/types/assetCompression";
+export type {
+    AssetCompressionConfiguration,
+    AssetCompressionMode,
+    AssetCompressionTrack,
+} from "@shared/types/assetCompression";
 export {
     AUTO_SAVE_INTERVAL_SECONDS_MAX,
     AUTO_SAVE_INTERVAL_SECONDS_MIN,
@@ -85,6 +105,12 @@ export {
     normalizeDialogueConfiguration,
 } from "@shared/types/dialogue";
 export type { DialogueConfiguration } from "@shared/types/dialogue";
+export {
+    DEFAULT_PRELOAD_CONFIGURATION,
+    PRELOAD_BEHAVIORS,
+    normalizePreloadConfiguration,
+} from "@shared/types/preload";
+export type { PreloadBehavior, PreloadConfiguration } from "@shared/types/preload";
 export {
     DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION,
     normalizeSaveCompatibilityConfiguration,
@@ -423,8 +449,8 @@ export type ProjectAppConfiguration = {
     security?: SecurityConfiguration;
     /** What the shipped game does when it stops working; absent until configured. */
     crash?: CrashConfiguration;
-    /** What a build may do to the author's artwork, on every target; absent until configured. */
-    assetOptimization?: AssetOptimizationConfiguration;
+    /** What a build may discard from the project's media, on every target; absent until configured. */
+    assetCompression?: AssetCompressionConfiguration;
     /** Mobile shell behaviour; absent until configured (see the defaults). */
     mobile?: MobileConfiguration;
     /** What the shipped game's window does; absent until configured (see the defaults). */
@@ -463,6 +489,11 @@ export type ProjectAppConfiguration = {
      * screen offers it.
      */
     dialogue?: DialogueConfiguration;
+    /**
+     * How much of the opening scene has to be warm before the game is shown
+     * (see @shared/types/preload); absent until configured.
+     */
+    preload?: PreloadConfiguration;
     /**
      * The key that ties this project to the builds it produces; absent until the
      * author mints one. Travels with the project on purpose - see the type.

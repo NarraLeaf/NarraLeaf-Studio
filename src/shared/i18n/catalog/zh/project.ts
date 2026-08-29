@@ -19,8 +19,8 @@ export const project = {
             description: "颜色、字体，以及由它们上色的控件",
         },
         project: {
-            title: "工程",
-            description: "分发密钥、工程检查的规则，以及什么会拦下构建",
+            title: "项目",
+            description: "分发密钥、项目检查规则，以及会中止构建的条件",
         },
         runtimes: {
             title: "运行时",
@@ -28,7 +28,7 @@ export const project = {
         },
         settings: {
             title: "设置",
-            description: "安全、签名、优化与移动端",
+            description: "安全、签名、优化、载入与移动端",
         },
     },
     // 区分子页里各块内容的小标题。标题只用名词，不写成句子：底下的行自己会说做什么。
@@ -53,27 +53,47 @@ export const project = {
         brandControls: "控件",
         typography: "字体",
         distribution: "分发密钥",
-        linting: "工程检查",
+        linting: "项目检查",
         security: "安全",
         signing: "签名",
-        optimization: "优化",
+        imageCompression: "图像压缩",
+        audioCompression: "音频压缩",
+        videoCompression: "视频压缩",
+        loading: "载入",
         crash: "崩溃",
         mobile: "移动端",
     },
+    compressionMode: {
+        auto: "自动",
+        advanced: "高级",
+    },
     distribution: {
-        description: "随工程保存，参与构建的每个人使用同一把密钥。一个构建只接受用它自己那把密钥做出的补丁。",
+        description: "随项目保存，参与构建的成员使用同一密钥。构建仅接受由其自身密钥生成的补丁。",
         absent: "尚未创建密钥",
         rotatedAt: "上次更换于 {date}",
         createAction: "创建",
         replaceAction: "更换",
-        replaceConfirm: "要更换分发密钥吗？",
-        replaceConfirmDetail: "已经用当前密钥发布出去的构建，不会接受此后做出的补丁",
+        replaceConfirm: "更换分发密钥",
+        replaceConfirmDetail: "已使用当前密钥发布的构建，不会接受此后生成的补丁",
     },
     home: {
         untitledProject: "未命名项目",
     },
     subPage: {
         backAria: "返回项目概览",
+    },
+    /**
+     * 项目页面的设置只读时，写在页面顶部的那句话。
+     *
+     * 项目配置是一份文件，任何冻结都不会放它过去，所以这些字段是一起变灰的——
+     * 而在已经禁用的字段上放提示，本来就很难摸到。
+     *
+     * ⚠ 会话那句**不列举**还能编辑的是哪些。这些页面能到的三张表各有自己的文档、由会话携带，
+     * 在这里点名它们等于留一份会落后于词汇表的清单；「会话携带的那些」不会落后。
+     */
+    frozen: {
+        live: "实时会话期间，项目自身的设置是只读的。这里还能编辑的，就是会话携带的那些。",
+        frozen: "项目被冻结期间，项目自身的设置是只读的。",
     },
     details: {
         nameLabel: "应用名称",
@@ -90,9 +110,9 @@ export const project = {
         copyrightPlaceholder: "© 工作室名称",
         // 长文形式，与上面那一行分开：那一行进二进制的文件属性，这一段进玩家能打开的文件。
         copyrightTextLabel: "版权声明",
-        copyrightTextPlaceholder: "用到的字体、音乐与资产，以及它们各自归谁所有…",
-        copyrightTextHelper: "随游戏一起发布为 COPYRIGHT.txt；留空则不生成该文件",
-        descriptionPlaceholder: "描述本项目…",
+        copyrightTextPlaceholder: "使用的字体、音乐与资产，及其版权归属…",
+        copyrightTextHelper: "随游戏发布为 COPYRIGHT.txt。为空时不生成该文件",
+        descriptionPlaceholder: "项目简介…",
         required: "必填",
     },
     // 发布出去的游戏把属于玩家的东西写在哪里。只陈述，不提供开关：这一部分没有任何设置，也不点名
@@ -122,7 +142,7 @@ export const project = {
             persistence: "持久变量、已解锁内容与插件数据",
         },
     },
-    // 变体：同一个工程能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
+    // 变体：同一个项目能发布出的几种成品。什么是变体、继承是什么意思，都在标题旁 `?` 打开的
     // `appTags` 帮助主题里；这里的文案只命名控件，并说明按下去会发生什么。
     appTags: {
         add: "新增变体",
@@ -145,7 +165,7 @@ export const project = {
         assetAxesTitle: "本版本使用的美术",
         assetAxisUnset: "与正式版相同",
         // 该变体的构建可以交给玩家浏览器打开的地址。按这份清单决定什么来命名，而不是按机制；整份
-        // 清单一起覆盖：一个变体要么有自己的清单，要么读工程的。
+        // 清单一起覆盖：一个变体要么有自己的清单，要么读项目的。
         // 该变体的构建在剧本走完之后显示的页面。按作者看到的结果命名，而不是按背后的引擎事件。
         ending: {
             title: "剧本结束后显示的页面",
@@ -158,7 +178,7 @@ export const project = {
             other: "被 {count} 处引用",
         },
         delete: "删除",
-        deleteConfirm: "删除「{name}」？",
+        deleteConfirm: "删除「{name}」",
         // 如实说明后果：指向该变体的引用不会被改写，从此按正式变体的值读取。`{name}` 是正式变体的
         // 名称，插值而不是写死在这里，将来改名时这句会跟着改。
         deleteDetail: {
@@ -183,12 +203,12 @@ export const project = {
         nameTitle: "名称",
         idTitle: "ID",
         idFile: "产出文件为 {file}",
-        idChangeConfirm: "将 ID 改为“{id}”？",
-        idChangeDetail: "已经发出去的文件仍然是原文件名，标记为原 ID 的故事将不再指向这个 DLC。",
+        idChangeConfirm: "将 ID 改为“{id}”",
+        idChangeDetail: "已发布的文件保留原文件名。标记为原 ID 的故事将不再指向该 DLC。",
         idChangeAction: "更改",
         attachTitle: "装入",
         delete: "删除",
-        deleteConfirm: "删除“{name}”？",
+        deleteConfirm: "删除“{name}”",
         deleteDetail: {
             one: "{count} 个故事将回到基础构建中。",
             other: "{count} 个故事将回到基础构建中。",
@@ -241,7 +261,7 @@ export const project = {
     preferences: {
         // 挂在小标题上的一句话，不再是页首的一段话。原先那段里其余的内容，要么行本身就写着，
         // 要么对正在看这些行的作者没有用处。
-        intro: "玩家未修改时，各项设置从这里的值开始；玩家可以修改全部设置，修改结果会被保留",
+        intro: "玩家未修改时使用此处的值；玩家可修改全部设置，修改结果将被保留",
         group: {
             dialogue: "对白",
             skipping: "跳过",
@@ -256,11 +276,11 @@ export const project = {
         },
         cps: {
             title: "文字速度",
-            description: "每秒打出的字数",
+            description: "每秒显示的字数",
         },
         gameSpeed: {
             title: "游戏速度",
-            description: "同时作用于打字速度和自动前进的等待时间",
+            description: "同时作用于文字速度与自动前进的等待时间",
         },
         autoForward: {
             title: "自动前进",
@@ -280,7 +300,7 @@ export const project = {
         },
         skipReadText: {
             title: "跳过已读文本",
-            description: "开启后，跳过遇到玩家还没读过的文本就会停下",
+            description: "开启后，跳过将在玩家未读过的文本处停下",
         },
         skipDelay: {
             title: "跳过延迟",
@@ -345,7 +365,7 @@ export const project = {
         usedBy: {
             other: "被 {count} 处引用",
         },
-        deleteConfirm: "删除「{name}」？",
+        deleteConfirm: "删除「{name}」",
         // 诚实地说明后果：指向这条轨道的地方不会被改写，从此各自按自身形态对应的内置总线解析——
         // 具体落到哪一条取决于播放的是什么，在这里点名某一条只会是猜测。
         deleteDetail: {
@@ -365,6 +385,18 @@ export const project = {
         },
     },
     settings: {
+        preloadBehaviorTitle: "预加载行为",
+        preloadBehavior: {
+            auto: "自动",
+            blocking: "阻塞",
+        },
+        preloadBehaviorNote: {
+            blocking: "仅在预加载出现问题时使用",
+        },
+        preloadBehaviorDetail: {
+            auto: "开场场景的首帧就绪后显示游戏，其余图像在后台继续载入",
+            blocking: "开场场景用到的全部图像载入后再显示游戏",
+        },
         crashPolicyTitle: "游戏停止工作时",
         crashPolicyDescription: "三种方式都会将错误写入游戏日志",
         crashPolicy: {
@@ -389,7 +421,7 @@ export const project = {
             description: "每行一个地址或主机模式",
             matchHint: "只写主机表示该主机下的所有路径；* 可以替换首个主机标签（*.example.com），或出现在路径末尾（/v1/*）；协议、主机与端口需完全一致",
             placeholder: "https://api.example.com/*",
-            invalid: "请填写 http:// 或 https:// 地址；* 只能替换首个主机标签，或出现在路径末尾",
+            invalid: "填写 http:// 或 https:// 地址；* 只能替换首个主机标签，或出现在路径末尾",
             add: "新增地址",
             remove: "移除地址",
             fromPlugins: "已安装插件声明的地址",
@@ -400,11 +432,34 @@ export const project = {
         encryptAssetsWebHint: "Web 构建始终不加密资产",
         // 「签名」这一块的一行说明。每个可签名平台都有一行，不管本机能不能构建它：证书往往在用到它的
         // 那次构建之前几天就要备好，这份准备工作正是它落在面板里、而不是构建对话框里的原因。
-        signingDescription: "为每个平台指定签名凭据；证书与密码只留在本机，工程里存的只有用哪一份",
-        lossyImagesTitle: "重压缩图像",
-        lossyImagesDescription: "将图像重编码为有损 WebP，对本工程构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
-        lossyQualityTitle: "图像质量",
-        lossyQualityDescription: "重压缩时使用的 WebP 质量，取值 1 到 100",
+        signingDescription: "为每个平台指定签名凭据。证书与密码仅保存在本机，项目中仅记录所选凭据",
+        imageModeTitle: "图像压缩方式",
+        imageWebpQualityTitle: "WebP 质量",
+        imageWebpQualityDescription: "传给 WebP 编码器的质量，取值 1 到 100",
+        imageMaxDimensionTitle: "图像最大边长",
+        imageMaxDimensionDescription: "长边超过这个像素数的图像会被缩小；填 0 保持原有尺寸",
+        audioModeTitle: "音频压缩方式",
+        audioBitrateKbpsTitle: "音频码率",
+        audioBitrateKbpsDescription: "AAC 码率，单位 kbit/s",
+        audioSampleRateHzTitle: "最高采样率",
+        audioSampleRateHzDescription: "采样率高于这个值的音频会被降到该值；填 0 保持原有采样率",
+        videoModeTitle: "视频压缩方式",
+        videoCrfTitle: "视频 CRF",
+        videoCrfDescription: "VP9 的恒定质量参数，数值越低画质越好、体积越大",
+        videoMaxHeightTitle: "视频最大高度",
+        videoMaxHeightDescription: "高度超过这个像素数的视频会被缩小；填 0 保持原有尺寸",
+        compressImagesTitle: "启用图像压缩",
+        compressImagesDescription: "将图像重编码为有损 WebP，对本项目构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        imageQualityTitle: "图像质量",
+        imageQualityDescription: "压缩图像时使用的质量，取值 1 到 100",
+        compressAudioTitle: "启用音频压缩",
+        compressAudioDescription: "将音频重编码为有损 AAC，对本项目构建的每一个包生效；体积明显更小，损失的音质无法恢复",
+        audioQualityTitle: "音频质量",
+        audioQualityDescription: "压缩音频时使用的质量，取值 1 到 100",
+        compressVideoTitle: "启用视频压缩",
+        compressVideoDescription: "将视频重编码为有损 VP9，对本项目构建的每一个包生效；体积明显更小，损失的画面细节无法恢复",
+        videoQualityTitle: "视频质量",
+        videoQualityDescription: "压缩视频时使用的质量，取值 1 到 100",
         // 不叫「移动端方向」：它就在「移动端」小标题底下，重复那个词还会让标签在 318px 面板里换行。
         orientationTitle: "屏幕方向",
         orientationDescription: "移动端构建启动时锁定的屏幕方向",
@@ -475,8 +530,8 @@ export const project = {
                 other: "{count} 个节点",
             },
             widget: {
-                one: "{count} 个挂件",
-                other: "{count} 个挂件",
+                one: "{count} 个控件",
+                other: "{count} 个控件",
             },
             storage: {
                 one: "{count} 个存储",
@@ -487,5 +542,8 @@ export const project = {
                 other: "{count} 个动作",
             },
         },
+    },
+    live: {
+        entryClaimed: "{name} 正在编辑该条目",
     },
 } satisfies LocaleNamespace<"project">;

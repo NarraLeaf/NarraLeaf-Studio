@@ -70,6 +70,88 @@ describe("UIStore editor tab focus history", () => {
     });
 });
 
+describe("UIStore preview tabs", () => {
+    function previewTab(id: string): EditorTabDefinition {
+        return { ...tab(id), preview: true };
+    }
+
+    it("replaces the group's preview tab in place instead of adding another", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("kept"));
+        store.openEditorTabInGroup(previewTab("look-1"));
+        store.openEditorTabInGroup(previewTab("look-2"));
+
+        expect(mainGroup(store).tabs.map(t => t.id)).toEqual(["kept", "look-2"]);
+        expect(mainGroup(store).focus).toBe("look-2");
+        expect(store.getPreviewEditorTabId("main")).toBe("look-2");
+    });
+
+    it("keeps a promoted tab out of the way of the next preview", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("look-1"));
+
+        expect(store.promoteEditorTab("look-1")).toBe(true);
+        store.openEditorTabInGroup(previewTab("look-2"));
+
+        expect(mainGroup(store).tabs.map(t => t.id)).toEqual(["look-1", "look-2"]);
+        expect(store.promoteEditorTab("look-1")).toBe(false);
+    });
+
+    it("promotes a tab reopened as an ordinary one, and never the other way round", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("a"));
+        store.openEditorTabInGroup(tab("a"));
+
+        expect(store.getPreviewEditorTabId("main")).toBeNull();
+
+        store.openEditorTabInGroup(previewTab("a"));
+        expect(store.getPreviewEditorTabId("main")).toBeNull();
+    });
+
+    it("gives each group its own preview tab", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+        store.openEditorTabInGroup(previewTab("c"), "group-1");
+
+        expect(store.getPreviewEditorTabId("main")).toBe("b");
+        expect(store.getPreviewEditorTabId("group-1")).toBe("c");
+    });
+
+    it("keeps a preview tab that was dragged into another group", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+
+        expect(store.moveEditorTabToGroup("b", "main", "group-1")).toBe(true);
+        expect(store.getPreviewEditorTabId("group-1")).toBeNull();
+    });
+
+    it("leaves one preview tab when two panes holding one are merged", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(previewTab("b"));
+        store.splitEditorGroup("main", "horizontal", "a");
+        store.openEditorTabInGroup(previewTab("c"), "group-1");
+
+        store.closeOtherEditorGroups("main");
+
+        const previews = mainGroup(store).tabs.filter(t => t.preview).map(t => t.id);
+        expect(previews).toEqual(["b"]);
+    });
+
+    it("focuses the replacement when the preview it took over was the focused tab", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(previewTab("look-1"));
+
+        store.openEditorTabInGroup(previewTab("look-2"), "main", false);
+
+        expect(mainGroup(store).focus).toBe("look-2");
+    });
+});
+
 describe("UIStore panel ordering", () => {
     it("sorts panels by the static order field within each position by default", () => {
         const store = new UIStore();
@@ -443,5 +525,100 @@ describe("UIStore editor group splitting", () => {
         expect(layout.direction).toBe("vertical");
         expect(tabIds(layout.first)).toEqual([]);
         expect(tabIds(layout.second)).toEqual(["a"]);
+    });
+});
+
+/**
+ * The tab strip renders `editorLayout`, so anything meant to show on a tab - the unsaved dot above
+ * all - has to be written into the group holding it. These cover the id-addressed writers, the ones
+ * an editor reaches for when it knows its own tab id and nothing about panes.
+ */
+describe("UIStore editor tab updates", () => {
+    function groupsOf(store: UIStore): EditorGroup[] {
+        const found: EditorGroup[] = [];
+        const visit = (layout: ReturnType<UIStore["getEditorLayout"]>): void => {
+            if ("tabs" in layout) {
+                found.push(layout);
+                return;
+            }
+            visit(layout.first);
+            visit(layout.second);
+        };
+        visit(store.getEditorLayout());
+        return found;
+    }
+
+    function tabIn(store: UIStore, tabId: string): EditorTabDefinition | undefined {
+        return groupsOf(store).flatMap(group => group.tabs).find(candidate => candidate.id === tabId);
+    }
+
+    it("marks a tab modified where the strip reads it", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+
+        expect(store.updateEditorTab("a", { modified: true })).toBe(true);
+
+        expect(tabIn(store, "a")?.modified).toBe(true);
+    });
+
+    it("finds the tab in a second pane without being told the group", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        const secondId = store.splitEditorGroupForDrop("main", "horizontal", "after");
+        store.openEditorTabInGroup(tab("b"), secondId!);
+
+        store.updateEditorTab("b", { modified: true });
+
+        expect(tabIn(store, "b")?.modified).toBe(true);
+        expect(tabIn(store, "a")?.modified).toBeUndefined();
+    });
+
+    it("leaves focus where it was", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.openEditorTabInGroup(tab("b"));
+
+        store.updateEditorTab("a", { modified: true });
+
+        expect(mainGroup(store).focus).toBe("b");
+    });
+
+    it("stays quiet when the value is already what it is being set to", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        store.updateEditorTab("a", { modified: true });
+
+        let layoutChanges = 0;
+        store.getEvents().on("editorLayoutChanged", () => {
+            layoutChanges++;
+        });
+
+        // What a text editor does on every keystroke after the first.
+        expect(store.updateEditorTab("a", { modified: true })).toBe(true);
+
+        expect(layoutChanges).toBe(0);
+    });
+
+    it("answers false for a tab that is not open", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+
+        expect(store.updateEditorTab("gone", { modified: true })).toBe(false);
+    });
+
+    it("lists and focuses tabs through the layout", () => {
+        const store = new UIStore();
+        store.openEditorTabInGroup(tab("a"));
+        const secondId = store.splitEditorGroupForDrop("main", "horizontal", "after");
+        store.openEditorTabInGroup(tab("b"), secondId!);
+
+        expect(store.getEditorTabs().map(entry => entry.id)).toEqual(["a", "b"]);
+        expect(store.getActiveEditorTabId()).toBe("b");
+
+        store.setActiveEditorTab("a");
+        expect(store.getActiveEditorTabId()).toBe("a");
+
+        store.closeEditorTab("a");
+        expect(store.getEditorTabs().map(entry => entry.id)).toEqual(["b"]);
     });
 });

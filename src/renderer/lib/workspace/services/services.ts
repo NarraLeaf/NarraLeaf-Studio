@@ -9,7 +9,7 @@ import type {
     MobileConfiguration,
     NetworkConfiguration,
     SecurityConfiguration,
-    AssetOptimizationConfiguration,
+    AssetCompressionConfiguration,
 } from "../project/configuration";
 import type { LintContext } from "@/lib/lint/context";
 import type { LintReport } from "@/lib/lint/types";
@@ -81,7 +81,6 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphIr,
-    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     Blueprint,
     LiteralValue,
@@ -169,7 +168,7 @@ import type {
     BlueprintPaletteContext,
 } from "../../ui-editor/blueprint-nodes/types";
 import type { LiveEntryFailure, LiveSessionView } from "./live/liveSessionView";
-import type { TeamLiveSession } from "@shared/types/team";
+import type { TeamLiveJoinRule, TeamLiveSession } from "@shared/types/team";
 
 interface WorkspaceContext {
     project: Porject;
@@ -284,8 +283,8 @@ interface IProjectService extends IService {
     updateNetworkConfiguration(patch: Partial<NetworkConfiguration>): Promise<ProjectConfig>;
     getSecurityConfiguration(): SecurityConfiguration;
     updateSecurityConfiguration(patch: Partial<SecurityConfiguration>): Promise<ProjectConfig>;
-    getAssetOptimizationConfiguration(): AssetOptimizationConfiguration;
-    updateAssetOptimizationConfiguration(patch: Partial<AssetOptimizationConfiguration>): Promise<ProjectConfig>;
+    getAssetCompressionConfiguration(): AssetCompressionConfiguration;
+    updateAssetCompressionConfiguration(patch: Partial<AssetCompressionConfiguration>): Promise<ProjectConfig>;
     getLintingConfiguration(): LintingConfiguration;
     updateLintingConfiguration(patch: Partial<LintingConfiguration>): Promise<ProjectConfig>;
     updateMobileConfiguration(patch: Partial<MobileConfiguration>): Promise<ProjectConfig>;
@@ -425,14 +424,6 @@ interface IUIDocumentService extends IService {
     updateComponentElementLayout(componentId: string, elementId: string, layoutPatch: Partial<UILayout>): void;
     updateComponentElementProps(componentId: string, elementId: string, propsPatch: Record<string, unknown>): void;
     updateComponentElementExtra(componentId: string, elementId: string, extraPatch: Record<string, unknown>): void;
-    setComponentElementBlueprintEvent(
-        componentId: string,
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void;
-    clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void;
-    stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void;
     renameComponentElement(componentId: string, elementId: string, name: string): void;
     reorderComponentChildren(componentId: string, parentId: string, orderedChildIds: string[]): void;
     deleteComponentElements(componentId: string, elementIds: string[]): void;
@@ -480,21 +471,6 @@ interface IUIDocumentService extends IService {
         | { ok: true; newRootIds: string[] }
         | { ok: false; reason: "invalid_clipboard" | "invalid_target" };
     renameElement(elementId: string, name: string): void;
-    /**
-     * Persist UIBehaviorBinding.blueprintEvent and ensure inline event graph under Blueprint.program.graphs.events.
-     */
-    setElementBlueprintEvent(
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void;
-    /** Remove behavior binding and drop the referenced event graph slot from the blueprint document. */
-    clearElementBlueprintEvent(elementId: string, eventName: string): void;
-    /**
-     * Set UI blueprintEvent hooks to noop when they target the given blueprint layer (event graph slot).
-     * Does not remove the graph from the blueprint document - call LocalBlueprintService.removeEventGraph after.
-     */
-    stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void;
 }
 
 interface IUIGraphService extends IService {
@@ -506,18 +482,6 @@ interface IUIGraphService extends IService {
     isDirty(): boolean;
     getRevision(): number;
     applyGraphMutation(mutator: (document: UIGraphDocument) => void): void;
-    createGraph(input: {
-        name?: string;
-        nodes?: Record<string, UIGraph["nodes"][string]>;
-        entries?: UIGraph["entries"];
-        edges?: UIGraph["edges"];
-        variables?: UIGraph["variables"];
-        meta?: UIGraph["meta"];
-    }): UIGraph;
-    updateGraph(graphId: string, updater: (graph: UIGraph) => void): void;
-    deleteGraph(graphId: string): void;
-    /** One-shot: the raw persistent variables read at load before the M-VAR migration relocated them. */
-    consumeLegacyPersistentVariables(): Record<string, BlueprintPersistentVariable> | null;
 }
 
 interface IVariableRegistryService extends IService {
@@ -537,11 +501,14 @@ interface IVariableRegistryService extends IService {
         input?: { name?: string; valueType?: string; defaultValue?: StoryLiteralValue; description?: string },
     ): VariableRegistryEntry;
     renameEntry(id: string, name: string): void;
-    setEntryValueType(id: string, valueType: StoryVariableValueType): void;
+    /** `defaultValue` omitted leaves the default alone; given, it is written in the same act. */
+    setEntryValueType(id: string, valueType: StoryVariableValueType, defaultValue?: StoryLiteralValue): void;
     setEntryDefault(id: string, defaultValue: StoryLiteralValue | undefined): void;
     setEntryDescription(id: string, description: string | undefined): void;
-    deleteEntry(id: string): void;
-    replaceRegistry(registry: VariableRegistry): void;
+    /** False when a live session owns this registry - see `VariableRegistryService.canDeleteEntry`. */
+    canDeleteEntry(): boolean;
+    deleteEntry(id: string): boolean;
+    replaceRegistry(registry: VariableRegistry): boolean;
 }
 
 /**
@@ -595,7 +562,6 @@ interface IDlcService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyMutation(mutator: (dlcs: ProjectDlc[]) => ProjectDlc[], label?: HistoryLabel): void;
     create(input?: { id?: string; name?: string; attachTo?: string }): ProjectDlc;
     /** Refuses a blank name. Stored references hold the id, so they follow. */
     rename(id: string, name: string): boolean;
@@ -635,7 +601,6 @@ interface IAppTagService extends IService {
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
-    applyTagMutation(mutator: (tags: ProjectAppTag[]) => ProjectAppTag[], label?: HistoryLabel): void;
     createTag(input?: { name?: string }): ProjectAppTag;
     /** Refuses the release tag and a blank name. Stored references hold the id, so they follow. */
     renameTag(id: string, name: string): boolean;
@@ -779,7 +744,6 @@ interface ILocalBlueprintService extends IService {
         ownerKey: string | null;
         ownerRecord: BlueprintPrivateOwnerRecord | null;
         blueprint: Blueprint | null;
-        uiBehavior: unknown;
     };
     runBlueprintHistoryTransaction<T>(
         blueprintId: string,
@@ -898,7 +862,6 @@ interface ILocalBlueprintService extends IService {
     ): void;
     deleteBlueprintVariable(blueprintId: string, variableId: string): void;
     ensureEventGraph(blueprintId: string, eventId: string, displayName?: string): void;
-    adoptLegacyEventGraphToSlot(blueprintId: string, slotId: string, legacyEventId: string, displayName?: string): void;
     renameEventGraph(blueprintId: string, eventId: string, displayName: string): void;
     removeEventGraph(blueprintId: string, eventId: string): void;
     listEventGraphIds(blueprintId: string): string[];
@@ -1514,6 +1477,13 @@ interface IWorkspaceFreezeService extends IService {
      */
     showRevision(source: DocumentSource, label?: string): Promise<WorkspaceReloadResult>;
     /**
+     * Freeze, read the paths a merge could not settle as the author's own side, then re-read.
+     *
+     * The state a project opened mid-merge starts in, for a window that syncs into one instead.
+     * `thaw` is not the way out of it - completing or abandoning the merge is.
+     */
+    showMergeConflicts(conflicts: readonly string[]): Promise<WorkspaceReloadResult>;
+    /**
      * Keep the workspace in its current view - `thaw` refuses - until the returned function runs.
      *
      * For anything that rewrites project files from outside the editors: leaving mid-rewrite re-reads
@@ -1544,7 +1514,11 @@ interface ILiveSessionService extends IService {
     /** Whether a session owns this story document - the one question the story editor asks. */
     ownsStory(storyId: StoryId): boolean;
     /** Record a checkpoint, then open a room on that revision. Null means this window is in it. */
-    open(input: { storyId: StoryId; title?: string }): Promise<LiveEntryFailure | null>;
+    open(input: { storyId: StoryId; title?: string; rule?: TeamLiveJoinRule }): Promise<LiveEntryFailure | null>;
+    /** Change how people get into the running room. Host only; false where the server refused. */
+    setRule(rule: TeamLiveJoinRule): Promise<boolean>;
+    /** Say yes or no to somebody waiting to be let in. Host only. */
+    answerRequest(instance: string, admit: boolean): Promise<boolean>;
     /**
      * Join one somebody else opened, checkpointing and syncing on the way in.
      *
@@ -1571,6 +1545,15 @@ interface ILiveSessionService extends IService {
      * lets somebody else take it.
      */
     claimCharacter(characterId: string, holding: boolean): void;
+    /**
+     * Say that this window is editing one variable registry entry, or that it has stopped.
+     *
+     * The registry's half of the same seam, held for the same span. One registry per project, so
+     * there is no document to name.
+     */
+    claimVariable(variableId: string, holding: boolean): void;
+    /** Say that this window is editing one named string, or that it has stopped. Addressed by name. */
+    claimLocalizationKey(name: string, holding: boolean): void;
     /**
      * Send the inverse of this window's last operation, rather than restoring a scene snapshot.
      *

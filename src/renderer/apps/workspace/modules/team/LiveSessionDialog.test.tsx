@@ -15,10 +15,15 @@ import type { TeamProjectSurface } from "../../hooks/useTeamProject";
  * pressed.
  *
  * **It drives `Services.Live`, and that is the point of this file.** The controls used to call the
- * server directly - `live.open`, `live.join`, `live.leave` - which put a room on the server that
- * this window was not in: no checkpoint, no push, no freeze, and the story editor still writing
- * into a document nobody else could see. So what is pinned here is that each control reaches the
- * session, and that everything the dialog says is read back out of it.
+ * server directly - `live.open`, `live.leave` - which put a room on the server that this window was
+ * not in: no checkpoint, no push, no freeze, and the story editor still writing into a document
+ * nobody else could see. So what is pinned here is that each control reaches the session, and that
+ * everything the dialog says is read back out of it.
+ *
+ * ⚠ **There is no joining here, and several of the tests below exist to keep it that way.** Every
+ * way into somebody else's room is in the launcher's Team screen, because joining one usually
+ * begins with fetching the project - see `ServerLiveSessions`. What this dialog does about a room
+ * it cannot enter is report it and name where the way in is.
  *
  * The other half is the sentences. A session refuses things - a workspace frozen for a merge, a
  * room opened on a version this tree has moved past, a copy that stopped matching the room's - and
@@ -41,8 +46,9 @@ const world = vi.hoisted(() => ({
     view: {} as LiveSessionView,
     listeners: new Set<(view: LiveSessionView) => void>(),
     open: vi.fn(() => Promise.resolve(null)),
-    join: vi.fn(() => Promise.resolve(null)),
     leave: vi.fn(() => Promise.resolve()),
+    setRule: vi.fn(() => Promise.resolve(true)),
+    answerRequest: vi.fn(() => Promise.resolve(true)),
     freeze: null as WorkspaceFreezeReason | null,
     stories: [] as { id: string; name: string }[],
     defaultStory: undefined as string | undefined,
@@ -62,8 +68,9 @@ vi.mock("@/apps/workspace/context", () => {
                         return () => world.listeners.delete(handler);
                     },
                     open: world.open,
-                    join: world.join,
                     leave: world.leave,
+                    setRule: world.setRule,
+                    answerRequest: world.answerRequest,
                 };
             }
             if (id === Services.WorkspaceFreeze) {
@@ -85,8 +92,9 @@ beforeEach(() => {
     world.view = IDLE_LIVE_SESSION;
     world.listeners.clear();
     world.open.mockClear();
-    world.join.mockClear();
     world.leave.mockClear();
+    world.setRule.mockClear();
+    world.answerRequest.mockClear();
     world.freeze = null;
     world.stories = [{ id: "story-1", name: "Act one" }];
     world.defaultStory = "story-1";
@@ -178,50 +186,124 @@ describe("what the dialog does when pressed", () => {
         expect(world.open).toHaveBeenCalledWith({ storyId: "story-1", title: "Act one" });
     });
 
-    it("joins the room the server is offering, and names no story of its own", () => {
+    it("reports the room somebody else has open, and names where the way in is", () => {
         world.view = IDLE_LIVE_SESSION;
         draw({ live: [room()] });
 
-        expect(block("join")?.textContent).toContain("Act one");
-        fireEvent.click(act("join") as HTMLElement);
-
-        // Which document the room is about is the room's answer. A story named here could only
-        // ever be one this project already has - the wrong one whenever the copies differ about
-        // which story comes first, and none at all for somebody joining in order to get one.
-        expect(world.join).toHaveBeenCalledWith({ session: room() });
+        expect(block("elsewhere")?.textContent).toContain("Act one");
+        expect(block("elsewhere")?.textContent)
+            .toContain("workspace.shell.team.liveJoinFromLauncher");
+        // ⚠ There is no control, and there must not be one: this window cannot fetch a project it
+        // has not got, and a way in that worked only for the people who already had it is half a
+        // feature wearing the whole one's label.
+        expect(act("join")).toBeNull();
     });
 
-    it("offers to join even when this project has no story of its own", () => {
-        // ⚠ The regression. A machine that has not got the story yet is the most ordinary new
-        // collaborator there is, and it used to be the one machine this control was disabled for -
-        // told to add a story before joining the session that would have brought it one.
+    it("still offers to start one while somebody else has a room open", () => {
+        // Two rooms on one project are two collaborations. Whether that is what the author wants
+        // is their call - what this dialog must not do is take its own act away because of it.
+        world.view = IDLE_LIVE_SESSION;
+        draw({ live: [room()] });
+
+        expect(act("open")?.matches(":disabled")).toBe(false);
+        expect(block("start")).not.toBeNull();
+    });
+
+    it("says the room is there for a project with no story, and asks for one only to start", () => {
+        // ⚠ The regression, restated for the shape this screen has now. A machine that has not
+        // got the story is the most ordinary new collaborator there is, and the line telling it
+        // to add one is about STARTING a session, not about the one it is being told exists.
         world.stories = [];
         world.defaultStory = undefined;
         world.view = IDLE_LIVE_SESSION;
         draw({ live: [room()] });
 
-        expect(act("join")?.matches(":disabled")).toBe(false);
-        // And the line telling them to add a story is not said beside an offer to join one.
-        expect(note("no-story")).toBeNull();
-
-        fireEvent.click(act("join") as HTMLElement);
-        expect(world.join).toHaveBeenCalledWith({ session: room() });
+        expect(block("elsewhere")).not.toBeNull();
+        expect(note("no-story")).not.toBeNull();
+        expect(act("open")?.matches(":disabled")).toBe(true);
     });
 
     it("offers one way out, named for what leaving actually does", () => {
         world.view = inRoom({ role: "guest" });
         draw();
         expect(act("leave")?.textContent).toBe("workspace.shell.team.liveLeaveSession");
+        expect(act("leave")?.className).not.toContain("danger");
 
         cleanup();
         resetWindowOverlayHostForTests();
-        // A host holds the only copy that counts, so its window walking away ends the room for
-        // everybody. Offering it "Leave" would name an act the others would not experience.
+        // ⚠ A host leaving ALWAYS ends the room - there is no successor, because the host holds the
+        // only copy that counts. The label used to say "Hand over" and was drawn as the gentle
+        // option, which is the most final act in the feature wearing the wrong clothes.
         world.view = inRoom({ role: "host" });
+        draw();
+        expect(act("leave")?.textContent).toBe("workspace.shell.team.liveEndSessionForEveryone");
+
+        cleanup();
+        resetWindowOverlayHostForTests();
+        // A host alone in the room ends it too, and the sentence says the smaller thing because
+        // the consequence is smaller: there is nobody to send home.
+        world.view = inRoom({
+            role: "host",
+            session: room({ members: [{ instance: "mine", account: "ada", label: "Nomen", joinedAt: 1 }] }),
+        });
         draw();
         expect(act("leave")?.textContent).toBe("workspace.shell.team.liveEndSession");
         fireEvent.click(act("leave") as HTMLElement);
         expect(world.leave).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe("somebody waiting to be let in", () => {
+    /** A host with one person asking. */
+    function asking() {
+        world.view = inRoom({
+            role: "host",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+        draw();
+    }
+
+    it("puts the two answers where the title bar's mark points", () => {
+        // ⚠ The mark says somebody is waiting and opens THIS. The notice that carries the same two
+        // answers belongs to one moment and is gone once it has been dismissed - a host who was in
+        // another window when it arrived would otherwise be left with a dot and nothing behind it.
+        asking();
+
+        expect(block("waiting")).not.toBeNull();
+        expect(document.querySelector("[data-live-waiting='ben']")).not.toBeNull();
+    });
+
+    it("answers for the person on the row, not for whoever is at the front of the queue", () => {
+        asking();
+
+        fireEvent.click(document.querySelector("[data-live-answer='admit']") as HTMLElement);
+
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", true);
+    });
+
+    it("turns somebody away through the same door", () => {
+        asking();
+
+        fireEvent.click(document.querySelector("[data-live-answer='turn-away']") as HTMLElement);
+
+        expect(world.answerRequest).toHaveBeenCalledWith("i-ben", false);
+    });
+
+    it("draws nothing where nobody is waiting, and nothing for a guest", () => {
+        world.view = inRoom({ role: "host" });
+        draw();
+        expect(block("waiting")).toBeNull();
+
+        cleanup();
+        resetWindowOverlayHostForTests();
+        // A guest's session never carries requests, so this is belt and braces - and it is the
+        // guard that keeps a future shape of the view from putting a host's decision on a guest.
+        world.view = inRoom({
+            role: "guest",
+            requests: [{ instance: "i-ben", account: "ben", label: "Nomen", joinedAt: 1 }],
+        });
+        draw();
+        expect(block("waiting")).toBeNull();
     });
 });
 
@@ -328,7 +410,7 @@ describe("what the dialog says about not entering", () => {
     it("says an attempt that failed, rather than leaving the control silent", () => {
         world.view = {
             ...IDLE_LIVE_SESSION,
-            entryFailure: { kind: "revision-mismatch", expected: "rev-9", actual: "rev-11" },
+            entryFailure: { kind: "revision-mismatch", revision: "rev-11" },
         };
         draw();
 
@@ -407,22 +489,22 @@ describe("a room this window has just closed", () => {
      * only against the session this window is in drew that stretch as somebody else's room with two
      * people in it and a control to join - which is what a host saw on a real machine.
      */
-    it("is not offered as one to join", () => {
+    it("is not reported as a room that is still going", () => {
         world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: true } };
         draw({ live: [room()] });
 
-        expect(act("join")).toBeNull();
+        expect(block("elsewhere")).toBeNull();
         // And the only thing on offer is the one that is actually true: open a new one.
         expect(act("open")).not.toBeNull();
     });
 
-    it("is offered again when this window merely left a room that carried on", () => {
-        // A guest walking out is the opposite answer to the same `cause`. The room is still there,
-        // still has people in it, and going back into it is an ordinary thing to want.
+    it("is reported again when this window merely left a room that carried on", () => {
+        // A guest walking out is the opposite answer to the same `cause`. The room is still there
+        // and still has people in it, so saying so is the truth about this project.
         world.view = { ...IDLE_LIVE_SESSION, ended: { cause: "left", sessionId: "room-1", closed: false } };
         draw({ live: [room()] });
 
-        expect(act("join")).not.toBeNull();
+        expect(block("elsewhere")).not.toBeNull();
     });
 
     it("makes the panel read the room list again", () => {

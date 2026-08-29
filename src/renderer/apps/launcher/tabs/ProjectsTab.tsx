@@ -10,7 +10,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { collapseHomePath, normalizeProjectPath } from "@shared/utils/recentProject";
 import { revealInFileManagerKey } from "@/lib/app/platform";
 import { useHomeDir } from "@/lib/app/hooks/useHomeDir";
-import { useMissingRecentProjects, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
+import { useMissingRecentProjects, useRecentProjectIcons, useRecentProjects, useRemoveRecentProject, useRevealRecentProject } from "@/lib/app/hooks/useRecentProjects";
 import { createProjectFromWizard, openProjectFromFolder, relocateRecentProject } from "../projectActions";
 import { nameMonogramColor, nameInitials } from "@/lib/components/monogram";
 
@@ -24,6 +24,8 @@ export function ProjectsTab() {
     const revealRecentProject = useRevealRecentProject();
     // Checked once, on the way into the app - see useMissingRecentProjects.
     const missingByPath = useMissingRecentProjects();
+    // The app icon each project ships, for the ones that ship one.
+    const iconsByPath = useRecentProjectIcons();
     // The entry whose "cannot find this" dialog is open, if any.
     const [missingTarget, setMissingTarget] = useState<RecentlyOpenedProject | null>(null);
     const [missingError, setMissingError] = useState<string | null>(null);
@@ -274,7 +276,9 @@ export function ProjectsTab() {
                 )}
 
                 {visibleProjects.map((project, index) => {
-                    const missingEntry = missingByPath.get(normalizeProjectPath(project.path));
+                    const identity = normalizeProjectPath(project.path);
+                    const missingEntry = missingByPath.get(identity);
+                    const icon = iconsByPath.get(identity);
                     return (
                         <div key={`${project.path}-${index}`} className="relative group">
                             <button
@@ -284,8 +288,12 @@ export function ProjectsTab() {
                                 className="w-full flex items-center gap-3 rounded-md px-3 py-2.5 pr-11 text-left hover:bg-fill transition-colors cursor-default disabled:opacity-50 disabled:cursor-not-allowed"
                                 data-tip={t("launcher.projects.openNamed", { name: project.name })}
                             >
-                                {project.icon && !missingEntry ? (
-                                    <img src={project.icon} alt="" className="flex-shrink-0 w-10 h-10 rounded-lg object-contain" />
+                                {/* The project's own app icon when it has one, and the two letters of
+                                    its name when it does not. A project that is not there keeps the
+                                    monogram either way: the dimming below is what says so, and an icon
+                                    reads as a working project however it is tinted. */}
+                                {icon && !missingEntry ? (
+                                    <img src={icon} alt="" className="flex-shrink-0 w-10 h-10 rounded-lg object-contain" />
                                 ) : (
                                     <span
                                         aria-hidden

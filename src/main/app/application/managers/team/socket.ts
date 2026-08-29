@@ -27,6 +27,8 @@
 import crypto from "crypto";
 import tls from "tls";
 
+import { TEAM_ANSWER_BYTES_LIMIT } from "@shared/types/team";
+
 import { trustedCertificates } from "../vcs/authorityTrust";
 
 /** The constant every WebSocket handshake is hashed with. Fixed by the specification. */
@@ -44,8 +46,79 @@ const OPCODE = {
 /** How long the handshake has before this gives up on the address. */
 const HANDSHAKE_TIMEOUT_MS = 15_000;
 
-/** The most one message may be, matching what the server accepts. */
-const MAX_MESSAGE_BYTES = 128 * 1024;
+/**
+ * The most one message this reads may be, which is the most a server sends in one answer.
+ *
+ * **A reader is bounded by what arrives, and what arrives is an answer.** The figure a
+ * server accepts *from* a client is a different and much smaller one - a suggestion is the
+ * largest thing this side sends, and 128 KiB has room for it and the frame around it. Set
+ * to that, this refused a page of a project's overlay whose records ran past it, closed
+ * the session, and closed it again on the next read after the reconnect.
+ *
+ * Taken from the contract rather than written out, so that a deployment which raises what
+ * it composes cannot leave this client refusing what that deployment sends.
+ */
+export const MAX_MESSAGE_BYTES = TEAM_ANSWER_BYTES_LIMIT;
+
+/** What reading the front of a buffer as a frame found. */
+export type TeamFrameRead =
+    /** Not all of it is here. Read again when more has arrived. */
+    | { kind: "incomplete" }
+    /** Nothing a Team server may send looks like this, and the session ends over it. */
+    | { kind: "refused"; detail: string }
+    /** One whole frame, and whatever followed it in the same buffer. */
+    | { kind: "frame"; opcode: number; final: boolean; payload: Buffer; rest: Buffer };
+
+/**
+ * Read one frame off the front of `buffer`, admitting a payload of up to `ceiling` bytes.
+ *
+ * A server never masks, so there is no mask to strip. A masked frame from one would be a
+ * protocol error, and it is refused rather than unmasked out of politeness.
+ *
+ * **A declared length past the ceiling is refused before anything is held for it**, which
+ * is the whole reason the 64-bit case is checked as a `bigint`: a peer saying it is about
+ * to send four gigabytes must not first become a number this tries to wait for.
+ */
+export function readTeamFrame(buffer: Buffer, ceiling: number): TeamFrameRead {
+    if (buffer.length < 2) return { kind: "incomplete" };
+
+    const first = buffer[0] ?? 0;
+    const second = buffer[1] ?? 0;
+    const final = (first & 0b1000_0000) !== 0;
+    const opcode = first & 0b0000_1111;
+    const masked = (second & 0b1000_0000) !== 0;
+    let length = second & 0b0111_1111;
+    let offset = 2;
+
+    if (masked || (first & 0b0111_0000) !== 0) {
+        return { kind: "refused", detail: "that server sent a frame this cannot read" };
+    }
+    if (length === 126) {
+        if (buffer.length < offset + 2) return { kind: "incomplete" };
+        length = buffer.readUInt16BE(offset);
+        offset += 2;
+    } else if (length === 127) {
+        if (buffer.length < offset + 8) return { kind: "incomplete" };
+        const big = buffer.readBigUInt64BE(offset);
+        if (big > BigInt(ceiling)) {
+            return { kind: "refused", detail: "that server sent more than this will hold" };
+        }
+        length = Number(big);
+        offset += 8;
+    }
+    if (length > ceiling) {
+        return { kind: "refused", detail: "that server sent more than this will hold" };
+    }
+    if (buffer.length < offset + length) return { kind: "incomplete" };
+
+    return {
+        kind: "frame",
+        opcode,
+        final,
+        payload: buffer.subarray(offset, offset + length),
+        rest: buffer.subarray(offset + length),
+    };
+}
 
 /** Why a socket ended. */
 export interface TeamSocketClosed {
@@ -84,7 +157,7 @@ export interface TeamSocketOptions {
 export class TeamSocket {
     private readonly options: TeamSocketOptions;
     private socket: tls.TLSSocket | null = null;
-    private pending = Buffer.alloc(0);
+    private pending: Buffer = Buffer.alloc(0);
 
     /** Set once the 101 has been read; before that everything arriving is HTTP. */
     private upgraded = false;
@@ -246,54 +319,22 @@ export class TeamSocket {
     }
 
     /**
-     * One frame, or undefined because not all of it is here.
+     * One frame, or undefined because not all of it is here or because it ended this.
      *
-     * A server never masks, so there is no mask to strip. A masked frame from one would
-     * be a protocol error, and it is treated as the end of the connection rather than
-     * unmasked out of politeness.
+     * The reading itself is {@link readTeamFrame}; what is left here is what only a live
+     * socket can do - move the buffer on, and end the connection over a frame that has no
+     * business arriving on it.
      */
     private readFrame(): { opcode: number; payload: Buffer; final: boolean } | undefined {
-        const buffer = this.pending;
-        if (buffer.length < 2) return undefined;
-
-        const first = buffer[0] ?? 0;
-        const second = buffer[1] ?? 0;
-        const final = (first & 0b1000_0000) !== 0;
-        const opcode = first & 0b0000_1111;
-        const masked = (second & 0b1000_0000) !== 0;
-        let length = second & 0b0111_1111;
-        let offset = 2;
-
-        if (masked || (first & 0b0111_0000) !== 0) {
-            this.finish({ detail: "that server sent a frame this cannot read" });
+        const read = readTeamFrame(this.pending, MAX_MESSAGE_BYTES);
+        if (read.kind === "incomplete") return undefined;
+        if (read.kind === "refused") {
+            this.finish({ detail: read.detail });
             this.socket?.destroy();
             return undefined;
         }
-        if (length === 126) {
-            if (buffer.length < offset + 2) return undefined;
-            length = buffer.readUInt16BE(offset);
-            offset += 2;
-        } else if (length === 127) {
-            if (buffer.length < offset + 8) return undefined;
-            const big = buffer.readBigUInt64BE(offset);
-            if (big > BigInt(MAX_MESSAGE_BYTES)) {
-                this.finish({ detail: "that server sent more than this will hold" });
-                this.socket?.destroy();
-                return undefined;
-            }
-            length = Number(big);
-            offset += 8;
-        }
-        if (length > MAX_MESSAGE_BYTES) {
-            this.finish({ detail: "that server sent more than this will hold" });
-            this.socket?.destroy();
-            return undefined;
-        }
-        if (buffer.length < offset + length) return undefined;
-
-        const payload = buffer.subarray(offset, offset + length);
-        this.pending = buffer.subarray(offset + length);
-        return { opcode, payload, final };
+        this.pending = read.rest;
+        return { opcode: read.opcode, payload: read.payload, final: read.final };
     }
 
     private handle(frame: { opcode: number; payload: Buffer; final: boolean }): void {

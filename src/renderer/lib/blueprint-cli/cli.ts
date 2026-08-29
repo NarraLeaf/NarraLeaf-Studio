@@ -171,6 +171,21 @@ function commandTargets(args: Args, io: CliIo): number {
         }
         lines.push("");
     }
+    // Components after the surfaces, and with their params listed: a component blueprint's whole
+    // reason to exist is that the instances differ, and the param ids are what says how.
+    for (const component of targets.components) {
+        const params = component.params.length
+            ? component.params.map(param => `${param.id}="${param.defaultValue}"`).join(" ")
+            : "no params";
+        lines.push(`${component.name}  component=${component.id}  (${params})`);
+        for (const element of targets.elements.filter(item => item.componentId === component.id)) {
+            lines.push(
+                `    ${element.path}  [${element.type}]  owner=componentWidgetMain `
+                    + `component=${component.id} element=${element.id}`,
+            );
+        }
+        lines.push("");
+    }
     io.out(lines.join("\n").trimEnd() || "This project declares no surfaces.");
     return 0;
 }

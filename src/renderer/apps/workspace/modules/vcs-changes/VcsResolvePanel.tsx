@@ -14,9 +14,12 @@ import { UIService } from "@/lib/workspace/services/core/UIService";
 import { VersionControlService } from "@/lib/workspace/services/core/VersionControlService";
 import { ServiceAssetsService } from "@/lib/workspace/services/core/ServiceAssetsService";
 import { ConflictFooter, ConflictResolveView, type WriteGuard } from "@/lib/vcs/ConflictResolveView";
+import { useDocumentNames } from "@/lib/vcs/storyTitles";
+import type { ComparisonSides } from "@/lib/vcs/presenters/comparisonSide";
 import {
     buildConflictRows,
     countUndecidedFiles,
+    mergeHeadingKey,
     type MergeChangeChoices,
     type MergeDocumentEntry,
 } from "@/lib/vcs/mergeDecisionView";
@@ -95,6 +98,14 @@ const PERMISSIVE_GUARD: WriteGuard = {
     // events, so its reason is drawn by Studio's own tooltip rather than the browser's.
     writes: (ownDisabled, ownTooltip) => ({ disabled: Boolean(ownDisabled), "data-tip": ownTooltip }),
 };
+
+/**
+ * The one side a merge names things from: the tree on disk.
+ *
+ * Module-level so its identity is stable - `useDocumentNames` keys its read on the sides it is
+ * given, and a literal rebuilt every render would re-read the index on every render.
+ */
+const MERGE_NAME_SIDES: ComparisonSides = { before: null, after: { at: "working-tree" } };
 
 export function VcsResolvePanel() {
     const { t } = useTranslation();
@@ -204,6 +215,18 @@ export function VcsResolvePanel() {
         () => (state?.inProgress ? state.conflicts : []),
         [state],
     );
+
+    /**
+     * What to call each conflicted document.
+     *
+     * Read from the working tree, which during a merge is the merge's own result for everything
+     * that merged cleanly - and the story index nearly always does, because it is a different file
+     * from the stories it names. Where it did not, it is one of the conflicted files and unparseable
+     * like the rest, and `documentName.ts` answers with the kind and the id rather than inventing a
+     * title. There is no second side to read: a merge is not a comparison between two revisions, it
+     * is one tree with two answers in it.
+     */
+    const names = useDocumentNames(MERGE_NAME_SIDES);
 
     /**
      * Which merge is open, as one value the draft can be keyed by. Null when none is.
@@ -340,8 +363,8 @@ export function VcsResolvePanel() {
      * is on screen would offer to close a merge that the backend then refuses.
      */
     const rows = useMemo(
-        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }),
-        [conflicts, decisions, perChange, changeChoices, documents],
+        () => buildConflictRows(conflicts, { decisions, perChange, changeChoices, documents }, names),
+        [conflicts, decisions, perChange, changeChoices, documents, names],
     );
     const undecided = countUndecidedFiles(rows);
 
@@ -462,8 +485,15 @@ export function VcsResolvePanel() {
                         field holds the AUTHOR'S own tip rather than what came down from the server
                         (docs §4.31) - so putting it beside "the version you got" would attribute
                         the merge to the wrong side. The sides are named per row, where they are
-                        read from the merge's own copies and are right in both origins. */}
-                    {t("documentDiff.resolve.merging")}
+                        read from the merge's own copies and are right in both origins.
+
+                        **It stops claiming a merge once there is not one.** This strip used to say
+                        "the two versions are being merged" unconditionally, so finishing one left
+                        it contradicting the body of its own panel two lines below - which reports,
+                        correctly, that no merge is in progress. Falling back to the panel's own
+                        name asserts nothing, which is also the right answer before the first read
+                        has come back: not knowing yet is not the same as knowing there is none. */}
+                    {t(mergeHeadingKey(state))}
                 </span>
                 <button
                     type="button"

@@ -108,7 +108,7 @@ describe("fetchTemplateBundle", () => {
         const base = "https://raw.githubusercontent.com/NarraLeaf/UI-Templates/master/templates/narraleaf.save-load";
         const routes = stubFetch({
             [`${base}/ui/uidoc.json`]: { schemaVersion: 11, surfaces: [], elements: {} },
-            [`${base}/ui/uigraphs.json`]: { schemaVersion: 2, graphs: {} },
+            [`${base}/ui/uigraphs.json`]: { schemaVersion: 2, blueprintDocument: { schemaVersion: 10, blueprints: {}, ownerRecords: {} } },
         });
         const bundle = await fetchTemplateBundle(entry, INDEX_URL);
         expect(routes.urls).toContain(`${base}/ui/uidoc.json`);
@@ -132,7 +132,7 @@ describe("fetchTemplateBundle", () => {
         } as UITemplateRegistryEntry;
         stubFetch({
             [`${base}/ui/uidoc.json`]: { schemaVersion: 11, surfaces: [], elements: {} },
-            [`${base}/ui/uigraphs.json`]: { schemaVersion: 2, graphs: {} },
+            [`${base}/ui/uigraphs.json`]: { schemaVersion: 2, blueprintDocument: { schemaVersion: 10, blueprints: {}, ownerRecords: {} } },
             [`${base}/assets/bg.png`]: "PNGBYTES",
         });
         const bundle = await fetchTemplateBundle(withAsset, INDEX_URL);

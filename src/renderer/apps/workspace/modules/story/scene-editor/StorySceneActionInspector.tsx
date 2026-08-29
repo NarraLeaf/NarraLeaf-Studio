@@ -34,6 +34,7 @@ import {
     sceneLabelNames,
     sceneVariableDefs,
     storyPersistentDefs,
+    storyTransitionKindOf,
 } from "@shared/types/story";
 import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import { buildMergedVariableView } from "@shared/variables/mergedPersistentView";
@@ -639,8 +640,6 @@ function InspectorFields(props: {
                     label: character.profile.getName(),
                 })),
             ];
-            const pauseEnabled = payload.pauseAfter !== undefined;
-            const pauseMs = typeof payload.pauseAfter === "number" ? payload.pauseAfter : undefined;
             return (
                 <div className="grid grid-cols-1 gap-2">
                     <FieldGrid cols={2}>
@@ -652,22 +651,6 @@ function InspectorFields(props: {
                         />
                         <TextIdReadout text={payload.text} />
                     </FieldGrid>
-                    <Section title={t("storyInspector.section.timing")}>
-                        <FieldGrid cols={2}>
-                            <ToggleField
-                                label={t("storyInspector.dialogue.pauseAfter")}
-                                checked={pauseEnabled}
-                                onChange={checked => props.onUpdatePayload({ ...payload, pauseAfter: checked ? true : undefined })}
-                            />
-                            {pauseEnabled ? (
-                                <SecondsField
-                                    label={t("storyInspector.dialogue.pauseSeconds")}
-                                    value={pauseMs}
-                                    onChange={ms => props.onUpdatePayload({ ...payload, pauseAfter: ms === undefined ? true : ms })}
-                                />
-                            ) : null}
-                        </FieldGrid>
-                    </Section>
                     <VoiceInspectorSection block={block} />
                 </div>
             );
@@ -755,6 +738,16 @@ function InspectorFields(props: {
                         onChange={targetSceneId => props.onUpdatePayload({ ...payload, targetSceneId: String(targetSceneId) })}
                     />
                 </div>
+                <ToggleField
+                    label={t("storyInspector.jump.returnable")}
+                    checked={Boolean(payload.returnable)}
+                    onChange={checked => props.onUpdatePayload({
+                        ...payload,
+                        // Cleared rather than set to false: a row that is not returnable carries no
+                        // field at all, which is the shape every row written before this had.
+                        returnable: checked ? true : undefined,
+                    })}
+                />
                 <TransitionEditor
                     value={payload.transition}
                     context="scene"
@@ -1189,7 +1182,7 @@ function ActionPayloadFields(props: {
 type AudioActionPayload = Extract<StoryActionPayload, { action: "audio" }>;
 
 /** The knobs an audio row can carry. Names, not components - the table below is data, not layout. */
-type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "muted" | "seekTime";
+type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loop" | "waitForEnd" | "muted" | "seekTime";
 
 /**
  * Which fields each audio operation actually consumes.
@@ -1207,7 +1200,7 @@ type AudioField = "track" | "name" | "asset" | "fade" | "volume" | "rate" | "loo
  */
 const AUDIO_OPERATION_FIELDS: Record<AudioActionPayload["operation"], readonly AudioField[]> = {
     setBgm: ["track", "asset", "fade", "volume", "loop"],
-    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop"],
+    playSound: ["track", "name", "asset", "fade", "volume", "rate", "loop", "waitForEnd"],
     stopSound: ["name", "fade"],
     pauseSound: ["name", "fade"],
     resumeSound: ["name", "fade"],
@@ -1392,6 +1385,16 @@ function AudioActionEditor(props: {
                         // box read "on" because the field is empty would be lying about the game.
                         checked={payload.loop ?? track.loop}
                         onChange={loop => props.onChange({ ...payload, loop })}
+                    />
+                ) : null}
+                {has("waitForEnd") ? (
+                    <ToggleField
+                        label={t("storyInspector.audio.waitForEnd")}
+                        // Off for a looping clip whatever the row stores: a loop never ends, so a
+                        // box reading "on" would promise a wait that cannot happen.
+                        checked={(payload.loop ?? track.loop) ? false : payload.waitForEnd === true}
+                        disabled={Boolean(payload.loop ?? track.loop)}
+                        onChange={waitForEnd => props.onChange({ ...payload, waitForEnd })}
                     />
                 ) : null}
                 {has("muted") ? (
@@ -2464,7 +2467,11 @@ function TransitionEditor(props: {
     context: TransitionEditorContext;
     onChange: (value: StoryTransitionRef | undefined) => void;
 }) {
-    const value = props.value ?? { kind: "none" as const };
+    // A stored ref whose `kind` is missing names no transition, and a row that names none is a cut -
+    // see `storyTransitionKindOf`. The picker says None rather than sitting blank on a word it has
+    // no option for, and the fields a kind governs stay hidden until one is chosen.
+    const stored = props.value;
+    const value: StoryTransitionRef = stored ? { ...stored, kind: storyTransitionKindOf(stored) } : { kind: "none" };
     const kind = value.kind;
     const realKind = kind === "none" ? "dissolve" : kind;
     const setBase = (patch: Partial<StoryTransitionRef>) => props.onChange({ ...value, kind: realKind, ...patch });

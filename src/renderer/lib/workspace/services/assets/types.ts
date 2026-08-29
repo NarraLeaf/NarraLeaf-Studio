@@ -147,12 +147,6 @@ export interface AssetGroup {
     updatedAt: number;
 }
 
-/** A group record as it may still exist on disk, from before groups moved up to categories. */
-export interface LegacyTypedAssetGroup extends Omit<AssetGroup, "category"> {
-    category?: AssetCategory;
-    type?: AssetType;
-}
-
 /**
  * Group map organized by asset category
  */

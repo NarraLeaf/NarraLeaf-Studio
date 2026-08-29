@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { Session } from "electron";
 import { GAME_RUNTIME_PROTOCOL } from "@shared/types/gameRuntime";
 import {
@@ -108,8 +109,20 @@ export function isNetworkBlockedUrl(url: string): boolean {
  *
  * An empty allowlist yields no remote sources at all, which is the honest reading of "the project
  * states a list and the list is empty".
+ *
+ * `nonce` is not optional, and that is the point: the entry document carries an inline
+ * `<script type="importmap">`, and a `script-src` without a matching nonce silently blocks it. That
+ * is not a visible failure - the page loads, the game runs, and only the bare specifiers the map
+ * was there to resolve stop resolving, which is how shipped games ran with both built-in plugins
+ * dead ("Failed to resolve module specifier \"narraleaf-studio/runtime\"") while everything else
+ * looked healthy. Making the caller pass one keeps the permission and the document that needs it
+ * from drifting apart again.
  */
-export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist): string {
+export function buildRuntimeCsp(
+    allowHttp: boolean,
+    allowlist: NetworkAllowlist | undefined,
+    nonce: string,
+): string {
     const scheme = `${GAME_RUNTIME_PROTOCOL}:`;
     const sources = allowHttp ? networkAllowlistCspSources(allowlist) : [];
     // `null` is the wide policy: the schemes themselves, which is what every build shipped with
@@ -121,7 +134,7 @@ export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist
             : sources.length > 0 ? ` ${sources.join(" ")}` : "";
     return [
         `default-src 'self' ${scheme} data: blob:${remote}`,
-        `script-src 'self' ${scheme}`,
+        `script-src 'self' ${scheme} 'nonce-${nonce}'`,
         `style-src 'self' ${scheme} 'unsafe-inline'`,
         `img-src 'self' ${scheme} data: blob:${remote}`,
         `media-src 'self' ${scheme} data: blob:${remote}`,
@@ -135,13 +148,36 @@ export function buildRuntimeCsp(allowHttp: boolean, allowlist?: NetworkAllowlist
 }
 
 /**
- * Inject the CSP `<meta>` into the served index.html `<head>`. Delivered as a
- * meta tag (rather than a response header) so it is honored regardless of how
- * the custom `nlgame:` scheme is treated.
+ * A `<script>` start tag with no `src` attribute - an inline script, and so one
+ * the policy has to name before the browser will run it.
+ */
+const INLINE_SCRIPT_START_TAG = /<script(?![^>]*\ssrc\s*=)([^>]*)>/gi;
+
+/**
+ * Inject the CSP `<meta>` into the served index.html `<head>`, and stamp the
+ * policy's nonce onto every inline script in the document. Delivered as a meta
+ * tag (rather than a response header) so it is honored regardless of how the
+ * custom `nlgame:` scheme is treated.
+ *
+ * The alternative to a nonce is `'unsafe-inline'`, which is what the Dev Mode
+ * window uses for the same import map. A shipped game is the one place that
+ * trade is not worth making - its script policy is the fence around whatever
+ * arbitrary plugin code the pack carries - so the entry document names the one
+ * inline script it actually has instead of opening the category.
+ *
+ * Fresh per served document. The document is fixed at build time and comes from
+ * the game's own store, so nothing here is guessing at an attacker; a
+ * per-response value simply keeps the nonce from being a constant that plugin
+ * code could read out of the policy once and reuse forever.
  */
 export function injectRuntimeCsp(html: string, allowHttp: boolean, allowlist?: NetworkAllowlist): string {
-    const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp, allowlist)}" />`;
-    return html.replace(/<head(\s[^>]*)?>/i, match => `${match}\n    ${meta}`);
+    // base64url, so the value carries nothing that has to be escaped in either of the two places it
+    // is written: an HTML attribute and a CSP source list.
+    const nonce = randomBytes(16).toString("base64url");
+    const meta = `<meta http-equiv="Content-Security-Policy" content="${buildRuntimeCsp(allowHttp, allowlist, nonce)}" />`;
+    return html
+        .replace(INLINE_SCRIPT_START_TAG, (_match, attributes: string) => `<script nonce="${nonce}"${attributes}>`)
+        .replace(/<head(\s[^>]*)?>/i, match => `${match}\n    ${meta}`);
 }
 
 export type RuntimeNetworkPolicyOptions = {

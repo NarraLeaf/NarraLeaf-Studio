@@ -6,7 +6,7 @@ import { Services } from "@/lib/workspace/services/services";
 import type { LiveSessionService } from "@/lib/workspace/services/live/LiveSessionService";
 import type { LiveSessionView } from "@/lib/workspace/services/live/liveSessionView";
 import { localizationDocumentSpec, localizationKeysSpec, voiceDocumentSpec } from "@shared/documents/specs";
-import { translationClaimKey } from "@shared/live/ops";
+import { localizationKeyClaimKey, translationClaimKey } from "@shared/live/ops";
 import { useWorkspace } from "../../context";
 
 /**
@@ -45,10 +45,11 @@ export function voiceDocumentFreezeScope(locale: string): string {
 /**
  * Which file the named-key registry writes.
  *
- * ⚠ **Deliberately NOT a document a session carries.** Declaring a UI string has no verb, so it stays
- * frozen for the length of a session and says so - which is the invariant working rather than a gap:
- * a document is writable during a session exactly when the session can carry its changes. Naming the
- * scope here is what keeps the key controls greyed while the translations beside them stay live.
+ * A session now carries this document too - declaring, rewording and removing a named string are
+ * operations - so the scope is what keeps the key controls LIVE while an unrelated freeze, or a
+ * session that could not read the registry, still greys them. Named apart from the translations
+ * beside it because they really are two documents: one holds the source texts, the other their
+ * translations, and only one of them is per language.
  */
 export function localizationKeysFreezeScope(): string {
     return localizationKeysSpec.pathFor();
@@ -95,6 +96,40 @@ export function useTranslationClaimHold(input: {
     }, [service, locale, unitId]);
 }
 
+/** The one thing a named string's hold needs of a live session. See `LiveSession.claimLocalizationKey`. */
+export type LocalizationKeyClaimPort = {
+    claimLocalizationKey(name: string, holding: boolean): void;
+};
+
+/**
+ * Hold the named string whose source text this table has open, and give it back when it closes.
+ *
+ * The translation hold's counterpart one column to the left, and asserted for the same span: the
+ * source box is a controlled textarea that writes the registry on every keystroke, so with a session
+ * installed an edit to the same key arriving mid-word lands under the author's cursor.
+ *
+ * Silent outside a session.
+ */
+export function useLocalizationKeyClaimHold(input: {
+    service: LocalizationKeyClaimPort | null;
+    /** The key whose source box is open, or null when none is. */
+    name: string | null;
+}): void {
+    const { service, name } = input;
+
+    useEffect(() => {
+        if (!service || name === null) {
+            return;
+        }
+        service.claimLocalizationKey(name, true);
+        const timer = setInterval(() => service.claimLocalizationKey(name, true), CLAIM_REASSERT_MS);
+        return () => {
+            clearInterval(timer);
+            service.claimLocalizationKey(name, false);
+        };
+    }, [service, name]);
+}
+
 /* --------------------------------------------------------------------------- reading them */
 
 /** Unit id to the account translating it, for every line somebody else holds in THIS language. */
@@ -103,6 +138,9 @@ export type TranslationClaims = Readonly<Record<string, string>>;
 const NO_CLAIMS: TranslationClaims = {};
 
 const TranslationClaimsContext = createContext<TranslationClaims>(NO_CLAIMS);
+
+/** Key name to the account editing its source text. A separate key space - see {@link othersLocalizationKeyClaims}. */
+const LocalizationKeyClaimsContext = createContext<TranslationClaims>(NO_CLAIMS);
 
 /**
  * The claims on one language, kept as one value that only changes when it would read differently.
@@ -118,23 +156,36 @@ export function TranslationClaimsProvider({ locale, children }: { locale: string
         [context, isInitialized],
     );
     const [claims, setClaims] = useState<TranslationClaims>(NO_CLAIMS);
+    const [keyClaims, setKeyClaims] = useState<TranslationClaims>(NO_CLAIMS);
 
     useEffect(() => {
         if (!service) {
             setClaims(NO_CLAIMS);
+            setKeyClaims(NO_CLAIMS);
             return;
         }
-        const read = () => setClaims(previous => {
-            const next = othersTranslationClaims(service.getView(), locale);
-            return signatureOf(next) === signatureOf(previous) ? previous : next;
-        });
+        const read = () => {
+            const view = service.getView();
+            setClaims(previous => {
+                const next = othersTranslationClaims(view, locale);
+                return signatureOf(next) === signatureOf(previous) ? previous : next;
+            });
+            setKeyClaims(previous => {
+                const next = othersLocalizationKeyClaims(view);
+                return signatureOf(next) === signatureOf(previous) ? previous : next;
+            });
+        };
         // On the way in as well as on every change: a table opened during a session has missed the
         // message that carried the claims standing at that moment.
         read();
         return service.onChanged(read);
     }, [service, locale]);
 
-    return <TranslationClaimsContext.Provider value={claims}>{children}</TranslationClaimsContext.Provider>;
+    return (
+        <LocalizationKeyClaimsContext.Provider value={keyClaims}>
+            <TranslationClaimsContext.Provider value={claims}>{children}</TranslationClaimsContext.Provider>
+        </LocalizationKeyClaimsContext.Provider>
+    );
 }
 
 function signatureOf(claims: TranslationClaims): string {
@@ -147,6 +198,31 @@ function signatureOf(claims: TranslationClaims): string {
 /** Who else is translating this line, or null when nobody is. */
 export function useTranslationClaim(unitId: string): string | null {
     return useContext(TranslationClaimsContext)[unitId] ?? null;
+}
+
+/** Who else has this named string's source text open, or null when nobody has. */
+export function useLocalizationKeyClaim(name: string | undefined): string | null {
+    const claims = useContext(LocalizationKeyClaimsContext);
+    return name === undefined ? null : claims[name] ?? null;
+}
+
+/**
+ * Everybody else's claims on the named-key registry, by key name.
+ *
+ * ⚠ **Its own prefix**, and not the translations'. The same string has a `translation:<locale>:key:<name>`
+ * claim in every language and one `named-key:<name>` claim over its source text; reading either as
+ * the other would put a translator's name on the source column, or the author's on every language.
+ */
+export function othersLocalizationKeyClaims(view: LiveSessionView): TranslationClaims {
+    const self = selfAccount(view);
+    const prefix = localizationKeyClaimKey("");
+    const held: Record<string, string> = {};
+    for (const [key, account] of Object.entries(view.claims)) {
+        if (key.startsWith(prefix) && account !== self) {
+            held[key.slice(prefix.length)] = account;
+        }
+    }
+    return held;
 }
 
 /**
@@ -186,12 +262,12 @@ function selfAccount(view: LiveSessionView): string | null {
  * on a character - `nameInitials` and `nameMonogramColor` derive both halves from the account name -
  * so it says *a person* rather than *an action*, and says which person.
  */
-export function TranslationClaimMark({ account }: { account: string }) {
+export function TranslationClaimMark({ account, tip }: { account: string; tip?: string }) {
     const { t } = useTranslation();
     return (
         <span
             data-translation-claim={account}
-            data-tip={t("workspace.localization.live.entryClaimed", { name: account })}
+            data-tip={tip ?? t("workspace.localization.live.entryClaimed", { name: account })}
             className="flex h-3.5 w-3.5 shrink-0 items-center justify-center rounded-full text-2xs font-medium leading-none text-white"
             style={{ backgroundColor: nameMonogramColor(account) }}
         >

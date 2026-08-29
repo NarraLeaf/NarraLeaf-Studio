@@ -108,6 +108,14 @@ export const launcher = {
             noToken: "This server cannot be asked from this installation. Add it again with its token.",
             refused: "This server refused the account signed in here.",
             unreachable: "This server did not answer.",
+            // Only reachable while publishing, which this tab does when a project is made
+            // for a server. The name is the project's own app id, which the review page
+            // named - so the author knows which one is meant without it being repeated here.
+            nameTaken: "Another project on this server is already called that.",
+            // The name is not repeated here: this tab publishes under the project's app id,
+            // which the review page has already named, and the list beside this line is
+            // where the project it is already on the server as can be seen.
+            alreadyPublished: "This project is already on this server under another name.",
             unknown: "This server could not be read.",
         },
         // A project made here and refused by the server it was made for. The project is on
@@ -166,6 +174,24 @@ export const launcher = {
         // the project and the list it is coming off.
         // What people have said about one project, over the session this Studio holds
         // with the server. Only reached on a deployment that serves conversations.
+        // Somebody else's live session, and every way into one. They are here rather than in
+        // the editor because joining usually begins with fetching the project, and that needs a
+        // window with no project open - which is this one.
+        live: {
+            title: "Live sessions",
+            untitled: "Untitled session",
+            hostedBy: "Hosted by {name}",
+            members: "{count} in the session",
+            join: "Join",
+            // A room that is joined by asking does not let anybody in when this is pressed: it
+            // puts a question in front of its host. "Join" would be promising something else.
+            ask: "Ask to join",
+            passcodePrompt: "Have a passcode?",
+            // One sentence for a passcode that is wrong and for one nobody is using, because the
+            // server answers both with one - see the join rules.
+            noSuchCode: "No live session has that passcode.",
+            unreachable: "That session is on a project this server did not list.",
+        },
         discussion: {
             title: "Discussion",
             empty: "No notes on this project.",

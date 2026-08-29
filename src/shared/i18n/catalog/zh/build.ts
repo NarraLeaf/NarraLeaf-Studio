@@ -38,7 +38,7 @@ export const build = {
     outputDir: "输出目录",
     chooseFolder: "选择文件夹…",
     // 侧边导航。其中六项对应检查结果可以归属的分区；`variant` 是选择变体的那一页，
-    // 它决定其余各页描述的是哪一个变体，只在工程存在可选变体时出现；`plugins` 只在有插件
+    // 它决定其余各页描述的是哪一个变体，只在项目存在可选变体时出现；`plugins` 只在有插件
     // 索要取值时出现。
     section: {
         variant: "变体",
@@ -59,17 +59,17 @@ export const build = {
     // 第一页：本次构建产出哪一个变体，以及该变体发布的值。
     variant: {
         // 标在「该变体自己未填写」的读数旁边，使继承来的值与被覆盖的值在同一行都给出出处
-        inherited: "来自工程",
+        inherited: "来自项目",
         // 该变体的剧情止于何处。数的是指向它的截断行，因此正式变体恒为完整剧情
         boundary: "剧情结束处",
         endsNever: "剧情播放至结尾",
         endsAt: {
-            one: "在 {count} 个截断点处结束，其后的内容不在这份构建里",
-            other: "在 {count} 个截断点处结束，其后的内容不在这份构建里",
+            one: "在 {count} 个截断点处结束，其后的内容不包含在此构建中",
+            other: "在 {count} 个截断点处结束，其后的内容不包含在此构建中",
         },
         variantRows: {
-            one: "有 {count} 行读取了变体，在不同构建里可能不同",
-            other: "有 {count} 行读取了变体，在不同构建里可能不同",
+            one: "有 {count} 行读取了变体，在不同构建中可能不同",
+            other: "有 {count} 行读取了变体，在不同构建中可能不同",
         },
         blocking: "阻止本次构建",
         blockingNone: "没有阻止本次构建的问题",
@@ -110,7 +110,7 @@ export const build = {
         },
         networkPolicy: {
             off: "打包出的游戏会拒绝所有 HTTP 与 HTTPS 请求",
-            allowlist: "打包出的游戏只能请求工程白名单中的地址",
+            allowlist: "打包后的游戏仅能请求项目白名单中的地址",
             any: "打包出的游戏可以通过 HTTP 或 HTTPS 请求任意地址",
         },
     },
@@ -131,7 +131,7 @@ export const build = {
             title: "导出补丁",
             kindLabel: "导出",
             kindPatch: "补丁",
-            dlcVariantHint: "在 工程 ▸ 应用 的 DLC 上设置。",
+            dlcVariantHint: "在 项目 ▸ 应用 的 DLC 上设置。",
             dlcOutputHint: "写入上面路径旁的 DLC 文件夹，文件名为 {file}。",
             baselineModeLabel: "本补丁更新的构建",
             baselineModeVariant: "在本次导出中构建",
@@ -141,7 +141,7 @@ export const build = {
             targetLabel: "安装到的变体",
             targetHint: "补丁只能在所针对变体的构建中打开",
             artifactLabel: "构建目录",
-            artifactPlaceholder: "留空则包含整份游戏",
+            artifactPlaceholder: "为空时包含整份游戏",
             artifactReading: "正在读取该构建…",
             artifactRead: "{product}，构建于 {date}",
             artifactReadVersioned: "{product} {version}，构建于 {date}",
@@ -159,20 +159,20 @@ export const build = {
             layerHint: "两个补丁改动同一处时，层级更高的一方生效",
             browse: "浏览…",
             blocked: {
-                output: "请选择文件的保存位置",
+                output: "选择文件的保存位置",
                 reading: "正在读取构建目录",
                 artifact: "该目录中没有本游戏的构建",
-                dlcBaseline: "请选择此 DLC 所附加到的构建",
+                dlcBaseline: "选择此 DLC 所附加的构建",
                 dlcVariant: "该构建不是此 DLC 依附的变体",
             },
             exportAction: "导出",
             busy: "已有构建正在运行",
-            noKey: "本工程尚未创建分发密钥。请先创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
-            noKeyAction: "打开「工程」页",
+            noKey: "本项目尚未创建分发密钥。先创建，然后重新构建游戏。只有在密钥创建之后产出的构建才接受补丁",
+            noKeyAction: "打开「项目」页",
         },
     signing: {
-        empty: "选择一个可签名的目标后，这里会列出对应平台",
-        // 工程配置里存在 "linux" 名下，但它与 Linux 无关：签名文件落在这次构建
+        empty: "选择可签名的目标后，此处会列出对应平台",
+        // 项目配置里存在 "linux" 名下，但它与 Linux 无关：签名文件落在这次构建
         // 产出的每一个产物旁边。
         detached: "分离签名",
         none: "不签名",
@@ -181,25 +181,25 @@ export const build = {
         // 对话框只报告选择，挑选与导入都在面板里完成。
         editInProject: "在「项目 ▸ 设置」中管理",
         remove: "从本机移除",
-        removeConfirm: "从本机移除 {label}？",
-        removeConfirmDetail: "它的密钥材料会在本机删除；使用它的工程在重新导入之前都会以未签名方式构建",
+        removeConfirm: "从本机移除 {label}",
+        removeConfirmDetail: "它的密钥材料会在本机删除；使用它的项目在重新导入之前都会以未签名方式构建",
         removeAction: "移除",
         chooseFile: "选择…",
         noFile: "未选择",
         expires: "{date} 到期",
         expired: "已于 {date} 过期",
-        certUnsupported: "Studio 打不开这种容器",
+        certUnsupported: "Studio 无法打开此容器类型",
         certUnreadable: "无法读取证书",
         alias: "密钥 {alias}",
         keyId: "密钥 {keyId}",
         azure: "{account} / {profile}",
         importTitle: "为 {platform} 导入",
         importAction: "导入",
-        aliasLocked: "请先填写 keystore 密码",
+        aliasLocked: "填写 keystore 密码",
         aliasEmpty: "该 keystore 里没有签名密钥",
         keyPasswordSame: "与 keystore 密码相同",
         macIdentityLoading: "正在读取钥匙串…",
-        macIdentityEmpty: "本机钥匙串里没有代码签名证书；请在「钥匙串访问」中安装一张，或改用证书文件导入",
+        macIdentityEmpty: "本机钥匙串中没有代码签名证书。请在「钥匙串访问」中安装，或改用证书文件导入。",
         macIdentityNotDeveloperId: "不能用于分发",
         notarized: "已配置 Apple 公证",
         notNotarized: "未公证，玩家首次打开时会看到 Gatekeeper 警告",
@@ -240,11 +240,11 @@ export const build = {
     },
     output: {
         artifacts: "产物",
-        artifactsEmpty: "选择一个目标后这里会列出产物",
+        artifactsEmpty: "选择目标后此处会列出产物",
             includeDlc: "同时构建这个变体的 DLC",
             includeDlcHint: {
-                one: "{count} 个 DLC，输出到安装包旁边它自己的文件夹里。",
-                other: "{count} 个 DLC，各自输出到安装包旁边自己的文件夹里。",
+                one: "{count} 个 DLC，输出到安装包旁的独立文件夹中。",
+                other: "{count} 个 DLC，各自输出到安装包旁的独立文件夹中。",
             },
         openWhenDone: "构建完成后打开输出目录",
     },
@@ -268,7 +268,7 @@ export const build = {
         "version-missing": "未设置项目版本，将以 0.0.0 构建",
         "identifier-missing": "项目没有标识符，将使用应用 ID {appId}",
         // 构建本身同样拒绝这个文件，所以这里说明的是中止的原因，而不是替代的取值
-        "variants-unreadable": "无法读取工程的变体：{reason}",
+        "variants-unreadable": "无法读取项目的变体：{reason}",
         "icon-missing": "未设置应用图标，将使用 NarraLeaf 图标",
         "icon-unusable": "{platform} 图标无法读取，将使用 NarraLeaf 图标",
         "icon-low-resolution": "{platform} 图标小于 {minimum}×{minimum}，将放大后出片",
@@ -298,7 +298,9 @@ export const build = {
         "progress-carry-unsupported":
             "{blueprints} 会在版本之间继承进度，而 {platform} 构建不支持；"
             + "两个节点都会走失败分支",
-        "lossy-images": "图像将以质量 {quality} 重新编码，细节不可恢复",
+        "lossy-images": "图像将以质量 {setting} 重新编码，细节不可恢复",
+        "lossy-audio": "音频将以 {setting} kbit/s 重新编码，细节不可恢复",
+        "lossy-video": "视频将以 CRF {setting} 重新编码，细节不可恢复",
         "mobile-template-missing": "移动端外壳模板不可用：{reason}",
         "mobile-payload-too-large": "项目资产体积（{size}）超出移动端安装包能容纳的上限",
         "version-uncodable": "项目版本 {version} 无法编码为 Android 版本号（主版本号最大 2099，次版本号与修订号最大 999）",
@@ -309,7 +311,7 @@ export const build = {
         unsigned: "未做代码签名；玩家首次打开时可能看到安全提示",
         "unsigned-android": "使用本地调试签名，可用于旁加载安装；这样签出的 AAB 不能用作 Google Play 的上传密钥。选择 release keystore 以发行身份签名",
         "unsigned-ios": "这份 .ipa 未签名，而 iOS 不允许安装任何未签名应用；请选择一份 Apple 签名凭据；从钥匙串导出 .p12 时要连同签发链一起导出，否则签名会失败",
-        "signing-credential-missing": "本机没有本工程为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",
+        "signing-credential-missing": "本机没有本项目为 {platform} 指定的签名凭据；请在此导入，或清除该选择以未签名方式构建 {platform}",
         "signing-credential-expired": "{platform} 签名证书不在有效期内（{notBefore} 至 {notAfter}），签名会失败；请向签发方续期并导入新证书",
         "signing-credential-expiring": "{platform} 签名证书将于 {notAfter} 到期；在此之前签出的产物仍然有效，之后的构建需要续期后的证书",
         "signing-secret-unavailable": "本机无法读取 {platform} 签名凭据的密码；重新导入一次即可重新保存密码",
@@ -320,7 +322,7 @@ export const build = {
         "signing-macos-identity-unusable": "证书 {identity} 无法用于签名：它已过期、私钥不在、或签发链不完整；请在「钥匙串访问」中打开它确认原因",
         "signing-macos-not-developer-id": "{identity} 不是「Developer ID Application」证书；产物能在本机运行，在其他 Mac 上会被拒绝，也无法公证",
         "signing-android-not-play": "签名后的 APK 适用于旁加载安装，以及 itch.io 等接受 APK 的平台。Google Play 只接受 AAB 包，在 Android 目标下打开 AAB 格式即可产出",
-        "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}；请修改工程标识符，或导入与之匹配的描述文件",
+        "signing-ios-profile-mismatch": "应用 ID {bundleId} 不在描述文件的覆盖范围内，该描述文件签发给的是 {profileAppId}；请修改项目标识符，或导入与之匹配的描述文件",
         "cross-build-download": "跨平台构建 {platforms} 需要下载 Electron（首次下载，之后会缓存）",
         "output-not-writable": "无法写入 {outputDir}",
         "output-not-empty": "输出目录已有文件，同名产物会被覆盖",
@@ -339,7 +341,7 @@ export const build = {
      * 构建报告：一次已结束的运行产出了什么，以及它从资产库中带走了什么。
      * 由该次运行发出的通知打开。
      *
-     * 两个词分工明确：产物是构建写出的文件，资产是工程资产库中的条目。报告两者都给出。
+     * 两个词分工明确：产物是构建写出的文件，资产是项目资产库中的条目。报告两者都给出。
      */
     report: {
         title: "构建报告",
@@ -362,6 +364,11 @@ export const build = {
         outputDir: "输出目录",
         durationSeconds: "{seconds} 秒",
         durationMinutes: "{minutes} 分 {seconds} 秒",
+        compressionTitle: "压缩",
+        compressionSaved: "共节省 {size}",
+        compressionImages: "已压缩的图像",
+        compressionMedia: "已压缩的音频与视频",
+        compressionMetadata: "已移除元数据的文件",
         includedTitle: "已打包的资产",
         includedEmpty: "本次运行没有打包任何资产",
         excludedTitle: "未打包的资产",
@@ -384,31 +391,31 @@ export const build = {
         one: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
         other: "构建已中止：有 {count} 处 AppTag 没有得出固定值，详见控制台",
     },
-    appTagGraphUnresolved: "{blueprint} / {graph} 中的变体没有得出固定值，请把它与变体名比较，或直接使用它的值",
-    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，请把变体判断移到不含该节点的图中",
-    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了一个 Fn 是否存在，请把该 Fn 移出它决定的分支",
+    appTagGraphUnresolved: "{blueprint} / {graph} 中的变体没有得出固定值，将其与变体名比较，或直接使用其值",
+    appTagGraphUnknownNode: "{blueprint} / {graph} 既判断了变体，又使用了本次构建无法读取的节点，将变体判断移至不含该节点的图中",
+    appTagGraphFnHead: "{blueprint} / {graph} 中的变体判断决定了某个函数是否存在，将该函数移出它决定的分支",
     appTagGraphSummary: {
         one: "构建已中止：有 {count} 处蓝图的变体判断没有得出固定值，详见控制台",
         other: "构建已中止：有 {count} 处蓝图的变体判断没有得出固定值，详见控制台",
     },
-    cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，请把它移到场景顶层",
+    cutPointNested: "{story} / {scene} 中 {variant} 的截断点位于条件或分组内部，将其移至场景顶层",
     cutPointNestedSummary: {
         one: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
         other: "构建已中止：有 {count} 处截断点不在场景顶层，详见控制台",
     },
-    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。请在检查器中选定场景，或在 {variant} 变体中列出它可以开始的场景",
-    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。请在 {variant} 变体中列出它可以开始的场景",
-    contentBlockedPlugin: "{location} 插件可以开始任意场景。请在 {variant} 变体中列出它可以开始的场景",
+    contentBlockedStartStory: "{location} 中的开始游戏节点在运行时才确定场景。在检查器中选定场景，或在 {variant} 变体中列出其可开始的场景",
+    contentBlockedScript: "蓝图 {location} 使用 TypeScript 编写，可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
+    contentBlockedPlugin: "{location} 插件可以开始任意场景。在 {variant} 变体中列出其可开始的场景",
     contentBlockedSummary: {
         one: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
         other: "构建已中止：有 {count} 处可以开始 {variant} 构建无法读取的场景，详见控制台",
     },
-    contentStaleDeclaration: "{variant} 变体中为 {location} 列出的某个场景已不在本工程中",
+    contentStaleDeclaration: "{variant} 变体中为 {location} 列出的某个场景已不在本项目中",
     contentKept: {
         one: "{variant} 构建包含 {count} 个场景",
         other: "{variant} 构建包含 {count} 个场景",
     },
-    contentDropped: "{story} 中的 {scene} 不在本次构建里",
+    contentDropped: "{story} 中的 {scene} 不包含在本次构建中",
     // 只针对会删场景的构建，也只针对剧本文档里的缺口：索引认不出某个控件里的图片，说明不了任何剧本能
     // 走到哪些场景；为这种缺口拒绝构建，等于让一个谁也解析不了的 URL 永久挡住所有变体的构建。
     contentCoverageGap: "{location} 无法读取，因此无法判断 {variant} 构建应当去掉什么",
@@ -418,27 +425,27 @@ export const build = {
         other: "构建已中止：有 {count} 个引脚的资产来自计算结果。请在每个引脚上选定资产，详见控制台",
     },
     // 缺口指的是整份索引而不是某个文档时，`{location}` 用这句。
-    contentCoverageWholeProject: "本工程",
+    contentCoverageWholeProject: "本项目",
     contentCoverageSummary: {
         one: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
         other: "构建已中止：{variant} 构建会删场景，但有 {count} 份文档无法读取，详见控制台",
     },
-    mediaNeedsConverting: "{asset} 无法播放，请在资产面板中转换",
-    mediaNotPlayable: "{asset} 不含音频也不含视频，请替换或删除该文件",
+    mediaNeedsConverting: "{asset} 无法播放，在资产面板中转换",
+    mediaNotPlayable: "{asset} 不含音频或视频，替换或删除该文件",
     mediaSummary: {
         one: "构建已中止：有 {count} 个资产无法播放，详见控制台",
         other: "构建已中止：有 {count} 个资产无法播放，详见控制台",
     },
-    networkNodeDisallowed: "{blueprint} 发起了网络请求，本工程不允许",
-    pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上不起作用",
+    networkNodeDisallowed: "{blueprint} 发起了网络请求，本项目不允许",
+    pointerNodeUnsupported: "{blueprint} 会移动鼠标光标，这在 {platforms} 上无效",
     networkSummary: {
-        one: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除该节点",
-        other: "构建已中止：{count} 个网络节点无法运行；请在工程设置中修改网络策略，或删除这些节点",
+        one: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除该节点",
+        other: "构建已中止：{count} 个网络节点无法运行。在项目设置中修改网络策略，或删除这些节点",
     },
-    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本工程的网络请求白名单内",
+    networkAddressNotAllowlisted: "{blueprint} 请求了 {url}，该地址不在本项目的网络请求白名单内",
     networkAllowlistSummary: {
-        one: "构建已停止：{count} 个地址不在网络请求白名单内。请在工程设置中添加该地址，或修改对应节点",
-        other: "构建已停止：{count} 个地址不在网络请求白名单内。请在工程设置中添加这些地址，或修改对应节点",
+        one: "构建已停止：{count} 个地址不在网络请求白名单内。在项目设置中添加该地址，或修改对应节点",
+        other: "构建已停止：{count} 个地址不在网络请求白名单内。在项目设置中添加这些地址，或修改对应节点",
     },
     mediaUnchecked: {
         one: "有 {count} 个媒体文件未经检查，本机没有可用的转换工具",

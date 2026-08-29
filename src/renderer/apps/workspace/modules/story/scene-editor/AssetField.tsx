@@ -9,6 +9,7 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import { Services } from "@/lib/workspace/services/services";
+import { useBadgeImageUrl, useStoryImageAsset } from "./storyBadgeImageCache";
 import { FIELD_LABEL_CLASS } from "./inspectorFieldKit";
 
 /**
@@ -28,6 +29,15 @@ import { FIELD_LABEL_CLASS } from "./inspectorFieldKit";
  * assembly resolves a set named by a block's own `assetId` / `voiceAssetId`, and a set id written
  * anywhere else would reach the build as an id no library row answers. So this is off by default
  * and turned on per field rather than inferred here.
+ *
+ * ## The picture
+ *
+ * An image field shows the image. It used to show its name and a glyph, which answers "is something
+ * picked" and not "which one" - and the name is often the only thing the author has to go on, so a
+ * row reading `cg42` said nothing at all about what would be on screen. Images only: they are the one
+ * asset kind that can be recognised at a glance, and a frame around an audio glyph would be a
+ * thumbnail that never arrives. Compact rows keep the line alone - a channel list is a column of
+ * one-line controls, and a picture in it would be taller than the row it belongs to.
  */
 export function AssetField(props: {
     label?: string;
@@ -63,6 +73,14 @@ export function AssetField(props: {
     const [selectorOpen, setSelectorOpen] = useState(false);
     const buttonRef = useRef<HTMLButtonElement | null>(null);
     const selectedSet = props.allowAssetSets && props.assetId && !selectedAsset ? findSet(props.assetId) : null;
+    // A set has no bytes of its own: picture the member its fallback names, which is what the field
+    // resolves to wherever no other axis value applies.
+    const previewAssetId = selectedSet
+        ? selectedSet.contents.cells.find(cell => cell.value === selectedSet.set.axis.fallback)?.assetId ?? null
+        : props.assetId ?? null;
+    const showsPicture = props.assetType === AssetType.Image && !props.compact;
+    const previewAsset = useStoryImageAsset(showsPicture ? previewAssetId : null);
+    const previewUrl = useBadgeImageUrl(previewAsset ? { kind: "project", asset: previewAsset } : null);
     const Icon = selectedSet
         ? Layers
         : props.assetType === AssetType.Audio ? Music : props.assetType === AssetType.Video ? Video : ImageIcon;
@@ -83,6 +101,35 @@ export function AssetField(props: {
     return (
         <div>
             {props.label ? <label className={FIELD_LABEL_CLASS}>{props.label}</label> : null}
+            {previewUrl ? (
+                <button
+                    type="button"
+                    className="group relative mb-2 block w-full overflow-hidden rounded-md border border-edge bg-surface focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/70"
+                    onClick={() => setSelectorOpen(true)}
+                    aria-label={t("storyInspector.asset.selectTitle", { label: props.label ?? "" })}
+                >
+                    {/*
+                     * The box takes the picture's own shape rather than a fixed frame's. A 16:9 frame
+                     * is right for a background and wrong for everything else this field holds: a
+                     * sprite is taller than it is wide, so it landed inside one as a sliver between two
+                     * empty halves - the frame, not the picture, getting the panel's width.
+                     *
+                     * So the image sizes itself and the button wraps it: a wide picture fills the
+                     * column, a tall one takes the height cap and only the width it needs. `contain`
+                     * for both, because this is here to be recognised and a cropped centre is not the
+                     * picture the author picked.
+                     */}
+                    <img
+                        src={previewUrl}
+                        alt=""
+                        draggable={false}
+                        className="mx-auto block max-h-52 w-auto max-w-full object-contain"
+                    />
+                    <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-2xs tracking-[0.22em] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                        {t("storyInspector.asset.change")}
+                    </span>
+                </button>
+            ) : null}
             <div className="flex gap-2">
                 <button
                     ref={buttonRef}

@@ -34,7 +34,6 @@ function cloneElement(element: UIElement): UIElement {
         layout: { ...element.layout },
         props: element.props ? { ...element.props } : undefined,
         style: element.style ? { ...element.style } : undefined,
-        behavior: element.behavior ? { ...element.behavior } : undefined,
         valueBindings: element.valueBindings ? { ...element.valueBindings } : undefined,
         extra: element.extra ? { ...element.extra } : undefined,
     };
@@ -194,28 +193,6 @@ export class ComponentDocumentServiceAdapter {
 
     public clearElementBlueprintValueBinding(_elementId: string, _propPath: string): void {
         return;
-    }
-
-    public setElementBlueprintEvent(
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void {
-        if (this.isVirtualRoot(elementId)) {
-            return;
-        }
-        this.base.setComponentElementBlueprintEvent(this.componentId, elementId, eventName, ref);
-    }
-
-    public clearElementBlueprintEvent(elementId: string, eventName: string): void {
-        if (this.isVirtualRoot(elementId)) {
-            return;
-        }
-        this.base.clearComponentElementBlueprintEvent(this.componentId, elementId, eventName);
-    }
-
-    public stripBlueprintLayerBindings(_surfaceId: string, blueprintId: string, layerEventId: string): void {
-        this.base.stripComponentBlueprintLayerBindings(this.componentId, blueprintId, layerEventId);
     }
 
     public reorderChildren(parentId: string, orderedChildIds: string[]): void {

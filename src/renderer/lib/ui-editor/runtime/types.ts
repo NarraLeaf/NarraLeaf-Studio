@@ -80,6 +80,12 @@ export type UIHostAdapterBlueprintRuntime = {
         depth: number;
         /** Surface of the calling execution; global callers omit it and only see global fns. */
         callerSurfaceId?: string;
+        /** Component definition of the calling execution, when it is running inside one. */
+        callerComponentId?: string;
+        /** That instance's resolved params, which the fn body runs with. */
+        callerComponentParams?: Record<string, string>;
+        /** Which drawing the call came from, so the body's widget writes land on it. */
+        callerInstanceKey?: string;
         signal?: AbortSignal;
         callerExecutionId?: string;
     }) => Promise<{ returns: Record<string, unknown> }>;

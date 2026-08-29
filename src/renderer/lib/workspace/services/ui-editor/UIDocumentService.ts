@@ -1,4 +1,5 @@
 import {
+    UI_DOCUMENT_MIN_SUPPORTED_VERSION,
     UI_DOCUMENT_SCHEMA_VERSION,
     UIDocument,
     UISurface,
@@ -14,7 +15,6 @@ import {
     UIElementValueBindingValueType,
     UIComponentDefinition,
     UIComponentId,
-    UIBehaviorBinding,
     UISlotDefinition,
     UILayout,
     isUIFlowLayoutParentElement,
@@ -23,7 +23,10 @@ import {
     isLinkedUIComponentElement,
     type UIComponentParam,
 } from "@shared/types/ui-editor/document";
+import { foldLegacyImageProps, UI_IMAGE_ELEMENT_TYPE } from "@shared/types/ui-editor/legacyImageProps";
 import { FsRejectErrorCode, type FsRequestResult } from "@shared/types/os";
+import type { LiveUIOp } from "@shared/live/ops";
+import { applyUIParts, diffUIParts, uiPartsUpdates, type LiveUIParts } from "@shared/live/uiParts";
 import { RendererError } from "@shared/utils/error";
 import { translate } from "@/lib/i18n";
 import { widgetModuleRegistry } from "@/lib/ui-editor/widget-modules/registryInstance";
@@ -60,7 +63,6 @@ import type { UIEditorClipboardPayload } from "@/lib/ui-editor/commands/uiEditor
 import {
     cloneWidgetMainBlueprintForPaste,
     cloneWidgetValueBlueprintForPaste,
-    remapElementBehaviorBlueprintIds,
     remapElementValueBindingBlueprintIds,
 } from "./blueprint/cloneBlueprintForPaste";
 import { registerPrivateBlueprintAsActive } from "./blueprint/ownerRecords";
@@ -119,15 +121,14 @@ import {
 import type { UIStructField } from "@shared/types/ui-editor/struct";
 import { applyUIStructFieldsForOwner, pruneUIStructs } from "@shared/types/ui-editor/structLibrary";
 import {
+    dedupeUIInputBindings,
     normalizeUIInputActionLibrary,
     normalizeUIInputBindings,
     normalizeUISurfaceActionEnablements,
-    normalizeUISurfaceInputMode,
     pruneUISurfaceActionEnablements,
     type UIInputActionDef,
     type UIInputBinding,
     type UISurfaceActionEnablement,
-    type UISurfaceInputMode,
 } from "@shared/types/ui-editor/inputAction";
 import { isWidgetTypeOf } from "@shared/types/ui-editor/widgetInheritance";
 import { getUISliderChildSlot, type UISliderElementExtra } from "@shared/types/ui-editor/slider";
@@ -179,6 +180,52 @@ type UIDocumentMutationHistoryOptions =
 
 type UIDocumentMutationOptions = {
     history?: UIDocumentMutationHistoryOptions;
+    /**
+     * An effect arriving, rather than a gesture leaving.
+     *
+     * The one flag that makes the sink stand aside. Without it applying an effect would hand the
+     * operation straight back to the sink it came from, and the room would answer itself for ever.
+     */
+    live?: boolean;
+};
+
+/**
+ * Somewhere for an interface edit to go instead of into the document.
+ *
+ * **The seam a live session hangs off, and the reason the interface editor needs no live-session code
+ * at all.** It is `StoryOpSink`'s shape and the same bargain - with a sink installed the document is
+ * not touched, and the screen changes when the operation comes back as somebody's effect - but it
+ * hangs somewhere else, and where is the whole design:
+ *
+ * The story service asks its sink from **each of eleven mutators**, because each of them is one
+ * gesture and can state it. This service has some forty, and they all funnel into one private
+ * `mutateDocument(mutator)` whose mutator is an opaque closure. Asking there is the only place that
+ * cannot fall behind - and what can be stated there is not the gesture but its result, which
+ * `mutateDocument` obtains by running the mutator against a copy and comparing (see
+ * `@shared/live/uiParts`). So the vocabulary is a delta of records, and it is **exhaustive over
+ * gestures by construction**: the forty that exist and the forty-first that lands next month are all
+ * carried, and none of them has to know a session exists.
+ *
+ * One method, for `StoryOpSink`'s reason: there are exactly two outcomes, and a second method would
+ * be a second way to spell one of them.
+ *
+ * ⚠ **A guest's second gesture on one record inside a single round trip supersedes the first**, and
+ * that is a property of every whole-record operation in this vocabulary rather than of this one: a
+ * guest's document does not move until the host answers, so both deltas are computed against the same
+ * state and the later one carries the earlier one's fields as they were. `update-character`,
+ * `update-asset` and `set-translation` all behave this way and always have. What keeps it small here
+ * is that each gesture is self-contained - a drag commits once at its end, and the inspector's text
+ * fields carry their whole draft on every throttled commit - so the two gestures have to be
+ * different KINDS of edit to the same element, made a network round trip apart.
+ */
+export type UIOpSink = {
+    /**
+     * Take one operation, or decline it.
+     *
+     * True means the sink has it and the document must not be touched. False means the sink is not
+     * speaking for this document and the mutation carries on as usual.
+     */
+    handle(op: LiveUIOp): boolean;
 };
 
 const COMPONENT_EDITOR_SURFACE_ID_PREFIX = "component-editor:";
@@ -244,30 +291,6 @@ function getComponentPreviewDesignSize(component: UIComponentDefinition): UISurf
         height: component.previewMeta?.height ?? DEFAULT_COMPONENT_SIZE.height,
     };
 }
-
-type LegacyUISurfaceKind = "appSurface" | "playerStageSurface" | "playerOverlaySurface";
-
-type LegacyUISurface = {
-    id: UISurfaceId;
-    name: string;
-    host: UIHost;
-    kind: LegacyUISurfaceKind;
-    designSize: UISurfaceDesignSize;
-    rootElementId: UIElementId;
-    settings?: {
-        backgroundColor?: string;
-        stageElementType?: UIStageSlotId;
-    };
-    route?: {
-        id?: string;
-    };
-    slots?: Record<string, UISlotDefinition>;
-};
-
-type LegacyUIDocument = Omit<UIDocument, "surfaces" | "schemaVersion"> & {
-    schemaVersion: 1;
-    surfaces: LegacyUISurface[];
-};
 
 function cloneJson<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
@@ -500,10 +523,10 @@ function blueprintHasAuthoredGraph(blueprint: Blueprint): boolean {
 /**
  * An element as it goes into a component definition.
  *
- * `behavior` survives, because it is what makes the component worth placing: an author who selects a
- * working save slot and asks for a component should get a working save slot, not a picture of one.
- * The blueprints those bindings name are cloned alongside (see `carryWidgetBlueprintsIntoComponent`),
- * so they point at the copy rather than at the elements still sitting on the surface.
+ * The private blueprints of the elements taken in are cloned alongside (see
+ * `carryWidgetBlueprintsIntoComponent`) and re-keyed to the component, because that is what makes
+ * the component worth placing: an author who selects a working save slot and asks for a component
+ * should get a working save slot, not a picture of one.
  *
  * `valueBindings` does not survive, and that is deliberate rather than an oversight. A value binding
  * inside a component instance is cached without the instance in its key, so every placement would
@@ -650,6 +673,8 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         onError: err => console.warn("[UIDocumentService] auto-save failed", err),
     });
     private afterMutateHook: (() => void) | null = null;
+    /** Where edits go instead of into the document, when something else owns them. See {@link UIOpSink}. */
+    private opSink: UIOpSink | null = null;
     private historySuppressionDepth = 0;
     private readonly contentRevisions = new UIDocumentContentRevisions();
 
@@ -1009,13 +1034,19 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
      * Bindings start empty: the project default is what every surface inherits, so guessing one
      * would silently wire a gesture the author never asked for into every interface at once.
      */
-    public createInputAction(name: string): UIInputActionDef | null {
+    public createInputAction(name: string, bindings?: readonly UIInputBinding[]): UIInputActionDef | null {
         const actionName = name.trim();
         if (!actionName) {
             return null;
         }
         const actionId = this.getContext().services.get<UuidService>(Services.Uuid).generate();
-        const action: UIInputActionDef = { id: actionId, name: actionName, bindings: [] };
+        const action: UIInputActionDef = {
+            id: actionId,
+            name: actionName,
+            // A preset lays these down once and is spent. Nothing records which one it was, so the
+            // action is editable from here on exactly as one typed from nothing would be.
+            bindings: normalizeUIInputBindings(bindings ?? []),
+        };
         this.mutateDocument(document => {
             document.actions = { ...(document.actions ?? {}), [actionId]: action };
         }, { history: false });
@@ -1082,21 +1113,12 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }, { history: false });
     }
 
-    /** What this surface does with input that lands on it. */
-    public setSurfaceInputMode(surfaceId: string, mode: UISurfaceInputMode): void {
-        this.updateSurface(surfaceId, surface => {
-            surface.input = normalizeUISurfaceInputMode(mode);
-        }, { mergeKey: `surface:${surfaceId}:input` });
-    }
-
     /**
      * Whether this surface answers one of the project's actions.
      *
-     * Enabling adds a bare enablement - no added bindings, no override - so the surface starts on
-     * the project's defaults and the row an author sees says exactly that. Disabling removes the
-     * record rather than flagging it off: a surface that does not answer an action has nothing to
-     * store about it, and a hidden set of per-surface bindings that reappear on re-enable is a
-     * state nobody can see.
+     * Enabling adds a bare enablement: the action's own bindings are what it answers to, and the
+     * row an author sees says exactly that. Disabling removes the record rather than flagging it
+     * off - a surface that does not answer an action has nothing to store about it.
      */
     public setSurfaceActionEnabled(surfaceId: string, actionId: string, enabled: boolean): void {
         const id = actionId.trim();
@@ -1145,10 +1167,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 const value = patch[key];
                 if (value === undefined) {
                     delete enablement[key];
-                    continue;
-                }
-                if (key === "addBindings" || key === "overrideBindings") {
-                    enablement[key] = normalizeUIInputBindings(value);
                     continue;
                 }
                 (enablement as Record<string, unknown>)[key] = value;
@@ -1449,7 +1467,78 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         });
     }
 
+    /**
+     * Send interface edits somewhere else, or take them back. Null restores the ordinary behaviour.
+     *
+     * See {@link UIOpSink} for why it hangs on the private mutator rather than on the public ones.
+     */
+    public setOperationSink(sink: UIOpSink | null): void {
+        this.opSink = sink;
+    }
+
+    /**
+     * Apply one operation to the document, **without consulting the sink**.
+     *
+     * The other side of the seam: what a live session calls when an effect arrives and the screen is
+     * finally allowed to change. It goes through the same `mutateDocument` every gesture does - which
+     * is not a detail, because the dirty marking, the auto-save, `documentChanged` and the blueprint
+     * reconciliation all hang off it, and a document that changed without them is one the editor
+     * never redraws and the disk never receives.
+     *
+     * **Nothing recorded here enters this author's undo stack.** An effect is somebody else's edit
+     * landing on this machine, and an undo stack that offered to take it back would be offering to
+     * delete a stranger's work. Inside a session, undo is sending the inverse of one's own last
+     * operation instead; see the live layer's `inverseOf`.
+     *
+     * ⚠ **The records are copied on the way in.** They arrived inside a message the sender may still
+     * be holding - the host keeps every effect it broadcast - and applying writes them into the
+     * document, which then edits them in place.
+     */
+    public applyLiveOp(op: LiveUIOp): void {
+        switch (op.op) {
+            case "write-ui":
+                this.applyParts(op.parts);
+                return;
+            default: {
+                // The switch is exhaustive over the vocabulary and this is what says so. The
+                // callback returns void, so a verb nobody applied here would be a silent no-op: the
+                // effect lands everywhere else in the room and does nothing on this machine, which
+                // is the divergence the digest catches one message too late.
+                const unapplied: never = op.op;
+                throw new RendererError(`No applier for live interface operation: ${String(unapplied)}`);
+            }
+        }
+    }
+
+    private applyParts(parts: LiveUIParts): void {
+        const copy = JSON.parse(JSON.stringify(parts)) as LiveUIParts;
+        this.mutateDocument(document => applyUIParts(document, copy), { live: true });
+    }
+
     private mutateDocument(mutator: (document: UIDocument) => void, options: UIDocumentMutationOptions = {}): void {
+        if (this.opSink && !options.live) {
+            // Run the gesture against a copy and state what it did to the document, rather than
+            // doing it. Nothing here reads the gesture: the comparison *is* the statement, which is
+            // what makes a verb impossible to forget. See {@link UIOpSink}.
+            const current = this.getDocument();
+            const draft = cloneUIHistoryDocument(current);
+            mutator(draft);
+            const parts = diffUIParts(current, draft);
+            if (parts === null) {
+                // A mutation that changed nothing must not become a message: several of this
+                // service's methods are no-ops against the wrong element, and a room full of empty
+                // operations would cost a broadcast, a sequence number and an undo step each.
+                return;
+            }
+            // ⚠ Which of the records were already here travels with the delta. Nothing in a delta's
+            // shape distinguishes a new element from one somebody deleted while it was being
+            // dragged, and applied blind the second of those puts a deleted element back on every
+            // screen in the room with every machine agreeing about it.
+            const updates = uiPartsUpdates(current, parts);
+            if (this.opSink.handle({ op: "write-ui", parts, ...(updates.length === 0 ? {} : { updates }) })) {
+                return;
+            }
+        }
         const historyService = this.getHistoryService();
         const historyOptions = options.history;
         const beforeHistory =
@@ -1539,7 +1628,36 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
     }
 
     private migrateIfNeeded(document: UIDocument): UIDocument {
-        return this.normalizeInputModel(this.migrateSchemaVersion(document));
+        return this.normalizeLegacyImageProps(this.normalizeInputModel(this.migrateSchemaVersion(document)));
+    }
+
+    /**
+     * Every `nl.image` written in the shape that came before `imageFill`, rewritten into it.
+     *
+     * A normalizer rather than a numbered migration, for the reason `normalizeInputModel` gives: it
+     * reconstructs nothing a reader could not have derived, so a document that has been through it
+     * is not a different schema. What makes it worth running at all is that it *converges* - the
+     * load path saves when normalizing changed anything, so an old element is rewritten once and
+     * the translation stops having to live at render time.
+     *
+     * Component definitions are walked as well as surfaces. A component's elements are the same
+     * elements with a different owner, and one authored before the current shape would otherwise
+     * keep the old keys wherever it was placed.
+     */
+    private normalizeLegacyImageProps(document: UIDocument): UIDocument {
+        const pools = [document.elements, ...(document.components ?? []).map(component => component.elements)];
+        for (const pool of pools) {
+            for (const element of Object.values(pool ?? {})) {
+                if (element.type !== UI_IMAGE_ELEMENT_TYPE) {
+                    continue;
+                }
+                const folded = foldLegacyImageProps(element.props);
+                if (folded) {
+                    element.props = folded;
+                }
+            }
+        }
+        return document;
     }
 
     /**
@@ -1564,9 +1682,10 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             delete document.actions;
         }
         for (const surface of document.surfaces) {
-            if (surface.input !== undefined) {
-                surface.input = normalizeUISurfaceInputMode(surface.input);
-            }
+            // Surfaces no longer carry an input mode. Documents written before v12 do, and the field
+            // is dropped here as well as in the migration so that one pasted in from an older
+            // project does not carry a setting nothing reads.
+            delete (surface as { input?: unknown }).input;
             if (surface.actions !== undefined) {
                 surface.actions = normalizeUISurfaceActionEnablements(surface.actions);
             }
@@ -1574,44 +1693,119 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         return document;
     }
 
+    /**
+     * Whatever was on disk, at the current version - or a refusal.
+     *
+     * The ladder that used to run from v1 is gone. Every step it held was a no-op past v1: the bumps
+     * from v2 to v10 each recorded that an older Studio must refuse a newer document, and none of
+     * them converted anything, so the "migration" was the version stamp plus the normalize pass that
+     * runs on a current document anyway. v1 was the one real step, and the surfaces it converted -
+     * `playerStageSurface` / `playerOverlaySurface`, before a stage surface named the slot it mounts
+     * into - have not been written by any build for months.
+     *
+     * So there is a floor and no rungs. v10 is read because it differs from v11 by nothing a reader
+     * has to reconstruct; below that a document is refused rather than opened as though the missing
+     * shapes were merely absent.
+     */
     private migrateSchemaVersion(document: UIDocument): UIDocument {
         if (document.schemaVersion > UI_DOCUMENT_SCHEMA_VERSION) {
             throw new RendererError("UI document schema is newer than this Studio version");
         }
-        if (document.schemaVersion === UI_DOCUMENT_SCHEMA_VERSION) {
-            return this.normalizeSpecialChildSlots(this.ensureComponentLibrary(document));
+        if (document.schemaVersion < UI_DOCUMENT_MIN_SUPPORTED_VERSION) {
+            throw new RendererError(
+                `UI document schema v${document.schemaVersion} is older than this Studio version can read`
+                + ` (v${UI_DOCUMENT_MIN_SUPPORTED_VERSION} is the oldest supported)`,
+            );
         }
-        if (document.schemaVersion === 1) {
-            return this.migrateFromLegacyDocument(document);
+        const from = document.schemaVersion;
+        const carried = from < 12 ? this.migrateSurfaceBindingOverrides(document) : document;
+        return this.normalizeSpecialChildSlots({
+            ...this.ensureComponentLibrary(carried),
+            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
+        });
+    }
+
+    /**
+     * v12: a surface that changed an action's bindings gets an action of its own.
+     *
+     * Until v12 a surface could add bindings to an action or replace them outright, so the gestures
+     * an action answered to were spread across every surface that answered it. The record is gone,
+     * and dropping it through the normalizer would take the gestures with it - a Log page that
+     * closed on a scroll would quietly close on nothing. So the override is read one last time here
+     * and turned into what it was always describing: a separate action, with the bindings that
+     * surface actually used, named after the one it came from.
+     *
+     * Surfaces that overrode the same action the same way share the action this mints, because they
+     * were one statement written twice. A surface whose override worked out to the project's own
+     * bindings is left pointing at the original - there was nothing to carry.
+     */
+    private migrateSurfaceBindingOverrides(document: UIDocument): UIDocument {
+        type LegacyEnablement = UISurfaceActionEnablement & {
+            addBindings?: unknown;
+            overrideBindings?: unknown;
+        };
+
+        const vocabulary = normalizeUIInputActionLibrary(document.actions);
+        if (Object.keys(vocabulary).length === 0) {
+            return document;
         }
-        if (document.schemaVersion === 2) {
-            return this.migrateFromV2Document(document);
+        const minted = new Map<string, string>();
+        let changed = false;
+
+        const takenIds = new Set(Object.keys(vocabulary));
+        const mintId = (base: string): string => {
+            let candidate = base;
+            let n = 2;
+            while (takenIds.has(candidate)) {
+                candidate = `${base}-${n}`;
+                n += 1;
+            }
+            takenIds.add(candidate);
+            return candidate;
+        };
+
+        for (const surface of document.surfaces ?? []) {
+            const enablements = surface.actions as LegacyEnablement[] | undefined;
+            if (!enablements?.length) {
+                continue;
+            }
+            for (const enablement of enablements) {
+                const def = vocabulary[enablement.actionId];
+                if (!def) {
+                    continue;
+                }
+                const override = enablement.overrideBindings !== undefined
+                    ? normalizeUIInputBindings(enablement.overrideBindings)
+                    : dedupeUIInputBindings([
+                        ...def.bindings,
+                        ...normalizeUIInputBindings(enablement.addBindings),
+                    ]);
+                if (enablement.overrideBindings === undefined && enablement.addBindings === undefined) {
+                    continue;
+                }
+                const signature = `${enablement.actionId}:${JSON.stringify(override)}`;
+                if (signature === `${enablement.actionId}:${JSON.stringify(def.bindings)}`) {
+                    continue;
+                }
+                let mintedId = minted.get(signature);
+                if (!mintedId) {
+                    mintedId = mintId(`${def.id}-${surface.id}`);
+                    minted.set(signature, mintedId);
+                    vocabulary[mintedId] = {
+                        id: mintedId,
+                        name: `${def.name} (${surface.name})`,
+                        bindings: override,
+                    };
+                }
+                enablement.actionId = mintedId;
+                changed = true;
+            }
         }
-        if (document.schemaVersion === 3) {
-            return this.migrateFromV3Document(document);
+
+        if (!changed) {
+            return document;
         }
-        if (document.schemaVersion === 4) {
-            return this.migrateFromV4Document(document);
-        }
-        if (document.schemaVersion === 5) {
-            return this.migrateFromV5Document(document);
-        }
-        if (document.schemaVersion === 6) {
-            return this.migrateFromV6Document(document);
-        }
-        if (document.schemaVersion === 7) {
-            return this.migrateFromV7Document(document);
-        }
-        if (document.schemaVersion === 8) {
-            return this.migrateFromV8Document(document);
-        }
-        if (document.schemaVersion === 9) {
-            return this.migrateFromV9Document(document);
-        }
-        if (document.schemaVersion === 10) {
-            return this.migrateFromV10Document(document);
-        }
-        throw new RendererError("UI document migration is not implemented");
+        return { ...document, actions: vocabulary };
     }
 
     private withComponentLibrary(document: UIDocument): UIDocument {
@@ -1625,86 +1819,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
 
     private ensureComponentLibrary(document: UIDocument): UIDocument {
         return this.withComponentLibrary(document);
-    }
-
-    private migrateFromLegacyDocument(document: UIDocument): UIDocument {
-        const legacy = document as LegacyUIDocument;
-        const migratedSurfaces = legacy.surfaces.map(surface => this.migrateLegacySurface(surface));
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-            surfaces: migratedSurfaces,
-        });
-    }
-
-    private migrateFromV2Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    private migrateFromV3Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P5 hard cutover marker: documents authored on schema 4 (unified container model) bump to current. */
-    private migrateFromV4Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P6: list child slots distinguish item template children from authored scrollbar parts. */
-    private migrateFromV5Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P7: per-property Blueprint Value bindings live on UIElement.valueBindings. */
-    private migrateFromV6Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P8: slider widgets own authored track / handle container parts. */
-    private migrateFromV7Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P9: project-level UI component library. */
-    private migrateFromV8Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P10: Game UI stage slots are normalized and Dialog gets slot-private widgets. */
-    private migrateFromV9Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
-    }
-
-    /** P11: `nvl` stage slot plus list-like Game UI slot widgets. */
-    private migrateFromV10Document(document: UIDocument): UIDocument {
-        return this.normalizeSpecialChildSlots({
-            ...document,
-            schemaVersion: UI_DOCUMENT_SCHEMA_VERSION,
-        });
     }
 
     private normalizeSpecialChildSlots(document: UIDocument): UIDocument {
@@ -1806,44 +1920,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         return document;
-    }
-
-    private migrateLegacySurface(surface: LegacyUISurface): UISurface {
-        const settings = surface.settings
-            ? { backgroundColor: surface.settings.backgroundColor }
-            : undefined;
-
-        if (surface.kind === "appSurface") {
-            return {
-                id: surface.id,
-                name: surface.name,
-                host: "app",
-                kind: "appSurface",
-                designSize: surface.designSize,
-                rootElementId: surface.rootElementId,
-                settings,
-            };
-        }
-
-        const stageMount: UIStageSurfaceMount = {
-            kind: "slot",
-            slotId: normalizeUIStageSlotId(surface.settings?.stageElementType),
-        };
-
-        return {
-            id: surface.id,
-            name: surface.name,
-            host: "player",
-            kind: "stageSurface",
-            designSize: surface.designSize,
-            rootElementId: surface.rootElementId,
-            settings: {
-                backgroundColor: "transparent",
-                ...(settings ?? {}),
-            },
-            mount: stageMount,
-            slots: surface.slots,
-        };
     }
 
     private createEmptyDocument(): UIDocument {
@@ -2195,12 +2271,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.extra = copy.extra
                 ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
                 : undefined;
-            if (copy.behavior?.events) {
-                copy.behavior = {
-                    ...copy.behavior,
-                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -2408,12 +2478,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 copy.props = copy.props ? remapSurfaceDuplicateReferenceValue(copy.props, remapContext) : undefined;
                 copy.style = copy.style ? remapSurfaceDuplicateReferenceValue(copy.style, remapContext) : undefined;
                 copy.extra = copy.extra ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext) : undefined;
-                if (copy.behavior?.events) {
-                    copy.behavior = {
-                        ...copy.behavior,
-                        events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                    };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -2691,12 +2755,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.extra = copy.extra
                 ? remapSurfaceDuplicateReferenceValue(copy.extra, remapContext)
                 : undefined;
-            if (copy.behavior?.events) {
-                copy.behavior = {
-                    ...copy.behavior,
-                    events: remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap),
-                };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -2942,14 +3000,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 cloned.owner = { kind: "componentWidgetMain", componentId, elementId: newElementId };
                 carried.push({ ownerKey: componentWidgetMainOwnerKey(componentId, newElementId), blueprint: cloned });
             }
-            // Element bindings name the blueprint by id, so they have to follow the clone; a copy
-            // still pointing at the original would run the surface's blueprint from inside the
-            // instance and drive the elements that are still out there.
-            for (const element of Object.values(componentElements)) {
-                if (element.behavior) {
-                    element.behavior = remapSurfaceDuplicateReferenceValue(element.behavior, remapContext) as UIElement["behavior"];
-                }
-            }
         }
 
         const component: UIComponentDefinition = {
@@ -3091,10 +3141,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             copy.id = idMap[oldId];
             copy.parentId = element.parentId ? idMap[element.parentId] ?? null : null;
             copy.childrenIds = element.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
-            if (copy.behavior?.events) {
-                const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                copy.behavior = { ...copy.behavior, events: remapped };
-            }
             if (copy.valueBindings) {
                 copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
             }
@@ -3233,92 +3279,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...extraPatch,
             };
             component.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public setComponentElementBlueprintEvent(
-        componentId: string,
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void {
-        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const bpDoc = localBp.getBlueprintDocument();
-        const bp = bpDoc.blueprints[ref.blueprintId];
-        const slot = bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
-        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
-        localBp.ensureEventGraph(ref.blueprintId, ref.eventId, slot ? undefined : defaultLayerName);
-        this.mutateDocument(document => {
-            const component = (document.components ?? []).find(item => item.id === componentId);
-            const element = component?.elements[elementId];
-            if (!component || !element) {
-                return;
-            }
-            element.behavior = element.behavior ?? {};
-            element.behavior.events = element.behavior.events ?? {};
-            element.behavior.events[eventName] = {
-                kind: "blueprintEvent",
-                blueprintId: ref.blueprintId,
-                eventId: ref.eventId,
-            };
-            component.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public clearComponentElementBlueprintEvent(componentId: string, elementId: string, eventName: string): void {
-        const component = (this.getDocument().components ?? []).find(item => item.id === componentId);
-        const current = component?.elements[elementId]?.behavior?.events?.[eventName];
-        if (current?.kind === "blueprintEvent") {
-            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-            localBp.removeEventGraph(current.blueprintId, current.eventId);
-        }
-        this.mutateDocument(document => {
-            const liveComponent = (document.components ?? []).find(item => item.id === componentId);
-            const target = liveComponent?.elements[elementId];
-            if (!liveComponent || !target?.behavior?.events?.[eventName]) {
-                return;
-            }
-            const { [eventName]: _removed, ...rest } = target.behavior.events;
-            target.behavior = {
-                ...target.behavior,
-                events: Object.keys(rest).length > 0 ? rest : undefined,
-            };
-            liveComponent.updatedAt = new Date().toISOString();
-        }, { history: false });
-    }
-
-    public stripComponentBlueprintLayerBindings(componentId: string, blueprintId: string, layerEventId: string): void {
-        this.mutateDocument(document => {
-            const component = (document.components ?? []).find(item => item.id === componentId);
-            if (!component) {
-                return;
-            }
-            let componentChanged = false;
-            for (const el of Object.values(component.elements)) {
-                const events = el.behavior?.events;
-                if (!events) {
-                    continue;
-                }
-                let changed = false;
-                const nextEvents = { ...events };
-                for (const [eventName, binding] of Object.entries(nextEvents)) {
-                    if (
-                        binding.kind === "blueprintEvent" &&
-                        binding.blueprintId === blueprintId &&
-                        binding.eventId === layerEventId
-                    ) {
-                        nextEvents[eventName] = { kind: "noop" };
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    el.behavior = { ...el.behavior, events: nextEvents };
-                    componentChanged = true;
-                }
-            }
-            if (componentChanged) {
-                component.updatedAt = new Date().toISOString();
-            }
         }, { history: false });
     }
 
@@ -3514,7 +3474,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     ...(defaultChildrenResult?.elementPatch?.props ?? {}),
                 },
                 style: defaultChildrenResult?.elementPatch?.style ?? element.style,
-                behavior: undefined,
                 valueBindings: undefined,
                 extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
             };
@@ -3523,7 +3482,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 component.elements[child.id] = {
                     ...child,
                     parentId: elementId,
-                    behavior: undefined,
                     valueBindings: undefined,
                 };
             }
@@ -3699,7 +3657,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             }
         }
         const materializedIds = Object.values(idMap);
-        const pageBehavior = cloneJson(instance.behavior);
         this.mutateDocument(doc => {
             const liveInstance = doc.elements[elementId];
             if (!liveInstance) {
@@ -3722,10 +3679,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                       ? idMap[source.parentId]
                       : null;
                 copy.childrenIds = source.childrenIds.filter(childId => idMap[childId]).map(childId => idMap[childId]);
-                if (copy.behavior?.events) {
-                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                    copy.behavior = { ...copy.behavior, events: remapped };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -3735,7 +3688,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                         ...liveInstance.layout,
                     };
                     copy.name = liveInstance.name;
-                    copy.behavior = pageBehavior;
                     if (copy.extra?.componentLink) {
                         const { componentLink: _removed, ...rest } = copy.extra;
                         copy.extra = Object.keys(rest).length > 0 ? rest : undefined;
@@ -3822,7 +3774,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
             layout,
             props: defaultElement.props,
             style: defaultElement.style,
-            behavior: defaultElement.behavior,
             extra:
                 isListLikeWidgetType(parent.type)
                     ? ({
@@ -3862,7 +3813,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                 ...(defaultChildrenResult?.elementPatch?.props ?? {}),
             },
             style: defaultChildrenResult?.elementPatch?.style ?? element.style,
-            behavior: defaultChildrenResult?.elementPatch?.behavior ?? element.behavior,
             extra: defaultChildrenResult?.elementPatch?.extra ?? element.extra,
         };
 
@@ -3959,10 +3909,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
                     .filter(cid => payload.elements[cid])
                     .map(cid => elementIdMap[cid]);
 
-                if (copy.behavior?.events) {
-                    const remapped = remapElementBehaviorBlueprintIds(copy.behavior.events, blueprintIdMap);
-                    copy.behavior = { ...copy.behavior, events: remapped };
-                }
                 if (copy.valueBindings) {
                     copy.valueBindings = remapElementValueBindingBlueprintIds(copy.valueBindings, blueprintIdMap);
                 }
@@ -4086,113 +4032,6 @@ export class UIDocumentService extends Service<UIDocumentService> implements IUI
         }
 
         return { ok: true, newRootIds };
-    }
-
-    public setElementBlueprintEvent(
-        elementId: string,
-        eventName: string,
-        ref: { blueprintId: string; eventId: string },
-    ): void {
-        const surfaceId = this.getElementSurfaceId(elementId);
-        const historyService = surfaceId ? this.getHistoryService() : null;
-        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
-        const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-        const bpDoc = localBp.getBlueprintDocument();
-        const bp = bpDoc.blueprints[ref.blueprintId];
-        const slot =
-            bp?.program.kind === "graph" ? bp.program.graphs.events?.[ref.eventId] : undefined;
-        const defaultLayerName = `Layer ${ref.eventId.slice(0, 8)}`;
-        localBp.ensureEventGraph(
-            ref.blueprintId,
-            ref.eventId,
-            slot ? undefined : defaultLayerName,
-        );
-        this.mutateDocument(document => {
-            const el = document.elements[elementId];
-            if (!el) {
-                return;
-            }
-            el.behavior = el.behavior ?? {};
-            el.behavior.events = el.behavior.events ?? {};
-            const binding: UIBehaviorBinding = {
-                kind: "blueprintEvent",
-                blueprintId: ref.blueprintId,
-                eventId: ref.eventId,
-            };
-            el.behavior.events[eventName] = binding;
-        }, { history: false });
-        if (surfaceId && historyService && beforeHistory) {
-            historyService.record({
-                surfaceId,
-                before: beforeHistory,
-                after: historyService.captureSnapshot(surfaceId),
-            });
-        }
-    }
-
-    public clearElementBlueprintEvent(elementId: string, eventName: string): void {
-        const surfaceId = this.getElementSurfaceId(elementId);
-        const historyService = surfaceId ? this.getHistoryService() : null;
-        const beforeHistory = surfaceId && historyService ? historyService.captureSnapshot(surfaceId) : null;
-        const el = this.getDocument().elements[elementId];
-        const cur = el?.behavior?.events?.[eventName];
-        if (cur?.kind === "blueprintEvent") {
-            const localBp = this.getContext().services.get<LocalBlueprintService>(Services.LocalBlueprint);
-            localBp.removeEventGraph(cur.blueprintId, cur.eventId);
-        }
-        this.mutateDocument(document => {
-            const target = document.elements[elementId];
-            if (!target?.behavior?.events?.[eventName]) {
-                return;
-            }
-            const { [eventName]: _removed, ...rest } = target.behavior.events;
-            target.behavior = {
-                ...target.behavior,
-                events: Object.keys(rest).length > 0 ? rest : undefined,
-            };
-        }, { history: false });
-        if (surfaceId && historyService && beforeHistory) {
-            historyService.record({
-                surfaceId,
-                before: beforeHistory,
-                after: historyService.captureSnapshot(surfaceId),
-            });
-        }
-    }
-
-    public stripBlueprintLayerBindings(surfaceId: string, blueprintId: string, layerEventId: string): void {
-        this.mutateDocument(document => {
-            const rootId = resolveSurfaceRootElementId(document, surfaceId);
-            if (!rootId) {
-                return;
-            }
-            const ids = collectSubtreeElementIds(document, rootId);
-            for (const elId of ids) {
-                const el = document.elements[elId];
-                if (!el) {
-                    continue;
-                }
-                const events = el.behavior?.events;
-                if (!events) {
-                    continue;
-                }
-                let changed = false;
-                const nextEvents = { ...events };
-                for (const [eventName, binding] of Object.entries(nextEvents)) {
-                    if (
-                        binding.kind === "blueprintEvent" &&
-                        binding.blueprintId === blueprintId &&
-                        binding.eventId === layerEventId
-                    ) {
-                        nextEvents[eventName] = { kind: "noop" };
-                        changed = true;
-                    }
-                }
-                if (changed) {
-                    el.behavior = { ...el.behavior, events: nextEvents };
-                }
-            }
-        }, { history: false });
     }
 
     private getProjectDesignSize(): UISurfaceDesignSize {

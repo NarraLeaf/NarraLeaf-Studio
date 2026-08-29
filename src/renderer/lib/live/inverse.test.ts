@@ -1,14 +1,28 @@
 import { describe, expect, it } from "vitest";
 import type { LiveCastView } from "@shared/live/cast";
+import { opDocumentKind } from "@shared/live/ops";
 import type {
+    LiveAssetOp,
+    LiveAssetRecord,
     LiveCharacterOp,
     LiveEffect,
+    LiveLocalizationKeyOp,
     LiveLocalizationOp,
     LiveOp,
+    LiveVariableOp,
     LiveVoiceOp,
 } from "@shared/live/ops";
+import { insertLiveRecordBefore } from "@shared/live/config";
+import { APP_TAG_SCHEMA_VERSION, type ProjectAppTag, type ProjectAppTagDocument } from "@shared/types/appTag";
+import { BRAND_SCHEMA_VERSION, type BrandColor, type ProjectBrandDocument } from "@shared/types/brand";
+import { DLC_SCHEMA_VERSION, type ProjectDlc, type ProjectDlcDocument } from "@shared/types/dlc";
+import type { ProjectFontEntry } from "@shared/types/typography";
 import type { CharacterGroup, StoredCharacter } from "@shared/types/character/model";
-import type { LocalizationUnit } from "@shared/types/localization";
+import { makeAssetSetAxis, type AssetSet } from "@shared/types/assetSet";
+import type { ProjectAudioTrack } from "@shared/types/audioTrack";
+import type { ProjectDictionaryDocument } from "@shared/types/dictionary";
+import type { LocalizationKeyDefinition, LocalizationUnit } from "@shared/types/localization";
+import type { VariableRegistryEntry } from "@shared/types/variables/registry";
 import type { VoiceUnit } from "@shared/types/voice";
 import {
     STORY_DOCUMENT_SCHEMA_VERSION,
@@ -17,6 +31,7 @@ import {
     type StoryDocument,
     type StoryNoteBlock,
     type StoryScene,
+    type StorySceneSnapshot,
 } from "@shared/types/story";
 import {
     deleteBlockFromScene,
@@ -137,6 +152,112 @@ function apply(document: StoryDocument, op: LiveOp): void {
         case "reorder-chapters":
             document.chapters = op.chapterIds.map(id => document.chapters.find(chapter => chapter.id === id)!);
             return;
+        case "create-scene": {
+            document.scenes[op.scene.id] = structuredClone(op.scene);
+            if (op.chapter && !document.chapters.some(item => item.id === op.chapter?.id)) {
+                document.chapters.push(structuredClone(op.chapter));
+            }
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            if (chapter) {
+                const at = op.beforeSceneId === null ? -1 : chapter.sceneIds.indexOf(op.beforeSceneId);
+                if (at === -1) {
+                    chapter.sceneIds.push(op.scene.id);
+                } else {
+                    chapter.sceneIds.splice(at, 0, op.scene.id);
+                }
+            }
+            if (op.entry === true || document.entrySceneId === undefined) {
+                document.entrySceneId = op.scene.id;
+            }
+            return;
+        }
+        case "delete-scene": {
+            delete document.scenes[op.sceneId];
+            for (const chapter of document.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            if (document.entrySceneId === op.sceneId) {
+                delete document.entrySceneId;
+            }
+            return;
+        }
+        case "update-scene": {
+            const scene = document.scenes[op.sceneId];
+            scene.name = op.fields.name;
+            scene.runtimeName = op.fields.runtimeName;
+            if (op.fields.description === undefined) {
+                delete scene.description;
+            } else {
+                scene.description = op.fields.description;
+            }
+            if (op.fields.defaultBackgroundAssetId === undefined) {
+                delete scene.defaultBackgroundAssetId;
+            } else {
+                scene.defaultBackgroundAssetId = op.fields.defaultBackgroundAssetId;
+            }
+            if (op.fields.bgm === undefined) {
+                delete scene.bgm;
+            } else {
+                scene.bgm = op.fields.bgm;
+            }
+            return;
+        }
+        case "move-scene": {
+            for (const chapter of document.chapters) {
+                chapter.sceneIds = chapter.sceneIds.filter(id => id !== op.sceneId);
+            }
+            const target = document.chapters.find(item => item.id === op.chapterId);
+            if (target) {
+                const at = op.beforeSceneId === null ? -1 : target.sceneIds.indexOf(op.beforeSceneId);
+                if (at === -1) {
+                    target.sceneIds.push(op.sceneId);
+                } else {
+                    target.sceneIds.splice(at, 0, op.sceneId);
+                }
+            }
+            return;
+        }
+        case "set-scene-snapshots":
+            document.scenes[op.sceneId].sceneSnapshots = structuredClone(op.snapshots) as StorySceneSnapshot[];
+            return;
+        case "create-chapter": {
+            const at = op.beforeChapterId === null
+                ? -1
+                : document.chapters.findIndex(item => item.id === op.beforeChapterId);
+            const restored = structuredClone(op.chapter);
+            if (at === -1) {
+                document.chapters.push(restored);
+            } else {
+                document.chapters.splice(at, 0, restored);
+            }
+            for (const scene of op.scenes ?? []) {
+                document.scenes[scene.id] = structuredClone(scene);
+            }
+            if (op.entry !== undefined && document.scenes[op.entry]) {
+                document.entrySceneId = op.entry;
+            }
+            return;
+        }
+        case "rename-chapter": {
+            const chapter = document.chapters.find(item => item.id === op.chapterId);
+            if (chapter) {
+                chapter.name = op.name;
+            }
+            return;
+        }
+        case "delete-chapter": {
+            const index = document.chapters.findIndex(item => item.id === op.chapterId);
+            if (index !== -1) {
+                for (const sceneId of document.chapters[index].sceneIds) {
+                    delete document.scenes[sceneId];
+                }
+                document.chapters.splice(index, 1);
+            }
+            if (document.entrySceneId !== undefined && !document.scenes[document.entrySceneId]) {
+                delete document.entrySceneId;
+            }
+            return;
+        }
     }
 }
 
@@ -1101,5 +1222,978 @@ describe("undoing what this window did to a language", () => {
         };
         expect(asOp(inverseOf(effect, { self: SELF, before })))
             .toEqual({ op: "set-take", locale: JA, unitId: "text-a", unit: { assetId: "clip-1", sourceHash: "h", status: "linked" } });
+    });
+});
+
+/* ------------------------------------------------------------------------ the asset library */
+
+/** Apply one asset operation to a shard, the way the service does. */
+function applyAssets(records: Record<string, LiveAssetRecord>, op: LiveAssetOp): void {
+    if (op.op === "update-asset") {
+        records[op.assetId] = { ...op.record };
+        return;
+    }
+    if (op.op !== "move-assets") {
+        return;
+    }
+    for (const move of op.moves) {
+        const record = records[move.assetId];
+        if (!record) {
+            continue;
+        }
+        if (move.groupId === null) {
+            delete (record as Record<string, unknown>).groupId;
+        } else {
+            (record as Record<string, unknown>).groupId = move.groupId;
+        }
+    }
+}
+
+function assetRecord(id: string, name = `${id}.png`, groupId?: string): LiveAssetRecord {
+    return { id, type: "image", name, hash: `hash-${id}`, tags: [], description: "", ...(groupId ? { groupId } : {}) };
+}
+
+/** Capture, apply, and answer the effect - the library half of {@link perform}, one document along. */
+function performAsset(records: Record<string, LiveAssetRecord>, op: LiveAssetOp, by = SELF): Done {
+    const before = captureBefore(op, { assets: type => (type === "image" ? records : null) });
+    applyAssets(records, op);
+    return {
+        effect: { kind: "effect", by, seq: ++seq, document: { doc: "assets", assetType: "image" }, op },
+        before,
+    };
+}
+
+function invertAsset(records: Record<string, LiveAssetRecord>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, assets: type => (type === "image" ? records : null) });
+}
+
+describe("undoing what this window did to the asset library", () => {
+    it("puts the record back to what it held", () => {
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1", "room.png") };
+        const done = performAsset(records, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: assetRecord("a1", "hall.jpg"),
+        });
+        expect(records.a1.name).toBe("hall.jpg");
+
+        applyAssets(records, asOp(invertAsset(records, done)) as LiveAssetOp);
+        expect(records.a1.name).toBe("room.png");
+    });
+
+    it("refuses when somebody deleted the file after the edit landed", () => {
+        // Putting the record back would be a row in the browser with nothing under it - the cast's
+        // answer to the same question, one document along.
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1", "room.png") };
+        const done = performAsset(records, {
+            op: "update-asset", assetType: "image", assetId: "a1", record: assetRecord("a1", "hall.jpg"),
+        });
+        delete records.a1;
+
+        expect(invertAsset(records, done)).toEqual({ impossible: "asset-gone" });
+    });
+
+    it("puts every row of a drag back where IT came from, not where they all went", () => {
+        // ⚠ The whole reason the operation carries a destination per row. A drag collects assets
+        // that were in different folders, and an undo that filed them all in one place would be a
+        // rearrangement nobody asked for wearing the word "undo".
+        const records: Record<string, LiveAssetRecord> = {
+            a1: assetRecord("a1", "a1.png", "chapter-1"),
+            a2: assetRecord("a2"),
+        };
+        const done = performAsset(records, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+        });
+        expect([records.a1.groupId, records.a2.groupId]).toEqual(["chapter-2", "chapter-2"]);
+
+        const back = asOp(invertAsset(records, done)) as LiveAssetOp;
+        expect(back).toEqual({
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-1" }, { assetId: "a2", groupId: null }],
+        });
+        applyAssets(records, back);
+        expect(records.a1.groupId).toBe("chapter-1");
+        expect(records.a2.groupId).toBeUndefined();
+    });
+
+    it("refuses a drag whose rows are not all still there, rather than putting half of it back", () => {
+        const records: Record<string, LiveAssetRecord> = { a1: assetRecord("a1"), a2: assetRecord("a2") };
+        const done = performAsset(records, {
+            op: "move-assets",
+            assetType: "image",
+            moves: [{ assetId: "a1", groupId: "chapter-2" }, { assetId: "a2", groupId: "chapter-2" }],
+        });
+        delete records.a2;
+
+        expect(invertAsset(records, done)).toEqual({ impossible: "asset-gone" });
+    });
+
+    it("keeps nothing for a shard this window does not hold, and answers `no-record`", () => {
+        const done: Done = {
+            effect: {
+                kind: "effect",
+                by: SELF,
+                seq: ++seq,
+                document: { doc: "assets", assetType: "font" },
+                op: { op: "update-asset", assetType: "font", assetId: "f1", record: assetRecord("f1") },
+            },
+            before: captureBefore(
+                { op: "update-asset", assetType: "font", assetId: "f1", record: assetRecord("f1") },
+                { assets: () => null },
+            ),
+        };
+        expect(done.before).toBeNull();
+        expect(inverseOf(done.effect, { self: SELF, before: done.before, assets: () => null }))
+            .toEqual({ impossible: "no-record" });
+    });
+});
+
+/* -------------------------------------------- the project's three configuration tables */
+
+function makeAppTags(tags: ProjectAppTag[] = []): ProjectAppTagDocument {
+    return { schemaVersion: APP_TAG_SCHEMA_VERSION, tags: tags.map(tag => structuredClone(tag)) };
+}
+
+function makeDlcs(entries: ProjectDlc[] = []): ProjectDlcDocument {
+    return { schemaVersion: DLC_SCHEMA_VERSION, dlcs: entries.map(entry => ({ ...entry })) };
+}
+
+function makeBrand(colors: BrandColor[] = [], fonts: ProjectFontEntry[] = []): ProjectBrandDocument {
+    return {
+        schemaVersion: BRAND_SCHEMA_VERSION,
+        colors: colors.map(color => ({ ...color })),
+        fonts: fonts.map(font => ({ ...font })),
+    };
+}
+
+function variant(id: string, name = "Demo"): ProjectAppTag {
+    return { id, name, overrides: {} };
+}
+
+/**
+ * The three configuration tables, as much of them as an inverse ever reads.
+ *
+ * One harness for the three, because the three are one design with three addresses - which is also
+ * why the interface half of them is one file.
+ */
+type ConfigWorld = {
+    appTags: ProjectAppTagDocument;
+    dlcs: ProjectDlcDocument;
+    brand: ProjectBrandDocument;
+};
+
+function makeConfigWorld(patch: Partial<ConfigWorld> = {}): ConfigWorld {
+    return {
+        appTags: patch.appTags ?? makeAppTags(),
+        dlcs: patch.dlcs ?? makeDlcs(),
+        brand: patch.brand ?? makeBrand(),
+    };
+}
+
+function applyConfig(world: ConfigWorld, op: LiveOp): void {
+    switch (op.op) {
+        case "create-app-tag":
+            world.appTags.tags = insertLiveRecordBefore(world.appTags.tags, structuredClone(op.tag), op.beforeId);
+            return;
+        case "update-app-tag":
+            world.appTags.tags = world.appTags.tags.map(tag => (tag.id === op.tagId ? structuredClone(op.tag) : tag));
+            return;
+        case "delete-app-tag":
+            world.appTags.tags = world.appTags.tags.filter(tag => tag.id !== op.tagId);
+            return;
+        case "set-app-tag-defaults":
+            world.appTags.pluginConfig = op.defaults.pluginConfig;
+            world.appTags.assetAxes = op.defaults.assetAxes;
+            world.appTags.reachableScenes = op.defaults.reachableScenes;
+            world.appTags.endingSurfaceId = op.defaults.endingSurfaceId;
+            for (const entry of op.tagPluginConfig ?? []) {
+                world.appTags.tags = world.appTags.tags.map(tag => (tag.id === entry.tagId
+                    ? { ...tag, pluginConfig: structuredClone(entry.pluginConfig) }
+                    : tag));
+            }
+            return;
+        case "create-dlc":
+            world.dlcs.dlcs = insertLiveRecordBefore(world.dlcs.dlcs, { ...op.dlc }, op.beforeId);
+            return;
+        case "update-dlc":
+            world.dlcs.dlcs = world.dlcs.dlcs.map(dlc => (dlc.id === op.dlcId ? { ...op.dlc } : dlc));
+            return;
+        case "delete-dlc":
+            world.dlcs.dlcs = world.dlcs.dlcs.filter(dlc => dlc.id !== op.dlcId);
+            return;
+        case "create-brand-color":
+            world.brand.colors = insertLiveRecordBefore(world.brand.colors, { ...op.color }, op.beforeId);
+            return;
+        case "update-brand-color":
+            world.brand.colors = world.brand.colors.map(color => (color.id === op.colorId ? { ...op.color } : color));
+            return;
+        case "delete-brand-color":
+            world.brand.colors = world.brand.colors.filter(color => color.id !== op.colorId);
+            return;
+        case "move-brand-color": {
+            const moving = world.brand.colors.find(color => color.id === op.colorId);
+            if (!moving) {
+                return;
+            }
+            const rest = world.brand.colors.filter(color => color.id !== op.colorId);
+            world.brand.colors = insertLiveRecordBefore(rest, moving, op.beforeId ?? undefined);
+            return;
+        }
+        case "set-brand-fonts":
+            world.brand.fonts = op.fonts.map(font => ({ ...font }));
+            return;
+    }
+}
+
+function performConfig(world: ConfigWorld, op: LiveOp, by = SELF): Done {
+    const before = captureBefore(op, {
+        appTags: world.appTags,
+        dlcs: world.dlcs,
+        brand: world.brand,
+    });
+    applyConfig(world, op);
+    return {
+        effect: {
+            kind: "effect",
+            by,
+            seq: ++seq,
+            document: { doc: opDocumentKind(op) } as LiveEffect["document"],
+            op,
+        },
+        before,
+    };
+}
+
+function invertConfig(world: ConfigWorld, done: Done, self = SELF): LiveInverse {
+    return inverseOf(done.effect, {
+        self,
+        before: done.before,
+        hasAppTag: tagId => world.appTags.tags.some(tag => tag.id === tagId),
+        hasDlc: dlcId => world.dlcs.dlcs.some(dlc => dlc.id === dlcId),
+        hasBrandColor: colorId => world.brand.colors.some(color => color.id === colorId),
+    });
+}
+
+function undoConfig(world: ConfigWorld, done: Done): Done {
+    return performConfig(world, asOp(invertConfig(world, done)));
+}
+
+describe("undoing what this window did to a configuration table", () => {
+    it("takes back a creation by deleting the row it named", () => {
+        const world = makeConfigWorld();
+        const done = performConfig(world, { op: "create-app-tag", tag: variant("t1") });
+        expect(world.appTags.tags).toHaveLength(1);
+        undoConfig(world, done);
+        expect(world.appTags.tags).toEqual([]);
+    });
+
+    it("takes back an edit by writing the record that was kept", () => {
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1", "Demo")]) });
+        const done = performConfig(world, {
+            op: "update-app-tag",
+            tagId: "t1",
+            tag: { id: "t1", name: "Trial", overrides: { version: "0.9" } },
+        });
+        undoConfig(world, done);
+        expect(world.appTags.tags).toEqual([variant("t1", "Demo")]);
+    });
+
+    it("puts a deleted row back where it sat, not at the end", () => {
+        // The one thing the cast does not do, and the reason a creation takes a neighbour: these
+        // tables' creations append, so an undo without it would be a rearrangement wearing the word
+        // undo, and the author would have to notice.
+        const world = makeConfigWorld({
+            dlcs: makeDlcs([
+                { id: "a", name: "A", attachTo: "main" },
+                { id: "b", name: "B", attachTo: "main" },
+                { id: "c", name: "C", attachTo: "main" },
+            ]),
+        });
+        const done = performConfig(world, { op: "delete-dlc", dlcId: "b" });
+        expect(world.dlcs.dlcs.map(dlc => dlc.id)).toEqual(["a", "c"]);
+        undoConfig(world, done);
+        expect(world.dlcs.dlcs.map(dlc => dlc.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("puts a deleted row back at the end when its neighbour has gone too", () => {
+        const world = makeConfigWorld({
+            brand: makeBrand([{ id: "a", value: "#000000" }, { id: "b", value: "#FFFFFF" }]),
+        });
+        const done = performConfig(world, { op: "delete-brand-color", colorId: "a" });
+        performConfig(world, { op: "delete-brand-color", colorId: "b" });
+        undoConfig(world, done);
+        expect(world.brand.colors.map(color => color.id)).toEqual(["a"]);
+    });
+
+    it("refuses to put a row back that somebody has already put back", () => {
+        const world = makeConfigWorld({ dlcs: makeDlcs([{ id: "a", name: "A", attachTo: "main" }]) });
+        const done = performConfig(world, { op: "delete-dlc", dlcId: "a" });
+        performConfig(world, { op: "create-dlc", dlc: { id: "a", name: "A", attachTo: "main" } });
+        expect(asImpossible(invertConfig(world, done))).toBe("config-entry-restored");
+    });
+
+    it("refuses to take back an edit to a row somebody else deleted", () => {
+        // Refused rather than turned back into a creation, with an update to the cast: putting back
+        // a variant somebody else deleted is not undoing an edit, it is making an edition of the
+        // game, and the author asked for neither.
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1")]) });
+        const done = performConfig(world, { op: "update-app-tag", tagId: "t1", tag: variant("t1", "Trial") });
+        performConfig(world, { op: "delete-app-tag", tagId: "t1" });
+        expect(asImpossible(invertConfig(world, done))).toBe("config-entry-gone");
+    });
+
+    it("refuses to take back somebody else's edit at all", () => {
+        const world = makeConfigWorld({ appTags: makeAppTags([variant("t1")]) });
+        const done = performConfig(world, { op: "delete-app-tag", tagId: "t1" }, OTHER);
+        expect(asImpossible(invertConfig(world, done))).toBe("not-mine");
+    });
+
+    it("takes back a rearrangement of the palette", () => {
+        const world = makeConfigWorld({
+            brand: makeBrand([
+                { id: "a", value: "#000000" },
+                { id: "b", value: "#111111" },
+                { id: "c", value: "#222222" },
+            ]),
+        });
+        const done = performConfig(world, { op: "move-brand-color", colorId: "a", beforeId: null });
+        expect(world.brand.colors.map(color => color.id)).toEqual(["b", "c", "a"]);
+        undoConfig(world, done);
+        expect(world.brand.colors.map(color => color.id)).toEqual(["a", "b", "c"]);
+    });
+
+    it("takes back a change to the font stack, whole", () => {
+        const world = makeConfigWorld({ brand: makeBrand([], [{ assetId: "serif" }]) });
+        const done = performConfig(world, {
+            op: "set-brand-fonts",
+            fonts: [{ assetId: "sans" }, { assetId: "serif" }],
+        });
+        undoConfig(world, done);
+        expect(world.brand.fonts).toEqual([{ assetId: "serif" }]);
+    });
+
+    it("takes back the project's own record, and the variants the same write rewrote", () => {
+        // The half that cannot be derived on the way back: writing a plugin field no variant may
+        // state also takes it off every variant, and afterwards nothing left in the document says
+        // what those entries were.
+        const world = makeConfigWorld({
+            appTags: makeAppTags([{ id: "t1", name: "Demo", overrides: {}, pluginConfig: { steam: { appid: "480" } } }]),
+        });
+        const done = performConfig(world, {
+            op: "set-app-tag-defaults",
+            defaults: { pluginConfig: { steam: { appid: "620" } } },
+            tagPluginConfig: [{ tagId: "t1", pluginConfig: {} }],
+        });
+        expect(world.appTags.tags[0]?.pluginConfig).toEqual({});
+        undoConfig(world, done);
+        expect(world.appTags.pluginConfig).toBeUndefined();
+        expect(world.appTags.tags[0]?.pluginConfig).toEqual({ steam: { appid: "480" } });
+    });
+
+    it("has nothing to keep for a creation, exactly as an insert has not", () => {
+        expect(captureBefore({ op: "create-dlc", dlc: { id: "a", name: "A", attachTo: "main" } }, {})).toBeNull();
+        expect(captureBefore({ op: "create-brand-color", color: { id: "a", value: "#000000" } }, {})).toBeNull();
+    });
+
+    it("keeps nothing for a table this window does not hold, and the undo says so", () => {
+        const world = makeConfigWorld({ dlcs: makeDlcs([{ id: "a", name: "A", attachTo: "main" }]) });
+        const op: LiveOp = { op: "delete-dlc", dlcId: "a" };
+        const done: Done = {
+            effect: { kind: "effect", by: SELF, seq: ++seq, document: { doc: "dlc" }, op },
+            before: captureBefore(op, {}),
+        };
+        expect(done.before).toBeNull();
+        expect(asImpossible(invertConfig(world, done))).toBe("no-record");
+    });
+});
+
+/* ---------------------------------------------------------- the three project tables */
+
+/**
+ * A dictionary, a mixer and a list of asset sets, each small enough to hold in a test.
+ *
+ * The appliers below are the services' own, cut down to what an inverse has to be checked against:
+ * what matters here is that undoing a gesture puts the table back the way it was, and a fixture that
+ * applied operations differently from the service would be checking itself.
+ */
+type Tables = {
+    dictionary: ProjectDictionaryDocument;
+    tracks: ProjectAudioTrack[];
+    sets: AssetSet[];
+};
+
+function makeTables(): Tables {
+    return {
+        dictionary: {
+            schemaVersion: 2,
+            entries: [{ term: "Kagurazaka", reading: "かぐらざか" }],
+            options: { suggestReadings: true, checkVariants: true },
+        },
+        tracks: [
+            { id: "master-ish", name: "Music", parentId: null, volume: 1, loop: false },
+            { id: "sub", name: "Strings", parentId: "master-ish", volume: 0.8, loop: true },
+            { id: "last", name: "Voices", parentId: null, volume: 1, loop: false },
+        ],
+        sets: [
+            { id: "s1", name: "Alice", type: "image", filter: [], axis: makeAssetSetAxis("release", []) },
+            { id: "s2", name: "Alice happy", type: "image", filter: [], groupId: "cast", axis: makeAssetSetAxis("release", []) },
+        ],
+    };
+}
+
+function applyTables(tables: Tables, op: LiveOp): void {
+    switch (op.op) {
+        case "set-dictionary-entry": {
+            const rest = tables.dictionary.entries
+                .filter(entry => entry.term !== op.term && entry.term !== op.entry?.term);
+            tables.dictionary.entries = op.entry ? [...rest, { ...op.entry }] : rest;
+            return;
+        }
+        case "set-dictionary-options":
+            tables.dictionary.options = { ...op.options };
+            return;
+        case "create-audio-track": {
+            const reparent = new Set(op.reparent ?? []);
+            const rest = tables.tracks
+                .filter(track => track.id !== op.track.id)
+                .map(track => (reparent.has(track.id) ? { ...track, parentId: op.track.id } : track));
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            rest.splice(index < 0 ? rest.length : index, 0, { ...op.track });
+            tables.tracks = rest;
+            return;
+        }
+        case "update-audio-track":
+            tables.tracks = tables.tracks.map(track => (
+                track.id === op.trackId ? { ...op.track, id: op.trackId } : track
+            ));
+            return;
+        case "delete-audio-track": {
+            const doomed = tables.tracks.find(track => track.id === op.trackId);
+            if (!doomed) {
+                return;
+            }
+            tables.tracks = tables.tracks
+                .filter(track => track.id !== op.trackId)
+                .map(track => (track.parentId === op.trackId ? { ...track, parentId: doomed.parentId } : track));
+            return;
+        }
+        case "move-audio-track": {
+            const moving = tables.tracks.find(track => track.id === op.trackId);
+            if (!moving) {
+                return;
+            }
+            const rest = tables.tracks.filter(track => track.id !== op.trackId);
+            const index = op.beforeId === null ? -1 : rest.findIndex(track => track.id === op.beforeId);
+            rest.splice(index < 0 ? rest.length : index, 0, moving);
+            tables.tracks = rest;
+            return;
+        }
+        case "create-asset-sets": {
+            const next = tables.sets.filter(set => !op.creates.some(create => create.set.id === set.id));
+            for (const create of op.creates) {
+                const index = create.beforeId === null ? -1 : next.findIndex(set => set.id === create.beforeId);
+                next.splice(index < 0 ? next.length : index, 0, structuredClone(create.set));
+            }
+            tables.sets = next;
+            return;
+        }
+        case "update-asset-set":
+            tables.sets = tables.sets.map(set => (
+                set.id === op.setId ? { ...structuredClone(op.set), id: op.setId } : set
+            ));
+            return;
+        case "delete-asset-sets": {
+            const doomed = new Set(op.setIds);
+            tables.sets = tables.sets.filter(set => !doomed.has(set.id));
+            return;
+        }
+        case "move-asset-sets": {
+            const moves = new Map(op.moves.map(move => [move.setId, move.groupId]));
+            tables.sets = tables.sets.map(set => {
+                if (!moves.has(set.id)) {
+                    return set;
+                }
+                const groupId = moves.get(set.id) ?? null;
+                const { groupId: _current, ...rest } = set;
+                return groupId ? { ...rest, groupId } : rest;
+            });
+            return;
+        }
+        default:
+            throw new Error(`the tables fixture has no applier for ${op.op}`);
+    }
+}
+
+function tableSources(tables: Tables) {
+    return {
+        dictionary: () => tables.dictionary,
+        audioTracks: () => tables.tracks,
+        assetSets: () => tables.sets,
+    };
+}
+
+/** Capture, apply, and hand back what an undo would be asked about. */
+function performTable(tables: Tables, op: LiveOp, document: LiveEffect["document"], by = SELF): Done {
+    const before = captureBefore(op, tableSources(tables));
+    applyTables(tables, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document, op }, before };
+}
+
+function invertTable(tables: Tables, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, ...tableSources(tables) });
+}
+
+describe("undoing what this window did to the project dictionary", () => {
+    it("takes back an added term by removing it", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry", term: "Nattou", entry: { term: "Nattou" },
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries.map(entry => entry.term)).toContain("Nattou");
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries.map(entry => entry.term)).not.toContain("Nattou");
+    });
+
+    it("puts a removed term back with everything that described it", () => {
+        // The reason `null` is a value here rather than the absence of a record: clearing an entry
+        // IS the removal, so the undo has to know what the entry held.
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry", term: "Kagurazaka", entry: null,
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries).toHaveLength(0);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries).toEqual([{ term: "Kagurazaka", reading: "かぐらざか" }]);
+    });
+
+    it("takes a rename back by clearing the new spelling and restoring the old entry", () => {
+        // ⚠ The address of the inverse is where the entry ENDED UP. A rename is one gesture, so it
+        // is one operation, and taking it back has to remove what it wrote as well as put back what
+        // it moved - which is why the term is the entry's identity rather than a field of it.
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-entry",
+            term: "Kagurazaka",
+            entry: { term: "Kagura-zaka", reading: "かぐらざか" },
+        }, { doc: "dictionary" });
+        expect(tables.dictionary.entries.map(entry => entry.term)).toEqual(["Kagura-zaka"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.entries).toEqual([{ term: "Kagurazaka", reading: "かぐらざか" }]);
+    });
+
+    it("keeps nothing for a rename onto a spelling the project already writes", () => {
+        // Studio refuses to produce one, so this is a machine a version apart - and one operation
+        // names one address, so nothing here could put both entries back. Answered as "nothing was
+        // kept" rather than as a half-restoration.
+        const tables = makeTables();
+        tables.dictionary.entries.push({ term: "Nattou" });
+        const op: LiveOp = { op: "set-dictionary-entry", term: "Kagurazaka", entry: { term: "Nattou" } };
+        expect(captureBefore(op, tableSources(tables))).toBeNull();
+    });
+
+    it("puts both checks back as one statement", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "set-dictionary-options", options: { suggestReadings: false, checkVariants: false },
+        }, { doc: "dictionary" });
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.dictionary.options).toEqual({ suggestReadings: true, checkVariants: true });
+    });
+});
+
+describe("undoing what this window did to the mixer", () => {
+    it("brings the buses that were promoted back under the one that was deleted", () => {
+        // ⚠ The asymmetry `create-character.rebind` has. Going down the promotion is derived; coming
+        // back up it is not, because a promoted bus is indistinguishable from one that always hung
+        // where it now hangs.
+        const tables = makeTables();
+        const done = performTable(tables, { op: "delete-audio-track", trackId: "master-ish" }, { doc: "audio-tracks" });
+        expect(tables.tracks.map(track => track.id)).toEqual(["sub", "last"]);
+        expect(tables.tracks[0]!.parentId).toBeNull();
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "sub", "last"]);
+        expect(tables.tracks.find(track => track.id === "sub")!.parentId).toBe("master-ish");
+    });
+
+    it("refuses when the bus is in the mixer again", () => {
+        const tables = makeTables();
+        const done = performTable(tables, { op: "delete-audio-track", trackId: "sub" }, { doc: "audio-tracks" });
+        tables.tracks.push({ id: "sub", name: "Strings again", parentId: null, volume: 1, loop: false });
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "track-restored" });
+    });
+
+    it("refuses to put a record back on a bus somebody deleted", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "update-audio-track",
+            trackId: "sub",
+            track: { id: "sub", name: "Strings", parentId: "master-ish", volume: 0.2, loop: true },
+        }, { doc: "audio-tracks" });
+        tables.tracks = tables.tracks.filter(track => track.id !== "sub");
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "track-gone" });
+    });
+
+    it("puts a moved bus back where it sat", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-audio-track", trackId: "sub", beforeId: null,
+        }, { doc: "audio-tracks" });
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "last", "sub"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.tracks.map(track => track.id)).toEqual(["master-ish", "sub", "last"]);
+    });
+});
+
+describe("undoing what this window did to the asset sets", () => {
+    it("takes a declaration back by removing exactly what it made", () => {
+        const tables = makeTables();
+        const set: AssetSet = { id: "s3", name: "Ben", type: "image", filter: [], axis: makeAssetSetAxis("release", []) };
+        const done = performTable(tables, {
+            op: "create-asset-sets", creates: [{ set, beforeId: null }],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2", "s3"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2"]);
+    });
+
+    it("puts a deleted subtree back in the order it was in", () => {
+        // The anchors skip the sets that went with them, which is what lets one pass from the front
+        // restore two sets that shared a surviving successor without swapping them.
+        const tables = makeTables();
+        tables.sets.push({ id: "s3", name: "Cara", type: "image", filter: [], axis: makeAssetSetAxis("release", []) });
+        const done = performTable(tables, {
+            op: "delete-asset-sets", setIds: ["s1", "s2"],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s3"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets.map(entry => entry.id)).toEqual(["s1", "s2", "s3"]);
+        expect(tables.sets[1]!.groupId).toBe("cast");
+    });
+
+    it("files every set of a drag back where IT came from, not where they all went", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-asset-sets",
+            moves: [{ setId: "s1", groupId: "shared" }, { setId: "s2", groupId: "shared" }],
+        }, { doc: "asset-sets" });
+        expect(tables.sets.map(entry => entry.groupId)).toEqual(["shared", "shared"]);
+
+        applyTables(tables, asOp(invertTable(tables, done)));
+        expect(tables.sets[0]!.groupId).toBeUndefined();
+        expect(tables.sets[1]!.groupId).toBe("cast");
+    });
+
+    it("refuses when a set the batch named has gone", () => {
+        const tables = makeTables();
+        const done = performTable(tables, {
+            op: "move-asset-sets", moves: [{ setId: "s1", groupId: "shared" }],
+        }, { doc: "asset-sets" });
+        tables.sets = tables.sets.filter(set => set.id !== "s1");
+
+        expect(invertTable(tables, done)).toEqual({ impossible: "set-gone" });
+    });
+});
+
+/* -------------------------------------------------------------- the two project registries */
+
+function variable(id: string, name = id): VariableRegistryEntry {
+    return { id, name, scope: "saved", valueType: "boolean", storageKey: id };
+}
+
+/** The registry applier this test uses. One entry in, one entry out. */
+function applyVariable(entries: Record<string, VariableRegistryEntry>, op: LiveVariableOp): void {
+    if (op.op === "delete-variable") {
+        delete entries[op.variableId];
+        return;
+    }
+    entries[op.entry.id] = structuredClone(op.entry);
+}
+
+function performVariable(entries: Record<string, VariableRegistryEntry>, op: LiveVariableOp, by = SELF): Done {
+    const before = captureBefore(op, { variables: id => entries[id] ?? null });
+    applyVariable(entries, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document: { doc: "variables" }, op }, before };
+}
+
+function invertVariable(entries: Record<string, VariableRegistryEntry>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, variables: id => entries[id] ?? null });
+}
+
+describe("undoing what this window did to the variable registry", () => {
+    it("puts the entry back to what it held", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, {
+            op: "update-variable",
+            variableId: "v1",
+            entry: { ...variable("v1", "Coins"), valueType: "number", defaultValue: 10 },
+        });
+        expect(entries.v1.name).toBe("Coins");
+
+        applyVariable(entries, asOp(invertVariable(entries, done)) as LiveVariableOp);
+        expect(entries.v1).toEqual(variable("v1", "Gold"));
+    });
+
+    it("takes a creation back with a removal, which is the ONLY way that verb is reached", () => {
+        // An author's own deletion is refused for the length of a session - it also empties the
+        // blueprint nodes that named the variable, and a session does not carry that document. This
+        // one is safe because the entry was declared inside the session, and blueprint editing is
+        // frozen throughout one, so nothing can be pointing at it.
+        const entries: Record<string, VariableRegistryEntry> = {};
+        const done = performVariable(entries, { op: "create-variable", entry: variable("v9", "Route") });
+        expect(entries.v9).toBeDefined();
+
+        const back = asOp(invertVariable(entries, done));
+        expect(back).toEqual({ op: "delete-variable", variableId: "v9" });
+        applyVariable(entries, back as LiveVariableOp);
+        expect(entries.v9).toBeUndefined();
+    });
+
+    it("takes that removal back by declaring the entry again, whole", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "delete-variable", variableId: "v1" });
+        expect(entries.v1).toBeUndefined();
+
+        const back = asOp(invertVariable(entries, done));
+        expect(back).toEqual({ op: "create-variable", entry: variable("v1", "Gold") });
+        applyVariable(entries, back as LiveVariableOp);
+        expect(entries.v1).toEqual(variable("v1", "Gold"));
+    });
+
+    it("refuses when somebody else removed the entry, rather than declaring it again", () => {
+        // With `update-character`: putting back an entry somebody else removed is not undoing an
+        // edit, and every blueprint node that named it was emptied when it went.
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "update-variable", variableId: "v1", entry: variable("v1", "Coins") });
+        delete entries.v1;
+        expect(asImpossible(invertVariable(entries, done))).toBe("variable-gone");
+    });
+
+    it("refuses to declare an entry that is back, which would be a second copy under one id", () => {
+        const entries: Record<string, VariableRegistryEntry> = { v1: variable("v1", "Gold") };
+        const done = performVariable(entries, { op: "delete-variable", variableId: "v1" });
+        entries.v1 = variable("v1", "Taken by somebody");
+        expect(asImpossible(invertVariable(entries, done))).toBe("variable-restored");
+    });
+});
+
+/* ------------------------------------------------------------------------- the named strings */
+
+function applyKey(keys: Record<string, LocalizationKeyDefinition>, op: LiveLocalizationKeyOp): void {
+    if (op.op === "remove-key") {
+        delete keys[op.name];
+        return;
+    }
+    keys[op.name] = { ...op.definition };
+}
+
+function performKey(keys: Record<string, LocalizationKeyDefinition>, op: LiveLocalizationKeyOp, by = SELF): Done {
+    const before = captureBefore(op, { keys: () => keys });
+    applyKey(keys, op);
+    return { effect: { kind: "effect", by, seq: ++seq, document: { doc: "localization-keys" }, op }, before };
+}
+
+function invertKey(keys: Record<string, LocalizationKeyDefinition>, done: Done): LiveInverse {
+    return inverseOf(done.effect, { self: SELF, before: done.before, keys: () => keys });
+}
+
+describe("undoing what this window did to the named strings", () => {
+    it("puts the source text back to what it held", () => {
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start" } };
+        const done = performKey(keys, { op: "set-key", name: "menu.start", definition: { sourceText: "Begin" } });
+        expect(keys["menu.start"]).toEqual({ sourceText: "Begin" });
+
+        applyKey(keys, asOp(invertKey(keys, done)) as LiveLocalizationKeyOp);
+        expect(keys["menu.start"]).toEqual({ sourceText: "Start" });
+    });
+
+    it("undoes the FIRST declaration of a string by removing it", () => {
+        // The case `null` in the record exists for. One verb creates and replaces, so a record that
+        // could not tell "there was no key" from "nothing was kept" would leave every string's first
+        // declaration impossible to take back.
+        const keys: Record<string, LocalizationKeyDefinition> = {};
+        const done = performKey(keys, { op: "set-key", name: "menu.start", definition: { sourceText: "Start" } });
+        expect(done.before).toEqual({ op: "set-key", definition: null });
+        expect(asOp(invertKey(keys, done))).toEqual({ op: "remove-key", name: "menu.start" });
+    });
+
+    it("takes a removal back by declaring the string again, and the translations were never taken", () => {
+        // The asymmetry a deleted character has and this does not: removing a key leaves every
+        // `key:<name>` entry exactly where it was, so nothing else has to travel back with it.
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start", note: "title" } };
+        const done = performKey(keys, { op: "remove-key", name: "menu.start" });
+        expect(keys["menu.start"]).toBeUndefined();
+
+        const back = asOp(invertKey(keys, done));
+        expect(back).toEqual({ op: "set-key", name: "menu.start", definition: { sourceText: "Start", note: "title" } });
+        applyKey(keys, back as LiveLocalizationKeyOp);
+        expect(keys["menu.start"]).toEqual({ sourceText: "Start", note: "title" });
+    });
+
+    it("refuses to put back a string somebody has declared again", () => {
+        const keys: Record<string, LocalizationKeyDefinition> = { "menu.start": { sourceText: "Start" } };
+        const done = performKey(keys, { op: "remove-key", name: "menu.start" });
+        keys["menu.start"] = { sourceText: "Taken by somebody" };
+        expect(asImpossible(invertKey(keys, done))).toBe("key-restored");
+    });
+});
+
+/* ---------------------------------------------------------------------------- the outline */
+
+describe("undoing what this window did to the outline", () => {
+    it("puts a deleted scene back with its rows, in its chapter, at its place", () => {
+        // ⚠ The one assertion this whole verb exists for. Restoring the shell would look like a
+        // working undo and be an empty scene where an afternoon's writing used to be.
+        const document = makeDocument();
+        const rows = Object.keys(document.scenes.s1.blocks).sort();
+
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        expect(document.scenes.s1).toBeUndefined();
+        expect(document.chapters[0].sceneIds).toEqual([]);
+
+        undo(document, done);
+
+        expect(Object.keys(document.scenes.s1.blocks).sort()).toEqual(rows);
+        expect(document.scenes.s1.rootBlockIds).toEqual(["a", "g", "z"]);
+        expect(document.scenes.s1.blocks.g.childrenIds).toEqual(["one", "two"]);
+        expect(document.chapters[0].sceneIds).toEqual(["s1"]);
+        expect(document.entrySceneId).toBe("s1");
+    });
+
+    it("refuses to put a scene back over one that is there again", () => {
+        // A redo of the deletion elsewhere, or somebody making a scene under the same id. Writing
+        // the recorded copy over it would take whatever has been written in it since.
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        apply(document, {
+            op: "create-scene",
+            scene: { id: "s1", name: "Somebody else's", runtimeName: "other", rootBlockIds: [], blocks: {} },
+            chapterId: "c1",
+            beforeSceneId: null,
+        });
+
+        expect(asImpossible(invert(document, done))).toBe("scene-restored");
+    });
+
+    it("refuses to put a scene back into a chapter that has gone", () => {
+        const document = makeDocument();
+        const done = perform(document, { op: "delete-scene", sceneId: "s1" });
+        apply(document, { op: "delete-chapter", chapterId: "c1" });
+
+        expect(asImpossible(invert(document, done))).toBe("chapter-gone");
+    });
+
+    it("takes a scene creation back by deleting it", () => {
+        const document = makeDocument();
+        const scene: StoryScene = { id: "s3", name: "New", runtimeName: "new", rootBlockIds: [], blocks: {} };
+
+        const done = perform(document, { op: "create-scene", scene, chapterId: "c2", beforeSceneId: null });
+        expect(document.scenes.s3).toBeDefined();
+
+        undo(document, done);
+        expect(document.scenes.s3).toBeUndefined();
+    });
+
+    it("puts a scene's own fields back, clearing what the update added", () => {
+        const document = makeDocument();
+
+        const done = perform(document, {
+            op: "update-scene",
+            sceneId: "s1",
+            fields: { name: "Corridor", runtimeName: "corridor", description: "quiet" },
+        });
+        expect(document.scenes.s1.description).toBe("quiet");
+
+        undo(document, done);
+        expect(document.scenes.s1.name).toBe("Scene one");
+        expect(document.scenes.s1.description).toBeUndefined();
+    });
+
+    it("moves a scene back to the chapter it came from", () => {
+        const document = makeDocument();
+
+        const done = perform(document, { op: "move-scene", sceneId: "s1", chapterId: "c2", beforeSceneId: "s2" });
+        expect(document.chapters[1].sceneIds).toEqual(["s1", "s2"]);
+
+        undo(document, done);
+        expect(document.chapters[0].sceneIds).toEqual(["s1"]);
+        expect(document.chapters[1].sceneIds).toEqual(["s2"]);
+    });
+
+    it("puts a scene's snapshots back as the list they were", () => {
+        const document = makeDocument();
+
+        const done = perform(document, {
+            op: "set-scene-snapshots",
+            sceneId: "s1",
+            snapshots: [{ id: "snap", name: "Snap", values: {} }],
+        });
+        expect(document.scenes.s1.sceneSnapshots).toHaveLength(1);
+
+        undo(document, done);
+        expect(document.scenes.s1.sceneSnapshots).toEqual([]);
+    });
+
+    it("puts a deleted chapter back with every scene that left with it", () => {
+        const document = makeDocument();
+        const rows = Object.keys(document.scenes.s1.blocks).sort();
+
+        const done = perform(document, { op: "delete-chapter", chapterId: "c1" });
+        expect(document.scenes.s1).toBeUndefined();
+        expect(document.chapters.map(chapter => chapter.id)).toEqual(["c2"]);
+
+        undo(document, done);
+
+        expect(document.chapters.map(chapter => chapter.id)).toEqual(["c1", "c2"]);
+        expect(Object.keys(document.scenes.s1.blocks).sort()).toEqual(rows);
+        expect(document.entrySceneId).toBe("s1");
+    });
+
+    it("refuses to take a chapter creation back once somebody has filed a scene in it", () => {
+        // The inverse is a deletion, and a deletion takes the scenes inside. A chapter somebody else
+        // has filed into is their work sitting in a box this author happened to make.
+        const document = makeDocument();
+        const done = perform(document, {
+            op: "create-chapter",
+            chapter: { id: "c3", name: "Three", sceneIds: [] },
+            beforeChapterId: null,
+        });
+        apply(document, { op: "move-scene", sceneId: "s2", chapterId: "c3", beforeSceneId: null });
+
+        expect(asImpossible(invert(document, done))).toBe("container-filled");
+    });
+
+    it("renames a chapter back", () => {
+        const document = makeDocument();
+        const done = perform(document, { op: "rename-chapter", chapterId: "c1", name: "Prologue" });
+        expect(document.chapters[0].name).toBe("Prologue");
+
+        undo(document, done);
+        expect(document.chapters[0].name).toBe("One");
+    });
+
+    it("refuses every outline step whose subject has gone", () => {
+        const document = makeDocument();
+        const renamed = perform(document, { op: "rename-chapter", chapterId: "c1", name: "Prologue" });
+        const updated = perform(document, {
+            op: "update-scene",
+            sceneId: "s2",
+            fields: { name: "x", runtimeName: "x" },
+        });
+        apply(document, { op: "delete-chapter", chapterId: "c1" });
+        apply(document, { op: "delete-scene", sceneId: "s2" });
+
+        expect(asImpossible(invert(document, renamed))).toBe("chapter-gone");
+        expect(asImpossible(invert(document, updated))).toBe("scene-gone");
     });
 });

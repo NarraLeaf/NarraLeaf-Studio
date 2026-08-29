@@ -237,6 +237,24 @@ export type ProbeStream = {
     index?: number;
     codec_type?: string;
     codec_name?: string;
+    /**
+     * Samples per second on an audio stream, as ffprobe's decimal *string* - `"48000"`.
+     *
+     * Says nothing about whether the file plays, so no part of the verdict reads it. It is here for
+     * the build's compression pass, which caps a delivery copy at 48 kHz: at a fixed bitrate a
+     * higher rate does not make the file bigger, it spends the same bits describing a band nobody
+     * can hear.
+     */
+    sample_rate?: string;
+    /**
+     * Frame height on a video stream, as ffprobe's own *number*.
+     *
+     * Says nothing about whether the file plays either. It is here for the same caller as
+     * {@link ProbeStream.sample_rate}: a build that has been told to cap a shipped copy's height has
+     * to know whether the source is already below the cap, because scaling up would spend the
+     * bitrate on pixels nobody ever recorded.
+     */
+    height?: number;
     /** ffprobe's disposition bag. Only `attached_pic` is read; the rest is carried along untouched. */
     disposition?: Record<string, number | undefined>;
     /**

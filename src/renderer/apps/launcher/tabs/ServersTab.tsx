@@ -11,6 +11,7 @@ import {
     dialogFooterButtonClass,
 } from "@/lib/components/elements";
 import { useTranslation } from "@/lib/i18n";
+import { listProjects } from "@/lib/team";
 import { cn } from "@/lib/utils/cn";
 import {
     ServerRow,
@@ -22,7 +23,7 @@ import {
 } from "@/lib/vcs/servers";
 import { AddServerModal } from "@/apps/settings/panels";
 import type { TranslationKey } from "@shared/i18n";
-import { parseVcsRemoteUrl } from "@shared/types/vcs";
+import { parseVcsRemoteUrl, serverProblemFromTeam } from "@shared/types/vcs";
 import type {
     VcsLocalRepository,
     VcsServerProject,
@@ -30,6 +31,8 @@ import type {
     VcsServerSession,
 } from "@shared/types/vcs";
 import { createProjectFromWizard } from "../projectActions";
+import { localCopyOf } from "./localCopy";
+import { JoinByPasscode } from "./ServerLiveSessions";
 import { ServerPeople } from "./ServerPeople";
 import { ServerProjectDetailView } from "./ServerProjectDetail";
 import { SERVER_PROBLEM_KEYS } from "./serverProblemKeys";
@@ -93,42 +96,6 @@ export type ForgetServerProject = (
 
 export interface ServersTabProps {
     onForget?: ForgetServerProject;
-}
-
-/** Where a project's remote lives, without the repository name on the end. */
-function originOf(remote: string): string {
-    return parseVcsRemoteUrl(remote)?.origin ?? remote.trim();
-}
-
-/**
- * The copy of a server's project this machine already holds, if it holds one.
- *
- * **Matched on the repository id and never on the name.** Two projects are called
- * "Demo" as often as not, and the first thing an author does with a clone is rename the
- * folder it landed in; either would make a name match hand back somebody else's work to
- * open. The id is written once when the repository is made and survives both.
- *
- * A project this machine cannot produce an id for - no repository, an unreadable
- * `.lore/id` - simply does not match. That is the safe direction: the project then offers
- * to fetch a copy, which asks where to put it and touches nothing that is already there,
- * where a wrong match would open the wrong project.
- *
- * More than one local copy of one repository is possible (a second clone in another
- * folder), and then the one configured against this same server is preferred - it is the
- * copy whose pushes reach the projects being listed.
- */
-export function localCopyOf(
-    project: VcsServerProject,
-    repositories: readonly VcsLocalRepository[],
-): VcsLocalRepository | null {
-    const wanted = project.id.trim().toLowerCase();
-    if (wanted === "") return null;
-    const matches = repositories.filter(
-        entry => (entry.repositoryId ?? "").toLowerCase() === wanted,
-    );
-    if (matches.length === 0) return null;
-    const origin = originOf(project.remote);
-    return matches.find(entry => entry.remoteOrigin === origin) ?? matches[0];
 }
 
 /**
@@ -221,18 +188,14 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                 const answered = await bridge.vcs.refreshServer(chosen).catch(() => null);
                 if (answered?.success) await reload();
             }
-            const result = await bridge.vcs.listServerProjects(chosen).catch(() => null);
+            const result = await listProjects(chosen);
             if (ticket !== latest.current) return;
             setReading(false);
-            if (!result?.success) {
-                setProblem("launcher.servers.problem.unknown");
+            if (!result.ok) {
+                setProblem(SERVER_PROBLEM_KEYS[serverProblemFromTeam(result.problem).kind]);
                 return;
             }
-            if (!result.data.ok) {
-                setProblem(SERVER_PROBLEM_KEYS[result.data.problem.kind]);
-                return;
-            }
-            setProjects(result.data.projects);
+            setProjects(result.value.projects);
         })();
     }, [chosen, reload]);
 
@@ -244,9 +207,15 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
     // What this server offers, read off what it last said about itself rather than found
     // out by asking. See `serverCan`: a deployment that does not do one of these has no
     // section for it, which is not the same thing as a section that failed.
-    const canDetail = serverCan(session, "project-detail");
+    //
+    // A project's detail and the member roster are answered by the session's own routes now,
+    // so what gates them is `session` - the capability a reachable server always advertises.
+    // Their reads still go over the REST routes, which the server still serves; the gate only
+    // decides whether the surface is drawn at all. Recent revisions are the one thing here a
+    // deployment can genuinely lack, so that stays its own gate.
+    const canDetail = serverCan(session, "session");
     const canHistory = serverCan(session, "project-history");
-    const canMembers = serverCan(session, "members");
+    const canMembers = serverCan(session, "session");
     // A server with no roster has one view, and one tab is not a choice. The strip is then
     // not drawn at all, so the view cannot be anything but the projects.
     const current: ServersView = canMembers ? view : "projects";
@@ -537,6 +506,7 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                                     remoteOrigin={session.remoteOrigin}
                                     project={openedProject}
                                     server={serverDisplayName(session)}
+                                    localPath={localCopyOf(openedProject, repositories)?.path ?? null}
                                     canDetail={canDetail}
                                     canHistory={canHistory}
                                     onBack={() => setOpened(null)}
@@ -558,6 +528,15 @@ export function ServersTab({ onForget }: ServersTabProps = {}) {
                             "flex min-h-0 flex-1 flex-col",
                             (current !== "projects" || openedProject !== null) && "hidden",
                         )}>
+                            {/* Above the list rather than under a project, because somebody
+                                typing four digits does not know which project the room is
+                                about - not having to know is the whole of what a passcode
+                                buys them. See `ServerLiveSessions`. */}
+                            <JoinByPasscode
+                                remoteOrigin={session.remoteOrigin}
+                                projects={projects ?? []}
+                                repositories={repositories}
+                            />
                             <ProjectList
                                 projects={projects}
                                 problem={problem}

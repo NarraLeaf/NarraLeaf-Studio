@@ -11,7 +11,6 @@ export const storyInspector = {
     unassigned: "未割り当て",
 
     section: {
-        timing: "タイミング",
         conditions: "条件",
         appearance: "見た目",
         blueprint: "ブループリント",
@@ -417,11 +416,6 @@ export const storyInspector = {
         editHint: "行をダブルクリックすると地の文を編集できる",
     },
 
-    dialogue: {
-        pauseAfter: "この行のあとで止める",
-        pauseSeconds: "停止（秒、任意）",
-    },
-
     choice: {
         prompt: "問いかけ",
     },
@@ -435,6 +429,7 @@ export const storyInspector = {
 
     jump: {
         targetScene: "行き先のシーン",
+        returnable: "行き先のシーンのあとで戻る",
     },
 
     note: {
@@ -457,6 +452,7 @@ export const storyInspector = {
         volume: "音量",
         rate: "再生速度",
         loop: "ループ",
+        waitForEnd: "再生の終了を待つ",
     },
 
     image: {
@@ -519,6 +515,7 @@ export const storyInspector = {
         none: "アセットなし",
         clear: "アセットを外す",
         selectTitle: "{label} を選択",
+        change: "変更",
     },
 
     displayableEffect: {

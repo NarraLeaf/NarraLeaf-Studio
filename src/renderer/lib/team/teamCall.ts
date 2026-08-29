@@ -21,6 +21,7 @@ import {
     type TeamComment,
     type TeamLiveMember,
     type TeamLiveMessage,
+    type TeamLiveJoinRule,
     type TeamLiveSession,
     type TeamOverlayRecord,
     type TeamProblem,
@@ -28,10 +29,29 @@ import {
     type TeamThreadKind,
     type TeamThreadStatus,
 } from "@shared/types/team";
-import type { VcsServerMember, VcsServerProject } from "@shared/types/vcs";
+import type {
+    VcsServerMember,
+    VcsServerProject,
+    VcsServerProjectDetail,
+    VcsServerProjectFile,
+    VcsServerProjectHistoryPage,
+    VcsServerRevision,
+} from "@shared/types/vcs";
 
 /** What any of these answers with. */
 export type TeamOutcome<T> = { ok: true; value: T } | { ok: false; problem: TeamProblem };
+
+/**
+ * What a call that changes something and answers nothing hands back.
+ *
+ * These methods - `clients.withdraw`, `live.leave`, `live.close`, `live.say`,
+ * `overlay.drop`, and an `unsubscribe` acknowledgement - carry an empty object on the
+ * wire rather than a value. Success is that object: there is nothing in it to read, and
+ * no caller reads it, but a call that answered is one that happened. Named on its own so
+ * the wrappers below say what they are, rather than each declaring `null` and inviting a
+ * `=== null` the wire would never satisfy.
+ */
+export type TeamAck = Record<string, never>;
 
 /** A shape the server sent that this build cannot read. */
 function unreadable<T>(): TeamOutcome<T> {
@@ -161,36 +181,174 @@ function readList<T>(value: unknown, key: string, one: (item: unknown) => T | nu
 
 /* -------------------------------------------------------------------- projects */
 
+/** One project row a server lists, or null because what arrived was not one. */
+function readServerProject(value: unknown): VcsServerProject | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    const name = text(from, "name");
+    const remote = text(from, "remote");
+    if (id === undefined || name === undefined || remote === undefined) return null;
+    const createdBy = text(from, "createdBy");
+    const history = record(from["history"]);
+    return {
+        id,
+        name,
+        description: typeof from["description"] === "string" ? from["description"] : "",
+        ...(createdBy === undefined ? {} : { createdBy }),
+        createdAt: count(from, "createdAt") ?? 0,
+        remote,
+        // Carried as it arrived, absences included: a field the server left out is a
+        // repository it has not read, which is not the same as a nought.
+        ...(history === null ? {} : { history: history as VcsServerProject["history"] }),
+    } satisfies VcsServerProject;
+}
+
+/**
+ * What the server read inside a project's file, when it could read it.
+ *
+ * **Anything but an explicit `readable: true` is unreadable**, so a shape this build does
+ * not understand errs towards saying nothing rather than towards drawing a scene count the
+ * server did not give. Every other field is carried only where it arrived.
+ */
+function readServerProjectFile(value: unknown): VcsServerProjectFile {
+    const from = record(value);
+    if (from === null || from["readable"] !== true) return { readable: false };
+    const title = text(from, "title");
+    const stageWidth = count(from, "stageWidth");
+    const stageHeight = count(from, "stageHeight");
+    const scenes = count(from, "scenes");
+    const assets = count(from, "assets");
+    const assetBytes = count(from, "assetBytes");
+    return {
+        readable: true,
+        ...(title === undefined ? {} : { title }),
+        ...(stageWidth === undefined ? {} : { stageWidth }),
+        ...(stageHeight === undefined ? {} : { stageHeight }),
+        ...(scenes === undefined ? {} : { scenes }),
+        ...(assets === undefined ? {} : { assets }),
+        ...(assetBytes === undefined ? {} : { assetBytes }),
+    };
+}
+
+/** One revision on a project, or null. Only the id is insisted on. */
+function readServerRevision(value: unknown): VcsServerRevision | null {
+    const from = record(value);
+    if (from === null) return null;
+    const id = text(from, "id");
+    if (id === undefined) return null;
+    const at = count(from, "at");
+    const by = text(from, "by");
+    const message = text(from, "message");
+    return {
+        id,
+        ...(at === undefined ? {} : { at }),
+        ...(by === undefined ? {} : { by }),
+        ...(message === undefined ? {} : { message }),
+    };
+}
+
+/**
+ * A list a server answers in one go, and how many rows it holds in all.
+ *
+ * **`total` above the length of the list means the answer was cut**, and there is no
+ * cursor to ask for the rest with. That is the shape on the wire rather than an omission
+ * here: a server bounds these two lists instead of paging them, because a cursor only
+ * bounds anything if every client honours it and a client reading them whole would go on
+ * drawing the first page and calling it the whole server. The count is what it has
+ * instead, and it is the only thing that says the list in hand is short.
+ *
+ * So a screen drawing one of these has something to say when the two differ. Nothing here
+ * decides what: the library's job is that a caller cannot fail to be told.
+ */
+export interface ProjectListing {
+    projects: VcsServerProject[];
+    /** How many the server holds, whatever the ceiling on one answer left out. */
+    total: number;
+}
+
 /** Every project on a server, over the session rather than over the REST route. */
-export async function listProjects(remoteOrigin: string): Promise<TeamOutcome<VcsServerProject[]>> {
+export async function listProjects(remoteOrigin: string): Promise<TeamOutcome<ProjectListing>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.projectsList);
     if (!answered.ok) return answered;
-    const projects = readList(answered.value, "projects", (item) => {
-        const from = record(item);
-        if (from === null) return null;
-        const id = text(from, "id");
-        const name = text(from, "name");
-        const remote = text(from, "remote");
-        if (id === undefined || name === undefined || remote === undefined) return null;
-        const createdBy = text(from, "createdBy");
-        const history = record(from["history"]);
-        return {
-            id,
-            name,
-            description: typeof from["description"] === "string" ? from["description"] : "",
-            ...(createdBy === undefined ? {} : { createdBy }),
-            createdAt: count(from, "createdAt") ?? 0,
-            remote,
-            // Carried as it arrived, absences included: a field the server left out is a
-            // repository it has not read, which is not the same as a nought.
-            ...(history === null ? {} : { history: history as VcsServerProject["history"] }),
-        } satisfies VcsServerProject;
-    });
-    return projects === null ? unreadable() : { ok: true, value: projects };
+    const projects = readList(answered.value, "projects", readServerProject);
+    const from = record(answered.value);
+    if (projects === null || from === null) return unreadable();
+    // A server too old to state one held everything it listed, so the length is the
+    // honest count for it - and never a figure below the rows actually in hand.
+    return { ok: true, value: { projects, total: count(from, "total") ?? projects.length } };
+}
+
+/**
+ * What one server knows about one project, and what it could read inside it.
+ *
+ * The list already carries the row; this adds the file the server read off the repository,
+ * which on a deployment whose reader is not working is `readable: false` and nothing else -
+ * a complete answer rather than a failure.
+ */
+export async function getProject(
+    remoteOrigin: string,
+    projectId: string,
+): Promise<TeamOutcome<VcsServerProjectDetail>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsGet, { project: projectId });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    if (from === null) return unreadable();
+    const project = readServerProject(from["project"]);
+    if (project === null) return unreadable();
+    return { ok: true, value: { project, file: readServerProjectFile(from["file"]) } };
+}
+
+/**
+ * The latest revisions on a project, newest first.
+ *
+ * **An absent `revisions` is not an empty one.** A server that has not read the repository
+ * leaves the field out, and a project that genuinely has no versions yet sends an empty
+ * list; the two mean different things and both have to reach a reader intact. So an absence
+ * is carried as an absence, never as `[]`.
+ */
+export async function listProjectHistory(
+    remoteOrigin: string,
+    projectId: string,
+    within: { limit?: number; before?: string } = {},
+): Promise<TeamOutcome<VcsServerProjectHistoryPage>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsHistory, { project: projectId, ...within });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    if (from === null) return unreadable();
+    const more = from["more"] === true;
+    const list = from["revisions"];
+    // Absent, not empty: the field is left out for a project the server has not read.
+    if (list === undefined || list === null) return { ok: true, value: { more } };
+    const revisions = readList({ revisions: list }, "revisions", readServerRevision);
+    if (revisions === null) return unreadable();
+    return { ok: true, value: { revisions, more } };
+}
+
+/**
+ * Take one project off a server's list.
+ *
+ * **It removes the listing and nothing else.** The repository, its branches and every
+ * revision in it stay where they are, so a project removed here can be registered again
+ * under the same id and come back whole. Never refused for one that is already gone.
+ */
+export async function forgetProject(
+    remoteOrigin: string,
+    projectId: string,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.projectsForget, { project: projectId });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/** Every account on a server, and how many there are. Bounded the way {@link ProjectListing} is. */
+export interface MemberListing {
+    members: VcsServerMember[];
+    /** How many the server holds, whatever the ceiling on one answer left out. */
+    total: number;
 }
 
 /** Every account on a server, as a name beside a piece of work. */
-export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<VcsServerMember[]>> {
+export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<MemberListing>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.membersList);
     if (!answered.ok) return answered;
     const members = readList(answered.value, "members", (item) => {
@@ -211,7 +369,9 @@ export async function listMembers(remoteOrigin: string): Promise<TeamOutcome<Vcs
             ...(createdAt === undefined ? {} : { createdAt }),
         } satisfies VcsServerMember;
     });
-    return members === null ? unreadable() : { ok: true, value: members };
+    const from = record(answered.value);
+    if (members === null || from === null) return unreadable();
+    return { ok: true, value: { members, total: count(from, "total") ?? members.length } };
 }
 
 /* ---------------------------------------------------------------- conversations */
@@ -241,18 +401,40 @@ export async function listThreads(
     return { ok: true, value: { threads, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
-/** One thread and everything in it. */
+export interface ThreadWithComments {
+    thread: TeamThread;
+    /** Oldest first, which is the order a conversation is read in. */
+    comments: TeamComment[];
+    /** Where to carry on from, absent once the last comment is in hand. Opaque; hand it back as it came. */
+    cursor?: string;
+}
+
+/**
+ * One thread, and a page of what has been said in it.
+ *
+ * A page rather than the whole conversation, because a server will not build an
+ * answer of unbounded size and nothing stops an account writing a hundred
+ * thousand comments on one thread. `thread.comments` is how many there are in
+ * all, so a reader knows what this is a page of, and the cursor is how it asks
+ * for the next one — the same shape {@link listThreads} has.
+ *
+ * Whoever draws a conversation decides what to do about the rest of it. What
+ * this must not do is answer with the first fifty and let them read as all of
+ * them, which is what a client that ignored the cursor would show.
+ */
 export async function getThread(
     remoteOrigin: string,
     thread: string,
-): Promise<TeamOutcome<{ thread: TeamThread; comments: TeamComment[] }>> {
-    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread });
+    within: { limit?: number; after?: string } = {},
+): Promise<TeamOutcome<ThreadWithComments>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.threadsGet, { thread, ...within });
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const read = from === null ? null : readThread(from["thread"]);
     const comments = readList(answered.value, "comments", readComment);
     if (read === null || comments === null) return unreadable();
-    return { ok: true, value: { thread: read, comments } };
+    const cursor = from === null ? undefined : text(from, "cursor");
+    return { ok: true, value: { thread: read, comments, ...(cursor === undefined ? {} : { cursor }) } };
 }
 
 /** Open a conversation on an anchor, with the comment that starts it. */
@@ -379,9 +561,9 @@ export async function announceClient(
 export async function withdrawClient(
     remoteOrigin: string,
     project: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.clientsWithdraw, { project });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Which installations are connected, narrowed to those with one project open. */
@@ -435,6 +617,11 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
     const members = Array.isArray(from["members"])
         ? from["members"].map(readLiveMember).filter((one): one is TeamLiveMember => one !== null)
         : [];
+    // ⚠ Read against the closed set rather than carried through. A room whose rule this build does
+    // not know is one it must treat as `open` - the behaviour every room had before there was a
+    // choice - and never as a word it will later compare against and never match.
+    const said = from["rule"];
+    const rule = said === "open" || said === "code" || said === "request" ? said : undefined;
     return {
         id,
         project,
@@ -445,6 +632,7 @@ export function readLiveSession(value: unknown): TeamLiveSession | null {
         openedByInstance,
         openedAt: count(from, "openedAt") ?? 0,
         members,
+        ...(rule === undefined ? {} : { rule }),
     };
 }
 
@@ -485,13 +673,23 @@ export async function listLiveSessions(
  */
 export async function openLiveSession(
     remoteOrigin: string,
-    input: { project: string; revision: string; story: string; title?: string },
-): Promise<TeamOutcome<TeamLiveSession>> {
+    input: {
+        project: string;
+        revision: string;
+        story: string;
+        title?: string;
+        rule?: TeamLiveJoinRule;
+    },
+): Promise<TeamOutcome<{ session: TeamLiveSession; code: string }>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveOpen, input);
     if (!answered.ok) return answered;
     const from = record(answered.value);
     const session = from === null ? null : readLiveSession(from["session"]);
-    return session === null ? unreadable() : { ok: true, value: session };
+    // ⚠ The four digits are answered HERE and in no other call, because they are not on the
+    // room record: that record is broadcast to everybody watching the project. A server too
+    // old to mint one says nothing, and an empty string is how that reads downstream.
+    const code = typeof from?.["code"] === "string" ? from["code"] : "";
+    return session === null ? unreadable() : { ok: true, value: { session, code } };
 }
 
 /** Join one somebody else opened. Joining one this window is already in is not an error. */
@@ -506,22 +704,92 @@ export async function joinLiveSession(
     return read === null ? unreadable() : { ok: true, value: read };
 }
 
+/**
+ * Join the room a passcode names, without having had to find it.
+ *
+ * The code is the address and the entitlement at once: the server resolves it, checks it and
+ * lets this window in, all in the one call. Refused where the digits name nothing, which is
+ * also the answer for digits that name a room and are not its own.
+ */
+export async function joinLiveSessionByCode(
+    remoteOrigin: string,
+    code: string,
+): Promise<TeamOutcome<TeamLiveSession>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveJoin, { code });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const read = from === null ? null : readLiveSession(from["session"]);
+    return read === null ? unreadable() : { ok: true, value: read };
+}
+
+/**
+ * Which room a passcode names, without joining it.
+ *
+ * **The one live call that works from a window with no project open**, which is the whole of
+ * why it exists: somebody read four digits and may never have had this project, so before they
+ * can announce anything they have to learn which project to go and get.
+ */
+export async function findLiveSessionByCode(
+    remoteOrigin: string,
+    code: string,
+): Promise<TeamOutcome<TeamLiveSession>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveByCode, { code });
+    if (!answered.ok) return answered;
+    const from = record(answered.value);
+    const read = from === null ? null : readLiveSession(from["session"]);
+    return read === null ? unreadable() : { ok: true, value: read };
+}
+
+/** Change how a running room may be joined, which only the window that opened it may do. */
+export async function setLiveSessionRule(
+    remoteOrigin: string,
+    session: string,
+    rule: TeamLiveJoinRule,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveRule, { session, rule });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/** Ask to be let into a room that is joined by asking. */
+export async function requestLiveSessionJoin(
+    remoteOrigin: string,
+    session: string,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveRequestJoin, { session });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
+/** Say yes or no to somebody who asked, which only the room's opener may do. */
+export async function answerLiveSessionJoin(
+    remoteOrigin: string,
+    session: string,
+    instance: string,
+    admit: boolean,
+): Promise<TeamOutcome<TeamAck>> {
+    const answered = await teamCall(remoteOrigin, TeamMethod.liveAnswerJoin, {
+        session,
+        instance,
+        admit,
+    });
+    return answered.ok ? { ok: true, value: {} } : answered;
+}
+
 /** Leave one. The last one out closes it. Never refused, including for a room that is gone. */
 export async function leaveLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveLeave, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /** Close one outright, which only the window that opened it may do. */
 export async function closeLiveSession(
     remoteOrigin: string,
     session: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveClose, { session });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /**
@@ -536,9 +804,9 @@ export async function sayInLiveSession(
     remoteOrigin: string,
     session: string,
     payload: unknown,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.liveSay, { session, payload });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }
 
 /* -------------------------------------------------------------------- overlay */
@@ -593,6 +861,18 @@ export interface OverlayReading {
     head?: string;
     /** How many records the whole project holds, whatever this read narrowed to. */
     total: number;
+    /**
+     * Where to carry on from, absent once the last record is in hand. Opaque; hand it
+     * back as `before` on the next read.
+     *
+     * **Present means this is a page and not the whole of what was asked for.** An
+     * overlay record's body may be 64 KiB, so a project carrying a few long ones is past
+     * what a server puts in one answer, and what comes back is the first page of it.
+     * Whoever draws the records decides what to do about the rest; what this must not do
+     * is hand back part of a project's overlay and let it read as all of it - the same
+     * shape {@link ThreadPage} has, and for the same reason.
+     */
+    cursor?: string;
 }
 
 /**
@@ -606,7 +886,15 @@ export interface OverlayReading {
 export async function listOverlay(
     remoteOrigin: string,
     project: string,
-    within: { document?: string; element?: string; kind?: string; revision?: string; limit?: number } = {},
+    within: {
+        document?: string;
+        element?: string;
+        kind?: string;
+        revision?: string;
+        limit?: number;
+        /** The cursor from the previous page. Nothing else belongs here. */
+        before?: string;
+    } = {},
 ): Promise<TeamOutcome<OverlayReading>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayList, { project, ...within });
     if (!answered.ok) return answered;
@@ -614,9 +902,15 @@ export async function listOverlay(
     const from = record(answered.value);
     if (records === null || from === null) return unreadable();
     const head = text(from, "head");
+    const cursor = text(from, "cursor");
     return {
         ok: true,
-        value: { records, ...(head === undefined ? {} : { head }), total: count(from, "total") ?? records.length },
+        value: {
+            records,
+            ...(head === undefined ? {} : { head }),
+            total: count(from, "total") ?? records.length,
+            ...(cursor === undefined ? {} : { cursor }),
+        },
     };
 }
 
@@ -664,7 +958,7 @@ export async function putOverlay(
 export async function dropOverlay(
     remoteOrigin: string,
     id: string,
-): Promise<TeamOutcome<null>> {
+): Promise<TeamOutcome<TeamAck>> {
     const answered = await teamCall(remoteOrigin, TeamMethod.overlayDrop, { id });
-    return answered.ok ? { ok: true, value: null } : answered;
+    return answered.ok ? { ok: true, value: {} } : answered;
 }

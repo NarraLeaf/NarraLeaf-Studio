@@ -59,7 +59,7 @@ export const test = {
     reason: {
         frozen: "工作区冻结时不可用",
         alreadyRunning: "已有测试正在运行",
-        parameterEmpty: "本工程中「{parameter}」没有可选值",
+        parameterEmpty: "本项目中「{parameter}」没有可选值",
     },
     console: {
         channel: "测试",
@@ -76,8 +76,8 @@ export const test = {
     },
     builtin: {
         projectDiagnostics: {
-            title: "工程诊断",
-            description: "将工程检查的全部规则作为一项测试运行",
+            title: "项目诊断",
+            description: "将项目检查的全部规则作为一项测试运行",
             summary: {
                 passed: "没有发现问题",
                 failed: "{errors} 个错误，{warnings} 个警告",
@@ -85,7 +85,7 @@ export const test = {
         },
         walkthrough: {
             title: "结局通关",
-            description: "从故事自己的入口场景开始，实际运行游戏走到某个结局",
+            description: "从故事的入口场景开始，实际运行游戏直到某个结局",
             parameter: {
                 ending: {
                     label: "结局",
@@ -116,24 +116,44 @@ export const test = {
                 },
             },
             summary: {
-                passed: "已走到 {ending}",
+                passed: "已到达 {ending}",
+            },
+        },
+        routeCoverage: {
+            title: "路线覆盖",
+            description: "在条件求值后，各场景、选项与结局是否可以到达",
+            skipped: {
+                noEntryPoint: "没有故事标明起始位置",
+                undecidableEntry: "Start Story 节点在运行时才决定场景，无法读出起始位置",
+                storiesUnread: "有故事无法读取",
+            },
+            finding: {
+                sceneUnreachable: "没有路径能满足通往「{scene}」的条件",
+                optionUnreachable: "没有路径能满足提供「{option}」的条件",
+                branchUnreachable: "没有路径能满足进入该分支的条件",
+                endingUnreachable: "「{name}」已写入，但没有路径能满足到达它的条件",
+                endingUnreachableUnnamed: "该结局已写入，但没有路径能满足到达它的条件",
+            },
+            summary: {
+                passed: "剧本指向的场景、选项与结局均可到达",
+                failed: "无法到达：场景 {scenes} 个，选项 {options} 个，结局 {endings} 个",
             },
         },
         reachableEndings: {
             title: "结局可达性",
             description: "故事的每一条路径是否都能走到 /ending",
-            // 跳过是正常状态：只说工程当前的样子，以及缺的那一样东西，不写成作者做错了什么。
+            // 跳过是正常状态：只说项目当前的样子，以及缺的那一样东西，不写成作者做错了什么。
             skipped: {
-                noEndings: "有入口的故事都没有写 /ending",
-                noEntryPoint: "没有任何故事标出开始的位置",
-                undecidableEntry: "Start Story 节点在运行时才决定场景，读不出从哪里开始",
+                noEndings: "有入口的故事均未写入 /ending",
+                noEntryPoint: "没有故事标明起始位置",
+                undecidableEntry: "Start Story 节点在运行时才决定场景，无法读出起始位置",
                 storiesUnread: "有故事无法读取",
             },
             finding: {
-                pathRunsOut: "推进在这里停住，没有到达任何结局",
+                pathRunsOut: "推进到此停止，未到达任何结局",
                 optionRunsOut: "「{option}」走到头也没有到达任何结局",
                 endingUnreached: "没有路径能到达「{name}」",
-                endingUnreachedUnnamed: "没有路径能到达这个结局",
+                endingUnreachedUnnamed: "没有路径可以到达该结局",
             },
             // 数字放在冒号后面，任何数量都读得通；通过的这次也照样报出没人到得了的结局。
             summary: {

@@ -1,4 +1,4 @@
-import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr } from "@shared/types/blueprint/document";
+import type { Blueprint, BlueprintDocument, BlueprintEventGraph, BlueprintGraphIr, BlueprintOwnerRef } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable } from "@shared/types/variables/registry";
 import { buildBlueprintRunGraphId, type BlueprintRunGraphKind } from "@shared/blueprint/blueprintRunGraphId";
 import {
@@ -11,7 +11,7 @@ import {
     collectGlobalEventHeadNodeIdsForDispatch,
     isBlueprintEventDispatchHeadType,
 } from "@shared/types/blueprint/graph";
-import { findBlueprintFnByRef } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
+import { findBlueprintFnByRef, isBlueprintFnVisibleToOwner } from "@/lib/workspace/services/ui-editor/blueprint/fnCatalog";
 import { writeBlueprintNodeOutputValues } from "@/lib/ui-editor/blueprint-nodes/nodeOutputValues";
 import type { BlueprintElementRef } from "@shared/types/blueprint/valueTypes";
 import type { UIDocument, UIElement } from "@shared/types/ui-editor/document";
@@ -400,7 +400,7 @@ function getMountedBlueprintModule(blueprintId: string): BlueprintModuleSink | u
 }
 
 /**
- * Dispatch a UI element behavior event into a blueprint event graph or TypeScript module (M3-min + M5).
+ * Dispatch a widget UI event into its private blueprint event graph or TypeScript module.
  *
  * Resolves to whether a listener actually ran. The caller bubbles an event nothing listened to, so
  * this answer has to come from the dispatch itself rather than from a second reading of the document:
@@ -458,14 +458,8 @@ export async function dispatchBlueprintUiEvent(options: {
         : undefined;
     const activeWidgetBlueprintId = widgetOwnerKey ? blueprintDocument.ownerRecords[widgetOwnerKey]?.activeBlueprintId : undefined;
     const widgetPrivateEventSupported = Boolean(getWidgetLogicEvent(el.type, eventName));
-    const legacyBinding = el.behavior?.events?.[eventName];
 
-    const blueprintId =
-        widgetPrivateEventSupported && activeWidgetBlueprintId
-            ? activeWidgetBlueprintId
-            : legacyBinding?.kind === "blueprintEvent"
-              ? legacyBinding.blueprintId
-              : undefined;
+    const blueprintId = widgetPrivateEventSupported ? activeWidgetBlueprintId : undefined;
     if (!blueprintId) {
         return false;
     }
@@ -475,9 +469,7 @@ export async function dispatchBlueprintUiEvent(options: {
     }
     if (bp.program.kind === "scriptModule") {
         const mod = getMountedBlueprintModule(blueprintId);
-        const fn =
-            mod?.events?.[eventName] ??
-            (legacyBinding?.kind === "blueprintEvent" ? mod?.events?.[legacyBinding.eventId] : undefined);
+        const fn = mod?.events?.[eventName];
         if (typeof fn !== "function") {
             return false;
         }
@@ -1273,12 +1265,33 @@ export const MAX_BLUEPRINT_FN_CALL_DEPTH = 32;
  * Invoke a declared blueprint fn on behalf of a Call Fn node.
  * The fn body runs as part of the caller execution: the caller's abort signal and
  * executionId propagate, errors bubble to the caller, and the caller awaits completion.
- * Visibility: globalMain fns everywhere; surfaceMain/widgetMain fns only from their surface.
+ * Visibility is `isBlueprintFnVisibleToOwner`: globalMain fns everywhere, surfaceMain/widgetMain fns
+ * only from their surface, and a component definition's fns only from inside that definition.
  */
 export async function invokeBlueprintFnCall(options: {
     blueprintDocument: BlueprintDocument;
     persistentVariables: PersistentVariableRuntimeTable;
     surfaceId?: string;
+    /** The component definition the calling execution belongs to, when it belongs to one. */
+    callerComponentId?: string;
+    /**
+     * The calling instance's resolved params.
+     *
+     * Carried into the body rather than looked up, because a definition's fn can only be called
+     * from inside that definition (see the visibility check below) - so the caller's placement IS
+     * the body's placement, and it is the only thing that knows which one it is. Without this a
+     * `Get Component Param` inside a fn reads nothing, and every element the fn touches is refused
+     * as belonging to another surface.
+     */
+    callerComponentParams?: Record<string, string>;
+    /**
+     * Which drawing the call came from, carried into the body for the same reason as the params.
+     *
+     * Without it every widget the fn writes is addressed as the template rather than as this
+     * placement, so the write lands where nothing reads it and the widget goes on showing what the
+     * author typed - a failure that looks like the write never happened.
+     */
+    callerInstanceKey?: string;
     runtimeScopeId?: string;
     fnRef: string;
     args: Record<string, unknown>;
@@ -1300,16 +1313,24 @@ export async function invokeBlueprintFnCall(options: {
     if (!decl) {
         throw new Error(`Fn does not exist: ${fnRef}`);
     }
-    const visible =
-        decl.owner.kind === "globalMain" ||
-        ((decl.owner.kind === "surfaceMain" || decl.owner.kind === "widgetMain") &&
-            Boolean(surfaceId) &&
-            decl.owner.surfaceId === surfaceId);
-    if (!visible) {
+    // Asked of the shared predicate rather than restated here. It was restated here, and the copy
+    // drifted the moment component definitions could declare a Fn: the editor offered the call and
+    // the run refused it, which reads as a broken graph rather than as two rules disagreeing.
+    //
+    // The caller is named by what the running execution knows about itself - a component instance
+    // knows its definition, everything else knows its surface. A caller with neither (a global
+    // execution passes no surface) sees only global fns, which is what it saw before.
+    const callerOwner: BlueprintOwnerRef = options.callerComponentId
+        ? { kind: "componentWidgetMain", componentId: options.callerComponentId, elementId: "" }
+        : { kind: "widgetMain", surfaceId: surfaceId ?? "", elementId: "" };
+    if (!isBlueprintFnVisibleToOwner(decl.owner, callerOwner)) {
         throw new Error(`Fn "${decl.name}" is not available in this scope`);
     }
 
-    const declElementId = decl.owner.kind === "widgetMain" ? decl.owner.elementId : undefined;
+    const declElementId =
+        decl.owner.kind === "widgetMain" || decl.owner.kind === "componentWidgetMain"
+            ? decl.owner.elementId
+            : undefined;
     const blueprintLocals = acquireBlueprintExecutionLocals(
         decl.owner.kind === "globalMain"
             ? { blueprintDocument, currentBlueprintId: decl.blueprintId }
@@ -1332,7 +1353,13 @@ export async function invokeBlueprintFnCall(options: {
     const executionOwner =
         decl.owner.kind === "globalMain"
             ? { blueprintId: decl.blueprintId }
-            : { surfaceId, elementId: declElementId, blueprintId: decl.blueprintId };
+            : {
+                  surfaceId,
+                  elementId: declElementId,
+                  blueprintId: decl.blueprintId,
+                  componentId: options.callerComponentId,
+                  componentParams: options.callerComponentParams,
+              };
 
     const result = await executeGraph({
         graph,
@@ -1340,6 +1367,7 @@ export async function invokeBlueprintFnCall(options: {
         hostAdapter,
         blueprintLocals,
         executionOwner,
+        instanceKey: options.callerInstanceKey,
         persistentVariables: options.persistentVariables,
         maxSteps: options.maxSteps ?? DEFAULT_MAX_STEPS,
         signal: options.signal,

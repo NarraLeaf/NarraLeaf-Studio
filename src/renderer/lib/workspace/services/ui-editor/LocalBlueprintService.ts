@@ -6,7 +6,6 @@ import type {
     BlueprintFieldValueSource,
     BlueprintFrontendKind,
     BlueprintGraphNode,
-    BlueprintPersistentVariable,
     BlueprintPrivateOwnerRecord,
     BlueprintVariable,
     LiteralValue,
@@ -78,6 +77,7 @@ import {
     widgetMainOwnerKey,
     widgetValueOwnerKey,
 } from "./blueprint/ownerKeys";
+import { derivedBlueprintId } from "./blueprint/derivedBlueprintId";
 import {
     buildReadonlySurfaceMainSummary,
     type ReadonlyBlueprintSurfaceSummary,
@@ -119,16 +119,11 @@ type BlueprintHistoryScope = {
     ownerKey?: string;
 };
 
-type UIBehaviorSnapshot = {
-    elements: Record<string, UIElement["behavior"] | undefined>;
-};
-
 export type BlueprintEditorHistorySnapshot = {
     blueprintId: string;
     ownerKey: string | null;
     ownerRecord: BlueprintPrivateOwnerRecord | null;
     blueprint: Blueprint | null;
-    uiBehavior: UIBehaviorSnapshot;
     /**
      * The project-level variable registry, captured so persistent-variable CRUD (which lives in its
      * own service/file since M-VAR) undoes with the same Ctrl+Z as the blueprint edit that made it.
@@ -150,38 +145,10 @@ function cloneBlueprintHistoryValue<T>(value: T): T {
     return value == null ? value : JSON.parse(JSON.stringify(value)) as T;
 }
 
-function captureUIBehaviorSnapshot(document: UIDocument): UIBehaviorSnapshot {
-    const elements: UIBehaviorSnapshot["elements"] = {};
-    for (const [elementId, element] of Object.entries(document.elements)) {
-        elements[elementId] = cloneBlueprintHistoryValue(element.behavior);
-    }
-    return { elements };
-}
-
-function applyUIBehaviorSnapshot(current: UIDocument, target: UIBehaviorSnapshot): UIDocument {
-    const next = cloneBlueprintHistoryValue(current);
-    for (const [elementId, behavior] of Object.entries(target.elements)) {
-        const element = next.elements[elementId];
-        if (!element) {
-            continue;
-        }
-        if (behavior === undefined) {
-            delete element.behavior;
-        } else {
-            element.behavior = cloneBlueprintHistoryValue(behavior);
-        }
-    }
-    return next;
-}
-
 function areBlueprintHistorySnapshotsEqual(
     a: BlueprintEditorHistorySnapshot,
     b: BlueprintEditorHistorySnapshot,
 ): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function areUIBehaviorSnapshotsEqual(a: UIBehaviorSnapshot, b: UIBehaviorSnapshot): boolean {
     return JSON.stringify(a) === JSON.stringify(b);
 }
 
@@ -401,13 +368,11 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         const blueprint = bpDoc.blueprints[blueprintId] ?? null;
         const resolvedOwnerKey = ownerKey ?? this.resolveBlueprintOwnerKey({ blueprintId });
         const ownerRecord = resolvedOwnerKey ? bpDoc.ownerRecords[resolvedOwnerKey] ?? null : null;
-        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
         return {
             blueprintId,
             ownerKey: resolvedOwnerKey,
             ownerRecord: cloneBlueprintHistoryValue(ownerRecord),
             blueprint: cloneBlueprintHistoryValue(blueprint),
-            uiBehavior: captureUIBehaviorSnapshot(uidoc.getDocument()),
             registry: cloneBlueprintHistoryValue(this.getVariableRegistryService().getRegistry()),
             saveSchema: cloneBlueprintHistoryValue(this.getSaveSchemaService().getSchema()),
         };
@@ -485,7 +450,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Surface",
@@ -536,7 +501,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Widget",
@@ -590,7 +555,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
                 }
                 return;
             }
-            const id = uuid.generate();
+            const id = derivedBlueprintId(key);
             const blueprint = createMainBlueprint({
                 id,
                 name: displayName ?? "Component Widget",
@@ -1041,7 +1006,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
 
     private restoreBlueprintHistorySnapshot(snapshot: BlueprintEditorHistorySnapshot): void {
         const graph = this.getContext().services.get<UIGraphService>(Services.UIGraph);
-        const uidoc = this.getContext().services.get<UIDocumentService>(Services.UIDocument);
 
         graph.applyGraphMutation(document => {
             const bpDoc = document.blueprintDocument;
@@ -1059,13 +1023,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             }
             assertValidBlueprintDocument(bpDoc);
         });
-        const currentUIDocument = uidoc.getDocument();
-        if (!areUIBehaviorSnapshotsEqual(captureUIBehaviorSnapshot(currentUIDocument), snapshot.uiBehavior)) {
-            uidoc.restoreDocumentFromHistory(
-                applyUIBehaviorSnapshot(currentUIDocument, snapshot.uiBehavior),
-                { skipAfterMutateHook: true },
-            );
-        }
         const registryService = this.getVariableRegistryService();
         if (JSON.stringify(registryService.getRegistry()) !== JSON.stringify(snapshot.registry)) {
             registryService.replaceRegistry(cloneBlueprintHistoryValue(snapshot.registry));
@@ -1176,13 +1133,57 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         historyBlueprintId: string,
         variableId: string,
         valueType: StoryVariableValueType,
+        defaultValue?: LiteralValue,
     ): void {
         this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
-            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType, defaultValue),
         );
     }
 
-    public deletePersistentVariable(historyBlueprintId: string, variableId: string): void {
+    /**
+     * Clear every `Get`/`Set` node that named a registry variable, whichever scope declared it.
+     *
+     * **The derived half of a deletion, as one call, so that a machine applying an effect does the
+     * same thing the author's own machine did.** Both scopes are swept rather than the one the entry
+     * declared: an id belongs to exactly one entry, the node types differ between the scopes, and an
+     * applier running after the entry has already left the registry has nothing left to ask.
+     */
+    public sweepVariableNodeRefs(variableId: string): void {
+        this.applyBlueprintMutation(doc => {
+            this.clearVariableNodeRefs(doc, {
+                paramKey: "persistentVariableId",
+                nodeTypes: [BLUEPRINT_NODE_TYPE_PERSISTENT_GET, BLUEPRINT_NODE_TYPE_PERSISTENT_SET],
+                variableId,
+            });
+            this.clearVariableNodeRefs(doc, {
+                paramKey: "savedVariableId",
+                nodeTypes: [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET],
+                variableId,
+            });
+        });
+    }
+
+    /**
+     * Remove a global variable, and the node refs that named it.
+     *
+     * ⚠ **Asked before anything is written**, and that order is the whole of why this is not one
+     * call. A session that cannot carry the sweep refuses the deletion outright, and clearing the
+     * node refs first would leave every `Get`/`Set` node empty while the variable stayed exactly
+     * where it was.
+     *
+     * ⚠ **In a session the sweep is not done here.** It is derived from the effect - every machine
+     * works out the same nodes from the same statement - so doing it alongside would be a second
+     * write for work the effect already implies, and on a host a second message and a second press
+     * of undo. See `LiveSessionService.applyVariableOp`.
+     */
+    public deletePersistentVariable(historyBlueprintId: string, variableId: string): boolean {
+        const registry = this.getVariableRegistryService();
+        if (!registry.canDeleteEntry()) {
+            return false;
+        }
+        if (registry.isShared()) {
+            return registry.deleteEntry(variableId);
+        }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             // Node-ref cleanup mutates the blueprint document; the variable itself leaves the registry.
             this.applyBlueprintMutation(doc => {
@@ -1194,6 +1195,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             });
             this.getVariableRegistryService().deleteEntry(variableId);
         });
+        return true;
     }
 
     public createSavedRegistryVariable(
@@ -1229,9 +1231,10 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
         historyBlueprintId: string,
         variableId: string,
         valueType: StoryVariableValueType,
+        defaultValue?: LiteralValue,
     ): void {
         this.runBlueprintHistoryTransaction(historyBlueprintId, () =>
-            this.getVariableRegistryService().setEntryValueType(variableId, valueType),
+            this.getVariableRegistryService().setEntryValueType(variableId, valueType, defaultValue),
         );
     }
 
@@ -1241,8 +1244,18 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
      * `savedVariableId` node param, so leaving one behind gives the author a node that fails at
      * runtime ("Pick a Saved variable") with nothing on screen saying why. Different param, different
      * node types, same failure - hence the shared, parameterized helper rather than a second copy.
+     *
+     * ⚠ Asked before anything is written, with {@link deletePersistentVariable}.
      */
-    public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): void {
+    public deleteSavedRegistryVariable(historyBlueprintId: string, variableId: string): boolean {
+        const registry = this.getVariableRegistryService();
+        if (!registry.canDeleteEntry()) {
+            return false;
+        }
+        if (registry.isShared()) {
+            // Derived in a session, with {@link deletePersistentVariable}.
+            return registry.deleteEntry(variableId);
+        }
         this.runBlueprintHistoryTransaction(historyBlueprintId, () => {
             this.applyBlueprintMutation(doc => {
                 this.clearVariableNodeRefs(doc, {
@@ -1253,6 +1266,7 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             });
             this.getVariableRegistryService().deleteEntry(variableId);
         });
+        return true;
     }
 
     public createBlueprintVariable(
@@ -1399,40 +1413,6 @@ export class LocalBlueprintService extends Service<LocalBlueprintService> implem
             // A new layer joins the end of the author's list; an upsert of an existing one
             // keeps its place, because the reconciliation only appends what is unlisted.
             captureBlueprintEventOrder(graphs);
-        });
-    }
-
-    public adoptLegacyEventGraphToSlot(
-        blueprintId: string,
-        slotId: string,
-        legacyEventId: string,
-        displayName?: string,
-    ): void {
-        this.applyBlueprintEdit({ blueprintId }, doc => {
-            const bp = doc.blueprints[blueprintId];
-            if (!bp || bp.program.kind !== "graph") {
-                return;
-            }
-            const graphs = bp.program.graphs;
-            if (graphs.events[slotId]) {
-                return;
-            }
-            const legacy = graphs.events[legacyEventId];
-            if (!legacy) {
-                return;
-            }
-            // The adopted layer takes the legacy one's place rather than being appended:
-            // re-keying a layer is not the author moving it down the list.
-            const adopted = listBlueprintEventIds(graphs).map(id => (id === legacyEventId ? slotId : id));
-            graphs.events[slotId] = {
-                ...legacy,
-                id: slotId,
-                name: legacy.name ?? displayName,
-            };
-            if (legacyEventId !== slotId) {
-                delete graphs.events[legacyEventId];
-            }
-            graphs.eventIds = adopted;
         });
     }
 

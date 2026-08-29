@@ -191,7 +191,13 @@ export function useTeamProject(
             }
             // Matched on the repository id rather than the name, which is the only
             // identity that survives a rename on either side.
-            const mine = projects.value.find((each) => each.id === repositoryId) ?? null;
+            //
+            // Read out of the list rather than asked for by id, so that a project the
+            // server no longer holds is an absence here rather than a refusal to tell
+            // apart from every other refusal. The list is bounded - `total` says by how
+            // much - so on a deployment past that bound this is looking for one project
+            // in a list that may not carry it.
+            const mine = projects.value.projects.find((each) => each.id === repositoryId) ?? null;
             setProject(mine);
             setHeld(mine !== null);
             if (mine === null) return;

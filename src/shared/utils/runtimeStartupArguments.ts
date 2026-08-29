@@ -15,48 +15,112 @@
  */
 
 /**
- * The switch that turns the main process's own output back on.
+ * The guard's tables are stored masked, and re-keyed once per shipped build.
  *
- * A shipped game writes to its log file and says nothing on stdout. What it used to say named the
- * engine in every line, which is a free answer to "what is this built with" for anyone who runs the
- * executable from a terminal - and the question after that one is about the game's content.
+ * A shipped game's `main.js` is the one file a player can read without opening anything first, and a
+ * plain list of switch names sitting in it is a map of this guard: a search for `remote-debugging-port`
+ * lands on the check, and the check is a one-line edit away from gone. So the allowlist, the debug
+ * list, the log switch and the refusal line all live masked inside one blob, decoded here at load and
+ * never appearing as a literal a search can match. This is not secrecy - the decoder is right here -
+ * it removes the cheapest read, the same thing the allowlist does for the cheapest launch.
  *
- * Deliberately not `--logs`, and not any of the several spellings Chromium already has near it
- * (`--enable-logging`, `--log-file`, `--log-level`). Support asks for this by name; nothing about
- * the game invites the guess.
+ * The blob is re-keyed with a fresh random `(seed, step)` for every shipped build (the build's
+ * `reseedGuardMaskTable`), so the tokens are not byte-identical from one game to the next: reversing
+ * one game hands a search no token to grep across the rest.
+ *
+ * The plaintext lives in the comment below and in this module's test, never in the shipped bundle.
+ * To change the set: edit the plaintext, rebuild the committed blob with `buildGuardMaskTable`, and
+ * the test pins the two together.
+ *
+ *   allowed:  disable-gpu, disable-gpu-compositing, disable-software-rasterizer, use-angle, use-gl,
+ *             ozone-platform, ozone-platform-hint, force-device-scale-factor, force-color-profile,
+ *             lang, use-logs           (each a statement about the player's own hardware; nothing
+ *             that reaches content, network or a process boundary is here - no sandbox switches)
+ *   debug:    remote-debugging-port, remote-debugging-pipe, inspect, inspect-brk, inspect-port,
+ *             inspect-publish-uid
+ *   logs:     use-logs                 (turns the main process's own output back on; named apart
+ *             from Chromium's `--enable-logging`/`--log-file`/`--log-level` on purpose)
+ *   refusal:  "refusing to start: this build does not accept "   (the log line's fixed half; its
+ *             plaintext would otherwise point a search straight at the refusal)
  */
-export const RUNTIME_LOGS_SWITCH = "use-logs";
+export type GuardMaskTable = {
+    seed: number;
+    step: number;
+    allowed: string[];
+    debugging: string[];
+    logs: string;
+    refusalPrefix: string;
+};
 
-/**
- * The switches a shipped game still accepts, and why each one is here.
- *
- * Every entry is a statement about the player's own hardware, and none of them reaches the game's
- * content, its network or its process boundaries. Anything that would is left out, the sandbox
- * switches included however often a support thread recommends one.
- */
-export const ALLOWED_STARTUP_SWITCHES: readonly string[] = [
-    // The standard answer to a driver that cannot composite. A game that draws on the CPU is better
-    // than a game that does not draw.
-    "disable-gpu",
-    "disable-gpu-compositing",
-    "disable-software-rasterizer",
-    // The other half of that answer: which backend to draw through.
-    "use-angle",
-    "use-gl",
-    // Which windowing system to draw into, which on Linux is a fact about the session the player
-    // logged into rather than a preference.
-    "ozone-platform",
-    "ozone-platform-hint",
-    // A display whose reported scale or colour profile is wrong. Both are facts about the monitor.
-    "force-device-scale-factor",
-    "force-color-profile",
-    // Chromium's own locale, which is what the chrome around the game is drawn in. The game's
-    // language is a player setting and is not this.
-    "lang",
-    // Turns the main process's own output back on, which a shipped game otherwise keeps to its log
-    // file. See {@link RUNTIME_LOGS_SWITCH}.
-    RUNTIME_LOGS_SWITCH,
-];
+function maskBytesWith(bytes: Buffer, seed: number, step: number): Buffer {
+    const out = Buffer.alloc(bytes.length);
+    for (let i = 0; i < bytes.length; i++) {
+        out[i] = bytes[i] ^ ((seed + i * step) & 0xff);
+    }
+    return out;
+}
+
+/** Reconstruct masked text from its token under a `(seed, step)` key. */
+export function revealMaskedTextWith(token: string, seed: number, step: number): string {
+    return maskBytesWith(Buffer.from(token, "base64url"), seed, step).toString("utf8");
+}
+
+/** Mask text into a token under a `(seed, step)` key. Used by the build's re-key and the test. */
+export function maskTextWith(text: string, seed: number, step: number): string {
+    return maskBytesWith(Buffer.from(text, "utf8"), seed, step).toString("base64url");
+}
+
+/** The distinctive prefix a built main.js carries, so the build step can find the blob to re-key it. */
+export const GUARD_MASK_TABLE_PREFIX = "NLMT:";
+
+type PackedGuardTable = { s: number; t: number; a: string[]; d: string[]; l: string; r: string };
+
+/** Read a masked-table blob back into its plaintext names. */
+export function parseGuardMaskTable(blob: string): GuardMaskTable {
+    if (!blob.startsWith(GUARD_MASK_TABLE_PREFIX)) {
+        throw new Error("not a guard mask table");
+    }
+    const packed = JSON.parse(
+        Buffer.from(blob.slice(GUARD_MASK_TABLE_PREFIX.length), "base64url").toString("utf8"),
+    ) as PackedGuardTable;
+    const reveal = (token: string): string => revealMaskedTextWith(token, packed.s, packed.t);
+    return {
+        seed: packed.s,
+        step: packed.t,
+        allowed: packed.a.map(reveal),
+        debugging: packed.d.map(reveal),
+        logs: reveal(packed.l),
+        refusalPrefix: reveal(packed.r),
+    };
+}
+
+/** Write a table to a blob under its key. The build re-keys with a fresh `(seed, step)` per game. */
+export function buildGuardMaskTable(table: GuardMaskTable): string {
+    const mask = (text: string): string => maskTextWith(text, table.seed, table.step);
+    const packed: PackedGuardTable = {
+        s: table.seed,
+        t: table.step,
+        a: table.allowed.map(mask),
+        d: table.debugging.map(mask),
+        l: mask(table.logs),
+        r: mask(table.refusalPrefix),
+    };
+    return GUARD_MASK_TABLE_PREFIX + Buffer.from(JSON.stringify(packed), "utf8").toString("base64url");
+}
+
+/** The committed table, keyed with a fixed seed; every shipped build re-keys it. Decoded once here. */
+const GUARD_TABLE = parseGuardMaskTable(
+    "NLMT:eyJzIjo5MSwidCI6MzEsImEiOlsiUHhQcTJiV2FjQmswQXVRIiwiUHhQcTJiV2FjQmswQXVTZHJJRmdYQ1FaNE55dWlHSSIsIlB4UHEyYldhY0JrZ0hmZkV1STlfU1dZWTZOdXpnM2ROT1FmeiIsIkxnbjhsYmFZY2xnMiIsIkxnbjhsYkNhIiwiTkFEMjFyTGJaVmd5QnZmZnZZTSIsIk5BRDIxckxiWlZneUJ2ZmZ2WU1nUkNJRV9RIiwiUFJYcjI3TGJjVkVsR19MVjRwMXVUU2NQcE02bWhYRkxNUSIsIlBSWHIyN0xiZGxzX0hlT2R2NXhpU2lJRzdBIiwiTnh2MzN3IiwiTGduOGxidVpja2MiXSwiZCI6WyJLUl8wMTZPVE9GQTJFT1RYcUlkalMyWWE1dHF6IiwiS1JfMDE2T1RPRkEyRU9UWHFJZGpTMllhNE5paSIsIk1oVHF5TEtWWVEiLCJNaFRxeUxLVllSa3hBUG8iLCJNaFRxeUxLVllSa2pIZVBFIiwiTWhUcXlMS1ZZUmtqQl9QY3BwMWxBVDREN1EiXSwibCI6IkxnbjhsYnVaY2tjIiwiciI6IktSX196YVNmZTFOekJ2NlF2SnBzWGo5UXFkeXZqM1lFSVJmb3pOdi1tWE5lS1ZuMjJLTFZkVkF4Rk9EYjdnIn0",
+);
+
+/** The switches a shipped game still accepts. See the table comment above for the plaintext. */
+export const ALLOWED_STARTUP_SWITCHES: readonly string[] = GUARD_TABLE.allowed;
+
+/** The switch that turns the main process's own output back on. */
+export const RUNTIME_LOGS_SWITCH = GUARD_TABLE.logs;
+
+/** The fixed half of the guard's refusal log line; the refused arguments are appended to it. */
+export const REFUSAL_LOG_PREFIX = GUARD_TABLE.refusalPrefix;
 
 /**
  * Chromium's switch prefixes, which are not the same on every platform.
@@ -150,18 +214,55 @@ export function reviewStartupArguments(
  * for the first. Not a refusal list - the refusal is the allowlist above, and naming dangerous
  * switches one by one is what that replaced.
  */
-export const DEBUGGING_SWITCHES: readonly string[] = [
-    "remote-debugging-port",
-    "remote-debugging-pipe",
-    "inspect",
-    "inspect-brk",
-    "inspect-port",
-    "inspect-publish-uid",
-];
+export const DEBUGGING_SWITCHES: readonly string[] = GUARD_TABLE.debugging;
 
 /** Every switch name on this command line, whatever it is called and however it is spelled. */
 export function startupSwitchNames(args: readonly string[], platform: NodeJS.Platform): string[] {
     return reviewStartupArguments(args, platform, []).removable;
+}
+
+/** What a build is, as far as the debuggable marker is concerned. */
+export type DebuggableBuildFacts = {
+    /** The `debuggable` marker this side of the launch can see. */
+    marker: boolean;
+    /** Whether the content is sealed: the project turned asset protection on. */
+    sealed: boolean;
+    /** Whether this is a packaged application rather than an app directory someone ran by hand. */
+    packaged: boolean;
+};
+
+/**
+ * Whether a `debuggable` marker on this build may be acted on.
+ *
+ * Honoured everywhere except one combination: a build that is both **sealed and packaged** refuses
+ * it, whichever of the two markers carries it and whatever it says.
+ *
+ * The reason is timing rather than policy. What actually keeps a debugger out is the check that
+ * runs *before* app-ready, because Chromium reads `--remote-debugging-port` after this script has
+ * had its turn: quitting later still leaves the port accepting connections about 130ms in, while
+ * taking the switch off the command line means it never listens at all. That check has to answer
+ * before anything can open the pack, so the only marker it can read is the one in the loose app
+ * manifest - a plain JSON file sitting beside the archive.
+ *
+ * On an ordinary build that is an accepted cost: the manifest is inside an asar whose integrity is
+ * validated on the platforms that can, and a player owns the machine either way. On the *shipped*
+ * form of a build whose author asked for asset protection it is not, because the point of that
+ * build is that reading its content should cost something, and a one-word edit to a text file is
+ * the cheapest imaginable route to a debugger attached to the process holding the decrypted
+ * content.
+ *
+ * `packaged` is what separates the shipped form from the one a developer is looking at. An app
+ * directory started under a stock Electron is not something anybody received: whoever is holding it
+ * already has the main script as plain JavaScript and can delete this check outright, so refusing
+ * there would protect nothing and would cost the one workflow the marker exists for - inspecting a
+ * real sealed build without having to turn its protection off and debug a different code path.
+ *
+ * `sealed` is read from the presence of the store rather than from anything inside it, because that
+ * is the one fact about protection a pre-ready check can establish. Deleting the store to get past
+ * this does not produce a protected build with a debugger; it produces a build with no content.
+ */
+export function honoursDebuggableMarker(build: DebuggableBuildFacts): boolean {
+    return build.marker && !(build.sealed && build.packaged);
 }
 
 /** Whether this command line asked for a debugger. */

@@ -1,30 +1,49 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
-import { Keyboard, Plus, X } from "lucide-react";
+import { Keyboard, Mouse, Plus, Smartphone, Touchpad, X } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import {
     formatBlueprintKeyboardBindingFromEvent,
     normalizeBlueprintKeyboardEventKeyName,
 } from "@shared/types/blueprint/graph";
+import { dedupeUIInputBindings, type UIInputBinding } from "@shared/types/ui-editor/inputAction";
 import {
-    UI_INPUT_POINTER_GESTURES,
-    dedupeUIInputBindings,
-    type UIInputBinding,
-} from "@shared/types/ui-editor/inputAction";
-import { ContextMenu, useContextMenu, type ContextMenuDef } from "@/lib/components/elements/ContextMenu";
+    ContextMenu,
+    useContextMenu,
+    type ContextMenuDef,
+    type ContextMenuItemDef,
+} from "@/lib/components/elements/ContextMenu";
 import { useTranslation } from "@/lib/i18n";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
-import { getInputBindingLabel, getInputPointerGestureLabel } from "./inputBindingLabels";
+import {
+    INPUT_BINDING_DEVICES,
+    INPUT_DEVICE_GESTURE_OFFERS,
+    getInputBindingDeviceActs,
+    getInputBindingDevices,
+    getInputBindingDevicesLabel,
+    getInputBindingLabel,
+    getInputDeviceLabel,
+    type InputBindingDevice,
+    type TranslateFn,
+} from "./inputBindingLabels";
+import { interfaceDocumentFreezeScope } from "../uiLiveSession";
 
 type InputBindingListProps = {
     bindings: readonly UIInputBinding[];
     onChange: (bindings: UIInputBinding[]) => void;
     /** Shown in place of the chips when the list is empty. */
     emptyLabel?: string;
-    /** Bindings the author cannot remove here, drawn muted before the editable ones. */
-    inherited?: readonly UIInputBinding[];
 };
 
 const MODIFIER_EVENT_KEYS = new Set(["alt", "control", "shift", "meta"]);
+
+/** One picture per device, shared by the chip markings and the add menu's groups. */
+const DEVICE_ICONS: Record<InputBindingDevice, LucideIcon> = {
+    mouse: Mouse,
+    trackpad: Touchpad,
+    touch: Smartphone,
+    key: Keyboard,
+};
 
 function isModifierOnlyEvent(event: KeyboardEvent): boolean {
     return MODIFIER_EVENT_KEYS.has(normalizeBlueprintKeyboardEventKeyName(event.key));
@@ -35,21 +54,43 @@ function bindingKey(binding: UIInputBinding): string {
 }
 
 /**
+ * Which devices one chip's binding can be triggered from.
+ *
+ * The chips are one flat row whatever they are bound to, so a key, a scroll and a held finger sit
+ * side by side reading as the same kind of thing. This is the mark that separates them, and it is
+ * the quietest one that can still name two devices at once - a click and the four scroll directions
+ * belong to the mouse and to touch, and both have to be readable rather than one winning.
+ */
+function BindingDevices({ binding, t }: { binding: UIInputBinding; t: TranslateFn }) {
+    const devices = getInputBindingDevices(binding);
+    if (devices.length === 0) {
+        return null;
+    }
+    const label = getInputBindingDevicesLabel(binding, t);
+    return (
+        <span className="flex items-center gap-0.5 text-fg-subtle" role="img" aria-label={label} data-tip={label}>
+            {devices.map(device => {
+                const Icon = DEVICE_ICONS[device];
+                return <Icon key={device} className="h-3 w-3" aria-hidden />;
+            })}
+        </span>
+    );
+}
+
+/**
  * The gestures one action answers, as removable chips plus a way to add another.
  *
- * Shared by the two halves of the input model so a binding reads the same in both: the Input Actions
- * library sets what every interface inherits, and an interface's Input section adds to or replaces
- * it. `inherited` is how the second case shows the first - the project's own bindings, drawn muted
- * and with no remove button, because removing one there would be editing the project from inside a
- * page.
+ * One action, one set of bindings, edited in the one place that holds the action. An interface says
+ * whether it answers the action; it does not get to say what the action is, so there is nothing to
+ * inherit and nothing to draw muted.
  *
  * Keyboard capture listens on the window in the capture phase while it is armed, the way the
  * blueprint `On Key` card does, so a binding that collides with a Studio shortcut can still be
  * recorded.
  */
-export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: InputBindingListProps) {
+export function InputBindingList({ bindings, onChange, emptyLabel }: InputBindingListProps) {
     const { t } = useTranslation();
-    const freeze = useFreezeGuard();
+    const freeze = useFreezeGuard(interfaceDocumentFreezeScope());
     const rootRef = useRef<HTMLDivElement | null>(null);
     const { menuState, showMenu, hideMenu } = useContextMenu();
     const [menuItems, setMenuItems] = useState<ContextMenuDef>([]);
@@ -57,7 +98,7 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
     const [preview, setPreview] = useState("");
     const pendingModifierRef = useRef("");
 
-    const taken = new Set([...(inherited ?? []), ...bindings].map(bindingKey));
+    const taken = new Set(bindings.map(bindingKey));
 
     const addBinding = useCallback(
         (binding: UIInputBinding) => {
@@ -133,25 +174,49 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
         };
     }, [addBinding, listening]);
 
+    /**
+     * What is on offer, one row per device.
+     *
+     * Grouped by device because that is the question an author starts from - the machine a player
+     * will be holding - and because a row can then name the gesture the way that device does it: a
+     * finger slides where a wheel scrolls, and the trackpad row carries the pair a mouse has no way
+     * to produce. Picking from any row adds the same binding; the row decides the wording, not what
+     * is stored.
+     *
+     * The keyboard row arms key capture instead of opening a submenu. It has one way in rather than
+     * a list to choose from, and binding a key is the commonest thing done here - a submenu holding
+     * a single row would charge the commonest path an extra hover to keep the rows symmetrical.
+     */
     const openAddMenu = (event: MouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();
-        const items: ContextMenuDef = UI_INPUT_POINTER_GESTURES.map(gesture => ({
-            id: gesture,
-            label: getInputPointerGestureLabel(gesture, t),
-            disabled: taken.has(`pointer:${gesture}`),
-            onClick: () => {
-                hideMenu();
-                addBinding({ kind: "pointer", gesture });
-            },
-        }));
-        items.push({ id: "sep", separator: true });
-        items.push({
-            id: "key",
-            label: t("uiEditor.inputActions.addKey"),
-            onClick: () => {
-                hideMenu();
-                setListening(true);
-            },
+        const items: ContextMenuDef = INPUT_BINDING_DEVICES.map(device => {
+            const Icon = DEVICE_ICONS[device];
+            const row: ContextMenuItemDef = {
+                id: `device:${device}`,
+                label: getInputDeviceLabel(device, t),
+                icon: <Icon className="h-4 w-4" aria-hidden />,
+            };
+            if (device === "key") {
+                return {
+                    ...row,
+                    onClick: () => {
+                        hideMenu();
+                        setListening(true);
+                    },
+                };
+            }
+            return {
+                ...row,
+                submenu: INPUT_DEVICE_GESTURE_OFFERS[device].map(offer => ({
+                    id: `${device}:${offer.gesture}`,
+                    label: t(offer.labelKey),
+                    disabled: taken.has(`pointer:${offer.gesture}`),
+                    onClick: () => {
+                        hideMenu();
+                        addBinding({ kind: "pointer", gesture: offer.gesture });
+                    },
+                })),
+            };
         });
         setMenuItems(items);
         showMenu(event);
@@ -159,19 +224,13 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
 
     return (
         <div ref={rootRef} className="relative flex flex-wrap items-center gap-1">
-            {(inherited ?? []).map(binding => (
-                <span
-                    key={`inherited:${bindingKey(binding)}`}
-                    className="inline-flex min-h-7 items-center rounded-md border border-dashed border-edge px-2 text-2xs text-fg-subtle"
-                >
-                    {getInputBindingLabel(binding, t)}
-                </span>
-            ))}
             {bindings.map(binding => (
                 <span
                     key={bindingKey(binding)}
                     className="inline-flex min-h-7 items-center gap-1 rounded-md border border-edge bg-fill-subtle pl-2 pr-1 text-2xs text-fg"
+                    data-tip={getInputBindingDeviceActs(binding, t)}
                 >
+                    <BindingDevices binding={binding} t={t} />
                     {getInputBindingLabel(binding, t)}
                     <button
                         type="button"
@@ -189,7 +248,7 @@ export function InputBindingList({ bindings, onChange, emptyLabel, inherited }: 
                     </button>
                 </span>
             ))}
-            {bindings.length === 0 && (inherited ?? []).length === 0 ? (
+            {bindings.length === 0 ? (
                 <span className="text-2xs text-fg-subtle">{emptyLabel ?? t("uiEditor.inputActions.noBindings")}</span>
             ) : null}
             <button

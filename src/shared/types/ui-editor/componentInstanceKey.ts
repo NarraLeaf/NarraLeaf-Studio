@@ -41,3 +41,74 @@ export function readUIComponentInstanceElementId(instanceKey: string | undefined
     }
     return null;
 }
+
+/**
+ * Step one component boundary outwards: the placement, and the key of whatever encloses it.
+ *
+ * An event that has walked to the top of a definition's own tree has not finished - the instance is
+ * a widget on a page, and the container it was placed in is still entitled to hear a click over it.
+ * The definition cannot name that container, but the key already names the element that placed it,
+ * which is where the walk carries on from.
+ *
+ * Returns null when the key names no component, which is how the caller knows the walk really has
+ * reached the top. The innermost segment is the one that goes, so a component inside a component
+ * surfaces one level at a time.
+ */
+export function popUIComponentInstanceKey(
+    instanceKey: string | undefined,
+): { instanceElementId: string; outerKey: string } | null {
+    if (!instanceKey) {
+        return null;
+    }
+    const segments = instanceKey.split(SEPARATOR);
+    for (let i = segments.length - 1; i >= 0; i--) {
+        const segment = segments[i]!;
+        if (!segment.startsWith(SEGMENT_PREFIX)) {
+            continue;
+        }
+        const instanceElementId = segment.slice(SEGMENT_PREFIX.length);
+        if (instanceElementId.length === 0) {
+            return null;
+        }
+        return { instanceElementId, outerKey: segments.slice(0, i).join(SEPARATOR) };
+    }
+    return null;
+}
+
+/**
+ * The surface id a component definition's own tree is laid out under.
+ *
+ * A definition is rendered inside a virtual surface of its own (see `SurfaceElementTree`), because
+ * everything downstream of a render wants a surface and a definition has none of its own. Element
+ * references written inside its blueprint therefore name this rather than whichever surface an
+ * instance ended up on - which the definition cannot know, and which differs between two placements
+ * of the same component.
+ *
+ * Here rather than inlined at each of the two ends, for the ordinary reason: one is minted by the
+ * renderer and the other is compared against by every node that targets an element, and a format
+ * spelled twice is a format that stops matching the first time either side is touched.
+ */
+export function buildUIComponentSurfaceId(componentId: string): string {
+    return `component:${componentId}`;
+}
+
+/**
+ * Whether an element reference is allowed to name this surface from this execution.
+ *
+ * A graph may reach the surface it runs on, and a component definition's graph may reach its own
+ * tree. Nothing else: reaching into another surface is the thing the check exists to stop, and it
+ * still is. An execution that cannot say where it is running answers yes, which is what the check
+ * did before there was anything to compare against.
+ */
+export function isUIElementRefInScope(
+    refSurfaceId: string | undefined,
+    owner: { surfaceId?: string; componentId?: string } | undefined,
+): boolean {
+    if (!owner?.surfaceId) {
+        return true;
+    }
+    if (refSurfaceId === owner.surfaceId) {
+        return true;
+    }
+    return Boolean(owner.componentId) && refSurfaceId === buildUIComponentSurfaceId(owner.componentId!);
+}

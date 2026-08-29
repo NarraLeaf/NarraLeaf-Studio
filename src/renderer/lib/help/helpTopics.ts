@@ -62,6 +62,10 @@ export const HELP_TOPIC_IDS = [
     "localization",
     "brand",
     "uiSurfaces",
+    "inputActions",
+    "inputActionBindings",
+    "inputActionAnswering",
+    "inputActionsInBlueprints",
     "uiComponents",
     "blueprints",
     "uiBindings",
@@ -91,7 +95,7 @@ export const HELP_TOPIC_IDS = [
     "signing",
     "assetProtection",
     "networkAllowlist",
-    "assetOptimization",
+    "assetCompression",
     "screenEffects",
     "plugins",
 ] as const;
@@ -239,7 +243,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "mediaConversion",
         section: "content",
-        related: ["assets", "assetOptimization"],
+        related: ["assets", "assetCompression"],
     },
     {
         id: "characters",
@@ -294,7 +298,29 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "uiSurfaces",
         section: "interface",
-        related: ["uiComponents", "blueprints", "uiBindings"],
+        related: ["uiComponents", "blueprints", "inputActions"],
+    },
+    // Four topics rather than one card. The feature has four separate things an author has to know
+    // and no way to show a heading inside a topic, so each is its own and they carry each other.
+    {
+        id: "inputActions",
+        section: "interface",
+        related: ["inputActionBindings", "inputActionAnswering", "inputActionsInBlueprints"],
+    },
+    {
+        id: "inputActionBindings",
+        section: "interface",
+        related: ["inputActions", "inputActionAnswering"],
+    },
+    {
+        id: "inputActionAnswering",
+        section: "interface",
+        related: ["inputActions", "inputActionBindings", "uiSurfaces"],
+    },
+    {
+        id: "inputActionsInBlueprints",
+        section: "interface",
+        related: ["inputActions", "blueprints", "uiBindings"],
     },
     {
         id: "uiComponents",
@@ -458,7 +484,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "assetProtection",
         section: "ship",
-        related: ["build", "assetOptimization", "plugins", "networkNodes"],
+        related: ["build", "assetCompression", "plugins", "networkNodes"],
     },
     {
         id: "networkAllowlist",
@@ -466,7 +492,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
         related: ["networkNodes", "assetProtection", "plugins", "lint"],
     },
     {
-        id: "assetOptimization",
+        id: "assetCompression",
         section: "ship",
         related: ["build", "assets"],
     },
@@ -476,7 +502,7 @@ export const HELP_TOPICS: readonly HelpTopic[] = [
     {
         id: "screenEffects",
         section: "ship",
-        related: ["build", "assetOptimization", "storyCommands"],
+        related: ["build", "assetCompression", "storyCommands"],
     },
     {
         id: "plugins",
