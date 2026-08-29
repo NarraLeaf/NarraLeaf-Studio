@@ -110,6 +110,12 @@ export function createNlrGameWithGameUi(input: {
      * a bundle written before the section) leaves the engine's own 1000ms.
      */
     autoForwardDefaultPause?: number;
+    /**
+     * How much of the opening scene has to be warm before the game is shown, from `.nlproj`
+     * `app.preload` (see @shared/types/preload). Omitted leaves the engine's own default, which is
+     * the first frame.
+     */
+    preloadGate?: "firstFrame" | "scene";
 }): Game {
     const {
         width,
@@ -120,6 +126,7 @@ export function createNlrGameWithGameUi(input: {
         audioBuses,
         hostOwnsSkipKey,
         autoForwardDefaultPause,
+        preloadGate,
     } = input;
     const game = new Game({
         app: { debug: false },
@@ -136,6 +143,7 @@ export function createNlrGameWithGameUi(input: {
         // lands squarely on the path to the first painted frame. Wider batches, no waiting.
         preloadConcurrency: 8,
         preloadDelay: 0,
+        ...(preloadGate ? { preloadGate } : {}),
         ...(minStageSize ? { minWidth: minStageSize.width, minHeight: minStageSize.height } : {}),
         ...(slots.dialog ? { dialog: slots.dialog, dialogWidth: width, dialogHeight: height } : {}),
         ...(slots.notification ? { notification: slots.notification } : {}),

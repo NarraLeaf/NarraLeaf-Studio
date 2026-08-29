@@ -3681,7 +3681,9 @@ async function compileAudioAction(
             // replay case.
             return [recordStatement(
                 ctx,
-                sound.play(fadeMs),
+                // Only a row that asked for it holds the script until the clip ends; see
+                // `waitForEnd` on the payload.
+                sound.play(fadeMs, { waitForEnd: payload.waitForEnd === true }),
                 block,
                 undefined,
                 payload.assetId?.trim() || ctx.soundAssetIds.get(name),
@@ -6103,11 +6105,21 @@ async function compileCharacterAvatars(
     // A puppet carries no avatar table: it has no differentials to key one on (see
     // `bindPuppetAvatar`, which sets the character-level default instead).
     const avatarTable = summary.appearance.kind === "puppet" ? undefined : summary.appearance.avatars;
-    for (const key of Object.keys(avatarTable ?? {})) {
+    // Concurrently, and this is the one place in the compile where that is worth doing: a baked
+    // avatar is a derived project file rather than a library asset, so it is the one kind of id a
+    // host cannot resolve ahead of time - and a character with a few differentials has hundreds of
+    // keys, each of which was a full round trip to whatever answers for the host before the next
+    // was sent. The keys are independent and both maps below are keyed by this loop's own values,
+    // so the only thing the order decided was how long it took.
+    const avatarKeys = Object.keys(avatarTable ?? {});
+    const avatarUrls = await Promise.all(avatarKeys.map(async key => {
         const assetId = resolveCharacterAvatarAssetId(summary, key);
         const url = assetId
             ? await resolveAsset(ctx, assetId, "image", blockId, avatarTable?.[key]?.assetVariants)
             : null;
+        return { key, assetId, url };
+    }));
+    for (const { key, assetId, url } of avatarUrls) {
         if (url && assetId) {
             byKey.set(key, url);
             ctx.avatarAssetIdByUrl.set(url, assetId);

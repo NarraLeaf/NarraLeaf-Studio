@@ -610,6 +610,7 @@ export const story = {
         // cameraOperation と同じく、スロットの名前ではなく 2 つの語をそのまま並べる。
         mirrorState: "オン / オフ",
         waitFor: "秒またはクリック",
+        waitForEnd: "再生の終了を待つ",
         // 値のキーがそのまま名前として読めるスロット。明示的な `hint` を持たず、ここに落ちてくる。
         fade: "フェード秒",
         loop: "ループ",

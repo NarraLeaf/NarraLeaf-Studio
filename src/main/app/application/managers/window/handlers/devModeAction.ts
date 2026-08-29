@@ -123,20 +123,63 @@ export class DevModeResolveImageAssetUrlHandler extends IPCHandler<IPCEventType.
     }
 }
 
+/**
+ * Every asset the workspace can resolve, promoted for this Dev Mode window in one pass.
+ *
+ * The single-asset handler above is three IPC hops, and a story compile needs one per asset the
+ * script references - awaited one at a time, because the compiler resolves as it walks. On a medium
+ * project that was a thousand round trips and most of the time a launch took. The grants are the
+ * same grants: this window already holds a declared recursive read over the project directory, so
+ * nothing becomes reachable that was not already.
+ */
+export class DevModeResolveAllAssetUrlsHandler extends IPCHandler<IPCEventType.devModeResolveAllAssetUrls> {
+    readonly name = IPCEventType.devModeResolveAllAssetUrls;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow<WindowAppType.DevMode>,
+    ): Promise<RequestStatus<{ urls: Record<string, string> }>> {
+        const workspaceWindow = findWorkspaceWindowFor(window);
+        if (!workspaceWindow) {
+            return { success: false, error: "Workspace window not available" };
+        }
+        try {
+            const resolved = await workspaceWindow.invokeIpcRequest(IPCEventType.workspaceResolveAllAssetUrls, {});
+            if (!resolved.success) {
+                return { success: false, error: resolved.error ?? "Failed to resolve assets" };
+            }
+            const urls: Record<string, string> = {};
+            for (const [assetId, url] of Object.entries(resolved.data.urls)) {
+                urls[assetId] = await promoteDevModeAssetGrant(window, url);
+            }
+            return { success: true, data: { urls } };
+        } catch (error) {
+            return { success: false, error: error instanceof Error ? error.message : String(error) };
+        }
+    }
+}
+
+/** The workspace window showing the same project as `window`, which is where an asset id is resolved. */
+function findWorkspaceWindowFor(
+    window: AppWindow<WindowAppType.DevMode>,
+): AppWindow<WindowAppType.Workspace> | undefined {
+    const props = window.getProps();
+    return window.getApp().windowManager
+        .getWindows()
+        .find(
+            w =>
+                w.getWindowType() === WindowAppType.Workspace &&
+                !w.isDestroyed() &&
+                w.getProps().projectPath === props.projectPath,
+        ) as AppWindow<WindowAppType.Workspace> | undefined;
+}
+
 async function resolveDevModeAssetUrl(
     window: AppWindow<WindowAppType.DevMode>,
     assetId: string,
     assetType?: string,
 ): Promise<RequestStatus<{ url: string }>> {
-        const props = window.getProps();
-        const workspaceWindow = window.getApp().windowManager
-            .getWindows()
-            .find(
-                w =>
-                    w.getWindowType() === WindowAppType.Workspace &&
-                    !w.isDestroyed() &&
-                    w.getProps().projectPath === props.projectPath,
-            ) as AppWindow<WindowAppType.Workspace> | undefined;
+        const workspaceWindow = findWorkspaceWindowFor(window);
 
         if (!workspaceWindow) {
             return { success: false, error: "Workspace window not available" };
