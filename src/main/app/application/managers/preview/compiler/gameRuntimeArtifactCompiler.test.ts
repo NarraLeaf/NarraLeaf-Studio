@@ -1933,7 +1933,7 @@ describe("weather clips in the pack", () => {
             platformKeys: ["windows-x64"],
             encryptionKey: derivePackKey(crypto.randomBytes(32), crypto.randomBytes(16)),
             // No toolchain, and nowhere to put one.
-        })).rejects.toThrow(/Asset protection needs a C toolchain/);
+        })).rejects.toThrow(/Asset protection could not compile this title's content codec/);
     });
 
     /*
