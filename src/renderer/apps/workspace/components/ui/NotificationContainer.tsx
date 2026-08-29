@@ -1,110 +1,95 @@
 import React, { useEffect, useState } from "react";
+import { AlertTriangle, CheckCircle2, Info, X, XCircle, type LucideIcon } from "lucide-react";
 import { Notification, NotificationType } from "@/lib/workspace/services/ui/types";
 import { useWorkspace } from "../../context";
 import { UIService } from "@/lib/workspace/services/core/UIService";
 import { Services } from "@/lib/workspace/services/services";
 import { useTranslation } from "@/lib/i18n";
+import { Button } from "@/lib/components/elements";
+import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
+import { cn } from "@/lib/utils/cn";
+
+/** One outline glyph per type, from the icon set the rest of the workspace uses. */
+const TYPE_ICON: Record<NotificationType, LucideIcon> = {
+    [NotificationType.Info]: Info,
+    [NotificationType.Success]: CheckCircle2,
+    [NotificationType.Warning]: AlertTriangle,
+    [NotificationType.Error]: XCircle,
+};
+
+/** Info reuses `primary`; there is no separate info token (design-system §1). */
+const TYPE_ACCENT: Record<NotificationType, string> = {
+    [NotificationType.Info]: "border-l-primary text-primary",
+    [NotificationType.Success]: "border-l-success text-success",
+    [NotificationType.Warning]: "border-l-warning text-warning",
+    [NotificationType.Error]: "border-l-danger text-danger",
+};
 
 /**
- * Individual notification item
+ * Individual notification item.
+ *
+ * A notification is an overlay, so it sits on the opaque overlay surface rather
+ * than on a translucent wash of its own accent colour behind a blur: a message
+ * that may carry a build path or a compiler error is the last thing that can
+ * afford to be read against a blurred screenshot of whatever is underneath it.
+ * The type is carried by the icon and a hairline down the leading edge instead,
+ * neither of which touches the contrast of the words.
  */
 function NotificationItem({ notification, onClose }: { notification: Notification; onClose: () => void }) {
     const { t } = useTranslation();
-    // Icon based on type
-    const getIcon = () => {
-        switch (notification.type) {
-            case NotificationType.Info:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-            case NotificationType.Success:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-            case NotificationType.Warning:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                );
-            case NotificationType.Error:
-                return (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2m7-2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                );
-        }
-    };
-
-    // Color based on type
-    const getColorClasses = () => {
-        switch (notification.type) {
-            case NotificationType.Info:
-                return "bg-primary/10 border-primary/30 text-primary";
-            case NotificationType.Success:
-                return "bg-success/10 border-success/30 text-success";
-            case NotificationType.Warning:
-                return "bg-warning/10 border-warning/30 text-warning";
-            case NotificationType.Error:
-                return "bg-danger/10 border-danger/30 text-danger";
-        }
-    };
+    const Icon = TYPE_ICON[notification.type];
+    const accent = TYPE_ACCENT[notification.type];
 
     return (
         <div
-            className={`
-                flex items-start gap-3 p-4 rounded-lg border backdrop-blur-sm
-                shadow-lg min-w-[320px] max-w-[480px]
-                animate-slide-in-right
-                ${getColorClasses()}
-            `}
+            role={notification.type === NotificationType.Error ? "alert" : "status"}
+            className={cn(
+                "flex w-96 items-start gap-3 rounded-lg p-3",
+                // Per-side widths rather than `border` + `border-l-2`: the engine
+                // (narraleaf-react) ships a compiled Tailwind v4 sheet that the
+                // workspace window injects after its own, and its `.border` rule
+                // lands last and resets all four widths to 1px.
+                "border-y border-r border-l-2 border-edge bg-surface-overlay shadow-lg shadow-black/30",
+                "animate-slide-in-right",
+                accent,
+            )}
         >
-            <div className="flex-shrink-0 mt-0.5">{getIcon()}</div>
-            
-            <div className="flex-1 min-w-0">
+            <Icon className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+
+            <div className="min-w-0 flex-1">
                 <p className="nl-selectable-text text-sm font-medium text-fg">{notification.message}</p>
                 {notification.detail && (
-                    <p className="mt-1 text-xs text-fg-muted">{notification.detail}</p>
+                    <p className="nl-selectable-text mt-1 text-xs text-fg-muted">{notification.detail}</p>
                 )}
-                
+
                 {notification.actions && notification.actions.length > 0 && (
                     <div className="mt-3 flex gap-2">
                         {notification.actions.map((action, index) => (
-                            <button
+                            <Button
                                 key={index}
+                                size="sm"
+                                variant={action.primary ? "primary" : "secondary"}
                                 onClick={() => {
                                     action.onClick();
                                     onClose();
                                 }}
-                                className={`
-                                    px-3 py-1 text-xs rounded-md transition-colors
-                                    ${action.primary
-                                        ? "bg-fill-strong hover:bg-fg/30 text-fg font-medium"
-                                        : "bg-fill-subtle hover:bg-fill text-fg-muted"
-                                    }
-                                `}
                             >
                                 {action.label}
-                            </button>
+                            </Button>
                         ))}
                     </div>
                 )}
             </div>
 
             {notification.closable && (
-                <button
+                <ToolbarButton
+                    size="xs"
                     onClick={onClose}
-                    className="flex-shrink-0 p-1 rounded-md hover:bg-fill transition-colors"
+                    className="-mr-1 -mt-1 flex-shrink-0"
                     aria-label={t("common.close")}
                 >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                </button>
+                    <X className="h-3.5 w-3.5" />
+                </ToolbarButton>
             )}
         </div>
     );
@@ -143,7 +128,10 @@ export function NotificationContainer() {
     }
 
     return (
-        <div className="fixed right-4 top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50 flex flex-col gap-3 pointer-events-none">
+        <div
+            aria-live="polite"
+            className="fixed right-4 top-[calc(var(--nl-window-titlebar-height)+1rem)] z-50 flex flex-col gap-2 pointer-events-none"
+        >
             {notifications.map(notification => (
                 <div key={notification.id} className="pointer-events-auto">
                     <NotificationItem
