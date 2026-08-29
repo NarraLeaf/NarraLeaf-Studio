@@ -86,7 +86,7 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
     // default, and the right one for a surface that has not said which file it writes.
     const freeze = useFreezeGuard(characterDocumentFreezeScope());
     const { context, isInitialized } = useWorkspace();
-    const { focusedCharacterId, handleCharacterClick, setFocusToPanel } = useCharacterFocus({ context, panelId });
+    const { focusedCharacterId, handleCharacterClick, handleCharacterOpen, setFocusToPanel } = useCharacterFocus({ context, panelId });
 
     const [characters, setCharacters] = useState<Character[]>([]);
     const [groups, setGroups] = useState<CharacterGroup[]>([]);
@@ -606,9 +606,10 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
             thumbnailUrl={thumbnails[item.id]}
             isFocused={focusedCharacterId === item.id}
             onSelect={handleCharacterClick}
+            onOpen={handleCharacterOpen}
             onMenu={handleMenuOpen}
         />
-    ), [focusedCharacterId, handleCharacterClick, handleMenuOpen, thumbnails]);
+    ), [focusedCharacterId, handleCharacterClick, handleCharacterOpen, handleMenuOpen, thumbnails]);
 
     const hasNoData = !loading && filteredCharacters.length === 0 && groups.length === 0;
 
@@ -765,11 +766,13 @@ function CharacterPanelBody({ panelId }: PanelComponentProps) {
  * changes. Inlined in the list's callback, every row in the panel would repaint whenever anybody in
  * the room opened or closed any character.
  */
-function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onMenu }: {
+function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onOpen, onMenu }: {
     item: CharacterItem;
     thumbnailUrl: string | undefined;
     isFocused: boolean;
     onSelect: (character: Character) => void;
+    /** Double click: the same character, in a tab the next click will not take over. */
+    onOpen: (character: Character) => void;
     onMenu: (event: React.MouseEvent, target: MenuTarget) => void;
 }) {
     const { t } = useTranslation();
@@ -786,6 +789,7 @@ function CharacterRow({ item, thumbnailUrl, isFocused, onSelect, onMenu }: {
             )}
             data-character-id={item.id}
             onClick={() => onSelect(item.source)}
+            onDoubleClick={() => onOpen(item.source)}
         >
             <div className="w-10 h-10 rounded-md bg-fill overflow-hidden flex items-center justify-center flex-shrink-0">
                 {thumbnailUrl ? (

@@ -726,7 +726,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
     /** The set value this row answers, when it is drawn inside a set. */
     assetSetValue?: { setId: string; value: string };
 }) {
-    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers } = useAssetsPanelContext();
+    const { selectedItems, clipboard, draggedItem, handleItemSelect, handleAssetClick, handleAssetOpen, showContextMenu, handleDragStart, handleDragEnd, isFocused, isMultiSelectMode, mediaSupport, handleConvertMedia, assetClaims, assetTransfers } = useAssetsPanelContext();
     const { t } = useTranslation();
     const Icon = ASSET_TYPE_ICONS[asset.type];
     const isSelected = selectedItems.has(`asset:${asset.id}`);
@@ -762,6 +762,7 @@ function AssetItem({ asset, category, level, trailing, assetSetValue }: {
                 handleItemSelect(asset.id, false, e);
                 handleAssetClick(asset, isMultiSelectMode);
             }}
+            onDoubleClick={() => handleAssetOpen(asset)}
             onContextMenu={(e) => showContextMenu(e, category, asset, false, assetSetValue)}
             onDragStart={movable ? (e) => handleDragStart?.(e, category, asset, false) : undefined}
             onDragEnd={movable ? () => handleDragEnd?.() : undefined}

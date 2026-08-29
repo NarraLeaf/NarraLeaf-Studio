@@ -540,6 +540,8 @@ export const workspace = {
             title: "New Tab",
         },
         tabMenu: {
+            // Turns a preview tab - the italic one a group holds at most one of - into an ordinary tab.
+            keepOpen: "Keep open",
             close: "Close",
             closeOthers: "Close others",
             closeToRight: "Close tabs to the right",
