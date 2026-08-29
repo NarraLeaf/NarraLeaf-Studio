@@ -4807,3 +4807,118 @@ describe("stage object references", () => {
         });
     });
 });
+
+/**
+ * A layered character on stage when a row-precise launch starts.
+ *
+ * The snapshot files every character as one image record, and the pre-pose used to build all of them
+ * from the single url a preset character resolves to. An Image's src shape is fixed in its
+ * constructor, so a layered character came back as a flat image that can never take a tag change -
+ * and the engine's answer to a tag change aimed at one is thrown while the story is being
+ * CONSTRUCTED, before a single row runs. Launching mid-scene into any scene where a layered
+ * character walks on therefore took the whole player down with "Invalid src handler".
+ */
+describe("a layered character a row-precise launch pre-poses", () => {
+    const resolveAssetUrl = async (assetId: string): Promise<string> => `nlr://${assetId}`;
+
+    const BOB: DevModeCharacterSummary = {
+        id: "char-bob",
+        name: "Bob",
+        appearance: {
+            kind: "layered",
+            canvas: { width: 100, height: 200 },
+            axes: [{
+                id: "mood",
+                name: "Mood",
+                tags: [{ id: "happy", name: "Happy" }, { id: "sad", name: "Sad" }],
+                defaultTagId: "happy",
+            }],
+            layers: [{ id: "face", name: "Face", axisId: "mood", options: { happy: "asset-happy", sad: "asset-sad" } }],
+        },
+    };
+
+    function characterBlock(id: string, payload: Extract<StoryActionPayload, { action: "character" }>): StoryBlock {
+        return { id, kind: "action", parentId: null, childrenIds: [], payload };
+    }
+
+    /**
+     * The stack every portrait a tag row addresses was constructed with, as the engine normalized it.
+     *
+     * A launch compiles the row twice - once in the pre-posed entry scene and once in the normal
+     * scene, which stays in the story for jump-backs - so this reports both, and the pre-posed one is
+     * the one that used to come back flat.
+     */
+    function portraitSrcsFor(
+        compiled: Awaited<ReturnType<typeof compileStudioStoryToNlr>>,
+        blockId: string,
+    ): ({ defaults?: string[]; slots?: unknown } | null | undefined)[] {
+        return compiled.actionIdBindings
+            .filter(binding => binding.blockId === blockId)
+            .flatMap(binding => collectActionTree(binding.action, compiled.story))
+            .filter(action => action?.type === "image:setAppearance")
+            .map(action => action.callee?.config?.src);
+    }
+
+    const blocks = {
+        enter: characterBlock("enter", { action: "character", operation: "enter", characterId: "char-bob", tags: { mood: "happy" } }),
+        sad: characterBlock("sad", { action: "character", operation: "expression", characterId: "char-bob", tags: { mood: "sad" } }),
+        target: narrationBlock("target", "target-text", "Here"),
+        back: characterBlock("back", { action: "character", operation: "expression", characterId: "char-bob", tags: { mood: "happy" } }),
+    };
+
+    async function compileLaunch() {
+        const document = baseDocument(blocks, Object.keys(blocks));
+        return compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [BOB],
+            resolveAssetUrl,
+            launch: {
+                targetBlockId: "target",
+                snapshot: computeStoryStageSnapshot({ document, sceneId: "scene-1", targetBlockId: "target" }),
+            },
+        });
+    }
+
+    it("builds it as its whole stack, so the tail's expression rows compile", async () => {
+        const compiled = await compileLaunch();
+
+        const srcs = portraitSrcsFor(compiled, "back");
+        expect(srcs).toHaveLength(2);
+        // Neither portrait is a flat image: both can take the tag change the row asks for.
+        expect(srcs.every(src => Boolean(src?.slots))).toBe(true);
+        // The pre-posed one opens in the look the character wore at the launch row (`sad`), not in
+        // its declared default - the normal scene, played from the top, starts at the default.
+        expect(srcs.map(src => src?.defaults)).toEqual(expect.arrayContaining([["sad"], ["happy"]]));
+        expect(compiled.diagnostics.filter(diagnostic => diagnostic.level === "error")).toEqual([]);
+    });
+
+    it("constructs the story the launch produced", async () => {
+        const compiled = await compileLaunch();
+
+        // The engine's own check, and where this used to blow up: registering preloadable sources
+        // walks every `setAppearance` and rejects one aimed at an image with no tag groups.
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+
+    it("reports the row instead of building a story that cannot be constructed", async () => {
+        // The mismatch this cannot fix: an `enter` that overrode the portrait with a flat asset. The
+        // rows after it ask a single image to change tags, which is exactly what the engine refuses -
+        // so the compiler has to refuse it first, by the row, rather than hand over a broken story.
+        const document = baseDocument({
+            enter: characterBlock("enter", { action: "character", operation: "enter", characterId: "char-bob", assetId: "asset-override" }),
+            sad: blocks.sad,
+        }, ["enter", "sad"]);
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [BOB],
+            resolveAssetUrl,
+        });
+
+        expect(compiled.diagnostics).toEqual([
+            { level: "warning", blockId: "sad", message: "Bob is on stage as a single image, so its appearance tags cannot change here." },
+        ]);
+        expect(() => (compiled.story as unknown as { constructStory(): void }).constructStory()).not.toThrow();
+    });
+});
