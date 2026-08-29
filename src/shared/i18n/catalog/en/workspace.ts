@@ -615,6 +615,12 @@ export const workspace = {
             title: "Notifications",
             clearAll: "Clear",
             empty: "No messages yet",
+            // Under the toast stack when the corner cannot hold every card at once. Read with
+            // translator.tn("workspace.shell.notifications.queued", count).
+            queued: {
+                one: "{count} more waiting",
+                other: "{count} more waiting",
+            },
         },
         // The custom background dialog (opened from Settings or the command palette).
         background: {
