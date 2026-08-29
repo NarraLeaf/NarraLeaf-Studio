@@ -23,6 +23,7 @@ import { isMacPlatform } from "@/lib/app/platform";
 import { formatKeybinding } from "@/lib/workspace/services/ui/KeybindingService";
 import { Services } from "@/lib/workspace/services/services";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useBadgeImageUrl, useStoryImageAsset } from "./storyBadgeImageCache";
 import { useCharacterFace } from "./storyCharacterFace";
 import { resolveStoryMotionPreviewTarget } from "../../story-motion/storyMotionPreviewTarget";
 import type { Character } from "@/lib/workspace/services/character/Character";
@@ -99,6 +100,7 @@ import { EMPTY_EXPRESSION_CONDITION } from "./ConditionEditor";
 import { BlockOverview } from "./storyQuickParams";
 import { actionTrigger, ACTION_TRIGGER, insertChooserType, isActionCommandLine, toCanonicalCommandLine } from "./commandTrigger";
 import { StoryCommandLineText, useStoryCommandLineContext } from "./StoryCommandLineView";
+import { storyConditionSummary, type StoryVariableNameLookups } from "@/lib/story/storyRowProjection";
 import { useStoryRowActions } from "./storyRowActions";
 import { StoryRowClaimMark, useStoryRowClaim } from "./storyRowClaims";
 import { diagnoseRow, type StoryRowDiagnosticCode } from "./storyRowDiagnostics";
@@ -1546,53 +1548,21 @@ function RowNesting({ depth, nextDepth, opensBlock, stopAt, markBottom, highligh
  * same tint and the same bare stroke glyph, then its words on the body edge.
  */
 
-type StoryT = ReturnType<typeof useTranslation>["t"];
-
-function conditionOperatorLabel(operator: string, t: StoryT): string {
-    switch (operator) {
-        case "isTrue": return t("story.condition.opIsOn");
-        case "isFalse": return t("story.condition.opIsOff");
-        case "equals": return t("story.condition.opEquals");
-        case "notEquals": return t("story.condition.opNotEquals");
-        case "exists": return t("story.condition.opExists");
-        default: return operator;
-    }
-}
-
-/** Compact, user-safe one-line summary of a branch condition (never exposes ids). */
-function conditionSummary(condition: unknown, scene: StoryScene, document: StoryDocument, t: StoryT): string {
-    const value = condition as
-        | { kind: "variable"; target: { scope: string; variableId?: string; storageKey?: string }; operator: string; value?: unknown }
-        | { kind: "blueprint"; blueprintId: string }
-        | { kind: "expression"; expression: { source: string } }
-        | undefined;
-    if (!value) {
-        return t("story.condition.summarySet");
-    }
-    if (value.kind === "blueprint") {
-        return t("story.condition.summaryGraph");
-    }
-    if (value.kind === "expression") {
-        return value.expression?.source || t("story.condition.summaryExpression");
-    }
-    const target = value.target;
-    // v6: the variableId is a declaration row's id - read the name off the row itself.
-    const declarationName = (variableId: string | undefined): string | null => {
-        if (!variableId) return null;
-        const inScene = scene.blocks[variableId];
-        if (inScene?.kind === "declaration") return inScene.payload.name;
-        for (const candidate of Object.values(document.scenes)) {
-            const block = candidate.blocks[variableId];
-            if (block?.kind === "declaration") return block.payload.name;
-        }
-        return null;
-    };
-    const name = target.scope === "persistent"
-        ? t("story.condition.fallbackPersistent")
-        : declarationName(target.variableId) ?? t("story.condition.fallbackVariable");
-    const operator = conditionOperatorLabel(value.operator, t);
-    const suffix = value.operator === "equals" || value.operator === "notEquals" ? ` ${String(value.value ?? "")}` : "";
-    return `${name} ${operator}${suffix}`.trim();
+/**
+ * The lookups {@link storyConditionSummary} needs to name the variable a condition tests.
+ *
+ * `projectVariableName` is the half a chip cannot get from the document: saved and persistent
+ * variables are declared in the project registry, not as story rows, so without it every one of them
+ * printed its scope word — a branch on a persistent flag read "persistent equals 1", which names
+ * nothing the author ever typed. It comes from the same command-line context a typed line resolves
+ * against, so the chip and the line say the same name.
+ */
+function useConditionSummaryLookups(scene: StoryScene, document: StoryDocument): StoryVariableNameLookups {
+    const { projectVariableName } = useStoryCommandLineContext();
+    return useMemo(
+        () => ({ scene, scenes: document.scenes, projectVariableName }),
+        [scene, document.scenes, projectVariableName],
+    );
 }
 
 /** Editable condition chip on a branch header — opens the inline condition popover. */
@@ -1602,7 +1572,7 @@ function ConditionChip(props: {
     document: StoryDocument;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
+    const lookups = useConditionSummaryLookups(props.scene, props.document);
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
     const block = props.block;
     if (block.kind !== "control" || block.payload.control !== "conditionBranch") {
@@ -1622,7 +1592,7 @@ function ConditionChip(props: {
                 onClick={openPopover}
                 onMouseDown={event => event.stopPropagation()}
             >
-                {conditionSummary(payload.condition, props.scene, props.document, t)}
+                {storyConditionSummary(payload.condition, lookups)}
             </button>
             {anchor ? (
                 <ConditionPopover
@@ -1656,7 +1626,7 @@ function RepeatUntilChip(props: {
     document: StoryDocument;
     onUpdatePayload: (payload: StoryBlock["payload"]) => void;
 }) {
-    const { t } = useTranslation();
+    const lookups = useConditionSummaryLookups(props.scene, props.document);
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
     const block = props.block;
     if (block.kind !== "control" || block.payload.control !== "repeat" || block.payload.until === undefined) {
@@ -1675,7 +1645,7 @@ function RepeatUntilChip(props: {
                 }}
                 onMouseDown={event => event.stopPropagation()}
             >
-                {conditionSummary(payload.until, props.scene, props.document, t)}
+                {storyConditionSummary(payload.until, lookups)}
             </button>
             {anchor ? (
                 <ConditionPopover
@@ -3669,13 +3639,21 @@ const BACKGROUND_LABEL_MAX_WIDTH = `calc(100% - ${BACKGROUND_STRIP_WIDTH} - 24px
  * Under reduce-motion the image is dropped for a plain colour block. That setting is the closest
  * thing Studio has to "this machine would rather not", and a photograph decoded per background row
  * is the single most expensive thing the row list asks of a weak machine.
+ *
+ * Through the shared badge cache rather than `useAssetObjectUrl`, which mints a blob of its own per
+ * mounted row and revokes it on unmount. In a windowed list that is the worst possible arrangement
+ * for the one row kind carrying a full-size photograph: a scene that opens on the same background
+ * three times read the file three times, and every scroll past a `/bg` row read it again. The cache
+ * shares one URL across the rows picturing the same image - so the decode is shared too - and keeps
+ * it for a while after the last row unmounts, which is what a scroll comes back to.
  */
 function BackgroundRowArtwork({ payload, selected, active }: {
     payload: Extract<StoryActionPayload, { action: "setBackground" }>;
     selected: boolean;
     active: boolean;
 }) {
-    const { url } = useAssetObjectUrl(payload.assetId ?? null);
+    const asset = useStoryImageAsset(payload.assetId ?? null);
+    const url = useBadgeImageUrl(asset ? { kind: "project", asset } : null);
     const reduceMotion = useReduceMotion();
     const color = !payload.assetId && payload.color ? payload.color : null;
     if (!url && !color) {

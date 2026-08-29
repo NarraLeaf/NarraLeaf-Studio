@@ -105,7 +105,7 @@ import {
     storyVariableRefKey,
 } from "@shared/types/story";
 import type { StoryExpressionEnv } from "@shared/utils/storyExpressionEval";
-import { evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
+import { compareStoryCondition, evaluateStoryExpression, isTruthy, strictEquals, toDisplayString } from "@shared/utils/storyExpressionEval";
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import type { PersistentVariableRuntimeTable, SavedVariableRuntimeTable } from "@shared/types/variables/registry";
 import {
@@ -5866,12 +5866,25 @@ function conditionToLambda(ctx: SceneCompileContext, condition: StoryConditionRe
             return persistent.equals(storageKey, condition.value as any);
         case "notEquals":
             return persistent.notEquals(storageKey, condition.value as any);
+        case "greaterThan":
+        case "greaterOrEqual":
+        case "lessThan":
+        case "lessOrEqual": {
+            // `evaluate` rather than a dedicated Persistent method: the engine has none for ordering,
+            // and routing the four through the expression evaluator's own rule is what keeps a
+            // dropdown threshold and a typed `gold >= 100` from disagreeing on the same values.
+            const operator = condition.operator;
+            const target = condition.value as StoryLiteralValue | undefined;
+            return persistent.evaluate(storageKey, (current: any) =>
+                compareStoryCondition(operator, current as StoryLiteralValue | undefined, target));
+        }
         case "exists":
             return persistent.isNotNull(storageKey);
         default:
             return falseCondition;
     }
 }
+
 
 /** App-level persistent condition: a runtime closure reading the shared host snapshot. */
 function persistentCondition(
@@ -5904,6 +5917,11 @@ function persistentCondition(
                 return equals(current, value);
             case "notEquals":
                 return !equals(current, value);
+            case "greaterThan":
+            case "greaterOrEqual":
+            case "lessThan":
+            case "lessOrEqual":
+                return compareStoryCondition(operator, current, value);
             case "exists":
                 return current !== null && current !== undefined;
             default:

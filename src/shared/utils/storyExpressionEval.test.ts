@@ -1,7 +1,7 @@
 import type { StoryLiteralValue } from "@shared/types/story";
 import type { StoryExpr } from "@shared/types/story/expression";
 import { describe, expect, it } from "vitest";
-import { evaluateStoryExpression, strictEquals } from "./storyExpressionEval";
+import { compareStoryCondition, evaluateStoryExpression, strictEquals } from "./storyExpressionEval";
 
 /**
  * `strictEquals` is the one equality rule shared by `/if` expressions and the compiler's persistent
@@ -74,5 +74,32 @@ describe("collection nodes", () => {
         expect(pushed).not.toBe(original);
         expect(original).toEqual([nested]);
         expect(pushed[0]).toBe(nested);
+    });
+});
+
+/**
+ * The picker's four ordered operators run through the same rule `<` / `<=` / `>` / `>=` do, because
+ * three evaluators answer them - the compiler's scene/saved path, its persistent path, and the
+ * preview snapshot - and a threshold that means one thing in the preview and another in the shipped
+ * game is worse than one that is simply wrong.
+ */
+describe("compareStoryCondition", () => {
+    it("orders numbers", () => {
+        expect(compareStoryCondition("greaterThan", 5, 3)).toBe(true);
+        expect(compareStoryCondition("greaterThan", 3, 3)).toBe(false);
+        expect(compareStoryCondition("greaterOrEqual", 3, 3)).toBe(true);
+        expect(compareStoryCondition("lessThan", 3, 5)).toBe(true);
+        expect(compareStoryCondition("lessOrEqual", 5, 5)).toBe(true);
+    });
+
+    it("orders strings lexicographically, as the expression operators do", () => {
+        expect(compareStoryCondition("lessThan", "apple", "banana")).toBe(true);
+        expect(compareStoryCondition("greaterThan", "apple", "banana")).toBe(false);
+    });
+
+    it("takes no branch when either side has never been stored", () => {
+        expect(compareStoryCondition("greaterThan", undefined, 0)).toBe(false);
+        expect(compareStoryCondition("lessThan", undefined, 0)).toBe(false);
+        expect(compareStoryCondition("greaterOrEqual", 1, null)).toBe(false);
     });
 });

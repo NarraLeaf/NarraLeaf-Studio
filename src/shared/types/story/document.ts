@@ -214,7 +214,15 @@ export const STORY_LIBRARY_INDEX_SCHEMA_VERSION = 2 as const;
 // *play*: it would ignore the field, compile a plain jump, and run the called scene as the end of
 // the story rather than as a detour - so every row after the jump, in every scene that made one,
 // would silently never run. Refusing the document is the point.
-export const STORY_DOCUMENT_SCHEMA_VERSION = 23 as const;
+// v24 lets a variable condition compare rather than only match: `greaterThan`, `greaterOrEqual`,
+// `lessThan` and `lessOrEqual` join the operators a `{kind:"variable"}` condition can carry. The
+// picker could previously say only "equals" and "does not equal", so every threshold - the most
+// common test a branch makes - had to be written in the expression tier instead.
+// No migration: a v23 document cannot carry one of the four. The bump is not optional, and the
+// reason is what a v23 Studio would *play*: every operator switch in the compiler, the preview and
+// the script projections ends in a `default` that evaluates false, so a threshold branch would
+// silently never be taken. Refusing the document is the point.
+export const STORY_DOCUMENT_SCHEMA_VERSION = 24 as const;
 /** Story animation index/asset schema version (independent of the story document version). */
 export const STORY_ANIMATION_SCHEMA_VERSION = 1 as const;
 
@@ -1454,7 +1462,22 @@ export type StoryConditionRef =
     | {
           kind: "variable";
           target: StoryVariableRef;
-          operator: "isTrue" | "isFalse" | "equals" | "notEquals" | "exists";
+          /**
+           * The comparisons the picker offers, in the order it lists them. The four ordered ones
+           * hold whatever `<`, `<=`, `>` and `>=` mean in an expression - the same {@link
+           * compareStoryValues} rule - so a branch built from dropdowns and one typed as
+           * `gold >= 100` test the value the same way.
+           */
+          operator:
+              | "isTrue"
+              | "isFalse"
+              | "equals"
+              | "notEquals"
+              | "greaterThan"
+              | "greaterOrEqual"
+              | "lessThan"
+              | "lessOrEqual"
+              | "exists";
           value?: StoryLiteralValue;
       }
     | {

@@ -52,6 +52,29 @@ type ConditionKind = "expression" | "variable" | "blueprint";
 
 type VariableCondition = Extract<StoryConditionRef, { kind: "variable" }>;
 
+type ConditionOperator = VariableCondition["operator"];
+
+/**
+ * The expression each comparing operator is the picker's spelling of.
+ *
+ * One table rather than a chain of ternaries because it answers both questions the tiers ask: which
+ * operators take a value at all (the keys), and what the same test reads as once it is written out
+ * (the values, used when the author switches to the expression tier). `isTrue`, `isFalse` and
+ * `exists` are absent because none of them compares against anything.
+ */
+const CONDITION_OPERATOR_SYMBOLS: Partial<Record<ConditionOperator, string>> = {
+    equals: "==",
+    notEquals: "!=",
+    greaterThan: ">",
+    greaterOrEqual: ">=",
+    lessThan: "<",
+    lessOrEqual: "<=",
+};
+
+const CONDITION_OPERATORS_WITH_VALUE = new Set<ConditionOperator>(
+    Object.keys(CONDITION_OPERATOR_SYMBOLS) as ConditionOperator[],
+);
+
 const DEFAULT_VARIABLE_CONDITION: VariableCondition = {
     kind: "variable",
     target: { scope: "scene", variableId: "" },
@@ -175,6 +198,12 @@ export function ConditionEditor(props: {
         { value: "isFalse", label: t("story.condition.opIsOff") },
         { value: "equals", label: t("story.condition.opEquals") },
         { value: "notEquals", label: t("story.condition.opNotEquals") },
+        // The four thresholds sit between the two matches and "is set", which is the order they are
+        // reached for in practice and keeps the two value-taking groups together.
+        { value: "greaterThan", label: t("story.condition.opGreaterThan") },
+        { value: "greaterOrEqual", label: t("story.condition.opGreaterOrEqual") },
+        { value: "lessThan", label: t("story.condition.opLessThan") },
+        { value: "lessOrEqual", label: t("story.condition.opLessOrEqual") },
         { value: "exists", label: t("story.condition.opExists") },
     ], [t]);
     const appTagService = useMemo(
@@ -286,7 +315,7 @@ export function ConditionEditor(props: {
         ? allVariables.map(option => ({ value: option.key, label: option.name, secondaryLabel: option.valueType }))
         : [{ value: "", label: t("story.interpolation.noVariables") }];
 
-    const showValueField = variableValue.operator === "equals" || variableValue.operator === "notEquals";
+    const showValueField = CONDITION_OPERATORS_WITH_VALUE.has(variableValue.operator);
 
     return (
         // The one place an author writes an expression by hand, wherever it is hosted from - the
@@ -418,12 +447,12 @@ function expressionFromVariableCondition(
         return EMPTY_EXPRESSION_CONDITION;
     }
     const literal = formatStoryLiteral(condition.value ?? null);
+    const comparison = CONDITION_OPERATOR_SYMBOLS[condition.operator];
     const source =
         condition.operator === "isTrue" ? name
             : condition.operator === "isFalse" ? `!${name}`
-                : condition.operator === "equals" ? `${name} == ${literal}`
-                    : condition.operator === "notEquals" ? `${name} != ${literal}`
-                        : `${name} != null`;
+                : comparison ? `${name} ${comparison} ${literal}`
+                    : `${name} != null`;
     return { kind: "expression", expression: parseStoryExpression(source, scope).expression };
 }
 
