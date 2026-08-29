@@ -109,6 +109,8 @@ interface AssetsPanelContextType {
      */
     publishRowOrder: (keys: readonly string[]) => void;
     handleAssetClick: (asset: Asset, isMultiSelectMode: boolean) => void;
+    /** Double click: the same asset, in a tab the next click will not take over. */
+    handleAssetOpen: (asset: Asset) => void;
     handleGroupFocus: (groupId: string) => void;
     /** Puts a set in the properties panel, which is where its axes are edited. */
     handleAssetSetSelect: (entry: ResolvedAssetSet) => void;

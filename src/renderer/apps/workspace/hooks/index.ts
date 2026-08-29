@@ -32,6 +32,7 @@ export { useFocus, useIsFocused, type UseFocusResult } from "./useFocus";
 
 // Undo/redo: bind an editor to its stack in HistoryService
 export { useHistoryScope } from "./useHistoryScope";
+export { usePreviewTabPromotion } from "./usePreviewTabPromotion";
 
 // Keybinding hooks and utilities
 export {
