@@ -18,6 +18,16 @@ export type BlueprintOpenOptions = {
      * entries rather than decided by each of them.
      */
     inOwnWindow?: boolean;
+    /**
+     * Whether the tab is a preview - one the next blueprint opened in that pane takes over.
+     *
+     * Defaults to true, because every way into a blueprint is a piece of navigation: a logic card
+     * in the inspector, a diagnostic, a pin on another graph. Reading three of them in a row should
+     * cost one tab, and the moment the author edits one it stops being a preview by itself.
+     * Callers that open a blueprint they have just *made* pass false - creating it was the intent
+     * a preview tab is waiting for.
+     */
+    preview?: boolean;
 };
 
 /**
@@ -34,7 +44,7 @@ export function useOpenBlueprintTarget() {
                 return;
             }
 
-            const tab = createBlueprintEntryEditorTab(target);
+            const tab = { ...createBlueprintEntryEditorTab(target), preview: options?.preview ?? true };
 
             // Already open in a window of its own: navigate THAT copy. Opening a tab as well
             // would leave two editors on one blueprint, and the one the author was sent to - the
