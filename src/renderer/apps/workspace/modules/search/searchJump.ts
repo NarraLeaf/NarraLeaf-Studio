@@ -170,7 +170,7 @@ export function jumpToSearchTarget(target: SearchJumpTarget, deps: SearchJumpDep
                 return false;
             }
             if (asset.type === AssetType.Image || asset.type === AssetType.Audio) {
-                openAssetPreviewTabsInEditor(context, [asset]);
+                openAssetPreviewTabsInEditor(context, [asset], { preview: true });
                 return true;
             }
             // No preview editor for this type - reveal it selected in the assets panel instead.
