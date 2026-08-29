@@ -88,6 +88,7 @@ function Harness({ publishRowOrder = () => undefined, assetTransfers = {} }: {
         handleItemSelect: () => undefined,
         publishRowOrder,
         handleAssetClick: () => undefined,
+        handleAssetOpen: () => undefined,
         handleGroupFocus: () => undefined,
         showContextMenu: () => undefined,
         assetSets: createEmptyAssetCategoryRecord<ResolvedAssetSet>(),

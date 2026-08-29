@@ -67,6 +67,10 @@ export function useBlueprintEventBindingState(data: UIInspectorData): {
                 elementId: element.id,
                 focusEventId: snapshot.blueprint?.program.kind === "graph" ? uiEventName : undefined,
                 title: `Blueprint · ${element.name ?? element.type}`,
+            }, {
+                // Wiring an event makes the graph if it is not there yet, so this click is the
+                // author settling in rather than looking around: it earns a tab of its own.
+                preview: false,
             });
         },
         [
