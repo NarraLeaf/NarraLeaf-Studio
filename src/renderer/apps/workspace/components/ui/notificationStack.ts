@@ -42,3 +42,23 @@ export function visibleCardCount(heights: readonly number[], gap: number, availa
     }
     return count;
 }
+
+/**
+ * The y offset of each card, in px, given the leading `shown` of them are on screen.
+ *
+ * The stack places its cards itself rather than letting a flex column do it: a column re-lays out
+ * the instant a card is removed, which snaps the ones below into their new place, whereas an offset
+ * is something a card can transition to. The queued cards past `shown` all report the offset just
+ * past the visible stack - they are not painted, so the value only has to be somewhere sane.
+ */
+export function cardOffsets(heights: readonly number[], gap: number, shown: number): number[] {
+    let cursor = 0;
+    return heights.map((height, index) => {
+        if (index >= shown) {
+            return cursor;
+        }
+        const offset = cursor;
+        cursor += height + gap;
+        return offset;
+    });
+}
