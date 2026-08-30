@@ -24,6 +24,29 @@ It reads the same registry and the same graph validator the editor uses, so ther
 catalogue that can fall behind. **Do not grep the node definitions to find a node type, and do not
 drive the canvas over CDP to build a blueprint** - write a `.bp` file, check it, apply it.
 
+### Interfaces — `project/app/ui.js` (`ui.md`)
+
+The same problem one layer up: seventeen widget types whose props are only stated as defaults inside
+their modules, and an `editor/ui/uidoc.json` that is a flat map of generated ids nobody can edit by
+hand. Same answer:
+
+```sh
+node project/app/ui.js widget nl.list                          # props, bindable props, events, parts
+node project/app/ui.js usage nl.list --prop itemsBinding       # how the shipped skeleton does it
+node project/app/ui.js surfaces --project <dir>                # owner= lines for blueprint.js
+node project/app/ui.js show   --project <dir> --out title.ui
+node project/app/ui.js check  title.ui --project <dir>
+node project/app/ui.js apply  title.ui --project <dir> --write
+```
+
+It reads the widget module registry, the shared widget-logic table and the value-binding table the
+runtime consults, so there is no second catalogue either. **Do not hand-edit `uidoc.json`, and do not
+drive the canvas over CDP to build a page** - write a `.ui` file, check it, apply it.
+
+`ui` owns `uidoc.json` and `blueprint` owns `uigraphs.json`; the seam between them is the element id,
+which a `.ui` file names for itself. `ui check` is also the thing that catches a value binding
+pointing at a blueprint some other element owns - a prop that silently shows nothing.
+
 ### A running dev app — `project/app/debug.js` (`debug.md`), `project/app/cdp.js` (`cdp.md`)
 
 `debug.js` pulls Studio's own log panel and the DevTools console of any window over HTTP, with no

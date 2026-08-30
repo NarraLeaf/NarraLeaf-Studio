@@ -231,6 +231,22 @@ const SUPPORTED_VALUE_TARGETS: SupportedValueTarget[] = [
     { elementType: UI_SWITCH_ELEMENT_TYPE, propPath: "checked", valueType: "boolean" },
 ];
 
+/**
+ * Which prop of which widget type a value blueprint may drive, for tools that describe the seam
+ * rather than run it.
+ *
+ * Exported so the interface CLI's widget documentation answers "what can be bound here" from the
+ * table the runtime actually consults. The `normalize` and `write` halves stay private: they are
+ * how a value lands, which is nobody else's business.
+ */
+export function listBindableValueTargets(): { elementType: string; propPath: string; valueType: UIElementValueBindingValueType }[] {
+    return SUPPORTED_VALUE_TARGETS.map(target => ({
+        elementType: target.elementType,
+        propPath: target.propPath,
+        valueType: target.valueType,
+    }));
+}
+
 export class BlueprintValueRuntimeStore {
     private readonly entries = new Map<string, BindingRuntimeEntry>();
     private disposed = false;
