@@ -18,6 +18,24 @@ node project/app/ui.js --help
 The first run after any change under `src/` rebuilds a bundle into
 `.dev/cache/ui-cli` (about a second). Runs after that take about half.
 
+A flag the command does not declare stops the run rather than being ignored, and
+so does a `--slot` or `--surface-kind` value that is not one of the ones there
+are.
+
+A `.ui` named without a directory - `title.ui` rather than `./title.ui` - lives in
+`.ignored/` at the root of this checkout, which git ignores. It is the same
+scratch directory `.bp` files go to, because the two tools are used on the same
+task. So the editing loop is three commands and one short name:
+
+```sh
+node project/app/ui.js show  --project <dir> --surface Title --out title.ui
+node project/app/ui.js check title.ui --project <dir>
+node project/app/ui.js apply title.ui --project <dir> --write
+```
+
+`--out` with no filename picks one from what is being dumped, so
+`show --surface "Save" --out` writes `.ignored/save.ui`.
+
 ## Finding a widget
 
 ```sh
@@ -38,8 +56,7 @@ nl.switch
   name       Switch
   palette    overflow, any surface
   children   structural parts only - an author may not add children
-  blueprint  private blueprint supported (owner=widgetMain); the player operates it, so panel
-             gestures stand down over it
+  blueprint  private blueprint supported (owner=widgetMain); the player operates it, so panel gestures stand down over it
 
   parts (built with the widget; do not delete or re-parent)
     Switch Track  [nl.container]  slot=track
@@ -53,6 +70,57 @@ nl.switch
 
   bindable props (a value blueprint may drive these)
     bind checked = blueprint <id>      # boolean
+
+  events (head nodes a private blueprint on this widget may carry)
+    init                     lifecycle   blueprint.event.head.init
+    flush                    lifecycle   blueprint.event.head.flush
+    beforeSurfaceExit        lifecycle   blueprint.event.head.beforeSurfaceExit
+    afterSurfaceEnter        lifecycle   blueprint.event.head.afterSurfaceEnter
+    unmount                  lifecycle   blueprint.event.head.unmount
+    changed                  interaction blueprint.event.head.switchChanged
+    turnedOn                 interaction blueprint.event.head.switchTurnedOn
+    turnedOff                interaction blueprint.event.head.switchTurnedOff
+    mouseClick               interaction blueprint.event.head.mouseClick
+    mouseDoubleClick         interaction blueprint.event.head.mouseDoubleClick
+    mouseEnter               interaction blueprint.event.head.mouseEnter
+    mouseLeave               interaction blueprint.event.head.mouseLeave
+    mouseMove                interaction blueprint.event.head.mouseMove
+    mouseDown                interaction blueprint.event.head.mouseDown
+    mouseUp                  interaction blueprint.event.head.mouseUp
+    mouseWheel               interaction blueprint.event.head.mouseWheel
+    rightClick               interaction blueprint.event.head.rightClick
+    keyDown                  interaction blueprint.event.head.keyDown, blueprint.event.head.anyKeyDown
+    keyUp                    interaction blueprint.event.head.keyUp, blueprint.event.head.anyKeyUp
+    focus                    interaction blueprint.event.head.focus
+    blur                     interaction blueprint.event.head.blur
+    onAnyBroadcast           interaction blueprint.event.head.onAnyBroadcast
+    onBroadcast              interaction blueprint.event.head.onBroadcast
+    windowFullscreenChanged  interaction blueprint.event.head.fullscreenChanged
+
+  commands (Call Widget Command)
+    setVisible  Set visible
+    setEnabled  Set enabled
+    setVariant  Set variant
+    setChecked  Set checked
+    toggle  Toggle
+
+  readable state (Get Widget State)
+    checked  Checked
+    visible  Visible
+    enabled  Enabled
+
+  writable props (Set Widget Prop)
+    checked  Checked
+    interactionDisabled  Interaction disabled
+
+  editor states
+    (rest)  Off
+    on  On
+
+  notes
+    - The track and the thumb are elements the widget built and pointed at through `trackElementId` /
+      `thumbElementId`. The on/off look belongs on their appearance variants, and the thumb's travel
+      on the `on` variant's `transformOffsetX`.
 ```
 
 The prop table is what a **new** widget of that type carries, not a closed set: a
@@ -86,7 +154,12 @@ which is the fastest way to learn what a value like `itemsBinding` or
 
 ```sh
 node project/app/ui.js surfaces --project D:/path/to/project
+node project/app/ui.js surfaces quit --project D:/path/to/project   # only what matches
 ```
+
+A project of any size has hundreds of elements, and the one being looked for
+usually has a name already. The search word matches a surface, a component, an
+element path or an element type; the last line says how much was left out.
 
 ```
 Title  appSurface  1920x1080
@@ -223,7 +296,7 @@ Without `--project`, the second layer does not run at all and says so.
 node project/app/ui.js show --project D:/path/to/project
 node project/app/ui.js show --project D:/path/to/project --surface Title
 node project/app/ui.js show --project D:/path/to/project --component "Save slot"
-node project/app/ui.js show --project D:/path/to/project --out title.ui
+node project/app/ui.js show --project D:/path/to/project --surface Title --out title.ui
 ```
 
 `show` prints in the same format `apply` reads, ids and props included, so the

@@ -39,14 +39,16 @@ hand. Same answer:
 node project/app/ui.js widget nl.list                          # props, bindable props, events, parts
 node project/app/ui.js usage nl.list --prop itemsBinding       # how the shipped skeleton does it
 node project/app/ui.js surfaces --project <dir>                # owner= lines for blueprint.js
-node project/app/ui.js show   --project <dir> --out title.ui
+node project/app/ui.js show   --project <dir> --surface Title --out title.ui
 node project/app/ui.js check  title.ui --project <dir>
 node project/app/ui.js apply  title.ui --project <dir> --write
 ```
 
 It reads the widget module registry, the shared widget-logic table and the value-binding table the
 runtime consults, so there is no second catalogue either. **Do not hand-edit `uidoc.json`, and do not
-drive the canvas over CDP to build a page** - write a `.ui` file, check it, apply it.
+drive the canvas over CDP to build a page** - write a `.ui` file, check it, apply it. Start from
+`show` when changing something that exists: a block describes a whole surface, and applying it drops
+the elements it does not mention. `.ui` files use the same `.ignored/` scratch directory as `.bp`.
 
 `ui` owns `uidoc.json` and `blueprint` owns `uigraphs.json`; the seam between them is the element id,
 which a `.ui` file names for itself. `ui check` is also the thing that catches a value binding

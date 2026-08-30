@@ -119,8 +119,11 @@ async function build(stamp) {
             process.exit(2);
         }
     }
-    // `usage` reads the shipped skeleton template out of the repository, and the repository is where
-    // this file is - not where the caller happened to be standing.
+    // Where the checkout is. `usage` reads the shipped skeleton template out of it, and a bare
+    // filename resolves to the scratch directory inside it - neither is where the caller happened to
+    // be standing. The blueprint tool's variable is set too, because the scratch-directory
+    // resolution these commands share is its code.
     process.env.NLS_UI_CLI_ROOT = rootDir;
+    process.env.NLS_BLUEPRINT_REPO_ROOT = rootDir;
     require(bundlePath);
 })();

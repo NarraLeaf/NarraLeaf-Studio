@@ -20,6 +20,7 @@ import {
     type UIElement,
 } from "@shared/types/ui-editor/document";
 import { BUILTIN_UI_STRUCTS } from "@shared/types/ui-editor/builtinStructs";
+import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import type { UIStructDef } from "@shared/types/ui-editor/struct";
 import { getWidgetLogicApi, type WidgetLogicApi } from "@shared/types/ui-editor/widgetLogic";
 import { getWidgetTypeParent } from "@shared/types/ui-editor/widgetInheritance";
@@ -27,6 +28,7 @@ import { BuiltinWidgetModules } from "@/lib/ui-editor/widget-modules/builtin";
 import { DEFAULT_INSERT_PALETTE_CONFIG, type InsertPaletteConfigEntry } from "@/lib/ui-editor/widget-modules/insertPalette";
 import type { UIWidgetModule } from "@/lib/ui-editor/widget-modules/types";
 import { listBindableValueTargets } from "@/lib/ui-editor/blueprint-runtime/BlueprintValueRuntimeStore";
+import { nearest } from "./text";
 
 export type WidgetPropDoc = {
     key: string;
@@ -293,35 +295,15 @@ function readEditorStates(module: UIWidgetModule): { id: string | null; name: st
     }
 }
 
-/**
- * Widget types spelled close to `type`, for a message that ends the search rather than starting one.
- *
- * Edit distance over the whole id: `nl.buton` is one edit from `nl.button` and nothing else, which a
- * substring search cannot say because the typo is inside the word.
- */
-export function nearestWidgetTypes(type: string, limit = 5): string[] {
-    return BuiltinWidgetModules
-        .map(module => ({ type: module.type, distance: editDistance(type.toLowerCase(), module.type.toLowerCase()) }))
-        .filter(candidate => candidate.distance <= Math.max(2, Math.floor(candidate.type.length / 3)))
-        .sort((a, b) => a.distance - b.distance)
-        .slice(0, limit)
-        .map(candidate => candidate.type);
-}
+/** The surface kinds a widget type can be restricted to, which is what `--surface-kind` takes. */
+export const WIDGET_SURFACE_KINDS = ["appSurface", "stageSurface"] as const;
 
-function editDistance(a: string, b: string): number {
-    let previous = Array.from({ length: b.length + 1 }, (_, i) => i);
-    for (let i = 1; i <= a.length; i += 1) {
-        const current = [i];
-        for (let j = 1; j <= b.length; j += 1) {
-            current[j] = Math.min(
-                previous[j] + 1,
-                current[j - 1] + 1,
-                previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-            );
-        }
-        previous = current;
-    }
-    return previous[b.length];
+/** The player slots a stage surface mounts into, which is what `--slot` takes. */
+export const WIDGET_STAGE_SLOTS = UI_STAGE_SLOT_IDS;
+
+/** Widget types spelled close to `type`, for a message that ends the search rather than starting one. */
+export function nearestWidgetTypes(type: string, limit = 5): string[] {
+    return nearest(type, BuiltinWidgetModules.map(module => module.type), limit);
 }
 
 export type WidgetQuery = {

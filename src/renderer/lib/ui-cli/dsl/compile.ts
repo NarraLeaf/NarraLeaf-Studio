@@ -18,6 +18,7 @@
 import type { UIInputActionDef } from "@shared/types/ui-editor/inputAction";
 import type { UIStructDef, UIStructFieldType } from "@shared/types/ui-editor/struct";
 import { UI_STRUCT_FIELD_TYPES } from "@shared/types/ui-editor/struct";
+import { UI_STAGE_SLOT_IDS } from "@shared/types/ui-editor/stageSlots";
 import {
     getUIStructuralChildSlot,
     uiElementTypeAcceptsChildren,
@@ -61,8 +62,6 @@ export type UiCompileOptions = {
     /** The document being edited, which is what an unstated id is matched against. */
     existing?: UIDocument | null;
 };
-
-const STAGE_SLOT_IDS: readonly UIStageSlotId[] = ["onStage", "dialog", "notification", "choice", "nvl"];
 
 export function compileUiFile(file: UiFile, options: UiCompileOptions = {}): UiCompileResult {
     const context = new CompileContext(options.existing ?? null);
@@ -182,13 +181,13 @@ class CompileContext {
                 statement.root.line,
             );
         }
-        if (statement.surfaceKind === "stageSurface" && !STAGE_SLOT_IDS.includes(statement.slotId as UIStageSlotId)) {
+        if (statement.surfaceKind === "stageSurface" && !UI_STAGE_SLOT_IDS.includes(statement.slotId as UIStageSlotId)) {
             this.report(
                 "error",
                 "ui.unknown_slot",
                 `"${statement.slotId ?? ""}" is not a stage slot.`,
                 statement.line,
-                `Slots: ${STAGE_SLOT_IDS.join(", ")}.`,
+                `Slots: ${UI_STAGE_SLOT_IDS.join(", ")}.`,
             );
         }
 

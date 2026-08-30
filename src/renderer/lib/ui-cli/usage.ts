@@ -38,11 +38,31 @@ export type UsageSite = {
 };
 
 /**
- * The template that ships with Studio, which is what "how is this normally done" means here.
+ * The checkout this tool was run from.
  *
- * The repository root is passed in by the wrapper rather than guessed from `process.cwd()`, so the
- * command works from anywhere.
+ * The wrapper knows it and says so, because the working directory does not have to be inside the
+ * repository - the CLI is often run from a project directory. The walk up is for tests, which import
+ * these functions without going through the wrapper.
  */
+export function repoRoot(): string {
+    const told = process.env.NLS_UI_CLI_ROOT;
+    if (told && fs.existsSync(told)) {
+        return path.resolve(told);
+    }
+    let dir = process.cwd();
+    for (;;) {
+        if (fs.existsSync(path.join(dir, "package.json"))) {
+            return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            return process.cwd();
+        }
+        dir = parent;
+    }
+}
+
+/** The template that ships with Studio, which is what "how is this normally done" means here. */
 export function readSkeletonDocument(repoRoot: string): UIDocument | null {
     const filePath = path.join(repoRoot, SKELETON_UI_DOCUMENT_RELATIVE_PATH);
     if (!fs.existsSync(filePath)) {

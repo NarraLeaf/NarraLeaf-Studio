@@ -26,6 +26,7 @@ import { createHash } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { BlueprintDocument, BlueprintOwnerRef } from "@shared/types/blueprint/document";
+import { resolveBlueprintFile } from "../blueprint-cli/project";
 import {
     UI_DOCUMENT_SCHEMA_VERSION,
     type UIComponentDefinition,
@@ -47,6 +48,27 @@ export const UI_GRAPHS_RELATIVE_PATH = path.join("editor", "ui", "uigraphs.json"
 export const MAIN_SURFACE_ID = "narraleaf-studio:main-surface";
 
 export class ProjectIoError extends Error {}
+
+/**
+ * A `.ui` path as given on the command line.
+ *
+ * A bare filename means the scratch directory - the same `.ignored/` at the root of the checkout
+ * that `.bp` files go to, because the two tools are used on the same task and their working files
+ * belong in the same place. The resolution is the blueprint tool's, which is about where a file
+ * lives rather than about what is in it.
+ */
+export function resolveUiFile(input: string, options: { forWriting: boolean }): string {
+    return resolveBlueprintFile(input, options);
+}
+
+/** A surface or component name as a filename: `Save slot` -> `save-slot.ui`. */
+export function scratchFileNameFor(name: string): string {
+    const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return `${slug || "interface"}.ui`;
+}
 
 export type UiDocumentFile = {
     filePath: string;
