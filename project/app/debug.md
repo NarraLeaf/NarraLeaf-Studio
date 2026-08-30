@@ -4,7 +4,7 @@
 a CDP session and read screenshots to find out what the app is doing.
 
 The dev app starts a debug HTTP server automatically. It exposes **two** log
-sources:
+sources and one record that is not a log:
 
 - **Console service** (`/console`) — the application-level log panel at the
   bottom of the workspace (channels: `build`, `blueprint`, `story`, …). This is
@@ -13,6 +13,10 @@ sources:
   window (`console.log`/`warn`/`error`, uncaught exceptions). Captured in the
   main process from the moment each window is created, so you get history, not
   just what happened after you connected.
+- **Anomalies** (`/anomalies`) — every failure the workspace survived rather
+  than reported. Not a log: it is what the recovery panel is built on, one row
+  per distinct failure, kept whether or not anyone was watching when it
+  happened.
 
 ## Availability
 
@@ -65,6 +69,19 @@ Both at once:
 node project/app/debug.js logs --limit 50
 ```
 
+Ask what the workspace survived rather than reported:
+
+```sh
+node project/app/debug.js anomalies
+```
+
+This is the one to reach for when a project opens and is simply *wrong* — the
+assets are gone, a scene is empty, a plugin is missing — with nothing in either
+log to say why. Those load paths mostly do not throw: a corrupt asset shard is
+set aside and replaced with `{}`, a story that will not parse is left unloaded,
+a plugin that throws is skipped. Each decision is locally reasonable and none of
+them is visible. They are all recorded here, with the raw error and the file.
+
 Raw JSON (for scripting):
 
 ```sh
@@ -102,6 +119,11 @@ All return JSON. `GET` only.
 - `GET /devtools?window=&level=&since=&afterSeq=&limit=` — DevTools console
   buffer. Returns `{ entries, latestSeq, windows }`. Poll with
   `afterSeq=<latestSeq>` to stream new lines.
+- `GET /anomalies` — everything the workspace survived. Returns
+  `{ available, data: { anomalies } }`, each with `source`, `operationKey`,
+  `path`, `severity` (`fatal` stopped startup, `degraded` did not), `raw` and
+  `at`. Same `{ available: false, reason }` as `/console` when there is no
+  workspace window, no bridge, or the call threw.
 - `GET /logs?...` — `{ console, devtools }` in one response.
 
 ## Module use
@@ -116,29 +138,29 @@ const build = await getConsole({ channel: 'build', limit: 20 });
 console.log(build.data.entries);
 ```
 
-## What the bridge has and HTTP does not
+The anomaly log is a module-level array with no service in front of it — see
+`src/renderer/lib/workspace/recovery/anomalyLog.ts` for why — so the bridge is
+the only way to read it from outside the window, and `getAnomalies()` is the
+only way to read the bridge without a CDP session:
 
-`window.__NLS_STUDIO_DEBUG__` is at version 2 and carries one thing no endpoint
-serves and no command asks for: `anomalies()`, everything the workspace survived
-rather than reported. It is what recovery mode is built on, it has no service in
-front of it, and this is the only way to read it from outside - so reaching it
-means evaluating in the workspace window:
-
-```sh
-node project/app/cdp.js eval "JSON.stringify(window.__NLS_STUDIO_DEBUG__.anomalies())"
+```js
+const { getAnomalies } = require('./project/app/debug');
+const { available, data } = await getAnomalies();
+console.log(available ? data.anomalies : 'no workspace window');
 ```
-
-The bridge's `console.channels()` is reachable the same way, though `/console`
-already returns the same list as `data.channels`.
 
 ## How it works
 
 - The **DevTools console** is captured in the main process via each window's
   `console-message` event — not via `webContents.debugger`, so it never fights
   the `--cdp` remote-debugging port or a hand-opened DevTools window.
-- The **Console service** is read from the workspace renderer through a dev-only
-  bridge (`window.__NLS_STUDIO_DEBUG__`) that the main process evaluates with
-  `executeJavaScript`. The bridge is compiled in only for dev builds.
+- The **Console service** and the **anomalies** are read from the workspace
+  renderer through a dev-only bridge (`window.__NLS_STUDIO_DEBUG__`) that the
+  main process evaluates with `executeJavaScript`. The bridge is compiled in
+  only for dev builds, and it exists only in the workspace window — the Console
+  service and the anomaly log exist nowhere else. Both endpoints answer
+  `{ available: false, reason }` rather than an error status while no workspace
+  window is open, which is the ordinary state during startup.
 
 For lower-level page control (reload, evaluate arbitrary JS, screenshots), use
 the CDP helper — see [cdp.md](./cdp.md).

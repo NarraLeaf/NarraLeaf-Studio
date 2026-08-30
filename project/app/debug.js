@@ -74,6 +74,7 @@ const getWindows = (options) => debugRequest('/windows', {}, options);
 const getConsole = (params, options) => debugRequest('/console', params, options);
 const getDevtools = (params, options) => debugRequest('/devtools', params, options);
 const getLogs = (params, options) => debugRequest('/logs', params, options);
+const getAnomalies = (options) => debugRequest('/anomalies', {}, options);
 
 function pad(value, width) {
     const text = String(value ?? '');
@@ -114,6 +115,28 @@ function printDevtools(result) {
     }
 }
 
+function printAnomalies(snapshot) {
+    if (!snapshot || snapshot.available === false) {
+        console.log(`[anomalies] unavailable: ${snapshot ? snapshot.reason : 'no response'}`);
+        return;
+    }
+    const anomalies = (snapshot.data ?? snapshot).anomalies ?? [];
+    if (!anomalies.length) {
+        console.log('[anomalies] the workspace reports nothing survived');
+        return;
+    }
+    for (const anomaly of anomalies) {
+        const time = anomaly.at ? new Date(anomaly.at).toISOString().slice(11, 19) : '';
+        const where = anomaly.path ? ` ${anomaly.path}` : '';
+        console.log(`${time}  ${pad(anomaly.severity, 8)} ${pad(anomaly.source, 12)} ${anomaly.operationKey}${where}`);
+        // The raw error is the point of the record - it is what the author would paste into an
+        // issue - so it is printed whole rather than trimmed to the width of the line above it.
+        for (const line of String(anomaly.raw ?? '').split(/\r?\n/)) {
+            console.log(`    ${line}`);
+        }
+    }
+}
+
 function printWindows(payload) {
     for (const window of payload.windows ?? []) {
         console.log(`[${window.windowType}] id=${window.windowId} "${window.title}"`);
@@ -135,6 +158,7 @@ function printHelp() {
   node project/app/debug.js console  [options]
   node project/app/debug.js devtools [options]
   node project/app/debug.js logs     [options]   # console + devtools together
+  node project/app/debug.js anomalies            # what the workspace survived rather than reported
 
 With no command at all, health is what runs.
 
@@ -260,6 +284,9 @@ async function runCli(argv = process.argv.slice(2)) {
         case 'windows':
             emit(await getWindows(options), printWindows);
             return;
+        case 'anomalies':
+            emit(await getAnomalies(options), printAnomalies);
+            return;
         case 'console':
             emit(await getConsole(params, options), printConsoleSnapshot);
             return;
@@ -294,6 +321,7 @@ module.exports = {
     debugRequest,
     getHealth,
     getWindows,
+    getAnomalies,
     getConsole,
     getDevtools,
     getLogs,

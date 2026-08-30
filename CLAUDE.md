@@ -80,7 +80,30 @@ under tsc, green under vitest, and breaks every game build, preview and test run
 Some failures are the environment rather than the change: a handful of `src/main` and `src/runtime`
 tests need POSIX paths, elevation or an `unzip` on PATH and fail on Windows regardless. Compare
 against a clean checkout before calling one a regression, and run it the same way both times - a few
-of them only fail in a full run.
+of them only fail in a full run. A test that times out at exactly 5000ms is usually the load rather
+than the change; the ones that walk the whole source tree do it under a full run and pass on their
+own.
+
+**None of the `yarn` lines work from a git worktree of this repository.** Yarn walks up to the main
+checkout, finds a package the worktree is not a declared workspace of, and exits on a usage error
+having run nothing - `The nearest package directory ... doesn't seem to be part of the project
+declared in ...`. It exits non-zero, so it cannot be mistaken for a pass, but the gate has not run.
+The scripts are thin, so run what they run:
+
+```sh
+for p in shared main renderer runtime builtin-plugins; do npx tsc --project src/$p/tsconfig.json --noEmit; done
+npx vitest run
+node scripts/style-ratchet.mjs                        # already direct, works anywhere
+node project/build/build-{runtime,main,apps,builtin-plugins}.js --dev   # what `yarn build:dev` runs
+```
+
+Dependencies come from the main checkout rather than from an install of their own: link
+`node_modules` in (a junction on Windows, a symlink elsewhere) and every tool above reads it
+happily. **Do not run `yarn install` while a dev session is running anywhere on the machine.** The
+link step deletes and re-lays packages, it cannot replace an `.exe` that a running esbuild or
+Electron holds open, and it aborts there - leaving a half-installed tree that every worktree on the
+machine is sharing. The symptom is a build that succeeded five minutes ago failing on
+`Could not resolve` for a package nobody touched.
 
 ## Conventions
 
