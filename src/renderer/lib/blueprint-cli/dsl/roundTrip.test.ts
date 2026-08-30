@@ -2,10 +2,10 @@
  * The text format against every blueprint the shipped skeleton holds.
  *
  * A format that can only express what its own examples use is a format that will lose someone's
- * graph the first time it meets a real one. The skeleton is 390 blueprints and 1400 nodes of real
- * authored work - variadic pins, localization keys, asset ids, dotted node ids - so printing all of
- * them and compiling the result back is the only claim worth making about round-tripping: not that
- * it works, but that it works on everything that exists.
+ * graph the first time it meets a real one. The skeleton is a couple of hundred blueprints and six
+ * hundred-odd nodes of real authored work - variadic pins, localization keys, asset ids, dotted node
+ * ids - so printing all of them and compiling the result back is the only claim worth making about
+ * round-tripping: not that it works, but that it works on everything that exists.
  *
  * Comments in English per project convention.
  */

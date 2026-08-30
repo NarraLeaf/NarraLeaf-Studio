@@ -389,3 +389,81 @@ export function readVariableRegistry(projectDir: string): ProjectVariables {
         return { persistent: [], saved: [] };
     }
 }
+
+// ---------------------------------------------------------------------------
+// Scratch space
+// ---------------------------------------------------------------------------
+
+/**
+ * Where a `.bp` file goes when nobody said where.
+ *
+ * Editing a blueprint means dumping it, changing two lines and applying it back, and the file in the
+ * middle is worth nothing once the change has landed. Left to invent a path for it, each run picks a
+ * different one and the checkout collects `quit.bp`, `quit2.bp`, `tmp.bp` at its root. One directory,
+ * ignored by git, is the whole answer: `show --out quit.bp` writes there and `apply quit.bp` reads
+ * from there, so the loop is three commands that all name the same short filename.
+ */
+export const SCRATCH_DIR_NAME = ".ignored";
+
+/**
+ * The checkout this tool was run from.
+ *
+ * The wrapper knows it and says so, because the working directory does not have to be inside the
+ * repository - an agent may run the CLI from a project directory. The walk up is for tests, which
+ * import these functions without going through the wrapper.
+ */
+function repoRoot(): string {
+    const told = process.env.NLS_BLUEPRINT_REPO_ROOT;
+    if (told && fs.existsSync(told)) {
+        return path.resolve(told);
+    }
+    let dir = process.cwd();
+    for (;;) {
+        if (fs.existsSync(path.join(dir, "package.json"))) {
+            return dir;
+        }
+        const parent = path.dirname(dir);
+        if (parent === dir) {
+            return process.cwd();
+        }
+        dir = parent;
+    }
+}
+
+/** The scratch directory itself, whether or not it exists yet. */
+export function scratchDir(): string {
+    return path.join(repoRoot(), SCRATCH_DIR_NAME);
+}
+
+/**
+ * A file path as given on the command line.
+ *
+ * A bare filename - no slash, no drive - means the scratch directory. Anything that names a
+ * directory, `./x.bp` included, is taken literally, so a path that looks like a path always is one.
+ * Reading falls back to the working directory when the scratch copy is not there, because a file
+ * someone already had is not worth an error.
+ */
+export function resolveBlueprintFile(input: string, options: { forWriting: boolean }): string {
+    if (path.isAbsolute(input) || /[\/]/.test(input)) {
+        return path.resolve(input);
+    }
+    const inScratch = path.join(scratchDir(), input);
+    if (options.forWriting) {
+        fs.mkdirSync(scratchDir(), { recursive: true });
+        return inScratch;
+    }
+    if (fs.existsSync(inScratch)) {
+        return inScratch;
+    }
+    const inCwd = path.resolve(input);
+    return fs.existsSync(inCwd) ? inCwd : inScratch;
+}
+
+/** A blueprint name as a filename: `Quit confirm` -> `quit-confirm.bp`. */
+export function scratchFileNameFor(name: string): string {
+    const slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+    return `${slug || "blueprint"}.bp`;
+}

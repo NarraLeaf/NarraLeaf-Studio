@@ -7,7 +7,7 @@
 
 ### Blueprints — `project/app/blueprint.js` (`blueprint.md`)
 
-The blueprint catalogue is 600-odd node types spread over fifty files under
+The blueprint catalogue is 600-odd node types spread over sixty-odd files under
 `src/renderer/lib/ui-editor/blueprint-nodes/built-in`, and the graphs themselves are stored as JSON
 that nobody can write by hand with confidence. Both problems have one answer:
 
@@ -15,14 +15,19 @@ that nobody can write by hand with confidence. Both problems have one answer:
 node project/app/blueprint.js node blueprint.sound.play        # pins, fields, scope, graph kinds
 node project/app/blueprint.js nodes save slot --owner widgetMain
 node project/app/blueprint.js targets --project <dir>          # surfaces and elements, as owner= fields
-node project/app/blueprint.js show   --project <dir> --out x.bp
+node project/app/blueprint.js show   --project <dir> --blueprint "Quit" --out x.bp
 node project/app/blueprint.js check  x.bp --project <dir>
 node project/app/blueprint.js apply  x.bp --project <dir> --write
 ```
 
 It reads the same registry and the same graph validator the editor uses, so there is no second
 catalogue that can fall behind. **Do not grep the node definitions to find a node type, and do not
-drive the canvas over CDP to build a blueprint** - write a `.bp` file, check it, apply it.
+drive the canvas over CDP to build a blueprint** - write a `.bp` file, check it, apply it. Start
+from `show` when changing one that exists: a file describes a whole blueprint, and applying it drops
+the layers it does not mention.
+
+A `.bp` named without a directory lives in `.ignored/` at the root of this checkout, which git
+ignores - that is where scratch files for these tools go, rather than the repository root.
 
 ### A running dev app — `project/app/debug.js` (`debug.md`), `project/app/cdp.js` (`cdp.md`)
 

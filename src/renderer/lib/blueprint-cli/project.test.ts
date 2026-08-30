@@ -15,11 +15,16 @@
  * Comments in English per project convention.
  */
 
+import * as fs from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
     elementTypeResolver,
     readUiDocumentTargets,
+    resolveBlueprintFile,
+    SCRATCH_DIR_NAME,
+    scratchFileNameFor,
     widgetElementResolver,
     widgetElementTypeResolver,
 } from "./project";
@@ -94,5 +99,47 @@ describe("the resolvers a component blueprint depends on", () => {
         const resolve = elementTypeResolver(targets);
 
         expect(resolve(componentElement!.id)).toBe(componentElement!.type);
+    });
+});
+
+describe("where a .bp file goes", () => {
+    const root = path.join(os.tmpdir(), "nls-blueprint-scratch-test");
+
+    beforeEach(() => {
+        process.env.NLS_BLUEPRINT_REPO_ROOT = root;
+        fs.mkdirSync(root, { recursive: true });
+    });
+
+    afterEach(() => {
+        delete process.env.NLS_BLUEPRINT_REPO_ROOT;
+        fs.rmSync(root, { recursive: true, force: true });
+    });
+
+    it("puts a bare filename in the scratch directory, and creates it", () => {
+        const resolved = resolveBlueprintFile("quit.bp", { forWriting: true });
+        expect(resolved).toBe(path.join(root, SCRATCH_DIR_NAME, "quit.bp"));
+        expect(fs.existsSync(path.join(root, SCRATCH_DIR_NAME))).toBe(true);
+    });
+
+    it("leaves anything that looks like a path alone", () => {
+        expect(resolveBlueprintFile("./quit.bp", { forWriting: true })).toBe(path.resolve("./quit.bp"));
+        expect(resolveBlueprintFile("sub/quit.bp", { forWriting: false })).toBe(path.resolve("sub/quit.bp"));
+    });
+
+    it("reads a bare filename from the working directory when the scratch copy is not there", () => {
+        const here = path.join(root, "here.bp");
+        fs.writeFileSync(here, "", "utf8");
+        const previous = process.cwd();
+        process.chdir(root);
+        try {
+            expect(resolveBlueprintFile("here.bp", { forWriting: false })).toBe(here);
+        } finally {
+            process.chdir(previous);
+        }
+    });
+
+    it("names the file after the blueprint when nobody named it", () => {
+        expect(scratchFileNameFor("Quit confirm")).toBe("quit-confirm.bp");
+        expect(scratchFileNameFor("  ")).toBe("blueprint.bp");
     });
 });
