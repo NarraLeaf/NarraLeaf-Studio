@@ -2,8 +2,11 @@
 
 ## Ask the tools before you grep
 
-`project/app/` holds command-line tools that answer questions a search answers badly. Each has a
-`.md` beside it. Read that file before working in the area it covers.
+`project/app/` holds command-line tools that answer questions a search answers badly. The four that
+answer questions - `blueprint.js`, `ui.js`, `debug.js`, `cdp.js` - each have a `.md` beside them;
+read that file before working in the area it covers. The rest (`dev-electron.js`, `stop-dev.js`,
+`pack-electron.js`) are what `yarn dev` and the packaging scripts run, and are documented by their
+own header comments.
 
 ### Blueprints — `project/app/blueprint.js` (`blueprint.md`)
 

@@ -1,3 +1,25 @@
+/*
+ * The dev session: build everything once, watch the sources, and run Electron against the result.
+ *
+ * This is what `yarn dev` starts, and it is two processes rather than one - this server, which
+ * holds the reload port and rebuilds on every change, and the Electron app it spawns. Either can
+ * outlive the other, which is why `stop-dev.js` finds both by command line instead of walking the
+ * process tree.
+ *
+ * Everything after the script name is forwarded to Electron, so the app's own flags are passed
+ * here: `yarn dev` is this script with `--cdp --cdp-port=9222`. Two things are added in front of
+ * them - `--dev`, and `--dev-reload-port` carrying the port this server bound - so the app connects
+ * to the session that launched it rather than to whichever one holds the default.
+ *
+ * The reload port is the session lock, and `NLS_DEV_RELOAD_PORT` moves it. A second checkout - a
+ * worktree on a branch - needs its own, or it exits with "port already in use"; it also needs its
+ * own `--cdp-port`, which is not a lock and will silently attach tooling to the first app instead.
+ *
+ * Usage:
+ *   node project/app/dev-electron.js --cdp --cdp-port=9222
+ *   NLS_DEV_RELOAD_PORT=5599 node project/app/dev-electron.js --cdp --cdp-port=9377
+ */
+
 const path = require('path');
 const fs = require('fs');
 const { spawn } = require('child_process');

@@ -18,11 +18,33 @@ yarn dev
 - Host: `127.0.0.1`
 - Port: `9222`
 - Target query: `workspace`
+- Command, when none is given: `reload`
 - Reload ignores cache by default
 - Reload waits for `Page.loadEventFired`, then waits another `250ms`
+- That wait gives up after `10000ms` (`--timeout-ms`) and **carries on anyway**,
+  so `ready: complete` after a reload means the page answered, not that the load
+  event ever fired
 
 The target query matches target `title`, `url`, `type`, or `id`. If no match is
 found, the helper falls back to the first CDP target.
+
+`eval` runs with `userGesture: true`, which is what lets an evaluated click reach
+the APIs a browser only allows a real gesture to touch.
+
+### The port decides which app you are driving, not the checkout
+
+`9222` belongs to whoever bound it first. A second Studio started from another
+checkout or another worktree **starts normally and simply gets no
+remote-debugging endpoint of its own** - so `/json/list` keeps answering, with
+the first app's pages, and
+every command here quietly drives that one instead. Nothing in the output says
+so; the reload lands in a window on the wrong screen.
+
+Before believing an answer from a machine that has more than one Studio on it,
+check who holds the port (`netstat -ano`, then match the PID to a process) and
+give your own instance a port nobody wants:
+`node project/app/dev-electron.js --cdp --cdp-port=9377`, then `--port 9377`
+here.
 
 ## CLI
 
@@ -56,10 +78,13 @@ Useful options:
 
 ```sh
 node project/app/cdp.js reload --target workspace --port 9222
-node project/app/cdp.js reload --settle-ms 1000
+node project/app/cdp.js reload --settle-ms 1000     # also spelled --wait-ms / --wait
+node project/app/cdp.js reload --timeout-ms 30000
 node project/app/cdp.js reload --cache
 node project/app/cdp.js eval "document.title" --target launcher
 ```
+
+Every option that takes a value also accepts it with an `=`: `--target=launcher`.
 
 Run `node project/app/cdp.js --help` for the full option list.
 

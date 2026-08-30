@@ -29,10 +29,14 @@ sources:
 - Port: `9223` (override with the `NLS_DEBUG_PORT` env var)
 - DevTools target: `workspace` (match by window type/title substring or id)
 - Default limit: `200` most-recent entries
+- Buffer: `2000` DevTools lines per window, `12` windows including recently-closed
+  ones. A window that has been talking for an hour has lost its oldest lines, and
+  the thirteenth window drops the least recently seen one entirely.
 
 ## CLI
 
-Check the server and list open windows:
+Check the server and list open windows (`health` is also what runs when no
+command is given):
 
 ```sh
 node project/app/debug.js health
@@ -75,7 +79,7 @@ Run `node project/app/debug.js --help` for the full option list.
 | ---------------- | ---------- | -------------------------------------------------------------------- |
 | `--channel <id>` | console    | Restrict to one Console channel (`build`, `blueprint`, `story`, …)   |
 | `--window <q>`   | devtools   | Match window by type/title substring or webContents id              |
-| `--level <lvl>`  | both       | Minimum severity. Console: `verbose\|info\|success\|warning\|error`. DevTools: `debug\|info\|warning\|error` |
+| `--level <lvl>`  | both       | Minimum severity. Console: `verbose\|info\|success\|warning\|error`. DevTools: `debug\|info\|warning\|error`. A word belonging to the other source (`verbose` on devtools, `debug` on console) is refused rather than quietly meaning no filter, which is what both ends do with a level they cannot grade. `success` ranks with `info`, so filtering to it returns both |
 | `--source <s>`   | console    | Substring match on the entry source                                  |
 | `--since <ms>`   | both       | Only entries newer than this epoch-ms timestamp                      |
 | `--after-seq <n>`| devtools   | Only entries after this `seq` cursor — use `latestSeq` to tail       |
@@ -87,7 +91,7 @@ Run `node project/app/debug.js --help` for the full option list.
 
 All return JSON. `GET` only.
 
-- `GET /health` — server status, version, and the live window list.
+- `GET /health` — server status, version, the endpoint list, and the live windows.
 - `GET /windows` — live windows plus buffered (including recently-closed) windows.
   Each live window carries `visible`, which is not the same as existing: a window that
   has not finished its first render, and a launcher held back for a project being opened,
@@ -111,6 +115,21 @@ console.log(errors.entries);
 const build = await getConsole({ channel: 'build', limit: 20 });
 console.log(build.data.entries);
 ```
+
+## What the bridge has and HTTP does not
+
+`window.__NLS_STUDIO_DEBUG__` is at version 2 and carries one thing no endpoint
+serves and no command asks for: `anomalies()`, everything the workspace survived
+rather than reported. It is what recovery mode is built on, it has no service in
+front of it, and this is the only way to read it from outside - so reaching it
+means evaluating in the workspace window:
+
+```sh
+node project/app/cdp.js eval "JSON.stringify(window.__NLS_STUDIO_DEBUG__.anomalies())"
+```
+
+The bridge's `console.channels()` is reachable the same way, though `/console`
+already returns the same list as `data.channels`.
 
 ## How it works
 

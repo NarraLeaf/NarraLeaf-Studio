@@ -23,6 +23,15 @@
 const DEFAULT_DEBUG_HOST = '127.0.0.1';
 const DEFAULT_DEBUG_PORT = Number(process.env.NLS_DEBUG_PORT) || 9223;
 
+/*
+ * The two log sources grade severity with different words, and neither end complains about a word
+ * it does not know: the server drops an unrecognised devtools level and the renderer bridge ranks
+ * an unrecognised console level below everything. So `devtools --level verbose` used to mean "no
+ * filter at all" and looked exactly like a window that had nothing above verbose to say.
+ */
+const CONSOLE_LEVELS = ['verbose', 'info', 'success', 'warning', 'error'];
+const DEVTOOLS_LEVELS = ['debug', 'info', 'warning', 'error'];
+
 function baseUrl(options) {
     return `http://${options.host}:${options.port}`;
 }
@@ -127,6 +136,8 @@ function printHelp() {
   node project/app/debug.js devtools [options]
   node project/app/debug.js logs     [options]   # console + devtools together
 
+With no command at all, health is what runs.
+
 Filters:
   --channel <id>     Console only: restrict to a channel (build, blueprint, story, …)
   --window <query>   DevTools only: match window by type/title substring or id. Default: workspace
@@ -199,11 +210,34 @@ function parseArgs(argv) {
     return { command: positional.shift() ?? 'health', options, params };
 }
 
+/** Refuse a severity the source being asked cannot grade. */
+function assertLevel(command, level) {
+    if (!level) {
+        return;
+    }
+    const both = CONSOLE_LEVELS.filter(item => DEVTOOLS_LEVELS.includes(item));
+    const allowed = command === 'console'
+        ? CONSOLE_LEVELS
+        : command === 'devtools'
+            ? DEVTOOLS_LEVELS
+            : [...new Set([...CONSOLE_LEVELS, ...DEVTOOLS_LEVELS])];
+    if (!allowed.includes(level)) {
+        throw new Error(`--level ${level} is not one of: ${allowed.join(', ')}`);
+    }
+    if (command === 'logs' && !both.includes(level)) {
+        const side = CONSOLE_LEVELS.includes(level) ? 'the Console service' : 'the DevTools console';
+        console.error(`[debug] --level ${level} is only graded by ${side}; the other source comes back unfiltered.`);
+    }
+}
+
 async function runCli(argv = process.argv.slice(2)) {
     const { command, options, params } = parseArgs(argv);
     if (options.help) {
         printHelp();
         return;
+    }
+    if (command === 'console' || command === 'devtools' || command === 'logs') {
+        assertLevel(command, params.level);
     }
 
     const emit = (value, formatter) => {
