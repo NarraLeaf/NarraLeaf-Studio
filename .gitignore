@@ -172,6 +172,11 @@ packages/plugin-types/.gen/
 # Spike output, kept out of the repository: the conclusions live in docs/version-control.md
 spike*.out
 
+# Scratch space for the command-line tools under project/app. `blueprint show --out quit.bp`
+# writes here and `blueprint apply quit.bp` reads from here, so editing a blueprint does not mean
+# inventing a path for the file in the middle of it and does not leave one at the repository root.
+/.ignored/
+
 # Working notes for in-progress features: planning cards, acceptance reports and
 # their screenshots. They are scratch material for whoever is building a feature,
 # they go stale the moment it ships, and the screenshots alone ran to tens of
