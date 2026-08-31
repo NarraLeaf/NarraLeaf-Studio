@@ -6,6 +6,7 @@ import { useTranslation } from "@/lib/i18n";
 import { cn } from "@/lib/utils/cn";
 import { ToolbarButton } from "@/lib/components/elements/ToolbarButton";
 import { CONTROL_SIZE_CLASS } from "@/lib/components/elements/controlSize";
+import { TooltipGroup } from "@/lib/tooltip";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { Services } from "@/lib/workspace/services/services";
 import { SearchService } from "@/lib/workspace/services/search/SearchService";
@@ -287,6 +288,15 @@ export function SearchPanel() {
         setExpandedGroups(current => (current.includes(group) ? current : [...current, group]));
     }, []);
 
+    /**
+     * Flipping a matching switch must not take the caret out of the field the switch belongs to -
+     * the author is mid-query, and pressing a button inside the field would otherwise blur it.
+     * Keyboard focus is unaffected; only the pointer's default is suppressed.
+     */
+    const keepQueryFocus = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+        event.preventDefault();
+    }, []);
+
     // Expanding re-queries with a higher cap for that group.
     useEffect(() => {
         if (expandedGroups.length > 0) {
@@ -319,67 +329,84 @@ export function SearchPanel() {
     return (
         <div className="flex h-full flex-col">
             <div className="shrink-0 space-y-1.5 px-3 pt-3 pb-2">
-                <div className="flex items-center gap-1.5">
+                {/*
+                 * The panel is 240px wide at its narrowest and 320 by default, so the switches are
+                 * on the dense scale and the strip carrying them wraps under the field rather than
+                 * eating into it: below about 290px of panel the field takes a line of its own.
+                 * The field states its own floor - what a query has to stay readable in - and the
+                 * strip is what gives way, because a switch you set once is worth less room than
+                 * the text you are typing.
+                 */}
+                <div className="flex flex-wrap items-center gap-1.5">
                     <SearchBox
                         value={query}
                         onChange={setQuery}
                         inputRef={queryInputRef}
+                        size="sm"
                         placeholder={t("workspace.shell.search.placeholder")}
-                        className="min-w-0 flex-1"
+                        className="min-w-[7.5rem] flex-1"
                     />
-                    <ToolbarButton
-                        size="md"
-                        onClick={() => setCaseSensitive(value => !value)}
-                        data-tip={t("workspace.shell.search.caseSensitive")}
-                        aria-label={t("workspace.shell.search.caseSensitive")}
-                        aria-pressed={caseSensitive}
-                        active={caseSensitive}
-                        className={cn(caseSensitive && ACTIVE_TOGGLE_CLASS)}
-                    >
-                        <CaseSensitive className="h-3.5 w-3.5" />
-                    </ToolbarButton>
-                    <ToolbarButton
-                        size="md"
-                        onClick={() => setWholeWord(value => !value)}
-                        data-tip={t("workspace.shell.search.wholeWord")}
-                        aria-label={t("workspace.shell.search.wholeWord")}
-                        aria-pressed={wholeWord}
-                        active={wholeWord}
-                        className={cn(wholeWord && ACTIVE_TOGGLE_CLASS)}
-                    >
-                        <WholeWord className="h-3.5 w-3.5" />
-                    </ToolbarButton>
-                    <ToolbarButton
-                        size="md"
-                        onClick={() => setUseRegex(value => !value)}
-                        data-tip={t("workspace.shell.search.regex")}
-                        aria-label={t("workspace.shell.search.regex")}
-                        aria-pressed={useRegex}
-                        active={useRegex}
-                        className={cn(useRegex && ACTIVE_TOGGLE_CLASS)}
-                    >
-                        <Regex className="h-3.5 w-3.5" />
-                    </ToolbarButton>
-                    {/*
-                     * Last in the row, and wearing the same on/off treatment as the three matching
-                     * switches: it is a switch too, and the row is where an author already looks for
-                     * "what is this box doing".
-                     */}
-                    <ToolbarButton
-                        size="md"
-                        onClick={() => setShowReplace(value => !value)}
-                        data-tip={t("workspace.shell.search.toggleReplace")}
-                        aria-label={t("workspace.shell.search.toggleReplace")}
-                        aria-pressed={showReplace}
-                        aria-expanded={showReplace}
-                        active={showReplace}
-                        className={cn(showReplace && ACTIVE_TOGGLE_CLASS)}
-                    >
-                        <Replace className="h-3.5 w-3.5" />
-                    </ToolbarButton>
+                    <TooltipGroup className="flex shrink-0 items-center gap-1.5">
+                        <ToolbarButton
+                            size="sm"
+                            onClick={() => setCaseSensitive(value => !value)}
+                            onMouseDown={keepQueryFocus}
+                            data-tip={t("workspace.shell.search.caseSensitive")}
+                            aria-label={t("workspace.shell.search.caseSensitive")}
+                            aria-pressed={caseSensitive}
+                            active={caseSensitive}
+                            className={cn(caseSensitive && ACTIVE_TOGGLE_CLASS)}
+                        >
+                            <CaseSensitive className="h-3.5 w-3.5" />
+                        </ToolbarButton>
+                        <ToolbarButton
+                            size="sm"
+                            onClick={() => setWholeWord(value => !value)}
+                            onMouseDown={keepQueryFocus}
+                            data-tip={t("workspace.shell.search.wholeWord")}
+                            aria-label={t("workspace.shell.search.wholeWord")}
+                            aria-pressed={wholeWord}
+                            active={wholeWord}
+                            className={cn(wholeWord && ACTIVE_TOGGLE_CLASS)}
+                        >
+                            <WholeWord className="h-3.5 w-3.5" />
+                        </ToolbarButton>
+                        <ToolbarButton
+                            size="sm"
+                            onClick={() => setUseRegex(value => !value)}
+                            onMouseDown={keepQueryFocus}
+                            data-tip={t("workspace.shell.search.regex")}
+                            aria-label={t("workspace.shell.search.regex")}
+                            aria-pressed={useRegex}
+                            active={useRegex}
+                            className={cn(useRegex && ACTIVE_TOGGLE_CLASS)}
+                        >
+                            <Regex className="h-3.5 w-3.5" />
+                        </ToolbarButton>
+                        {/*
+                         * The rule separates the three switches that decide what matches from the
+                         * one that decides what the panel shows, which is the difference an author
+                         * cannot read off four identical squares.
+                         */}
+                        <span className="mx-0.5 h-4 w-px bg-edge" aria-hidden />
+                        <ToolbarButton
+                            size="sm"
+                            onClick={() => setShowReplace(value => !value)}
+                            data-tip={t("workspace.shell.search.toggleReplace")}
+                            aria-label={t("workspace.shell.search.toggleReplace")}
+                            aria-pressed={showReplace}
+                            aria-expanded={showReplace}
+                            active={showReplace}
+                            className={cn(showReplace && ACTIVE_TOGGLE_CLASS)}
+                        >
+                            <Replace className="h-3.5 w-3.5" />
+                        </ToolbarButton>
+                    </TooltipGroup>
                 </div>
                 {showReplace && (
-                    <div className="flex items-center gap-1.5">
+                    // Same shape as the row above it, on the same scale: the field states a floor
+                    // and the button beside it wraps under rather than squeezing it away.
+                    <div className="flex flex-wrap items-center gap-1.5">
                         <input
                             // Autofocused: the only way this row appears is the author asking for it.
                             autoFocus
@@ -389,9 +416,9 @@ export function SearchPanel() {
                             aria-label={t("workspace.shell.search.replacePlaceholder")}
                             {...freeze.writes()}
                             className={cn(
-                                "min-w-0 flex-1 rounded-md border border-edge bg-fill-subtle text-fg outline-none placeholder:text-fg-subtle",
+                                "min-w-[7.5rem] flex-1 rounded-md border border-edge bg-fill-subtle text-fg outline-none placeholder:text-fg-subtle",
                                 "focus:border-primary disabled:opacity-50 disabled:cursor-not-allowed",
-                                CONTROL_SIZE_CLASS.md,
+                                CONTROL_SIZE_CLASS.sm,
                             )}
                         />
                         <button
@@ -402,7 +429,7 @@ export function SearchPanel() {
                                 "inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-md",
                                 "border border-edge bg-fill-subtle text-fg-muted transition-colors",
                                 "hover:bg-fill hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed",
-                                CONTROL_SIZE_CLASS.md,
+                                CONTROL_SIZE_CLASS.sm,
                             )}
                         >
                             {t("workspace.shell.search.replaceAll")}
@@ -426,13 +453,19 @@ export function SearchPanel() {
                                 key={group.group}
                                 type="button"
                                 onClick={() => toggleGroup(group.group)}
-                                className={`rounded-full border px-2 py-0.5 text-2xs transition-colors ${
+                                aria-pressed={active}
+                                // `py-1`, not the half step: a chip is a target as much as a label,
+                                // and two pixels of padding put it under the height a pointer can
+                                // comfortably find in a wrapped row of them.
+                                className={cn(
+                                    "rounded-full border px-2.5 py-1 text-2xs transition-colors",
                                     active
                                         ? "border-primary/50 bg-primary/10 text-fg"
-                                        : "border-edge-subtle text-fg-subtle hover:border-edge hover:text-fg-muted"
-                                }`}
+                                        : "border-edge-subtle text-fg-subtle hover:border-edge hover:text-fg-muted",
+                                )}
                             >
-                                {t(SEARCH_GROUP_TITLE_KEYS[group.group])} {group.total}
+                                {t(SEARCH_GROUP_TITLE_KEYS[group.group])}
+                                <span className="ml-1 tabular-nums text-fg-subtle">{group.total}</span>
                             </button>
                         );
                     })}
