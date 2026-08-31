@@ -423,6 +423,8 @@ export const story = {
         appearance: "外观",
         default: "默认",
         preview: "预览",
+        previewLarger: "放大预览",
+        previewSmaller: "缩小预览",
     },
     pause: {
         title: "暂停",
@@ -1055,7 +1057,7 @@ export const story = {
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
         show: { label: "显示", detail: "显示角色或舞台对象" },
         hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
-        face: { label: "表情", detail: "切换角色表情" },
+        face: { label: "外观", detail: "切换角色显示的外观：姿态、差分或表情" },
         motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },
         param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },

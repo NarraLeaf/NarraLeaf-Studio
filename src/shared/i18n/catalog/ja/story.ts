@@ -456,6 +456,8 @@ export const story = {
         appearance: "見た目",
         default: "既定",
         preview: "プレビュー",
+        previewLarger: "プレビューを大きく",
+        previewSmaller: "プレビューを小さく",
     },
     pause: {
         title: "停止",
@@ -1111,7 +1113,7 @@ export const story = {
         nvl: { label: "NVL", detail: "積み上げ式のダイアログパネルを切り替える" },
         show: { label: "表示", detail: "キャラクターや舞台のオブジェクトを出す" },
         hide: { label: "非表示", detail: "キャラクターや舞台のオブジェクトを隠す" },
-        face: { label: "表情", detail: "キャラクターの表情を変える" },
+        face: { label: "見た目", detail: "キャラクターのどの見た目を表示するかを切り替える" },
         motion: { label: "モーション", detail: "ランタイムが描くキャラクターに再生させるモーションを決める" },
         param: { label: "パラメータ", detail: "ランタイムが描くキャラクターのモデルの数値パラメータを 1 つ決める" },
         skin: { label: "スキン", detail: "ランタイムが描くキャラクターが着るスキンを決める" },
