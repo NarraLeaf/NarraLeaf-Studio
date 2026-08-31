@@ -43,6 +43,18 @@ export const common = {
     open: "打开",
     import: "导入",
     export: "导出",
+    library: {
+        exportAll: "导出全部",
+        imported: {
+            other: "已导入 {count} 条。",
+        },
+        unreadable: "该文件不是导出的库文件。",
+        wrongKind: "该文件的内容类型不符。",
+        tooNew: "该文件由更新版本的 Studio 导出。",
+        empty: "该文件中没有本版本能读取的内容。",
+        exportFailed: "无法写入该文件。",
+        importFailed: "无法读取该文件。",
+    },
     enable: "启用",
     disable: "禁用",
     show: "显示",

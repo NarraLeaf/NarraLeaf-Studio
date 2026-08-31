@@ -108,6 +108,7 @@ export const motion = {
     },
     panel: {
         searchPlaceholder: "搜索动画",
+        libraryActions: "导入与导出",
         createMotion: "创建动画",
         empty: "暂无动画",
         newMotion: "新建动画",

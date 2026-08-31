@@ -49,6 +49,18 @@ export const common = {
     open: "開く",
     import: "読み込む",
     export: "書き出す",
+    library: {
+        exportAll: "すべて書き出す",
+        imported: {
+            other: "{count} 件を読み込みました。",
+        },
+        unreadable: "このファイルは書き出されたライブラリではありません。",
+        wrongKind: "このファイルの内容は種類が違います。",
+        tooNew: "このファイルは新しいバージョンの Studio で書き出されています。",
+        empty: "このバージョンで読める内容はありません。",
+        exportFailed: "ファイルを書き出せませんでした。",
+        importFailed: "ファイルを読み込めませんでした。",
+    },
     enable: "有効にする",
     disable: "無効にする",
     show: "表示",

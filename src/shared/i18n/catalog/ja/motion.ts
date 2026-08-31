@@ -118,6 +118,7 @@ export const motion = {
 
     panel: {
         searchPlaceholder: "モーションを検索",
+        libraryActions: "読み込みと書き出し",
         createMotion: "モーションを作成",
         empty: "モーションがない",
         newMotion: "新規モーション",

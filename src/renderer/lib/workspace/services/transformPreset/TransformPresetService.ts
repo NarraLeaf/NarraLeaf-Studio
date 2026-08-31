@@ -156,6 +156,34 @@ export class TransformPresetService extends Service<TransformPresetService> impl
         return preset;
     }
 
+    /**
+     * Add presets read out of an exported file. Returns how many landed.
+     *
+     * A name this project already holds is **kept apart rather than overwritten**, unlike
+     * {@link savePreset}: saving the same name twice is an author adjusting their own preset, while
+     * importing is a file from somewhere else meeting a list that was already here, and quietly
+     * replacing what was here is the one outcome nobody asked for. The arriving one is numbered.
+     */
+    public importPresets(items: readonly { name: string; transform: StoryTransformRef }[]): number {
+        const added: ProjectTransformPreset[] = [];
+        for (const item of items) {
+            const transform = normalizeTransformPresetTransform(item.transform);
+            if (!transform) {
+                continue;
+            }
+            const name = this.availableName(item.name, added);
+            if (!name) {
+                continue;
+            }
+            added.push({ id: this.generatePresetId([...added]), name, transform });
+        }
+        if (added.length === 0) {
+            return 0;
+        }
+        this.applyMutation(presets => [...presets, ...added]);
+        return added.length;
+    }
+
     /** Rename one preset. `false` means there is no such preset, or the name is blank or taken. */
     public renamePreset(id: string, name: string): boolean {
         const existing = this.getPreset(id);
@@ -247,9 +275,32 @@ export class TransformPresetService extends Service<TransformPresetService> impl
      * into a document an author reads in a diff, and a full UUID on every row is noise. The retry is
      * bounded by the number of presets already saved.
      */
-    private generatePresetId(): string {
+    /**
+     * `name`, or `name 2` / `name 3` if the project already writes it.
+     *
+     * `pending` is the batch being imported, which is not in the document yet: a file holding two
+     * presets called the same thing has to end with two presets, not one silently dropped.
+     */
+    private availableName(raw: string, pending: readonly ProjectTransformPreset[]): string | null {
+        const base = normalizeTransformPresetName(raw);
+        if (!base) {
+            return null;
+        }
+        const taken = new Set([...this.getDocument().presets, ...pending].map(preset => preset.name.toLowerCase()));
+        if (!taken.has(base.toLowerCase())) {
+            return base;
+        }
+        for (let suffix = 2; ; suffix += 1) {
+            const candidate = normalizeTransformPresetName(`${base} ${suffix}`);
+            if (candidate && !taken.has(candidate.toLowerCase())) {
+                return candidate;
+            }
+        }
+    }
+
+    private generatePresetId(pending: readonly ProjectTransformPreset[] = []): string {
         const uuidService = this.getContext().services.get<UuidService>(Services.Uuid);
-        const taken = new Set(this.getDocument().presets.map(preset => preset.id));
+        const taken = new Set([...this.getDocument().presets, ...pending].map(preset => preset.id));
 
         for (let attempt = 0; ; attempt += 1) {
             const random = uuidService.generate(true).replace(/[^0-9a-z]/gi, "").toLowerCase();

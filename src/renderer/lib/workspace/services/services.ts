@@ -724,6 +724,8 @@ interface ITransformPresetService extends IService {
     getPreset(id: string): ProjectTransformPreset | null;
     /** Null when there is nothing to keep: a blank name, or a transform stating no channel. */
     savePreset(name: string, transform: StoryTransformRef | undefined): ProjectTransformPreset | null;
+    /** Add presets from an exported file, numbering any name the project already holds. */
+    importPresets(items: readonly { name: string; transform: StoryTransformRef }[]): number;
     /** `false` when there is no such preset, or the name is blank or already taken. */
     renamePreset(id: string, name: string): boolean;
     /** `false` when the project never held it. */
