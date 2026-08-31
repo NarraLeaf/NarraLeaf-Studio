@@ -41,12 +41,14 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LIST_IDS,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE,
     BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD,
     BLUEPRINT_NODE_TYPE_GAME_SET_AUTO_FORWARD_DELAY,
@@ -76,6 +78,17 @@ import {
     BLUEPRINT_VALUE_TYPE_RGBA_COLOR,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
+import {
+    BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
+    normalizeBlueprintSaveSlot,
+    toBlueprintSaveSlot,
+    type BlueprintSaveSlot,
+} from "@shared/types/blueprint/valueTypes";
+import {
+    isSaveCaptureLimitReached,
+    readSaveCapture,
+    storeSaveCapture,
+} from "./saveCaptureStore";
 import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutionError";
 import type { BlueprintNodeDef, BlueprintNodePinDef } from "../types";
 import type {
@@ -106,6 +119,30 @@ const saveIdIn: BlueprintNodePinDef = {
     label: "Id",
     allowInlineLiteral: true,
 };
+/**
+ * The save a node acts on, when the author names one instead of typing an id.
+ *
+ * Optional and beside the `Id` pin rather than replacing it: every save screen already written -
+ * the shipped skeleton's six slots included - is built on the id, and a pin that moved would break
+ * all of them the day they opened the project. Wired, it wins; unwired, nothing changes.
+ */
+const saveSlotIn: BlueprintNodePinDef = {
+    id: "slot",
+    kind: "input",
+    semantic: "data",
+    valueType: BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
+    label: "Slot",
+    optional: true,
+};
+
+const saveSlotOut: BlueprintNodePinDef = {
+    id: "slot",
+    kind: "output",
+    semantic: "data",
+    valueType: BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
+    label: "Slot",
+};
+
 const saveMetadataIn: BlueprintNodePinDef = {
     id: "metadata",
     kind: "input",
@@ -149,6 +186,31 @@ const startStoryTargetPins: BlueprintNodePinDef[] = [
  * a map that quits to the district the player came from cannot name it at author time. The picker
  * stays for the hand-authored case, and a wired pin wins over it.
  */
+/**
+ * The save a new game starts from, when it is continuing something rather than beginning it.
+ *
+ * `Start Game` stays a new game - it calls `newGame()`, which clears every namespace - and this
+ * says what to put back afterwards: the saved-scope variables and the scenes already visited, and
+ * nothing else. Not the stage, not the backlog, not the position; those belong to `Load Save`, and
+ * a node that quietly did both would be two features wearing one name.
+ *
+ * It exists because a project whose routes are separate stories has no other way to say it. Crossing
+ * from one story to the next is a fresh `Start Game`, so every flag the player earned on the way
+ * was cleared at the boundary, and the only scope that survived - persistent - is the wrong one: it
+ * outlives the playthrough, so a second run would inherit the first one's answers.
+ *
+ * Takes either kind of slot. `Current Game` is the ordinary one at a chapter boundary, where what
+ * is being carried is the run in progress and has never been written to disk.
+ */
+const startStoryInheritPin: BlueprintNodePinDef = {
+    id: "inheritFrom",
+    kind: "input",
+    semantic: "data",
+    valueType: BLUEPRINT_VALUE_TYPE_SAVE_SLOT,
+    label: "Inherit From",
+    optional: true,
+};
+
 const quitTargetPin: BlueprintNodePinDef = {
     id: "surfaceId",
     kind: "input",
@@ -464,19 +526,98 @@ function readTrackVolumeTarget(ctx: Parameters<NonNullable<BlueprintNodeDef["exe
     return fromPin || readBlueprintAudioTrackParam(ctx.params);
 }
 
-function resolveSaveId(ctx: Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0]): string {
-    const value = resolveDataPinValue(ctx.graph, ctx.node.id, "id", ctx.params, ctx.blueprintLocals, 0, {
+type GameNodeContext = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
+
+function readGamePin(ctx: GameNodeContext, pinId: string): unknown {
+    return resolveDataPinValue(ctx.graph, ctx.node.id, pinId, ctx.params, ctx.blueprintLocals, 0, {
         hostAdapter: ctx.hostAdapter,
         eventPayload: ctx.eventPayload,
         listItemScope: ctx.listItemScope,
         instanceKey: ctx.instanceKey,
         executionOwner: ctx.executionOwner,
     });
-    const id = String(value ?? "").trim();
+}
+
+/**
+ * The execution locals, which are where a captured run lives.
+ *
+ * `executeGraph` always supplies them, so this is unreachable in practice; a throw rather than a
+ * `?? {}` fallback because a fresh object here would take the capture and then drop it, leaving the
+ * `Start Game` downstream failing as though the graph were wired wrong.
+ */
+function requireGameLocals(ctx: GameNodeContext): Record<string, unknown> {
+    if (!ctx.blueprintLocals) {
+        throw new BlueprintGraphExecutionError("There is no execution scope to hold the game", ctx.node.id);
+    }
+    return ctx.blueprintLocals;
+}
+
+/** The slot on the `Slot` pin, or null when nothing is wired to it. */
+function readSaveSlotPin(ctx: GameNodeContext, pinId = "slot"): BlueprintSaveSlot | null {
+    return normalizeBlueprintSaveSlot(readGamePin(ctx, pinId));
+}
+
+/**
+ * Which stored slot a node acts on: the `Slot` pin when one is wired, the `Id` pin otherwise.
+ *
+ * A slot naming the running game is refused here rather than quietly ignored. It is a real value
+ * that a graph can hold, and every node on this path needs something in the store: there is nothing
+ * to read a written time off, nothing to delete, and nothing to load that is not already on stage.
+ * `Start Game` is the one place a capture goes, and it asks for it by a different name.
+ */
+function resolveSaveId(ctx: GameNodeContext): string {
+    const slot = readSaveSlotPin(ctx);
+    if (slot) {
+        if (slot.source === "run") {
+            throw new BlueprintGraphExecutionError(
+                "This node needs a save in storage. The slot it was given names the running game, "
+                + "which only Start Game can inherit from.",
+                ctx.node.id,
+            );
+        }
+        return slot.id;
+    }
+    const id = String(readGamePin(ctx, "id") ?? "").trim();
     if (!id) {
         throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
     }
     return id;
+}
+
+/**
+ * The serialized run behind the `Inherit From` pin, or null when nothing is wired to it.
+ *
+ * A `run` slot is read out of this execution's own store, with no host call at all. A `stored` one
+ * is read back from the save store, which is what lets a "New Game+" button start from a slot the
+ * player finished on.
+ */
+async function resolveInheritedSave(
+    ctx: GameNodeContext,
+    api: ReturnType<typeof requireHostApi>,
+): Promise<unknown | null> {
+    const slot = readSaveSlotPin(ctx, "inheritFrom");
+    if (!slot) {
+        return null;
+    }
+    if (slot.source === "run") {
+        const captured = readSaveCapture(requireGameLocals(ctx), slot);
+        if (captured === null) {
+            throw new BlueprintGraphExecutionError(
+                "Inherit From names a captured game this run is not holding. A capture belongs to "
+                + "the chain that took it, so Current Game has to run in the same one as Start Game.",
+                ctx.node.id,
+            );
+        }
+        return captured;
+    }
+    const stored = await api.game.readSaveGame(slot.id);
+    if (stored === null || stored === undefined) {
+        throw new BlueprintGraphExecutionError(
+            `Inherit From names save "${slot.id}", which is not in storage`,
+            ctx.node.id,
+        );
+    }
+    return stored;
 }
 
 function cloneJsonValue(value: unknown): unknown {
@@ -1492,7 +1633,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, ...startStoryTargetPins],
+        pins: [execIn, ...startStoryTargetPins, startStoryInheritPin],
         inspectorParams: [
             {
                 key: "storyId",
@@ -1521,11 +1662,18 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             if (!sceneId) {
                 throw new BlueprintGraphExecutionError("Pick a Scene, or wire a Scene Id", ctx.node.id);
             }
-            await requireHostApi(ctx).game.startStory({
-                storyId,
-                sceneId,
-                ...(startBlockId ? { startBlockId } : {}),
-            });
+            const api = requireHostApi(ctx);
+            // Resolved before the launch, so a slot naming nothing refuses the whole thing rather
+            // than starting the story and then failing to carry anything into it.
+            const inherit = await resolveInheritedSave(ctx, api);
+            await api.game.startStory(
+                {
+                    storyId,
+                    sceneId,
+                    ...(startBlockId ? { startBlockId } : {}),
+                },
+                inherit === null ? undefined : { inheritSavedGame: inherit },
+            );
             return { nextPort: undefined };
         },
     },
@@ -1649,7 +1797,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, execNext, saveIdIn, saveMetadataIn, saveScreenshotIn],
+        pins: [execIn, execNext, saveIdIn, saveSlotIn, saveMetadataIn, saveScreenshotIn],
         // One input pin per field the project declares, so what a slot carries is wired by name
         // instead of assembled with Make JSON Object and a string key.
         saveSchemaPins: { kind: "input" },
@@ -1686,7 +1834,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, saveIdIn, execFailed],
+        pins: [execIn, saveIdIn, saveSlotIn, execFailed],
         async execute(ctx) {
             const loaded = await requireHostApi(ctx).game.loadSave(resolveSaveId(ctx));
             return { nextPort: loaded ? undefined : "failed" };
@@ -1700,10 +1848,76 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
         graphKinds: [...GRAPH_KINDS],
         isPure: false,
         isLatent: true,
-        pins: [execIn, execNext, saveIdIn],
+        pins: [execIn, execNext, saveIdIn, saveSlotIn],
         async execute(ctx) {
             await requireHostApi(ctx).game.deleteSave(resolveSaveId(ctx));
             return { nextPort: "next" };
+        },
+    },
+    {
+        /**
+         * A slot in the save store, named rather than typed.
+         *
+         * Pure and one pin wide, so it can sit inside a Blueprint Value graph and feed several
+         * nodes from one place: a save screen row that reads a time, a line and a preview off the
+         * same slot writes the id once here instead of three times.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
+        displayName: "Save Slot",
+        category: "Game",
+        keywords: ["game", "save", "slot", "id", "storage", "reference", "handle"],
+        graphKinds: [...PURE_GRAPH_KINDS],
+        isPure: true,
+        isLatent: false,
+        pins: [saveIdIn, saveSlotOut],
+        execute(ctx) {
+            const id = String(readGamePin(ctx, "id") ?? "").trim();
+            if (!id) {
+                throw new BlueprintGraphExecutionError("Save id is required", ctx.node.id);
+            }
+            return { outputValues: { slot: toBlueprintSaveSlot("stored", id) } };
+        },
+    },
+    {
+        /**
+         * The playthrough in progress, as a slot - the one save that has no id because it has never
+         * been written down.
+         *
+         * What it is for is the boundary between two stories: capture what the player has, start
+         * the next story, hand it in. Writing a real slot to do that would put a save the player
+         * never asked for into their save screen, and reading it back would be a round trip through
+         * the disk for something that never had to leave memory.
+         *
+         * The capture belongs to this execution and dies with it (see `saveCaptureStore`). That is
+         * why it is not a way to remember a checkpoint across events: what does that is a save.
+         */
+        type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
+        displayName: "Current Game",
+        category: "Game",
+        keywords: ["game", "save", "current", "run", "capture", "slot", "snapshot", "inherit"],
+        graphKinds: [...GRAPH_KINDS],
+        isPure: false,
+        isLatent: true,
+        pins: [execIn, execNext, saveSlotOut],
+        async execute(ctx) {
+            if (isSaveCaptureLimitReached(requireGameLocals(ctx))) {
+                throw new BlueprintGraphExecutionError(
+                    "Current Game has already captured this run several times over. A capture is a "
+                    + "whole playthrough; taking one per loop iteration is not what this is for.",
+                    ctx.node.id,
+                );
+            }
+            const captured = await requireHostApi(ctx).game.captureRun();
+            if (captured === null || captured === undefined) {
+                throw new BlueprintGraphExecutionError(
+                    "There is no game running to capture",
+                    ctx.node.id,
+                );
+            }
+            return {
+                nextPort: "next",
+                outputValues: { slot: storeSaveCapture(requireGameLocals(ctx), ctx.node.id, captured) },
+            };
         },
     },
     {
@@ -1748,6 +1962,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             execIn,
             execNext,
             saveIdIn,
+            saveSlotIn,
             {
                 id: "metadata",
                 kind: "output",
@@ -1816,6 +2031,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             execIn,
             execNext,
             saveIdIn,
+            saveSlotIn,
             {
                 id: "savedAt",
                 kind: "output",
@@ -1880,6 +2096,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             execIn,
             execNext,
             saveIdIn,
+            saveSlotIn,
             {
                 id: "playtimeSeconds",
                 kind: "output",
@@ -1956,6 +2173,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             execIn,
             execNext,
             saveIdIn,
+            saveSlotIn,
             {
                 id: "line",
                 kind: "output",
@@ -2004,6 +2222,7 @@ export const gameBlueprintNodes: BlueprintNodeDef[] = [
             execIn,
             execNext,
             saveIdIn,
+            saveSlotIn,
             {
                 id: "preview",
                 kind: "output",

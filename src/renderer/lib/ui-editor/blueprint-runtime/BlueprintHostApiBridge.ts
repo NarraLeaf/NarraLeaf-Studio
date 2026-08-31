@@ -491,7 +491,18 @@ export type BlueprintHostApiRuntime = {
         emit: (eventName: string, data: unknown) => Promise<void>;
     };
     game: {
-        startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+        /**
+         * Begin a story. `options.inheritSavedGame` carries a save's saved-scope values and visited
+         * scenes into the new game - see the `Inherit From` pin - and carries nothing else.
+         */
+        startStory: (
+            request: DevModeStartStoryRequest,
+            options?: { inheritSavedGame?: unknown },
+        ) => Promise<void>;
+        /** The running playthrough as a serialized game, or null when none is running. */
+        captureRun: () => unknown | null;
+        /** The serialized game stored in a slot, or null when there is no such slot. */
+        readSaveGame: (id: string) => Promise<unknown | null>;
         isInGame: () => boolean;
         isGameOverlay: () => boolean;
         quit: (surfaceId: string) => Promise<void>;
@@ -860,7 +871,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     pageProps?: Record<string, unknown>;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
-    onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
+    onStartStory?: (
+        request: DevModeStartStoryRequest,
+        options?: { inheritSavedGame?: unknown },
+    ) => Promise<void> | void;
     onIsInGame?: () => boolean;
     onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
@@ -872,6 +886,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+    onCaptureRun?: () => unknown | null;
+    onReadSaveGame?: (id: string) => Promise<unknown | null> | unknown | null;
     onGetSavePlaytime?: (id: string) => Promise<SaveRecordPlaytime | null> | SaveRecordPlaytime | null;
     onGetPlaytime?: () => number;
     onGetTotalPlaytime?: () => number;
@@ -2363,6 +2379,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSaveTimes,
         onGetSaveLine,
+        onCaptureRun,
+        onReadSaveGame,
         onGetSavePlaytime,
         onGetPlaytime,
         onGetTotalPlaytime,
@@ -3823,12 +3841,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             },
         },
         game: {
-            startStory: async (request: DevModeStartStoryRequest) => {
+            startStory: async (
+                request: DevModeStartStoryRequest,
+                options?: { inheritSavedGame?: unknown },
+            ) => {
                 const cap = "game.startStory";
                 emitHostCall(emit, cap, "call");
                 try {
                     const storyId = String(request?.storyId ?? "").trim();
                     const sceneId = String(request?.sceneId ?? "").trim();
+                    const startBlockId = String(request?.startBlockId ?? "").trim();
                     if (!storyId) {
                         throw new Error("startStory: storyId is required");
                     }
@@ -3838,7 +3860,37 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onStartStory) {
                         throw new Error("startStory: game runtime is not available");
                     }
-                    await onStartStory({ storyId, sceneId });
+                    // `startBlockId` is forwarded rather than dropped: the node has always carried
+                    // a `From Row` pin and the request has always had somewhere to put it, so a
+                    // graph launching a story at a row was silently getting the scene from the top.
+                    await onStartStory(
+                        { storyId, sceneId, ...(startBlockId ? { startBlockId } : {}) },
+                        options?.inheritSavedGame === undefined
+                            ? undefined
+                            : { inheritSavedGame: options.inheritSavedGame },
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            captureRun: () => {
+                const cap = "game.captureRun";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCaptureRun ? onCaptureRun() ?? null : null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            readSaveGame: async (id: string) => {
+                const cap = "game.readSaveGame";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("readSaveGame", id);
+                    if (!onReadSaveGame) {
+                        throw new Error("readSaveGame: game save runtime is not available");
+                    }
+                    return (await onReadSaveGame(saveId)) ?? null;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

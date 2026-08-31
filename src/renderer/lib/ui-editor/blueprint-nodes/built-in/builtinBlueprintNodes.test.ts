@@ -137,7 +137,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_IN_GAME,
     BLUEPRINT_NODE_TYPE_GAME_NEXT,
     BLUEPRINT_NODE_TYPE_GAME_QUIT,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PREVIEW,
@@ -428,6 +430,8 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                 },
                 game: {
                     startStory: async () => undefined,
+                    captureRun: () => null,
+                    readSaveGame: async () => null,
                     isInGame: () => false,
                     isGameOverlay: () => false,
                     quit: async () => undefined,
@@ -505,16 +509,20 @@ type FramePatchCall = {
     params?: Record<string, unknown>;
 };
 
+/** What a launch was asked for, including anything it was told to start holding. */
+type StartedStory = { storyId: string; sceneId: string; startBlockId?: string; inherit?: unknown };
+
 function createPageNavigationHostAdapter(
     openedSurfaceIds: string[],
     frameTargets: Record<string, string | null> = {},
     framePatches: FramePatchCall[] = [],
-    startedStories: Array<{ storyId: string; sceneId: string }> = [],
+    startedStories: StartedStory[] = [],
     openedPageProps: unknown[] = [],
     pageProps: Record<string, unknown> = {},
     quitApplicationCalls: boolean[] = [],
     fullscreen: { current: boolean; setCalls: boolean[] } | undefined = { current: false, setCalls: [] },
     openedExternalUrls: string[] = [],
+    saves: { run?: unknown; stored?: Record<string, unknown> } = {},
 ): UIHostAdapter {
     return {
         host: "player",
@@ -602,8 +610,15 @@ function createPageNavigationHostAdapter(
                     emit: async () => undefined,
                 },
                 game: {
-                    startStory: async request => {
-                        startedStories.push(request);
+                    captureRun: () => saves.run ?? null,
+                    readSaveGame: async (id: string) => saves.stored?.[id] ?? null,
+                    startStory: async (request, options) => {
+                        startedStories.push({
+                            ...request,
+                            ...(options?.inheritSavedGame === undefined
+                                ? {}
+                                : { inherit: options.inheritSavedGame }),
+                        });
                     },
                     isInGame: () => false,
                     isGameOverlay: () => false,
@@ -783,6 +798,8 @@ function createGameSaveHostAdapter(options: {
                 },
                 game: {
                     startStory: async () => undefined,
+                    captureRun: () => null,
+                    readSaveGame: async () => null,
                     isInGame: () => options.isInGame ?? false,
                     isGameOverlay: () => options.isGameOverlay ?? false,
                     quit: async (surfaceId: string) => {
@@ -1896,7 +1913,7 @@ describe("built-in blueprint nodes", () => {
     it("executes Start Game as a terminal host API node", async () => {
         registerCoreBlueprintNodes();
 
-        const startedStories: Array<{ storyId: string; sceneId: string }> = [];
+        const startedStories: StartedStory[] = [];
         const localsAfterStartGame: Record<string, unknown> = {};
         await executeGraph({
             graph: {
@@ -1931,6 +1948,147 @@ describe("built-in blueprint nodes", () => {
 
         expect(startedStories).toEqual([{ storyId: "story-1", sceneId: "scene-1" }]);
         expect(localsAfterStartGame).not.toHaveProperty("afterStartGame");
+    });
+
+    /**
+     * A save is a container, and these are the two ways a graph names one.
+     *
+     * The shape that matters is the chapter boundary: capture the run in progress, start the next
+     * story, hand it in. Nothing is written to disk on the way - the player never asked for a save -
+     * and what crosses is the saved-scope state, which is what a route-per-story project has no
+     * other way to carry.
+     */
+    describe("naming a save", () => {
+        function inheritGraph(nodes: Record<string, unknown>, edges: unknown[]) {
+            return {
+                id: "inherit",
+                entries: { main: { start: { nodeId: "head", port: "in" } } },
+                nodes,
+                edges,
+            } as never;
+        }
+
+        it("carries the running game into the story a new game starts", async () => {
+            registerCoreBlueprintNodes();
+            const run = { meta: { id: "the-run" } };
+            const startedStories: StartedStory[] = [];
+
+            await executeGraph({
+                graph: inheritGraph(
+                    {
+                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN, params: {} },
+                        start: {
+                            id: "start",
+                            type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                            params: { storyId: "story-2", sceneId: "scene-1" },
+                        },
+                    },
+                    [
+                        { from: { nodeId: "head", port: "next" }, to: { nodeId: "start", port: "in" } },
+                        { from: { nodeId: "head", port: "slot" }, to: { nodeId: "start", port: "inheritFrom" } },
+                    ],
+                ),
+                entry: { start: { nodeId: "head", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter(
+                    [], {}, [], startedStories, [], {}, [], undefined, [], { run },
+                ),
+                blueprintLocals: {},
+            });
+
+            expect(startedStories).toEqual([{ storyId: "story-2", sceneId: "scene-1", inherit: run }]);
+        });
+
+        it("carries a stored slot in, which is what a New Game+ button does", async () => {
+            registerCoreBlueprintNodes();
+            const stored = { meta: { id: "slot-01" } };
+            const startedStories: StartedStory[] = [];
+
+            await executeGraph({
+                graph: inheritGraph(
+                    {
+                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT, params: { id: "01" } },
+                        start: {
+                            id: "start",
+                            type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                            params: { storyId: "story-2", sceneId: "scene-1" },
+                        },
+                    },
+                    [{ from: { nodeId: "head", port: "slot" }, to: { nodeId: "start", port: "inheritFrom" } }],
+                ),
+                entry: { start: { nodeId: "start", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter(
+                    [], {}, [], startedStories, [], {}, [], undefined, [], { stored: { "01": stored } },
+                ),
+                blueprintLocals: {},
+            });
+
+            expect(startedStories).toEqual([{ storyId: "story-2", sceneId: "scene-1", inherit: stored }]);
+        });
+
+        it("starts nothing at all when the slot it was told to inherit is empty", async () => {
+            registerCoreBlueprintNodes();
+            const startedStories: StartedStory[] = [];
+
+            await expect(executeGraph({
+                graph: inheritGraph(
+                    {
+                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT, params: { id: "99" } },
+                        start: {
+                            id: "start",
+                            type: BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+                            params: { storyId: "story-2", sceneId: "scene-1" },
+                        },
+                    },
+                    [{ from: { nodeId: "head", port: "slot" }, to: { nodeId: "start", port: "inheritFrom" } }],
+                ),
+                entry: { start: { nodeId: "start", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([], {}, [], startedStories),
+                blueprintLocals: {},
+            })).rejects.toThrow(/not in storage/);
+            // The whole point of resolving before launching: a story half-started and then not given
+            // what it was supposed to hold is worse than one that never started.
+            expect(startedStories).toEqual([]);
+        });
+
+        it("refuses to capture when no game is running", async () => {
+            registerCoreBlueprintNodes();
+
+            await expect(executeGraph({
+                graph: inheritGraph(
+                    { head: { id: "head", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN, params: {} } },
+                    [],
+                ),
+                entry: { start: { nodeId: "head", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter([]),
+                blueprintLocals: {},
+            })).rejects.toThrow(/no game running/);
+        });
+
+        /**
+         * A capture is not a save, and the nodes that need one in storage say so rather than
+         * answering as though the slot were empty.
+         */
+        it("refuses a captured run where a stored save is required", async () => {
+            registerCoreBlueprintNodes();
+
+            await expect(executeGraph({
+                graph: inheritGraph(
+                    {
+                        head: { id: "head", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN, params: {} },
+                        del: { id: "del", type: BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE, params: {} },
+                    },
+                    [
+                        { from: { nodeId: "head", port: "next" }, to: { nodeId: "del", port: "in" } },
+                        { from: { nodeId: "head", port: "slot" }, to: { nodeId: "del", port: "slot" } },
+                    ],
+                ),
+                entry: { start: { nodeId: "head", port: "in" } },
+                hostAdapter: createPageNavigationHostAdapter(
+                    [], {}, [], [], [], {}, [], undefined, [], { run: { meta: {} } },
+                ),
+                blueprintLocals: {},
+            })).rejects.toThrow(/needs a save in storage/);
+        });
     });
 
     it("executes dialog Game nodes through host APIs", async () => {
@@ -3105,13 +3263,15 @@ describe("built-in blueprint nodes", () => {
         expect(gameReadyHead?.pins.map(pin => pin.id)).toEqual(["then"]);
         // The three optional target pins are what let a data-driven screen (a
         // recollection list) pick the scene at runtime; the pickers stay for the
-        // hand-authored "New Game" case.
+        // hand-authored "New Game" case. `inheritFrom` is the fourth and a different
+        // kind of thing: not where the story starts, but what it starts holding.
         const startStory = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY);
         expect(startStory?.pins.map(pin => pin.id)).toEqual([
             "in",
             "storyId",
             "sceneId",
             "startBlockId",
+            "inheritFrom",
         ]);
         expect(startStory?.pins.filter(pin => pin.id !== "in").every(pin => pin.optional)).toBe(true);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_GET_NAMETAG)?.pins.map(pin => pin.id)).toEqual([
@@ -3299,6 +3459,7 @@ describe("built-in blueprint nodes", () => {
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_LOAD)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "id",
+            "slot",
             "failed",
         ]);
         const saveGameNode = gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_WRITE);
@@ -3307,6 +3468,7 @@ describe("built-in blueprint nodes", () => {
             "in",
             "next",
             "id",
+            "slot",
             "metadata",
             "screenshot",
         ]);
@@ -3319,12 +3481,14 @@ describe("built-in blueprint nodes", () => {
             "in",
             "next",
             "id",
+            "slot",
             "metadata",
         ]);
         expect(gameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_DELETE)?.pins.map(pin => pin.id)).toEqual([
             "in",
             "next",
             "id",
+            "slot",
         ]);
         expect(frameBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_PAGE_GO)?.pins.map(pin => pin.id)).toEqual([
             "in",

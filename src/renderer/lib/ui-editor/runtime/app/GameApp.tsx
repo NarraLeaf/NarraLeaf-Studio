@@ -2378,6 +2378,33 @@ export function GameApp(props: GameAppProps): ReactNode {
     ]);
 
     /**
+     * The running playthrough as bytes, for a slot that names it.
+     *
+     * Null rather than a throw when nothing is running: `Current Game` is the node that decides
+     * what an empty answer means, and it has a clearer sentence for the author than anything this
+     * could raise. Guarded on the game having been entered, not merely mounted - a warmed
+     * environment nobody has started has no playthrough to capture, and serializing one would hand
+     * back a game at row zero as though the player had been there.
+     */
+    const captureRun = useCallback((): unknown | null => {
+        const liveGame = nlrLiveGameRef.current;
+        if (!liveGame || !gameEnteredRef.current) {
+            return null;
+        }
+        try {
+            return liveGame.serialize();
+        } catch {
+            return null;
+        }
+    }, []);
+
+    /** The serialized game in a slot, for a launch that inherits from it. */
+    const readSaveGame = useCallback(async (id: string): Promise<unknown | null> => {
+        const record = await host.saveStore.read(id);
+        return record?.savedGame ?? null;
+    }, [host.saveStore]);
+
+    /**
      * The scene a save's position names, as this build ships it.
      *
      * The story id the position carries is only a hint: it comes out of an anchor written by
@@ -3620,7 +3647,7 @@ export function GameApp(props: GameAppProps): ReactNode {
 
     const startStoryInGame = useCallback(async (
         request: DevModeStartStoryRequest,
-        options?: { forceReinit?: boolean },
+        options?: { forceReinit?: boolean; inheritSavedGame?: unknown },
     ): Promise<void> => {
         if (!activeSurface || !core) {
             throw new Error("Start Game: active surface is not available");
@@ -3629,6 +3656,16 @@ export function GameApp(props: GameAppProps): ReactNode {
         const sceneId = String(request.sceneId ?? "").trim();
         const startBlockId = request.startBlockId?.trim() || undefined;
         const snapshotId = request.snapshotId?.trim() || undefined;
+
+        // Queued rather than written, for the reason the ref exists: entering calls `newGame()`,
+        // which clears every namespace, so values written now would be the ones it wipes. Set here
+        // rather than beside the mount because the fast path below enters without mounting at all.
+        //
+        // Only when this launch was given one. A relaunch fills the same ref before it calls in,
+        // and overwriting it with nothing would drop what that load was carrying.
+        if (options?.inheritSavedGame !== undefined && options.inheritSavedGame !== null) {
+            pendingCarriedSaveRef.current = options.inheritSavedGame as SavedGame;
+        }
 
         // Fast path: the environment is already mounted with this story from the boot preload and
         // has not entered a game yet. Just enter it (newGame + reveal) — no recompile, no re-mount,
@@ -3729,6 +3766,8 @@ export function GameApp(props: GameAppProps): ReactNode {
             onCloseOwnLayer: closeOwnLayer,
             onIsLayerMounted: isLayerMounted,
             onStartStory: startStoryInGame,
+            onCaptureRun: captureRun,
+            onReadSaveGame: readSaveGame,
             onIsInGame: isInGame,
             onIsGameOverlay: () => entry.presentation === "gameOverlay",
             onQuitGame: quitGame,
@@ -4169,6 +4208,8 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onCloseOwnLayer: closeOwnLayer,
                     onIsLayerMounted: isLayerMounted,
                     onStartStory: startStoryInGame,
+                    onCaptureRun: captureRun,
+                    onReadSaveGame: readSaveGame,
                     onIsInGame: isInGame,
                     onIsGameOverlay: () =>
                         input.parentHostAdapter.blueprintRuntime?.hostApi?.game.isGameOverlay() === true,
