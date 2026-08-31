@@ -30,6 +30,7 @@ import { isDeferredWriteAllowed, useFreezeGuard } from "../../components/ui/free
 import { UITemplateStoreModal } from "./panel/templates/UITemplateStoreModal";
 import { SurfaceFilters } from "./panel/SurfaceFilters";
 import { SurfaceList, type SurfaceListGlobalBlueprintCard } from "./panel/SurfaceList";
+import { reorderSurfacesForDrop, type SurfaceDropEdge } from "./panel/surfaceReorder";
 import {
     useOpenBlueprintTarget,
     type BlueprintOpenOptions,
@@ -297,6 +298,23 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
         (surface: UISurface) => documentService?.getSurfaceContentRevision(surface.id) ?? 0,
         [documentService],
     );
+
+    /**
+     * A card dropped somewhere else in the list.
+     *
+     * The list states the move over the cards it draws - one kind - and the order that has to be
+     * written is the whole document's, so the two are joined here, where both are in hand. See
+     * {@link reorderSurfacesForDrop} for why the other kind's cards must not shift.
+     */
+    const handleReorderSurfaces = useCallback((draggedId: string, anchorId: string, edge: SurfaceDropEdge) => {
+        if (!documentService) {
+            return;
+        }
+        const order = reorderSurfacesForDrop(documentService.getDocument().surfaces, kind, draggedId, anchorId, edge);
+        if (order) {
+            documentService.reorderSurfaces(order);
+        }
+    }, [documentService, kind]);
 
     // A project with no page at all gets one the moment this panel opens - a write no author asked
     // for, and the third shape `isDeferredWriteAllowed` exists for: there is no control to grey out
@@ -654,6 +672,7 @@ export function UISurfacesPanel({ panelId }: PanelComponentProps) {
                 getSurfaceContentRevision={getSurfaceContentRevision}
                 onSurfaceClick={handleSurfaceClick}
                 onOpenMenu={handleOpenMenu}
+                onReorder={documentService && !freeze.frozen ? handleReorderSurfaces : undefined}
             />
             <ComponentLibraryPanel
                 documentService={documentService}
