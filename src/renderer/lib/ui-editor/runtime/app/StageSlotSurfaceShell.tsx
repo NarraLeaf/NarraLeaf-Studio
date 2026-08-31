@@ -115,6 +115,16 @@ export type GameUiSlotHostOptions = {
     isCurrentTextReadInGame?: () => boolean;
     /** Optional: hosts without a text-read tracker fall back to wiping the persistence key directly. */
     clearTextReadInGame?: () => Promise<void>;
+    /**
+     * The running playthrough's saved variables.
+     *
+     * A slot surface needs these as much as a page does, and arguably more: the screens that show
+     * a counter while the story plays - a HUD, an affection meter, a status strip - are the
+     * on-stage ones. Without them the nodes answer `found: false` and refuse the write with
+     * "game runtime is not available" while a game is plainly running.
+     */
+    getSavedVariableInGame: (variableId: string) => { value: unknown; found: boolean };
+    setSavedVariableInGame: (variableId: string, value: unknown) => void;
     selectChoiceInGame: (index: number) => Promise<void>;
     isInGame: () => boolean;
     quitGame: (surfaceId: string) => Promise<void>;
@@ -275,6 +285,8 @@ export function useStageSlotSurfaceRuntime(input: {
             onIsNvlMode: options.isNvlModeInGame,
             onIsCurrentTextRead: options.isCurrentTextReadInGame,
             onClearTextRead: options.clearTextReadInGame,
+            onGetSavedVariable: options.getSavedVariableInGame,
+            onSetSavedVariable: options.setSavedVariableInGame,
             onSelectChoice: options.selectChoiceInGame,
             onIsInGame: options.isInGame,
             onIsGameOverlay: () => true,

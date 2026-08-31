@@ -283,3 +283,36 @@ describe("stage slot surface rebuilt drawing", () => {
         expect(options.initialWidgetPatches).toBeUndefined();
     });
 });
+
+describe("stage slot surface saved variables", () => {
+    afterEach(cleanup);
+
+    it("passes both saved-variable callbacks through to the slot's host API", () => {
+        // The third time this family of holes appeared, and the one most visibly wrong: the screens
+        // that show a saved variable while the story plays - a HUD, an affection meter, a status
+        // strip in the quick menu - are the on-stage ones. MEASURED before the fix, on a running
+        // game: the same two nodes answered `v=7 f=true` on a page and `v= f=false` on the quick
+        // menu, and the write there was refused with "game runtime is not available".
+        const getSavedVariableInGame = vi.fn(() => ({ value: 7, found: true }));
+        const setSavedVariableInGame = vi.fn();
+
+        const options = renderShell({ getSavedVariableInGame, setSavedVariableInGame });
+
+        expect(options.onGetSavedVariable).toBe(getSavedVariableInGame);
+        expect(options.onSetSavedVariable).toBe(setSavedVariableInGame);
+    });
+
+    it("reads and writes the playthrough from inside a slot", async () => {
+        const store = new Map<string, unknown>([["affection", 7]]);
+        const options = renderShell({
+            getSavedVariableInGame: id => (store.has(id) ? { value: store.get(id), found: true } : { value: null, found: false }),
+            setSavedVariableInGame: (id, value) => { store.set(id, value); },
+        });
+        const hostApi = (await import("@/lib/ui-editor/blueprint-runtime/BlueprintHostApiBridge"))
+            .createDevModeBlueprintHostApi(options);
+
+        expect(hostApi.game.getSavedVariable("affection")).toEqual({ value: 7, found: true });
+        hostApi.game.setSavedVariable("affection", 42);
+        expect(hostApi.game.getSavedVariable("affection")).toEqual({ value: 42, found: true });
+    });
+});

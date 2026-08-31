@@ -3496,6 +3496,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             isNvlModeInGame,
             isCurrentTextReadInGame,
             clearTextReadInGame,
+            // The screens that show a saved variable while the story plays are the on-stage
+            // ones. Left out, both nodes answered as though no game were running - on a stage
+            // with a game plainly running on it.
+            getSavedVariableInGame,
+            setSavedVariableInGame,
             selectChoiceInGame,
             isInGame,
             quitGame,
