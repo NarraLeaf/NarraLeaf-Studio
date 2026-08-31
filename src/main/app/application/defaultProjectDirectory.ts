@@ -19,6 +19,13 @@ import path from "path";
  * root: the author's own local Documents, then Downloads, then the home folder itself. Nothing is
  * created here - a candidate that does not exist is not offered, because a second "Documents" beside
  * a redirected one would be its own confusion.
+ *
+ * Every path here is joined with the flavour the decision is *about*, not the one the host happens
+ * to run: `path.win32` for the Windows branch, `path.posix` for the other. On the machine each
+ * branch actually serves those are the same thing, so nothing changes for an author. It matters
+ * because the whole point of taking the environment as an argument is that the decision can be
+ * tested off a real machine, and ambient `path` quietly turns `C:\Users\a` + `Documents` into
+ * `C:\Users\a/Documents` on a Linux runner - which then matches no candidate the caller knows.
  */
 
 /** The environment as this decision reads it. Passed in so the choice is testable off a real machine. */
@@ -50,41 +57,41 @@ function syncRoots(env: Record<string, string | undefined>): string[] {
     return ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]
         .map(name => env[name])
         .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-        .map(value => path.resolve(value));
+        .map(value => path.win32.resolve(value));
 }
 
 /** Whether `candidate` is the sync root or sits under it. Compared case-insensitively, as Windows is. */
 function isInsideSyncRoot(candidate: string, roots: readonly string[]): boolean {
-    const target = path.resolve(candidate).toLowerCase();
+    const target = path.win32.resolve(candidate).toLowerCase();
     // Prefix rather than an exact segment: a work account's root is "OneDrive - Contoso".
     if (target.split(/[\\/]/).some(segment => segment.startsWith("onedrive"))) {
         return true;
     }
     return roots.some(root => {
         const lower = root.toLowerCase();
-        return target === lower || target.startsWith(lower.endsWith(path.sep) ? lower : `${lower}${path.sep}`);
+        return target === lower || target.startsWith(lower.endsWith(path.win32.sep) ? lower : `${lower}${path.win32.sep}`);
     });
 }
 
 export function resolveDefaultProjectDirectory(environment: ProjectDirectoryEnvironment): string {
     const { platform, documents, downloads, home, env, directoryExists } = environment;
     if (platform !== "win32") {
-        return path.join(home, CONTAINER);
+        return path.posix.join(home, CONTAINER);
     }
 
     const roots = syncRoots(env);
     if (!isInsideSyncRoot(documents, roots)) {
-        return path.join(documents, CONTAINER);
+        return path.win32.join(documents, CONTAINER);
     }
 
     // The redirected case. `%USERPROFILE%\Documents` is where a local Documents folder stays when one
     // survived the move; Downloads is next because it is the one personal folder Known Folder Move
     // leaves alone by default.
-    const candidates = [path.join(home, "Documents"), downloads];
+    const candidates = [path.win32.join(home, "Documents"), downloads];
     for (const candidate of candidates) {
         if (!isInsideSyncRoot(candidate, roots) && directoryExists(candidate)) {
-            return path.join(candidate, CONTAINER);
+            return path.win32.join(candidate, CONTAINER);
         }
     }
-    return path.join(home, CONTAINER);
+    return path.win32.join(home, CONTAINER);
 }

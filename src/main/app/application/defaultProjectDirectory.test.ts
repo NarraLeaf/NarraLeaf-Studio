@@ -7,6 +7,11 @@ import { resolveDefaultProjectDirectory, type ProjectDirectoryEnvironment } from
  * worth pinning is Windows with OneDrive's Known Folder Move on: the shell Documents folder is then
  * the sync root, and a new project going there is gigabytes of assets plus a version history handed
  * to a sync client.
+ *
+ * The expectations join with `path.win32` (and `path.posix` for the other branch) rather than with
+ * ambient `path`, because these are Windows paths whichever machine runs the suite. Left ambient,
+ * every Windows case here passes on a Windows developer's box and fails on the Linux runner - which
+ * is how it reached develop and kept CI red.
  */
 
 const WIN_HOME = "C:\\Users\\author";
@@ -26,7 +31,7 @@ function windows(overrides: Partial<ProjectDirectoryEnvironment> = {}): ProjectD
 describe("resolveDefaultProjectDirectory", () => {
     it("offers Documents when nothing has moved it", () => {
         expect(resolveDefaultProjectDirectory(windows()))
-            .toBe(path.join(`${WIN_HOME}\\Documents`, "Projects"));
+            .toBe(path.win32.join(`${WIN_HOME}\\Documents`, "Projects"));
     });
 
     it("keeps out of the sync root when Documents has been redirected into OneDrive", () => {
@@ -34,7 +39,7 @@ describe("resolveDefaultProjectDirectory", () => {
             documents: `${WIN_HOME}\\OneDrive\\Documents`,
             env: { OneDrive: `${WIN_HOME}\\OneDrive` },
         }));
-        expect(dir).toBe(path.join(`${WIN_HOME}\\Documents`, "Projects"));
+        expect(dir).toBe(path.win32.join(`${WIN_HOME}\\Documents`, "Projects"));
     });
 
     it("recognizes the sync root by its folder name when the environment does not name it", () => {
@@ -44,7 +49,7 @@ describe("resolveDefaultProjectDirectory", () => {
             env: {},
             directoryExists: candidate => candidate === `${WIN_HOME}\\Documents`,
         }));
-        expect(dir).toBe(path.join(`${WIN_HOME}\\Documents`, "Projects"));
+        expect(dir).toBe(path.win32.join(`${WIN_HOME}\\Documents`, "Projects"));
     });
 
     it("falls to Downloads when no local Documents survived the move", () => {
@@ -53,7 +58,7 @@ describe("resolveDefaultProjectDirectory", () => {
             env: { OneDrive: `${WIN_HOME}\\OneDrive` },
             directoryExists: candidate => candidate === `${WIN_HOME}\\Downloads`,
         }));
-        expect(dir).toBe(path.join(`${WIN_HOME}\\Downloads`, "Projects"));
+        expect(dir).toBe(path.win32.join(`${WIN_HOME}\\Downloads`, "Projects"));
     });
 
     it("falls to the home folder when Downloads is inside the sync root too", () => {
@@ -63,7 +68,7 @@ describe("resolveDefaultProjectDirectory", () => {
             env: { OneDrive: `${WIN_HOME}\\OneDrive` },
             directoryExists: candidate => candidate.startsWith(`${WIN_HOME}\\OneDrive`),
         }));
-        expect(dir).toBe(path.join(WIN_HOME, "Projects"));
+        expect(dir).toBe(path.win32.join(WIN_HOME, "Projects"));
     });
 
     it("never offers a folder that is not there", () => {
@@ -72,7 +77,7 @@ describe("resolveDefaultProjectDirectory", () => {
             env: { OneDrive: `${WIN_HOME}\\OneDrive` },
             directoryExists: () => false,
         }));
-        expect(dir).toBe(path.join(WIN_HOME, "Projects"));
+        expect(dir).toBe(path.win32.join(WIN_HOME, "Projects"));
     });
 
     it("leaves macOS and Linux on the home folder they have always used", () => {
@@ -84,7 +89,7 @@ describe("resolveDefaultProjectDirectory", () => {
                 home: "/Users/author",
                 env: {},
                 directoryExists: () => true,
-            })).toBe(path.join("/Users/author", "Projects"));
+            })).toBe(path.posix.join("/Users/author", "Projects"));
         }
     });
 });
