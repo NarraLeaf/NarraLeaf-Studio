@@ -848,6 +848,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                             state={state}
                                             target={target}
                                             editing={inlineEditing}
+                                            matcher={find.matcher}
                                             onTargetChange={handleTargetChange}
                                             onApprove={handleApprove}
                                             onReturn={handleReturn}
@@ -860,6 +861,7 @@ export function LocalizationEditorTab({ tabId, payload, active }: EditorComponen
                                             state={state}
                                             target={target}
                                             editing={inlineEditing}
+                                            matcher={find.matcher}
                                             onTargetChange={handleTargetChange}
                                             onSourceChange={handleKeySourceChange}
                                             onRemove={removed => void handleKeyRemove(removed)}

@@ -222,6 +222,15 @@ describe("LocalizationEditorTab find", () => {
         expect(marked[0].textContent).toContain("Line 4242.");
     });
 
+    it("marks the words it matched inside the row, not just the row", async () => {
+        const { container } = await renderTab();
+        await openFind();
+        await typeQuery("Line 4242.");
+
+        const marked = container.querySelectorAll("[data-index].ring-1 mark");
+        expect([...marked].map(node => node.textContent)).toEqual(["Line 4242."]);
+    });
+
     it("counts every hit and steps through them without leaving the list", async () => {
         await renderTab();
         await openFind();

@@ -427,6 +427,7 @@ export const lint = {
         // 行号那一列念出来的样子。列里只写数字——故事编辑器的行号槽就是这么写的，
         // 读者是拿这一列去对那一列。
         lineAria: "第 {line} 行",
+        findPlaceholder: "在问题中查找",
     },
     command: {
         runProject: "检查项目",

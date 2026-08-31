@@ -1100,6 +1100,7 @@ export const workspace = {
                 assets: "アセット",
                 localization: "翻訳表",
                 voice: "音声表",
+                lint: "問題",
                 other: "その他",
             },
             // 自分の i18n キーを持たなかったカタログの項目の名前。
@@ -1111,6 +1112,7 @@ export const workspace = {
                 reopenClosedTab: "閉じたタブを開き直す",
                 localizationFind: "訳文を検索",
                 voiceFind: "音声を検索",
+                lintFind: "問題を検索",
                 // 開発モード・プレビュー・テストのうち、実行中のものを止める一つのキー。
                 // 停止する三つのコマンドが同じ割り当てを共有する。
                 run: {

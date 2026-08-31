@@ -450,6 +450,7 @@ export const lint = {
         // bare digits, because that is what the scene editor's own gutter shows and the reader is
         // matching one against the other.
         lineAria: "Line {line}",
+        findPlaceholder: "Find in problems",
     },
     command: {
         runProject: "Check project",

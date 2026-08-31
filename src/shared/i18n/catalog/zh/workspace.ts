@@ -1053,6 +1053,7 @@ export const workspace = {
                 assets: "资产",
                 localization: "翻译表",
                 voice: "配音表",
+                lint: "问题",
                 other: "其他",
             },
             // 此前没有自带 i18n key 的目录条目标签。
@@ -1064,6 +1065,7 @@ export const workspace = {
                 reopenClosedTab: "重新打开关闭的标签",
                 localizationFind: "在译文中查找",
                 voiceFind: "在配音中查找",
+                lintFind: "在问题中查找",
                 // 一个键位对应开发模式、预览、测试里当前占着运行位的那一个,
                 // 所以停止它们的三条命令共用同一条可重绑的快捷键。
                 run: {

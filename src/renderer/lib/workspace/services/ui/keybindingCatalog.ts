@@ -123,6 +123,7 @@ const CATEGORY = {
     assets: "workspace.shell.keybindings.categories.assets" as TranslationKey,
     localization: "workspace.shell.keybindings.categories.localization" as TranslationKey,
     voice: "workspace.shell.keybindings.categories.voice" as TranslationKey,
+    lint: "workspace.shell.keybindings.categories.lint" as TranslationKey,
 } as const;
 
 function entry(
@@ -324,6 +325,7 @@ export const KEYBINDING_CATALOG: readonly KeybindingCatalogEntry[] = [
     // "find in the voice table" should not be told they have also rebound the translation one.
     entry("localization.find", "mod+f", "workspace.shell.keybindings.catalog.localizationFind", CATEGORY.localization, Search),
     entry("voice.find", "mod+f", "workspace.shell.keybindings.catalog.voiceFind", CATEGORY.voice, Search),
+    entry("lint.find", "mod+f", "workspace.shell.keybindings.catalog.lintFind", CATEGORY.lint, Search),
 ];
 
 const CATALOG_BY_ID = new Map(KEYBINDING_CATALOG.map(item => [item.id, item]));

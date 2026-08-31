@@ -431,6 +431,7 @@ export const lint = {
         // 行番号の読み上げ。列そのものは数字だけにしてある。シーンエディタの行番号がそう出ていて、
         // 読み手はその 2 つを見比べるため。
         lineAria: "{line} 行目",
+        findPlaceholder: "問題を検索",
     },
     command: {
         runProject: "プロジェクトを検査",

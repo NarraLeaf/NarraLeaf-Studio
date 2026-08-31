@@ -267,6 +267,34 @@ export function groupLintEntries(
  * real report readable: `localization/missing` alone is one finding per line per target locale, and
  * folding it away is how the other nine rules become visible at all.
  */
+/**
+ * The folds a reader would see while a find is running: theirs, minus every group holding a hit.
+ *
+ * Folding is how a reader puts a rule aside, and a find that inherited it would answer "no results"
+ * about something plainly in the report. This is a view over their folds rather than a change to
+ * them - it is recomputed from the query, so closing the find restores every one.
+ *
+ * Returns the given set unchanged when nothing opens, so a memo over it keeps its identity and the
+ * row list is not rebuilt for a query that changed nothing.
+ */
+export function unfoldGroupsWithHits(
+    groups: readonly LintEntryGroup[],
+    collapsed: ReadonlySet<string>,
+    holdsHit: (entry: LintReportEntry) => boolean,
+): ReadonlySet<string> {
+    if (collapsed.size === 0) {
+        return collapsed;
+    }
+    let opened: Set<string> | null = null;
+    for (const group of groups) {
+        if (collapsed.has(group.key) && group.entries.some(holdsHit)) {
+            opened = opened ?? new Set(collapsed);
+            opened.delete(group.key);
+        }
+    }
+    return opened ?? collapsed;
+}
+
 export function flattenLintGroups(
     groups: readonly LintEntryGroup[],
     collapsed?: ReadonlySet<string>,

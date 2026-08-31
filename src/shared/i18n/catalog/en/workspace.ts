@@ -1272,6 +1272,7 @@ export const workspace = {
                 assets: "Assets",
                 localization: "Translation Table",
                 voice: "Voice Table",
+                lint: "Problems",
                 other: "Other",
             },
             // Labels for catalog entries that had no i18n key of their own.
@@ -1283,6 +1284,7 @@ export const workspace = {
                 reopenClosedTab: "Reopen Closed Tab",
                 localizationFind: "Find in Translations",
                 voiceFind: "Find in Voice-over",
+                lintFind: "Find in Problems",
                 // One chord for whichever of Dev Mode, Preview and Test is holding the run slot,
                 // so the three commands that stop them share a single rebindable shortcut.
                 run: {

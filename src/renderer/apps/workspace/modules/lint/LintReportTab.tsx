@@ -10,12 +10,18 @@ import { controlButtonClass } from "@/lib/ui-editor/widget-modules/shared/chrome
 import { cn } from "@/lib/utils/cn";
 import { useTranslation } from "@/lib/i18n";
 import type { TranslationKey } from "@shared/i18n";
+import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
+import { useKeybinding, whenEditorFocused } from "@/apps/workspace/hooks";
+import { MarkedText } from "@/apps/workspace/components/ui/FindMarks";
+import { TableFindOverlay } from "@/apps/workspace/components/ui/TableFindOverlay";
+import { useFindMatches, useFindQuery } from "@/apps/workspace/components/ui/useTableFind";
+import type { EditorComponentProps } from "../types";
 import { useWorkspace } from "../../context";
 import { useRegistry } from "../../registry";
 import { isFreezeExemptCommand } from "../../components/ui/freezeActionPolicy";
 import { useFreezeGuard } from "../../components/ui/freezeGuard";
 import { jumpToSearchTarget } from "../search/searchJump";
-import { LINT_PROJECT_COMMAND_ID } from "./lintIds";
+import { LINT_PROJECT_COMMAND_ID, LINT_REPORT_TAB_ID } from "./lintIds";
 import { isLintRunning, runProjectLint, subscribeLintRunning } from "./lintRunController";
 import {
     filterLintEntries,
@@ -27,6 +33,7 @@ import {
     lintRuleDescriptionKey,
     lintRuleTitleKey,
     lintSeverityLabelKey,
+    unfoldGroupsWithHits,
     type LintGroupMode,
     type LintSeverityFilter,
 } from "./lintReportModel";
@@ -80,7 +87,7 @@ const GROUP_MODE_OPTIONS: SelectOption[] = [
  *  - **Re-run stays live while frozen.** The sweep writes nothing and the exemption table says so;
  *    see `freezeActionPolicy`.
  */
-export function LintReportTab() {
+export function LintReportTab({ tabId = LINT_REPORT_TAB_ID }: Partial<EditorComponentProps<void>> = {}) {
     const { t } = useTranslation();
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab, setPanelVisibility } = useRegistry();
@@ -134,7 +141,76 @@ export function LintReportTab() {
         return groupLintEntries(entries, groupMode, { ruleTitle, locationLabel });
     }, [report, severityFilter, groupMode, ruleTitle, locationLabel]);
 
-    const rows = useMemo(() => flattenLintGroups(groups, collapsedKeys), [groups, collapsedKeys]);
+    /**
+     * Everything a finding shows, as one string for Mod+F: where it is, what it says, the author's
+     * own words on the row, and the rule it came from.
+     *
+     * The rule is in here whichever way the report is grouped. Grouped by rule it is the heading
+     * rather than anything on the row, and a heading is not an entry to navigate to - so without
+     * this, typing a rule's name into the find would answer "no results" about a report that is
+     * mostly that rule.
+     */
+    const entryHaystack = useCallback((entry: LintReportEntry): string => {
+        const message = t(entry.messageKey, entry.messageParams);
+        const { label, line } = lintEntryLocator(entry.location, groupMode, locationLabel, message);
+        return [
+            label,
+            line === null ? "" : String(line),
+            message,
+            lintEntryExcerpt(entry.location),
+            ruleTitle(entry.ruleId),
+        ].join("\n");
+    }, [t, groupMode, locationLabel, ruleTitle]);
+
+    const findQuery = useFindQuery();
+
+    /**
+     * A folded group that holds a hit opens itself while the find is running.
+     *
+     * Folding is how a reader puts a rule aside, and the find would otherwise inherit that as "no
+     * results" for something plainly in the report. The reader's own folds are untouched - this is
+     * a view over them for as long as there is a query, and closing the find restores every one.
+     *
+     * The order matters and is why this file holds the two halves of the find separately: the
+     * matcher has to exist before the row list does, because it is what decides which rows there
+     * are.
+     */
+    const effectiveCollapsed = useMemo(() => {
+        const matcher = findQuery.matcher;
+        if (!matcher) {
+            return collapsedKeys;
+        }
+        return unfoldGroupsWithHits(groups, collapsedKeys, entry => matcher.test(entryHaystack(entry)));
+    }, [collapsedKeys, findQuery.matcher, groups, entryHaystack]);
+
+    const rows = useMemo(() => flattenLintGroups(groups, effectiveCollapsed), [groups, effectiveCollapsed]);
+
+    const findItemText = useCallback((index: number): string | null => {
+        const row = rows[index];
+        return row?.kind === "entry" ? entryHaystack(row.entry) : null;
+    }, [rows, entryHaystack]);
+
+    const findUnfilteredTexts = useCallback(
+        () => (report?.entries ?? []).map(entryHaystack),
+        [report, entryHaystack],
+    );
+
+    const find = useFindMatches(findQuery, {
+        itemCount: rows.length,
+        getItemText: findItemText,
+        getUnfilteredTexts: findUnfilteredTexts,
+    });
+
+    useKeybinding({
+        id: `lint-find-${tabId}`,
+        catalogId: "lint.find",
+        key: "mod+f",
+        // The report has no field to type into, so this is only ever a shortcut arriving from the
+        // find box itself - which is exactly when it must still work, to pull focus back.
+        allowInEditable: true,
+        when: whenEditorFocused(tabId),
+        handler: find.openFind,
+    });
 
     const virtualizer = useVirtualizer({
         count: rows.length,
@@ -143,6 +219,17 @@ export function LintReportTab() {
         overscan: 16,
         getItemKey: index => rows[index]?.key ?? index,
     });
+
+    /**
+     * A hit is an arrival even though nobody scrolled: a sweep of a real game is thousands of
+     * findings, and Next can throw the cursor a long way down the report.
+     */
+    const findActiveIndex = find.activeIndex;
+    useEffect(() => {
+        if (findActiveIndex !== null) {
+            virtualizer.scrollToIndex(findActiveIndex, { align: "center" });
+        }
+    }, [findActiveIndex, virtualizer]);
 
     const handleJump = useCallback(
         (entry: LintReportEntry) => {
@@ -245,6 +332,10 @@ export function LintReportTab() {
                 </button>
             </div>
 
+            <div className="relative flex min-h-0 flex-1 flex-col">
+            {find.open ? (
+                <TableFindOverlay find={find} placeholder={t("lint.report.findPlaceholder")} />
+            ) : null}
             <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-2 py-1.5">
                 {rows.length === 0 ? (
                     placeholder ? <p className="px-1 py-1 text-xs text-fg-subtle">{placeholder}</p> : null
@@ -258,7 +349,12 @@ export function LintReportTab() {
                             return (
                                 <div
                                     key={item.key}
-                                    className="absolute left-0 top-0 w-full"
+                                    className={cn(
+                                        "absolute left-0 top-0 w-full",
+                                        // The row the find bar is on. Inset, because a ring drawn
+                                        // outside a windowed item overlaps the one above it.
+                                        find.activeIndex === item.index && "rounded-md ring-1 ring-inset ring-primary/60",
+                                    )}
                                     style={{ height: item.size, transform: `translateY(${item.start}px)` }}
                                 >
                                     {row.kind === "group" ? (
@@ -271,7 +367,9 @@ export function LintReportTab() {
                                                     ? t(lintRuleDescriptionKey(row.group.key as LintRuleId))
                                                     : ""
                                             }
-                                            collapsed={collapsedKeys.has(row.group.key)}
+                                            // What the reader sees folded, not what they asked to
+                                            // fold: a group the find has opened reads as open.
+                                            collapsed={effectiveCollapsed.has(row.group.key)}
                                             onToggle={() => toggleGroup(row.group.key)}
                                         />
                                     ) : (
@@ -284,6 +382,7 @@ export function LintReportTab() {
                                             // the severity colour, since a location's findings mix.
                                             secondary={groupMode === "location" ? ruleTitle(row.entry.ruleId) : ""}
                                             showSeverity={groupMode === "rule" && row.group.mixedSeverity}
+                                            matcher={find.matcher}
                                             onJump={handleJump}
                                         />
                                     )}
@@ -292,6 +391,7 @@ export function LintReportTab() {
                         })}
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );
@@ -342,6 +442,7 @@ function LintEntryRow({
     locationLabel,
     secondary,
     showSeverity,
+    matcher,
     onJump,
 }: {
     entry: LintReportEntry;
@@ -349,6 +450,8 @@ function LintEntryRow({
     locationLabel: (location: LintLocation) => string;
     secondary: string;
     showSeverity: boolean;
+    /** The open find's matcher, or null. What marks the hits inside the row's own text. */
+    matcher: CompiledMatcher | null;
     onJump: (entry: LintReportEntry) => void;
 }) {
     const { t } = useTranslation();
@@ -367,7 +470,7 @@ function LintEntryRow({
                 </span>
             ) : (
                 <span className="flex min-w-0 max-w-[45%] shrink-0 items-baseline text-2xs text-fg-subtle">
-                    <span className="truncate">{label}</span>
+                    <span className="truncate"><MarkedText text={label} matcher={matcher} /></span>
                     {line === null ? null : (
                         <span className="shrink-0 tabular-nums" aria-label={t("lint.report.lineAria", { line })}>
                             {label ? `:${line}` : line}
@@ -381,12 +484,14 @@ function LintEntryRow({
                 </span>
             ) : null}
             <span className="min-w-0 flex-1 truncate text-xs text-fg-muted">
-                {message}
-                {excerpt ? <span className="ml-2 text-fg-subtle">{excerpt}</span> : null}
+                <MarkedText text={message} matcher={matcher} />
+                {excerpt ? (
+                    <span className="ml-2 text-fg-subtle"><MarkedText text={excerpt} matcher={matcher} /></span>
+                ) : null}
             </span>
             {secondary ? (
                 <span className={cn("max-w-[30%] shrink-0 truncate text-2xs", SEVERITY_TEXT_CLASS[entry.severity])}>
-                    {secondary}
+                    <MarkedText text={secondary} matcher={matcher} />
                 </span>
             ) : null}
         </>
