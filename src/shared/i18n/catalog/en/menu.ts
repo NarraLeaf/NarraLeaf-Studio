@@ -46,6 +46,7 @@ export const menu = {
         openRecent: "Open Recent Workspaces",
         noRecent: "No Recent Workspaces",
         export: "Export Project",
+        revealProject: "Show Project Folder",
         close: "Close Workspace",
         returnToLauncher: "Back to Launcher",
     },

@@ -167,6 +167,7 @@ export enum IPCEventType {
     appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
+    appOpenLogsFolder = "app.openLogsFolder",
     appProbeDownloadSource = "app.probeDownloadSource",
     appCacheInventory = "app.cacheInventory",
     appCacheClear = "app.cacheClear",
@@ -985,6 +986,19 @@ export type IPCEvents = {
             filePath?: string;
             byteLength?: number;
         };
+    };
+    /**
+     * Show the folder Studio's own logs are written to.
+     *
+     * Takes no path, which is the point: the folder is `app.getPath("logs")` as main knows it, so a
+     * renderer that has been talked into asking can open that one folder and nothing else. The
+     * export above answers "give me a file to send"; this answers "let me look at them myself".
+     */
+    [IPCEventType.appOpenLogsFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
     };
     /**
      * Ask the host whether a mirror answers, for the Network settings panel.

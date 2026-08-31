@@ -42,6 +42,11 @@ export const actions = {
             label: "导出项目",
             tooltip: "将当前项目导出为分发包",
         },
+        revealProject: {
+            label: "打开项目所在位置",
+            tooltip: "在文件管理器中显示本项目的文件夹",
+            failed: "无法打开项目文件夹",
+        },
         returnToLauncher: {
             label: "返回启动器",
             tooltip: "离开当前项目，回到启动器",

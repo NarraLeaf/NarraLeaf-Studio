@@ -24,7 +24,7 @@ import { applyPackDelta, type PackDelta } from "@shared/utils/packDelta";
 import { dlcAttachesToBuild } from "@shared/types/dlc";
 import { dlcDirectoryCandidates, isDlcFileName } from "@shared/utils/dlcDelivery";
 import { PATCH_DIRECTORY_NAME } from "@shared/utils/patchDelivery";
-import { computeStoryContentHash } from "@shared/utils/storyContentHash";
+import { computeStoryContentHashes } from "@shared/utils/storyContentHash";
 import { resolveRuntimeAssetPath } from "./runtimeProtocol";
 
 // Runtime files served from the store are limited to the author-supplied code
@@ -513,7 +513,8 @@ class PatchedRuntimeResources implements RuntimeResources {
             const bundle = (pack as { bundle?: unknown }).bundle;
             if (bundle && typeof bundle === "object") {
                 const library = (bundle as { storyLibrary?: { documents?: Record<string, unknown> } }).storyLibrary;
-                (bundle as { storyHash?: string }).storyHash = computeStoryContentHash(library?.documents);
+                (bundle as { storyHashes?: Record<string, string> }).storyHashes =
+                    computeStoryContentHashes(library?.documents);
             }
         }
         return Buffer.from(JSON.stringify(pack), "utf-8");

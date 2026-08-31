@@ -364,6 +364,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
+        openLogsFolder: () =>
+            ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>
