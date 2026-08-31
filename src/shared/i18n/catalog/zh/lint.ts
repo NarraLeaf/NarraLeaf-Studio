@@ -277,6 +277,11 @@ export const lint = {
             description: "会执行的 Save Game 节点上，声明过的存档字段未填写",
             message: "{field} 未填写，本次存档将写入其默认值",
         },
+        blueprintStartSceneForeign: {
+            title: "来自另一个故事的场景",
+            description: "Start Game 节点选中的场景不在它指定的故事里",
+            message: "该场景在《{owner}》里，不在《{story}》里，从这里开始游戏会中断",
+        },
         variablesUndeclared: {
             title: "未声明的变量",
             description: "变量在使用前未声明",
