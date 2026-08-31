@@ -423,6 +423,8 @@ export const story = {
         appearance: "外观",
         default: "默认",
         preview: "预览",
+        previewLarger: "放大预览",
+        previewSmaller: "缩小预览",
     },
     pause: {
         title: "暂停",
@@ -557,6 +559,7 @@ export const story = {
         lineText: "文本",
         labelName: "标签",
         endingName: "结局",
+        quitPage: "页面",
         scene: "场景",
         track: "音轨",
         appTag: "变体",
@@ -834,6 +837,7 @@ export const story = {
             audioTrack: "音轨",
             label: "本场景内的标签",
             appTag: "变体",
+            surface: "页面",
             variable: "变量",
             content: "新内容，类型随目标而定",
             color: "颜色",
@@ -1055,7 +1059,7 @@ export const story = {
         nvl: { label: "NVL", detail: "切换堆叠对白面板" },
         show: { label: "显示", detail: "显示角色或舞台对象" },
         hide: { label: "隐藏", detail: "隐藏角色或舞台对象" },
-        face: { label: "表情", detail: "切换角色表情" },
+        face: { label: "外观", detail: "切换角色显示的外观：姿态、差分或表情" },
         motion: { label: "动作", detail: "设置由运行时绘制的角色所播放的动作" },
         param: { label: "参数", detail: "设置由运行时绘制的角色模型上的一个数值参数" },
         skin: { label: "皮肤", detail: "设置由运行时绘制的角色所穿的皮肤" },
@@ -1105,6 +1109,7 @@ export const story = {
         // 按它造出来的行来命名。详情把行做的两件事都说出来：记录结局是写这一行而不是干脆停下的理由，
         // 画廊界面与通关测试读的都是这份记录。
         ending: { label: "结局", detail: "在此行结束剧情，并记录玩家到达的结局" },
+        quit: { label: "退出到页面", detail: "在此行结束本次游玩并显示一个页面，不记录结局" },
         blueprint: { label: "蓝图", detail: "运行故事动作蓝图" },
         transform: { label: "变换", detail: "移动、缩放、旋转、遮罩、添加滤镜或淡入淡出舞台上的任何对象，包括镜头" },
         note: { label: "备注", detail: "仅 Studio 可见的备注" },
@@ -1152,6 +1157,7 @@ export const story = {
         break: "跳出",
         cut: "截断点",
         ending: "结局",
+        quit: "退出到页面",
         jump: "跳转",
         note: "备注",
         invalid: "无效",
@@ -1219,6 +1225,8 @@ export const story = {
         // 只说两种情况下都成立的那一句；「变体已被删除」由行上那个拿得到变体表的标记来说。
         cutUnknown: "截断点",
         ending: "结局 {name}",
+        quit: "退出到 {page}",
+        quitUnset: "退出到页面",
         jump: "跳转 {scene}",
         note: "备注",
         invalid: "无效指令",

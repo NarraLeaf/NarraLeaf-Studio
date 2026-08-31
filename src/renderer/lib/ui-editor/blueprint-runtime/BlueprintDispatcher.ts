@@ -306,6 +306,16 @@ function createScriptExecutionContext(input: {
                     input.debug.emit({ type: "function.return", functionId: "game.getSaveLine" });
                     return null;
                 },
+                captureRun: () => {
+                    input.debug.emit({ type: "function.call", functionId: "game.captureRun" });
+                    input.debug.emit({ type: "function.return", functionId: "game.captureRun" });
+                    return null;
+                },
+                readSaveGame: async (_id: string) => {
+                    input.debug.emit({ type: "function.call", functionId: "game.readSaveGame" });
+                    input.debug.emit({ type: "function.return", functionId: "game.readSaveGame" });
+                    return null;
+                },
                 getSavePreview: async (_id: string) => {
                     input.debug.emit({ type: "function.call", functionId: "game.getSavePreview" });
                     input.debug.emit({ type: "function.return", functionId: "game.getSavePreview" });

@@ -1,8 +1,8 @@
-import { Bookmark, CornerUpLeft, Flag, FlagTriangleRight, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
+import { AppWindow, Bookmark, CornerUpLeft, Flag, FlagTriangleRight, GitBranch, ListChecks, ListOrdered, LogOut, Repeat, Repeat2, Rows3, SeparatorHorizontal, Workflow } from "lucide-react";
 import { APP_TAG_ID_RELEASE } from "@shared/types/appTag";
 import type { StoryBlock, StoryConditionRef } from "@shared/types/story";
 import { createBlockForCommand } from "../../storyActionCommands";
-import { appTagParam, asAppTagId, asNumber, asText, defineStoryCommand } from "../spec";
+import { appTagParam, asAppTagId, asNumber, asSurfaceId, asText, defineStoryCommand } from "../spec";
 
 /**
  * Control flow: `/if`, `/menu`, the two loops (`/repeat`, `/until`), `/break`, `/cut`, and the
@@ -339,6 +339,46 @@ export const ending = defineStoryCommand({
     },
 });
 
+/**
+ * `/quit <page>` - the run is over; hand the player this page.
+ *
+ * The hub row. A scene plays, the playthrough ends, and a page takes the screen - a map, a chapter
+ * select, a room the next scene is chosen from. What comes back is `Start Game`, whose scene pin is
+ * what makes that page a launcher rather than a menu.
+ *
+ * Not an `/ending` with the recording turned off: an ending is a thing a player collects, and a hub
+ * passed through twenty times would put twenty entries in the endings record, the endings screen and
+ * every reader that walks towards one. See the payload's own note.
+ *
+ * The page is a core argument. A quit with nowhere to go would take the story away and leave the
+ * player on a frame with nothing to touch, so a bare `/quit` stays a draft row asking for the page
+ * rather than committing without one - exactly as `/label` and `/ending` do with their names.
+ */
+export const quit = defineStoryCommand({
+    id: "quit",
+    token: "quit",
+    // No `exit` alias: `/hide` already owns that word, and a stage object leaving the screen is
+    // the thing an author writes far more often than a playthrough ending.
+    aliases: ["leave"],
+    category: "flow",
+    icon: AppWindow,
+    examples: ["/quit Map", "/quit Title"],
+    params: {
+        page: { hint: "quitPage", type: { kind: "surface" }, positional: true, core: true },
+    },
+    build(args, ctx): StoryBlock {
+        return {
+            id: ctx.generateId(),
+            parentId: null,
+            childrenIds: [],
+            kind: "control",
+            // The id, never the typed name - the row has to keep naming the same page after a
+            // rename, exactly as `/cut` keeps naming the same variant.
+            payload: { control: "quit", surfaceId: asSurfaceId(args.page) ?? "" },
+        };
+    },
+});
+
 /** A Story Action Blueprint call - the blueprint itself is picked in the inspector. */
 export const blueprint = defineStoryCommand({
     id: "blueprint",
@@ -352,4 +392,4 @@ export const blueprint = defineStoryCommand({
     inspectorAfterCommit: true,
 });
 
-export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, blueprint];
+export const LOGIC_COMMANDS = [ifCommand, menu, repeat, until, breakLoop, parallel, race, sequence, label, goto, cut, ending, quit, blueprint];

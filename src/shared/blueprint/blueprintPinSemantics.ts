@@ -96,6 +96,7 @@ export const BLUEPRINT_LAYER_CONFIRM_BUTTON_PINS: BlueprintVariadicExecOutputs =
  * them safe for the fold to delete once nothing consumes them any more.
  */
 const PURE_DATA_NODE_TYPES: readonly string[] = [
+    "blueprint.game.save.slot",
     "blueprint.boolean.and", "blueprint.boolean.not", "blueprint.boolean.or", "blueprint.boolean.xor",
     "blueprint.broadcast.getListenerCount", "blueprint.button.getEnabled", "blueprint.button.getLabel",
     "blueprint.button.getVariant", "blueprint.button.getVisible", "blueprint.collection.arrayContains",
@@ -292,6 +293,7 @@ const STEP_NODE_TYPES: readonly string[] = [
     "blueprint.game.save.getMetadata", "blueprint.game.save.getPreview",
     "blueprint.game.save.getLine", "blueprint.game.save.getPlaytime",
     "blueprint.game.save.getTime", "blueprint.game.save.listIds",
+    "blueprint.game.save.currentRun",
     "blueprint.game.save.write", "blueprint.game.setAutoForward", "blueprint.game.setBgmVolume",
     "blueprint.game.setGameSpeed", "blueprint.game.setGlobalVolume", "blueprint.game.setSentenceSpeed",
     "blueprint.game.setAutoForwardDelay", "blueprint.game.setSkipping",

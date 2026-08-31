@@ -88,6 +88,19 @@ describe("querySearchIndex", () => {
         expect(titleHit && keyHit && titleHit.score > keyHit.score).toBe(true);
     });
 
+    it("marks where the context line matched, so a row with a plain title still shows why", () => {
+        const keyHit = querySearchIndex(entries, "morning").find(g => g.group === "uiTextKey")?.hits[0];
+        // "Start the morning" - the row's own text ("menu.start") holds nothing of the term.
+        expect(keyHit?.detailRanges).toEqual([[10, 17]]);
+    });
+
+    it("marks the context line for every term that landed there", () => {
+        const hit = querySearchIndex(entries, "inko opening").find(g => g.group === "storyText")?.hits[0];
+        // "Main Story › Opening": "inko" matched the title, "opening" only the context line.
+        expect(hit?.titleRanges).toEqual([[14, 18]]);
+        expect(hit?.detailRanges).toEqual([[13, 20]]);
+    });
+
     it("matches hidden aux text and says so", () => {
         const asset = querySearchIndex(entries, "morning").find(g => g.group === "asset")?.hits[0];
         expect(asset?.entry.id).toBe("5");
@@ -217,6 +230,7 @@ describe("querySearchIndex with a refined matcher", () => {
         })[0].hits[0];
         expect(hit.matchReason).toBe("detail");
         expect(hit.titleRanges).toEqual([]);
+        expect(hit.detailRanges).toEqual([[13, 20]]);
     });
 
     it("leaves the term path exactly as it was when no matcher is supplied", () => {

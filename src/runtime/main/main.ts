@@ -50,7 +50,7 @@ import { executeBlueprintNetworkFetch } from "@shared/utils/blueprintNetworkFetc
 import type { BlueprintPointerMoveRequest } from "@shared/types/blueprint/pointer";
 import { executeBlueprintPointerMove } from "@shared/utils/blueprintPointerMove";
 import { packNetworkAllowlist, type NetworkAllowlist } from "@shared/types/networkAllowlist";
-import { sniffMediaType } from "./mediaSniff";
+import { sniffMediaType } from "@shared/utils/mediaSniff";
 import { createRuntimeResources, isSealedBuildSync, type RuntimeResources } from "./runtimeResources";
 import {
     PLUGIN_REACT_MODULE_SOURCES,

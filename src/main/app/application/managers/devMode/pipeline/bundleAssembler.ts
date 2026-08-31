@@ -40,7 +40,7 @@ import type { SaveCompatibilityConfiguration } from "@shared/types/saveCompatibi
 import { normalizeSaveCompatibilityConfiguration } from "@shared/types/saveCompatibility";
 import type { VfxConfiguration } from "@shared/types/vfx";
 import { normalizeVfxConfiguration } from "@shared/types/vfx";
-import { computeStoryContentHash } from "@shared/utils/storyContentHash";
+import { computeStoryContentHashes } from "@shared/utils/storyContentHash";
 import type { GameVoiceBundle } from "@shared/types/voice";
 import { normalizeVoiceConfiguration, normalizeVoiceDocument } from "@shared/types/voice";
 import type { AudioClipRegion, GameAudioBundle } from "@shared/types/audio";
@@ -211,8 +211,10 @@ export async function assembleDevModeBundleFromProjectPath(context: DevModeBundl
         vfx,
         gameVersion,
         // Taken off the library this build actually ships, after the variant fold and any scene
-        // drop, so two editions that carry different chapters do not claim the same story.
-        storyHash: computeStoryContentHash(resolvedStoryLibrary?.documents),
+        // drop, so two editions that carry different chapters do not claim the same story. One
+        // fingerprint per story: a save belongs to one of them, and asking whether the whole
+        // library changed retires a player's saves on one route because another was patched.
+        storyHashes: computeStoryContentHashes(resolvedStoryLibrary?.documents),
         preferences,
         brand,
         fonts,

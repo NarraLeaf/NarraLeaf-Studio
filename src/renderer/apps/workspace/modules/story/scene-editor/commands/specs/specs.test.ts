@@ -20,7 +20,7 @@ const CONTEXT: StoryCommandContext = {
     videos: [{ id: "v1", name: "intro" }],
     assetSets: [],
     // Alice is drawn by Studio; Doll is drawn by a runtime the author supplied, so she has no
-    // authoring-time differentials at all - the two together are what the `/face` union has to serve.
+    // authoring-time differentials at all - the two together are what the `/char` union has to serve.
     characters: [{ id: "c1", name: "Alice" }, { id: "c2", name: "Doll" }],
     tempSpeakers: ["Zoe"],
     scenes: [{ id: "s1", name: "Chapter 2" }],
@@ -37,6 +37,7 @@ const CONTEXT: StoryCommandContext = {
     ],
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
+    surfaces: [{ id: "u1", name: "Map" }, { id: "u2", name: "Title" }],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
         { name: "met", ref: { scope: "saved", variableId: "var_met" }, valueType: "boolean" },
@@ -308,33 +309,53 @@ describe("dialogue", () => {
 /**
  * The three state channels of a character an author's own runtime draws.
  *
- * The taxonomy claim under test: expression is NOT a new command (it is `/face`, whose one slot now
+ * The taxonomy claim under test: expression is NOT a new command (it is `/char`, whose one slot now
  * answers for all three appearance kinds), motion and skin ARE - nothing in the vocabulary named
  * them - and `setParam` / `setSlot` / `command` are not on the line at all.
  */
 describe("puppet state channels", () => {
-    it("/face keeps its slot and stores a runtime name verbatim, with no id to store", () => {
-        // Same verb, same slot, third kind of answer: a pose id, a tag id, or a name the model owns.
-        expect(build("/face Alice smile")).toMatchObject({
+    /**
+     * The rename of `/face` to `/char`, from both ends.
+     *
+     * The old spelling is not a nicety to keep: it is in every script exported before the rename and
+     * in the fingers of every author who has used Studio until now, and the line it wrote is the same
+     * line. So the canonical token moves and the old word stays acceptable - which is the one thing a
+     * rename can get wrong without anybody noticing until an author's file will not parse.
+     */
+    it("/char is the spelling, and /face still reads back the same row", () => {
+        expect(getCommandSpec("face")?.token).toBe("char");
+        expect(getCommandSpec("face")?.aliases).toContain("face");
+        const renamed = build("/char Alice smile");
+        expect(renamed).toMatchObject({
             payload: { action: "character", operation: "expression", characterId: "c1", pose: "t1" },
         });
-        expect(build("/face Alice smile").payload).not.toHaveProperty("puppetName");
-        const doll = build("/face Doll smile");
+        // The payload, not the block: the block carries a generated id, which differs per call.
+        expect(build("/face Alice smile").payload).toEqual(renamed.payload);
+        expect(build("/expression Alice smile").payload).toEqual(renamed.payload);
+    });
+
+    it("/char keeps its slot and stores a runtime name verbatim, with no id to store", () => {
+        // Same verb, same slot, third kind of answer: a pose id, a tag id, or a name the model owns.
+        expect(build("/char Alice smile")).toMatchObject({
+            payload: { action: "character", operation: "expression", characterId: "c1", pose: "t1" },
+        });
+        expect(build("/char Alice smile").payload).not.toHaveProperty("puppetName");
+        const doll = build("/char Doll smile");
         expect(doll).toMatchObject({
             payload: { action: "character", operation: "expression", characterId: "c2", puppetName: "smile" },
         });
         expect(doll.payload).not.toHaveProperty("pose");
         expect(doll.payload).not.toHaveProperty("tags");
         // A name no branch can check is still not a free-for-all: the character must resolve.
-        expect(issuesOf("/face Nobody smile")).toEqual(["unknownCharacter"]);
+        expect(issuesOf("/char Nobody smile")).toEqual(["unknownCharacter"]);
     });
 
-    it("/face takes a transition, and writes it on the ref the swap actually plays", () => {
+    it("/char takes a transition, and writes it on the ref the swap actually plays", () => {
         // `expression` is the one character operation the engine plays a `StoryTransitionRef` on -
         // it compiles to `char(src, transition)`. So `d=` is THAT ref's duration; the transform's
         // duration is the entrance/exit timing, and a swap that wrote it would edit a live-looking
         // field nothing on stage reads.
-        expect(build("/face Alice smile t=wipe d=0.4")).toMatchObject({
+        expect(build("/char Alice smile t=wipe d=0.4")).toMatchObject({
             payload: {
                 action: "character",
                 operation: "expression",
@@ -343,27 +364,27 @@ describe("puppet state channels", () => {
                 transition: { kind: "softWipe", durationMs: 400 },
             },
         });
-        expect(build("/face Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
+        expect(build("/char Alice smile t=wipe d=0.4").payload).not.toHaveProperty("transform");
         // `fade` on a swap is a fade-in, not the crossfade it is on a `/bg`: `Dissolve` half-fades
         // both frames at once and shows the background through the middle, while `FadeIn` leaves the
         // outgoing frame fully opaque and brings the new one up over it. The crossfade is still
         // reachable - by name.
-        expect(build("/face Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
-        expect(build("/face Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
+        expect(build("/char Alice smile t=fade")).toMatchObject({ payload: { transition: { kind: "fadeIn" } } });
+        expect(build("/char Alice smile t=dissolve")).toMatchObject({ payload: { transition: { kind: "dissolve" } } });
         // No `t=`, no ref: a row that says nothing about the swap must not gain a field.
-        expect(build("/face Alice smile").payload).not.toHaveProperty("transition");
+        expect(build("/char Alice smile").payload).not.toHaveProperty("transition");
     });
 
     it("refuses a transition on a puppet, whose expression has no second frame", () => {
         // A puppet's expression compiles to `puppet.setExpression(name)` - the backend owns the inside
         // of the box, and nothing in that call takes a transition. The key is the mistake, not the
         // character, so the report names the key.
-        expect(issuesOf("/face Doll smile t=wipe")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/face Doll smile d=0.4")).toEqual(["unsupportedParam"]);
-        expect(issuesOf("/face Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
+        expect(issuesOf("/char Doll smile t=wipe")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/char Doll smile d=0.4")).toEqual(["unsupportedParam"]);
+        expect(issuesOf("/char Doll smile t=wipe d=0.4")).toEqual(["unsupportedParam", "unsupportedParam"]);
         // The verb itself is untouched on both kinds of character.
-        expect(issuesOf("/face Doll smile")).toEqual([]);
-        expect(issuesOf("/face Alice smile t=wipe d=0.4")).toEqual([]);
+        expect(issuesOf("/char Doll smile")).toEqual([]);
+        expect(issuesOf("/char Alice smile t=wipe d=0.4")).toEqual([]);
     });
 
     it("/motion and /skin write their own operation and nothing else", () => {

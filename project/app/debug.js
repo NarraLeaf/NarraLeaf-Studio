@@ -23,6 +23,15 @@
 const DEFAULT_DEBUG_HOST = '127.0.0.1';
 const DEFAULT_DEBUG_PORT = Number(process.env.NLS_DEBUG_PORT) || 9223;
 
+/*
+ * The two log sources grade severity with different words, and neither end complains about a word
+ * it does not know: the server drops an unrecognised devtools level and the renderer bridge ranks
+ * an unrecognised console level below everything. So `devtools --level verbose` used to mean "no
+ * filter at all" and looked exactly like a window that had nothing above verbose to say.
+ */
+const CONSOLE_LEVELS = ['verbose', 'info', 'success', 'warning', 'error'];
+const DEVTOOLS_LEVELS = ['debug', 'info', 'warning', 'error'];
+
 function baseUrl(options) {
     return `http://${options.host}:${options.port}`;
 }
@@ -65,6 +74,7 @@ const getWindows = (options) => debugRequest('/windows', {}, options);
 const getConsole = (params, options) => debugRequest('/console', params, options);
 const getDevtools = (params, options) => debugRequest('/devtools', params, options);
 const getLogs = (params, options) => debugRequest('/logs', params, options);
+const getAnomalies = (options) => debugRequest('/anomalies', {}, options);
 
 function pad(value, width) {
     const text = String(value ?? '');
@@ -105,6 +115,28 @@ function printDevtools(result) {
     }
 }
 
+function printAnomalies(snapshot) {
+    if (!snapshot || snapshot.available === false) {
+        console.log(`[anomalies] unavailable: ${snapshot ? snapshot.reason : 'no response'}`);
+        return;
+    }
+    const anomalies = (snapshot.data ?? snapshot).anomalies ?? [];
+    if (!anomalies.length) {
+        console.log('[anomalies] the workspace reports nothing survived');
+        return;
+    }
+    for (const anomaly of anomalies) {
+        const time = anomaly.at ? new Date(anomaly.at).toISOString().slice(11, 19) : '';
+        const where = anomaly.path ? ` ${anomaly.path}` : '';
+        console.log(`${time}  ${pad(anomaly.severity, 8)} ${pad(anomaly.source, 12)} ${anomaly.operationKey}${where}`);
+        // The raw error is the point of the record - it is what the author would paste into an
+        // issue - so it is printed whole rather than trimmed to the width of the line above it.
+        for (const line of String(anomaly.raw ?? '').split(/\r?\n/)) {
+            console.log(`    ${line}`);
+        }
+    }
+}
+
 function printWindows(payload) {
     for (const window of payload.windows ?? []) {
         console.log(`[${window.windowType}] id=${window.windowId} "${window.title}"`);
@@ -126,6 +158,9 @@ function printHelp() {
   node project/app/debug.js console  [options]
   node project/app/debug.js devtools [options]
   node project/app/debug.js logs     [options]   # console + devtools together
+  node project/app/debug.js anomalies            # what the workspace survived rather than reported
+
+With no command at all, health is what runs.
 
 Filters:
   --channel <id>     Console only: restrict to a channel (build, blueprint, story, …)
@@ -199,11 +234,34 @@ function parseArgs(argv) {
     return { command: positional.shift() ?? 'health', options, params };
 }
 
+/** Refuse a severity the source being asked cannot grade. */
+function assertLevel(command, level) {
+    if (!level) {
+        return;
+    }
+    const both = CONSOLE_LEVELS.filter(item => DEVTOOLS_LEVELS.includes(item));
+    const allowed = command === 'console'
+        ? CONSOLE_LEVELS
+        : command === 'devtools'
+            ? DEVTOOLS_LEVELS
+            : [...new Set([...CONSOLE_LEVELS, ...DEVTOOLS_LEVELS])];
+    if (!allowed.includes(level)) {
+        throw new Error(`--level ${level} is not one of: ${allowed.join(', ')}`);
+    }
+    if (command === 'logs' && !both.includes(level)) {
+        const side = CONSOLE_LEVELS.includes(level) ? 'the Console service' : 'the DevTools console';
+        console.error(`[debug] --level ${level} is only graded by ${side}; the other source comes back unfiltered.`);
+    }
+}
+
 async function runCli(argv = process.argv.slice(2)) {
     const { command, options, params } = parseArgs(argv);
     if (options.help) {
         printHelp();
         return;
+    }
+    if (command === 'console' || command === 'devtools' || command === 'logs') {
+        assertLevel(command, params.level);
     }
 
     const emit = (value, formatter) => {
@@ -225,6 +283,9 @@ async function runCli(argv = process.argv.slice(2)) {
         }
         case 'windows':
             emit(await getWindows(options), printWindows);
+            return;
+        case 'anomalies':
+            emit(await getAnomalies(options), printAnomalies);
             return;
         case 'console':
             emit(await getConsole(params, options), printConsoleSnapshot);
@@ -260,6 +321,7 @@ module.exports = {
     debugRequest,
     getHealth,
     getWindows,
+    getAnomalies,
     getConsole,
     getDevtools,
     getLogs,

@@ -124,6 +124,7 @@ export type NarralangIssueDetail =
     | "scene"
     | "variable"
     | "variant"
+    | "page"
     | "camera";
 
 export type NarralangIssue = {
@@ -1247,6 +1248,17 @@ function controlShape(ctx: NarralangExtractContext, block: StoryBlock, payload: 
                 ctx.report(block.id, "endingPage");
             }
             return { form: "statement", verb: "ending", slots: { ending: asName(payload.name) } };
+        }
+        case "quit": {
+            // The page by name, on the same terms a cut names its variant: an id that resolves to
+            // nothing leaves the script with nothing to call it by, so the row is reported rather
+            // than written out pointing at a page the reader cannot see.
+            const page = ctx.lookups.surfaceName?.(payload.surfaceId) ?? null;
+            if (!page) {
+                ctx.report(block.id, "unresolvedRef", "page");
+                return { form: "statement", verb: "quit", slots: {} };
+            }
+            return { form: "statement", verb: "quit", slots: { page: asName(page) } };
         }
         default:
             ctx.report(block.id, "unknownPayload");

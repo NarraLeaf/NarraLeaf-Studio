@@ -180,6 +180,9 @@ export class StudioDebugServer {
             case "/console":
                 this.sendJson(res, 200, await this.consoleSnapshot(url));
                 return;
+            case "/anomalies":
+                this.sendJson(res, 200, await this.anomalySnapshot());
+                return;
             case "/logs":
                 this.sendJson(res, 200, {
                     console: await this.consoleSnapshot(url),
@@ -198,7 +201,7 @@ export class StudioDebugServer {
             version: this.safeVersion(),
             dev: this.app.isDevMode(),
             port: this.port,
-            endpoints: ["/health", "/windows", "/console", "/devtools", "/logs"],
+            endpoints: ["/health", "/windows", "/console", "/devtools", "/anomalies", "/logs"],
             windows: this.liveWindows(),
         };
     }
@@ -237,11 +240,6 @@ export class StudioDebugServer {
     }
 
     private async consoleSnapshot(url: URL): Promise<Record<string, unknown>> {
-        const workspace = this.findWorkspaceWindow();
-        if (!workspace) {
-            return { available: false, reason: "no-workspace-window" };
-        }
-
         const options = {
             channel: url.searchParams.get("channel") ?? undefined,
             level: url.searchParams.get("level") ?? undefined,
@@ -249,11 +247,38 @@ export class StudioDebugServer {
             since: parseIntParam(url.searchParams.get("since")),
             limit: parseIntParam(url.searchParams.get("limit")),
         };
-        const code = `(function(){try{`
-            + `var d=window.__NLS_STUDIO_DEBUG__;`
-            + `if(!d||!d.console){return {available:false,reason:'bridge-not-installed'};}`
-            + `return {available:true,data:d.console.snapshot(${JSON.stringify(options)})};`
-            + `}catch(e){return {available:false,reason:String((e&&e.message)||e)};}})()`;
+        return this.readBridge(
+            "console",
+            `return {available:true,data:d.console.snapshot(${JSON.stringify(options)})};`,
+        );
+    }
+
+    /**
+     * Everything the workspace survived rather than reported.
+     *
+     * Served rather than left to whoever thinks to evaluate it, because the failures it records are
+     * the ones with no other symptom: a corrupt asset shard is set aside and replaced with `{}`, a
+     * story that will not parse is left unloaded, and the project then opens looking merely empty.
+     * A caller reading only the two log surfaces sees a workspace with nothing to say for itself.
+     */
+    private async anomalySnapshot(): Promise<Record<string, unknown>> {
+        return this.readBridge("anomalies", "return {available:true,data:{anomalies:d.anomalies()}};");
+    }
+
+    /**
+     * Ask the workspace window's dev bridge for something.
+     *
+     * `available: false` with a reason rather than an error status, for every way this comes back
+     * empty: no workspace window open yet, a renderer built without the bridge, a bridge too old to
+     * carry the member asked for, and a call that threw. Polling one of these while Studio is still
+     * starting is the ordinary case, and a 500 would make it read as a fault.
+     */
+    private async readBridge(member: string, body: string): Promise<Record<string, unknown>> {
+        const workspace = this.findWorkspaceWindow();
+        if (!workspace) {
+            return { available: false, reason: "no-workspace-window" };
+        }
+        const code = buildBridgeCallScript(member, body);
 
         try {
             const result = await workspace.getWebContents().executeJavaScript(code, false);
@@ -293,6 +318,27 @@ export class StudioDebugServer {
         });
         res.end(payload);
     }
+}
+
+/**
+ * The script a bridge read runs inside the workspace window.
+ *
+ * A string, evaluated in another process, whose every failure mode has to come back as data rather
+ * than as a rejected promise - so a mistake inside it does not surface as a mistake inside it, but
+ * as `available: false` with a reason that reads exactly like a renderer built without the bridge.
+ * Built here, and separately from the server, so the four answers it can give can be pinned by a
+ * test that simply runs it.
+ *
+ * `body` is trusted: it comes from this file, and the only thing interpolated into it is
+ * JSON-encoded query options.
+ */
+export function buildBridgeCallScript(member: string, body: string): string {
+    return `(function(){try{`
+        + `var d=window.__NLS_STUDIO_DEBUG__;`
+        + `if(!d){return {available:false,reason:'bridge-not-installed'};}`
+        + `if(!d[${JSON.stringify(member)}]){return {available:false,reason:'bridge-too-old'};}`
+        + body
+        + `}catch(e){return {available:false,reason:String((e&&e.message)||e)};}})()`;
 }
 
 function normalizeLevel(level: DevtoolsConsoleLevel | string | undefined): DevtoolsConsoleLevel {

@@ -25,6 +25,7 @@ import { openSceneFlowTab } from "../../story-flow/openSceneFlowTab";
 import { buildStorySceneTextProjection } from "../projection/storySceneProjection";
 import { useStoryScriptIo } from "../script/useStoryScriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
+import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
 
 interface StoryPanelState {
@@ -440,13 +441,15 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                 label: t("story.script.exportStory"),
                 onClick: () => beginScriptExport({ storyId: entry.id, sceneIds: null }),
             },
-            {
-                // Beside the `.txt` export rather than in a submenu of its own: they are one feature
-                // in two formats, and the format is the only choice between them.
-                id: "export-story-narralang",
-                label: t("story.narralang.exportStory"),
-                onClick: () => beginNarralangExport({ storyId: entry.id, sceneId: null }),
-            },
+            ...(NARRALANG_UI_ENABLED
+                ? [{
+                    // Beside the `.txt` export rather than in a submenu of its own: they are one
+                    // feature in two formats, and the format is the only choice between them.
+                    id: "export-story-narralang",
+                    label: t("story.narralang.exportStory"),
+                    onClick: () => beginNarralangExport({ storyId: entry.id, sceneId: null }),
+                }]
+                : []),
             {
                 // Unscoped for two reasons: this row names whichever story was right-clicked rather
                 // than the selected one, and an import replaces whole scenes from a file on this
@@ -624,15 +627,17 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                     }
                 },
             },
-            {
-                id: "export-scene-narralang",
-                label: t("story.narralang.exportScene"),
-                onClick: () => {
-                    if (selectedStoryId) {
-                        beginNarralangExport({ storyId: selectedStoryId, sceneId: scene.id });
-                    }
-                },
-            },
+            ...(NARRALANG_UI_ENABLED
+                ? [{
+                    id: "export-scene-narralang",
+                    label: t("story.narralang.exportScene"),
+                    onClick: () => {
+                        if (selectedStoryId) {
+                            beginNarralangExport({ storyId: selectedStoryId, sceneId: scene.id });
+                        }
+                    },
+                }]
+                : []),
             {
                 // Story-scoped despite sitting on a scene row: the file decides which scenes it
                 // carries, and the confirm dialog names every one of them before anything is written.

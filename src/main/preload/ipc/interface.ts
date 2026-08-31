@@ -3,6 +3,7 @@ import { Namespace } from "@shared/types/ipc";
 import { IPCEventType, RequestStatus } from "@shared/types/ipcEvents";
 import { EditMenuRole, MenuActionId, NativeMenuModel } from "@shared/types/menu";
 import type { FsTextEncoding } from "@shared/types/textEncoding";
+import type { LibraryExchangeKind } from "@shared/story/libraryExchange";
 import type { BlueprintPersistenceProjectRef, RendererErrorReport, WorkspaceCloseStage, WorkspaceFreezeKind } from "@shared/types/ipcEvents";
 import type { BlueprintNetworkFetchRequest, BlueprintNetworkFetchResult } from "@shared/types/blueprint/network";
 import type { BlueprintPointerMoveRequest, BlueprintPointerMoveResult } from "@shared/types/blueprint/pointer";
@@ -44,7 +45,7 @@ import type { PluginPermissionDecision, PluginPermissionRequest } from "@shared/
 import type { ServerTrustPromptProps } from "@shared/types/serverTrust";
 import type { PrivilegedActor, PrivilegedWriteBatchEntry } from "@shared/types/privileged";
 import type { RemoteAssetValidators } from "@shared/types/remoteAsset";
-import type { AssetExportEntry } from "@shared/types/assetExport";
+import type { AssetExportEntry, AssetExportFileEntry } from "@shared/types/assetExport";
 import type { AssetTransferEntry } from "@shared/types/assetTransfer";
 
 import type { UpdateState } from "@shared/constants/update";
@@ -363,6 +364,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appSystemPath, { name }) as Promise<RequestStatus<{ path: string }>>,
         exportDiagnostics: (defaultFileName: string, report: string) =>
             ipcClient.invoke(IPCEventType.appExportDiagnostics, { defaultFileName, report }),
+        openLogsFolder: () =>
+            ipcClient.invoke(IPCEventType.appOpenLogsFolder, {}) as Promise<RequestStatus<void>>,
         probeDownloadSource: (url: string) =>
             ipcClient.invoke(IPCEventType.appProbeDownloadSource, { url }),
         getCacheInventory: () =>
@@ -373,6 +376,10 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.appExportSettings, { defaultFileName, content }),
         importSettings: () =>
             ipcClient.invoke(IPCEventType.appImportSettings, {}),
+        exportLibraryItems: (kind: LibraryExchangeKind, defaultFileName: string, content: string) =>
+            ipcClient.invoke(IPCEventType.appExportLibraryItems, { kind, defaultFileName, content }),
+        importLibraryItems: (kind: LibraryExchangeKind) =>
+            ipcClient.invoke(IPCEventType.appImportLibraryItems, { kind }),
         update: {
             getState: () => ipcClient.invoke(IPCEventType.appUpdateGetState, {}),
             check: () => ipcClient.invoke(IPCEventType.appUpdateCheck, {}),
@@ -879,6 +886,8 @@ export const IPCInterface: Window[typeof RendererInterfaceKey] = {
             ipcClient.invoke(IPCEventType.assetFetchRemote, { url, validators }),
         exportToFolder: (entries: AssetExportEntry[]) =>
             ipcClient.invoke(IPCEventType.assetExportToFolder, { entries }),
+        exportToFile: (entry: AssetExportFileEntry) =>
+            ipcClient.invoke(IPCEventType.assetExportToFile, { entry }),
         transfer: {
             offer: (entries: AssetTransferEntry[]) =>
                 ipcClient.invoke(IPCEventType.assetTransferOffer, { entries }),

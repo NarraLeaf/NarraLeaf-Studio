@@ -4,6 +4,7 @@ import {
     FolderOpen,
     X,
     Archive,
+    FolderSearch,
     Home,
     LogOut,
     Info,
@@ -163,6 +164,28 @@ export const fileActionGroup: ModuleActionGroup = {
             },
             order: 2,
         },
+        {
+            // Where the project IS, which is a different question from what it exports to. Main
+            // reads the folder off this window's own props, so nothing here hands it a path.
+            id: "narraleaf-studio:file-reveal-project",
+            label: "Show Project Folder",
+            labelKey: "actions.file.revealProject.label",
+            icon: <FolderSearch className="w-4 h-4" />,
+            tooltip: "Show this project's folder in the file manager",
+            tooltipKey: "actions.file.revealProject.tooltip",
+            onClick: (workspace: Workspace) => {
+                void (async () => {
+                    const result = await getInterface().workspace.openProjectFolder();
+                    if (result.success) {
+                        return;
+                    }
+                    workspace.getContext().services
+                        .get<UIService>(Services.UI)
+                        .showNotification(translate("actions.file.revealProject.failed"), "error");
+                })();
+            },
+            order: 3,
+        },
         Separator,
         {
             // Leaving the project, which is not the same as closing the window - the launcher is up
@@ -178,7 +201,7 @@ export const fileActionGroup: ModuleActionGroup = {
             onClick: () => {
                 void getInterface().workspace.returnToLauncher();
             },
-            order: 3,
+            order: 4,
         },
         {
             // Named for the window rather than for the workspace now that leaving the project has
@@ -193,7 +216,7 @@ export const fileActionGroup: ModuleActionGroup = {
             onClick: () => {
                 getInterface().workspace.close();
             },
-            order: 4,
+            order: 5,
         },
     ],
 };

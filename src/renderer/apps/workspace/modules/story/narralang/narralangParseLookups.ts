@@ -5,6 +5,7 @@ import type { AppTagService } from "@/lib/workspace/services/appTag/AppTagServic
 import type { CharacterService } from "@/lib/workspace/services/core/CharacterService";
 import type { StoryService } from "@/lib/workspace/services/story/StoryService";
 import type { LocalBlueprintService } from "@/lib/workspace/services/ui-editor/LocalBlueprintService";
+import type { UIDocumentService } from "@/lib/workspace/services/ui-editor/UIDocumentService";
 import { Services, type WorkspaceContext } from "@/lib/workspace/services/services";
 
 /**
@@ -35,6 +36,7 @@ export function narralangParseLookups(
     const blueprintService = services.get<LocalBlueprintService>(Services.LocalBlueprint);
     const assetsService = services.get<AssetsService>(Services.Assets);
     const appTagService = services.get<AppTagService>(Services.AppTags);
+    const uiDocumentService = services.get<UIDocumentService>(Services.UIDocument);
 
     const characters = characterService.listCharacter();
 
@@ -42,6 +44,10 @@ export function narralangParseLookups(
     const motionIds = indexByName(storyService.listAnimationAssets().map(entry => [entry.name, entry.id]));
     const appTagIds = indexByName(appTagService.listTags().map(tag => [tag.name, tag.id]));
     const sceneIds = indexByName(Object.values(document.scenes).map(scene => [scene.name, scene.id]));
+    // The pages a `quit` statement can name. The printer spells the page by name for the reason a
+    // variant is spelled by name (a script that carried the id would break the moment the page was
+    // renamed), so the way back has to be this table.
+    const surfaceIds = indexByName((uiDocumentService.getDocument().surfaces ?? []).map(surface => [surface.name, surface.id]));
 
     // Both project scopes at once, addressed the way each scope's ref addresses its entry - `saved`
     // by entry id, `persistent` by storage key. That asymmetry is the registry's, and mirroring it
@@ -104,6 +110,7 @@ export function narralangParseLookups(
         motionId: name => resolve(motionIds, name),
         appTagId: name => resolve(appTagIds, name),
         sceneId: name => resolve(sceneIds, name),
+        surfaceId: name => resolve(surfaceIds, name),
         variableRef: name => resolve(variableRefs, name),
         appearanceRef: (characterId, name) => {
             if (puppetCharacters.has(characterId)) {

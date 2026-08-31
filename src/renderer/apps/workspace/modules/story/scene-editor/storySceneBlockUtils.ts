@@ -1,6 +1,6 @@
 import { placementWordFor } from "./commands/transitions";
 import { Aperture, Blocks,
-    Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
+    AppWindow, Bookmark, Clock, CornerUpLeft, Eye, FileText, FlagTriangleRight, GitBranch, Image, Layers, LogOut, MessageSquare, Minus, Move, Music, Puzzle, Route, SeparatorHorizontal, Settings2, Sparkles, StickyNote, TriangleAlert, Type, UserRound, Variable, Video, Wind } from "lucide-react";
 import { resolveBrandColorValue } from "@shared/brand/brandRegistry";
 import type { StoryBlock, StoryBlockId, StoryRichRun, StoryScene, StorySceneId, StoryTextSegment } from "@shared/types/story";
 import { storyVariableRefKey } from "@shared/types/story";
@@ -471,13 +471,14 @@ export function canAcceptChildren(block: StoryBlock | undefined): boolean {
     if (!block) {
         return false;
     }
-    // `label`, `goto`, `break`, `cut` and `ending` are the control rows that are NOT containers: a
-    // label is a point, a goto is a move, a break is an exit, a cut is where one edition stops and an
-    // ending is where the story does - none has a body. Everything else under `control` groups rows.
+    // `label`, `goto`, `break`, `cut`, `ending` and `quit` are the control rows that are NOT
+    // containers: a label is a point, a goto is a move, a break is an exit, a cut is where one
+    // edition stops, an ending is where the story does and a quit is where the run does - none has a
+    // body. Everything else under `control` groups rows.
     if (block.kind === "control"
         && (block.payload.control === "label" || block.payload.control === "goto"
             || block.payload.control === "break" || block.payload.control === "cut"
-            || block.payload.control === "ending")) {
+            || block.payload.control === "ending" || block.payload.control === "quit")) {
         return false;
     }
     return block.kind === "control" ||
@@ -559,6 +560,7 @@ const BADGE_ICONS: Record<StoryBlockBadgeId, typeof FileText> = {
     break: LogOut,
     cut: SeparatorHorizontal,
     ending: FlagTriangleRight,
+    quit: AppWindow,
     control: Settings2,
     jump: Route,
     invalid: TriangleAlert,

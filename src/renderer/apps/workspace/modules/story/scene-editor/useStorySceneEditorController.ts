@@ -96,6 +96,7 @@ import { forgetStoryPasteSeparator, getStoryPasteMemory, rememberStoryPasteSpeak
 import { useSlashAtAlias } from "@/apps/workspace/hooks/useSlashAtAlias";
 import { useProjectAudioTracks } from "@/lib/story/useProjectAudioTracks";
 import { useProjectAppTags } from "@/lib/story/useProjectAppTags";
+import { useProjectSurfaces } from "@/lib/story/useProjectSurfaces";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
 import { syncEditorTabTitle } from "@/lib/workspace/services/ui/editorTabTitle";
 import { ACTION_TRIGGER, ALT_ACTION_TRIGGER, isActionCommandLine, toCanonicalCommandLine, toDisplayedCommandLine } from "./commandTrigger";
@@ -442,6 +443,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
     /** The project's audio tracks, so `/bgm theme track=Ambience` completes and resolves by name. */
     const audioTracks = useProjectAudioTracks();
     const appTags = useProjectAppTags();
+    // Live, so a page renamed in the interface editor is what `/quit` completes to without a
+    // reload - the same bargain the variants above take.
+    const surfaces = useProjectSurfaces();
     /**
      * Bumped when a file or an asset set is renamed, imported or deleted.
      *
@@ -709,8 +713,9 @@ export function useStorySceneEditorController(tabId: string, payload: StoryScene
             puppetByCharacterId,
             audioTracks,
             appTags,
+            surfaces,
         }),
-        [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene],
+        [appTags, assetLibraryRevision, assetSetService, assetsService, audioTracks, blueprintService, blueprintRevision, characters, document, puppetByCharacterId, sceneId, scene, surfaces],
     );
     /**
      * The same context, at the identity it had while it still names the same things.

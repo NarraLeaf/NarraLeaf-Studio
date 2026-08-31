@@ -187,7 +187,9 @@ import {
     BLUEPRINT_NODE_TYPE_GAME_IS_TEXT_READ_BY_ID,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_METADATA,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_PLAYTIME,
+    BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT,
     BLUEPRINT_NODE_TYPE_GAME_GET_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_GET_TOTAL_PLAYTIME,
     BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_LINE,
@@ -372,6 +374,7 @@ import {
     normalizeBlueprintVector2D,
     normalizeRectExtent,
     blueprintRectCenter,
+    toBlueprintSaveSlot,
 } from "@shared/types/blueprint/valueTypes";
 import { blueprintCharacterColorOrDefault } from "@shared/types/blueprint/characterInfo";
 import { RELEASE_APP_TAG } from "@shared/types/appTag";
@@ -3239,6 +3242,14 @@ function resolveSelfOutput(
     if (selfNode.type === BLUEPRINT_NODE_TYPE_IMAGE_ASSET_LITERAL && portId === "value") {
         return normalizeBlueprintImageAssetValue(selfNode.params?.asset);
     }
+    // Save Slot builds its value out of its own `id` input, which is why it is resolved here rather
+    // than read out of an output store: a pure node's `execute` never runs, so nothing would have
+    // written one. The input is resolved through the ordinary pin path so a wired id works exactly
+    // as a typed one does - a save screen row feeds this from the list it is drawing.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_SLOT && portId === "slot") {
+        const id = resolveDataPinValue(graph, nodeId, "id", params, blueprintLocals, depth + 1, runtime);
+        return toBlueprintSaveSlot("stored", typeof id === "string" ? id : String(id ?? ""));
+    }
     if (selfNode.type === BLUEPRINT_NODE_TYPE_LIST_GET_ITEM_PROPS && portId === "props") {
         return listItemPropsValue(runtime?.listItemScope?.item);
     }
@@ -3355,6 +3366,11 @@ function resolveSelfOutput(
     ) {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
+    // Kept separate for the reason the block below is: `found` is not a pin name any of the
+    // nodes above publishes, and folding it into that list would answer it for all of them.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_SAVED_GET && portId === "found") {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
     // Kept separate from the list above rather than folded into it: `id` is an
     // *input* pin name on the save nodes there, and only these two publish it as
     // an output.
@@ -3375,6 +3391,11 @@ function resolveSelfOutput(
         selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_GET_TIME &&
         (portId === "savedAt" || portId === "createdAt" || portId === "exists")
     ) {
+        return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
+    }
+    // Current Game's captured slot, which its `execute` wrote into the output store the way every
+    // other exec node's outputs get there.
+    if (selfNode.type === BLUEPRINT_NODE_TYPE_GAME_SAVE_CURRENT_RUN && portId === "slot") {
         return readBlueprintNodeOutputValue(blueprintLocals, nodeId, portId);
     }
     // Get Save Playtime, separate for the same reason as Get Save Time: `exists` is shared with it,

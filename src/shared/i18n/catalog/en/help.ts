@@ -219,9 +219,7 @@ export const help = {
                 + "- The import lists every row it will add, change or remove before writing anything.\n"
                 + "- A scene edited in Studio after the export loses those edits on import, and the import states "
                 + "this first.\n"
-                + "- Pasting several lines at once asks who is speaking, and keeps the answers for the next paste.\n"
-                + "- A scene can also be exported as NarraLang, which reads as a script and cannot be imported. "
-                + "Rows it has no form for are listed after the file is written.",
+                + "- Pasting several lines at once asks who is speaking, and keeps the answers for the next paste.",
         },
         sceneSnapshot: {
             title: "Playing from a row",

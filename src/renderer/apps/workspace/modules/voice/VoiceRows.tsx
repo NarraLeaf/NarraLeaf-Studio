@@ -10,6 +10,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Play, Plus, RotateCcw, Square, Trash2 } from "lucide-react";
 import type { Asset } from "@/lib/workspace/services/assets/types";
+import type { CompiledMatcher } from "@/lib/workspace/services/search/textMatcher";
+import { MarkedText } from "@/apps/workspace/components/ui/FindMarks";
 import type { VoiceUnitState } from "@/lib/workspace/services/voice/voiceModel";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
 import { voiceDocumentFreezeScope } from "../localization/localizationLiveSession";
@@ -62,6 +64,16 @@ type VoiceRowProps = {
     /** Direction note carried with the take. */
     note: string;
     mode: "assign" | "audition";
+    /**
+     * The open find's matcher, or null. What marks the hits inside the row's own text.
+     *
+     * The direction note is left unmarked: it is an uncontrolled input (see below), and a box a
+     * director types into is the one place a mirrored highlight would have to keep step with an
+     * IME. It stays searchable; only the mark stops at the edge of the field.
+     */
+    matcher: CompiledMatcher | null;
+    /** This row is the hit the find's cursor is on, so its marks wear the strong wash. */
+    matchActive: boolean;
     isPlaying: boolean;
     strings: VoiceRowStrings;
     onTogglePlay: () => void;
@@ -148,7 +160,7 @@ export function VoiceRow(props: VoiceRowProps) {
             onDrop={freeze.gesture(handleDrop)}
         >
             <span className="w-24 shrink-0 truncate text-2xs text-fg-subtle" data-tip={speaker}>
-                {speaker}
+                <MarkedText text={speaker} matcher={props.matcher} active={props.matchActive} />
             </span>
             <span
                 className="min-w-0 flex-1 truncate text-fg"
@@ -156,7 +168,9 @@ export function VoiceRow(props: VoiceRowProps) {
                     ? `${row.sourceText}\n${row.authoredText}`
                     : row.sourceText}
             >
-                {row.sourceText || "—"}
+                {row.sourceText
+                    ? <MarkedText text={row.sourceText} matcher={props.matcher} active={props.matchActive} />
+                    : "—"}
             </span>
 
             {hasClip ? (
@@ -174,7 +188,9 @@ export function VoiceRow(props: VoiceRowProps) {
                         className={`w-32 shrink-0 truncate text-2xs ${asset ? "text-fg-subtle" : "text-warning"}`}
                         data-tip={state === "stale" ? strings.outdatedHint : (asset?.name ?? strings.clipMissing)}
                     >
-                        {asset?.name ?? strings.clipMissing}
+                        {asset
+                            ? <MarkedText text={asset.name} matcher={props.matcher} active={props.matchActive} />
+                            : strings.clipMissing}
                     </span>
                     <span className="w-10 shrink-0 text-right text-2xs tabular-nums text-fg-subtle">
                         {props.duration}

@@ -134,6 +134,11 @@ export type StoryRowLookups = {
      * simply not named, because the only other thing the row holds is its id.
      */
     appTagName?: (appTagId: string) => string | null;
+    /**
+     * The author-facing name of a UI page, or `null` when the id names nothing this project has.
+     * Read by the `/quit` row, whose whole content is the page it hands the screen to.
+     */
+    surfaceName?: (surfaceId: string) => string | null;
 };
 
 /**
@@ -328,7 +333,7 @@ export function getStoryContainerHeaderInfo(block: StoryBlock): StoryContainerHe
         }
         // Not containers, so they have no header at all - they render as ordinary rows.
         if (payload.control === "label" || payload.control === "goto" || payload.control === "break"
-            || payload.control === "cut" || payload.control === "ending") {
+            || payload.control === "cut" || payload.control === "ending" || payload.control === "quit") {
             return null;
         }
         if (payload.control === "repeat") {
@@ -400,7 +405,7 @@ export type StoryBlockBadgeId =
     | "background" | "character" | "audio" | "variable" | "wait" | "image"
     | "transform" | "displayable" | "text" | "layer" | "video" | "vfx" | "nvl"
     | "blueprint" | "camera" | "effect" | "plugin"
-    | "label" | "goto" | "break" | "cut" | "ending" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
+    | "label" | "goto" | "break" | "cut" | "ending" | "quit" | "control" | "jump" | "invalid" | "declaration" | "note" | "empty";
 
 export type StoryBlockBadge = {
     id: StoryBlockBadgeId;
@@ -473,6 +478,10 @@ export function storyBlockBadge(block: StoryBlock): StoryBlockBadge {
         // The row the whole story arrives at. It reads as a destination rather than as a container,
         // and it is the one row a player-facing screen ever names, so it gets a badge of its own.
         if (block.payload.control === "ending") return badge("ending", "story.badge.ending", "flow");
+        // Its own badge rather than the ending one it sits beside: both leave the run, but only an
+        // ending is a thing the player collects. A row that reads "Ending" in the gutter and does
+        // not appear in the endings screen is the one confusion this whole row exists to avoid.
+        if (block.payload.control === "quit") return badge("quit", "story.badge.quit", "scene");
         return badge("control", "story.badge.control", "flow");
     }
     if (block.kind === "jump") return badge("jump", "story.badge.jump", "scene");
@@ -843,6 +852,16 @@ export function describeStoryBlock(block: StoryBlock, lookups: StoryRowLookups):
             return translate("story.describe.ending", {
                 name: block.payload.name || translate("story.describe.unnamed"),
             });
+        }
+        // The page IS the row, the way the name is an ending's: "Quit" on its own would leave an
+        // author opening every such row to find which one goes to the map.
+        if (block.payload.control === "quit") {
+            const page = block.payload.surfaceId
+                ? lookups.surfaceName?.(block.payload.surfaceId) ?? block.payload.surfaceId
+                : "";
+            return page
+                ? translate("story.describe.quit", { page })
+                : translate("story.describe.quitUnset");
         }
         return block.payload.control;
     }

@@ -1741,6 +1741,22 @@ describe("compileStudioStoryToNlr", () => {
         expect((await compileBackgroundTransition("throughColor", { pattern: "plain" }).then(findTransition) as any).pattern).toBeNull();
     });
 
+    it("carries a blind's slat delay into both the direct cut and the colour cover", async () => {
+        // The delay is a property of the geometry rather than of the engine playing it, so the
+        // same number has to reach the pattern on either side. A staggered blind is drawn as one
+        // gradient layer per slat, where the lockstep one stays a single tiled gradient - which is
+        // what tells the two apart from the outside.
+        const cut = findTransition(await compileBackgroundTransition("blinds", { slats: 4, stagger: 1 })) as any;
+        expect(cut.pattern.mask(0.5)).not.toContain("repeating-linear-gradient");
+        expect(cut.pattern.mask(0.5).split("), ")).toHaveLength(4);
+
+        const lockstep = findTransition(await compileBackgroundTransition("blinds", { slats: 4 })) as any;
+        expect(lockstep.pattern.mask(0.5)).toContain("repeating-linear-gradient");
+
+        const covered = findTransition(await compileBackgroundTransition("throughColor", { pattern: "blinds", slats: 4, stagger: 1 })) as any;
+        expect(covered.pattern.mask(0.5)).toBe(cut.pattern.mask(0.5));
+    });
+
     it("closes an iris rim-in unless the row says otherwise, and lets it say otherwise", async () => {
         // The classic iris-to-black, and what every stored iris was getting while the orientation was
         // hard-coded - so the default has to stay what it was, and the toggle is additive.
@@ -2301,6 +2317,49 @@ describe("compileStudioStoryToNlr voice", () => {
         // A language this build does not ship leaves the table exactly where it was.
         expect(compiled.setVoiceLocale?.("fr")).toBe(false);
         expect(scene.config?.voices?.["text-say"]).toBe("nlr://asset-en-say");
+    });
+
+    /**
+     * Each scene carries its OWN takes and nobody else's.
+     *
+     * The engine copies the config a `Scene` is constructed with, so a table shared by every scene
+     * is a copy of every take in the project per scene - `scenes x takes` entries built on each
+     * compile and held for as long as the story is loaded. A scene resolves only the ids its own
+     * lines carry, so that is what it is given.
+     */
+    it("gives each scene only the takes its own lines speak", async () => {
+        const document = baseDocument({ say: dialogueBlock("say", "text-say", "hi") }, ["say"]);
+        // A second scene with a line, and therefore a take, of its own.
+        document.scenes["scene-2"] = {
+            id: "scene-2",
+            name: "Scene 2",
+            runtimeName: "Scene 2",
+            rootBlockIds: ["say-2"],
+            blocks: { "say-2": dialogueBlock("say-2", "text-say-2", "there") },
+        };
+        const compiled = await compileStudioStoryToNlr({
+            document,
+            sceneId: "scene-1",
+            characters: [{ id: "char-alice", name: "Alice", appearance: { kind: "preset", poses: [], defaultPoseId: null } }],
+            voice: {
+                voicedLocales: [{ code: "en", displayName: "English" }],
+                tables: { en: { "text-say": "asset-say", "text-say-2": "asset-say-2" } },
+                getVoiceLocale: () => "en",
+            },
+            resolveAssetUrl: async assetId => `nlr://${assetId}`,
+        });
+
+        const first = (compiled.scenes["scene-1"] as any).config?.voices ?? {};
+        const second = (compiled.scenes["scene-2"] as any).config?.voices ?? {};
+        expect(Object.keys(first)).toEqual(["text-say"]);
+        expect(Object.keys(second)).toEqual(["text-say-2"]);
+
+        // The switch still reaches every scene's own copy, each with its own subset.
+        expect(compiled.setVoiceLocale?.("en")).toBe(true);
+        expect(Object.keys((compiled.scenes["scene-2"] as any).config?.voices ?? {})).toEqual(["text-say-2"]);
+
+        // Replay reads the whole project's table, not one scene's - a backlog row can be anywhere.
+        expect(compiled.getVoicePlayback?.("text-say-2")).toEqual({ src: "nlr://asset-say-2", busId: "voice" });
     });
 
     it("carries a voiceId for a line voiced in some other language", async () => {
@@ -5118,5 +5177,79 @@ describe("a row-precise launch that reaches a scene jump", () => {
 
         expect(compiled.diagnostics.filter(diagnostic => diagnostic.message.includes("Playback ends here"))).toEqual([]);
         expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
+    });
+});
+
+/**
+ * `/quit` — the row that says this playthrough is over.
+ *
+ * The same two acts an `/ending` performs, minus the one that makes an ending an ending: it tells
+ * the host where to land the player and truncates the list that holds it, and it records nothing.
+ */
+describe("quit", () => {
+    function quitBlock(id: string, surfaceId: string): StoryBlock {
+        return { id, kind: "control", parentId: null, childrenIds: [], payload: { control: "quit", surfaceId } };
+    }
+
+    it("tells the host which page to land on", async () => {
+        const landed: string[] = [];
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "surface-map") }, ["leave"]),
+            sceneId: "scene-1",
+            onQuitToPage: surfaceId => landed.push(surfaceId),
+        });
+
+        expect(compiled.diagnostics).toEqual([]);
+        expect(compiled.actionIdBindings.map(binding => binding.blockId)).toContain("leave");
+        // Nothing has run yet: the statement carries the call, it does not make it at compile time.
+        expect(landed).toEqual([]);
+    });
+
+    it("drops the rows after it in the same list", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                leave: quitBlock("leave", "surface-map"),
+                after: narrationBlock("after", "text-after", "Never played"),
+            }, ["leave", "after"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).toContain("leave");
+        expect(boundBlocks).not.toContain("after");
+    });
+
+    it("emits nothing for a row with no page, and nothing for a host that cannot land the player", async () => {
+        // A quit with nowhere to go would take the story away and leave the player on a frame with
+        // nothing to touch; `story/quit-page-missing` is what says so in the editor.
+        const unset = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "  ") }, ["leave"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+        expect(unset.actionIdBindings.map(binding => binding.blockId)).not.toContain("leave");
+
+        const noHost = await compileStudioStoryToNlr({
+            document: baseDocument({ leave: quitBlock("leave", "surface-map") }, ["leave"]),
+            sceneId: "scene-1",
+        });
+        expect(noHost.diagnostics).toEqual([]);
+        expect(noHost.actionIdBindings.map(binding => binding.blockId)).not.toContain("leave");
+    });
+
+    it("lets the scene carry on past a disabled one", async () => {
+        const compiled = await compileStudioStoryToNlr({
+            document: baseDocument({
+                leave: { ...quitBlock("leave", "surface-map"), disabled: true },
+                after: narrationBlock("after", "text-after", "Still played"),
+            }, ["leave", "after"]),
+            sceneId: "scene-1",
+            onQuitToPage: () => undefined,
+        });
+
+        const boundBlocks = compiled.actionIdBindings.map(binding => binding.blockId);
+        expect(boundBlocks).not.toContain("leave");
+        expect(boundBlocks).toContain("after");
     });
 });

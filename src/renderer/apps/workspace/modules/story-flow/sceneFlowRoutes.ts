@@ -34,7 +34,7 @@
  */
 
 import type { StoryBlock, StoryBlockId, StoryDocument, StoryScene, StorySceneId } from "@shared/types/story";
-import { isStoryEndingBlock, listSceneBlocksInDocumentOrder, listSceneEndings, listStoryEndings } from "@shared/types/story";
+import { isStoryEndingBlock, listSceneBlocksInDocumentOrder, listStoryEndings } from "@shared/types/story";
 import type { SceneFlowBranchEdgeModel, SceneFlowGraph } from "./sceneFlowModel";
 
 /**
@@ -178,7 +178,17 @@ export type SceneFlowContinuation =
      */
     | { kind: "call"; branchId: string | null; edgeId: string; target: StorySceneId }
     | { kind: "stop"; branchId: string }
-    | { kind: "ending"; branchId: string | null; endingId: StoryBlockId };
+    | { kind: "ending"; branchId: string | null; endingId: StoryBlockId }
+    /**
+     * A `/quit` row: the run ends here and the player gets a page.
+     *
+     * Terminal like an ending, and kept apart from it for the reason the row itself exists - this
+     * is not a place the story finished, it is a place one playthrough did. Folding it into
+     * `ending` would put a hub the player passes through twenty times into the endings list and
+     * the coverage report; folding it into `stop` would report every hub as a path that ran out,
+     * which is the opposite of what the author wrote.
+     */
+    | { kind: "quit"; branchId: string | null; blockId: StoryBlockId };
 
 /** A scene exit no fork guards, as the scene-pair edge draws it. */
 type SceneFlowPlainExit = { edgeId: string; target: StorySceneId };
@@ -387,22 +397,41 @@ export function collectSceneFlowContinuations(
     const endingsByBranchId = new Map<string, StoryBlockId[]>();
     const plainEndingsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
     const standaloneEndingsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
+    // Quits, split the same three ways and by the same rules. They are terminals like endings, so
+    // every place a list of endings decides whether an arm falls through or a scene has somewhere
+    // to go, the quits have to be in that decision too.
+    const quitsByBranchId = new Map<string, StoryBlockId[]>();
+    const plainQuitsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
+    const standaloneQuitsBySceneId = new Map<StorySceneId, StoryBlockId[]>();
     for (const node of graph.nodes) {
         const scene = document.scenes[node.sceneId];
         if (!scene) {
             continue;
         }
         const arms = armIdsBySceneId.get(node.sceneId);
-        for (const ending of listSceneEndings(scene)) {
-            const block = scene.blocks[ending.endingId];
-            const armId = block && arms ? resolveGuardingArmId(scene, block, arms) : null;
-            if (armId) {
-                pushInto(endingsByBranchId, armId, ending.endingId);
+        // One walk for both terminals rather than a scanner apiece.
+        // This runs per graph node on every rebuild of the map, and the two scanners would each
+        // traverse the scene's whole block tree to pick out a handful of rows.
+        for (const block of listSceneBlocksInDocumentOrder(scene, { skipSubtree: row => Boolean(row.disabled) })) {
+            const terminal = isStoryEndingBlock(block)
+                ? "ending" as const
+                : block.kind === "control" && block.payload.control === "quit"
+                    ? "quit" as const
+                    : null;
+            if (!terminal) {
                 continue;
             }
-            pushInto(plainEndingsBySceneId, node.sceneId, ending.endingId);
-            if (!gatedBlockIds(node.sceneId).has(ending.endingId)) {
-                pushInto(standaloneEndingsBySceneId, node.sceneId, ending.endingId);
+            const armId = arms ? resolveGuardingArmId(scene, block, arms) : null;
+            const [byBranch, byScene, standalone] = terminal === "ending"
+                ? [endingsByBranchId, plainEndingsBySceneId, standaloneEndingsBySceneId]
+                : [quitsByBranchId, plainQuitsBySceneId, standaloneQuitsBySceneId];
+            if (armId) {
+                pushInto(byBranch, armId, block.id);
+                continue;
+            }
+            pushInto(byScene, node.sceneId, block.id);
+            if (!gatedBlockIds(node.sceneId).has(block.id)) {
+                pushInto(standalone, node.sceneId, block.id);
             }
         }
     }
@@ -426,20 +455,25 @@ export function collectSceneFlowContinuations(
     for (const branch of graph.branches) {
         const list = listFor(branch.sceneId);
         const owned = endingsByBranchId.get(branch.id) ?? [];
+        const ownedQuits = quitsByBranchId.get(branch.id) ?? [];
         for (const endingId of owned) {
             list.push({ kind: "ending", branchId: branch.id, endingId });
         }
+        for (const blockId of ownedQuits) {
+            list.push({ kind: "quit", branchId: branch.id, blockId });
+        }
         if (branch.fallsThrough) {
-            // An arm holding an ending does not fall through: the run stops at the row rather than
-            // returning to the scene and continuing past the fork.
-            if (owned.length > 0) {
+            // An arm holding an ending or a quit does not fall through: the run stops at the row
+            // rather than returning to the scene and continuing past the fork.
+            if (owned.length > 0 || ownedQuits.length > 0) {
                 continue;
             }
             // The arm owns no exit, so control returns to the scene and continues past the fork —
-            // which, as far as the graph knows, means the scene's unguarded exits and endings.
+            // which, as far as the graph knows, means the scene's unguarded exits and terminals.
             const onward = plainExitsBySceneId.get(branch.sceneId) ?? [];
             const onwardEndings = plainEndingsBySceneId.get(branch.sceneId) ?? [];
-            if (onward.length === 0 && onwardEndings.length === 0) {
+            const onwardQuits = plainQuitsBySceneId.get(branch.sceneId) ?? [];
+            if (onward.length === 0 && onwardEndings.length === 0 && onwardQuits.length === 0) {
                 list.push({ kind: "stop", branchId: branch.id });
                 continue;
             }
@@ -448,6 +482,9 @@ export function collectSceneFlowContinuations(
             }
             for (const endingId of onwardEndings) {
                 list.push({ kind: "ending", branchId: branch.id, endingId });
+            }
+            for (const blockId of onwardQuits) {
+                list.push({ kind: "quit", branchId: branch.id, blockId });
             }
             continue;
         }
@@ -471,6 +508,13 @@ export function collectSceneFlowContinuations(
         const list = listFor(sceneId);
         for (const endingId of endingIds) {
             list.push({ kind: "ending", branchId: null, endingId });
+        }
+    }
+
+    for (const [sceneId, blockIds] of standaloneQuitsBySceneId) {
+        const list = listFor(sceneId);
+        for (const blockId of blockIds) {
+            list.push({ kind: "quit", branchId: null, blockId });
         }
     }
 
@@ -595,6 +639,13 @@ export function buildSceneFlowRouteMap(graph: SceneFlowGraph, document: StoryDoc
             }
             if (exit.kind === "ending") {
                 emit(`~end:${exit.endingId}`, exit.branchId, false, exit.endingId);
+                continue;
+            }
+            if (exit.kind === "quit") {
+                // A route that finishes on a quit is finished: it reached no ending, and it did not
+                // run out either. `null` for the ending is the same value a `stop` gets in a story
+                // with nothing derived at that scene, and the rail reads both as "no ending".
+                emit(`~quit:${exit.blockId}`, exit.branchId, false, null);
                 continue;
             }
             if (exit.kind === "stop") {

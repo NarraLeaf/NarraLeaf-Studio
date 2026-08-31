@@ -14,6 +14,7 @@ export const BLUEPRINT_VALUE_TYPE_TIMER = "Timer" as const;
 export const BLUEPRINT_VALUE_TYPE_ANIMATION_TOKEN = "AnimationToken" as const;
 export const BLUEPRINT_VALUE_TYPE_SOUND_HANDLE = "SoundHandle" as const;
 export const BLUEPRINT_VALUE_TYPE_RESPONSE_BODY = "ResponseBody" as const;
+export const BLUEPRINT_VALUE_TYPE_SAVE_SLOT = "SaveSlot" as const;
 
 export type BlueprintElementRef = {
     surfaceId: string;
@@ -130,6 +131,36 @@ export type BlueprintSoundHandle = {
  */
 export type BlueprintResponseBody = {
     kind: "responseBody";
+    id: string;
+};
+
+/**
+ * One save, named rather than carried: what the save nodes take instead of a bare id string.
+ *
+ * A save is a container - a whole playthrough's state, not a position - and the nodes that read,
+ * write, load and inherit from one all need to say *which*. A string id could only ever name a slot
+ * on disk, so the run a player is in the middle of had no name at all, and "carry what I have into
+ * the next story" could not be written down.
+ *
+ * Opaque for the reason {@link BlueprintResponseBody} is: a serialized playthrough is large, and a
+ * value type that held one would put it on data pins, into node output stores and into any local
+ * variable an author wired it to. What travels is this.
+ *
+ * The two sources do not have the same reach, and that follows from where each lives rather than
+ * from a rule anyone chose:
+ *
+ *  - `stored` names a slot in the player's save store. It works anywhere an id worked, because the
+ *    store outlives everything.
+ *  - `run` names the running playthrough, captured when `Current Game` ran and held for that
+ *    execution only - the same lifetime a response body has, and for the same reason. So it reaches
+ *    the nodes in its own chain (`Start Game` inheriting from it, above all) and nothing later. A
+ *    save screen drawn by a different event cannot see it, which is why the read nodes refuse one
+ *    rather than answering emptily.
+ */
+export type BlueprintSaveSlot = {
+    kind: "saveSlot";
+    source: "stored" | "run";
+    /** The store's slot id, or - for `run` - the id of a capture the execution holds. */
     id: string;
 };
 
@@ -264,6 +295,37 @@ export function normalizeBlueprintResponseBody(value: unknown): BlueprintRespons
         return null;
     }
     return toBlueprintResponseBody(typeof record.id === "string" ? record.id : null);
+}
+
+export function isBlueprintSaveSlotValueType(valueType: string | undefined): boolean {
+    return valueType === BLUEPRINT_VALUE_TYPE_SAVE_SLOT;
+}
+
+export function toBlueprintSaveSlot(
+    source: BlueprintSaveSlot["source"],
+    id: string | null | undefined,
+): BlueprintSaveSlot | null {
+    const safe = typeof id === "string" ? id.trim() : "";
+    return safe ? { kind: "saveSlot", source, id: safe } : null;
+}
+
+/**
+ * Read a slot off a pin.
+ *
+ * A bare string is taken as a stored slot id, so an author who wires a plain id into a slot pin
+ * gets what they meant rather than a type error - the same courtesy the other handles extend, and
+ * here it is also the migration path from the id pins these sit beside.
+ */
+export function normalizeBlueprintSaveSlot(value: unknown): BlueprintSaveSlot | null {
+    if (typeof value === "string") {
+        return toBlueprintSaveSlot("stored", value);
+    }
+    const record = readRecord(value);
+    if (!record || record.kind !== "saveSlot") {
+        return null;
+    }
+    const source = record.source === "run" ? "run" : "stored";
+    return toBlueprintSaveSlot(source, typeof record.id === "string" ? record.id : null);
 }
 
 export function toBlueprintAnimationToken(id: string | null | undefined): BlueprintAnimationToken | null {

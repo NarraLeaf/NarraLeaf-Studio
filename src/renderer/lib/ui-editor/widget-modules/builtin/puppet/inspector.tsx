@@ -118,7 +118,7 @@ function PuppetModelField(props: CustomFieldProps<UIInspectorData>) {
     // An id with no library record is a broken reference, not an empty slot - saying "None" there
     // would hide the very thing `resourceDiagnostics` is warning about.
     const valueLabel = current.assetId
-        ? assetName ?? t("widgets.puppet.modelMissing", { id: current.assetId })
+        ? assetName ?? t("widgets.puppet.modelMissing")
         : t("widgets.puppet.modelNone");
 
     const confirm = useCallback((assets: Asset[]) => {

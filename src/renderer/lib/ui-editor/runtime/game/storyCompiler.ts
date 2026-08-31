@@ -440,6 +440,40 @@ function speakerByTextId(document: StoryDocument): Map<string, string> {
 }
 
 /**
+ * The voice unit ids each scene's own rows speak, keyed by scene id.
+ *
+ * Voice ids are global, so the obvious table is one global table - and that is what this used to
+ * hand every scene. But the engine COPIES the config a `Scene` is constructed with, so one global
+ * table meant every scene held its own copy of every take in the project: `scenes x takes` entries
+ * built on every compile and kept for as long as the story is loaded. MEASURED: the same 10,000-line
+ * story with 30,000 takes compiled in 607ms split into 40 scenes and 976ms split into 200 - the
+ * whole difference being copies of a table 199 of those scenes never read from.
+ *
+ * A scene only ever resolves the ids its own lines carry (`getVoice` is asked by the line, and a
+ * line belongs to the scene that holds it), so each scene is given exactly those. The total copied
+ * is then the number of takes, once - linear in the script rather than in script x scenes.
+ */
+function voiceUnitIdsByScene(document: StoryDocument): Map<string, Set<string>> {
+    const byScene = new Map<string, Set<string>>();
+    for (const scene of Object.values(document.scenes ?? {})) {
+        const ids = new Set<string>();
+        for (const block of Object.values(scene.blocks ?? {})) {
+            if (block.kind !== "nodeAction") {
+                continue;
+            }
+            const textId = block.payload.action === "dialogue" || block.payload.action === "narration"
+                ? block.payload.text?.textId
+                : undefined;
+            if (textId) {
+                ids.add(textId);
+            }
+        }
+        byScene.set(scene.id, ids);
+    }
+    return byScene;
+}
+
+/**
  * The engine's `Scene.voices` table, with each take routed to its speaker's bus.
  *
  * The voice *module* is the pipeline a voiced game actually uses - takes keyed by unit id, one set
@@ -454,13 +488,30 @@ function buildSceneVoices(input: {
     voiceIdMap: Record<string, string>;
     busIdByUnit: ReadonlyMap<string, string>;
     audioTracks: readonly ProjectAudioTrack[];
+    /** Only these units, or every unit in the map when absent. See {@link voiceUnitIdsByScene}. */
+    unitIds?: ReadonlySet<string>;
 }): Record<string, string | Sound> {
     const voices: Record<string, string | Sound> = {};
-    for (const [unitId, url] of Object.entries(input.voiceIdMap)) {
+    // Driven by whichever side is smaller: a scene's own ids when it has been given a set, the whole
+    // take table when it has not. Filtering the table per scene instead would walk every take once
+    // per scene, which is the cost this split exists to remove.
+    const add = (unitId: string, url: string | undefined): void => {
+        if (!url) {
+            return;
+        }
         const busId = input.busIdByUnit.get(unitId) ?? AUDIO_TRACK_ID_VOICE;
         voices[unitId] = busId === AUDIO_TRACK_ID_VOICE
             ? url
             : createBusSound(input.audioTracks, busId, AUDIO_TRACK_ID_VOICE, { src: url });
+    };
+    if (input.unitIds) {
+        for (const unitId of input.unitIds) {
+            add(unitId, input.voiceIdMap[unitId]);
+        }
+    } else {
+        for (const [unitId, url] of Object.entries(input.voiceIdMap)) {
+            add(unitId, url);
+        }
     }
     return voices;
 }
@@ -605,6 +656,17 @@ export type CompiledNlrStory = {
      * namespace-prefix convention. Empty when the compiled story has no saved namespace.
      */
     savedNamespaceName: string;
+    /**
+     * Every saved variable this compile knows, keyed by the id a blueprint node names, holding the
+     * `storageKey` its value lives under and the default it opens at.
+     *
+     * Published because a Game UI screen reads these too (`game.getSavedVariable`), and it has to
+     * resolve an id to a key by exactly the rule the story writes it with. The compiler already
+     * merges the project registry with whatever `/save` rows a legacy document still carries, so
+     * handing over that merged view is what keeps the reader and the writer talking about the same
+     * variable - a second projection built from the registry alone would silently miss the rows.
+     */
+    savedVariables: Record<string, StorySavedVariableDefinition>;
     /**
      * Storable namespace holding the visited record (see `./storyVisited`), resolved the same way as
      * {@link CompiledNlrStory.savedNamespaceName}. Hosts read `Is Scene Visited` / `Is Option Picked`
@@ -761,6 +823,8 @@ type SceneCompileContext = {
     persistence?: StoryPersistenceBridge;
     /** Host hook for an `/ending` row; see {@link CompileInput.onEndingReached}. */
     onEndingReached?: (ending: StoryEndingReach) => void;
+    /** Host hook for a `/quit` row; see {@link CompileInput.onQuitToPage}. */
+    onQuitToPage?: (surfaceId: string) => void;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -870,6 +934,19 @@ type CompileInput = {
      * nothing.
      */
     onEndingReached?: (ending: StoryEndingReach) => void;
+    /**
+     * Called when a `/quit` row runs, with the id of the page to land on.
+     *
+     * The row's whole contribution is naming the page. Ending the run - tearing the session down,
+     * putting the surface stack back on an app page, letting go of the stage - is the host's, and it
+     * is the same act `Quit Game` and an ending page already go through, so the row hands it over
+     * rather than growing a second path to it.
+     *
+     * Absent for the same callers `onEndingReached` is absent for, and with the same consequence:
+     * a compile that is not playing a story may not be told one has stopped, so its quit rows
+     * compile to nothing.
+     */
+    onQuitToPage?: (surfaceId: string) => void;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -942,6 +1019,7 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         actionIdBindings: [],
         elementIdBindings: [],
         savedNamespaceName: "",
+        savedVariables: {},
         visitedNamespaceName: "",
         sceneLocalNamespaceNames: {},
         diagnostics: [],
@@ -1082,6 +1160,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentVariables,
             persistence: input.persistence,
             onEndingReached: input.onEndingReached,
+            onQuitToPage: input.onQuitToPage,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1196,6 +1275,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         actionIdBindings,
         elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
         diagnostics,
@@ -1311,6 +1391,7 @@ async function buildLaunchEntryScene(params: {
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
         onEndingReached: input.onEndingReached,
+        onQuitToPage: input.onQuitToPage,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1752,6 +1833,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         actionIdBindings,
         elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
@@ -1920,35 +2002,72 @@ async function createNlrScenes(input: {
      * the one we built here changed nothing and the switch silently did nothing - the same shape of
      * defect ("ships, never works") this whole change exists to remove. So each scene's own table is
      * collected after construction and they are all rewritten together.
+     *
+     * That copy is also why the tables are cut per scene rather than shared: see
+     * {@link voiceUnitIdsByScene}. Each scene is handed only the units its own lines speak, so what
+     * the engine copies is the script's takes once rather than once per scene.
      */
     const busIdByUnit = voiceBusIdByUnit({
         document: input.document,
         characters: input.characters,
         audioTracks: input.audioTracks,
     });
-    const voicesByLocale: Record<string, Record<string, string | Sound>> = {};
-    for (const [locale, urls] of Object.entries(input.voiceUrlsByLocale ?? {})) {
-        voicesByLocale[locale] = buildSceneVoices({
-            voiceIdMap: urls,
-            busIdByUnit,
-            audioTracks: input.audioTracks,
-        });
+    const unitIdsByScene = voiceUnitIdsByScene(input.document);
+    const urlsByLocale = input.voiceUrlsByLocale ?? {};
+    /**
+     * Per language, per scene: only that scene's takes - built the first time that language is
+     * asked for, and kept.
+     *
+     * Lazily, because a compile installs exactly one language and most projects never switch: doing
+     * every language up front is work per language that the run will not read, and it is the same
+     * per-scene work three times over.
+     */
+    const voicesByLocale: Record<string, Record<string, Record<string, string | Sound>>> = {};
+    const sceneVoicesFor = (locale: string): Record<string, Record<string, string | Sound>> | null => {
+        const urls = urlsByLocale[locale];
+        if (!urls) {
+            return null;
+        }
+        const cached = voicesByLocale[locale];
+        if (cached) {
+            return cached;
+        }
+        const byScene: Record<string, Record<string, string | Sound>> = {};
+        for (const [sceneId, unitIds] of unitIdsByScene) {
+            byScene[sceneId] = buildSceneVoices({ voiceIdMap: urls, busIdByUnit, audioTracks: input.audioTracks, unitIds });
+        }
+        voicesByLocale[locale] = byScene;
+        return byScene;
+    };
+    const anyVoices = Object.values(urlsByLocale).some(urls => Object.keys(urls).length > 0);
+    /**
+     * The table handed to each scene's constructor, by scene id.
+     *
+     * Present for every scene when the project has any takes at all, including the scenes that have
+     * none of their own: a scene constructed without a `voices` config would answer `null` for a
+     * line whose take arrives later with a dub switch, and the empty object costs nothing.
+     */
+    const voicesForScene = anyVoices
+        ? new Map(Array.from(unitIdsByScene.keys(), sceneId => [sceneId, {} as Record<string, string | Sound>]))
+        : null;
+    /** Each scene's OWN copy of its table, paired with the scene it belongs to. */
+    const liveTables: Array<{ sceneId: string; live: Record<string, string | Sound> }> = [];
+    if (voicesForScene) {
+        for (const [sceneId, table] of voicesForScene) {
+            liveTables.push({ sceneId, live: table });
+        }
     }
-    const anyVoices = Object.values(voicesByLocale).some(table => Object.keys(table).length > 0);
-    const voices: Record<string, string | Sound> | undefined = anyVoices ? {} : undefined;
-    /** Every scene's own copy of the table, filled in as the scenes are constructed below. */
-    const liveTables: Record<string, string | Sound>[] = voices ? [voices] : [];
     let activeLocale = "";
     const applyLocale = (locale: string): boolean => {
-        const table = voicesByLocale[locale];
-        if (!voices || !table) {
+        const byScene = sceneVoicesFor(locale);
+        if (!voicesForScene || !byScene) {
             return false;
         }
-        for (const live of liveTables) {
+        for (const { sceneId, live } of liveTables) {
             for (const key of Object.keys(live)) {
                 delete live[key];
             }
-            Object.assign(live, table);
+            Object.assign(live, byScene[sceneId] ?? {});
         }
         activeLocale = locale;
         return true;
@@ -2002,8 +2121,9 @@ async function createNlrScenes(input: {
         if (background) {
             config.background = background;
         }
-        if (voices) {
-            config.voices = voices;
+        const sceneVoices = voicesForScene?.get(scene.id);
+        if (sceneVoices) {
+            config.voices = sceneVoices;
         }
         const music = await resolveSceneBackgroundMusic({
             scene,
@@ -2027,8 +2147,13 @@ async function createNlrScenes(input: {
         scenes[scene.id] = built;
         // The scene's OWN table, which is a copy of the one just handed in - see the note above.
         const live = (built as unknown as { config?: { voices?: unknown } }).config?.voices;
-        if (voices && live && live !== voices && typeof live === "object") {
-            liveTables.push(live as Record<string, string | Sound>);
+        if (sceneVoices && live && live !== sceneVoices && typeof live === "object") {
+            // The scene's own copy replaces the one handed in: it is what `getVoice` reads, so it is
+            // what a dub switch has to rewrite.
+            const slot = liveTables.find(entry => entry.sceneId === scene.id);
+            if (slot) {
+                slot.live = live as Record<string, string | Sound>;
+            }
         }
     }
     return { scenes, setVoiceLocale: applyLocale, getVoicePlayback };
@@ -2191,10 +2316,10 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         statements.push(...await compileBlock(ctx, blockId));
-        // An `/ending` row is where this list stops. Not an optimisation: the engine has no primitive
-        // that halts a running story, so a row written after an ending would otherwise play after it
-        // - with the stage already hidden, on its way to a page. Rows nested further out are beyond
-        // what this can reach and are reported by `story/ending-not-last` instead.
+        // An `/ending` or `/quit` row is where this list stops. Not an optimisation: the engine has
+        // no primitive that halts a running story, so a row written after one would otherwise play
+        // after it - with the stage already hidden, on its way to a page. Rows nested further out
+        // are beyond what this can reach and are reported by `story/rows-after-ending` instead.
         if (endsPlayback(ctx.scene.blocks[blockId])) {
             break;
         }
@@ -2202,9 +2327,17 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     return statements;
 }
 
-/** Whether this row is an `/ending` that is actually in the build (a disabled row is not). */
+/**
+ * Whether this row ends playback and is actually in the build (a disabled row is not).
+ *
+ * Both rows that leave the run qualify: an `/ending` says the story is over, a `/quit` says this run
+ * is, and in either case what follows in the same list would be playing to a stage on its way out.
+ */
 function endsPlayback(block: StoryBlock | undefined): boolean {
-    return Boolean(block && !block.disabled && block.kind === "control" && block.payload.control === "ending");
+    if (!block || block.disabled || block.kind !== "control") {
+        return false;
+    }
+    return block.payload.control === "ending" || block.payload.control === "quit";
 }
 
 /** A runtime flag whose predicate the compiler reads back internally to build a guard. */
@@ -2472,6 +2605,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
         if (block.payload.control === "ending") {
             return compileEnding(ctx, block, block.payload);
         }
+        if (block.payload.control === "quit") {
+            return compileQuit(ctx, block, block.payload);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -2570,6 +2706,11 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         if (block.payload.control === "ending") {
             // The preview settles one scene's stage. Ending the story is not a stage state, and this
             // path has no host to end it for - `onEndingReached` is absent here by construction.
+            return [];
+        }
+        if (block.payload.control === "quit") {
+            // Same as the ending above: there is no run for this path to end, and no page for it to
+            // hand the screen to - the preview IS the screen.
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -4219,6 +4360,34 @@ function compileEnding(
 }
 
 /**
+ * `/quit <page>` - this run is over; the player gets a page.
+ *
+ * The same shape as {@link compileEnding} and for the same reasons: one statement that only tells
+ * the host, because tearing a session down and putting a page on screen is the host's job and has
+ * exactly one implementation there. Nothing here stops the engine either - the rows after this one
+ * in the same list are dropped by {@link compileBlockList}, and rows further out are reported by
+ * `story/rows-after-ending`.
+ *
+ * A row with no page compiles to nothing rather than to a quit with nowhere to go: it is an
+ * unfinished row, `story/quit-page-missing` says so in the editor, and running it would take the
+ * story away and leave the player on a frame with nothing to touch.
+ */
+function compileQuit(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "quit" }>,
+): NlrStatement[] {
+    const notify = ctx.onQuitToPage;
+    const surfaceId = payload.surfaceId.trim();
+    if (!notify || !surfaceId) {
+        return [];
+    }
+    return [recordStatement(ctx, Script.execute(() => {
+        notify(surfaceId);
+    }), block)];
+}
+
+/**
  * `/break` - leave the innermost `repeat`.
  *
  * Faulted here rather than left to the engine when there is no loop above it. NLR's `breakLoop`
@@ -5469,7 +5638,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
         case "softWipe":
             return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) });
         case "blinds":
-            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) });
+            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0), stagger: numberProp(props, "stagger", 0) }) });
         case "softIris":
             return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }) });
         case "barnDoor":
@@ -5609,7 +5778,7 @@ function throughColorPattern(props: Record<string, StoryLiteralValue>): { patter
         case "linear":
             return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
         case "blinds":
-            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }), ...inverted(false) };
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0), stagger: numberProp(props, "stagger", 0) }), ...inverted(false) };
         case "iris":
             // Rim-in by default: the colour closes over the frame, which is the iris-to-black every
             // document written before this option existed was getting.

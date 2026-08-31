@@ -32,6 +32,7 @@ import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
 import { placementWordFor } from "./commands/transitions";
 import { AssetField } from "./AssetField";
 import { TransformChannelPreview } from "./TransformChannelPreview";
+import { TransformCardMenu } from "./TransformCardMenu";
 import { Disclosure, type TFunc } from "./inspectorFieldKit";
 import {
     addableTransformChannels,
@@ -121,7 +122,9 @@ function ChannelRow(props: { label: string; removeLabel: string; onRemove: () =>
                 // the control above rather than with a measured padding.
                 <div className="mt-1 flex items-start gap-2">
                     <span className={cn(CHANNEL_LABEL_CLASS, "block")} aria-hidden="true" />
-                    <div className="min-w-0 flex-1 pr-7">{props.below}</div>
+                    {/* The right padding is the remove button plus the gap before it (`h-7` +
+                        `gap-2`), so the second line ends where the control above it ends. */}
+                    <div className="min-w-0 flex-1 pr-9">{props.below}</div>
                 </div>
             ) : null}
         </div>
@@ -138,7 +141,7 @@ function ChannelNumber(props: { value: number | undefined; onChange: (value: num
             inputMode="decimal"
             aria-label={props.label}
             popoverWhenNarrow={false}
-            className={cn(CONTROL_HEIGHT_CLASS.sm, "text-xs")}
+            size="sm"
             inputClassName="px-2"
         />
     );
@@ -150,7 +153,7 @@ function ChannelText(props: { value: string; onChange: (value: string) => void; 
             value={props.value}
             placeholder={props.placeholder}
             onChange={props.onChange}
-            className={cn(CONTROL_HEIGHT_CLASS.sm, "text-xs")}
+            size="sm"
         />
     );
 }
@@ -726,7 +729,7 @@ function AddChannelPicker(props: {
         return null;
     }
     return (
-        <div className="pt-1">
+        <div>
             <button
                 ref={triggerRef}
                 type="button"
@@ -840,13 +843,24 @@ export function TransformChannelEditor(props: {
                     </ChannelRow>
                 );
             })}
-            <AddChannelPicker
-                channels={addable}
-                previewUrl={preview.url}
-                isCamera={isCamera}
-                t={t}
-                onAdd={channel => props.onChange(channel.add(ref))}
-            />
+            {/*
+              * The card's own row: what can be added on the left, what can be done to the whole
+              * transform on the right. The menu is pushed rather than the row justified, so it stays
+              * at the right edge on a card whose channel list has taken every addable channel and
+              * left no `Add` button standing.
+              */}
+            <div className="flex items-center gap-2 pt-1">
+                <AddChannelPicker
+                    channels={addable}
+                    previewUrl={preview.url}
+                    isCamera={isCamera}
+                    t={t}
+                    onAdd={channel => props.onChange(channel.add(ref))}
+                />
+                <div className="ml-auto">
+                    <TransformCardMenu value={props.value} onChange={props.onChange} />
+                </div>
+            </div>
         </div>
     );
 }

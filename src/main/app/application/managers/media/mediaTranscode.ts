@@ -208,7 +208,7 @@ export function transcodeArgs(target: MediaConvertTarget, sourcePath: string, ou
  * The major brand is the only thing in an ISO base media file that says whether it holds a video,
  * and the muxer's default `isom` says nothing. That is not cosmetic: a shipped protected pack keeps
  * its entries under an asset id with no extension and no recorded media type, so the runtime decides
- * from the bytes (`src/runtime/main/mediaSniff.ts`), and there the brand is the whole of the
+ * from the bytes (`@shared/utils/mediaSniff`), and there the brand is the whole of the
  * evidence. Branded `isom`, a voice line is handed to the page as `video/mp4`.
  *
  * Which targets are audio-only is the same question {@link mediaConvertTargetExtension} answers when

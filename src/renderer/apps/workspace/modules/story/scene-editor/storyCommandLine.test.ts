@@ -35,6 +35,7 @@ const CONTEXT: StoryCommandContext = {
     ],
     labels: ["intro", "after refusal"],
     appTags: [{ id: "release", name: "main" }, { id: "demo", name: "Demo" }],
+    surfaces: [],
     variables: [
         { name: "gold", ref: { scope: "scene", variableId: "var_gold" }, valueType: "number", defaultValue: 10 },
     ],
@@ -204,11 +205,14 @@ describe("projectStoryCommandLine", () => {
     });
 
     it("names the appearance a row asks for, never its id", () => {
-        // `/face Alice smile` stores `pose: "t1"`. The row has to say `smile` — the word the author
+        // `/char Alice smile` stores `pose: "t1"`. The row has to say `smile` — the word the author
         // typed — and an id must never reach it.
-        expect(project("/face Alice smile")).toBe("/face Alice smile");
+        expect(project("/char Alice smile")).toBe("/char Alice smile");
+        // And the row prints the canonical token whichever accepted spelling built it: `/face` is
+        // kept as an alias for the scripts and the fingers that still carry it, not as a second row.
+        expect(project("/face Alice smile")).toBe("/char Alice smile");
         expect(project("/show Alice smile")).toBe("/show Alice smile pos=center d=0.3s");
-        expect(projectStoryCommandLine(build("/face Alice smile"), { ...LOOKUPS, appearanceName: () => null })?.source).toBe("/face Alice");
+        expect(projectStoryCommandLine(build("/char Alice smile"), { ...LOOKUPS, appearanceName: () => null })?.source).toBe("/char Alice");
     });
 
     it("never prints an id", () => {
@@ -235,7 +239,7 @@ describe("projectStoryCommandLine", () => {
         expect(line.ornaments).toEqual([{ at: line.source.indexOf("Alice"), kind: "character", id: "c1" }]);
         // Every character command, whichever slot it names its subject in (`target` vs `character`).
         expect(faces("/transform Alice pos=right").map(mark => mark.id)).toEqual(["c1"]);
-        expect(faces("/face Alice smile").map(mark => mark.id)).toEqual(["c1"]);
+        expect(faces("/char Alice smile").map(mark => mark.id)).toEqual(["c1"]);
         // And nowhere else: a scene, an asset or a variable is not somebody.
         expect(faces("/bg night")).toEqual([]);
         expect(faces("/wait 1.5")).toEqual([]);
@@ -391,6 +395,38 @@ describe("projectStoryCommandLine", () => {
         expect(projectStoryCommandLine(setSaved, LOOKUPS)!.source).toBe("/set variable 5");
     });
 
+    /**
+     * A stored scene reference reads as the scene.
+     *
+     * `scene:<id>` is a reference the runtime resolves wherever the value is later displayed - the
+     * skeleton stores one so a save slot can say where the player was. Printed raw it put a bare
+     * UUID on the second line of every new project.
+     */
+    it("prints a stored scene reference as the scene it names", () => {
+        const setPlace: StoryBlock = {
+            id: "b3", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "key_seen" }, value: "scene:s1" },
+        };
+        const withRegistry: StoryCommandLineLookups = {
+            ...LOOKUPS,
+            projectVariableName: () => "Place",
+        };
+        // Unquoted because the value slot is greedy: it takes the rest of the line as written.
+        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe("/set Place Chapter 2");
+    });
+
+    it("keeps a scene reference that answers to nothing as it is stored", () => {
+        const setPlace: StoryBlock = {
+            id: "b4", parentId: null, childrenIds: [], kind: "action",
+            payload: { action: "setVariable", target: { scope: "persistent", variableId: "key_seen" }, value: "scene:deleted" },
+        };
+        const withRegistry: StoryCommandLineLookups = {
+            ...LOOKUPS,
+            projectVariableName: () => "Place",
+        };
+        expect(projectStoryCommandLine(setPlace, withRegistry)!.source).toBe("/set Place scene:deleted");
+    });
+
     it("says an empty default rather than dropping it", () => {
         // An absent default and an empty one are different variables — the first is never seeded — and
         // `""` is what a retype to `string` leaves behind, so it has to be sayable.
@@ -443,14 +479,14 @@ describe("projectStoryCommandLine", () => {
         expect(edited("/bgm theme vol=0.6", "0.6", "0.2")).toBe("/bgm theme vol=0.2");
         expect(edited("/font title color=#ffcc00", "#ffcc00", "#102030")).toBe("/font title color=#102030");
         // A closed list the grammar cannot hold: this character's own looks, written back by id.
-        expect(edited("/face Alice smile", "t1", "t2")).toBe("/face Alice angry");
+        expect(edited("/char Alice smile", "t1", "t2")).toBe("/char Alice angry");
         // The SUBJECT too: which character, which asset, which object on stage.
         expect(edited("/hide Alice", "c1", "c2")).toBe("/hide Doll out=fade d=0.25s");
         expect(edited("/bg forest_day", "i1", "i2")).toBe("/bg night");
         expect(edited("/vol music 0.5", "music", "bgm")).toBe("/vol bgm 0.5 fade=0.25s");
         expect(edited("/goto intro", "intro", "after refusal")).toBe("/goto 'after refusal'");
         // A look belongs to the character that had it, so swapping the character drops it.
-        expect(edited("/face Alice smile", "c1", "c2")).toBe("/face Doll");
+        expect(edited("/char Alice smile", "c1", "c2")).toBe("/char Doll");
         // The camera's house duration fills the slot the line left empty, so this one is asked for by
         // a number none of the seeded values share.
         expect(edited("/transform camera vignette=0.45", "0.45", "0.9")).toBe("/transform camera vignette=0.9 d=0.6s");
@@ -504,8 +540,8 @@ describe("projectStoryCommandLine", () => {
             "/show Alice pos=center d=0.4",
             "/hide Alice out=fade d=1",
             "/transform Alice pos=left d=0.4",
-            "/face Doll smile",
-            "/face Alice smile",
+            "/char Doll smile",
+            "/char Alice smile",
             "/show Alice smile pos=left",
             "/motion Doll run",
             "/skin Doll winter",
@@ -805,7 +841,7 @@ describe("projectStoryCommandLine — what a word points at", () => {
         // The row already offers a picker on this word. The link is the OTHER intention — who Alice
         // is — and it lands on the same token without replacing the first.
         expect(typed("/show Alice")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
-        expect(typed("/face Alice smile")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
+        expect(typed("/char Alice smile")).toContainEqual({ text: "Alice", ref: { kind: "character", characterId: "c1" } });
         // The `displayable` arm reaches the same answer from the other side: its target carries the
         // entering row's id, and that row is what says which character it is.
         expect(typed("/front Alice")).toEqual([{ text: "Alice", ref: { kind: "character", characterId: "c1" } }]);

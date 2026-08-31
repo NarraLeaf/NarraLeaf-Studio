@@ -411,13 +411,21 @@ export class AssetsMetadataManager {
                 continue;
             }
             for (const asset of Object.values(data[type])) {
-                if (asset && asset.ext === undefined) {
-                    // Extract extension from filename
-                    const nameParts = asset.name.toLowerCase().split('.');
-                    const extension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
-                    setAssetExtension(asset, extension || undefined);
-                    hasChanges = true;
+                if (!asset || asset.ext !== undefined) {
+                    continue;
                 }
+                // The extension the display name carries, when it carries one. A name with no dot
+                // in it - which is what a shipped template's assets have - leaves the field absent
+                // and the record untouched: writing `undefined` over `undefined` changed nothing
+                // but marked every asset shard dirty, so a project full of such assets rewrote its
+                // whole library on every open.
+                const nameParts = asset.name.toLowerCase().split('.');
+                const extension = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+                if (!extension) {
+                    continue;
+                }
+                setAssetExtension(asset, extension);
+                hasChanges = true;
             }
         }
 

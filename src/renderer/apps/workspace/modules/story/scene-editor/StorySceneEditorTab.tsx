@@ -86,6 +86,7 @@ import { storyEditGuard, useStoryLiveSessionGuard } from "../storyLiveSession";
 import { NarralangScriptView } from "../narralang/NarralangScriptView";
 import { useNarralangScript } from "../narralang/useNarralangScript";
 import { useNarralangCommit } from "../narralang/useNarralangCommit";
+import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
 import { subscribeStoryRowHighlight } from "./storyRowHighlightBus";
 import { ResizableHandle } from "@/apps/workspace/components/ui/ResizableHandle";
 import { StoryScenePreviewPane } from "./preview/StoryScenePreviewPane";
@@ -2191,17 +2192,20 @@ export function StorySceneEditorTab({ tabId, payload, active }: EditorComponentP
                     {/* The same scene, read as a script. It is tinted the way the other view controls
                         are when they are on, because that is what it is — a way of looking at the
                         page, not a pane that opens beside it. Icon-only for the same reason they are:
-                        one glyph nothing else here can be. */}
-                    <button
-                        type="button"
-                        onClick={() => setScriptOpen(open => !open)}
-                        data-tip={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
-                        aria-label={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
-                        aria-pressed={scriptOpen}
-                        className={["rounded-md p-1.5 transition-colors", scriptOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
-                    >
-                        <Code className="h-4 w-4" />
-                    </button>
+                        one glyph nothing else here can be. The only way into the script view, so with
+                        NarraLang hidden the scene stays rows. */}
+                    {NARRALANG_UI_ENABLED ? (
+                        <button
+                            type="button"
+                            onClick={() => setScriptOpen(open => !open)}
+                            data-tip={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
+                            aria-label={scriptOpen ? t("story.narralang.view.close") : t("story.narralang.view.open")}
+                            aria-pressed={scriptOpen}
+                            className={["rounded-md p-1.5 transition-colors", scriptOpen ? "bg-primary/15 text-primary" : "text-fg-muted hover:bg-fill hover:text-fg"].join(" ")}
+                        >
+                            <Code className="h-4 w-4" />
+                        </button>
+                    ) : null}
                     {/* The manual used to be a modal, which meant closing what you were reading before
                         you could use it. It is the right-hand panel now, so the documentation and the
                         line you are writing are on screen together. */}

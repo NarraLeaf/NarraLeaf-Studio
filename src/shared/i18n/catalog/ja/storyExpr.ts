@@ -56,6 +56,7 @@ export const storyExpr = {
         unknownAudioTrack: "\"{value}\" というオーディオトラックがない",
         unknownLabel: "このシーンに \"{value}\" というラベルはない",
         unknownAppTag: "\"{value}\" というビルドバリアントはない",
+        unknownSurface: "\"{value}\" というページはない",
         unknownVariable: "\"{value}\" という変数がない",
         unknownForm: "{characterName} に \"{value}\" という表情はない",
         notPuppetCharacter: "{value} はランタイムが描くものではないので、設定できるモーションもスキンもない",

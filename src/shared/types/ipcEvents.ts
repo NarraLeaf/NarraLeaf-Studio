@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { LibraryExchangeKind } from "../story/libraryExchange";
 import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
@@ -55,7 +56,7 @@ import type {
     SpellcheckRange,
     SpellcheckStatus,
 } from "./spellcheck";
-import type { AssetExportEntry, AssetExportResult } from "./assetExport";
+import type { AssetExportEntry, AssetExportFileEntry, AssetExportFileResult, AssetExportResult } from "./assetExport";
 import type { AssetTransferEntry, AssetTransferOfferResult, AssetTransferRedeemResult } from "./assetTransfer";
 import type { StudioClipboardKind } from "./studioClipboard";
 import type { LocaleContribution } from "@shared/i18n";
@@ -166,12 +167,15 @@ export enum IPCEventType {
     appRecentProjectIcons = "app.recentProjectIcons",
     appSystemPath = "app.systemPath",
     appExportDiagnostics = "app.exportDiagnostics",
+    appOpenLogsFolder = "app.openLogsFolder",
     appProbeDownloadSource = "app.probeDownloadSource",
     appCacheInventory = "app.cacheInventory",
     appCacheClear = "app.cacheClear",
     appGlobalStateDelete = "app.globalState.delete",
     appExportSettings = "app.exportSettings",
     appImportSettings = "app.importSettings",
+    appExportLibraryItems = "app.exportLibraryItems",
+    appImportLibraryItems = "app.importLibraryItems",
     appUpdateGetState = "app.update.getState",
     appUpdateCheck = "app.update.check",
     appUpdateDownload = "app.update.download",
@@ -348,6 +352,7 @@ export enum IPCEventType {
 
     assetFetchRemote = "asset.fetchRemote",
     assetExportToFolder = "asset.exportToFolder",
+    assetExportToFile = "asset.exportToFile",
     assetTransferOffer = "asset.transfer.offer",
     assetTransferRedeem = "asset.transfer.redeem",
 
@@ -983,6 +988,19 @@ export type IPCEvents = {
         };
     };
     /**
+     * Show the folder Studio's own logs are written to.
+     *
+     * Takes no path, which is the point: the folder is `app.getPath("logs")` as main knows it, so a
+     * renderer that has been talked into asking can open that one folder and nothing else. The
+     * export above answers "give me a file to send"; this answers "let me look at them myself".
+     */
+    [IPCEventType.appOpenLogsFolder]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: Record<string, never>;
+        response: void;
+    };
+    /**
      * Ask the host whether a mirror answers, for the Network settings panel.
      *
      * In main because the renderer never touches the network - not even to check a URL the user
@@ -1095,6 +1113,31 @@ export type IPCEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;
+        response: { canceled: boolean; filePath?: string; content?: string };
+    };
+    /**
+     * Write an exported library (transform presets, Story Motions) to a file the user picks.
+     *
+     * Shaped like {@link IPCEventType.appExportSettings}: the renderer composes the document, the
+     * only path involved is the one the save dialog returned, so there is no grant to check. `kind`
+     * decides nothing but the dialog's title - the file itself says what it holds.
+     */
+    [IPCEventType.appExportLibraryItems]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: LibraryExchangeKind;
+            defaultFileName: string;
+            /** The document, already composed and serialized by the renderer. */
+            content: string;
+        };
+        response: { canceled: boolean; filePath?: string };
+    };
+    /** Read an exported library the user picks. Parsing and validation happen in the renderer. */
+    [IPCEventType.appImportLibraryItems]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { kind: LibraryExchangeKind };
         response: { canceled: boolean; filePath?: string; content?: string };
     };
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;
@@ -3459,6 +3502,22 @@ export type IPCAssetEvents = {
             entries: AssetExportEntry[];
         },
         response: AssetExportResult;
+    };
+    /**
+     * Copy one library file out under a name the author types in a save dialog.
+     *
+     * The single-file half of {@link IPCEventType.assetExportToFolder}: the file is named where
+     * it is saved rather than dropped into a folder under the name the library holds. Main checks
+     * the source against the window's grants and writes the copy itself, for the same reason the
+     * folder export does - a path chosen through a picker never becomes a renderer write grant.
+     */
+    [IPCEventType.assetExportToFile]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            entry: AssetExportFileEntry;
+        },
+        response: AssetExportFileResult;
     };
     /**
      * Offer the files behind a copy to whichever window pastes it, and take back the token that

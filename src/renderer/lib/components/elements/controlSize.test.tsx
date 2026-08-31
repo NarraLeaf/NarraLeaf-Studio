@@ -5,6 +5,7 @@ import { Button, IconButton } from "./Button";
 import { Input } from "./Input";
 import { Select } from "./Select";
 import { ToolbarButton } from "./ToolbarButton";
+import { EnhancedInput } from "../inputs/EnhancedInput";
 import { CONTROL_SIZE_CLASS, CONTROL_SQUARE_CLASS, type ControlSize } from "./controlSize";
 
 /**
@@ -64,6 +65,33 @@ describe("control size scale", () => {
         expect(buttonClasses).toContain(floor);
         expect(inputClasses).toContain(floor);
         expect(selectClasses).toContain(floor);
+    });
+
+    /**
+     * The field the dense panels actually use.
+     *
+     * `EnhancedInput` is not `Input` - it is the one with the unit suffix and the narrow-column
+     * popover, and the inspector rows are full of it. It used to state `h-9` outright with no way to
+     * ask for anything else: a caller merging `min-h-7` in got a 36px field standing beside a 28px
+     * select, which is exactly the "row of controls that will not line up" this file exists to stop.
+     */
+    it.each(SIZES)("the enhanced input agrees with the select at %s", (size) => {
+        const { container, unmount } = render(
+            <EnhancedInput size={size} value="" onChange={() => undefined} aria-label="field" />,
+        );
+        const rootClasses = classesOf(container.firstElementChild);
+        unmount();
+
+        render(
+            <Select size={size} ariaLabel="picker" options={[{ value: "a", label: "a" }]} value="a" />,
+        );
+        const selectClasses = classesOf(screen.getByLabelText("picker"));
+
+        const floor = EXPECTED_FLOOR[size];
+        expect(rootClasses).toContain(floor);
+        expect(selectClasses).toContain(floor);
+        // And the fixed height too: this control sits in flex rows that would otherwise squeeze it.
+        expect(rootClasses).toContain(floor.replace("min-h-", "h-"));
     });
 
     it("the select trigger draws the border its variant colours assume", () => {

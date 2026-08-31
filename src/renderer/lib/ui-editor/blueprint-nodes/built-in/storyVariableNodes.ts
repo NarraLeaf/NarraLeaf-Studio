@@ -1,7 +1,16 @@
 /**
- * Story Action Blueprint variable nodes: Scene Var (NLR Scene.local) and Saved Var (NLR Storable).
- * Only available in story-action blueprints; backed by `ctx.hostAdapter.storyRuntime`, which the
- * story compiler binds to the running NLR `Script` context. Comments in English per convention.
+ * Story variable nodes: Scene Var (NLR `Scene.local`) and Saved Var (NLR `Storable`).
+ *
+ * Three of the four are story-action only, backed by `ctx.hostAdapter.storyRuntime` - the access
+ * pair the story compiler binds to the running NLR `Script` context.
+ *
+ * `Get Saved Var` is the exception: a Game UI screen may read one too, through the host API's
+ * `game.getSavedVariable`. Saved variables are the only per-playthrough state a screen has any
+ * business showing - a persistent variable is shared by every save file, so a status screen, a HUD
+ * or a map built on one would report the wrong run's progress. The write half stays in the story,
+ * where writes are sequenced and undoable; see the capability's note.
+ *
+ * Comments in English per convention.
  */
 
 import {
@@ -14,6 +23,7 @@ import { BlueprintGraphExecutionError } from "../../behavior-graph/GraphExecutio
 import type { StoryVariableRuntimeAccess } from "../../runtime/types";
 import type { BlueprintNodeDef } from "../types";
 import { resolveDataPinValue } from "./graphParamResolvers";
+import { requireHostApi } from "./hostApi";
 
 type ExecuteCtx = Parameters<NonNullable<BlueprintNodeDef["execute"]>>[0];
 
@@ -106,11 +116,89 @@ function setNode(
 }
 
 const sceneAccess = (ctx: ExecuteCtx) => requireStoryRuntime(ctx).sceneVar;
-const savedAccess = (ctx: ExecuteCtx) => requireStoryRuntime(ctx).savedVar;
+
+/**
+ * `Get Saved Var`, in a story action and on a Game UI screen alike.
+ *
+ * Built apart from {@link getNode} because it is the one variable node with two backings and an
+ * extra output. Inside a story the runtime access is there and the answer is always found; on a
+ * screen the value comes from the host, which reports `found: false` where there is no playthrough
+ * to read - a title screen, an editor preview, a screen opened after the player quit.
+ *
+ * Reporting rather than throwing, because a screen has to lay out before any game exists and a
+ * throw in a value binding shows the player an empty widget with nothing anywhere saying why.
+ * `Found` is a pin instead of a magic value for the same reason `Get Character` has one: `null` and
+ * the declared default are both values a variable can legitimately hold.
+ */
+const savedGetNode: BlueprintNodeDef = {
+    type: BLUEPRINT_NODE_TYPE_SAVED_GET,
+    displayName: "Get Saved Var",
+    category: "Variables",
+    keywords: ["get", "read", "story", "variable", "saved", "save", "flag", "progress", "affection"],
+    graphKinds: ["event", "macro"],
+    isPure: false,
+    pins: [
+        { id: "in", kind: "input", semantic: "exec", label: "In" },
+        { id: "next", kind: "output", semantic: "exec", label: "Next" },
+        { id: "value", kind: "output", semantic: "data", valueType: "any", label: "Value" },
+        { id: "found", kind: "output", semantic: "data", valueType: "boolean", label: "Found" },
+    ],
+    inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
+    execute: ctx => {
+        const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        const storyRuntime = ctx.hostAdapter.storyRuntime;
+        if (storyRuntime) {
+            return { nextPort: "next", outputValues: { value: storyRuntime.savedVar.get(id), found: true } };
+        }
+        const read = requireHostApi(ctx).game.getSavedVariable(id);
+        return { nextPort: "next", outputValues: { value: read.value, found: read.found } };
+    },
+};
+
+/**
+ * `Set Saved Var`, in a story action and on a Game UI screen alike.
+ *
+ * The write half of {@link savedGetNode}, and the pair is deliberately asymmetric about failure:
+ * the read reports "nothing to read" through a `Found` pin because a screen has to lay out before
+ * any game exists, while this one throws. A write is a button doing what the player asked, and
+ * the one thing a button must never do is nothing without saying so - which, in an event graph,
+ * reaches the issues panel and the game log.
+ *
+ * What a write from a screen costs is on the capability (`game.setSavedVariable`): the story is not
+ * told, and undo does not take it back. So this belongs to state a SCREEN owns and the story reads.
+ *
+ * Scene variables stay story-only either way: they exist only while their scene is on stage, so a
+ * screen writing one would be writing into something that comes and goes underneath it.
+ */
+const savedSetNode: BlueprintNodeDef = {
+    type: BLUEPRINT_NODE_TYPE_SAVED_SET,
+    displayName: "Set Saved Var",
+    category: "Variables",
+    keywords: ["set", "write", "assign", "story", "variable", "saved", "save", "flag", "progress"],
+    graphKinds: ["event", "macro"],
+    isPure: false,
+    pins: [
+        { id: "in", kind: "input", semantic: "exec", label: "In" },
+        { id: "next", kind: "output", semantic: "exec", label: "Next" },
+        { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
+    ],
+    inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
+    execute: ctx => {
+        const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        const value = readValuePin(ctx);
+        const storyRuntime = ctx.hostAdapter.storyRuntime;
+        if (storyRuntime) {
+            storyRuntime.savedVar.set(id, value);
+            return { nextPort: "next" };
+        }
+        requireHostApi(ctx).game.setSavedVariable(id, value);
+        return { nextPort: "next" };
+    },
+};
 
 export const storyVariableBlueprintNodes: BlueprintNodeDef[] = [
     getNode(BLUEPRINT_NODE_TYPE_SCENE_GET, "Get Scene Var", "sceneVariableId", "sceneVariableRef", "Scene variable", sceneAccess),
     setNode(BLUEPRINT_NODE_TYPE_SCENE_SET, "Set Scene Var", "sceneVariableId", "sceneVariableRef", "Scene variable", sceneAccess),
-    getNode(BLUEPRINT_NODE_TYPE_SAVED_GET, "Get Saved Var", "savedVariableId", "savedVariableRef", "Saved variable", savedAccess),
-    setNode(BLUEPRINT_NODE_TYPE_SAVED_SET, "Set Saved Var", "savedVariableId", "savedVariableRef", "Saved variable", savedAccess),
+    savedGetNode,
+    savedSetNode,
 ];

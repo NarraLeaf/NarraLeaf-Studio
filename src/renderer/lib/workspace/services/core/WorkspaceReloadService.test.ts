@@ -63,6 +63,7 @@ type Harness = {
         localizationReload: ReturnType<typeof vi.fn>;
         voiceReload: ReturnType<typeof vi.fn>;
         dictionaryLoad: ReturnType<typeof vi.fn>;
+        transformPresetsLoad: ReturnType<typeof vi.fn>;
         historyClearAll: ReturnType<typeof vi.fn>;
         showSticky: ReturnType<typeof vi.fn>;
     };
@@ -93,6 +94,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         localizationReload: vi.fn(async () => undefined),
         voiceReload: vi.fn(async () => undefined),
         dictionaryLoad: vi.fn(async () => []),
+        transformPresetsLoad: vi.fn(async () => []),
         historyClearAll: vi.fn(),
         showSticky: vi.fn(() => "toast-1"),
     };
@@ -137,6 +139,7 @@ async function createHarness(seed?: string): Promise<Harness> {
         [Services.Localization]: { reloadFromDisk: stubs.localizationReload },
         [Services.Voice]: { reloadFromDisk: stubs.voiceReload },
         [Services.Dictionary]: { load: stubs.dictionaryLoad },
+        [Services.TransformPreset]: { load: stubs.transformPresetsLoad },
         [Services.History]: { clearAll: stubs.historyClearAll },
         [Services.VariableRegistry]: variables,
         [Services.SaveStatus]: saveStatus,
@@ -266,7 +269,7 @@ describe("WorkspaceReloadService", () => {
         expect(result.reloaded).toEqual([
             "project", "assets", "characters", "story",
             "uiDocument", "uiGraph", "variables", "audioTracks", "appTags", "localization", "voice",
-            "dictionary",
+            "transformPresets", "dictionary",
         ]);
         expect(harness.stubs.assetsReload).toHaveBeenCalledTimes(1);
         expect(harness.stubs.voiceReload).toHaveBeenCalledTimes(1);

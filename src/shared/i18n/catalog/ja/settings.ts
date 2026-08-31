@@ -344,6 +344,11 @@ export const settings = {
         cacheInventory: {
             label: "キャッシュしたファイル",
         },
+        openLogsFolder: {
+            label: "Studio のログファイル",
+            description: "Studio が動作中に書き出す記録。ファイルマネージャーでそのフォルダーを開く",
+            action: "フォルダーを開く",
+        },
         servers: {
             label: "サーバー",
         },

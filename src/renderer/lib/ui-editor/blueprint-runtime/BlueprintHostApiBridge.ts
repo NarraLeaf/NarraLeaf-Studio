@@ -491,7 +491,18 @@ export type BlueprintHostApiRuntime = {
         emit: (eventName: string, data: unknown) => Promise<void>;
     };
     game: {
-        startStory: (request: DevModeStartStoryRequest) => Promise<void>;
+        /**
+         * Begin a story. `options.inheritSavedGame` carries a save's saved-scope values and visited
+         * scenes into the new game - see the `Inherit From` pin - and carries nothing else.
+         */
+        startStory: (
+            request: DevModeStartStoryRequest,
+            options?: { inheritSavedGame?: unknown },
+        ) => Promise<void>;
+        /** The running playthrough as a serialized game, or null when none is running. */
+        captureRun: () => unknown | null;
+        /** The serialized game stored in a slot, or null when there is no such slot. */
+        readSaveGame: (id: string) => Promise<unknown | null>;
         isInGame: () => boolean;
         isGameOverlay: () => boolean;
         quit: (surfaceId: string) => Promise<void>;
@@ -582,6 +593,23 @@ export type BlueprintHostApiRuntime = {
          * this one when a scene actually starts. Saved-domain, so loading an older save rewinds it.
          */
         isSceneVisited: (sceneId: string) => boolean;
+        /**
+         * One saved variable of the running playthrough, by the id a `savedVariableRef` names.
+         *
+         * `found` is false with no game running, and with an id this build's story does not
+         * declare. The two are worth telling apart from a value: `null` and the declared default
+         * are both real values a variable can hold, so neither can double as "there was nothing to
+         * read". See the capability's own note for why this is read-only.
+         */
+        getSavedVariable: (variableId: string) => { value: unknown; found: boolean };
+        /**
+         * Write one saved variable of the running playthrough.
+         *
+         * Throws when there is no game, when the id names nothing this build declares, and when the
+         * value cannot go into a save file. All three are authoring errors a button would otherwise
+         * swallow; see the capability's own note for what a write from a screen does and does not do.
+         */
+        setSavedVariable: (variableId: string, value: unknown) => void;
         /**
          * Has the player ever PICKED this choice option, by the option row's Studio block id. The
          * one thing the text-read record structurally cannot answer - a menu that merely appeared
@@ -843,7 +871,10 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     pageProps?: Record<string, unknown>;
     frameParams?: Record<string, unknown>;
     onFrameEmit?: (eventName: string, data: unknown) => Promise<void> | void;
-    onStartStory?: (request: DevModeStartStoryRequest) => Promise<void> | void;
+    onStartStory?: (
+        request: DevModeStartStoryRequest,
+        options?: { inheritSavedGame?: unknown },
+    ) => Promise<void> | void;
     onIsInGame?: () => boolean;
     onIsGameOverlay?: () => boolean;
     onQuitGame?: (surfaceId: string) => Promise<void> | void;
@@ -855,6 +886,8 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onGetSaveMetadata?: (id: string) => Promise<unknown> | unknown;
     onGetSaveTimes?: (id: string) => Promise<SaveRecordTimes | null> | SaveRecordTimes | null;
     onGetSaveLine?: (id: string) => Promise<SaveRecordLine | null> | SaveRecordLine | null;
+    onCaptureRun?: () => unknown | null;
+    onReadSaveGame?: (id: string) => Promise<unknown | null> | unknown | null;
     onGetSavePlaytime?: (id: string) => Promise<SaveRecordPlaytime | null> | SaveRecordPlaytime | null;
     onGetPlaytime?: () => number;
     onGetTotalPlaytime?: () => number;
@@ -892,6 +925,17 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onIsSceneVisited?: (sceneId: string) => boolean;
     onIsOptionPicked?: (optionId: string) => boolean;
     onClearVisited?: () => void;
+    /**
+     * One saved variable of the running playthrough. Absent wherever there is no playthrough to
+     * read - a title screen, a page previewed in the editor - and the bridge answers `found: false`
+     * there rather than inventing a value.
+     */
+    onGetSavedVariable?: (variableId: string) => { value: unknown; found: boolean };
+    /**
+     * Write one saved variable of the running playthrough. Absent wherever there is no playthrough
+     * to write into, and the bridge refuses out loud there rather than dropping the write.
+     */
+    onSetSavedVariable?: (variableId: string, value: unknown) => void;
     /**
      * The endings record, in project persistence. Absent only where there is no runtime store at
      * all (a Page previewed inside the editor), where every ending reads as not reached and the two
@@ -998,6 +1042,19 @@ export type CreateBlueprintHostApiRuntimeOptions = {
     onCloseOwnLayer?: (runtimeScopeId: string, result: unknown) => boolean;
     onIsLayerMounted?: (handle: string) => boolean;
     onWidgetPatch: (elementId: string, patch: DevModeWidgetRuntimePatch) => void;
+    /**
+     * What the host has already written over the authored record for this runtime scope.
+     *
+     * A drawing outlives the host API that paints it: the Game UI dialog box is rebuilt whenever the
+     * gap between two lines outlives the engine's replacement grace, and the patches it painted are
+     * kept by the host so the box comes back looking as it did. Every setter below compares the
+     * value it is given against what the drawing currently shows and writes nothing when they agree,
+     * so a host API that started from the authored record alone skipped exactly the writes that put
+     * an element *back* to what the author wrote - the previous speaker's avatar stayed on a
+     * narration line, because narration asks for no avatar and no avatar is what the widget was
+     * authored with.
+     */
+    initialWidgetPatches?: Readonly<Record<string, DevModeWidgetRuntimePatch>>;
     onElementFlush?: (elementId: string, payload: BlueprintElementFlushPayload) => Promise<void> | void;
     widgetRuntimeStore: WidgetRuntimeStateStore;
     /** Component definition graphs should pass a component-scoped document so Element Host API stays local. */
@@ -2322,6 +2379,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onGetSaveMetadata,
         onGetSaveTimes,
         onGetSaveLine,
+        onCaptureRun,
+        onReadSaveGame,
         onGetSavePlaytime,
         onGetPlaytime,
         onGetTotalPlaytime,
@@ -2347,6 +2406,8 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsSceneVisited,
         onIsOptionPicked,
         onClearVisited,
+        onGetSavedVariable,
+        onSetSavedVariable,
         onIsEndingReached,
         onIsDlcInstalled,
         onListEndings,
@@ -2401,12 +2462,15 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onWidgetPatch,
         onElementFlush,
         widgetRuntimeStore,
+        initialWidgetPatches,
     } =
         options;
     const stateScopeId = runtimeScopeId ?? activeSurfaceId;
     const currentPageProps = normalizeJsonRecord(pageProps);
     const pendingFlushElementIds = new Set<string>();
-    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>();
+    const runtimePatches = new Map<string, DevModeWidgetRuntimePatch>(
+        Object.entries(initialWidgetPatches ?? {}),
+    );
     type DisplayableAnimationWaitReason = "completed" | "stopped";
 
     const displayableAnimationWaiters = new Map<
@@ -3777,12 +3841,16 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
             },
         },
         game: {
-            startStory: async (request: DevModeStartStoryRequest) => {
+            startStory: async (
+                request: DevModeStartStoryRequest,
+                options?: { inheritSavedGame?: unknown },
+            ) => {
                 const cap = "game.startStory";
                 emitHostCall(emit, cap, "call");
                 try {
                     const storyId = String(request?.storyId ?? "").trim();
                     const sceneId = String(request?.sceneId ?? "").trim();
+                    const startBlockId = String(request?.startBlockId ?? "").trim();
                     if (!storyId) {
                         throw new Error("startStory: storyId is required");
                     }
@@ -3792,7 +3860,37 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     if (!onStartStory) {
                         throw new Error("startStory: game runtime is not available");
                     }
-                    await onStartStory({ storyId, sceneId });
+                    // `startBlockId` is forwarded rather than dropped: the node has always carried
+                    // a `From Row` pin and the request has always had somewhere to put it, so a
+                    // graph launching a story at a row was silently getting the scene from the top.
+                    await onStartStory(
+                        { storyId, sceneId, ...(startBlockId ? { startBlockId } : {}) },
+                        options?.inheritSavedGame === undefined
+                            ? undefined
+                            : { inheritSavedGame: options.inheritSavedGame },
+                    );
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            captureRun: () => {
+                const cap = "game.captureRun";
+                emitHostCall(emit, cap, "call");
+                try {
+                    return onCaptureRun ? onCaptureRun() ?? null : null;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            readSaveGame: async (id: string) => {
+                const cap = "game.readSaveGame";
+                emitHostCall(emit, cap, "call");
+                try {
+                    const saveId = normalizeGameSaveId("readSaveGame", id);
+                    if (!onReadSaveGame) {
+                        throw new Error("readSaveGame: game save runtime is not available");
+                    }
+                    return (await onReadSaveGame(saveId)) ?? null;
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }
@@ -4242,6 +4340,36 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                 emitHostCall(emit, cap, "call");
                 try {
                     return onIsOptionPicked ? onIsOptionPicked(optionId) : false;
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            getSavedVariable: (variableId: string) => {
+                const cap = "game.getSavedVariable";
+                emitHostCall(emit, cap, "call");
+                try {
+                    // Same bargain as `isSceneVisited`: no running story is an answer, not an
+                    // error, because the screens that ask this have to lay out before any game
+                    // exists. Unlike that one the answer cannot be folded into the value, so the
+                    // caller is handed `found` and decides.
+                    return onGetSavedVariable
+                        ? onGetSavedVariable(variableId)
+                        : { value: null, found: false };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSavedVariable: (variableId: string, value: unknown) => {
+                const cap = "game.setSavedVariable";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSetSavedVariable) {
+                        // Not the bargain `isSceneVisited` and the read take. Those answer while a
+                        // title screen lays out; this one is a button doing what the player asked,
+                        // and a write with nothing to write into has to say so.
+                        throw new Error("Set Saved Var: game runtime is not available");
+                    }
+                    onSetSavedVariable(variableId, value);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

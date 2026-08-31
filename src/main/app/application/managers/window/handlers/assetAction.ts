@@ -2,10 +2,11 @@ import fs from "fs/promises";
 import path from "path";
 import { IPCMessageType } from "@shared/types/ipc";
 import { IPCEventType, IPCEvents, RequestStatus } from "@shared/types/ipcEvents";
-import type { AssetExportFailure, AssetExportResult } from "@shared/types/assetExport";
+import type { AssetExportFailure, AssetExportFileResult, AssetExportResult } from "@shared/types/assetExport";
 import type { RemoteAssetFetchResult } from "@shared/types/remoteAsset";
+import { fileExtensionFromBytes, MEDIA_SNIFF_PREFIX_BYTES } from "@shared/utils/mediaSniff";
 import { fetchRemoteAsset } from "../../remoteAssetFetcher";
-import { showOpenDialog } from "../fileDialog";
+import { dialogTranslator, showOpenDialog, showSaveDialog } from "../fileDialog";
 import { AppWindow } from "../appWindow";
 import { IPCHandler } from "./IPCHandler";
 
@@ -66,6 +67,40 @@ function resolveExportTarget(exportDir: string, relativePath: string): string | 
     return target.startsWith(withSeparator) ? target : null;
 }
 
+/**
+ * The name to write `source` under, given the name the library holds for it.
+ *
+ * An asset's bytes live at an id-sharded path with no extension, and the record's `ext` is where the
+ * one it came in with is kept - except that the field is optional and a shipped template's records
+ * do not carry it, so the name arriving here can be a bare `classroom`. A file written under that
+ * name is one the author's system cannot open, which is the whole point of exporting it.
+ *
+ * So when the name has no extension, the bytes are asked: the same sniffer the runtime serves a
+ * protected pack with. A format it does not recognise leaves the name alone - a wrong suffix tells
+ * the OS something untrue, which is worse than none.
+ *
+ * Directories are left alone: a model bundle is a folder, and folders have no extension.
+ */
+async function nameWithExtension(source: string, name: string, isDirectory: boolean): Promise<string> {
+    if (isDirectory || path.extname(name) !== "") {
+        return name;
+    }
+    let handle: fs.FileHandle | undefined;
+    try {
+        handle = await fs.open(source, "r");
+        const head = Buffer.alloc(MEDIA_SNIFF_PREFIX_BYTES);
+        const { bytesRead } = await handle.read(head, 0, MEDIA_SNIFF_PREFIX_BYTES, 0);
+        const extension = fileExtensionFromBytes(head.subarray(0, bytesRead));
+        return extension ? `${name}.${extension}` : name;
+    } catch {
+        // The copy itself is about to fail on the same file and will say so with its own path in
+        // hand; naming is not the place to report that.
+        return name;
+    } finally {
+        await handle?.close();
+    }
+}
+
 /** A free path next to `target`, suffixing the stem rather than overwriting what is already there. */
 async function resolveAvailableExportPath(target: string): Promise<string> {
     const dir = path.dirname(target);
@@ -110,9 +145,10 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 return this.failed("Nothing was handed to the export.");
             }
 
+            const { t } = dialogTranslator(window);
             const selection = await showOpenDialog(window, {
-                title: "Select Export Folder",
-                buttonLabel: "Export Here",
+                title: t("dialogs.file.title.exportAssets"),
+                buttonLabel: t("dialogs.file.button.exportHere"),
                 properties: ["openDirectory", "createDirectory"],
                 securityScopedBookmarks: true,
             });
@@ -149,7 +185,10 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                         throw new Error("This file is outside the project and was not exported.");
                     }
 
-                    const target = resolveExportTarget(exportDir, relativePath);
+                    const target = resolveExportTarget(
+                        exportDir,
+                        await nameWithExtension(source, relativePath, entry.isDirectory === true),
+                    );
                     if (!target) {
                         throw new Error("That name does not point anywhere inside the chosen folder.");
                     }
@@ -176,6 +215,78 @@ export class AssetExportToFolderHandler extends IPCHandler<IPCEventType.assetExp
                 exportedCount,
                 failures: failures.length > 0 ? failures : undefined,
             });
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
+ * Copy one library file out to a place the author names.
+ *
+ * The single-file counterpart of {@link AssetExportToFolderHandler}, and it lives here rather than
+ * in the renderer for the same reason: a path that comes back from a picker carries no write grant,
+ * so the copy is made in main. The author names the file in the dialog, which is also where an
+ * overwrite is confirmed - so unlike the folder export this writes over what it is pointed at,
+ * because that is what the dialog just asked about.
+ */
+export class AssetExportToFileHandler extends IPCHandler<IPCEventType.assetExportToFile> {
+    readonly name = IPCEventType.assetExportToFile;
+    readonly type = IPCMessageType.request;
+
+    public async handle(
+        window: AppWindow,
+        { entry }: IPCEvents[IPCEventType.assetExportToFile]["data"],
+    ): Promise<RequestStatus<AssetExportFileResult>> {
+        try {
+            if (!entry || typeof entry.sourcePath !== "string" || entry.sourcePath.length === 0) {
+                return this.failed("Nothing was handed to the export.");
+            }
+
+            // Asked before the dialog: a source this window may not read is not worth a picker the
+            // author would fill in and then be refused on.
+            const source = path.resolve(entry.sourcePath);
+            if (!await window.app.storageManager.isPathAllowed(window, source, "read")) {
+                return this.failed("This file is outside the project and was not exported.");
+            }
+
+            const fileName = await nameWithExtension(
+                source,
+                sanitizeExportSegment(typeof entry.fileName === "string" ? entry.fileName : ""),
+                false,
+            );
+            const extension = path.extname(fileName).replace(/^\./, "");
+
+            const { t } = dialogTranslator(window);
+            const selection = await showSaveDialog(window, {
+                title: t("dialogs.file.title.exportAsset"),
+                buttonLabel: t("dialogs.file.button.export"),
+                ...(fileName ? { defaultPath: fileName } : {}),
+                filters: extension
+                    ? [{ name: extension.toUpperCase(), extensions: [extension] }, { name: t("dialogs.file.filter.all"), extensions: ["*"] }]
+                    : [{ name: t("dialogs.file.filter.all"), extensions: ["*"] }],
+                securityScopedBookmarks: true,
+            });
+
+            if (selection.canceled || !selection.filePath) {
+                return this.success({ canceled: true });
+            }
+
+            const target = path.resolve(selection.filePath);
+            if (await window.app.storageManager.isPathProtected(target)) {
+                return this.failed("Selected location is inside protected Studio storage.");
+            }
+            // The scope, not a grant: main does the writing, so the renderer needs no reach into the
+            // folder the author picked. Same reasoning as the folder export.
+            window.app.storageManager.startSecurityScopedAccess(
+                window,
+                target,
+                selection.bookmark,
+                "session",
+            );
+
+            await fs.copyFile(source, target);
+            return this.success({ canceled: false, filePath: target });
         } catch (error) {
             return this.failed(error);
         }

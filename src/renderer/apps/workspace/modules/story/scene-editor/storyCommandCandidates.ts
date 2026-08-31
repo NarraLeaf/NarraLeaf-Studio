@@ -50,6 +50,7 @@ export type StoryCandidateMark =
     | { kind: "audioTrack" }
     | { kind: "label" }
     | { kind: "appTag" }
+    | { kind: "surface" }
     | { kind: "variable"; valueType?: StoryVariableValueType }
     | { kind: "blueprint" }
     | { kind: "function" }
@@ -312,6 +313,8 @@ function candidatesForType(
                 query,
                 () => ({ kind: "appTag" }),
             );
+        case "surface":
+            return refCandidates(context.surfaces, query, () => ({ kind: "surface" }));
         case "variable":
             return context.variables
                 .filter(entry => !query || containsFold(entry.name, query))
@@ -440,6 +443,8 @@ function paramNameMark(param: StoryCommandParam): StoryCandidateMark | undefined
             return { kind: "label" };
         case "appTag":
             return { kind: "appTag" };
+        case "surface":
+            return { kind: "surface" };
         case "variable":
             return { kind: "variable" };
         case "target":

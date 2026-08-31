@@ -11,6 +11,7 @@ import {
     type QuickParam,
     type QuickParamValue,
 } from "@/lib/story/storyQuickParamsModel";
+import { getStorySceneName } from "@/lib/story/storyRowProjection";
 import { characterRowLookup } from "./storySceneBlockUtils";
 import { useStoryMotionNames } from "./useStoryMotionNames";
 import { useStoryPluginActionLabels } from "./useStoryPluginActionCommands";
@@ -190,7 +191,9 @@ function QuickParamToken(props: {
 }) {
     const { param } = props;
     const [anchor, setAnchor] = useState<{ top: number; left: number; bottom: number } | null>(null);
-    const sceneName = (id: string | undefined) => (id ? props.scenes?.[id]?.name || id : "—");
+    // `getStorySceneName` rather than a fallback to the id: the two "no name" cases have words of
+    // their own, and a quick param is a token an author reads at a glance.
+    const sceneName = (id: string | undefined) => (id ? getStorySceneName(props.scenes, id) : "—");
 
     const open = (event: ReactMouseEvent<HTMLButtonElement>) => {
         event.stopPropagation();

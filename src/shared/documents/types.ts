@@ -44,6 +44,8 @@ export type DocumentKind =
     | "dlc"
     /** The words the project spells on purpose, at `editor/dictionary.json`. */
     | "dictionary"
+    /** The transforms the project saved to reuse, at `editor/transform-presets.json`. */
+    | "transform-presets"
     /** What one save slot carries besides the engine's own record, at `editor/save-schema.json`. */
     | "save-schema"
     /** The asset sets the project declares, at `editor/asset-sets.json`. */

@@ -1,6 +1,6 @@
 import { IPCEventType } from "@shared/types/ipcEvents";
 import { IPCHandler } from "./handlers/IPCHandler";
-import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler } from "./handlers/appAction";
+import { AppGlobalStateGetAllHandler, AppGlobalStateGetHandler, AppGlobalStateSetHandler, AppAddRecentProjectHandler, AppRemoveRecentProjectHandler, AppRevealRecentProjectHandler, AppCheckRecentProjectsHandler, AppRecentProjectIconsHandler, AppClaimExperimentalNoticeHandler, AppInfoHandler, AppOpenExternalHandler, AppPickBackgroundImageHandler, AppPlatformInfoHandler, AppReadBackgroundImageHandler, AppReportRendererErrorHandler, AppTerminateHandler, AppWindowControlHandler, AppDetachedWindowControlHandler, AppWindowCloseHandler, AppWindowCloseWithHandler, AppWindowEditCommandHandler, AppWindowGetControlHandler, AppWindowGetFullscreenHandler, AppWindowReadyHandler, AppWindowControlAbilityHandler, AppPropsHandler, AppSystemPathHandler, AppExportDiagnosticsHandler, AppOpenLogsFolderHandler, AppProbeDownloadSourceHandler, AppCacheInventoryHandler, AppCacheClearHandler, AppGlobalStateDeleteHandler, AppExportSettingsHandler, AppImportSettingsHandler, AppExportLibraryItemsHandler, AppImportLibraryItemsHandler } from "./handlers/appAction";
 import { AppCountWorkspaceWindowsHandler, AppRequestWorkspaceViewHandler, AppSettingsWindowLaunchHandler } from "./handlers/settingAction";
 import {
     SpellcheckCheckHandler,
@@ -146,7 +146,7 @@ import {
     ProjectTemplateListHandler,
     ProjectTemplateScaffoldHandler,
 } from "./handlers/projectTemplateAction";
-import { AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
+import { AssetExportToFileHandler, AssetExportToFolderHandler, AssetFetchRemoteHandler } from "./handlers/assetAction";
 import { AssetTransferOfferHandler, AssetTransferRedeemHandler } from "./handlers/assetTransferAction";
 import {
     ClipboardReadEditorSelectionHandler,
@@ -208,12 +208,15 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new AppRecentProjectIconsHandler(),
         new AppSystemPathHandler(),
         new AppExportDiagnosticsHandler(),
+        new AppOpenLogsFolderHandler(),
         new AppProbeDownloadSourceHandler(),
         new AppCacheInventoryHandler(),
         new AppCacheClearHandler(),
         new AppGlobalStateDeleteHandler(),
         new AppExportSettingsHandler(),
         new AppImportSettingsHandler(),
+        new AppExportLibraryItemsHandler(),
+        new AppImportLibraryItemsHandler(),
 
         new AppUpdateGetStateHandler(),
         new AppUpdateCheckHandler(),
@@ -375,6 +378,7 @@ export function createDefaultIPCHandlers(): IPCHandler<IPCEventType>[] {
         new ProjectTemplateScaffoldHandler(),
         new AssetFetchRemoteHandler(),
         new AssetExportToFolderHandler(),
+        new AssetExportToFileHandler(),
         new AssetTransferOfferHandler(),
         new AssetTransferRedeemHandler(),
         new ClipboardWriteEditorSelectionHandler(),

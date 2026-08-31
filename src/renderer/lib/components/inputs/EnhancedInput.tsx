@@ -16,13 +16,25 @@ import { useDismissWhenHidden } from "../layout/hostVisibility";
 import { useTranslation } from "@/lib/i18n";
 import { cn } from "../../utils/cn";
 import { guardImeKeys, isImeKeyEvent } from "@/lib/utils/imeComposition";
+import { CONTROL_FIXED_HEIGHT_CLASS, CONTROL_TEXT_CLASS, type ControlSize } from "@/lib/components/elements/controlSize";
 
 export interface EnhancedInputProps
-    extends Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange"> {
+    // `size` is taken from the native attribute (a character count nothing here sets) and given to
+    // the shared scale, exactly as `Input` does - the two fields must answer the same word.
+    extends Omit<InputHTMLAttributes<HTMLInputElement>, "value" | "onChange" | "size"> {
     value: string;
     onChange: (value: string) => void;
     unit?: string;
     leftIcon?: ReactNode;
+    /**
+     * Height and type scale, on the one shared scale (`docs/design-system.md` §3).
+     *
+     * `md` by default, which is what every dialog and property field wants. `sm` is for the dense
+     * inspector rows, where the field shares a line with a `size="sm"` select - and it has to be a
+     * prop rather than a `className`, because the fixed height this control needs against a flex
+     * parent is not something a caller's `min-h-*` can merge away.
+     */
+    size?: ControlSize;
     className?: string;
     inputClassName?: string;
     precision?: number | null;
@@ -41,6 +53,7 @@ export function EnhancedInput({
     onChange,
     unit,
     leftIcon,
+    size = "md",
     className = "",
     inputClassName = "",
     onFocus,
@@ -254,10 +267,11 @@ export function EnhancedInput({
         ? "[appearance:textfield] [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
         : "";
     const rootClassName = cn(
-        // `h-9` + `min-h-9` is the shared `md` control height, held against a flex parent that
-        // would otherwise squeeze it. It used to read `min-h-[34px]`, a number off the scale that
-        // callers then copied into their own class lists.
-        "relative flex min-w-0 max-w-full items-center bg-surface-raised border border-edge rounded-md text-sm h-9 min-h-9 overflow-hidden",
+        // The height is stated twice over on purpose - see `CONTROL_FIXED_HEIGHT_CLASS`. It used to
+        // read `min-h-[34px]`, a number off the scale that callers then copied into their own lists.
+        "relative flex min-w-0 max-w-full items-center bg-surface-raised border border-edge rounded-md overflow-hidden",
+        CONTROL_FIXED_HEIGHT_CLASS[size],
+        CONTROL_TEXT_CLASS[size],
         "focus-within:border-primary/70 transition focus-within:ring-1 focus-within:ring-primary/30",
         className,
     );

@@ -5,6 +5,7 @@ import {
     AlignHorizontalJustifyStart,
     AlignJustify,
     Aperture,
+    AppWindow,
     ArrowDown,
     ArrowLeft,
     ArrowRight,
@@ -226,6 +227,8 @@ function markGlyph(mark: StoryCandidateMark): typeof Hash {
             return AudioLines;
         case "appTag":
             return Package;
+        case "surface":
+            return AppWindow;
         case "variable":
             switch (mark.valueType) {
                 case "boolean":

@@ -49,6 +49,7 @@ export const storyInspector = {
         feather: "Feather %",
         orientation: "Orientation",
         slats: "Slats",
+        slatDelay: "Slat delay",
         axis: "Axis",
         blades: "Blades",
         fromAngle: "From angle °",
@@ -80,6 +81,32 @@ export const storyInspector = {
         scene: "Scene",
         saved: "Saved",
         persistent: "Persistent",
+    },
+
+    /**
+     * The transform card's own controls: the overflow menu beside `Add`, and the project's preset
+     * list behind it.
+     *
+     * A preset seeds a row and is never referred to by one, which is why the manager offers a plain
+     * delete: nothing written from a preset changes when the preset goes.
+     */
+    transformCard: {
+        menu: "More actions",
+        savePreset: "Save as preset",
+        clearChannels: "Clear all channels",
+        managePresets: "Manage presets",
+        /** Beside a preset the project saved, telling it apart from the ones Studio ships. */
+        projectLabel: "Project",
+        saveTitle: "Save as preset",
+        nameLabel: "Name",
+        namePlaceholder: "Preset name",
+        replace: "Replace",
+        nameTaken: "This name is already used by another preset.",
+        manageTitle: "Transform presets",
+        empty: "This project has no saved presets.",
+        rename: "Rename",
+        delete: "Delete",
+        noChannels: "No channels to save",
     },
 
     transformPreset: {
@@ -596,6 +623,9 @@ export const storyInspector = {
         // The two answers that are not a page. Both are decisions, so both are worded as one.
         endingPageInherit: "Same as the project setting",
         endingPageNone: "Show nothing",
+        quitPage: "Page shown afterwards",
+        quitPageUnset: "Not set",
+        quitHint: "This playthrough ends at this line and the page takes the screen. No ending is recorded.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },
