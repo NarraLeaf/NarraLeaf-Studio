@@ -623,6 +623,9 @@ export const storyInspector = {
         // The two answers that are not a page. Both are decisions, so both are worded as one.
         endingPageInherit: "Same as the project setting",
         endingPageNone: "Show nothing",
+        quitPage: "Page shown afterwards",
+        quitPageUnset: "Not set",
+        quitHint: "This playthrough ends at this line and the page takes the screen. No ending is recorded.",
         branch: "Branch",
         elseHint: "Else branch runs when previous branches do not match.",
     },

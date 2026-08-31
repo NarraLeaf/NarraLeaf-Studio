@@ -570,6 +570,7 @@ export const blueprint = {
         pattern: "Pattern",
         replacement: "Replacement",
         savedVariable: "Saved variable",
+        pageId: "Page Id",
         sceneId: "Scene Id",
         optionId: "Option Id",
         sceneVariable: "Scene variable",

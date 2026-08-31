@@ -102,6 +102,7 @@ export type LintRuleId =
     | "story/cut-point-orphan"
     | "story/cut-point-unreachable"
     | "story/rows-after-ending"
+    | "story/quit-page-missing"
     | "story/ending-name-duplicate"
     | "story/stage-object-missing"
     | "story/stage-object-duplicate"

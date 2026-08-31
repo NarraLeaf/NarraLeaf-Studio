@@ -152,6 +152,13 @@ export const lint = {
             // an author reading this needs to know that before they know why.
             message: "This row comes after an ending and is never played. Move it before the ending, or delete it",
         },
+        storyQuitPageMissing: {
+            title: "Quit with no page",
+            description: "A /quit row that names no page, or one the project no longer has",
+            // Two sentences, both states: what the row does now, and what the player is left with.
+            message: "This row names no page, so the playthrough ends with nothing on screen",
+            deleted: "This project has no page \"{page}\", so the playthrough ends with nothing on screen",
+        },
         storyEndingNameDuplicate: {
             title: "Two endings with one name",
             description: "More than one ending sharing a display name",

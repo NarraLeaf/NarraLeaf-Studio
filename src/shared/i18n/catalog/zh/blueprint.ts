@@ -559,6 +559,7 @@ export const blueprint = {
         pattern: "正则表达式",
         replacement: "替换内容",
         savedVariable: "存档变量",
+        pageId: "页面 Id",
         sceneId: "场景 Id",
         optionId: "选项 Id",
         sceneVariable: "场景变量",

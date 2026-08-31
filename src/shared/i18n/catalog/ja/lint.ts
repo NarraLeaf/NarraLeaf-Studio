@@ -150,6 +150,12 @@ export const lint = {
             description: "同じ並びの /ending 行より後に書かれ、決して再生されない行",
             message: "この行はエンディングより後にあり、決して再生されない。エンディングより前に移すか、削除する",
         },
+        storyQuitPageMissing: {
+            title: "ページのない終了行",
+            description: "ページを指定していない、またはプロジェクトに無いページを指す /quit 行",
+            message: "この行はページを指定していないため、プレイ終了後に画面には何も残らない",
+            deleted: "このプロジェクトに「{page}」というページはないため、プレイ終了後に画面には何も残らない",
+        },
         storyEndingNameDuplicate: {
             title: "同じ名前の 2 つのエンディング",
             description: "表示名を共有しているエンディングが複数ある",

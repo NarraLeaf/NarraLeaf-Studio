@@ -4,6 +4,7 @@ import { BLUEPRINT_NODE_TYPE_GAME_START_STORY } from "@shared/types/blueprint/gr
 import type { BlueprintDocument } from "@shared/types/blueprint/document";
 import { STORY_DOCUMENT_SCHEMA_VERSION, type StoryDocument, type StoryScene } from "@shared/types/story";
 import { RELEASE_APP_TAG, type ProjectAppTag } from "@shared/types/appTag";
+import type { UIDocument } from "@shared/types/ui-editor/document";
 import { EMPTY_STORY_EXPRESSION_SCOPE, parseStoryExpression } from "@shared/utils/storyExpressionParser";
 import { createTestLintContext } from "../testContext";
 import type { LintContext, LintStoryEntry } from "../context";
@@ -1504,5 +1505,106 @@ describe("story/transition-unavailable", () => {
             "story/transition-unavailable",
             ctxWith(story("s1", "Main", [scene("sc1", "Prologue", [background("b1", "maskFade", true)])])),
         )).toEqual([]);
+    });
+});
+
+// --- story/quit-page-missing ------------------------------------------------
+
+describe("story/quit-page-missing", () => {
+    const quit = (id: string, surfaceId: string): BlockSpec =>
+        ({ id, kind: "control", payload: { control: "quit", surfaceId } });
+    const uiDocumentWithSurfaces = (...surfaceIds: string[]): UIDocument =>
+        ({ surfaces: surfaceIds.map(id => ({ id, kind: "appSurface" })), elements: {} } as unknown as UIDocument);
+
+    it("says nothing about a row pointing at a page the project has", () => {
+        expect(run(
+            "story/quit-page-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Hub", [quit("q1", "map")])])],
+                uiDocument: uiDocumentWithSurfaces("map"),
+            }),
+        )).toEqual([]);
+    });
+
+    it("reports a row with no page at all", () => {
+        const findings = run(
+            "story/quit-page-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Hub", [quit("q1", "")])])],
+                uiDocument: uiDocumentWithSurfaces("map"),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyQuitPageMissing.message");
+        expect(findings[0].location).toMatchObject({ blockId: "q1" });
+    });
+
+    it("names the page a deleted one left behind", () => {
+        const findings = run(
+            "story/quit-page-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Hub", [quit("q1", "gone")])])],
+                uiDocument: uiDocumentWithSurfaces("map"),
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].messageKey).toBe("lint.rule.storyQuitPageMissing.deleted");
+        expect(findings[0].messageParams).toEqual({ page: "gone" });
+    });
+
+    it("stays quiet when the interface document could not be read", () => {
+        // Every page would look deleted, and failing the build for a file this rule could not open
+        // is worse than the defect it is looking for.
+        expect(run(
+            "story/quit-page-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Hub", [quit("q1", "map")])])],
+                uiDocument: null,
+            }),
+        )).toEqual([]);
+    });
+
+    it("ignores a disabled row", () => {
+        expect(run(
+            "story/quit-page-missing",
+            createTestLintContext({
+                stories: [story("s1", "Main", [scene("sc1", "Hub", [{ ...quit("q1", ""), disabled: true }])])],
+                uiDocument: uiDocumentWithSurfaces("map"),
+            }),
+        )).toEqual([]);
+    });
+});
+
+// --- a quit is a terminal, not a dead end -----------------------------------
+
+describe("story/dead-end with a quit", () => {
+    const quit = (id: string, surfaceId: string): BlockSpec =>
+        ({ id, kind: "control", payload: { control: "quit", surfaceId } });
+
+    it("does not report a scene that ends on a quit", () => {
+        // The run stops there because the author said so, which is the whole difference between
+        // this row and a scene that merely ran out.
+        expect(run(
+            "story/dead-end",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Hub", [narration("n1"), quit("q1", "map")]),
+            ])),
+        )).toEqual([]);
+    });
+});
+
+describe("story/rows-after-ending with a quit", () => {
+    const quit = (id: string, surfaceId: string): BlockSpec =>
+        ({ id, kind: "control", payload: { control: "quit", surfaceId } });
+
+    it("reports the first row after a quit, which the compiler drops", () => {
+        const findings = run(
+            "story/rows-after-ending",
+            ctxWith(story("s1", "Main", [
+                scene("sc1", "Hub", [quit("q1", "map"), narration("n1"), narration("n2")]),
+            ])),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0].location).toMatchObject({ blockId: "n1" });
     });
 });

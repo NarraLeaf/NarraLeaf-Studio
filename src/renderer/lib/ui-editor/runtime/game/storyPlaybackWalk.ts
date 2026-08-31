@@ -165,11 +165,11 @@ class PlanBuilder {
             return false;
         }
         this.steps.push({ blockId: block.id, bodyOnly, insideNvl: this.isInsideNvl(block) });
-        // An `/ending` row is emitted and then ends the walk: it records the ending and hands the
-        // player to a page, so nothing after it in this scene is played. Reported as `sceneEnd`
-        // rather than as a reason of its own - the scene really does run no further, and every
-        // consumer already treats that as the ordinary way a plan finishes.
-        if (block.kind === "control" && block.payload.control === "ending") {
+        // An `/ending` or `/quit` row is emitted and then ends the walk: both hand the player to a
+        // page, so nothing after them in this scene is played. Reported as `sceneEnd` rather than as
+        // a reason of its own - the scene really does run no further, and every consumer already
+        // treats that as the ordinary way a plan finishes.
+        if (block.kind === "control" && (block.payload.control === "ending" || block.payload.control === "quit")) {
             this.stopped = true;
             return false;
         }

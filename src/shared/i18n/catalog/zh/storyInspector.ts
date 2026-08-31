@@ -541,6 +541,9 @@ export const storyInspector = {
         // 两个不是页面的答案。它们都是决定，所以都按决定来措辞。
         endingPageInherit: "与项目设置相同",
         endingPageNone: "不显示任何页面",
+        quitPage: "结束后显示的页面",
+        quitPageUnset: "未设置",
+        quitHint: "本次游玩在此行结束，随后显示该页面，不记录结局。",
         branch: "分支",
         elseHint: "当之前的分支均不匹配时，运行 Else 分支",
     },

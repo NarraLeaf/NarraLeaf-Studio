@@ -39,6 +39,7 @@ export const storyExpr = {
         unknownAudioTrack: "没有名为「{value}」的音轨",
         unknownLabel: "本场景中没有名为「{value}」的标签",
         unknownAppTag: "没有名为「{value}」的变体",
+        unknownSurface: "没有名为「{value}」的页面",
         unknownVariable: "没有名为「{value}」的变量",
         unknownForm: "{characterName} 没有名为「{value}」的表情",
         notPuppetCharacter: "{value} 不是由运行时绘制的角色，没有动作或皮肤可设置",

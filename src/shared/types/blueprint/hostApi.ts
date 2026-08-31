@@ -1,5 +1,5 @@
 /** Bumped when BlueprintHostApiContract shape changes incompatibly */
-export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 37 as const;
+export const BLUEPRINT_HOST_API_CONTRACT_VERSION = 38 as const;
 
 /** Global runtime state key mirrored from the active NarraLeaf dialog hook. */
 export const BLUEPRINT_GAME_NAMETAG_STATE_KEY = "game.dialog.nametag" as const;
@@ -797,6 +797,38 @@ export const BLUEPRINT_HOST_API_M1_CAPABILITIES: BlueprintHostApiContract = {
             async: true,
             input: {},
             output: null,
+        },
+        /**
+         * One saved variable's current value, read out of the running playthrough.
+         *
+         * The one piece of per-save state a Game UI screen can reach. Persistent variables are
+         * app-level and shared by every save file, which is the right lifetime for "has this player
+         * ever seen this ending" and the wrong one for anything a save is supposed to remember - so
+         * a screen that shows where *this* playthrough stands had nothing to read until now.
+         *
+         * Read-only on purpose. A screen that wrote a saved variable would be writing story state
+         * from outside the story: it would race the row that owns the variable, it is not on the
+         * action stack so undo would not take it back, and a save written a moment later would keep
+         * it while a load would not. Writing stays where the writes are sequenced - the story.
+         *
+         * `found` is what makes the read safe to put on a title screen. There is no playthrough
+         * there, so there is no saved namespace either, and a bare value would have to be a lie in
+         * one direction or the other: `null` reads as "the flag is off" and the default reads as
+         * "the run has not set it yet". Both answers are wrong before a run exists, so the caller is
+         * told which it got.
+         *
+         * Scene variables are deliberately absent. They exist only while their scene is the active
+         * one, so a screen reading one would be asking about state that comes and goes underneath
+         * it - and the screens that want it are the on-stage ones, which the story can feed through
+         * a saved variable it controls.
+         */
+        getSavedVariable: {
+            capabilityId: "game.getSavedVariable",
+            purity: "pure",
+            callableFromBinding: true,
+            async: false,
+            input: { variableId: "" },
+            output: { value: null, found: false },
         },
         isSceneVisited: {
             capabilityId: "game.isSceneVisited",

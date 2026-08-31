@@ -606,6 +606,17 @@ export type CompiledNlrStory = {
      */
     savedNamespaceName: string;
     /**
+     * Every saved variable this compile knows, keyed by the id a blueprint node names, holding the
+     * `storageKey` its value lives under and the default it opens at.
+     *
+     * Published because a Game UI screen reads these too (`game.getSavedVariable`), and it has to
+     * resolve an id to a key by exactly the rule the story writes it with. The compiler already
+     * merges the project registry with whatever `/save` rows a legacy document still carries, so
+     * handing over that merged view is what keeps the reader and the writer talking about the same
+     * variable - a second projection built from the registry alone would silently miss the rows.
+     */
+    savedVariables: Record<string, StorySavedVariableDefinition>;
+    /**
      * Storable namespace holding the visited record (see `./storyVisited`), resolved the same way as
      * {@link CompiledNlrStory.savedNamespaceName}. Hosts read `Is Scene Visited` / `Is Option Picked`
      * out of it. Empty when the compile builds no visited namespace (the boot-time empty story).
@@ -761,6 +772,8 @@ type SceneCompileContext = {
     persistence?: StoryPersistenceBridge;
     /** Host hook for an `/ending` row; see {@link CompileInput.onEndingReached}. */
     onEndingReached?: (ending: StoryEndingReach) => void;
+    /** Host hook for a `/quit` row; see {@link CompileInput.onQuitToPage}. */
+    onQuitToPage?: (surfaceId: string) => void;
     /** Blueprint document for compiling story-action blueprints referenced by this scene. */
     blueprintDocument?: BlueprintDocument;
     /** Game localization resolver; absent when the project has no localization or the host passes none. */
@@ -870,6 +883,19 @@ type CompileInput = {
      * nothing.
      */
     onEndingReached?: (ending: StoryEndingReach) => void;
+    /**
+     * Called when a `/quit` row runs, with the id of the page to land on.
+     *
+     * The row's whole contribution is naming the page. Ending the run - tearing the session down,
+     * putting the surface stack back on an app page, letting go of the stage - is the host's, and it
+     * is the same act `Quit Game` and an ending page already go through, so the row hands it over
+     * rather than growing a second path to it.
+     *
+     * Absent for the same callers `onEndingReached` is absent for, and with the same consequence:
+     * a compile that is not playing a story may not be told one has stopped, so its quit rows
+     * compile to nothing.
+     */
+    onQuitToPage?: (surfaceId: string) => void;
     /** Game localization (bundle payload + current-locale getter); see {@link StoryLocalizationRuntime}. */
     localization?: StoryLocalizationRuntime;
     /** Game voice (bundle payload + current voice-language getter); see {@link StoryVoiceRuntime}. */
@@ -942,6 +968,7 @@ export function createEmptyCompiledNlrStory(): CompiledNlrStory {
         actionIdBindings: [],
         elementIdBindings: [],
         savedNamespaceName: "",
+        savedVariables: {},
         visitedNamespaceName: "",
         sceneLocalNamespaceNames: {},
         diagnostics: [],
@@ -1082,6 +1109,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
             persistentVariables,
             persistence: input.persistence,
             onEndingReached: input.onEndingReached,
+            onQuitToPage: input.onQuitToPage,
             blueprintDocument: input.blueprintDocument,
             localization,
             voicedUnitIds,
@@ -1196,6 +1224,7 @@ export async function compileStudioStoryToNlr(input: CompileInput): Promise<Comp
         actionIdBindings,
         elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames,
         diagnostics,
@@ -1311,6 +1340,7 @@ async function buildLaunchEntryScene(params: {
         persistentVariables: params.persistentVariables,
         persistence: input.persistence,
         onEndingReached: input.onEndingReached,
+        onQuitToPage: input.onQuitToPage,
         blueprintDocument: input.blueprintDocument,
         localization: params.localization,
         voicedUnitIds: params.voicedUnitIds,
@@ -1752,6 +1782,7 @@ export async function compileStagePreviewToNlr(input: StagePreviewCompileInput):
         actionIdBindings,
         elementIdBindings,
         savedNamespaceName: DevTools.getNamespaceName(savedPersistent),
+        savedVariables,
         visitedNamespaceName: DevTools.getNamespaceName(visitedPersistent),
         sceneLocalNamespaceNames: { [scene.id]: DevTools.getNamespaceName(previewScene.local) },
         diagnostics,
@@ -2191,10 +2222,10 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     const statements: NlrStatement[] = [];
     for (const blockId of blockIds) {
         statements.push(...await compileBlock(ctx, blockId));
-        // An `/ending` row is where this list stops. Not an optimisation: the engine has no primitive
-        // that halts a running story, so a row written after an ending would otherwise play after it
-        // - with the stage already hidden, on its way to a page. Rows nested further out are beyond
-        // what this can reach and are reported by `story/ending-not-last` instead.
+        // An `/ending` or `/quit` row is where this list stops. Not an optimisation: the engine has
+        // no primitive that halts a running story, so a row written after one would otherwise play
+        // after it - with the stage already hidden, on its way to a page. Rows nested further out
+        // are beyond what this can reach and are reported by `story/rows-after-ending` instead.
         if (endsPlayback(ctx.scene.blocks[blockId])) {
             break;
         }
@@ -2202,9 +2233,17 @@ async function compileBlockList(ctx: SceneCompileContext, blockIds: readonly str
     return statements;
 }
 
-/** Whether this row is an `/ending` that is actually in the build (a disabled row is not). */
+/**
+ * Whether this row ends playback and is actually in the build (a disabled row is not).
+ *
+ * Both rows that leave the run qualify: an `/ending` says the story is over, a `/quit` says this run
+ * is, and in either case what follows in the same list would be playing to a stage on its way out.
+ */
 function endsPlayback(block: StoryBlock | undefined): boolean {
-    return Boolean(block && !block.disabled && block.kind === "control" && block.payload.control === "ending");
+    if (!block || block.disabled || block.kind !== "control") {
+        return false;
+    }
+    return block.payload.control === "ending" || block.payload.control === "quit";
 }
 
 /** A runtime flag whose predicate the compiler reads back internally to build a guard. */
@@ -2472,6 +2511,9 @@ async function compileBlockCore(ctx: SceneCompileContext, blockId: string): Prom
         if (block.payload.control === "ending") {
             return compileEnding(ctx, block, block.payload);
         }
+        if (block.payload.control === "quit") {
+            return compileQuit(ctx, block, block.payload);
+        }
         return compileControlGroup(ctx, block);
     }
 
@@ -2570,6 +2612,11 @@ async function compilePreviewTargetOwnStatements(ctx: SceneCompileContext, block
         if (block.payload.control === "ending") {
             // The preview settles one scene's stage. Ending the story is not a stage state, and this
             // path has no host to end it for - `onEndingReached` is absent here by construction.
+            return [];
+        }
+        if (block.payload.control === "quit") {
+            // Same as the ending above: there is no run for this path to end, and no page for it to
+            // hand the screen to - the preview IS the screen.
             return [];
         }
         return compileControlGroup(ctx, block);
@@ -4215,6 +4262,34 @@ function compileEnding(
     };
     return [recordStatement(ctx, Script.execute(() => {
         notify(reached);
+    }), block)];
+}
+
+/**
+ * `/quit <page>` - this run is over; the player gets a page.
+ *
+ * The same shape as {@link compileEnding} and for the same reasons: one statement that only tells
+ * the host, because tearing a session down and putting a page on screen is the host's job and has
+ * exactly one implementation there. Nothing here stops the engine either - the rows after this one
+ * in the same list are dropped by {@link compileBlockList}, and rows further out are reported by
+ * `story/rows-after-ending`.
+ *
+ * A row with no page compiles to nothing rather than to a quit with nowhere to go: it is an
+ * unfinished row, `story/quit-page-missing` says so in the editor, and running it would take the
+ * story away and leave the player on a frame with nothing to touch.
+ */
+function compileQuit(
+    ctx: SceneCompileContext,
+    block: Extract<StoryBlock, { kind: "control" }>,
+    payload: Extract<StoryControlPayload, { control: "quit" }>,
+): NlrStatement[] {
+    const notify = ctx.onQuitToPage;
+    const surfaceId = payload.surfaceId.trim();
+    if (!notify || !surfaceId) {
+        return [];
+    }
+    return [recordStatement(ctx, Script.execute(() => {
+        notify(surfaceId);
     }), block)];
 }
 

@@ -592,6 +592,19 @@ export function GameApp(props: GameAppProps): ReactNode {
         gameStageVisibleRef.current = visible;
         setGameStageVisibleState(visible);
     }, []);
+    /**
+     * The last frame of a run that has ended, kept on screen until the page taking over is painted.
+     *
+     * Entering a game already waits for its destination: `enterMountedGame` holds until the first
+     * scene is on a painted frame and only then hides the pages. Leaving one did the opposite - the
+     * stage went first and the page then played its enter animation over an empty screen - so every
+     * quit, and every `/ending` and `/quit` row, flashed the background between the two.
+     *
+     * Deliberately separate from {@link gameStageVisible} rather than a delay on it: that flag is
+     * what `Is In Game`, the advance hold and stage interactivity all read, and the run really is
+     * over the moment this begins. So the flag drops immediately and this keeps only the pixels.
+     */
+    const [stageRetainedForQuit, setStageRetainedForQuit] = useState(false);
     const [studioPageHiddenForGame, setStudioPageHiddenForGame] = useState(false);
     const [gameHiddenNavKeys, setGameHiddenNavKeys] = useState<Set<string>>(() => new Set());
     const navEntrySeqRef = useRef(0);
@@ -1385,6 +1398,46 @@ export function GameApp(props: GameAppProps): ReactNode {
         return readVisited(STORY_VISITED_OPTIONS_KEY, optionId);
     }, [readVisited]);
 
+    /**
+     * One saved variable of the running playthrough, for a Game UI screen.
+     *
+     * Read off the live `Storable` for the same reason the visited record is: the values change
+     * while the story runs and a mirror would need a write beat on every `/set`. The id is resolved
+     * through the CURRENT compile's own table rather than through the bundle's registry, because
+     * that table is the merge the story itself writes against - registry entries plus whatever
+     * `/save` rows a legacy document still carries - so a screen and a row always mean the same
+     * variable by the same id.
+     *
+     * `found` distinguishes the three ways this can come back empty (no game, an id this story does
+     * not declare, a namespace the compile never built) from a variable that genuinely holds null.
+     * A variable that exists but has never been written reads as `found` with its declared default,
+     * which is what the story would see too.
+     */
+    const getSavedVariableInGame = useCallback((variableId: string): { value: unknown; found: boolean } => {
+        const id = String(variableId ?? "").trim();
+        const compiled = nlrCompiledRef.current;
+        const liveGame = nlrLiveGameRef.current;
+        const definition = id ? compiled?.savedVariables?.[id] : undefined;
+        if (!liveGame || !compiled?.savedNamespaceName || !definition) {
+            return { value: null, found: false };
+        }
+        try {
+            const storable = liveGame.getStorable();
+            if (!storable.hasNamespace(compiled.savedNamespaceName)) {
+                return { value: null, found: false };
+            }
+            const namespace = storable.getNamespace(compiled.savedNamespaceName);
+            // `has` rather than a nullish check on the read: a variable holding null, false or 0 is
+            // set, and falling back to the default for those would report the opposite of the truth.
+            const stored = namespace.has(definition.storageKey)
+                ? namespace.get(definition.storageKey)
+                : definition.defaultValue ?? null;
+            return { value: stored ?? null, found: true };
+        } catch {
+            return { value: null, found: false };
+        }
+    }, []);
+
     const clearVisitedInGame = useCallback((): void => {
         const liveGame = nlrLiveGameRef.current;
         const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
@@ -2048,6 +2101,19 @@ export function GameApp(props: GameAppProps): ReactNode {
             throw new Error("Quit Game: surfaceId is required");
         }
         rejectPendingGameStarts(new NlrSessionSupersededError("Quit Game"));
+        // The run ends here, and the screen changes hands in two steps.
+        //
+        // First everything that answers "is a game being played" says no: the stage stops taking
+        // clicks, `Is In Game` reports false, and the advance hold lets go of a line nobody will
+        // read. Only the pixels are kept (`stageRetainedForQuit`), so the page opening over them
+        // has something to arrive on instead of the background.
+        //
+        // The session itself, and every piece of state the run left behind, is torn down *after*
+        // the page is up. Doing it before would empty the dialogue box and drop the on-stage
+        // widgets while the frame they belong to is still on screen - a worse artefact than the
+        // blank one this replaces.
+        setGameStageVisible(false);
+        setStageRetainedForQuit(true);
         activeStoryRequestRef.current = null;
         activeStoryRevisionRef.current = null;
         gameEnteredRef.current = false;
@@ -2060,7 +2126,6 @@ export function GameApp(props: GameAppProps): ReactNode {
         playHead.reset();
         cancelSceneTracking();
         nlrCompiledRef.current = null;
-        clearCharacterAvatarAssets();
         detachTextReadTracker();
         preferenceSnapshotRef.current = {};
         nlrDialogClickTargets.clear();
@@ -2068,22 +2133,32 @@ export function GameApp(props: GameAppProps): ReactNode {
         nlrLiveGameRef.current = null;
         nlrLiveGameSessionIdRef.current = null;
         stageWarmupRef.current = null;
-        choiceMenus.clear();
-        clearCurrentDialogState();
-        setGameStageVisible(false);
-        await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
-        // Everything under the page just opened belonged to the run that has ended: the screens the
-        // player had open over the stage, and the title screen the playthrough started from. They
-        // were hidden while the game held the screen and `clearGameHiddenStudioPages` below is
-        // about to un-hide them, so leaving them there means Back from a fresh title screen walks
-        // into a playthrough that is gone - and each quit stacks another set.
-        navigation.collapseToActive();
-        // A layer belongs to the surface that showed it, and every surface that could still own one
-        // has just been dropped. A confirm left standing over the title screen would be asking
-        // about a game that no longer exists.
-        layerStack.clear();
-        setNlrSession(null);
-        clearGameHiddenStudioPages();
+        try {
+            await openSurface(targetSurfaceId, undefined, { presentation: "appPage" });
+        } finally {
+            // Held back until the page is up because each of these three changes what the retained
+            // frame looks like: the dialogue box would empty, the menu would vanish and the speaker
+            // would lose their portrait, all while that frame is still the thing on screen.
+            clearCharacterAvatarAssets();
+            choiceMenus.clear();
+            clearCurrentDialogState();
+            // Everything under the page just opened belonged to the run that has ended: the screens
+            // the player had open over the stage, and the title screen the playthrough started
+            // from. They were hidden while the game held the screen and `clearGameHiddenStudioPages`
+            // below is about to un-hide them, so leaving them there means Back from a fresh title
+            // screen walks into a playthrough that is gone - and each quit stacks another set.
+            navigation.collapseToActive();
+            // A layer belongs to the surface that showed it, and every surface that could still own
+            // one has just been dropped. A confirm left standing over the title screen would be
+            // asking about a game that no longer exists.
+            layerStack.clear();
+            setNlrSession(null);
+            clearGameHiddenStudioPages();
+            // Last, and in the same commit as the unmount above: the frame is only worth keeping
+            // while something is still arriving over it. In `finally` because a page that failed to
+            // open must not leave a dead stage painted over whatever the player is looking at.
+            setStageRetainedForQuit(false);
+        }
     }, [
         clearCurrentDialogState,
         clearGameHiddenStudioPages,
@@ -2094,6 +2169,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         openSurface,
         playHead,
         rejectPendingGameStarts,
+        setGameStageVisible,
+        setNlrSession,
     ]);
 
     /**
@@ -2163,6 +2240,23 @@ export function GameApp(props: GameAppProps): ReactNode {
             host.log("error", `[${host.id}] the ending page could not be opened: ${normalizeError(error)}`);
         });
     }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
+
+    /**
+     * A `/quit` row ran: the playthrough is over and this page takes the screen.
+     *
+     * Routed through `quitGame` for the reason the ending page is, and it is the whole of what this
+     * row does. Nothing is recorded: a quit is not an ending, no plugin is told one was reached, and
+     * the endings record is left exactly as the run found it - which is the entire difference
+     * between the two rows and the reason this one exists.
+     *
+     * A page that will not open is reported rather than thrown, like the ending page next door: the
+     * run is over either way, and taking the window down with it helps nobody.
+     */
+    const handleQuitToPage = useCallback((surfaceId: string) => {
+        void quitGame(surfaceId).catch(error => {
+            host.log("error", `[${host.id}] the quit page could not be opened: ${normalizeError(error)}`);
+        });
+    }, [host, quitGame]);
 
     /**
      * What this build is, for comparing every save it is asked to list or load against.
@@ -3102,6 +3196,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // existed in the editor and nowhere else.
             savedVariables: bundle.ui.savedVariables,
             onEndingReached: handleEndingReached,
+            onQuitToPage: handleQuitToPage,
             persistence: core
                 ? {
                       get: key => core.scopeBridge.persistenceGet(key),
@@ -3624,6 +3719,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onIsTextRead: hasReadTextInGame,
             onClearTextRead: clearTextReadInGame,
             onIsSceneVisited: isSceneVisitedInGame,
+            onGetSavedVariable: getSavedVariableInGame,
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
             onIsEndingReached: isEndingReachedInGame,
@@ -4063,6 +4159,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onIsTextRead: hasReadTextInGame,
                     onClearTextRead: clearTextReadInGame,
                     onIsSceneVisited: isSceneVisitedInGame,
+                    onGetSavedVariable: getSavedVariableInGame,
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
                     onIsEndingReached: isEndingReachedInGame,
@@ -4840,12 +4937,15 @@ export function GameApp(props: GameAppProps): ReactNode {
     const nlrStageLayer = (
         <NlrStageLayer
             session={nlrSession}
+            // Never during the quit hand-off: the run is over, and a last frame that answers
+            // clicks would advance a story nobody is playing any more.
             interactive={gameStageVisible}
             // The stage mounts (hidden) as soon as a session exists so the Player can preload,
             // which is before the surface system starts; painting it that early would flash its
-            // black backdrop over the first frame. It only becomes visible on reveal.
-            visible={gameStageVisible}
-            renderOnStage={gameStageVisible}
+            // black backdrop over the first frame. It only becomes visible on reveal - and stays
+            // painted through a quit until the page taking over is up (see stageRetainedForQuit).
+            visible={gameStageVisible || stageRetainedForQuit}
+            renderOnStage={gameStageVisible || stageRetainedForQuit}
             onFirstSceneReady={sessionId => {
                 const pending = pendingGameStartsRef.current.get(sessionId);
                 if (!pending) {

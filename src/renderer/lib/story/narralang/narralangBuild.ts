@@ -103,6 +103,8 @@ export type NarralangParseLookups = {
     appearanceRef?: (characterId: string, name: string) => NarralangResolution<NarralangAppearanceRef>;
     motionId?: (name: string) => NarralangResolution<string>;
     appTagId?: (name: string) => NarralangResolution<string>;
+    /** A UI page by name - what a `quit` statement stores as an id. */
+    surfaceId?: (name: string) => NarralangResolution<string>;
     sceneId?: (name: string) => NarralangResolution<string>;
     /** A variable declared outside the text being parsed. Declarations inside it always win. */
     variableRef?: (name: string) => NarralangResolution<StoryVariableRef>;
@@ -1007,6 +1009,13 @@ function buildDraft(
             // No `page`: absent is "the build's own ending page", which is what a script that never
             // spelled one has to mean.
             return { kind: "control", payload: { control: "ending", name } };
+        }
+        case "quit": {
+            const page = resolve(ctx.lookups.surfaceId?.(nameOf(slots, "page") ?? ""), "page");
+            if (isFail(page)) {
+                return page;
+            }
+            return { kind: "control", payload: { control: "quit", surfaceId: page.value } };
         }
     }
 }
