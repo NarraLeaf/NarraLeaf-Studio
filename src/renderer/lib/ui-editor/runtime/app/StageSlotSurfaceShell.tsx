@@ -318,6 +318,12 @@ export function useStageSlotSurfaceRuntime(input: {
                     payload,
                 );
             },
+            // What this scope is already showing. A slot surface is rebuilt whenever the engine
+            // gives its box a new key - which the dialog box gets whenever the gap between two
+            // lines outlives the replacement grace - and the patches painted before that survive
+            // in the host's map. Without them the new host API believes the drawing is untouched
+            // and drops every write that returns an element to its authored value.
+            initialWidgetPatches: widgetPatchesByScopeRef.current[runtimeScopeId],
             widgetRuntimeStore,
             localizationConfig: bundle.localization ?? null,
         });
