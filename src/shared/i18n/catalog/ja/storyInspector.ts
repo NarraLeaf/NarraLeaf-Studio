@@ -51,6 +51,7 @@ export const storyInspector = {
         feather: "ぼかし %",
         orientation: "向き",
         slats: "羽根の数",
+        slatDelay: "羽根の遅延",
         axis: "軸",
         blades: "ブレードの数",
         fromAngle: "開始の角度 °",

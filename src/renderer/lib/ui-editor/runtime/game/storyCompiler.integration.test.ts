@@ -1741,6 +1741,22 @@ describe("compileStudioStoryToNlr", () => {
         expect((await compileBackgroundTransition("throughColor", { pattern: "plain" }).then(findTransition) as any).pattern).toBeNull();
     });
 
+    it("carries a blind's slat delay into both the direct cut and the colour cover", async () => {
+        // The delay is a property of the geometry rather than of the engine playing it, so the
+        // same number has to reach the pattern on either side. A staggered blind is drawn as one
+        // gradient layer per slat, where the lockstep one stays a single tiled gradient - which is
+        // what tells the two apart from the outside.
+        const cut = findTransition(await compileBackgroundTransition("blinds", { slats: 4, stagger: 1 })) as any;
+        expect(cut.pattern.mask(0.5)).not.toContain("repeating-linear-gradient");
+        expect(cut.pattern.mask(0.5).split("), ")).toHaveLength(4);
+
+        const lockstep = findTransition(await compileBackgroundTransition("blinds", { slats: 4 })) as any;
+        expect(lockstep.pattern.mask(0.5)).toContain("repeating-linear-gradient");
+
+        const covered = findTransition(await compileBackgroundTransition("throughColor", { pattern: "blinds", slats: 4, stagger: 1 })) as any;
+        expect(covered.pattern.mask(0.5)).toBe(cut.pattern.mask(0.5));
+    });
+
     it("closes an iris rim-in unless the row says otherwise, and lets it say otherwise", async () => {
         // The classic iris-to-black, and what every stored iris was getting while the orientation was
         // hard-coded - so the default has to stay what it was, and the toggle is additive.
