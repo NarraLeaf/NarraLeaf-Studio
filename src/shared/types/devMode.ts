@@ -414,13 +414,14 @@ export type DevModeBundle = {
      */
     gameVersion?: string;
     /**
-     * A fingerprint of the story documents this build ships, taken at assembly.
+     * A fingerprint of each story document this build ships, taken at assembly and keyed by story id.
      *
      * The engine hashes the story it is running and stamps that into saves, and that hash cannot
      * answer the question a title screen asks: it has no story mounted. This one travels with the
-     * bundle for exactly that reason. See `@shared/utils/storyContentHash`.
+     * bundle for exactly that reason. Per story rather than per library, so patching one route
+     * leaves the saves of players on another alone. See `@shared/utils/storyContentHash`.
      */
-    storyHash?: string;
+    storyHashes?: Record<string, string>;
     /**
      * What the player's settings start at, baked from `.nlproj` `app.preferences`.
      *

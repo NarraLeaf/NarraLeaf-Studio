@@ -29,6 +29,7 @@ import type { TranslationKey } from "@shared/i18n";
 import {
     planSaveResume,
     readSaveCompatibilityStamp,
+    type SaveBuildStamp,
     type SaveCompatibility,
     type SaveCompatibilityConfiguration,
     type SaveCompatibilityStamp,
@@ -270,7 +271,7 @@ export type LoadSaveOptions = {
     } | null>;
     game: SaveLoadGameSeam;
     /** What this build is, for comparing against the save's own stamp. Null disables the comparison. */
-    currentStamp: SaveCompatibilityStamp | null;
+    build: SaveBuildStamp | null;
     /** The author's policy for saves from another build. */
     compatibilityConfig: SaveCompatibilityConfiguration;
     /** Shows one line inside the running game. */
@@ -747,7 +748,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     // The author's policy, before anything is touched and from the same header the listing read.
     const resume = planSaveResume(
         readSaveCompatibilityStamp(record.metadata?.compatibility),
-        options.currentStamp,
+        options.build,
         options.compatibilityConfig,
     );
     compatibility = resume.compatibility;

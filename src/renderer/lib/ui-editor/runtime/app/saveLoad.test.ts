@@ -272,7 +272,7 @@ function loadWith(
         // The comparison is off unless a case turns it on: these cases are about what a load does
         // to a running game, and a stamp neither side carries is exactly how every save written
         // before the stamp existed arrives.
-        currentStamp: null,
+        build: null,
         compatibilityConfig: { ...DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION },
         notifyPlayer: harness.notifyPlayer,
         report: harness.report,
@@ -405,7 +405,7 @@ describe("loadSaveIntoGame", () => {
                 throw new Error("save file is locked");
             },
             game: harness.game,
-            currentStamp: null,
+            build: null,
             compatibilityConfig: { ...DEFAULT_SAVE_COMPATIBILITY_CONFIGURATION },
             notifyPlayer: harness.notifyPlayer,
             report: harness.report,
@@ -690,7 +690,19 @@ describe("readSavePosition", () => {
 });
 
 describe("the older-saves policy", () => {
-    const CURRENT = { protocol: SAVE_PROTOCOL_VERSION, storyHash: "story-now", gameVersion: "2.0.0" };
+    /** The build: one story, hashed as it ships now. */
+    const BUILD = {
+        protocol: SAVE_PROTOCOL_VERSION,
+        storyHashes: { "story-1": "story-now" },
+        gameVersion: "2.0.0",
+    };
+    /** A save taken from that same story, which is what every case here varies from. */
+    const CURRENT = {
+        protocol: SAVE_PROTOCOL_VERSION,
+        storyId: "story-1",
+        storyHash: "story-now",
+        gameVersion: "2.0.0",
+    };
     const olderVersion = { ...CURRENT, gameVersion: "1.0.0" };
     const otherStory = { ...CURRENT, storyHash: "story-then", gameVersion: "1.0.0" };
 
@@ -707,7 +719,7 @@ describe("the older-saves policy", () => {
                 metadata: compatibility ? { compatibility } : {},
             }),
             game: harness.game,
-            currentStamp: CURRENT,
+            build: BUILD,
             compatibilityConfig: config,
             notifyPlayer: harness.notifyPlayer,
             report: harness.report,

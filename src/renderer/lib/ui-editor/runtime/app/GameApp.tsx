@@ -15,7 +15,9 @@ import {
     readWrappedStorableValue,
 } from "@shared/utils/storableValue";
 import {
+    buildSaveBuildStamp,
     buildSaveCompatibilityStamp,
+    type SaveCompatibilityStamp,
     normalizeSaveCompatibilityConfiguration,
     planSaveResume,
     readSaveCompatibilityStamp,
@@ -2163,19 +2165,36 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
 
     /**
-     * What this build stamps into the saves it writes, and compares the saves it is asked to load
-     * against. One value for both halves: a stamp written by one rule and read by another would
-     * make a build disagree with its own saves.
+     * What this build is, for comparing every save it is asked to list or load against.
      *
-     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * The whole hash table rather than one number, because the save side names one story and this
+     * side has to answer for all of them: a save screen lists slots from every route the player has
+     * been on, with no story mounted.
+     *
+     * Null when the bundle carries no hashes at all - one assembled before they existed - which
      * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
      */
-    const saveStamp = useMemo(
-        () => (bundle.storyHash
-            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+    const saveBuild = useMemo(
+        () => (bundle.storyHashes && Object.keys(bundle.storyHashes).length > 0
+            ? buildSaveBuildStamp({ storyHashes: bundle.storyHashes, gameVersion: bundle.gameVersion })
             : null),
-        [bundle.gameVersion, bundle.storyHash],
+        [bundle.gameVersion, bundle.storyHashes],
     );
+    /**
+     * The stamp for a save taken right now, which is a fact about the story on the stage.
+     *
+     * A ref read rather than a memo: the mounted story changes without the bundle changing, and a
+     * stamp captured when the bundle last did would name whichever route the player started on for
+     * every save they take afterwards.
+     */
+    const currentSaveStamp = useCallback((): SaveCompatibilityStamp | null => {
+        const storyId = activeStoryRequestRef.current?.storyId ?? "";
+        const hash = storyId ? bundle.storyHashes?.[storyId] : undefined;
+        if (!hash) {
+            return null;
+        }
+        return buildSaveCompatibilityStamp({ storyId, storyHash: hash, gameVersion: bundle.gameVersion });
+    }, [bundle.gameVersion, bundle.storyHashes]);
     const saveCompatibilityConfig = useMemo(
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
@@ -2209,19 +2228,19 @@ export function GameApp(props: GameAppProps): ReactNode {
             liveGame.serialize(),
             capture,
             metadata,
-            saveStamp ?? undefined,
+            currentSaveStamp() ?? undefined,
             playtime.getRunSeconds(),
         );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
     }, [
+        currentSaveStamp,
         host.saveStore,
         playtime,
         pluginHost,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
-        saveStamp,
     ]);
 
     /**
@@ -2310,7 +2329,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
                 return record;
             },
-            currentStamp: saveStamp,
+            build: saveBuild,
             compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
@@ -2491,19 +2510,21 @@ export function GameApp(props: GameAppProps): ReactNode {
             routerExit.cancel();
             return outcome;
         }
-        if (outcome.storyChanged) {
-            routerExit.cancel();
-            playtime.seedRun(storedPlaytimeSeconds ?? 0);
-            gameEnteredRef.current = true;
-            host.log("info", translate("game.saveLoad.storyStarted", { id }));
-            return outcome;
-        }
         // Only here: a load that was refused or rolled back leaves the player on the run they were
         // already having, and that run's stopwatch has to keep its own reading. A record with no
         // reading (written before playtime was tracked) starts the inherited run from zero, which
-        // is the only honest answer when nobody was counting.
+        // is the only honest answer when nobody was counting. One seeding point for both endings
+        // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        if (outcome.storyChanged) {
+            // The launch that put the save's own story up has already entered and revealed its
+            // session, so there is no reveal left to wait for - and the router being waited on
+            // belongs to the session that launch replaced.
+            routerExit.cancel();
+            host.log("info", translate("game.saveLoad.storyStarted", { id }));
+            return outcome;
+        }
         /**
          * Let the engine's router finish emptying before the stage is revealed.
          *
@@ -2530,8 +2551,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         requireActiveLiveGame,
         resolveSavedScene,
+        saveBuild,
         saveCompatibilityConfig,
-        saveStamp,
     ]);
 
     /**
@@ -2796,11 +2817,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             // project would refuse is a slot a save screen must not draw a Load button on.
             .filter(header => planSaveResume(
                 readSaveCompatibilityStamp(header.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             ).plan.action !== "discard")
             .map(header => header.id);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -2840,7 +2861,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // same stamp - they are ordinary records under reserved ids.
             const resume = planSaveResume(
                 readSaveCompatibilityStamp(record.metadata.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             );
             if (resume.plan.action === "discard") {
@@ -2858,7 +2879,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,
