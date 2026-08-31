@@ -592,6 +592,14 @@ export type BlueprintHostApiRuntime = {
          */
         getSavedVariable: (variableId: string) => { value: unknown; found: boolean };
         /**
+         * Write one saved variable of the running playthrough.
+         *
+         * Throws when there is no game, when the id names nothing this build declares, and when the
+         * value cannot go into a save file. All three are authoring errors a button would otherwise
+         * swallow; see the capability's own note for what a write from a screen does and does not do.
+         */
+        setSavedVariable: (variableId: string, value: unknown) => void;
+        /**
          * Has the player ever PICKED this choice option, by the option row's Studio block id. The
          * one thing the text-read record structurally cannot answer - a menu that merely appeared
          * marks every option of it read.
@@ -907,6 +915,11 @@ export type CreateBlueprintHostApiRuntimeOptions = {
      * there rather than inventing a value.
      */
     onGetSavedVariable?: (variableId: string) => { value: unknown; found: boolean };
+    /**
+     * Write one saved variable of the running playthrough. Absent wherever there is no playthrough
+     * to write into, and the bridge refuses out loud there rather than dropping the write.
+     */
+    onSetSavedVariable?: (variableId: string, value: unknown) => void;
     /**
      * The endings record, in project persistence. Absent only where there is no runtime store at
      * all (a Page previewed inside the editor), where every ending reads as not reached and the two
@@ -2376,6 +2389,7 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
         onIsOptionPicked,
         onClearVisited,
         onGetSavedVariable,
+        onSetSavedVariable,
         onIsEndingReached,
         onIsDlcInstalled,
         onListEndings,
@@ -4289,6 +4303,21 @@ export function createDevModeBlueprintHostApi(options: CreateBlueprintHostApiRun
                     return onGetSavedVariable
                         ? onGetSavedVariable(variableId)
                         : { value: null, found: false };
+                } finally {
+                    emitHostCall(emit, cap, "return");
+                }
+            },
+            setSavedVariable: (variableId: string, value: unknown) => {
+                const cap = "game.setSavedVariable";
+                emitHostCall(emit, cap, "call");
+                try {
+                    if (!onSetSavedVariable) {
+                        // Not the bargain `isSceneVisited` and the read take. Those answer while a
+                        // title screen lays out; this one is a button doing what the player asked,
+                        // and a write with nothing to write into has to say so.
+                        throw new Error("Set Saved Var: game runtime is not available");
+                    }
+                    onSetSavedVariable(variableId, value);
                 } finally {
                     emitHostCall(emit, cap, "return");
                 }

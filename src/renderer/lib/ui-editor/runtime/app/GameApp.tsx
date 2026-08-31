@@ -1438,6 +1438,46 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
     }, []);
 
+    /**
+     * Write one saved variable of the running playthrough, for a Game UI screen.
+     *
+     * The mirror of {@link getSavedVariableInGame}, resolved through the same table for the same
+     * reason - the screen and the row have to mean one variable by one id - and refusing where that
+     * one reports. A read has to answer while a screen lays out; a write is a button doing what the
+     * player asked, so every way it can fail is said out loud rather than dropped:
+     *
+     * - no playthrough to write into,
+     * - an id this build's story does not declare (a variable deleted since the screen was drawn),
+     * - a value that cannot go into a save file.
+     *
+     * The value goes straight into the live `Storable`, which is what the save serializes, so it is
+     * in the next save and gone on the next `newGame()`. Nothing is told about it: the story does
+     * not re-run on the strength of it, and the undo stack does not know it happened.
+     */
+    const setSavedVariableInGame = useCallback((variableId: string, value: unknown): void => {
+        const id = String(variableId ?? "").trim();
+        const compiled = nlrCompiledRef.current;
+        const liveGame = nlrLiveGameRef.current;
+        if (!liveGame || !compiled?.savedNamespaceName) {
+            throw new Error("Set Saved Var: game runtime is not available");
+        }
+        const definition = id ? compiled.savedVariables?.[id] : undefined;
+        if (!definition) {
+            throw new Error("Set Saved Var: this story declares no such saved variable");
+        }
+        // The same guard the story's own writes take (`assertSerializable`). A function or a symbol
+        // in a namespace does not fail here - it fails when the save is written, on a screen the
+        // player is looking at, with nothing to say which write put it there.
+        if (typeof value === "function" || typeof value === "symbol" || typeof value === "bigint") {
+            throw new Error("Set Saved Var: saved variables must hold serializable values");
+        }
+        const storable = liveGame.getStorable();
+        if (!storable.hasNamespace(compiled.savedNamespaceName)) {
+            throw new Error("Set Saved Var: game runtime is not available");
+        }
+        storable.getNamespace(compiled.savedNamespaceName).set(definition.storageKey, value);
+    }, []);
+
     const clearVisitedInGame = useCallback((): void => {
         const liveGame = nlrLiveGameRef.current;
         const namespaceName = nlrCompiledRef.current?.visitedNamespaceName;
@@ -3720,6 +3760,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             onClearTextRead: clearTextReadInGame,
             onIsSceneVisited: isSceneVisitedInGame,
             onGetSavedVariable: getSavedVariableInGame,
+            onSetSavedVariable: setSavedVariableInGame,
             onIsOptionPicked: isOptionPickedInGame,
             onClearVisited: clearVisitedInGame,
             onIsEndingReached: isEndingReachedInGame,
@@ -4160,6 +4201,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                     onClearTextRead: clearTextReadInGame,
                     onIsSceneVisited: isSceneVisitedInGame,
                     onGetSavedVariable: getSavedVariableInGame,
+                    onSetSavedVariable: setSavedVariableInGame,
                     onIsOptionPicked: isOptionPickedInGame,
                     onClearVisited: clearVisitedInGame,
                     onIsEndingReached: isEndingReachedInGame,

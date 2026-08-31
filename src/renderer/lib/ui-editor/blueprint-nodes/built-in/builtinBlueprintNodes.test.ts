@@ -253,7 +253,7 @@ import {
     BLUEPRINT_NODE_TYPE_TEXT_SET_TEXT_COLOR,
     BLUEPRINT_NODE_TYPE_STRING_TO_STRING,
 } from "@shared/types/blueprint/graph";
-import { blueprintNodeRegistry } from "../BlueprintNodeRegistry";
+import { blueprintNodeRegistry, isBlueprintNodeAllowedInBlueprintValueGraph } from "../BlueprintNodeRegistry";
 import { registerCoreBlueprintNodes } from "../registerCoreBlueprintNodes";
 import { readBlueprintNodeOutputValue } from "../nodeOutputValues";
 import { storyVariableBlueprintNodes } from "./storyVariableNodes";
@@ -465,6 +465,9 @@ function createPersistenceHostAdapter(store: Record<string, unknown>): UIHostAda
                     clearTextRead: async () => undefined,
                     isSceneVisited: () => false,
                     getSavedVariable: () => ({ value: null, found: false }),
+                    setSavedVariable: () => {
+                        throw new Error("Set Saved Var: game runtime is not available");
+                    },
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -639,6 +642,9 @@ function createPageNavigationHostAdapter(
                     clearTextRead: async () => undefined,
                     isSceneVisited: () => false,
                     getSavedVariable: () => ({ value: null, found: false }),
+                    setSavedVariable: () => {
+                        throw new Error("Set Saved Var: game runtime is not available");
+                    },
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -721,6 +727,8 @@ function createGameSaveHostAdapter(options: {
     preferenceWrites?: Array<{ key: string; value: unknown }>;
     /** What the running playthrough answers for a saved variable, by the id a node names. */
     savedVariables?: Record<string, { value: unknown; found: boolean }>;
+    /** Present when a playthrough is running: every write a node makes lands here. */
+    savedVariableWrites?: Array<{ variableId: string; value: unknown }>;
 }): UIHostAdapter {
     return {
         host: "player",
@@ -834,6 +842,12 @@ function createGameSaveHostAdapter(options: {
                     isSceneVisited: () => false,
                     getSavedVariable: (variableId: string) =>
                         options.savedVariables?.[variableId] ?? { value: null, found: false },
+                    setSavedVariable: (variableId: string, value: unknown) => {
+                        if (!options.savedVariableWrites) {
+                            throw new Error("Set Saved Var: game runtime is not available");
+                        }
+                        options.savedVariableWrites.push({ variableId, value });
+                    },
                     isOptionPicked: () => false,
                     clearVisited: () => undefined,
                     isEndingReached: () => false,
@@ -7980,20 +7994,33 @@ describe("character data nodes", () => {
     });
 });
 
-describe("Get Saved Var outside a story", () => {
-    it("is offered to a page and a widget, and to a value graph", () => {
+describe("Saved variables outside a story", () => {
+    it("offers both halves to a page and a widget, and keeps the scene pair in the story", () => {
         registerCoreBlueprintNodes();
-        const savedGet = storyVariableBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SAVED_GET)!;
-        // No owner scope at all: this is the one story variable node a screen may read, so it is
-        // available wherever a blueprint is edited rather than in the story alone.
-        expect(savedGet.scope).toBeUndefined();
-        expect(savedGet.pins.map(pin => pin.id)).toEqual(["in", "next", "value", "found"]);
+        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET]) {
+            // No owner scope at all: a saved variable is the one piece of per-playthrough state a
+            // screen has any business showing or setting, so both are available wherever a
+            // blueprint is edited rather than in the story alone.
+            expect(storyVariableBlueprintNodes.find(def => def.type === type)?.scope).toBeUndefined();
+        }
+        expect(storyVariableBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SAVED_GET)?.pins.map(pin => pin.id))
+            .toEqual(["in", "next", "value", "found"]);
+        expect(storyVariableBlueprintNodes.find(def => def.type === BLUEPRINT_NODE_TYPE_SAVED_SET)?.pins.map(pin => pin.id))
+            .toEqual(["in", "next", "value"]);
 
-        // The three siblings stay where they were: writing story state from a screen would race the
-        // row that owns the variable, and a scene variable only exists while its scene is running.
-        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_SET, BLUEPRINT_NODE_TYPE_SCENE_GET, BLUEPRINT_NODE_TYPE_SCENE_SET]) {
+        // A scene variable exists only while its scene is on stage, so a screen reading or writing
+        // one would be reaching into state that comes and goes underneath it.
+        for (const type of [BLUEPRINT_NODE_TYPE_SCENE_GET, BLUEPRINT_NODE_TYPE_SCENE_SET]) {
             expect(storyVariableBlueprintNodes.find(def => def.type === type)?.scope)
                 .toEqual({ ownerKinds: ["storyAction"] });
+        }
+    });
+
+    it("keeps both out of a Blueprint Value graph, where a write would feed itself", () => {
+        registerCoreBlueprintNodes();
+        for (const type of [BLUEPRINT_NODE_TYPE_SAVED_GET, BLUEPRINT_NODE_TYPE_SAVED_SET]) {
+            const def = storyVariableBlueprintNodes.find(entry => entry.type === type)!;
+            expect(isBlueprintNodeAllowedInBlueprintValueGraph(def)).toBe(false);
         }
     });
 
@@ -8029,5 +8056,40 @@ describe("Get Saved Var outside a story", () => {
         });
         expect(readBlueprintNodeOutputValue(noGame, "get", "value")).toBeNull();
         expect(readBlueprintNodeOutputValue(noGame, "get", "found")).toBe(false);
+    });
+
+    it("writes through the host, and refuses out loud when there is no playthrough", async () => {
+        registerCoreBlueprintNodes();
+        const graph = {
+            id: "savedWrite",
+            entries: { main: { start: { nodeId: "set", port: "in" } } },
+            nodes: {
+                set: {
+                    id: "set",
+                    type: BLUEPRINT_NODE_TYPE_SAVED_SET,
+                    params: { savedVariableId: "destination", value: "lab" },
+                },
+            },
+            edges: [],
+        } as never;
+
+        const writes: Array<{ variableId: string; value: unknown }> = [];
+        await executeGraph({
+            graph,
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({ savedVariableWrites: writes }),
+            blueprintLocals: {},
+        });
+        expect(writes).toEqual([{ variableId: "destination", value: "lab" }]);
+
+        // The opposite bargain from the read next door, and deliberately: a read has to answer
+        // while a title screen lays out, while a write is a button doing what the player asked -
+        // and one that silently does nothing is the worst thing a button can do.
+        await expect(executeGraph({
+            graph,
+            entry: { start: { nodeId: "set", port: "in" } },
+            hostAdapter: createGameSaveHostAdapter({}),
+            blueprintLocals: {},
+        })).rejects.toThrow(/game runtime is not available/);
     });
 });

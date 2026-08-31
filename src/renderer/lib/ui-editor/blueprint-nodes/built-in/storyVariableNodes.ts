@@ -116,7 +116,6 @@ function setNode(
 }
 
 const sceneAccess = (ctx: ExecuteCtx) => requireStoryRuntime(ctx).sceneVar;
-const savedAccess = (ctx: ExecuteCtx) => requireStoryRuntime(ctx).savedVar;
 
 /**
  * `Get Saved Var`, in a story action and on a Game UI screen alike.
@@ -156,9 +155,50 @@ const savedGetNode: BlueprintNodeDef = {
     },
 };
 
+/**
+ * `Set Saved Var`, in a story action and on a Game UI screen alike.
+ *
+ * The write half of {@link savedGetNode}, and the pair is deliberately asymmetric about failure:
+ * the read reports "nothing to read" through a `Found` pin because a screen has to lay out before
+ * any game exists, while this one throws. A write is a button doing what the player asked, and
+ * the one thing a button must never do is nothing without saying so - which, in an event graph,
+ * reaches the issues panel and the game log.
+ *
+ * What a write from a screen costs is on the capability (`game.setSavedVariable`): the story is not
+ * told, and undo does not take it back. So this belongs to state a SCREEN owns and the story reads.
+ *
+ * Scene variables stay story-only either way: they exist only while their scene is on stage, so a
+ * screen writing one would be writing into something that comes and goes underneath it.
+ */
+const savedSetNode: BlueprintNodeDef = {
+    type: BLUEPRINT_NODE_TYPE_SAVED_SET,
+    displayName: "Set Saved Var",
+    category: "Variables",
+    keywords: ["set", "write", "assign", "story", "variable", "saved", "save", "flag", "progress"],
+    graphKinds: ["event", "macro"],
+    isPure: false,
+    pins: [
+        { id: "in", kind: "input", semantic: "exec", label: "In" },
+        { id: "next", kind: "output", semantic: "exec", label: "Next" },
+        { id: "value", kind: "input", semantic: "data", valueType: "any", label: "Value" },
+    ],
+    inspectorParams: [{ key: "savedVariableId", label: "Saved variable", kind: "savedVariableRef" }],
+    execute: ctx => {
+        const id = requireVariableId(ctx, "savedVariableId", "Saved variable");
+        const value = readValuePin(ctx);
+        const storyRuntime = ctx.hostAdapter.storyRuntime;
+        if (storyRuntime) {
+            storyRuntime.savedVar.set(id, value);
+            return { nextPort: "next" };
+        }
+        requireHostApi(ctx).game.setSavedVariable(id, value);
+        return { nextPort: "next" };
+    },
+};
+
 export const storyVariableBlueprintNodes: BlueprintNodeDef[] = [
     getNode(BLUEPRINT_NODE_TYPE_SCENE_GET, "Get Scene Var", "sceneVariableId", "sceneVariableRef", "Scene variable", sceneAccess),
     setNode(BLUEPRINT_NODE_TYPE_SCENE_SET, "Set Scene Var", "sceneVariableId", "sceneVariableRef", "Scene variable", sceneAccess),
     savedGetNode,
-    setNode(BLUEPRINT_NODE_TYPE_SAVED_SET, "Set Saved Var", "savedVariableId", "savedVariableRef", "Saved variable", savedAccess),
+    savedSetNode,
 ];
