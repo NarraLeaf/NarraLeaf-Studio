@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, FileText, MoreVertical, Plus, RefreshCw, Star, Waypoints } from "lucide-react";
 import type { StoryChapter, StoryDocument, StoryId, StoryLibraryEntry, StoryScene } from "@shared/types/story";
 import { useTranslation } from "@/lib/i18n";
+import { cn } from "@/lib/utils/cn";
 import { createInputDialog } from "@/lib/components/dialogs";
 import { Accordion, AccordionItem } from "@/lib/components/elements/Accordion";
 import { ContextMenu, type ContextMenuDef, useContextMenu } from "@/lib/components/elements/ContextMenu";
@@ -27,6 +28,15 @@ import { useStoryScriptIo } from "../script/useStoryScriptIo";
 import { useNarralangExport } from "../narralang/useNarralangExport";
 import { NARRALANG_UI_ENABLED } from "../narralang/narralangUi";
 import { appendDeveloperIdSection, type DeveloperIdEntry } from "@/lib/developer";
+import {
+    isOutlineDropAllowed,
+    outlineEdgeFromPointer,
+    resolveChapterDrop,
+    resolveSceneDrop,
+    sameOutlineDropTarget,
+    type StoryOutlineDrag,
+    type StoryOutlineDropTarget,
+} from "./storyOutlineDnd";
 
 interface StoryPanelState {
     selectedStoryId?: string;
@@ -101,6 +111,18 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
      */
     const liveSession = useStoryLiveSessionGuard(selectedStoryId ?? undefined);
     const outlineStructure = storyEditGuard(outlineFreeze, liveSession);
+
+    /**
+     * The outline drag, held twice on purpose.
+     *
+     * A native drag runs a nested message loop, so the state set in `dragstart` is not there to be
+     * read by the `dragover` that has to decide whether this is a drop target at all - the ref is.
+     * The state beside it exists only to grey the row being carried, which is a render and so is
+     * allowed to arrive a frame later.
+     */
+    const outlineDragRef = useRef<StoryOutlineDrag | null>(null);
+    const [outlineDrag, setOutlineDrag] = useState<StoryOutlineDrag | null>(null);
+    const [outlineDropTarget, setOutlineDropTarget] = useState<StoryOutlineDropTarget | null>(null);
 
     const storyService = useMemo(() => {
         if (!context || !isInitialized) {
@@ -603,6 +625,85 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
         }, sceneName));
     }, [openEditorTab, selectedStoryId]);
 
+    /**
+     * Pick a row up.
+     *
+     * `text/plain` is set because a drag with an empty data transfer is not a drag at all in
+     * Chromium - nothing is being handed anywhere else, so it carries the row's own id and no more.
+     */
+    const handleOutlineDragStart = useCallback((event: React.DragEvent, drag: StoryOutlineDrag) => {
+        event.stopPropagation();
+        outlineDragRef.current = drag;
+        setOutlineDrag(drag);
+        setOutlineDropTarget(null);
+        event.dataTransfer.effectAllowed = "move";
+        event.dataTransfer.setData("text/plain", drag.kind === "scene" ? drag.sceneId : drag.chapterId);
+    }, []);
+
+    const handleOutlineDragEnd = useCallback(() => {
+        outlineDragRef.current = null;
+        setOutlineDrag(null);
+        setOutlineDropTarget(null);
+    }, []);
+
+    /**
+     * Light a row up, or leave it alone.
+     *
+     * Not calling `preventDefault` is how a row says it is not a target, which is what draws the
+     * "no drop" cursor - so this asks the same resolvers the drop asks rather than a looser test of
+     * its own. A row that lit up and then refused would be the worse of the two answers.
+     */
+    const handleOutlineDragOver = useCallback((event: React.DragEvent, target: StoryOutlineDropTarget) => {
+        const drag = outlineDragRef.current;
+        if (!drag || !document || !isOutlineDropAllowed(document, drag, target)) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = "move";
+        setOutlineDropTarget(current => (current && sameOutlineDropTarget(current, target) ? current : target));
+    }, [document]);
+
+    const handleOutlineDrop = useCallback((event: React.DragEvent, target: StoryOutlineDropTarget) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const drag = outlineDragRef.current;
+        handleOutlineDragEnd();
+        if (!drag || !storyService || !selectedStoryId || !document || outlineFreeze.frozen) {
+            return;
+        }
+        if (drag.kind === "scene") {
+            const move = resolveSceneDrop(document, drag.sceneId, target);
+            if (move) {
+                storyService.moveScene(selectedStoryId, drag.sceneId, move);
+                // A scene dropped into a collapsed chapter would otherwise vanish: it is gone from
+                // where it was and the chapter now holding it is not showing its scenes, so the only
+                // sign that anything happened is a count going up on a heading.
+                setChapterOpenItemsByStoryId(previous => {
+                    const current = previous[selectedStoryId] ?? document.chapters.map(chapter => chapter.id);
+                    if (current.includes(move.chapterId)) {
+                        return previous;
+                    }
+                    return { ...previous, [selectedStoryId]: [...current, move.chapterId] };
+                });
+            }
+            return;
+        }
+        const move = resolveChapterDrop(document, drag.chapterId, target);
+        if (move) {
+            storyService.moveChapter(selectedStoryId, drag.chapterId, move.beforeChapterId);
+        }
+    }, [document, handleOutlineDragEnd, outlineFreeze, selectedStoryId, storyService]);
+
+    /** The row under the pointer, as a target: the row's id plus which half of it the pointer is in. */
+    const outlineTargetAt = useCallback(
+        (event: React.DragEvent, row: { kind: "scene"; sceneId: string } | { kind: "chapter"; chapterId: string }): StoryOutlineDropTarget => ({
+            ...row,
+            edge: outlineEdgeFromPointer(event.clientY, event.currentTarget.getBoundingClientRect()),
+        }),
+        [],
+    );
+
     const buildSceneContextMenu = useCallback((scene: StoryScene): ContextMenuDef => {
         const isEntry = document?.entrySceneId === scene.id;
         return [
@@ -860,80 +961,145 @@ export function StoryPanel({ panelId }: PanelComponentProps) {
                                     disableAnimation={disableAccordionAnimation}
                                     className="border-t border-edge-subtle"
                                 >
-                                    {document.chapters.map(chapter => (
-                                        <AccordionItem
-                                            key={chapter.id}
-                                            id={chapter.id}
-                                            level={1}
-                                            title={t("story.panel.chapterTitle", { name: chapter.name, count: chapter.sceneIds.length })}
-                                            className="!border-b-0"
-                                            headerProps={{ onContextMenu: event => handleOpenChapterMenu(event, chapter) }}
-                                            actions={
-                                                <>
-                                                    <button
-                                                        type="button"
-                                                        className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
-                                                        {...outlineStructure.writes(false, t("story.panel.newSceneInChapter"))}
-                                                        onClick={() => handleCreateScene(chapter.id)}
-                                                    >
-                                                        <Plus className="h-3 w-3" />
-                                                    </button>
-                                                    <button
-                                                        type="button"
-                                                        className="p-1 text-fg-muted hover:text-fg"
-                                                        title={t("story.panel.chapterActions")}
-                                                        onClick={event => handleOpenChapterMenu(event, chapter)}
-                                                    >
-                                                        <MoreVertical className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </>
-                                            }
-                                            headerClassName="bg-fill-subtle"
-                                            contentClassName="py-1"
-                                        >
-                                            {chapter.sceneIds.length === 0 ? (
-                                                <div className="px-8 py-2 text-xs text-fg-subtle">{t("story.panel.emptyScenes")}</div>
-                                            ) : (
-                                                chapter.sceneIds.map(sceneId => {
-                                                    const scene = document.scenes[sceneId];
-                                                    if (!scene) {
-                                                        return null;
-                                                    }
-                                                    const isEntry = document.entrySceneId === scene.id;
-                                                    const lineCount = buildStorySceneTextProjection(scene).lines.length;
-                                                    return (
-                                                        <div
-                                                            key={scene.id}
-                                                            className="group/scene flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill"
-                                                            style={{ paddingLeft: "44px" }}
-                                                            onClick={() => handleOpenScene(scene.id, scene.name)}
-                                                            onContextMenu={event => handleOpenSceneMenu(event, scene)}
-                                                        >
-                                                            {isEntry ? (
-                                                                <Star className="h-4 w-4 shrink-0 text-fg-muted" />
-                                                            ) : (
-                                                                <FileText className="h-4 w-4 shrink-0 text-fg-muted" />
-                                                            )}
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex min-w-0 items-center gap-2">
-                                                                    <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
-                                                                </div>
-                                                                <div className="truncate text-2xs text-fg-subtle">{tn("story.panel.lineCount", lineCount)}</div>
-                                                            </div>
+                                    {document.chapters.map(chapter => {
+                                        const chapterRow = { kind: "chapter" as const, chapterId: chapter.id };
+                                        const chapterEdge = outlineDropTarget?.kind === "chapter" && outlineDropTarget.chapterId === chapter.id
+                                            ? outlineDropTarget.edge
+                                            : null;
+                                        // A scene dropped on a chapter header goes into that chapter,
+                                        // so the header itself is what lights up; a chapter dropped
+                                        // there goes above or below it, which is a line in the gap.
+                                        const takesDraggedScene = chapterEdge !== null && outlineDrag?.kind === "scene";
+                                        const chapterInsertEdge = chapterEdge !== null && outlineDrag?.kind === "chapter" ? chapterEdge : null;
+                                        return (
+                                            <div key={chapter.id} className="relative">
+                                                {chapterInsertEdge ? (
+                                                    <div
+                                                        className={cn(
+                                                            "pointer-events-none absolute inset-x-0 z-10 h-0.5 bg-primary",
+                                                            chapterInsertEdge === "before" ? "top-0" : "bottom-0",
+                                                        )}
+                                                    />
+                                                ) : null}
+                                                <AccordionItem
+                                                    id={chapter.id}
+                                                    level={1}
+                                                    title={t("story.panel.chapterTitle", { name: chapter.name, count: chapter.sceneIds.length })}
+                                                    className="!border-b-0"
+                                                    headerProps={{
+                                                        className: cn(
+                                                            // Without this class the global `-webkit-user-drag: none`
+                                                            // leaves `draggable` inert and no drag starts at all.
+                                                            !outlineFreeze.frozen && "nl-drag-source",
+                                                            takesDraggedScene && "bg-primary/20",
+                                                            outlineDrag?.kind === "chapter" && outlineDrag.chapterId === chapter.id && "opacity-50",
+                                                        ),
+                                                        draggable: !outlineFreeze.frozen,
+                                                        onContextMenu: event => handleOpenChapterMenu(event, chapter),
+                                                        onDragStart: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, chapterRow)),
+                                                        onDragEnd: outlineFreeze.gesture(handleOutlineDragEnd),
+                                                        onDragOver: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, chapterRow))),
+                                                        onDrop: outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, chapterRow))),
+                                                    }}
+                                                    actions={
+                                                        <>
                                                             <button
                                                                 type="button"
-                                                                className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
-                                                                data-tip={t("story.panel.sceneActions")} aria-label={t("story.panel.sceneActions")}
-                                                                onClick={event => handleOpenSceneMenu(event, scene)}
+                                                                className="p-1 hover:text-primary disabled:text-fg-subtle disabled:hover:text-fg-subtle"
+                                                                {...outlineStructure.writes(false, t("story.panel.newSceneInChapter"))}
+                                                                onClick={() => handleCreateScene(chapter.id)}
+                                                            >
+                                                                <Plus className="h-3 w-3" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                className="p-1 text-fg-muted hover:text-fg"
+                                                                title={t("story.panel.chapterActions")}
+                                                                onClick={event => handleOpenChapterMenu(event, chapter)}
                                                             >
                                                                 <MoreVertical className="h-3.5 w-3.5" />
                                                             </button>
+                                                        </>
+                                                    }
+                                                    headerClassName="bg-fill-subtle"
+                                                    contentClassName="py-1"
+                                                >
+                                                    {chapter.sceneIds.length === 0 ? (
+                                                        <div
+                                                            className={cn(
+                                                                "px-8 py-2 text-xs text-fg-subtle",
+                                                                takesDraggedScene && "bg-primary/20",
+                                                            )}
+                                                            onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, chapterRow)))}
+                                                            onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, chapterRow)))}
+                                                        >
+                                                            {t("story.panel.emptyScenes")}
                                                         </div>
-                                                    );
-                                                })
-                                            )}
-                                        </AccordionItem>
-                                    ))}
+                                                    ) : (
+                                                        chapter.sceneIds.map(sceneId => {
+                                                            const scene = document.scenes[sceneId];
+                                                            if (!scene) {
+                                                                return null;
+                                                            }
+                                                            const isEntry = document.entrySceneId === scene.id;
+                                                            const lineCount = buildStorySceneTextProjection(scene).lines.length;
+                                                            const sceneRow = { kind: "scene" as const, sceneId: scene.id };
+                                                            const sceneEdge = outlineDropTarget?.kind === "scene" && outlineDropTarget.sceneId === scene.id
+                                                                ? outlineDropTarget.edge
+                                                                : null;
+                                                            return (
+                                                                <div
+                                                                    key={scene.id}
+                                                                    className={cn(
+                                                                        "group/scene relative flex cursor-default items-center gap-2 px-3 py-1.5 hover:bg-fill",
+                                                                        // See the chapter header: `draggable` alone is inert.
+                                                                        !outlineFreeze.frozen && "nl-drag-source",
+                                                                        outlineDrag?.kind === "scene" && outlineDrag.sceneId === scene.id && "opacity-50",
+                                                                    )}
+                                                                    style={{ paddingLeft: "44px" }}
+                                                                    draggable={!outlineFreeze.frozen}
+                                                                    onDragStart={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragStart(event, sceneRow))}
+                                                                    onDragEnd={outlineFreeze.gesture(handleOutlineDragEnd)}
+                                                                    onDragOver={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDragOver(event, outlineTargetAt(event, sceneRow)))}
+                                                                    onDrop={outlineFreeze.gesture((event: React.DragEvent) => handleOutlineDrop(event, outlineTargetAt(event, sceneRow)))}
+                                                                    onClick={() => handleOpenScene(scene.id, scene.name)}
+                                                                    onContextMenu={event => handleOpenSceneMenu(event, scene)}
+                                                                >
+                                                                    {sceneEdge ? (
+                                                                        <div
+                                                                            className={cn(
+                                                                                "pointer-events-none absolute inset-x-3 z-10 h-0.5 bg-primary",
+                                                                                sceneEdge === "before" ? "top-0" : "bottom-0",
+                                                                            )}
+                                                                        />
+                                                                    ) : null}
+                                                                    {isEntry ? (
+                                                                        <Star className="h-4 w-4 shrink-0 text-fg-muted" />
+                                                                    ) : (
+                                                                        <FileText className="h-4 w-4 shrink-0 text-fg-muted" />
+                                                                    )}
+                                                                    <div className="min-w-0 flex-1">
+                                                                        <div className="flex min-w-0 items-center gap-2">
+                                                                            <span className="min-w-0 flex-1 truncate text-sm text-fg">{scene.name}</span>
+                                                                        </div>
+                                                                        <div className="truncate text-2xs text-fg-subtle">{tn("story.panel.lineCount", lineCount)}</div>
+                                                                    </div>
+                                                                    <button
+                                                                        type="button"
+                                                                        className="rounded-md p-1 text-fg-muted opacity-0 hover:bg-fill hover:text-fg group-hover/scene:opacity-100"
+                                                                        data-tip={t("story.panel.sceneActions")} aria-label={t("story.panel.sceneActions")}
+                                                                        onClick={event => handleOpenSceneMenu(event, scene)}
+                                                                    >
+                                                                        <MoreVertical className="h-3.5 w-3.5" />
+                                                                    </button>
+                                                                </div>
+                                                            );
+                                                        })
+                                                    )}
+                                                </AccordionItem>
+                                            </div>
+                                        );
+                                    })}
                                 </Accordion>
                             ) : (
                                 <div className="px-3 py-3 text-sm text-fg-muted">{t("story.panel.documentUnavailable")}</div>
