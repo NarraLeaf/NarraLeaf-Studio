@@ -15,7 +15,9 @@ import {
     readWrappedStorableValue,
 } from "@shared/utils/storableValue";
 import {
+    buildSaveBuildStamp,
     buildSaveCompatibilityStamp,
+    type SaveCompatibilityStamp,
     normalizeSaveCompatibilityConfiguration,
     planSaveResume,
     readSaveCompatibilityStamp,
@@ -159,6 +161,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { translate } from "@/lib/i18n";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import {
     applyLocaleChange,
@@ -2162,19 +2165,36 @@ export function GameApp(props: GameAppProps): ReactNode {
     }, [endingSurfaceId, endingsPersistence, host, pluginHost, quitGame]);
 
     /**
-     * What this build stamps into the saves it writes, and compares the saves it is asked to load
-     * against. One value for both halves: a stamp written by one rule and read by another would
-     * make a build disagree with its own saves.
+     * What this build is, for comparing every save it is asked to list or load against.
      *
-     * Null when the bundle carries no story hash - a bundle assembled before hashes existed - which
+     * The whole hash table rather than one number, because the save side names one story and this
+     * side has to answer for all of them: a save screen lists slots from every route the player has
+     * been on, with no story mounted.
+     *
+     * Null when the bundle carries no hashes at all - one assembled before they existed - which
      * turns every comparison into "cannot be compared" and leaves loading exactly as it was.
      */
-    const saveStamp = useMemo(
-        () => (bundle.storyHash
-            ? buildSaveCompatibilityStamp({ storyHash: bundle.storyHash, gameVersion: bundle.gameVersion })
+    const saveBuild = useMemo(
+        () => (bundle.storyHashes && Object.keys(bundle.storyHashes).length > 0
+            ? buildSaveBuildStamp({ storyHashes: bundle.storyHashes, gameVersion: bundle.gameVersion })
             : null),
-        [bundle.gameVersion, bundle.storyHash],
+        [bundle.gameVersion, bundle.storyHashes],
     );
+    /**
+     * The stamp for a save taken right now, which is a fact about the story on the stage.
+     *
+     * A ref read rather than a memo: the mounted story changes without the bundle changing, and a
+     * stamp captured when the bundle last did would name whichever route the player started on for
+     * every save they take afterwards.
+     */
+    const currentSaveStamp = useCallback((): SaveCompatibilityStamp | null => {
+        const storyId = activeStoryRequestRef.current?.storyId ?? "";
+        const hash = storyId ? bundle.storyHashes?.[storyId] : undefined;
+        if (!hash) {
+            return null;
+        }
+        return buildSaveCompatibilityStamp({ storyId, storyHash: hash, gameVersion: bundle.gameVersion });
+    }, [bundle.gameVersion, bundle.storyHashes]);
     const saveCompatibilityConfig = useMemo(
         () => normalizeSaveCompatibilityConfiguration(bundle.saveCompatibility),
         [bundle.saveCompatibility],
@@ -2208,19 +2228,19 @@ export function GameApp(props: GameAppProps): ReactNode {
             liveGame.serialize(),
             capture,
             metadata,
-            saveStamp ?? undefined,
+            currentSaveStamp() ?? undefined,
             playtime.getRunSeconds(),
         );
         // Host-side, after the write landed: every shell reports it the same way,
         // and a failed write never announces a save that does not exist.
         pluginHost?.emitSaveWritten(id);
     }, [
+        currentSaveStamp,
         host.saveStore,
         playtime,
         pluginHost,
         reportSaveCaptureFailure,
         requireActiveLiveGame,
-        saveStamp,
     ]);
 
     /**
@@ -2264,6 +2284,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         const liveGame = requireActiveLiveGame("Load Save");
 
         /**
+         * The live game every step below talks to, read fresh rather than captured.
+         *
+         * `prepareStory` can replace the session mid-load - that is what putting the save's own
+         * story on the stage means - and a closure holding the game from before it would check its
+         * ids against a story nobody is running any more, then deserialize into it. The assertion
+         * above still runs once, because "there is no game runtime at all" is a caller mistake.
+         */
+        const activeLiveGame = (): LiveGame => nlrLiveGameRef.current ?? liveGame;
+
+        /**
+         * The story that was mounted when the load began, so a failed switch can put it back.
+         *
+         * Null when nothing had been launched yet, which is the ordinary state of a title screen:
+         * there is nothing to go back to and nothing that needs restoring.
+         */
+        const storyBeforeLoad = activeStoryRequestRef.current;
+        let switchedStory = false;
+
+        /**
          * The engine's page router, told to report the next time it has finished emptying itself -
          * registered BEFORE the load rather than after it.
          *
@@ -2290,7 +2329,7 @@ export function GameApp(props: GameAppProps): ReactNode {
                 storedPlaytimeSeconds = readSavePlaytimeSeconds(record?.metadata.playtimeSeconds);
                 return record;
             },
-            currentStamp: saveStamp,
+            build: saveBuild,
             compatibilityConfig: saveCompatibilityConfig,
             game: {
                 // `constructMaps` is the engine's own lookup table for a load and caches on the
@@ -2301,13 +2340,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // and refuse every save. Anything unexpected leaves the snapshot as the only
                 // protection instead.
                 resolveStoryMaps: () => {
-                    const construct = (liveGame as unknown as {
+                    const game = activeLiveGame();
+                    const construct = (game as unknown as {
                         constructMaps?: () => unknown;
                     }).constructMaps;
                     if (typeof construct !== "function") {
                         return null;
                     }
-                    const tables = construct.call(liveGame);
+                    const tables = construct.call(game);
                     if (!Array.isArray(tables) || tables.length < 2) {
                         return null;
                     }
@@ -2320,18 +2360,86 @@ export function GameApp(props: GameAppProps): ReactNode {
                         hasElement: elementId => elements.has(elementId),
                     };
                 },
-                readStoryHash: () => liveGame.story?.hash() ?? null,
-                snapshot: () => liveGame.serialize(),
+                readStoryHash: () => activeLiveGame().story?.hash() ?? null,
+                snapshot: () => activeLiveGame().serialize(),
                 apply: savedGame => {
-                    liveGame.game.router.clear().cleanHistory();
-                    liveGame.newGame().deserialize(savedGame);
+                    const game = activeLiveGame();
+                    game.game.router.clear().cleanHistory();
+                    game.newGame().deserialize(savedGame);
                 },
-                restore: snapshot => liveGame.deserialize(snapshot),
+                /**
+                 * Put the run back - and, when this load switched stories, put the story back too.
+                 *
+                 * The snapshot names ids that belong to the story that was mounted when the load
+                 * began. Handing it to the story the switch mounted instead would refuse every one
+                 * of them, so the mount is undone first and only then is the snapshot applied.
+                 * `forceReinit` for the same reason the relaunch below passes it: the fast path
+                 * would see a matching request and skip the recompile the put-back depends on.
+                 */
+                restore: async snapshot => {
+                    if (switchedStory && storyBeforeLoad) {
+                        const start = startStoryInGameRef.current;
+                        if (!start) {
+                            throw new Error("the story that was running cannot be started again");
+                        }
+                        await start({
+                            storyId: storyBeforeLoad.storyId,
+                            sceneId: storyBeforeLoad.sceneId,
+                        }, { forceReinit: true });
+                        switchedStory = false;
+                    }
+                    activeLiveGame().deserialize(snapshot);
+                },
                 // `deserialize` takes this lock on the way in and gives it back from a render it
                 // schedules on the way out, so a throw in between keeps it. It is a flag, not a
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
-                releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                releaseLoadLock: () => activeLiveGame().getGameState()?.rollLock.unlock(),
+                /**
+                 * Which of the project's stories this save belongs to.
+                 *
+                 * The scene is resolved against the whole library - by the id the anchor carries,
+                 * then by search, exactly as `relaunch` does - so a save survives its scene being
+                 * moved to another document between builds.
+                 *
+                 * Whether the mounted story has been *entered* is deliberately not part of this. A
+                 * title screen warms its story without entering it and a load from there has always
+                 * applied straight into that session; remounting it would put a recompile and a
+                 * remount on the most common load there is.
+                 */
+                resolveStoryMount: target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        return "nowhere";
+                    }
+                    const mounted = activeStoryRequestRef.current;
+                    return mounted && mounted.storyId === found.storyId ? "same" : "switch";
+                },
+                /**
+                 * Put that story on the stage, so `apply` has somewhere to deserialize into.
+                 *
+                 * A story launch rather than a bare mount, because a launch is what reveals the
+                 * stage - the save is applied over what it puts up, and `apply` opens with
+                 * `newGame()` anyway, so nothing it plays survives into the loaded state. The
+                 * launch is aimed at the save's own scene so the assets it warms are the ones the
+                 * save is about to need.
+                 *
+                 * The flag goes up BEFORE the launch, not after: a launch that throws halfway has
+                 * already replaced the session, and `restore` has to know to bring the previous
+                 * story back before it can put the run back.
+                 */
+                switchStory: async target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        throw new Error(`the story holding scene ${target.sceneId} is not in this build`);
+                    }
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    switchedStory = true;
+                    await start({ storyId: found.storyId, sceneId: target.sceneId }, { forceReinit: true });
+                },
                 /**
                  * The `Return to where it stopped` policy: a story launch, not a load.
                  *
@@ -2380,7 +2488,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // stage is hidden is therefore queued into a hidden layer and times out unseen. That is
             // every load that fails before the stage has ever been shown; a load from an in-game
             // menu drawn over a visible stage is seen.
-            notifyPlayer: message => liveGame.notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
+            notifyPlayer: message => activeLiveGame().notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
             report: (level, message) => {
                 host.log(level, message);
                 host.reportIssue?.({ level, message, origin: "session" });
@@ -2395,7 +2503,9 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         // A relaunch has already entered and revealed its own session (that is what `Start Game`
         // does); the live game this closure captured is the one it replaced. Waiting on it here
-        // would wait on a session nobody is driving any more.
+        // would wait on a session nobody is driving any more. A load that switched stories is in
+        // exactly the same position - it launched the save's own story to receive the save - except
+        // that it IS a load, so it still inherits the save's stopwatch reading below.
         if (outcome.applied !== "save") {
             routerExit.cancel();
             return outcome;
@@ -2403,9 +2513,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         // Only here: a load that was refused or rolled back leaves the player on the run they were
         // already having, and that run's stopwatch has to keep its own reading. A record with no
         // reading (written before playtime was tracked) starts the inherited run from zero, which
-        // is the only honest answer when nobody was counting.
+        // is the only honest answer when nobody was counting. One seeding point for both endings
+        // below, because both of them are the save being applied.
         playtime.seedRun(storedPlaytimeSeconds ?? 0);
         gameEnteredRef.current = true;
+        if (outcome.storyChanged) {
+            // The launch that put the save's own story up has already entered and revealed its
+            // session, so there is no reveal left to wait for - and the router being waited on
+            // belongs to the session that launch replaced.
+            routerExit.cancel();
+            host.log("info", translate("game.saveLoad.storyStarted", { id }));
+            return outcome;
+        }
         /**
          * Let the engine's router finish emptying before the stage is revealed.
          *
@@ -2432,8 +2551,8 @@ export function GameApp(props: GameAppProps): ReactNode {
         host.saveStore,
         requireActiveLiveGame,
         resolveSavedScene,
+        saveBuild,
         saveCompatibilityConfig,
-        saveStamp,
     ]);
 
     /**
@@ -2698,11 +2817,11 @@ export function GameApp(props: GameAppProps): ReactNode {
             // project would refuse is a slot a save screen must not draw a Load button on.
             .filter(header => planSaveResume(
                 readSaveCompatibilityStamp(header.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             ).plan.action !== "discard")
             .map(header => header.id);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     /**
      * The save slots, published for host debug overlays.
@@ -2742,7 +2861,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // same stamp - they are ordinary records under reserved ids.
             const resume = planSaveResume(
                 readSaveCompatibilityStamp(record.metadata.compatibility),
-                saveStamp,
+                saveBuild,
                 saveCompatibilityConfig,
             );
             if (resume.plan.action === "discard") {
@@ -2760,7 +2879,7 @@ export function GameApp(props: GameAppProps): ReactNode {
         }));
         return entries.filter((entry): entry is AutoSaveEntry => entry !== null)
             .sort((a, b) => b.timestamp - a.timestamp);
-    }, [host.saveStore, saveCompatibilityConfig, saveStamp]);
+    }, [host.saveStore, saveBuild, saveCompatibilityConfig]);
 
     const autoSave = useAutoSave({
         config: autoSaveConfig,

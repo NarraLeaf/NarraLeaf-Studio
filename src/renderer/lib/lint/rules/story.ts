@@ -1,6 +1,7 @@
 import { collectCutPoints } from "@shared/story/appTagFold";
 import {
     reachableSceneIds,
+    blueprintDocumentGraphCarriers,
     scanProjectStoryEntryPoints,
     type StoryEntryPointScan,
 } from "@shared/story/storyReachability";
@@ -30,6 +31,10 @@ import {
     type StoryScene,
     type StorySceneId,
 } from "@shared/types/story";
+import {
+    BLUEPRINT_NODE_TYPE_GAME_QUIT,
+    BLUEPRINT_NODE_TYPE_GAME_START_STORY,
+} from "@shared/types/blueprint/graph";
 import type { TranslationKey } from "@shared/i18n/catalog";
 import { collectInvalidBlocks } from "../../workspace/services/story/storyModel";
 import type { SearchJumpTarget } from "../../workspace/services/search/searchIndexModel";
@@ -262,7 +267,49 @@ function stageObjectMessageKey(reference: StageObjectReference): TranslationKey 
  * arm jumps, does not run off the end - and those are the two shapes almost every branching scene
  * ends in. Recursing only ever *suppresses* a warning, so the cost of the extra reach is bounded.
  */
-function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBlockId>): boolean {
+/**
+ * Blueprints that take the run away from the story that called them.
+ *
+ * `Start Game` moves the player into another story - or another scene of this one - and `Quit Game`
+ * ends the run; either way the rows after the `/blueprint` that reached one never play. A project
+ * whose routes are separate stories hands off exactly this way, because a `/jump` cannot leave the
+ * document it is written in, so without this every route's last scene reads as a path that runs out.
+ *
+ * Read one blueprint deep, deliberately. A handoff written behind a function call is still reported,
+ * which is a false positive rather than a missed defect - the opposite mistake would be to guess at
+ * a chain and stay silent about a scene that really does stop.
+ *
+ * Walked through the carrier generator rather than `listBlueprintGraphSites`, for the same reason
+ * the entry scan is: a story action's blueprint is reached by the id the row carries, not by an
+ * owner record, so honouring that record here would answer "this row hands nothing on" for exactly
+ * the rows this exists for.
+ */
+function collectHandoffBlueprintIds(ctx: LintContext): ReadonlySet<string> {
+    const handoff = new Set<string>();
+    for (const carrier of blueprintDocumentGraphCarriers(ctx.blueprintDocument)) {
+        for (const node of Object.values(carrier.graph.nodes ?? {})) {
+            if (node.type === BLUEPRINT_NODE_TYPE_GAME_START_STORY || node.type === BLUEPRINT_NODE_TYPE_GAME_QUIT) {
+                handoff.add(carrier.blueprintId);
+                break;
+            }
+        }
+    }
+    return handoff;
+}
+
+/** Whether this row is a `/blueprint` that hands the run to another story, or ends it. */
+function isHandoffRow(block: StoryBlock, handoff: ReadonlySet<string>): boolean {
+    return block.kind === "action"
+        && block.payload.action === "blueprint"
+        && handoff.has(block.payload.blueprintId);
+}
+
+function blockTerminates(
+    scene: StoryScene,
+    block: StoryBlock,
+    seen: Set<StoryBlockId>,
+    handoff: ReadonlySet<string>,
+): boolean {
     if (seen.has(block.id)) {
         // Only a corrupt `childrenIds` cycle reaches here; a hang would be worse than a missed warning.
         return true;
@@ -273,6 +320,9 @@ function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBl
         // A returnable jump is not where the scene stops: control comes back to the row after it,
         // so what terminates this scene is whatever follows.
         return !block.payload.returnable;
+    }
+    if (isHandoffRow(block, handoff)) {
+        return true;
     }
     if (block.kind === "control") {
         if (block.payload.control === "goto") {
@@ -292,25 +342,30 @@ function blockTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBl
             const hasElse = branches.some(
                 child => child.kind === "control" && child.payload.control === "conditionBranch" && child.payload.branch === "else",
             );
-            return hasElse && branches.every(branch => tailTerminates(scene, branch, seen));
+            return hasElse && branches.every(branch => tailTerminates(scene, branch, seen, handoff));
         }
         // sequence / parallel / race / repeat are ordering, not choosing: the tail is the exit.
-        return tailTerminates(scene, block, seen);
+        return tailTerminates(scene, block, seen, handoff);
     }
     if (block.kind === "nodeAction" && block.payload.action === "choice") {
         const options = liveChildren(scene, block).filter(
             child => child.kind === "nodeAction" && child.payload.action === "choiceOption",
         );
-        return options.length > 0 && options.every(option => tailTerminates(scene, option, seen));
+        return options.length > 0 && options.every(option => tailTerminates(scene, option, seen, handoff));
     }
     return false;
 }
 
 /** Whether the last live child of a container terminates. A container with no live child does not. */
-function tailTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBlockId>): boolean {
+function tailTerminates(
+    scene: StoryScene,
+    block: StoryBlock,
+    seen: Set<StoryBlockId>,
+    handoff: ReadonlySet<string>,
+): boolean {
     const children = liveChildren(scene, block);
     const last = children[children.length - 1];
-    return last ? blockTerminates(scene, last, seen) : false;
+    return last ? blockTerminates(scene, last, seen, handoff) : false;
 }
 
 /**
@@ -320,9 +375,11 @@ function tailTerminates(scene: StoryScene, block: StoryBlock, seen: Set<StoryBlo
  * A returnable jump does not count. The run leaves and comes straight back, so a scene whose only
  * jump is one of those has handed nothing on: it still stops where its rows stop.
  */
-function hasOutgoingTransfer(scene: StoryScene): boolean {
+function hasOutgoingTransfer(scene: StoryScene, handoff: ReadonlySet<string>): boolean {
     return liveBlocks(scene).some(block =>
-        (block.kind === "jump" && !block.payload.returnable) || gotoTarget(block) !== null);
+        (block.kind === "jump" && !block.payload.returnable)
+        || gotoTarget(block) !== null
+        || isHandoffRow(block, handoff));
 }
 
 /**
@@ -589,6 +646,7 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
          */
         run(ctx) {
             const findings: LintFinding[] = [];
+            const handoff = collectHandoffBlueprintIds(ctx);
             const calledByStoryId = new Map<string, Set<StorySceneId>>();
             for (const { entry, scene } of eachScene(ctx)) {
                 const declaresEndings = listStoryEndings(entry.document).length > 0;
@@ -609,10 +667,10 @@ export const STORY_LINT_RULES: readonly LintRule[] = [
                     // `story/empty-scene` owns a scene with nothing live in it.
                     continue;
                 }
-                if (blockTerminates(scene, last, new Set())) {
+                if (blockTerminates(scene, last, new Set(), handoff)) {
                     continue;
                 }
-                if (!declaresEndings && !hasOutgoingTransfer(scene)) {
+                if (!declaresEndings && !hasOutgoingTransfer(scene, handoff)) {
                     // A deliberate ending, not a dead end - as far as a story that names none of its
                     // endings can be read.
                     continue;

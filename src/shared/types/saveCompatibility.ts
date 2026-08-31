@@ -15,9 +15,12 @@
  *    only when a record written by an older Studio cannot be understood at all, which is why it is
  *    expected to sit at 1 indefinitely. A mismatch here is not a policy question: nothing can be
  *    read out of the record to act on, so the save is never listed and never loaded.
- *  - **`storyHash`** - the story this build ships, hashed when the bundle is assembled rather than
- *    when a game runs. It has to be knowable with no story mounted, because the first thing a save
- *    screen does is list slots, and a title screen has no live game to ask.
+ *  - **`storyId` + `storyHash`** - which of the project's stories the save was written in, and that
+ *    story's content hashed when the bundle is assembled rather than when a game runs. Per story
+ *    rather than per library: a save belongs to one of them, and asking whether the whole library
+ *    changed retires a player's saves on the first route because the third was patched. Both have
+ *    to be knowable with no story mounted, because the first thing a save screen does is list
+ *    slots, and a title screen has no live game to ask.
  *  - **`gameVersion`** - the author's own semantic version, exactly as typed into
  *    Project ▸ Details. Studio never interprets it; it only compares it.
  *
@@ -44,9 +47,34 @@ export const SAVE_PROTOCOL_VERSION = 1;
 export type SaveCompatibilityStamp = {
     /** {@link SAVE_PROTOCOL_VERSION} as of the build that wrote the record. */
     protocol: number;
-    /** The story this build shipped, hashed at bundle assembly. Blank when it could not be taken. */
+    /**
+     * The project story the save was written in.
+     *
+     * Blank on a record written before saves knew which story they belonged to, and on one taken
+     * with no story mounted. A blank one cannot be compared against anything and falls to
+     * `unknown`, which is how every save written before the stamp existed already behaves.
+     *
+     * Also what lets a save screen say which route a slot is on - see `GameAppSaveHeader`.
+     */
+    storyId: string;
+    /** That story, hashed at bundle assembly. Blank when it could not be taken. */
     storyHash: string;
     /** The author's `metadata.version`. Blank is normal - a project need not carry one. */
+    gameVersion: string;
+};
+
+/**
+ * What the build now running is, for comparing a save against.
+ *
+ * Not a {@link SaveCompatibilityStamp}: the save side names one story, and the build side has to
+ * answer for all of them. A save screen lists slots from every route the player has been on, with
+ * no story mounted, so the reader needs the whole table rather than whichever story happens to be
+ * up.
+ */
+export type SaveBuildStamp = {
+    protocol: number;
+    /** Every story this build ships, each hashed on its own. Keyed by story id. */
+    storyHashes: Readonly<Record<string, string>>;
     gameVersion: string;
 };
 
@@ -145,49 +173,85 @@ export function readSaveCompatibilityStamp(value: unknown): SaveCompatibilitySta
     }
     return {
         protocol: Math.trunc(record.protocol),
+        // Absent on every record written before saves carried one, which is a complete stamp
+        // otherwise - refusing to read those would turn a field addition into a protocol break.
+        storyId: typeof record.storyId === "string" ? record.storyId : "",
         storyHash: record.storyHash,
         gameVersion: record.gameVersion,
     };
 }
 
-/** The stamp this build writes into every save it takes. */
+/** The stamp written into one save, for the story it was taken in. */
 export function buildSaveCompatibilityStamp(input: {
+    storyId?: string | null;
     storyHash?: string | null;
     gameVersion?: string | null;
 }): SaveCompatibilityStamp {
     return {
         protocol: SAVE_PROTOCOL_VERSION,
+        storyId: typeof input.storyId === "string" ? input.storyId : "",
         storyHash: typeof input.storyHash === "string" ? input.storyHash : "",
         gameVersion: typeof input.gameVersion === "string" ? input.gameVersion : "",
     };
 }
 
+/** What this build is, for comparing every save against. */
+export function buildSaveBuildStamp(input: {
+    storyHashes?: Readonly<Record<string, string>> | null;
+    gameVersion?: string | null;
+}): SaveBuildStamp {
+    return {
+        protocol: SAVE_PROTOCOL_VERSION,
+        storyHashes: input.storyHashes ?? {},
+        gameVersion: typeof input.gameVersion === "string" ? input.gameVersion : "",
+    };
+}
+
+/** The hash this build carries for one save's story, or blank when it carries none. */
+export function buildHashForSave(
+    saved: SaveCompatibilityStamp,
+    build: SaveBuildStamp,
+): string {
+    return saved.storyId ? build.storyHashes[saved.storyId] ?? "" : "";
+}
+
 /**
  * Where one save stands against the build now running.
  *
- * A blank `storyHash` on either side is not a difference, it is an absence - a bundle assembled
- * before hashes existed, or a hash that could not be taken - and comparing it would report every
- * save as belonging to another story. Those fall to `unknown`, which loads exactly as it always
- * did. A blank `gameVersion` is a real value: a project need not carry a version, and two builds
- * that both carry none are two builds of the same version.
+ * Every missing half is an absence rather than a difference, and all of them fall to `unknown`,
+ * which loads exactly as an unstamped save always has:
+ *
+ *  - **No `storyId` on the save.** Written before saves knew their story. There is nothing to look
+ *    up, and the library-wide hash such a record carries answers a question this no longer asks.
+ *  - **No hash in this build for that story.** The story is not in this build at all - an
+ *    uninstalled DLC is the ordinary way that happens - so what the policy would decide is not
+ *    "the story changed" but "the content is not here right now". Deciding it here would let a
+ *    policy hide or restart a slot over a DLC the player can reinstall in a minute; the load itself
+ *    answers it honestly instead, by finding nowhere to put the player.
+ *  - **A blank hash on either side.** A bundle assembled before hashes existed, or one that could
+ *    not be taken.
+ *
+ * A blank `gameVersion` is a real value, not an absence: a project need not carry a version, and
+ * two builds that both carry none are two builds of the same version.
  */
 export function classifySaveCompatibility(
     saved: SaveCompatibilityStamp | null,
-    current: SaveCompatibilityStamp | null,
+    build: SaveBuildStamp | null,
 ): SaveCompatibility {
-    if (!saved || !current) {
+    if (!saved || !build) {
         return "unknown";
     }
-    if (saved.protocol !== current.protocol) {
+    if (saved.protocol !== build.protocol) {
         return "unsupported";
     }
-    if (!saved.storyHash || !current.storyHash) {
+    const mine = buildHashForSave(saved, build);
+    if (!saved.storyHash || !mine) {
         return "unknown";
     }
-    if (saved.storyHash !== current.storyHash) {
+    if (saved.storyHash !== mine) {
         return "incompatible";
     }
-    return saved.gameVersion === current.gameVersion ? "identical" : "compatible";
+    return saved.gameVersion === build.gameVersion ? "identical" : "compatible";
 }
 
 /**
@@ -237,9 +301,9 @@ export function resolveSaveResumePlan(
  */
 export function planSaveResume(
     savedStamp: SaveCompatibilityStamp | null,
-    currentStamp: SaveCompatibilityStamp | null,
+    build: SaveBuildStamp | null,
     config: SaveCompatibilityConfiguration,
 ): { compatibility: SaveCompatibility; plan: SaveResumePlan } {
-    const compatibility = classifySaveCompatibility(savedStamp, currentStamp);
+    const compatibility = classifySaveCompatibility(savedStamp, build);
     return { compatibility, plan: resolveSaveResumePlan(compatibility, config) };
 }
