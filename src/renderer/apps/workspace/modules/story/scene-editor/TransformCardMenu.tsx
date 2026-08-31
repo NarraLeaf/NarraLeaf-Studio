@@ -235,25 +235,33 @@ function ManagePresetsDialog(props: {
                         {props.presets.map(preset => (
                             <div key={preset.id} className="flex flex-col gap-1">
                                 <div className="flex items-center gap-1.5">
-                                    <Input
-                                        size="sm"
-                                        className="flex-1"
-                                        value={drafts[preset.id] ?? preset.name}
-                                        maxLength={TRANSFORM_PRESET_NAME_MAX}
-                                        aria-label={t("storyInspector.transformCard.rename")}
-                                        readOnly={freeze.frozen}
-                                        data-tip={freeze.frozen ? freeze.reason : undefined}
-                                        onChange={event => {
-                                            const value = event.target.value;
-                                            setDrafts(current => ({ ...current, [preset.id]: value }));
-                                        }}
-                                        onBlur={() => commit(preset)}
-                                        onKeyDown={event => {
-                                            if (event.key === "Enter") {
-                                                event.currentTarget.blur();
-                                            }
-                                        }}
-                                    />
+                                    {/*
+                                      * `fullWidth` inside a `flex-1` wrapper rather than a class on the
+                                      * field: `Input` puts its own className on the <input>, so a
+                                      * `flex-1` there sizes the control inside a wrapper that is still
+                                      * as wide as its content.
+                                      */}
+                                    <div className="min-w-0 flex-1">
+                                        <Input
+                                            size="sm"
+                                            fullWidth
+                                            value={drafts[preset.id] ?? preset.name}
+                                            maxLength={TRANSFORM_PRESET_NAME_MAX}
+                                            aria-label={t("storyInspector.transformCard.rename")}
+                                            readOnly={freeze.frozen}
+                                            data-tip={freeze.frozen ? freeze.reason : undefined}
+                                            onChange={event => {
+                                                const value = event.target.value;
+                                                setDrafts(current => ({ ...current, [preset.id]: value }));
+                                            }}
+                                            onBlur={() => commit(preset)}
+                                            onKeyDown={event => {
+                                                if (event.key === "Enter") {
+                                                    event.currentTarget.blur();
+                                                }
+                                            }}
+                                        />
+                                    </div>
                                     <IconButton
                                         size="sm"
                                         variant="ghost"
