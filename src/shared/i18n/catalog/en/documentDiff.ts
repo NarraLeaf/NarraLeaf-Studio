@@ -89,6 +89,7 @@ export const documentDiff = {
         characterGroups: "Character groups",
         characters: "Characters",
         dictionaryTerms: "Dictionary terms",
+        transformPresets: "Transform presets",
         localizationKeys: "Localization keys",
         projectLanguages: "Languages",
         projectPlugins: "Plugins",
@@ -478,6 +479,16 @@ export const documentDiff = {
      * option lines say what the dictionary does now, because they change what the story editor
      * marks in every script in the project.
      */
+    /**
+     * The transforms the project saved to reuse. What a preset does carries no value pair: a bag of
+     * channels is a record rather than a value, and quoting one onto a single line reads as nothing.
+     */
+    transformPresets: {
+        added: "Preset added",
+        removed: "Preset removed",
+        renamed: "Preset renamed",
+        transform: "Preset transform changed",
+    },
     dictionary: {
         added: "Term added",
         removed: "Term removed",
@@ -744,6 +755,7 @@ export const documentDiff = {
         appTags: "Build variants",
         dlc: "Additional content",
         dictionary: "Dictionary",
+        transformPresets: "Transform presets",
         saveSchema: "Save fields",
         assetSets: "Asset sets",
         localization: "Translations",

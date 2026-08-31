@@ -113,6 +113,12 @@ export const CHANGE_CATEGORY_BY_DOCUMENT_KIND: Record<DocumentKind, ChangeCatego
      * the author wrote, and it is edited from the spellchecker's menu rather than from any panel.
      */
     dictionary: "settings",
+    /**
+     * The transforms the project saved to reuse. Story rather than settings: a preset is built out
+     * of a story row and picked from one, and an author looking for "the move I saved last night"
+     * looks under the story, the way they do for the variable registry.
+     */
+    "transform-presets": "story",
     localization: "localization",
     "localization-keys": "localization",
     /** Voice lines are one recorded asset per text unit, and the author browses them as sound. */

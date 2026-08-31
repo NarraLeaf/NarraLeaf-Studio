@@ -62,6 +62,7 @@ export const documentDiff = {
         characterGroups: "角色分组",
         characters: "角色",
         dictionaryTerms: "词典词条",
+        transformPresets: "变换预设",
         localizationKeys: "本地化键",
         projectLanguages: "语言",
         projectPlugins: "插件",
@@ -395,6 +396,12 @@ export const documentDiff = {
      * 这里没有「改名」，也不可能有：词条没有 id，写法本身就是身份，所以改写法读作一条没了、
      * 另一条来了。两条选项说的是词典现在做什么——它们改变故事编辑器在项目里每一份剧本上标出的东西。
      */
+    transformPresets: {
+        added: "新增预设",
+        removed: "删除预设",
+        renamed: "预设重命名",
+        transform: "预设的变换已修改",
+    },
     dictionary: {
         added: "新增词条",
         removed: "删除词条",
@@ -614,6 +621,7 @@ export const documentDiff = {
         appTags: "构建变体",
         dlc: "追加内容",
         dictionary: "词典",
+        transformPresets: "变换预设",
         saveSchema: "存档字段",
         assetSets: "资产集",
         localization: "译文",

@@ -104,6 +104,8 @@ import { puppetChoiceOptions } from "@/lib/workspace/services/puppet/puppetDescr
 import { CameraActionEditor } from "./CameraActionEditor";
 import { AssetField } from "./AssetField";
 import { TransformChannelEditor } from "./TransformChannelEditor";
+import { useTransformPresets } from "./useTransformPresets";
+import { transformPresetSignature, type ProjectTransformPreset } from "@shared/types/transformPreset";
 import {
     Disclosure,
     EasingField,
@@ -304,7 +306,19 @@ const RETIRED_TRANSFORM_PRESETS: Readonly<Record<string, string>> = {
  * renders as. Dropping a value from a picker must not make the documents it came from unreadable -
  * only unwritable.
  */
-const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
+/**
+ * How a preset the project saved is spelled in the dropdown's value space.
+ *
+ * Prefixed rather than bare so a preset can be called `zoom` without becoming the shipped `zoom`:
+ * the two lists are written by different people and neither can be asked to avoid the other's words.
+ */
+const PROJECT_PRESET_PREFIX = "project:";
+
+const transformPresetOptions = (
+    t: TFunc,
+    current?: string,
+    projectPresets: readonly ProjectTransformPreset[] = [],
+): SelectOption[] => [
     { value: "none", label: t("common.none") },
     { value: "left", label: t("storyInspector.transformPreset.left") },
     { value: "center", label: t("storyInspector.transformPreset.center") },
@@ -324,6 +338,13 @@ const transformPresetOptions = (t: TFunc, current?: string): SelectOption[] => [
     ...(current && current in RETIRED_TRANSFORM_PRESETS
         ? [{ value: current, label: t(RETIRED_TRANSFORM_PRESETS[current] as TranslationKey) }]
         : []),
+    // The project's own, after the shipped names and marked as the project's: the two are picked
+    // the same way and mean the same thing to a row, and only their authorship differs.
+    ...projectPresets.map(preset => ({
+        value: `${PROJECT_PRESET_PREFIX}${preset.id}`,
+        label: preset.name,
+        secondaryLabel: t("storyInspector.transformCard.projectLabel"),
+    })),
 ];
 
 /**
@@ -2282,7 +2303,19 @@ type DisplayableActionPayload = Extract<StoryActionPayload, { action: "displayab
  * A bag no name fits - two channels at once, which the old model could not even express - reads as
  * `custom`, which is honest: the row does something the list has no single word for.
  */
-function transformPresetOf(ref: StoryTransformRef | undefined): string {
+function transformPresetOf(
+    ref: StoryTransformRef | undefined,
+    projectPresets: readonly ProjectTransformPreset[] = [],
+): string {
+    // The project's own list is asked first, and by signature: a row carries a copy of the channels
+    // and nothing saying where they came from, so recognising the bag is the only way to show the
+    // author the name they saved rather than `custom`. A saved preset that happens to state exactly
+    // what a shipped name states wins, which is the answer an author who named it expects.
+    const saved = projectPresets.find(preset =>
+        transformPresetSignature(preset.transform) === transformPresetSignature(ref));
+    if (saved) {
+        return `${PROJECT_PRESET_PREFIX}${saved.id}`;
+    }
     if (ref?.clipReveal) {
         return ref.clipReveal.kind;
     }
@@ -2306,8 +2339,25 @@ function transformPresetOf(ref: StoryTransformRef | undefined): string {
     return "custom";
 }
 
-/** The inverse, through the same expansion table the v17 documents were migrated with. */
-function withTransformPreset(ref: StoryTransformRef | undefined, preset: string): StoryTransformRef {
+/**
+ * The inverse, through the same expansion table the v17 documents were migrated with - or, for one
+ * of the project's own, through the bag it was saved with.
+ *
+ * A saved preset states the whole card, timing included, and replaces what the row held rather than
+ * being merged into it: it was kept from a row that already worked, and half of it landing on top of
+ * half of something else is not what the author saved.
+ */
+function withTransformPreset(
+    ref: StoryTransformRef | undefined,
+    preset: string,
+    projectPresets: readonly ProjectTransformPreset[] = [],
+): StoryTransformRef {
+    if (preset.startsWith(PROJECT_PRESET_PREFIX)) {
+        const saved = projectPresets.find(candidate => candidate.id === preset.slice(PROJECT_PRESET_PREFIX.length));
+        // A preset that has since been deleted leaves the row exactly as it was. There is nothing to
+        // seed from, and clearing the channels would be a change the author did not ask for.
+        return saved ? { ...saved.transform, mode: "props" } : { ...ref, mode: "props" };
+    }
     const { to, clipReveal } = expandLegacyTransformPreset(preset, transformParamsView(ref?.to));
     const next: StoryTransformRef = { ...ref, mode: "props", to };
     if (clipReveal) {
@@ -2385,6 +2435,7 @@ function TransformPresetEditor(props: {
     onChange: (value: StoryTransformRef | undefined) => void;
 }) {
     const { t } = useTranslation();
+    const { presets: projectPresets } = useTransformPresets();
     const value: StoryTransformRef = props.value ?? { mode: "props" };
     const mode: "preset" | "animation" = value.mode === "animation" ? "animation" : "preset";
     const actionContext = {
@@ -2435,9 +2486,9 @@ function TransformPresetEditor(props: {
                           */}
                         <SelectField
                             label={t("storyInspector.transform.preset")}
-                            options={transformPresetOptions(t, transformPresetOf(value))}
-                            value={transformPresetOf(value)}
-                            onChange={preset => props.onChange(withTransformPreset(value, String(preset)))}
+                            options={transformPresetOptions(t, transformPresetOf(value, projectPresets), projectPresets)}
+                            value={transformPresetOf(value, projectPresets)}
+                            onChange={preset => props.onChange(withTransformPreset(value, String(preset), projectPresets))}
                         />
                         <SecondsField
                             label={t("storyInspector.field.duration")}

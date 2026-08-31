@@ -105,6 +105,10 @@ import type {
     ProjectDictionaryEntry,
     ProjectDictionaryOptions,
 } from "@shared/types/dictionary";
+import type {
+    ProjectTransformPreset,
+    ProjectTransformPresetDocument,
+} from "@shared/types/transformPreset";
 import type { SpellcheckStatus } from "@shared/types/spellcheck";
 import type { SaveSchema, SaveSchemaField, SaveSchemaFieldType } from "@shared/types/saveSchema";
 import type { BrandPalette } from "@shared/brand/brandRegistry";
@@ -159,6 +163,7 @@ import type {
     StoryScene,
     StorySceneId,
     StorySceneUpdate,
+    StoryTransformRef,
     StoryVariableValueType,
 } from "@shared/types/story";
 import type {
@@ -246,6 +251,8 @@ enum Services {
     Brand = "brand",
     /** The words the project spells on purpose, and the session's spellchecker they are pushed into */
     Dictionary = "dictionary",
+    /** The transforms the project saved to reuse, offered beside the ones Studio ships */
+    TransformPreset = "transformPreset",
     /** What one save slot carries besides the engine's own record; grows the pins on the save nodes */
     SaveSchema = "saveSchema",
     /** Aggregate "is my work on disk?" state: auto-saver states + the table of files that failed */
@@ -698,6 +705,30 @@ interface IDictionaryService extends IService {
     /** The language settled on, whenever it changes - so an open story row can re-check. */
     onStatusChanged(handler: (status: SpellcheckStatus | null) => void): () => void;
     onEntriesChanged(handler: (entries: ProjectDictionaryEntry[]) => void): () => void;
+    onDirtyChanged(handler: (dirty: boolean) => void): () => void;
+    isDirty(): boolean;
+    getRevision(): number;
+}
+
+/**
+ * The transforms an author saved to reuse. See `@shared/types/transformPreset` for the model.
+ *
+ * A preset seeds a row and is never referred to by one, so every mutator here is safe against open
+ * documents: nothing on any stage changes when a preset is renamed or deleted.
+ */
+interface ITransformPresetService extends IService {
+    load(): Promise<void>;
+    save(document: ProjectTransformPresetDocument): Promise<void>;
+    getDocument(): ProjectTransformPresetDocument;
+    listPresets(): ProjectTransformPreset[];
+    getPreset(id: string): ProjectTransformPreset | null;
+    /** Null when there is nothing to keep: a blank name, or a transform stating no channel. */
+    savePreset(name: string, transform: StoryTransformRef | undefined): ProjectTransformPreset | null;
+    /** `false` when there is no such preset, or the name is blank or already taken. */
+    renamePreset(id: string, name: string): boolean;
+    /** `false` when the project never held it. */
+    removePreset(id: string): boolean;
+    onPresetsChanged(handler: (presets: ProjectTransformPreset[]) => void): () => void;
     onDirtyChanged(handler: (dirty: boolean) => void): () => void;
     isDirty(): boolean;
     getRevision(): number;
@@ -1621,6 +1652,7 @@ export {
     IDlcService,
     IBrandService,
     IDictionaryService,
+    ITransformPresetService,
     ISaveSchemaService,
     IPuppetDescriptionService,
     IMediaSupportService,
