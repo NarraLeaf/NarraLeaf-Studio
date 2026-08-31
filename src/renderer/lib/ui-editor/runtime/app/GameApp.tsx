@@ -159,6 +159,7 @@ import type { ProjectAudioTrack } from "@shared/types/audioTrack";
 import { createSoundTransport } from "./soundTransport";
 import { attachAudioBusPersistence, audioTracksToBusDeclarations } from "./audioBusRuntime";
 import { attachPlayerPreferences, type PreferenceStoreLike } from "./preferenceRuntime";
+import { translate } from "@/lib/i18n";
 import { loadSaveIntoGame, SAVE_LOAD_NOTICE_DURATION_MS, type SaveLoadOutcome } from "./saveLoad";
 import {
     applyLocaleChange,
@@ -2264,6 +2265,25 @@ export function GameApp(props: GameAppProps): ReactNode {
         const liveGame = requireActiveLiveGame("Load Save");
 
         /**
+         * The live game every step below talks to, read fresh rather than captured.
+         *
+         * `prepareStory` can replace the session mid-load - that is what putting the save's own
+         * story on the stage means - and a closure holding the game from before it would check its
+         * ids against a story nobody is running any more, then deserialize into it. The assertion
+         * above still runs once, because "there is no game runtime at all" is a caller mistake.
+         */
+        const activeLiveGame = (): LiveGame => nlrLiveGameRef.current ?? liveGame;
+
+        /**
+         * The story that was mounted when the load began, so a failed switch can put it back.
+         *
+         * Null when nothing had been launched yet, which is the ordinary state of a title screen:
+         * there is nothing to go back to and nothing that needs restoring.
+         */
+        const storyBeforeLoad = activeStoryRequestRef.current;
+        let switchedStory = false;
+
+        /**
          * The engine's page router, told to report the next time it has finished emptying itself -
          * registered BEFORE the load rather than after it.
          *
@@ -2301,13 +2321,14 @@ export function GameApp(props: GameAppProps): ReactNode {
                 // and refuse every save. Anything unexpected leaves the snapshot as the only
                 // protection instead.
                 resolveStoryMaps: () => {
-                    const construct = (liveGame as unknown as {
+                    const game = activeLiveGame();
+                    const construct = (game as unknown as {
                         constructMaps?: () => unknown;
                     }).constructMaps;
                     if (typeof construct !== "function") {
                         return null;
                     }
-                    const tables = construct.call(liveGame);
+                    const tables = construct.call(game);
                     if (!Array.isArray(tables) || tables.length < 2) {
                         return null;
                     }
@@ -2320,18 +2341,86 @@ export function GameApp(props: GameAppProps): ReactNode {
                         hasElement: elementId => elements.has(elementId),
                     };
                 },
-                readStoryHash: () => liveGame.story?.hash() ?? null,
-                snapshot: () => liveGame.serialize(),
+                readStoryHash: () => activeLiveGame().story?.hash() ?? null,
+                snapshot: () => activeLiveGame().serialize(),
                 apply: savedGame => {
-                    liveGame.game.router.clear().cleanHistory();
-                    liveGame.newGame().deserialize(savedGame);
+                    const game = activeLiveGame();
+                    game.game.router.clear().cleanHistory();
+                    game.newGame().deserialize(savedGame);
                 },
-                restore: snapshot => liveGame.deserialize(snapshot),
+                /**
+                 * Put the run back - and, when this load switched stories, put the story back too.
+                 *
+                 * The snapshot names ids that belong to the story that was mounted when the load
+                 * began. Handing it to the story the switch mounted instead would refuse every one
+                 * of them, so the mount is undone first and only then is the snapshot applied.
+                 * `forceReinit` for the same reason the relaunch below passes it: the fast path
+                 * would see a matching request and skip the recompile the put-back depends on.
+                 */
+                restore: async snapshot => {
+                    if (switchedStory && storyBeforeLoad) {
+                        const start = startStoryInGameRef.current;
+                        if (!start) {
+                            throw new Error("the story that was running cannot be started again");
+                        }
+                        await start({
+                            storyId: storyBeforeLoad.storyId,
+                            sceneId: storyBeforeLoad.sceneId,
+                        }, { forceReinit: true });
+                        switchedStory = false;
+                    }
+                    activeLiveGame().deserialize(snapshot);
+                },
                 // `deserialize` takes this lock on the way in and gives it back from a render it
                 // schedules on the way out, so a throw in between keeps it. It is a flag, not a
                 // count, which is why one balanced load afterwards cannot clear it and every later
                 // load in the session would sit there locked.
-                releaseLoadLock: () => liveGame.getGameState()?.rollLock.unlock(),
+                releaseLoadLock: () => activeLiveGame().getGameState()?.rollLock.unlock(),
+                /**
+                 * Which of the project's stories this save belongs to.
+                 *
+                 * The scene is resolved against the whole library - by the id the anchor carries,
+                 * then by search, exactly as `relaunch` does - so a save survives its scene being
+                 * moved to another document between builds.
+                 *
+                 * Whether the mounted story has been *entered* is deliberately not part of this. A
+                 * title screen warms its story without entering it and a load from there has always
+                 * applied straight into that session; remounting it would put a recompile and a
+                 * remount on the most common load there is.
+                 */
+                resolveStoryMount: target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        return "nowhere";
+                    }
+                    const mounted = activeStoryRequestRef.current;
+                    return mounted && mounted.storyId === found.storyId ? "same" : "switch";
+                },
+                /**
+                 * Put that story on the stage, so `apply` has somewhere to deserialize into.
+                 *
+                 * A story launch rather than a bare mount, because a launch is what reveals the
+                 * stage - the save is applied over what it puts up, and `apply` opens with
+                 * `newGame()` anyway, so nothing it plays survives into the loaded state. The
+                 * launch is aimed at the save's own scene so the assets it warms are the ones the
+                 * save is about to need.
+                 *
+                 * The flag goes up BEFORE the launch, not after: a launch that throws halfway has
+                 * already replaced the session, and `restore` has to know to bring the previous
+                 * story back before it can put the run back.
+                 */
+                switchStory: async target => {
+                    const found = resolveSavedScene(target.storyId, target.sceneId);
+                    if (!found) {
+                        throw new Error(`the story holding scene ${target.sceneId} is not in this build`);
+                    }
+                    const start = startStoryInGameRef.current;
+                    if (!start) {
+                        throw new Error("the story cannot be started here");
+                    }
+                    switchedStory = true;
+                    await start({ storyId: found.storyId, sceneId: target.sceneId }, { forceReinit: true });
+                },
                 /**
                  * The `Return to where it stopped` policy: a story launch, not a load.
                  *
@@ -2380,7 +2469,7 @@ export function GameApp(props: GameAppProps): ReactNode {
             // stage is hidden is therefore queued into a hidden layer and times out unseen. That is
             // every load that fails before the stage has ever been shown; a load from an in-game
             // menu drawn over a visible stage is seen.
-            notifyPlayer: message => liveGame.notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
+            notifyPlayer: message => activeLiveGame().notify(message, SAVE_LOAD_NOTICE_DURATION_MS),
             report: (level, message) => {
                 host.log(level, message);
                 host.reportIssue?.({ level, message, origin: "session" });
@@ -2395,9 +2484,18 @@ export function GameApp(props: GameAppProps): ReactNode {
         }
         // A relaunch has already entered and revealed its own session (that is what `Start Game`
         // does); the live game this closure captured is the one it replaced. Waiting on it here
-        // would wait on a session nobody is driving any more.
+        // would wait on a session nobody is driving any more. A load that switched stories is in
+        // exactly the same position - it launched the save's own story to receive the save - except
+        // that it IS a load, so it still inherits the save's stopwatch reading below.
         if (outcome.applied !== "save") {
             routerExit.cancel();
+            return outcome;
+        }
+        if (outcome.storyChanged) {
+            routerExit.cancel();
+            playtime.seedRun(storedPlaytimeSeconds ?? 0);
+            gameEnteredRef.current = true;
+            host.log("info", translate("game.saveLoad.storyStarted", { id }));
             return outcome;
         }
         // Only here: a load that was refused or rolled back leaves the player on the run they were

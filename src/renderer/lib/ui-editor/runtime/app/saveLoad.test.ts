@@ -96,21 +96,72 @@ type HarnessOptions = {
     restoreThrows?: string;
     /** An engine that keeps the name and changes the answer. */
     brokenMaps?: "wrongShape" | "throws";
+    /**
+     * The project's stories, as the ids each one's live game would answer for.
+     *
+     * Given, the harness stops being one story and becomes a library: the id tables follow whichever
+     * story is mounted, so a save written on another one resolves to nothing until the load puts
+     * that story on the stage. That is the real shape - a story compiles on its own, and a live game
+     * built from one has never heard of an id belonging to another.
+     */
+    stories?: StoryModel[];
+    /** The story on the stage when the load begins. Absent models a session with none. */
+    mountedStoryId?: string;
+    /** The switch itself will not start, leaving the session already replaced. */
+    switchThrows?: string;
 };
 
+/**
+ * One of the project's stories, as both halves of a save name it.
+ *
+ * `scenes` holds Studio scene ids - what a save's position parses out of its anchors and what the
+ * library is searched by. The engine's own tables key the same scene as `nl:scene:<id>`, which is
+ * what the id tables below are built from; keeping the two apart here is what makes the fake fail
+ * the way the real thing does when they are confused.
+ */
+type StoryModel = { id: string; scenes: string[]; actions: string[] };
+
+/** The engine element id for a Studio scene, as the compiler stamps it. */
+function sceneElementId(sceneId: string): string {
+    return `nl:scene:${sceneId}`;
+}
+
 function createHarness(options: HarnessOptions) {
-    const elements = new Set(options.knownElements ?? [options.head.sceneId, "layer-main"]);
-    const actions = new Set(options.knownActions ?? ["action-1"]);
     const notifications: string[] = [];
     const reports: { level: "warning" | "error"; message: string }[] = [];
     /** Which engine operations the load reached. The live game is only entered through these. */
-    const calls = { snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 };
+    const calls = { snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 };
     let head: PlayHead = { ...options.head, backlog: [...options.head.backlog] };
     let applyThrows = options.applyThrows;
 
+    const storyAtStart = options.mountedStoryId ?? null;
+    let mountedStoryId = storyAtStart;
+    const storyOf = (sceneId: string): StoryModel | undefined =>
+        options.stories?.find(story => story.scenes.includes(sceneId));
+
+    /**
+     * The mounted story's id tables. Without a library it is the one fixed pair the case gave.
+     *
+     * Read through a function rather than captured, because a story switch replaces both - which is
+     * the whole reason a save from another story cannot resolve until one happens.
+     */
+    const tables = (): { elements: Set<string>; actions: Set<string> } => {
+        const story = options.stories?.find(entry => entry.id === mountedStoryId);
+        if (story) {
+            return {
+                elements: new Set([...story.scenes.map(sceneElementId), "layer-main"]),
+                actions: new Set(story.actions),
+            };
+        }
+        return {
+            elements: new Set(options.knownElements ?? [options.head.sceneId, "layer-main"]),
+            actions: new Set(options.knownActions ?? ["action-1"]),
+        };
+    };
+
     const maps: SaveStoryMaps = {
-        hasAction: id => actions.has(id),
-        hasElement: id => elements.has(id),
+        hasAction: id => tables().actions.has(id),
+        hasElement: id => tables().elements.has(id),
     };
 
     // The engine resets the stage and remounts before it looks anything up, so anything that throws
@@ -119,7 +170,7 @@ function createHarness(options: HarnessOptions) {
     const put = (savedGame: SavedGame): void => {
         head = { ...BLANK };
         const next = readPlayHead(savedGame);
-        if (!elements.has(next.sceneId)) {
+        if (!tables().elements.has(next.sceneId)) {
             throw new Error(`Scene not found, id: ${next.sceneId}`);
         }
         head = next;
@@ -158,6 +209,9 @@ function createHarness(options: HarnessOptions) {
                 head = { ...BLANK };
                 throw new Error(options.restoreThrows);
             }
+            // What the host does: a snapshot taken before a switch names ids only the story it was
+            // taken from has, so that story comes back before the snapshot is applied to it.
+            mountedStoryId = storyAtStart;
             // The rollback save came from this very story, so it never hits the throw above.
             applyThrows = undefined;
             put(savedGame);
@@ -165,6 +219,31 @@ function createHarness(options: HarnessOptions) {
         releaseLoadLock: () => {
             calls.releaseLoadLock += 1;
         },
+        ...(options.stories
+            ? {
+                  resolveStoryMount: (target: { storyId: string; sceneId: string }) => {
+                      const owner = storyOf(target.sceneId);
+                      if (!owner) {
+                          return "nowhere" as const;
+                      }
+                      return owner.id === mountedStoryId ? ("same" as const) : ("switch" as const);
+                  },
+                  switchStory: async (target: { storyId: string; sceneId: string }) => {
+                      calls.switchStory += 1;
+                      const owner = storyOf(target.sceneId);
+                      if (!owner) {
+                          throw new Error("no story holds that scene");
+                      }
+                      // Mounting replaces the session before anything can fail, which is why a
+                      // throw after this point still leaves the previous run needing a put-back.
+                      mountedStoryId = owner.id;
+                      head = { ...BLANK };
+                      if (options.switchThrows) {
+                          throw new Error(options.switchThrows);
+                      }
+                  },
+              }
+            : {}),
     };
 
     return {
@@ -210,7 +289,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
-        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown", storyChanged: false });
         expect(harness.head()).toEqual({
             sceneId: "scene-a",
             line: 9,
@@ -243,7 +322,7 @@ describe("loadSaveIntoGame", () => {
             unresolvedIds: ["scene-deleted"],
             game: "unchanged",
         });
-        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refusedOtherStory")]);
         expect(harness.reports).toHaveLength(1);
         expect(harness.reports[0].level).toBe("warning");
@@ -303,7 +382,7 @@ describe("loadSaveIntoGame", () => {
         const outcome = await loadWith(harness, null);
 
         expect(outcome).toMatchObject({ status: "refused", reason: "missing", game: "unchanged" });
-        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refused")]);
     });
 
@@ -313,7 +392,7 @@ describe("loadSaveIntoGame", () => {
         const outcome = await loadWith(harness, { savedGame: { game: { stage: {} } } });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "malformed", game: "unchanged" });
-        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 });
         expect(harness.notifications).toEqual([translate("game.saveLoad.refused")]);
     });
 
@@ -333,7 +412,7 @@ describe("loadSaveIntoGame", () => {
         });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "unreadable", game: "unchanged" });
-        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 });
         expect(harness.reports[0].message).toContain("save file is locked");
     });
 
@@ -346,7 +425,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved }, "slot-7");
 
-        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "otherStory", compatibility: "unknown" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "otherStory", compatibility: "unknown", storyChanged: false });
         expect(harness.head().line).toBe(12);
         expect(harness.notifications).toEqual([]);
         expect(harness.reports).toEqual([
@@ -360,7 +439,7 @@ describe("loadSaveIntoGame", () => {
 
         const outcome = await loadWith(harness, { savedGame: saved });
 
-        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown" });
+        expect(outcome).toEqual({ status: "loaded", applied: "save", origin: "sameStory", compatibility: "unknown", storyChanged: false });
         expect(harness.reports).toEqual([]);
     });
 
@@ -642,7 +721,7 @@ describe("the older-saves policy", () => {
         const outcome = await withPolicy(harness, olderVersion, { compatible: "discard", incompatible: "force" });
 
         expect(outcome).toMatchObject({ status: "refused", reason: "policy", compatibility: "compatible" });
-        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0 });
+        expect(harness.calls).toEqual({ snapshot: 0, apply: 0, restore: 0, releaseLoadLock: 0, switchStory: 0 });
         expect(harness.head()).toEqual(PLAYING);
     });
 
@@ -731,5 +810,138 @@ describe("the older-saves policy", () => {
         const outcome = await withPolicy(harness, undefined, { compatible: "discard", incompatible: "discard" });
 
         expect(outcome).toMatchObject({ status: "loaded", applied: "save", compatibility: "unknown" });
+    });
+});
+
+/**
+ * A project whose routes are separate stories, which is what a story is for.
+ *
+ * `PROLOGUE` is the one a title screen warms; `TRIAL` is a route the player reaches later and saves
+ * on. The ids are the compiler's real shapes - `studio:<story>:<scene>:<block>:<text>:<n>` for an
+ * action, `nl:scene:<id>` for a scene - because that is what the save's position is read out of.
+ */
+const PROLOGUE: StoryModel = {
+    id: "story-prologue",
+    scenes: ["corridor"],
+    actions: ["studio:story-prologue:corridor:block-1:text-1:0"],
+};
+const TRIAL: StoryModel = {
+    id: "story-trial",
+    scenes: ["courtroom"],
+    actions: ["studio:story-trial:courtroom:block-7:text-2:3"],
+};
+
+/** A save written on `TRIAL`, carrying that story's ids the way a real one does. */
+function makeTrialSave(): SavedGame {
+    return makeSave(
+        { sceneId: "nl:scene:courtroom", line: 12, backlog: ["objection"], audio: "bgm:trial" },
+        { actionId: TRIAL.actions[0] },
+    );
+}
+
+describe("loadSaveIntoGame across a project's stories", () => {
+    const ON_PROLOGUE: PlayHead = { sceneId: "nl:scene:corridor", line: 2, backlog: ["hello"], audio: "bgm:day" };
+
+    it("puts the save's own story on the stage before reading its ids", async () => {
+        const harness = createHarness({
+            head: ON_PROLOGUE,
+            stories: [PROLOGUE, TRIAL],
+            mountedStoryId: PROLOGUE.id,
+        });
+
+        const outcome = await loadWith(harness, { savedGame: makeTrialSave() });
+
+        expect(outcome).toMatchObject({ status: "loaded", applied: "save", storyChanged: true });
+        expect(harness.calls.switchStory).toBe(1);
+        expect(harness.head()).toEqual({
+            sceneId: "nl:scene:courtroom",
+            line: 12,
+            backlog: ["objection"],
+            audio: "bgm:trial",
+        });
+        expect(harness.notifications).toEqual([]);
+    });
+
+    /**
+     * The regression this whole seam exists for.
+     *
+     * Without the switch the pre-check runs against the story that happens to be mounted, finds not
+     * one of the save's ids, and refuses - so every save written anywhere but the story a title
+     * screen warms was unopenable, and the player was told their save came from another version of
+     * the story rather than from another route of this one.
+     */
+    it("refuses the same save when the host cannot switch stories, which is the old behaviour", async () => {
+        const harness = createHarness({
+            head: ON_PROLOGUE,
+            stories: [PROLOGUE, TRIAL],
+            mountedStoryId: PROLOGUE.id,
+        });
+        const { resolveStoryMount: _mount, switchStory: _switch, ...withoutStorySwitching } = harness.game;
+
+        const outcome = await loadWith(harness, { savedGame: makeTrialSave() }, "slot-1", {
+            game: withoutStorySwitching,
+        });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unresolved", game: "unchanged" });
+        expect(harness.head()).toEqual(ON_PROLOGUE);
+    });
+
+    it("costs nothing when the save is on the story already mounted", async () => {
+        const harness = createHarness({
+            head: ON_PROLOGUE,
+            stories: [PROLOGUE, TRIAL],
+            mountedStoryId: PROLOGUE.id,
+        });
+        const saved = makeSave(
+            { sceneId: "nl:scene:corridor", line: 8, backlog: ["hello", "again"], audio: "bgm:day" },
+            { actionId: PROLOGUE.actions[0] },
+        );
+
+        const outcome = await loadWith(harness, { savedGame: saved });
+
+        expect(outcome).toMatchObject({ status: "loaded", storyChanged: false });
+        expect(harness.calls.switchStory).toBe(0);
+    });
+
+    it("refuses without touching the run when no story in the build holds that scene", async () => {
+        const harness = createHarness({
+            head: ON_PROLOGUE,
+            stories: [PROLOGUE],
+            mountedStoryId: PROLOGUE.id,
+        });
+
+        const outcome = await loadWith(harness, { savedGame: makeTrialSave() });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "unresolved", game: "unchanged" });
+        expect(outcome).toMatchObject({ detail: translate("game.saveLoad.detail.sceneGone") });
+        // Nothing was mounted to find that out, so nothing has to be put back.
+        expect(harness.calls).toMatchObject({ switchStory: 0, snapshot: 0, apply: 0, restore: 0 });
+        expect(harness.head()).toEqual(ON_PROLOGUE);
+    });
+
+    it("puts the run - and the story it was in - back when the switch will not start", async () => {
+        const harness = createHarness({
+            head: ON_PROLOGUE,
+            stories: [PROLOGUE, TRIAL],
+            mountedStoryId: PROLOGUE.id,
+            switchThrows: "the trial could not be compiled",
+        });
+
+        const outcome = await loadWith(harness, { savedGame: makeTrialSave() });
+
+        expect(outcome).toMatchObject({ status: "refused", reason: "storySwitch", game: "restored" });
+        expect(harness.head()).toEqual(ON_PROLOGUE);
+    });
+
+    it("switches into a story that was never mounted, which is a load from a cold title screen", async () => {
+        const harness = createHarness({
+            head: BLANK,
+            stories: [PROLOGUE, TRIAL],
+        });
+
+        const outcome = await loadWith(harness, { savedGame: makeTrialSave() });
+
+        expect(outcome).toMatchObject({ status: "loaded", applied: "save", storyChanged: true });
+        expect(harness.head().sceneId).toBe("nl:scene:courtroom");
     });
 });

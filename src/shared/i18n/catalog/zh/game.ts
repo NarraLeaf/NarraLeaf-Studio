@@ -8,6 +8,7 @@ export const game = {
         putBack: "读取存档：「{id}」未生效，运行中的游戏已恢复。{detail}",
         notRestored: "读取存档：「{id}」未生效，运行中的游戏无法恢复。{detail}",
         otherStory: "读取存档：「{id}」来自另一个版本的故事。",
+        storyStarted: "读取存档：「{id}」写在本工程的另一个故事里，已启动那个故事来承接它。",
         relaunchedRow: "读取存档：「{id}」来自另一次构建，已从该存档记录的行重新开始故事。",
         relaunchedScene: "读取存档：「{id}」来自另一次构建，其记录的行已不存在，已从该行所在场景的开头重新开始故事。",
         detail: {
@@ -19,6 +20,7 @@ export const game = {
             unanchored: "该存档未记录位置，无法据此重新开始故事。",
             sceneGone: "该存档记录的场景不在本次构建中。",
             relaunch: "无法从该存档记录的位置重新开始故事。{error}",
+            storySwitch: "无法切换到该存档所属的故事。{error}",
             unresolvedScene: "该存档所在的场景不在运行中的故事里。",
             unresolvedElement: "运行中的故事缺少该存档要放上舞台的内容。",
             unresolvedAction: "该存档停留的故事行不在运行中的故事里。",

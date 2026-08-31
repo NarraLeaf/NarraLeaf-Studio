@@ -13,6 +13,9 @@ export const game = {
         putBack: "Load Save: \"{id}\" was not applied, and the running game was put back. {detail}",
         notRestored: "Load Save: \"{id}\" was not applied, and the running game could not be put back. {detail}",
         otherStory: "Load Save: \"{id}\" was written from a different version of the story.",
+        // Not a finding: a project whose routes are separate stories writes saves in each of
+        // them, and reaching one from a title screen means putting its story up first.
+        storyStarted: "Load Save: \"{id}\" was written in another of the project's stories, which was started to receive it.",
         // The Older saves policy taking effect rather than a failure, so it is stated as what
         // happened: the slot was honoured, in the only way the policy allows it to be.
         relaunchedRow: "Load Save: \"{id}\" was written by another build. The story was started again on the line the save records.",
@@ -26,6 +29,7 @@ export const game = {
             unanchored: "This save records no position, and the story cannot be started again without one.",
             sceneGone: "The scene this save records is not in this build.",
             relaunch: "The story could not be started again at the position this save records. {error}",
+            storySwitch: "The story this save belongs to could not be put on the stage. {error}",
             unresolvedScene: "The scene this save was in is not in the running story.",
             unresolvedElement: "The running story does not have everything this save puts on stage.",
             unresolvedAction: "The rows this save was stopped on are not in the running story.",
