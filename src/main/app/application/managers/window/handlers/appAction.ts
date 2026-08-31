@@ -605,6 +605,39 @@ export class AppExportDiagnosticsHandler extends IPCHandler<IPCEventType.appExpo
 }
 
 /**
+ * Show Studio's own log folder in the OS file manager.
+ *
+ * The counterpart to the export above, and the one an author reaches for first: a support bundle is
+ * for handing over, this is for looking. It takes no path - `<userData>/logs` is Studio storage no
+ * renderer is granted, and main naming the folder itself is what keeps the call from being a way to
+ * open an arbitrary directory.
+ *
+ * On the base surface, like the export, so the window whose workspace failed to start can still use
+ * it. Reachable from any window: it opens the same folder whichever one asks.
+ */
+export class AppOpenLogsFolderHandler extends IPCHandler<IPCEventType.appOpenLogsFolder> {
+    readonly name = IPCEventType.appOpenLogsFolder;
+    readonly type = IPCMessageType.request;
+
+    public async handle(): Promise<RequestStatus<void>> {
+        try {
+            const logsDir = electronApp.getPath("logs");
+            // The folder is created lazily by the log sink, so a Studio that has not written a line
+            // yet has nothing to open. Make it rather than report a failure the author cannot act on.
+            await fs.mkdir(logsDir, { recursive: true });
+            // openPath answers with a message rather than throwing, and an empty string means it worked.
+            const failure = await shell.openPath(logsDir);
+            if (failure) {
+                return this.failed(new Error(failure));
+            }
+            return this.success(void 0);
+        } catch (error) {
+            return this.failed(error);
+        }
+    }
+}
+
+/**
  * Reachability of one mirror address, for the Network settings panel.
  *
  * A HEAD, with the same 5 s budget `probePluginBuildDependency` uses, and the same reading of the

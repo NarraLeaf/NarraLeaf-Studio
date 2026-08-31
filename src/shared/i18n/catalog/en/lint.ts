@@ -288,6 +288,11 @@ export const lint = {
             description: "A Save Game node that will run with a declared save field left empty",
             message: "{field} is empty, so this save is written with its default instead",
         },
+        blueprintStartSceneForeign: {
+            title: "Scene from another story",
+            description: "A Start Game node whose scene is not in the story it names",
+            message: "This scene is in {owner}, not in {story}, so starting the game here stops it",
+        },
         variablesUndeclared: {
             title: "Undeclared variable",
             description: "A variable used without a declaration",

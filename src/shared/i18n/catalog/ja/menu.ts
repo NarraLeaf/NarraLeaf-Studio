@@ -41,6 +41,7 @@ export const menu = {
         openRecent: "最近のワークスペースを開く",
         noRecent: "最近のワークスペースなし",
         export: "プロジェクトを書き出す",
+        revealProject: "プロジェクトの場所を開く",
         close: "ワークスペースを閉じる",
         returnToLauncher: "ランチャーに戻る",
     },

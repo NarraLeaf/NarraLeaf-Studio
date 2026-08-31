@@ -335,6 +335,11 @@ export const settings = {
         cacheInventory: {
             label: "缓存文件",
         },
+        openLogsFolder: {
+            label: "Studio 的日志文件",
+            description: "Studio 运行期间写下的记录。在文件管理器中打开该文件夹",
+            action: "打开文件夹",
+        },
         settingsTransfer: {
             label: "在设备之间迁移设置",
         },

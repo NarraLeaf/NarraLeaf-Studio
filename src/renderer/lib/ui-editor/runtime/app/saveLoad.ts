@@ -29,6 +29,7 @@ import type { TranslationKey } from "@shared/i18n";
 import {
     planSaveResume,
     readSaveCompatibilityStamp,
+    type SaveBuildStamp,
     type SaveCompatibility,
     type SaveCompatibilityConfiguration,
     type SaveCompatibilityStamp,
@@ -59,6 +60,8 @@ export type SaveLoadRefusalReason =
     | "unanchored"
     /** The relaunch itself would not start. */
     | "relaunch"
+    /** The save's own story could not be put on the stage to receive it. */
+    | "storySwitch"
     /** The save names scenes, elements or actions the running story does not have. */
     | "unresolved"
     /** The engine refused it for something this module does not model. */
@@ -103,7 +106,20 @@ export type RunningGameState =
 export type SaveApplied = "save" | "row" | "scene";
 
 export type SaveLoadOutcome =
-    | { status: "loaded"; applied: SaveApplied; origin: SaveStoryOrigin; compatibility: SaveCompatibility }
+    | {
+          status: "loaded";
+          applied: SaveApplied;
+          origin: SaveStoryOrigin;
+          compatibility: SaveCompatibility;
+          /**
+           * True when the save belonged to a story other than the one that was mounted, and that
+           * story was put on the stage to receive it. See {@link SaveLoadGameSeam.prepareStory}.
+           *
+           * Always false for a relaunch, which can also land in another story but says so through
+           * `applied`: the host chose where to start and already knows what it started.
+           */
+          storyChanged: boolean;
+      }
     | {
           status: "refused";
           reason: SaveLoadRefusalReason;
@@ -136,8 +152,14 @@ export type SaveLoadGameSeam = {
     snapshot: () => SavedGame | null;
     /** Replace the live game with the saved one. Throws whatever the engine throws. */
     apply: (savedGame: SavedGame) => void;
-    /** Put the live game back from a snapshot. Throws whatever the engine throws. */
-    restore: (snapshot: SavedGame) => void;
+    /**
+     * Put the live game back from a snapshot. Throws whatever the engine throws.
+     *
+     * A host that implements {@link prepareStory} has one more thing to put back: a snapshot taken
+     * before a story switch names ids the story now mounted does not have, so the story it was
+     * taken from has to come back with it or the restore refuses everything in it.
+     */
+    restore: (snapshot: SavedGame) => void | Promise<void>;
     /**
      * Called only when {@link restore} itself threw, to leave the session able to be asked again.
      *
@@ -163,7 +185,50 @@ export type SaveLoadGameSeam = {
      * return that never happened.
      */
     relaunch?: (target: SaveRelaunchTarget) => Promise<SaveRelaunchLanding>;
+    /**
+     * Which of the project's stories this save needs, against the one on the stage.
+     *
+     * A project's stories are separate runtime units: one is compiled and mounted at a time, and a
+     * live game built from one of them has never heard of an id belonging to another. Every route,
+     * every side story and every chapter kept as its own story therefore had exactly one thing
+     * happen to its saves before this existed - the pre-check found nothing of theirs, and the load
+     * was refused - so the story a title screen happens to warm was the only one whose saves could
+     * be opened from it.
+     *
+     * Must not touch anything: it is answered from the library, and a save that turns out to be on
+     * the story already mounted has to cost nothing at all. `nowhere` means no story in this build
+     * holds that scene, which is a refusal with the run untouched.
+     *
+     * The host's, not the engine's, for the same reason {@link relaunch} is - it is a question
+     * about the bundle, not about the running game. Omitted by a host that has no library to
+     * answer from, which leaves the behaviour exactly as it was.
+     */
+    resolveStoryMount?: (target: SaveStoryTarget) => SaveStoryMount;
+    /**
+     * Put that story on the stage, ready to receive the save.
+     *
+     * Only ever called after {@link resolveStoryMount} answered `switch`. Mounting replaces the
+     * live game, so the run that was going is spent from here on; everything that can refuse a load
+     * has already been asked, and anything that fails after it is put back through {@link restore}.
+     */
+    switchStory?: (target: SaveStoryTarget) => Promise<void>;
 };
+
+/** The story a save belongs to, as its anchors name it. */
+export type SaveStoryTarget = {
+    /** Blank when the save's position named only a scene; the host resolves one from the library. */
+    storyId: string;
+    sceneId: string;
+};
+
+/** Where the save's story is, relative to the one currently on the stage. */
+export type SaveStoryMount =
+    /** It is the story already mounted. Nothing has to happen. */
+    | "same"
+    /** It is another of the project's stories, and that one has to be mounted first. */
+    | "switch"
+    /** No story in this build holds that scene. */
+    | "nowhere";
 
 /**
  * Where a relaunch put the player.
@@ -206,7 +271,7 @@ export type LoadSaveOptions = {
     } | null>;
     game: SaveLoadGameSeam;
     /** What this build is, for comparing against the save's own stamp. Null disables the comparison. */
-    currentStamp: SaveCompatibilityStamp | null;
+    build: SaveBuildStamp | null;
     /** The author's policy for saves from another build. */
     compatibilityConfig: SaveCompatibilityConfiguration;
     /** Shows one line inside the running game. */
@@ -683,7 +748,7 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
     // The author's policy, before anything is touched and from the same header the listing read.
     const resume = planSaveResume(
         readSaveCompatibilityStamp(record.metadata?.compatibility),
-        options.currentStamp,
+        options.build,
         options.compatibilityConfig,
     );
     compatibility = resume.compatibility;
@@ -727,7 +792,94 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             landing === "row" ? "game.saveLoad.relaunchedRow" : "game.saveLoad.relaunchedScene",
             { id },
         ));
-        return { status: "loaded", applied: landing, origin, compatibility };
+        return { status: "loaded", applied: landing, origin, compatibility, storyChanged: false };
+    }
+
+    /**
+     * The run as a save, taken at most once and only when something is about to spend it.
+     *
+     * Lazy because a refused load must not pay for it: serializing a playthrough to hold a copy
+     * nobody will read is the cost of every rejected slot on a save screen. The two things that
+     * spend the run - putting another story on the stage, and the swap itself - take it first.
+     */
+    let rollback: SavedGame | null = null;
+    let rollbackTaken = false;
+    const takeRollback = (): void => {
+        if (rollbackTaken) {
+            return;
+        }
+        rollbackTaken = true;
+        try {
+            rollback = game.snapshot();
+        } catch {
+            rollback = null;
+        }
+    };
+
+    /**
+     * Put the run back, and say what it ended up as.
+     *
+     * The roll lock is given back only when the restore itself threw: `deserialize` takes it on the
+     * way in and returns it from a render a throw never reaches, and it is a flag rather than a
+     * count, so one that is never returned kills every later load in the session.
+     */
+    const putRunBack = async (): Promise<RunningGameState> => {
+        if (!rollback) {
+            return "lost";
+        }
+        try {
+            await game.restore(rollback);
+            return "restored";
+        } catch {
+            try {
+                game.releaseLoadLock?.();
+            } catch {
+                /* nothing further is available */
+            }
+            return "lost";
+        }
+    };
+
+    /**
+     * Which story this save needs, asked before any id is looked up.
+     *
+     * The pre-check below is only meaningful against the story the save came from: run against a
+     * different one it reports every single anchor as missing, which reads as "this save names
+     * things that were deleted" when what actually happened is that the player saved on another
+     * route. Asking is separate from acting so that a save already on its own story costs nothing -
+     * no snapshot, no remount - which is the common load and the one on the title screen.
+     */
+    let storyChanged = false;
+    const position = game.resolveStoryMount ? readSavePosition(savedGame) : null;
+    if (game.resolveStoryMount && position) {
+        const target = { storyId: position.storyId, sceneId: position.sceneId };
+        let mount: SaveStoryMount;
+        try {
+            mount = game.resolveStoryMount(target);
+        } catch {
+            // A host that cannot answer costs the switch, never the load: the pre-check still runs
+            // and still protects the run, exactly as it did before any of this existed.
+            mount = "same";
+        }
+        if (mount === "nowhere") {
+            // Answered from the library with nothing mounted, so nothing has been touched.
+            return refuse("unresolved", translate("game.saveLoad.detail.sceneGone"), { origin });
+        }
+        if (mount === "switch" && game.switchStory) {
+            takeRollback();
+            try {
+                await game.switchStory(target);
+            } catch (error) {
+                // A switch that threw got far enough to replace the session, so what is on stage is
+                // neither the save nor the run - until the snapshot puts it back.
+                return refuse(
+                    "storySwitch",
+                    translate("game.saveLoad.detail.storySwitch", { error: errorText(error) }),
+                    { origin, game: await putRunBack() },
+                );
+            }
+            storyChanged = true;
+        }
     }
 
     // The whole pre-check, resolution included, sits inside one guard. It is an optimisation over
@@ -750,47 +902,30 @@ export async function loadSaveIntoGame(options: LoadSaveOptions): Promise<SaveLo
             // The quoted line is a locator, not part of the finding, so it is wrapped around the
             // finding rather than glued after it: a locale that puts it first can.
             line ? translate("game.saveLoad.detail.savedAt", { detail: what, line }) : what,
-            { unresolvedIds: unresolved.all, origin },
+            {
+                unresolvedIds: unresolved.all,
+                origin,
+                // Only a switch leaves something to put back. Without one the run was never
+                // entered, and saying anything but "unchanged" about it would be false.
+                ...(storyChanged ? { game: await putRunBack() } : {}),
+            },
         );
     }
 
-    // Taken last, so it holds the run right up to the swap. A game that cannot be serialized still
-    // gets the load attempted: the pre-check has already cleared it, and refusing here would turn a
-    // missing safety net into a missing feature.
-    let rollback: SavedGame | null;
-    try {
-        rollback = game.snapshot();
-    } catch {
-        rollback = null;
-    }
-
+    takeRollback();
     try {
         game.apply(savedGame);
     } catch (error) {
-        let restored = false;
-        if (rollback) {
-            try {
-                game.restore(rollback);
-                restored = true;
-            } catch {
-                // Both the save and the snapshot were refused. Give the roll lock back before
-                // giving up: without it this one failure silently kills every later load in the
-                // session, which surfaces much later as a second, unrelated-looking fault.
-                try {
-                    game.releaseLoadLock?.();
-                } catch {
-                    /* nothing further is available */
-                }
-            }
-        }
         return refuse("engine", translate("game.saveLoad.detail.engine", { error: errorText(error) }), {
             origin,
-            game: restored ? "restored" : "lost",
+            game: await putRunBack(),
         });
     }
 
-    if (origin === "otherStory") {
+    if (origin === "otherStory" && !storyChanged) {
+        // Suppressed for a switch, where the two hashes differing is the expected state rather than
+        // a finding: they are two different stories, and the load honoured that.
         report("warning", translate("game.saveLoad.otherStory", { id }));
     }
-    return { status: "loaded", applied: "save", origin, compatibility };
+    return { status: "loaded", applied: "save", origin, compatibility, storyChanged };
 }

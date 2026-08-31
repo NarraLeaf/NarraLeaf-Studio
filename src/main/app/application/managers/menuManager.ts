@@ -353,6 +353,14 @@ export class MenuManager {
                             this.sendActionToFocusedWindow(WorkspaceMenuAction.ExportProject);
                         },
                     },
+                    {
+                        // No accelerator: it is a rare errand, and every Cmd+Shift letter this menu
+                        // could take is already one the author uses for something they do often.
+                        label: t("menu.file.revealProject"),
+                        click: () => {
+                            this.sendActionToFocusedWindow(WorkspaceMenuAction.RevealProjectFolder);
+                        },
+                    },
                     { type: "separator" },
                     {
                         label: t("menu.file.returnToLauncher"),

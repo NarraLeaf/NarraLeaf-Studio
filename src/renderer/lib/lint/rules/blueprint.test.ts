@@ -1093,3 +1093,112 @@ describe("blueprint/save-field-empty", () => {
         expect(findings).toEqual([]);
     });
 });
+
+describe("blueprint/start-scene-foreign", () => {
+    /** Two stories with a scene each, the way a project with routes has them. */
+    function storyWithScene(storyId: string, sceneId: string, sceneName: string) {
+        return {
+            id: storyId,
+            scenes: {
+                [sceneId]: { id: sceneId, name: sceneName, rootBlockIds: [], blocks: {} },
+            },
+            unassignedSceneIds: [sceneId],
+        } as unknown as StoryDocument;
+    }
+
+    const stories = [
+        { id: "story-prologue", name: "Prologue", document: storyWithScene("story-prologue", "corridor", "The corridor") },
+        { id: "story-trial", name: "Class Trial", document: storyWithScene("story-trial", "courtroom", "The courtroom") },
+    ];
+
+    function startGraph(params: Record<string, unknown>, edges: BlueprintGraphIr["edges"] = []): BlueprintGraphIr {
+        return {
+            nodes: {
+                head: { id: "head", type: BLUEPRINT_NODE_TYPE_EVENT_HEAD_APP_BOOT, params: {} },
+                start: { id: "start", type: BLUEPRINT_NODE_TYPE_GAME_START_STORY, params },
+            },
+            edges: [
+                { from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "in" } },
+                ...(edges ?? []),
+            ],
+        };
+    }
+
+    it("is an error by default", () => {
+        expect(rule("blueprint/start-scene-foreign").defaultSeverity).toBe("error");
+    });
+
+    it("reports a scene that belongs to another story, and names both", async () => {
+        const findings = await run(
+            "blueprint/start-scene-foreign",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onBoot: startGraph({ storyId: "story-prologue", sceneId: "courtroom" }) },
+                }),
+                stories,
+            }),
+        );
+        expect(findings).toHaveLength(1);
+        expect(findings[0]).toMatchObject({
+            messageKey: "lint.rule.blueprintStartSceneForeign.message",
+            messageParams: { story: "Prologue", owner: "Class Trial" },
+            location: { kind: "blueprint", nodeId: "start" },
+        });
+    });
+
+    it("says nothing when the pair goes together", async () => {
+        const findings = await run(
+            "blueprint/start-scene-foreign",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onBoot: startGraph({ storyId: "story-trial", sceneId: "courtroom" }) },
+                }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    /** A dangling id is `blueprint/reference-missing`'s finding; two sentences for one node is one too many. */
+    it("leaves an id that names nothing to the reference rule", async () => {
+        const findings = await run(
+            "blueprint/start-scene-foreign",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onBoot: startGraph({ storyId: "story-prologue", sceneId: "scene-deleted" }) },
+                }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    it("does not judge a pair computed at run time", async () => {
+        const graph = startGraph({ storyId: "story-prologue", sceneId: "courtroom" }, [
+            { from: { nodeId: "head", port: "then" }, to: { nodeId: "start", port: "sceneId" } },
+        ]);
+        const findings = await run(
+            "blueprint/start-scene-foreign",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({ events: { onBoot: graph } }),
+                stories,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+
+    /** A library read only in part would call every scene in the missing story foreign. */
+    it("says nothing when the library could not be read whole", async () => {
+        const findings = await run(
+            "blueprint/start-scene-foreign",
+            createTestLintContext({
+                blueprintDocument: documentWithGraphs({
+                    events: { onBoot: startGraph({ storyId: "story-prologue", sceneId: "courtroom" }) },
+                }),
+                stories,
+                storiesComplete: false,
+            }),
+        );
+        expect(findings).toEqual([]);
+    });
+});
