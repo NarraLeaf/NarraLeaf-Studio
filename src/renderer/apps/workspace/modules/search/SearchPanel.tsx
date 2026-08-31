@@ -50,8 +50,11 @@ export const SEARCH_GROUP_TITLE_KEYS: Record<SearchGroup, TranslationKey> = {
 };
 
 /**
- * Render a hit title with every matched range emphasized. Ranges arrive sorted and non-overlapping
- * (see `normalizeRanges`); an empty list means the entry matched through context text only.
+ * Render a hit's text with every matched range emphasized. Ranges arrive sorted and non-overlapping
+ * (see `normalizeRanges`); an empty list renders the text plain.
+ *
+ * Used for both lines of a row. A row whose term is only in its context line has nothing marked in
+ * its title, and without the second line marked the row reads as a result that does not match.
  */
 export function renderHighlightedText(text: string, ranges: ReadonlyArray<readonly [number, number]>) {
     if (ranges.length === 0) {
@@ -486,7 +489,9 @@ export function SearchPanel() {
                                                 )}
                                             </div>
                                             {hit.entry.detail && (
-                                                <div className="truncate text-xs text-fg-subtle">{hit.entry.detail}</div>
+                                                <div className="truncate text-xs text-fg-subtle">
+                                                    {renderHighlightedText(hit.entry.detail, hit.detailRanges)}
+                                                </div>
                                             )}
                                         </button>
                                         {edit && (

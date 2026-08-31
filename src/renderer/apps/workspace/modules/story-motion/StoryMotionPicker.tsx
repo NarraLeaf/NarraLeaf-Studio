@@ -150,7 +150,9 @@ export function StoryMotionPicker(props: {
                     <div className="min-w-0 flex-1">
                         <div className="truncate text-xs font-medium text-primary">{selectedAsset?.name ?? props.motionLabel}</div>
                         <div className="truncate text-2xs text-fg-muted">
-                            {selectedAsset ? motionSummary(selectedAsset, t) : t("motion.picker.assetFallback", { id: animationId ?? "" })}
+                            {/* The asset arrives a tick after the card does. What that moment used
+                                to print was the motion's id, which is a UUID. */}
+                            {selectedAsset ? motionSummary(selectedAsset, t) : t("common.loading")}
                         </div>
                     </div>
                     <button className={ICON_BUTTON_CLASS} type="button" onClick={() => openEditor(animationId)} data-tip={t("motion.editMotion")} aria-label={t("motion.editMotion")}>

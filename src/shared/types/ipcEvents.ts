@@ -2,6 +2,7 @@ import { FileDetails, FileStat, FileEntry, DirectorySizeResult } from "@shared/u
 import { AppInfo } from "./app";
 import { IPCMessageType, IPCType } from "./ipc";
 import { FsRequestResult, PlatformInfo } from "./os";
+import type { LibraryExchangeKind } from "../story/libraryExchange";
 import type { FsTextEncoding } from "./textEncoding";
 import { WindowAppType, WindowProps, WindowVisibilityStatus, WindowControlAbility, WindowCloseResults, WorkspaceViewRequest } from "./window";
 import { GlobalStateKeys, GlobalStateValue } from "./state/globalState";
@@ -172,6 +173,8 @@ export enum IPCEventType {
     appGlobalStateDelete = "app.globalState.delete",
     appExportSettings = "app.exportSettings",
     appImportSettings = "app.importSettings",
+    appExportLibraryItems = "app.exportLibraryItems",
+    appImportLibraryItems = "app.importLibraryItems",
     appUpdateGetState = "app.update.getState",
     appUpdateCheck = "app.update.check",
     appUpdateDownload = "app.update.download",
@@ -1096,6 +1099,31 @@ export type IPCEvents = {
         type: IPCMessageType.request,
         consumer: IPCType.Host,
         data: Record<string, never>;
+        response: { canceled: boolean; filePath?: string; content?: string };
+    };
+    /**
+     * Write an exported library (transform presets, Story Motions) to a file the user picks.
+     *
+     * Shaped like {@link IPCEventType.appExportSettings}: the renderer composes the document, the
+     * only path involved is the one the save dialog returned, so there is no grant to check. `kind`
+     * decides nothing but the dialog's title - the file itself says what it holds.
+     */
+    [IPCEventType.appExportLibraryItems]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: {
+            kind: LibraryExchangeKind;
+            defaultFileName: string;
+            /** The document, already composed and serialized by the renderer. */
+            content: string;
+        };
+        response: { canceled: boolean; filePath?: string };
+    };
+    /** Read an exported library the user picks. Parsing and validation happen in the renderer. */
+    [IPCEventType.appImportLibraryItems]: {
+        type: IPCMessageType.request,
+        consumer: IPCType.Host,
+        data: { kind: LibraryExchangeKind };
         response: { canceled: boolean; filePath?: string; content?: string };
     };
 } & IPCMenuEvents & IPCFsEvents & IPCEditorEvents & IPCProjectWizardEvents & IPCWorkspaceEvents & IPCDevModeEvents & IPCPreviewEvents & IPCGameTestEvents & IPCGameBuildEvents & IPCSigningEvents & IPCPluginBuildSecretEvents & IPCBlueprintPersistenceEvents & IPCPluginPermissionEvents & IPCPluginManagerEvents & IPCUITemplateEvents & IPCAssetEvents & IPCPrivilegedEvents & IPCVcsEvents & IPCTeamEvents & IPCServerTrustEvents;

@@ -5469,7 +5469,7 @@ async function createTransition(transition: StoryTransitionRef | undefined, ctx:
         case "softWipe":
             return new Reveal({ duration, easing, pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }) });
         case "blinds":
-            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }) });
+            return new Reveal({ duration, easing, pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0), stagger: numberProp(props, "stagger", 0) }) });
         case "softIris":
             return new Reveal({ duration, easing, pattern: Mask.iris({ center: stringProp(props, "center", "50% 50%"), feather: numberProp(props, "feather", 12), shape: stringProp(props, "shape", "circle") as any }) });
         case "barnDoor":
@@ -5609,7 +5609,7 @@ function throughColorPattern(props: Record<string, StoryLiteralValue>): { patter
         case "linear":
             return { pattern: Mask.wipe({ direction: stringProp(props, "direction", "left") as any, feather: numberProp(props, "feather", 12) }), ...inverted(false) };
         case "blinds":
-            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0) }), ...inverted(false) };
+            return { pattern: Mask.blinds({ orientation: stringProp(props, "orientation", "horizontal") as any, slats: numberProp(props, "slats", 8), feather: numberProp(props, "feather", 0), stagger: numberProp(props, "stagger", 0) }), ...inverted(false) };
         case "iris":
             // Rim-in by default: the colour closes over the frame, which is the iris-to-black every
             // document written before this option existed was getting.

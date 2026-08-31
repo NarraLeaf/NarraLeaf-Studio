@@ -25,7 +25,7 @@ export const onboarding = {
     },
     welcome: {
         title: "ようこそ",
-        expectation: "インターフェースとストーリーエディターの設定、全 6 画面。選んだ時点で反映され、あとから設定でも変更できる",
+        expectation: "インターフェースとストーリーエディターの設定 6 項目。選んだ時点で反映され、あとから設定でも変更できる",
         haveSettings: "ほかのインストールの設定",
     },
     language: {

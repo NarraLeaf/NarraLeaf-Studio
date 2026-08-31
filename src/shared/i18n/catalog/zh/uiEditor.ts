@@ -4,8 +4,18 @@ export const uiEditor = {
     surfaceKind: {
         page: "页面",
         gameUi: "游戏 UI",
+        mainPage: "入口页面",
         pageDescription: "页面是完整的屏幕，例如标题、设置、存档、回想或画廊",
         gameUiDescription: "游戏界面属于进行中的游戏，例如对白、选项、HUD、快捷菜单和通知",
+    },
+    // 蓝图归谁所有——蓝图面板、标签标题、控件旁的只读区说的是同一批词，所以在这里定一次。
+    ownerLabel: {
+        globalMain: "应用逻辑",
+        surfaceMain: "页面逻辑",
+        widgetMain: "控件逻辑",
+        widgetValue: "控件取值",
+        sharedAsset: "共享蓝图",
+        storyAction: "剧情动作",
     },
     stageSlot: {
         onStage: "舞台",

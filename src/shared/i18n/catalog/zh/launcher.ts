@@ -29,7 +29,7 @@ export const launcher = {
         // 这里两块并排是同一个选择，「打开…」的省略号才说明下一步会弹出文件对话框。
         // 第一块仍用 addProject，向导做的事不止「新建」。
         empty: {
-            title: "欢迎使用NarraLeaf Studio",
+            title: "欢迎使用 NarraLeaf Studio",
             subtitle: "打开过的项目会显示在此处",
             openFolder: "打开…",
         },

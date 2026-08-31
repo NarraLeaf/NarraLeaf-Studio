@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode, type RefObject } from "react";
-import { Check, Copy, Edit3, Image as ImageIcon, Plus, Search, Spline, Trash2, Wallpaper, X } from "lucide-react";
+import { Check, Copy, Download, Edit3, Image as ImageIcon, MoreHorizontal, Plus, Search, Spline, Trash2, Upload, Wallpaper, X } from "lucide-react";
 import type {
     StoryAnimationAsset,
     StoryAnimationIndexEntry,
@@ -21,6 +21,12 @@ import type { Asset } from "@/lib/workspace/services/assets/types";
 import type { AssetsService } from "@/lib/workspace/services/core/AssetsService";
 import type { ProjectService } from "@/lib/workspace/services/core/ProjectService";
 import { useAssetObjectUrl } from "@/lib/workspace/hooks/useAssetObjectUrl";
+import { useLibraryExchange } from "@/lib/workspace/hooks/useLibraryExchange";
+import {
+    decodeStoryMotionExchange,
+    encodeStoryMotionExchange,
+    libraryExchangeFileName,
+} from "@shared/story/libraryExchange";
 import { NumericDraftEnhancedInput } from "@/lib/components/inputs/NumericDraftEnhancedInput";
 import { AssetSelector } from "../assets/components/AssetSelector";
 import { useAssetLibraryRevision } from "@/lib/workspace/hooks/useAssetLibraryRevision";
@@ -65,6 +71,8 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
     const { context, isInitialized } = useWorkspace();
     const { openEditorTab } = useRegistry();
     const { menuState, showMenu, hideMenu } = useContextMenu();
+    const exchange = useLibraryExchange("story-motion");
+    const { menuState: libraryMenuState, showMenu: showLibraryMenu, hideMenu: hideLibraryMenu } = useContextMenu();
     // Creating, duplicating, deleting and binding write the story document; selecting a motion,
     // previewing it and opening the full editor only read, so they stay live in a frozen project.
     const freeze = useFreezeGuard();
@@ -272,6 +280,89 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         setSelectedId(asset.id);
     }, [selectedAsset, storyService]);
 
+    /**
+     * Write motions out to a file.
+     *
+     * The assets are read through the service rather than taken from the index: the index carries a
+     * name and a target kind, and what an author wants to take with them is the timeline.
+     * `loadAnimationAsset` is what the panel already uses to open one, so a motion nobody has opened
+     * this session exports the same as one that is on screen.
+     */
+    const exportMotions = useCallback(async (entries: readonly StoryAnimationIndexEntry[]) => {
+        if (!storyService || entries.length === 0) {
+            return;
+        }
+        const assets: StoryAnimationAsset[] = [];
+        for (const entry of entries) {
+            const asset = storyService.getLoadedAnimationAsset(entry.id) ?? await storyService.loadAnimationAsset(entry.id);
+            if (asset) {
+                assets.push(asset);
+            }
+        }
+        if (assets.length === 0) {
+            return;
+        }
+        void exchange.exportItems(
+            encodeStoryMotionExchange(assets),
+            libraryExchangeFileName("story-motion", assets.map(asset => asset.name)),
+        );
+    }, [exchange, storyService]);
+
+    const importMotions = useCallback(async () => {
+        if (!storyService) {
+            return;
+        }
+        const items = await exchange.importItems(decodeStoryMotionExchange);
+        if (!items) {
+            return;
+        }
+        let last: string | null = null;
+        for (const item of items) {
+            // Through the same door `New` uses, so an imported motion is normalized, indexed and
+            // undoable exactly like one built here. Its preview images are not in the file and are
+            // not invented: the author picks those for this project.
+            const asset = await storyService.createAnimationAsset({
+                name: item.name,
+                targetKind: item.targetKind,
+                timeline: item.timeline,
+                sequences: item.sequences,
+                config: item.config,
+            });
+            last = asset.id;
+        }
+        exchange.announceImported(items.length);
+        if (last) {
+            setSelectedId(last);
+        }
+    }, [exchange, storyService]);
+
+    /**
+     * The list's own actions, as opposed to the selected motion's.
+     *
+     * A menu rather than two more buttons in the header: the header is a search field and a `New`
+     * button, and a row of icons beside them would read as four equally common things to do.
+     */
+    const libraryMenuItems = useMemo<ContextMenuDef>(() => [
+        {
+            id: "import-motions",
+            label: t("common.import"),
+            icon: <Upload className="h-4 w-4" />,
+            ...freeze.menuRow(),
+            onClick: () => {
+                void importMotions();
+            },
+        },
+        {
+            id: "export-motions",
+            label: t("common.library.exportAll"),
+            icon: <Download className="h-4 w-4" />,
+            disabled: assets.length === 0,
+            onClick: () => {
+                void exportMotions(assets);
+            },
+        },
+    ], [assets, exportMotions, freeze, importMotions, t]);
+
     const deleteMotion = useCallback(async () => {
         if (!storyService || !uiService || !selectedAsset) {
             return;
@@ -349,14 +440,32 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
         setSelectedAsset(next);
     }, [selectedAsset, storyService]);
 
+    /**
+     * What the bound action's motion is called.
+     *
+     * By name, never by id: this line sits under the action's own label, and a UUID there named
+     * something the author has no way to look up. An id the library cannot answer for is a reference
+     * to a deleted motion, which the line says in words instead.
+     */
+    const actionMotionLabel = useMemo(() => {
+        if (!actionAnimationId) {
+            return t("motion.panel.actionNoMotion");
+        }
+        const bound = assets.find(asset => asset.id === actionAnimationId);
+        return bound
+            ? t("motion.panel.actionUses", { name: bound.name })
+            : t("motion.panel.actionUsesMissing");
+    }, [actionAnimationId, assets, t]);
+
     const imageAssetName = useCallback((assetId: string | undefined) => {
         if (!assetId) {
             return null;
         }
-        return assetsService?.getAssets()[AssetType.Image]?.[assetId]?.name ?? assetId;
+        // Never the id: a slot labelled with a UUID says nothing about which picture is missing.
+        return assetsService?.getAssets()[AssetType.Image]?.[assetId]?.name ?? t("motion.panel.previewAssetMissing");
         // `assetLibraryRevision`: the lookup itself is live, but nothing would re-run it - asset
         // records are mutated in place, so a rename changes no other input this panel holds.
-    }, [assetLibraryRevision, assetsService]);
+    }, [assetLibraryRevision, assetsService, t]);
 
     const openFullEditor = useCallback(() => {
         if (!selectedAsset) {
@@ -423,6 +532,18 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                     <button className={`${ICON_BUTTON_CLASS} disabled:cursor-not-allowed disabled:opacity-40`} type="button" onClick={openCreateMenu} {...freeze.writes(false, t("motion.panel.createMotion"))} aria-label={t("motion.panel.createMotion")}>
                         <Plus className="h-4 w-4" />
                     </button>
+                    <button
+                        className={ICON_BUTTON_CLASS}
+                        type="button"
+                        onClick={event => {
+                            event.stopPropagation();
+                            showLibraryMenu(event);
+                        }}
+                        data-tip={t("motion.panel.libraryActions")}
+                        aria-label={t("motion.panel.libraryActions")}
+                    >
+                        <MoreHorizontal className="h-4 w-4" />
+                    </button>
                 </div>
                 <div className="min-h-0 flex-1 overflow-auto py-1">
                     {filteredAssets.length === 0 ? (
@@ -448,6 +569,13 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                     position={menuState.position}
                     visible={menuState.visible}
                     onClose={hideMenu}
+                    iconsEnabled
+                />
+                <ContextMenu
+                    items={libraryMenuItems}
+                    position={libraryMenuState.position}
+                    visible={libraryMenuState.visible}
+                    onClose={hideLibraryMenu}
                     iconsEnabled
                 />
             </aside>
@@ -490,6 +618,16 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                         </SurfaceEditorToolbarSegButton>
                                         <SurfaceEditorToolbarSegButton type="button" onClick={duplicateMotion} {...freeze.writes(false, t("common.duplicate"))} aria-label={t("common.duplicate")}>
                                             <Copy className="h-4 w-4" />
+                                        </SurfaceEditorToolbarSegButton>
+                                        {/* Not gated by the freeze: exporting reads the motion and
+                                            writes a file outside the project. */}
+                                        <SurfaceEditorToolbarSegButton
+                                            type="button"
+                                            onClick={() => void exportMotions(assets.filter(entry => entry.id === selectedAsset.id))}
+                                            data-tip={t("common.export")}
+                                            aria-label={t("common.export")}
+                                        >
+                                            <Download className="h-4 w-4" />
                                         </SurfaceEditorToolbarSegButton>
                                         <SurfaceEditorToolbarSegButton type="button" onClick={() => void deleteMotion()} {...freeze.writes(false, t("common.delete"))} aria-label={t("common.delete")}>
                                             <Trash2 className="h-4 w-4" />
@@ -543,7 +681,7 @@ export function StoryMotionPanel({ payload }: PanelComponentProps<StoryMotionPan
                                         <div className="min-w-0">
                                             <div className="truncate text-xs font-medium text-primary">{descriptor.label}</div>
                                             <div className="mt-1 truncate text-2xs text-fg-muted">
-                                                {actionAnimationId ? t("motion.panel.actionUses", { id: actionAnimationId }) : t("motion.panel.actionNoMotion")}
+                                                {actionMotionLabel}
                                             </div>
                                         </div>
                                         <Button

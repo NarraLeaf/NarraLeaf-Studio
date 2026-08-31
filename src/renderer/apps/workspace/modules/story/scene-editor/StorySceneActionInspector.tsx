@@ -2595,6 +2595,10 @@ function TransitionEditor(props: {
                         {/* Hard slats by default, which is why this went unnoticed - but the compiler
                             has always read it, and every other feathered geometry offers it. */}
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        {/* How far apart the slats start, along the axis: 0 moves them together, 1
+                            runs them strictly one after the next. The spread comes out of each
+                            slat's own run, so the change still lands on the stated duration. */}
+                        <NumberField label={t("storyInspector.field.slatDelay")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
                     </>
                 ) : null}
                 {kind === "slide" ? (
@@ -2710,6 +2714,7 @@ function TransitionEditor(props: {
                         />
                         <NumberField label={t("storyInspector.field.slats")} value={paramNumber(value.props, "slats")} onChange={slats => setParam({ slats })} />
                         <NumberField label={t("storyInspector.field.feather")} value={paramNumber(value.props, "feather")} onChange={feather => setParam({ feather })} />
+                        <NumberField label={t("storyInspector.field.slatDelay")} value={paramNumber(value.props, "stagger")} onChange={stagger => setParam({ stagger })} />
                     </>
                 ) : null}
                 {kind === "throughColor" && throughColorPatternOf(value) === "iris" ? (

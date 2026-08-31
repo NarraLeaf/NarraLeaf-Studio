@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { MoreHorizontal, Trash2 } from "lucide-react";
+import { Download, MoreHorizontal, Trash2, Upload } from "lucide-react";
 import type { StoryTransformRef } from "@shared/types/story";
 import {
     findTransformPresetByName,
@@ -18,6 +18,13 @@ import {
     type ContextMenuDef,
 } from "@/lib/components/elements";
 import { useFreezeGuard } from "@/apps/workspace/components/ui/freezeGuard";
+import { useLibraryExchange } from "@/lib/workspace/hooks/useLibraryExchange";
+import {
+    decodeTransformPresetExchange,
+    encodeTransformPresetExchange,
+    libraryExchangeFileName,
+    type TransformPresetExchangeItem,
+} from "@shared/story/libraryExchange";
 import { statedTransformChannels } from "./transformChannels";
 import type { TFunc } from "./inspectorFieldKit";
 import { useTransformPresets } from "./useTransformPresets";
@@ -115,6 +122,7 @@ export function TransformCardMenu(props: {
                     presets={presets}
                     onRename={(id, name) => service?.renamePreset(id, name) ?? false}
                     onRemove={id => service?.removePreset(id)}
+                    onImport={items => service?.importPresets(items) ?? 0}
                     onClose={() => setDialog("none")}
                 />
             ) : null}
@@ -200,12 +208,28 @@ function ManagePresetsDialog(props: {
     presets: readonly ProjectTransformPreset[];
     onRename: (id: string, name: string) => boolean;
     onRemove: (id: string) => void;
+    onImport: (items: readonly TransformPresetExchangeItem[]) => number;
     onClose: () => void;
 }) {
     const { t } = useTranslation();
     const freeze = useFreezeGuard();
+    const exchange = useLibraryExchange("transform-preset");
     const [drafts, setDrafts] = useState<Record<string, string>>({});
     const [rejected, setRejected] = useState<string | null>(null);
+
+    const exportPresets = (presets: readonly ProjectTransformPreset[]) => {
+        void exchange.exportItems(
+            encodeTransformPresetExchange(presets),
+            libraryExchangeFileName("transform-preset", presets.map(preset => preset.name)),
+        );
+    };
+
+    const importPresets = async () => {
+        const items = await exchange.importItems(decodeTransformPresetExchange);
+        if (items) {
+            exchange.announceImported(props.onImport(items));
+        }
+    };
 
     const commit = (preset: ProjectTransformPreset) => {
         const draft = drafts[preset.id];
@@ -226,14 +250,40 @@ function ManagePresetsDialog(props: {
     };
 
     return (
-        <Modal isOpen onClose={props.onClose} title={t("storyInspector.transformCard.manageTitle")} size="md">
+        <Modal
+            isOpen
+            onClose={props.onClose}
+            title={t("storyInspector.transformCard.manageTitle")}
+            size="md"
+            footer={
+                // Import on the left of export, in the order the two are used: a project with no
+                // presets yet has nothing to export, and the button says so by being absent.
+                <div className="flex w-full justify-between gap-2">
+                    <button
+                        className={dialogFooterButtonClass({ variant: "secondary", disabled: freeze.frozen })}
+                        {...freeze.writes()}
+                        onClick={() => void importPresets()}
+                    >
+                        {t("common.import")}
+                    </button>
+                    {props.presets.length > 0 ? (
+                        <button
+                            className={dialogFooterButtonClass({ variant: "secondary" })}
+                            onClick={() => exportPresets(props.presets)}
+                        >
+                            {t("common.library.exportAll")}
+                        </button>
+                    ) : null}
+                </div>
+            }
+        >
             <ModalBody>
                 {props.presets.length === 0 ? (
                     <p className="py-4 text-center text-xs text-fg-subtle">{t("storyInspector.transformCard.empty")}</p>
                 ) : (
                     <div className="flex flex-col gap-2">
                         {props.presets.map(preset => (
-                            <div key={preset.id} className="flex flex-col gap-1">
+                            <div key={preset.id} className="group flex flex-col gap-1">
                                 <div className="flex items-center gap-1.5">
                                     {/*
                                       * `fullWidth` inside a `flex-1` wrapper rather than a class on the
@@ -262,6 +312,22 @@ function ManagePresetsDialog(props: {
                                             }}
                                         />
                                     </div>
+                                    {/*
+                                      * Revealed on hover, and on focus as well: a control that only
+                                      * exists under a pointer is a control a keyboard cannot reach.
+                                      * Export is the one row action that changes nothing, so it is
+                                      * the one that can afford to be quiet until asked for.
+                                      */}
+                                    <IconButton
+                                        size="sm"
+                                        variant="ghost"
+                                        className="opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                                        aria-label={t("common.export")}
+                                        data-tip={t("common.export")}
+                                        onClick={() => exportPresets([preset])}
+                                    >
+                                        <Download className="h-3.5 w-3.5" strokeWidth={1.5} aria-hidden />
+                                    </IconButton>
                                     <IconButton
                                         size="sm"
                                         variant="ghost"

@@ -135,17 +135,21 @@ export interface IndexedSearchEntry extends SearchIndexEntry {
     auxLower?: string;
     /** False when `textLower` cannot be index-mapped back onto `text` (see above). */
     textFoldable: boolean;
+    /** The same question for `detail`, which is highlighted on the row's second line. */
+    detailFoldable: boolean;
 }
 
 /** Fold an authored entry list into query-ready entries. Call once per slice rebuild, never per query. */
 export function indexEntries(entries: readonly SearchIndexEntry[]): IndexedSearchEntry[] {
     return entries.map(entry => {
         const textLower = entry.text.toLowerCase();
+        const detailLower = entry.detail?.toLowerCase();
         return {
             ...entry,
             textLower,
             textFoldable: textLower.length === entry.text.length,
-            ...(entry.detail ? { detailLower: entry.detail.toLowerCase() } : {}),
+            detailFoldable: detailLower === undefined || detailLower.length === entry.detail!.length,
+            ...(detailLower !== undefined ? { detailLower } : {}),
             ...(entry.aux ? { auxLower: entry.aux.toLowerCase() } : {}),
         };
     });
@@ -325,6 +329,14 @@ export interface SearchHit {
      * through `detail`/`aux` (or when folding was not index-safe) - see {@link IndexedSearchEntry}.
      */
     titleRanges: Array<[start: number, end: number]>;
+    /**
+     * Matched ranges in `entry.detail`, on the same terms.
+     *
+     * The context line is searchable, so a row can be in the list with nothing marked in its title -
+     * which reads as a result that does not match at all. Highlighting the line that did match is
+     * what tells the two apart.
+     */
+    detailRanges: Array<[start: number, end: number]>;
     /** Weakest field any term relied on, so the row can explain a match the title does not show. */
     matchReason: SearchMatchField;
 }
@@ -414,6 +426,7 @@ function normalizeRanges(ranges: Array<[number, number]>): Array<[number, number
 function matchEntry(entry: IndexedSearchEntry, terms: readonly string[]): SearchHit | null {
     let score = 0;
     const ranges: Array<[number, number]> = [];
+    const detailRanges: Array<[number, number]> = [];
     let sawDetail = false;
     let sawAux = false;
 
@@ -437,6 +450,9 @@ function matchEntry(entry: IndexedSearchEntry, terms: readonly string[]): Search
             }
         } else if (inDetail) {
             sawDetail = true;
+            if (entry.detailFoldable) {
+                detailRanges.push([inDetail.index, inDetail.index + term.length]);
+            }
         } else {
             sawAux = true;
         }
@@ -446,6 +462,7 @@ function matchEntry(entry: IndexedSearchEntry, terms: readonly string[]): Search
         entry,
         score,
         titleRanges: normalizeRanges(ranges),
+        detailRanges: normalizeRanges(detailRanges),
         matchReason: sawAux ? "aux" : sawDetail ? "detail" : "text",
     };
 }
@@ -474,14 +491,22 @@ function matchEntryWith(entry: IndexedSearchEntry, matcher: CompiledMatcher): Se
             entry,
             score,
             titleRanges: normalizeRanges(hits.map(range => [range.start, range.end] as [number, number])),
+            detailRanges: [],
             matchReason: "text",
         };
     }
     if (entry.detail && matcher.test(entry.detail)) {
-        return { entry, score: 100 * DETAIL_WEIGHT, titleRanges: [], matchReason: "detail" };
+        const detailHits = matcher.findRanges(entry.detail);
+        return {
+            entry,
+            score: 100 * DETAIL_WEIGHT,
+            titleRanges: [],
+            detailRanges: normalizeRanges(detailHits.map(range => [range.start, range.end] as [number, number])),
+            matchReason: "detail",
+        };
     }
     if (entry.aux && matcher.test(entry.aux)) {
-        return { entry, score: 100 * AUX_WEIGHT, titleRanges: [], matchReason: "aux" };
+        return { entry, score: 100 * AUX_WEIGHT, titleRanges: [], detailRanges: [], matchReason: "aux" };
     }
     return null;
 }

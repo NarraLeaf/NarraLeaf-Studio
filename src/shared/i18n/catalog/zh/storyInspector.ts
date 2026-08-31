@@ -43,6 +43,7 @@ export const storyInspector = {
         feather: "羽化 %",
         orientation: "朝向",
         slats: "百叶数",
+        slatDelay: "百叶延迟",
         axis: "轴向",
         blades: "扇叶数",
         fromAngle: "起始角度 °",

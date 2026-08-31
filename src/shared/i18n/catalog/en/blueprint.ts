@@ -236,6 +236,9 @@ export const blueprint = {
         sharedAssetSingle: "One revision per shared asset.",
         title: "Revisions",
         active: "· active",
+        // A revision nobody named. Numbered by its place in the list rather than spelled with its
+        // id, which is a UUID and names nothing an author can recognize.
+        unnamed: "Revision {index}",
         newTypeScript: "New TypeScript revision",
         newVisual: "New Visual revision",
     },
@@ -400,10 +403,10 @@ export const blueprint = {
         unnamedCharacter: "Unnamed character",
         // Shown in place of a picked character that is no longer in the project. Keeps the dangling
         // id on screen instead of letting the picker fall silently back to the empty option.
-        missingCharacter: "Missing character ({id})",
+        missingCharacter: "Missing character",
         unnamedInputAction: "Unnamed action",
         // Same job as the character stand-in above, for an action the project no longer declares.
-        missingInputAction: "Missing action ({id})",
+        missingInputAction: "Missing action",
     },
     tsPane: {
         importHint: "Allowed import: \"narraleaf-studio\"",
